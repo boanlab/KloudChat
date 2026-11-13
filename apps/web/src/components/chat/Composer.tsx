@@ -57,6 +57,7 @@ import { runsOnServer } from '@/lib/serverSkills'
 import { isReading, ocrNote, useOcrProgress } from '@/lib/ocr'
 import { ATTACH_ACCEPT, attachRefusal } from '@/lib/attachable'
 import { isImeKey } from '@/lib/ime'
+import { useBlankDocument } from '@/lib/useBlankDocument'
 
 /** Shown when a send timed out at the gateway: the turn may be running on the server. */
 const GATEWAY_NOTICE =
@@ -501,11 +502,11 @@ export function Composer({
   kind,
   projectId,
   autoFocus,
-  output,
+  output: outputProp,
   onDetectOutput,
-  onPickOutput,
-  onBlankDocument,
-  openingDocument = null,
+  onPickOutput: onPickOutputProp,
+  onBlankDocument: onBlankProp,
+  openingDocument: openingProp = null,
 }: {
   sessionId: string | null
   kind: SessionKind
@@ -515,13 +516,27 @@ export function Composer({
   output?: ReportOutput | SlidesOutput | null
   /** The file the typed request names (「한글 문서로」, 「PowerPoint로」), for that pick's default. */
   onDetectOutput?: (detected: ReportOutput | SlidesOutput | null) => void
-  /** Shows the 형식 chip for a new report or deck; the person's pick. */
+  /** The person's pick in the 형식 chip; left out, the composer keeps the pick itself (an
+   *  empty report or deck session shows the same chips as the home screen). */
   onPickOutput?: (value: ReportOutput | SlidesOutput) => void
   /** 「빈 문서로 시작」 beside a picked file: that file blank in its editor beside a chat. */
   onBlankDocument?: (kind: OfficeKind) => void
   openingDocument?: OfficeKind | null
 }) {
   const t = useT()
+  // The 형식 pick and 「빈 문서로 시작」: the home screen's when it passes them, else our own.
+  const storedPick = useStore((s) => (kind === 'report' || kind === 'slides' ? s.outputPick[kind] : null))
+  const setOutputPick = useStore((s) => s.setOutputPick)
+  const output = onPickOutputProp ? (outputProp ?? null) : storedPick
+  const onPickOutput =
+    onPickOutputProp ??
+    ((value: ReportOutput | SlidesOutput) => {
+      if (kind === 'report' || kind === 'slides') setOutputPick(kind, value)
+    })
+  const ownBlank = useBlankDocument(projectId)
+  const chatEnabled = useStore((s) => s.enabledKinds.includes('chat'))
+  const onBlankDocument = onBlankProp ?? (chatEnabled ? (file: OfficeKind) => void ownBlank.start(file) : undefined)
+  const openingDocument = onBlankProp ? openingProp : ownBlank.opening
   const isMedia = kind === 'image' || kind === 'av'
   const canWebSearch = kind === 'chat' || kind === 'report' || kind === 'slides'
   const messageEdit = useStore((s) => s.messageEdit)
@@ -946,16 +961,23 @@ export function Composer({
 
   const project = projects.find((p) => p.id === projectId)
   const effectiveSessionId = sessionId ?? reusableSessionId
+  const session = sessions.find((candidate) => candidate.id === effectiveSessionId)
+  // Nothing sent yet (the home screen, /new/:kind, a project's start, any empty session):
+  // the same 형식·템플릿 chips and first-send options as the home screen.
+  const opened = sessionId ? sessions.find((candidate) => candidate.id === sessionId) : undefined
+  const fresh =
+    !sessionId ||
+    (!!opened && opened.messages.length === 0 && (opened.messageCount ?? 0) === 0 && !opened.pending &&
+      !opened.artifactId)
   // the file the request names, shown as the pick's default until one is picked
-  const detectedOutput: ReportOutput | SlidesOutput | null = sessionId ? null
+  const detectedOutput: ReportOutput | SlidesOutput | null = !fresh ? null
     : kind === 'report' ? reportFileKind(value)
       : kind === 'slides' && NAMES_PPTX.test(value) ? 'pptx' : null
   useEffect(() => {
     onDetectOutput?.(detectedOutput)
   }, [detectedOutput, onDetectOutput])
   // A new report or deck picks the file it is made as.
-  const outputSurface = !sessionId && (kind === 'report' || kind === 'slides') ? kind : null
-  const session = sessions.find((candidate) => candidate.id === effectiveSessionId)
+  const outputSurface = fresh && (kind === 'report' || kind === 'slides') ? kind : null
   // A generation awaiting an answer or approval (document surfaces only).
   const pending = session?.pending ?? null
   const sessionAgent = agents.find((agent) => agent.id === session?.agentId)
@@ -963,6 +985,8 @@ export function Composer({
   const shownTemplate =
     (pendingTemplate?.surface === kind ? pendingTemplate : null) ??
     designTemplates.find((row) => row.id === session?.renderTemplateId) ??
+    // A project's default template for this surface, before anything is sent.
+    (fresh ? designTemplates.find((row) => row.surface === kind && row.id === project?.renderTemplates?.[kind]) : undefined) ??
     null
   // Same gate as the gallery button.
   const hasTemplates =
@@ -1606,7 +1630,7 @@ export function Composer({
     }
     // 「PowerPoint」 picked (or named) on the slides screen: today's PowerPoint path, a chat
     // with a blank deck in its editor whose tools write the request into it
-    if (kind === 'slides' && !sessionId && (output ?? detectedOutput) === 'pptx') {
+    if (kind === 'slides' && fresh && (output ?? detectedOutput) === 'pptx') {
       void (async () => {
         const id = await useStore.getState().ensureSession(
           await newSession('chat', { projectId: projectId ?? null }))
@@ -1614,6 +1638,7 @@ export function Composer({
           sessionId: id, title: t('새 PowerPoint 문서'),
         })
         releaseStart()
+        setOutputPick('slides', null)
         navigate(`/s/${id}?artifact=${row.id}`, { replace: true })
         await deliverChat(id, text, sentAttachments, sentWebSearch, sentSkillIds)
       })().finally(startSettled).catch((error: unknown) => {
@@ -1736,6 +1761,9 @@ export function Composer({
     // The pick is spent on this turn; the session row is the record from here.
     const sentTemplate = pendingTemplate?.surface === kind ? pendingTemplate : null
     setPendingTemplate(null)
+    // The 형식 pick is spent the same way, and handed back if the send is refused.
+    const sentPick = fresh && (kind === 'report' || kind === 'slides') ? output : null
+    if (sentPick) setOutputPick(kind as 'report' | 'slides', null)
     // Reassigned by `onSession` when this turn creates the session.
     let landedSessionId = sessionId
     void send(sessionId, kind, text, {
@@ -1746,7 +1774,7 @@ export function Composer({
       activatedSkillIds: sentSkillIds,
       renderTemplateId: shownTemplate ? shownTemplate.id : undefined,
       // a file picked beside the surface chips; else the server reads the request
-      outputFormat: kind === 'report' && !sessionId && output ? output as ReportOutput : undefined,
+      outputFormat: kind === 'report' && fresh && output ? output as ReportOutput : undefined,
       // Sending from /new/:kind creates a session; the URL has to follow it.
       onSession: (id) => {
         landedSessionId = id
@@ -1770,6 +1798,8 @@ export function Composer({
         })
         // Session row rolled back with the refusal: hand the pick back unless a newer one exists.
         if (sentTemplate && !livePendingTemplate.current) setPendingTemplate(sentTemplate)
+        const surface = kind as 'report' | 'slides'
+        if (sentPick && !useStore.getState().outputPick[surface]) setOutputPick(surface, sentPick)
       })
   }
 
@@ -1830,7 +1860,7 @@ export function Composer({
     }
   }
   // Everything but dictation, model and send sits behind 「+」; active options show as chips.
-  const showTemplates = hasTemplates && (started || !sessionId) && !editing
+  const showTemplates = hasTemplates && (started || fresh) && !editing
   // Offered before any skill is added, so a new account can find them from here.
   const showSkills = !isMedia
   // On a phone the microphone moves into 「+」 unless it is recording.
@@ -2529,7 +2559,7 @@ export function Composer({
           </div>
         )}
 
-        {outputSurface && onPickOutput && (
+        {outputSurface && (
           <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-2.5 py-2">
             <OutputOptions
               surface={outputSurface}
@@ -2538,6 +2568,23 @@ export function Composer({
               onBlank={onBlankDocument}
               opening={openingDocument}
             />
+            {showTemplates && (
+              // The template beside the format, in the same chip style; opens the gallery.
+              <button
+                type="button"
+                onClick={() => setGalleryOpen(true)}
+                aria-label={shownTemplate
+                  ? t('템플릿: {name}').replace('{name}', templateText(shownTemplate, currentLang() === 'en').name)
+                  : t('템플릿 고르기')}
+                data-testid="template-chip"
+                className="flex h-8 max-w-[16rem] items-center gap-1.5 rounded-control border border-line px-2.5 text-sm text-muted transition-colors hover:bg-elevated hover:text-fg"
+              >
+                <span className="text-faint">{t('템플릿')}</span>
+                <span className="truncate font-medium">
+                  {shownTemplate ? templateText(shownTemplate, currentLang() === 'en').name : t('기본값')}
+                </span>
+              </button>
+            )}
           </div>
         )}
 

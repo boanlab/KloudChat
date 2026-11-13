@@ -73,6 +73,7 @@ import type {
   ProjectFile,
   PendingPlan,
   ReportOutput,
+  SlidesOutput,
   Session,
   Preferences,
   PrivacyAction,
@@ -517,6 +518,10 @@ interface State {
   /** Rendering template picked in the gallery, waiting for the turn that will use it. */
   pendingTemplate: DesignTemplateRow | null
   setPendingTemplate: (template: DesignTemplateRow | null) => void
+  /** The 형식 picked for a report or deck not yet sent (home screen or an empty session);
+   *  null lets the request decide. One place, so a remount or a refused send keeps it. */
+  outputPick: { report: ReportOutput | null; slides: SlidesOutput | null }
+  setOutputPick: (surface: 'report' | 'slides', value: ReportOutput | SlidesOutput | null) => void
   /** An empty logo draws the default mark. */
   brand: { name: string; logo: string }
   /** Re-reads `/auth/config` so an admin's saved change shows without a reload. */
@@ -1023,6 +1028,7 @@ function clearAccount(set: Set, reason?: 'idle') {
     authError: null,
     signedOutReason: reason ?? null,
     // Never leave one account's work on screen for the next.
+    outputPick: { report: null, slides: null },
     sessions: [],
     users: [],
     usersPage: null,
@@ -2379,6 +2385,8 @@ export const useStore = create<State>((set, get) => ({
   setToast: (toast) => set({ toast }),
   pendingTemplate: null,
   setPendingTemplate: (pendingTemplate) => set({ pendingTemplate }),
+  outputPick: { report: null, slides: null },
+  setOutputPick: (surface, value) => set((s) => ({ outputPick: { ...s.outputPick, [surface]: value } })),
   brand: { name: 'KloudChat', logo: '' },
   refreshConfig: async () => {
     const c = await authConfig.get().catch(() => null)

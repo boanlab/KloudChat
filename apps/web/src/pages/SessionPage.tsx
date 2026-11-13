@@ -8,7 +8,6 @@ import { ProposalCard } from '@/components/chat/ProposalCard'
 import { waitingCardMessageId } from '@/lib/stages'
 import { MessageItem } from '@/components/chat/MessageItem'
 import { ShareButton } from '@/components/share/ShareButton'
-import { DesignGallery } from '@/components/chat/DesignGallery'
 import { TopBar } from '@/components/layout/TopBar'
 import { JobCard } from '@/components/media/JobCard'
 import { Badge, Button, LoadingState } from '@/components/ui'
@@ -321,9 +320,6 @@ function Intro({
       </div>
       {agent && <AgentGuide agent={agent} sessionId={sessionId ?? null} kind={kind} />}
       <StartingFrom sessionId={sessionId} kind={kind} withoutAgent={Boolean(agent)} />
-      <div className="mt-4 flex flex-wrap justify-center gap-2">
-        <DesignGallery kind={kind} sessionId={sessionId ?? null} />
-      </div>
     </div>
   )
 }

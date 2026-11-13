@@ -382,3 +382,64 @@ test('a table in an answer sorts by its headings and goes back to the written or
   await expect(first()).toHaveText('지원 규모')
   expect(unexpected).toEqual([])
 })
+
+test('a report started from a project shows the home screen chips, its default template, and sends the picked file', async ({ page }, info) => {
+  const { unexpected, sends } = await composerFixture(page, info, { skills: false, agents: false, connectors: false })
+  const id = 'c0000000000000000000000000000077'
+  const project = {
+    id: 'p1', name: '사업 계획', description: '', emoji: '📁', instructions: '', files: [], sessionIds: [id],
+    skillIds: [], designSystemId: null, renderTemplates: { report: 'tpl-report' }, updatedAt: '2026-10-09T07:00:00.000Z',
+  }
+  const empty = {
+    id, kind: 'report', title: '새 대화', model: 'fixture/model', routingMode: 'manual', projectId: 'p1', agentId: null,
+    artifactId: null, pending: null, skillIds: [], renderTemplateId: null, pinned: false, messageCount: 0,
+    createdAt: '2026-10-09T07:00:00.000Z', updatedAt: '2026-10-09T07:00:00.000Z', messages: [], preview: null, made: null,
+  }
+  await page.route('**/api/projects', (route) => route.request().method() === 'GET' ? route.fulfill({ json: [project] }) : route.fallback())
+  await page.route('**/api/sessions', (route) => route.request().method() === 'GET' ? route.fulfill({ json: [empty] }) : route.fallback())
+  await page.route(`**/api/sessions/${id}`, (route) => route.request().method() === 'GET' ? route.fulfill({ json: empty }) : route.fallback())
+  await page.route(`**/api/sessions/${id}/messages`, (route) => {
+    if (route.request().method() === 'GET') return route.fulfill({ json: [] })
+    sends.push({ path: `/sessions/${id}/messages`, body: route.request().postDataJSON() })
+    return route.fulfill({ contentType: 'text/event-stream', body: 'data: {"type":"done"}\n\n' })
+  })
+  await page.goto(`/s/${id}`)
+  // The new subtitle, the same 형식 and 템플릿 chips as the home screen, the project's template picked.
+  await expect(page.getByText('웹 보고서·한글·Word로 씁니다', { exact: false })).toBeVisible({ timeout: 15_000 })
+  const format = page.getByRole('button', { name: /^형식/ })
+  await expect(format).toContainText('웹 보고서')
+  await expect(page.getByTestId('template-chip')).toContainText('비교 보고서')
+  await format.click()
+  await page.getByRole('menuitemcheckbox', { name: 'Word', exact: true }).click()
+  await expect(page.getByRole('button', { name: '빈 문서로 시작' })).toBeVisible()
+  await page.getByLabel('프롬프트 입력').fill('3분기 실적 보고서')
+  await page.getByLabel('프롬프트 입력').press('Enter')
+  await expect.poll(() => sends.at(-1)?.body.outputFormat).toBe('docx')
+  expect(sends.at(-1)?.body.renderTemplateId).toBe('tpl-report')
+  expect(unexpected).toEqual([])
+})
+
+test('an empty slides session reopened later (an agent\'s start) offers the same format and template chips', async ({ page }, info) => {
+  const { unexpected } = await composerFixture(page, info, { skills: false, connectors: false })
+  const id = 'c0000000000000000000000000000078'
+  const empty = {
+    id, kind: 'slides', title: '새 대화', model: 'fixture/model', routingMode: 'manual', projectId: null,
+    agentId: `a${'1'.repeat(32)}`, artifactId: null, pending: null, skillIds: [], renderTemplateId: null, pinned: false,
+    messageCount: 0, createdAt: '2026-10-09T07:00:00.000Z', updatedAt: '2026-10-09T07:00:00.000Z', messages: [],
+    preview: null, made: null,
+  }
+  await page.route('**/api/sessions', (route) => route.request().method() === 'GET' ? route.fulfill({ json: [empty] }) : route.fallback())
+  await page.route(`**/api/sessions/${id}`, (route) => route.request().method() === 'GET' ? route.fulfill({ json: empty }) : route.fallback())
+  await page.route(`**/api/sessions/${id}/messages`, (route) => route.request().method() === 'GET' ? route.fulfill({ json: [] }) : route.fallback())
+  await page.goto(`/s/${id}`)
+  const format = page.getByRole('button', { name: /^형식/ })
+  await expect(format).toContainText('웹 슬라이드', { timeout: 15_000 })
+  await expect(page.getByTestId('template-chip')).toContainText('기본값')
+  await page.getByTestId('template-chip').click()
+  await expect(page.getByRole('dialog', { name: '템플릿 고르기' })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await format.click()
+  await page.getByRole('menuitemcheckbox', { name: 'PowerPoint', exact: true }).click()
+  await expect(page.getByRole('button', { name: '빈 문서로 시작' })).toBeVisible()
+  expect(unexpected).toEqual([])
+})

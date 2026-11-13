@@ -5,11 +5,11 @@ import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import { Button, Card, EmptyState } from '@/components/ui'
 import { Composer, fillComposer } from '@/components/chat/Composer'
-import { artifactsApi, errorMessage, type OfficeKind } from '@/lib/api'
+import { useBlankDocument } from '@/lib/useBlankDocument'
 import { kindMeta, kindOrder } from '@/lib/kinds'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
-import type { ReportOutput, SessionKind, SlidesOutput } from '@/types'
+import type { SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
 
 /** Per-surface examples under the greeting; click fills the composer. */
@@ -47,14 +47,6 @@ const EXAMPLES: Record<SessionKind, string[]> = {
 }
 
 /** Also the `/new/:kind` entry. */
-/** A file picked with nothing typed opens blank in its editor beside a chat, as the home
- *  screen's document cards did. */
-const BLANK_START = {
-  hwp: { title: '새 한글 문서', failed: '한글 문서를 열지 못했습니다.' },
-  docx: { title: '새 Word 문서', failed: 'Word 문서를 열지 못했습니다.' },
-  pptx: { title: '새 PowerPoint 문서', failed: 'PowerPoint 문서를 열지 못했습니다.' },
-} as const satisfies Record<OfficeKind, { title: string; failed: string }>
-
 export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
   const t = useT()
   const navigate = useNavigate()
@@ -66,30 +58,10 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
     if (initialKind) setKind(initialKind)
   }, [initialKind])
 
-  const newSession = useStore((s) => s.newSession)
-  const ensureSession = useStore((s) => s.ensureSession)
-  const setNotice = useStore((s) => s.setNotice)
-  const [openingDocument, setOpeningDocument] = useState<OfficeKind | null>(null)
-  /** A chat with a blank HWP, Word or PowerPoint document open beside it. */
-  const startDocument = async (kind: OfficeKind) => {
-    if (openingDocument) return
-    setOpeningDocument(kind)
-    try {
-      const id = await ensureSession(await newSession('chat'))
-      const row = await artifactsApi.createDocument(kind, {
-        sessionId: id,
-        title: t(BLANK_START[kind].title),
-      })
-      navigate(`/s/${id}?artifact=${row.id}`)
-    } catch (err) {
-      setNotice(errorMessage(err, t(BLANK_START[kind].failed)))
-    } finally {
-      setOpeningDocument(null)
-    }
-  }
+  const blank = useBlankDocument()
   /** The file picked per surface (null: the request decides). */
-  const [picked, setPicked] = useState<{ report: ReportOutput | null; slides: SlidesOutput | null }>(
-    { report: null, slides: null })
+  const picked = useStore((s) => s.outputPick)
+  const setOutputPick = useStore((s) => s.setOutputPick)
 
   const openArtifact = useStore((s) => s.openArtifact)
   useEffect(() => {
@@ -251,10 +223,10 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
           autoFocus
           output={active === 'report' || active === 'slides' ? picked[active] : null}
           onPickOutput={active === 'report' || active === 'slides'
-            ? (value) => setPicked((now) => ({ ...now, [active]: value }))
+            ? (value) => setOutputPick(active, value)
             : undefined}
-          onBlankDocument={surfaces.includes('chat') ? (kind) => void startDocument(kind) : undefined}
-          openingDocument={openingDocument}
+          onBlankDocument={surfaces.includes('chat') ? (kind) => void blank.start(kind) : undefined}
+          openingDocument={blank.opening}
         />
       </div>
     </>

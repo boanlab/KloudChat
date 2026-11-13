@@ -72,6 +72,13 @@ export const EN_UI: Record<string, string> = {
   '슬라이드 (웹·PowerPoint)': 'Slides (web · PowerPoint)',
   '명조 계열 서체': 'Serif typeface',
   '고딕 계열 서체': 'Sans-serif typeface',
+  // Report and slides starts: the same chips on the home screen and in an empty session
+  '웹 보고서·한글·Word로 씁니다. 형식과 템플릿을 고르고 주제를 적으세요':
+    'Written as a web report, HWP or Word. Pick the format and template, then give the topic',
+  '웹 슬라이드·PowerPoint로 만듭니다. 형식과 템플릿을 고르고 주제를 적으세요':
+    'Made as web slides or PowerPoint. Pick the format and template, then give the topic',
+  '템플릿: {name}': 'Template: {name}',
+  템플릿: 'Template',
   // Empty states
   '새 대화 시작': 'Start a conversation',
   '검색 지우기': 'Clear search',
