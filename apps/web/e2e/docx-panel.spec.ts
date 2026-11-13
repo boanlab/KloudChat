@@ -160,7 +160,8 @@ test('home opens a blank Word document from the report surface\'s Word pick', as
   const state = await fixture(page, { fromHome: true })
   await expect(page.getByRole('button', { name: 'Word 문서', exact: true })).toHaveCount(0)
   await page.getByRole('group', { name: '만들 것' }).getByRole('button', { name: '보고서' }).click()
-  await page.getByRole('group', { name: '결과 형식' }).getByRole('button', { name: 'Word', exact: true }).click()
+  await page.getByRole('button', { name: /^형식/ }).click()
+  await page.getByRole('menuitemcheckbox', { name: 'Word', exact: true }).click()
   await page.getByRole('button', { name: '빈 문서로 시작' }).click()
   await expect(page).toHaveURL(/\/s\/[0-9a-z_-]+/)
   await expect(docxPanel(page)).toBeVisible()
@@ -174,6 +175,20 @@ test('an attached .docx opens in the Word editor beside the chat', async ({ page
   await page.getByRole('button', { name: 'Word로 열기' }).click()
   await expect(line(page, '붙임  1. 연수 일정표 1부.')).toBeVisible({ timeout: 30_000 })
   expect(state.created).toEqual([{ sessionId: expect.any(String), fileId: 'file-1' }])
+  expect(state.csp).toEqual([])
+})
+
+test('an attached .docx on a report\'s screen opens in the Word editor beside a new chat', async ({ page }) => {
+  test.skip((page.viewportSize()?.width ?? 0) <= 640, 'desktop width')
+  const state = await fixture(page, { attachment: { id: 'file-1', name: '2-gongmun.docx' }, sessionKind: 'report' })
+  // the editor, not a web report made of the file
+  await expect(page.getByRole('button', { name: '문서로 열기' })).toHaveCount(0)
+  const from = new URL(page.url()).pathname
+  await page.getByRole('button', { name: 'Word로 열기' }).click()
+  await expect(line(page, '붙임  1. 연수 일정표 1부.')).toBeVisible({ timeout: 30_000 })
+  expect(new URL(page.url()).pathname).not.toBe(from)
+  expect(state.created).toEqual([{ sessionId: expect.any(String), fileId: 'file-1' }])
+  expect(state.created[0].sessionId).not.toBe(from.split('/').pop())
   expect(state.csp).toEqual([])
 })
 

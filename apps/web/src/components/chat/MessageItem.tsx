@@ -6,7 +6,6 @@ import {
   CircleStop,
   Copy,
   Download,
-  FilePenLine,
   FileType,
   Flag,
   Loader2,
@@ -288,22 +287,12 @@ function MessageItemInner({
   const [opening, setOpening] = useState<string | null>(null)
   const navigate = useNavigate()
 
-  /** Opens an attached `.hwpx` as an editable report; no model call. */
-  const openAsDocument = async (id: string) => {
-    setFileError(null)
-    setOpening(id)
-    try {
-      const made = await filesApi.openAsDocument(id)
-      navigate(`/s/${made.id}`)
-    } catch (err) {
-      setFileError(errorMessage(err, t('이 파일을 문서로 열지 못했습니다.')))
-    } finally {
-      setOpening(null)
-    }
-  }
 
   const refreshArtifact = useStore((s) => s.refreshArtifact)
   const openArtifact = useStore((s) => s.openArtifact)
+  const newSession = useStore((s) => s.newSession)
+  const ensureSession = useStore((s) => s.ensureSession)
+  const sessionProject = useStore((s) => s.sessions.find((c) => c.id === sessionId)?.projectId)
   /** The copy opened in this chat earlier, reopened from the attachment: a new one only on request. */
   const [reopened, setReopened] = useState<{ kind: OfficeKind; id: string } | null>(null)
   /**
@@ -314,6 +303,20 @@ function MessageItemInner({
     setFileError(null)
     setOpening(`${kind}:${id}`)
     try {
+      // A report's or deck's own screen keeps its document: the file opens beside a new chat,
+      // as the file box's 편집 does, or beside the chat that already holds a copy of it.
+      if (sessionKind !== 'chat') {
+        const copies = await filesApi.documents(id).catch(() => [])
+        const earlier = copies.find((doc) => doc.kind === kind && doc.sessionId)
+        if (earlier?.sessionId) {
+          navigate(`/s/${earlier.sessionId}?artifact=${earlier.id}`)
+          return
+        }
+        const chat = await ensureSession(await newSession('chat', { projectId: sessionProject ?? null }))
+        const made = await artifactsApi.createDocument(kind, { sessionId: chat, fileId: id })
+        navigate(`/s/${chat}?artifact=${made.id}`)
+        return
+      }
       if (!fresh) {
         const copies = await filesApi.documents(id).catch(() => [])
         const earlier = copies.find((doc) => doc.kind === kind && doc.sessionId === sessionId)
@@ -440,9 +443,9 @@ function MessageItemInner({
             )
             const shell =
               'ml-auto flex w-fit max-w-full items-center gap-2 rounded-control border border-line bg-panel px-2.5 py-1.5 text-base'
-            const hangul = Boolean(a.id) && /\.hwpx$/i.test(a.name)
-            // the office editor this file opens in beside the chat
-            const editable: OfficeKind | null = !a.id || sessionKind !== 'chat' ? null
+            // the office editor this file opens in (beside this chat, or a new one off a report
+            // or deck screen)
+            const editable: OfficeKind | null = !a.id ? null
               : /\.hwpx?$/i.test(a.name) ? 'hwp'
                 : /\.docx$/i.test(a.name) ? 'docx'
                   : /\.pptx$/i.test(a.name) ? 'pptx' : null
@@ -463,7 +466,7 @@ function MessageItemInner({
                     {t(OPEN_IN[editable])}
                   </Button>
                 )}
-                {editable && reopened?.id === a.id && reopened.kind === editable && (
+                {editable && sessionKind === 'chat' && reopened?.id === a.id && reopened.kind === editable && (
                   <Button
                     size="sm"
                     variant="ghost"
@@ -472,21 +475,6 @@ function MessageItemInner({
                     onClick={() => void openInEditor(editable, a.id!, true)}
                   >
                     {t('새 사본으로 열기')}
-                  </Button>
-                )}
-                {hangul && (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    disabled={opening === a.id}
-                    onClick={() => void openAsDocument(a.id!)}
-                  >
-                    {opening === a.id ? (
-                      <Loader2 size={13} className="animate-spin" />
-                    ) : (
-                      <FilePenLine size={13} />
-                    )}
-                    {t('문서로 열기')}
                   </Button>
                 )}
                 <button

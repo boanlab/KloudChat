@@ -24,7 +24,7 @@ from app.models.chat import (
     TurnFailure,
 )
 from app.models.user import User
-from app.models.workspace import Agent, Skill, StoredFile
+from app.models.workspace import Agent, Artifact, Skill, StoredFile
 from app.routers import sessions
 
 ORIGINAL = "fixture/original"
@@ -49,7 +49,7 @@ async def engine():
                 tables=[
                     metadata.tables[model.__tablename__]
                     for model in (User, Agent, ChatSession, Message, StoredFile, PipelineRun,
-                                  Skill)
+                                  Skill, Artifact)
                 ],
             )
         yield engine

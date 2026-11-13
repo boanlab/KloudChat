@@ -40,6 +40,8 @@ _CARRIED_TAGS = {
     "dl",
     "strong",
     "em",
+    "u",
+    "s",
     "code",
     "br",
     "sup",

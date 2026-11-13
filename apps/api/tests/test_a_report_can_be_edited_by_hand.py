@@ -159,3 +159,11 @@ def test_editable_run_and_paragraph_formatting_reaches_docx_and_pdf():
     # The body must reference both definitions, not only declare them.
     assert 'paraPrIDRef="10"' in section
     assert 'charPrIDRef="6"' in section
+
+
+def test_underline_and_strikethrough_survive_the_save_sanitiser():
+    # the editor's 밑줄·취소선 are <u>/<s>; saving runs the section through `sanitise`
+    from app.services import design_templates
+
+    kept = design_templates.sanitise("<p>a <u>밑줄</u> <s>취소선</s> <strong>굵게</strong></p>")
+    assert "<u>밑줄</u>" in kept and "<s>취소선</s>" in kept
