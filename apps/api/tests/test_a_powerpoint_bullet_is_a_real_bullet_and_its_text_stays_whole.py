@@ -334,3 +334,42 @@ async def test_a_deck_written_in_a_project_takes_its_design_system_and_slides_te
     # no project: the house look
     alone = ChatSession(id="s2", user_id="u1", title="t")
     assert await pptx_doc.project_look(Db(), user, alone) == (None, "")
+
+
+async def test_a_blank_deck_made_in_a_project_wears_its_theme_and_the_picked_template():
+    from app.models.user import User
+    from app.models.workspace import DesignSystem, Project
+    from app.services import design_templates
+
+    rows = {
+        Project: Project(id="p1", user_id="u1", name="사업", design_system_id="d1",
+                         render_templates={"slides": "deck-editorial"}),
+        DesignSystem: DesignSystem(id="d1", owner_id="u1", name="회사",
+                                   tokens={"accent": "#1E8449", "font": "gothic"}),
+    }
+
+    class Db:
+        async def get(self, model, _row_id):
+            return rows.get(model)
+
+        async def exec(self, _query):  # an agent's design system is never looked up here
+            raise AssertionError("no query expected")
+
+    user = User(id="u1", email="u@example.test", name="u")
+    # no conversation yet: the project's theme and default template
+    tokens, template = await pptx_doc.project_look(Db(), user, project_id="p1")
+    assert tokens["accent"].upper() == "#1E8449"
+    assert template == design_templates.rendering("deck-editorial").pptx_template
+    # a template the person picked wins over the project's default
+    picked = next(row.id for row in design_templates.all_templates()
+                  if row.pptx_template and row.id != "deck-editorial")
+    _, chosen = await pptx_doc.project_look(Db(), user, project_id="p1", template_id=picked)
+    assert chosen == design_templates.rendering(picked).pptx_template
+
+    data = pptx_doc.blank(tokens=tokens, template=template)
+    prs = _prs(data)
+    assert len(prs.slides) == 1
+    names = {layout.name for layout in Presentation(template).slide_layouts}
+    assert {layout.name for layout in prs.slide_layouts} == names
+    # outside a project the blank deck is the plain one
+    assert len(_prs(pptx_doc.blank()).slides) == 1

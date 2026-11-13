@@ -29,6 +29,8 @@ class DocumentCreate(Wire):
     project_id: str | None = None
     #: an uploaded file to open; none = a blank page
     file_id: str | None = None
+    #: a slides 서식 picked for a blank PowerPoint deck (else the project's default)
+    template_id: str | None = None
 
 
 class DocumentSession(Wire):
@@ -91,6 +93,18 @@ def router_for(spec: Routes) -> APIRouter:
             except OSError:
                 raise HTTPException(status.HTTP_404_NOT_FOUND, detail="blob_missing") from None
             title = title or spec.suffix.sub("", stored.name)
+        elif spec.slug == "pptx" and (project_id or payload.template_id):
+            # a blank deck in a project wears its 테마 and 서식, as its web decks do
+            from app.services import pptx_doc
+
+            session = (
+                await db.get(ChatSession, payload.session_id) if payload.session_id else None
+            )
+            tokens, template = await pptx_doc.project_look(
+                db, user, session, project_id=project_id, template_id=payload.template_id
+            )
+            data = pptx_doc.blank(tokens=tokens, template=template)
+            title = title or spec.blank_title
         else:
             data = spec.blank()
             title = title or spec.blank_title
