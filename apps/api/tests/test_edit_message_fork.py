@@ -13,7 +13,7 @@ from app.models.governance import Governance
 from app.models.user import User, utcnow
 from app.models.workspace import Artifact, ArtifactKind, Job, StoredFile
 from app.routers import sessions
-from app.services import files
+from app.services import files, index_client
 
 
 class _Result:
@@ -96,7 +96,7 @@ def _isolated(monkeypatch, tmp_path):
 
     monkeypatch.setattr(sessions.model_service, "list_models_for_egress", no_model)
     monkeypatch.setattr(sessions.litellm_service, "ensure_key", no_model)
-    monkeypatch.setattr(sessions.index_client, "forget_collection", no_model)
+    monkeypatch.setattr(index_client, "forget_collection", no_model)
 
 
 def _user(user_id="owner"):

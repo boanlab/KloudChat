@@ -1460,7 +1460,10 @@ published `@rhwp/core` wasm (checked against its npm integrity), with the AI
 panel, the hwpctrl plugin, CDN web fonts and the service worker left out.
 nginx serves `/rhwp/` under `rhwp-security-headers.conf`: the app's CSP would
 block its WebAssembly, so it gets its own, which adds `'wasm-unsafe-eval'` and
-otherwise allows nothing outside this origin. The panel mounts the iframe once
+otherwise allows nothing outside this origin. Its page and unhashed files
+(`index.html`, `rhwp-version.json`, fonts) are `Cache-Control: no-cache`, revalidated on
+each load, so an image update reaches open tabs; only `/rhwp/assets/`, content-hashed,
+is cached for a year as immutable. The panel mounts the iframe once
 per document (`HwpPanel`, keyed by id); width and full-screen changes restyle
 its container and never move it, since a moved iframe reloads.
 
@@ -2087,7 +2090,9 @@ carry script, and that file loads for every visitor.
 or asks for something, optionally attaching a read-only copy of a conversation
 (`services/issue_snapshot.py`; a strict-local conversation needs an explicit
 confirmation); administrators work the queue with status, assignee and replies, and
-every open of an attached conversation is an audit event.
+every open of an attached conversation is an audit event. `GET /issues/page` pages a
+person's own reports (`cursor`, `limit`, `unread=true` for those the badge counts) with
+`total` and the `unread` count; `/issues` stays the newest 200.
 
 **Performance monitoring** (`/admin/performance`, `services/perf/`) samples each replica,
 the host, the GPU nodes and LiteLLM's request log once a minute into `metric_samples`;
@@ -2519,9 +2524,13 @@ form only and uses a neutral domain, so its content is not repeated as fact.
   it the job is refused (`409 internal_data_requires_strict_local`) unless a
   strict-local video model exists, outside it personal data in the prompt is
   masked before it leaves.
-- An index delete that fails leaves the file's record saying where its vectors
-  are, for the next attempt; a vector hit for a document no longer on the shelf
-  is dropped before it can become evidence.
+- An index delete that fails (the index down, a timeout) is kept in
+  `index_deletions` — the document and collection, or a whole collection — and
+  retried every ten minutes by a background loop (`services/index_cleanup.py`)
+  until it lands, given up with a warning after 30 days. An entry indexed again
+  since is left alone. A vector hit counts only while a shelf document of that
+  name still holds its passage, so an entry a deleted (or since edited) file left
+  behind never becomes evidence, though a living file shares its name.
 - Credit settlement is an atomic SQL increment; two turns of one account
   settling at once both land.
 - A finished video is claimed once across replicas by flipping its stage with
@@ -2607,7 +2616,8 @@ stay in the file box (`forget_session_files`), unless the person ticked 「대�
 a project's or an agent's excepted (`delete_session_files`). Each file records how it came
 (`files.origin`: `upload`, or `generated` for a code run's output, an image, a chart, a
 figure, audio, video, an export); the file box (`/files` in the web app) lists the two
-apart, and a composer's 「파일함에서 고르기」 attaches one again by id. Deleting
+apart, a page at a time (`GET /files/page?box=true`: agents' knowledge left out, `origin`,
+a name search `q`, a keyset `cursor`, with `total` and per-origin `counts`), and a composer's 「파일함에서 고르기」 attaches one again by id. Deleting
 the project drops the collection; `POST /projects/{id}/knowledge/reindex`
 backfills files uploaded before the index existed. The lexical shelf the tool
 also reads includes the project's files, so a passage the budget could not

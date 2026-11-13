@@ -46,6 +46,7 @@ from app.services import (
     api_key_usage,
     bootstrap,
     connector_defaults,
+    index_cleanup,
     litellm,
     ocr_jobs,
     publishing,
@@ -88,15 +89,26 @@ def _note_stop_signal() -> None:
             return
 
 
+async def _warn_without_litellm_key() -> None:
+    """Boot warning only when neither the environment nor an admin's saved setting has a key."""
+    if settings.litellm_master_key:
+        return
+    _, key = await settings_store.litellm_config()
+    if key:
+        log.info("LITELLM_MASTER_KEY is unset; using the LiteLLM key saved in admin settings")
+    else:
+        log.warning("no LiteLLM master key (LITELLM_MASTER_KEY unset, none saved in admin "
+                    "settings) — model routes will report unavailable")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     log.info("KloudChat api starting (env=%s, signup_mode=%s)", settings.env, settings.signup_mode)
-    if not settings.litellm_master_key:
-        log.warning("LITELLM_MASTER_KEY is unset — model routes will report unavailable")
     try:
         await bootstrap.seed_admin()
     except Exception as exc:  # noqa: BLE001 — a failed seed must not block startup
         log.warning("bootstrap admin not created: %s", exc)
+    await _warn_without_litellm_key()
     if not settings_store.has_own_key():
         log.warning(
             "SECRET_KEY is unset — stored secrets are sealed with a key derived from "
@@ -122,6 +134,8 @@ async def lifespan(app: FastAPI):
     # published bots: retention, pausing unaffordable bots
     bots = asyncio.create_task(publishing.watch())
     reader = asyncio.create_task(ocr_jobs.watch())
+    # index deletes that failed, until they land
+    unindexer = asyncio.create_task(index_cleanup.watch())
     key_usage = asyncio.create_task(api_key_usage.watch())
     # cross-replica stop delivery; no extra connection for a single replica
     stop_listener = (
@@ -141,6 +155,7 @@ async def lifespan(app: FastAPI):
     sweeper.cancel()
     bots.cancel()
     reader.cancel()
+    unindexer.cancel()
     key_usage.cancel()
     if stop_listener is not None:
         stop_listener.cancel()
@@ -202,9 +217,9 @@ app.include_router(perf.router, prefix=settings.api_prefix)
 app.include_router(client_errors.router, prefix=settings.api_prefix)
 
 
-@app.get(f"{settings.api_prefix}/health")
+@app.api_route(f"{settings.api_prefix}/health", methods=["GET", "HEAD"])
 async def health():
-    """KloudChat and LiteLLM status reported separately."""
+    """KloudChat and LiteLLM status reported separately; HEAD for uptime probes."""
     return {
         "status": "ok",
         "litellm": "ok" if await litellm.health() else "unavailable",

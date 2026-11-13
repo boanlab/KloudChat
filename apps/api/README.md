@@ -54,7 +54,7 @@ All under `/api` except `/llm`. The complete list is the OpenAPI document at
 | `POST /auth/password/forgot` · `reset` · `POST /auth/verify-email` · `verify-email/resend` | Active only when SMTP is configured |
 | `GET/PATCH /auth/me` · `GET /auth/me/access` · `GET /auth/me/sessions` · `DELETE /auth/me/sessions/{family}` · `POST /auth/me/sessions/revoke-others` | Profile and preferences, own sign-in history, own refresh-token families and their revocation |
 | `GET /models` · `POST /models/refresh` · `GET /credits` | Catalogue (LiteLLM merged with adapter declarations), remaining credits |
-| `GET /sessions` · `/sessions/paged` · `POST` · `GET/PATCH/DELETE {id}` · `POST /sessions/delete` | Conversations of all five surfaces; bulk delete removes their artifacts too |
+| `GET /sessions` · `/sessions/paged` · `POST` · `GET/PATCH/DELETE {id}` · `POST /sessions/delete` | Conversations of all five surfaces; bulk delete removes their artifacts too. `GET /sessions?limit=n` (1–500): every pinned conversation plus the `n` most recent others |
 | `POST /sessions/{id}/messages` → SSE · `POST /sessions/{id}/stop` | Streaming turn for chat, report and slides; stop keeps the partial answer |
 | `POST /sessions/{id}/messages/{mid}/fork` · `PATCH /messages/{id}/rating` | Branch a conversation before a message; rate an answer |
 | `GET /sessions/{id}/runs` · `…/runs/{run}` · `…/rerun` | The stages a document turn ran through, and rerunning one |
@@ -65,6 +65,7 @@ All under `/api` except `/llm`. The complete list is the OpenAPI document at
 | `GET /artifacts` · `counts` · `GET/PATCH/DELETE {id}` · `GET {id}/export` · `GET {id}/versions` · `POST {id}/restore` | Artifacts as a page of cards, version history and restore, export |
 | `POST /artifacts/{id}/sections/…` · `slides/…` · `blocks/…` · `critique` · `GET {id}/marks` | Rewrite, fact-check, picture and figure on a finished document; review; check marks |
 | `GET /projects` · `files` · `skills` · `memory` · `agents` · `designs` | Workspace (`designs` are themes) |
+| `GET /files/page` · `/issues/page` · `/publications/{id}/conversations/page` · `/admin/publications/{id}/conversations/page` | Long lists by keyset: `cursor` (opaque, from the last page's `next`; malformed → 422), `limit` (default 50, at most 200); `{items, total, next}`, `next` null on the last page. Files add `box`, `origin`, `q`, `projectId`/`sessionId` filters and per-origin `counts`; issues add `unread`; the admin list needs `reason` (audited per page) and takes `date_from`/`date_to` (inclusive UTC days, on last activity) |
 | `POST /files/{id}/open-as-document` · `POST /designs/extract` | Open an uploaded `.hwpx` as an editable report; draft a theme from a file or URL |
 | `POST /projects/{id}/knowledge/url` · `…/reindex` · `POST /agents/{id}/knowledge` · `…/url` · `…/from-files` · `…/reindex` | Project and agent knowledge, and backfilling the vector index |
 | `GET /skills/store` · `POST /skills/{id}/install` · `POST /agents/{id}/install` · `POST /skills/import` · `GET /skills/{id}/export` | What others shared, copying from it, skill packages |
@@ -82,7 +83,7 @@ All under `/api` except `/llm`. The complete list is the OpenAPI document at
 | `/admin/users…` · `settings` · `models` · `usage` · `audit` · `governance` · `storage` · `publications` · `issues` · `skills` · `user-pipelines` · `connector-catalog` · `perf` | Administration; `POST /admin/storage/reclaim` and `POST /credits/refill` are its manual triggers |
 | `POST /admin/branding/logo` · `DELETE` | Logo upload and removal (`GET /branding/logo` is public) |
 | `/llm/*` | LiteLLM passthrough. Authenticates **by API key, not by session** |
-| `GET /health` | Reports KloudChat and LiteLLM status separately |
+| `GET /health` (also `HEAD`) | Reports KloudChat and LiteLLM status separately |
 
 `/docs` serves interactive documentation when `ENV=dev`, and is disabled in
 `prod`.

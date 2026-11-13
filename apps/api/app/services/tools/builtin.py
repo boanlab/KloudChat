@@ -1815,6 +1815,26 @@ def skill_tool(skills: list[tuple[str, str, str]]) -> Tool:
     )
 
 
+def _squeezed(text: str) -> str:
+    return " ".join(text.split())
+
+
+def _living_hits(hits: list[dict], documents: list[tuple[str, str, str | None]]) -> list[dict]:
+    """Vector hits a shelf document still holds: same name and its passage still in that text.
+    An entry left by a deleted (or since edited) file is not evidence, though a living file
+    shares its name."""
+    texts: dict[str, list[str]] = {}
+    for name, text, _ in documents:
+        texts.setdefault(name, []).append(_squeezed(text))
+    kept = []
+    for hit in hits:
+        passage = _squeezed(str(hit.get("text") or ""))
+        if passage and any(passage in body for body in texts.get(str(hit.get("document") or ""),
+                                                                  ())):
+            kept.append(hit)
+    return kept
+
+
 def knowledge_tool(documents: list[tuple[str, str, str | None]], collection: str = "") -> Tool:
     """Search over preloaded documents (tools hold no DB session); `collection` comma-separated."""
     collections = [key for key in (collection or "").split(",") if key.strip()]
@@ -1849,14 +1869,7 @@ def knowledge_tool(documents: list[tuple[str, str, str | None]], collection: str
             hits = []
             for key in collections:
                 hits.extend(await index_client.search(collection=key, query=query) or [])
-            # Vector hits for off-shelf documents aren't evidence.
-            living = {name for name, _, _ in documents} | {
-                str(doc_id) for _, _, doc_id in documents if doc_id
-            }
-            hits = [
-                h for h in hits
-                if str(h.get("document") or "") in living or str(h.get("doc_id") or "") in living
-            ]
+            hits = _living_hits(hits, documents)
             if hits:
                 passages = knowledge.merge(hits, passages)
         if not passages:
