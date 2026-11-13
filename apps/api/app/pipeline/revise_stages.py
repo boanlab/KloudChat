@@ -650,7 +650,7 @@ class Rewrite(Base):
                         else f"{plan.note}\n사용자가 입력한 문장(그대로 반영): "
                         f"{(plan.typed or instruction).strip()[:400]}"
                     )
-                    note += standing
+                    note += standing + figure_note(" ".join(asks) or instruction)
                     #: numbered tables and figures this edit took out of the part
                     emptied = doc.emptied.get(str(part.get("id") or ""), [])
                     if emptied:
@@ -1070,6 +1070,17 @@ async def answer_about(bundle: Bundle, names: list[str]) -> tuple[str, dict]:
     text, used = await _report()._complete(
         req.model, [{"role": "user", "content": prompt}], req.api_key, 900)
     return text.strip(), used
+
+
+def figure_note(asked: str) -> str:
+    """A section asked for a diagram (「도식을 넣어 주세요」): drawn as a mermaid figure in the
+    section, not answered with a sentence about one."""
+    if not deck_service.asks_slide_figure(asked or ""):
+        return ""
+    return ("\nThe person asked for a diagram in this section: add exactly one ```mermaid``` "
+            "figure (a flowchart or structure diagram) drawn only from what the section and "
+            "the material state, with a one-line caption under it; keep the section's text. "
+            "Invent no step, actor or number for it.")
 
 
 def standing_note(rules: object) -> str:

@@ -85,3 +85,10 @@ async def test_a_theme_colour_goes_to_the_design_not_into_the_text():
     await _route(bundle)
     assert bundle.document.data["design"]["accent"] == "#1F3A68"
     assert bundle.document.sections == SECTIONS and bundle.document.by_hand
+
+
+def test_a_diagram_asked_for_is_drawn_not_described():
+    from app.pipeline.revise_stages import figure_note
+
+    assert "```mermaid```" in figure_note("2절에 업무 흐름 도식을 넣어 주세요")
+    assert figure_note("2절을 두 문장으로 줄여 줘") == ""
