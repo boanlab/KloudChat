@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { ApiError, artifactsApi, errorMessage, type OfficeKind } from '@/lib/api'
-import { guardEdits } from '@/lib/officeGuard'
+import { guardEdits, type AskReason } from '@/lib/officeGuard'
+import { useMarkUnsaved } from '@/lib/unsaved'
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 
@@ -12,6 +13,14 @@ export interface OfficeEditor {
   export: () => Promise<Uint8Array>
   /** Told after a save, so the editor's own unsaved flag clears. */
   saved: () => Promise<unknown>
+  /**
+   * The editor's own count of changes, where it keeps one (HWP); else the panel counts the
+   * edits it is told of (`noteEdit`). A save clears the unsaved mark only when the count did
+   * not move while it ran: what was typed meanwhile is not in the saved file.
+   */
+  revision?: () => Promise<number>
+  /** Asks the editor whether it holds unsaved edits, where its state is otherwise polled. */
+  isDirty?: () => Promise<boolean>
 }
 
 export interface Doc {
@@ -21,7 +30,7 @@ export interface Doc {
   sessionId?: string | null
 }
 
-type Ask = (go: boolean) => void
+type Ask = { resolve: (go: boolean) => void; reason: AskReason }
 
 /**
  * An office document beside the chat, whatever the editor: the editor loads the saved
@@ -42,7 +51,12 @@ export function useOfficeDocument(
   const [dirty, setDirty] = useState(false)
   const dirtyRef = useRef(false)
   const [saving, setSaving] = useState(false)
+  /** A load or a save is running. */
   const busy = useRef(false)
+  /** A load is running: what the editor reports meanwhile is the new file, not an edit. */
+  const loadingRef = useRef(false)
+  /** Edits the panel was told of (`noteEdit`); a save compares it before and after. */
+  const edits = useRef(0)
   const [error, setError] = useState('')
   /** `conflict`: a save lost to a newer version; `behind`: a newer version came in under edits. */
   const [notice, setNotice] = useState<'conflict' | 'behind' | null>(null)
@@ -56,11 +70,28 @@ export function useOfficeDocument(
     setDirty(value)
   }, [])
 
+  /** An edit in the editor; one made while a save runs stays unsaved after it. */
+  const noteEdit = useCallback(() => {
+    if (loadingRef.current) return
+    edits.current += 1
+    markDirty(true)
+  }, [markDirty])
+
+  const revision = useCallback(async () => {
+    const own = editor.current?.revision
+    return own ? `${await own()}` : `${edits.current}`
+  }, [editor])
+
+  // A tab close or reload asks while edits are unsaved (read as the page goes: an answer to the
+  // panel's question may have just dropped them).
+  useMarkUnsaved(`office:${doc.id}`, dirty, () => dirtyRef.current)
+
   /** The saved version into the editor; another format is saved back once as the editable one. */
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<boolean> => {
     const instance = editor.current
-    if (!instance || busy.current) return
+    if (!instance || busy.current) return false
     busy.current = true
+    loadingRef.current = true
     setLoading(true)
     setError('')
     try {
@@ -80,10 +111,13 @@ export function useOfficeDocument(
       setLoaded(version)
       markDirty(false)
       setNotice(null)
+      return true
     } catch (err) {
       setError(errorMessage(err, t('문서를 불러오지 못했습니다.')))
+      return false
     } finally {
       busy.current = false
+      loadingRef.current = false
       setLoading(false)
     }
   }, [kind, doc.id, editor, convertedSummary, markDirty, refreshArtifact, t])
@@ -110,11 +144,19 @@ export function useOfficeDocument(
     setError('')
     try {
       const bytes = await instance.export()
-      const row = await artifactsApi.saveDocument(kind, doc.id, bytes, loaded, '편집기에서 저장')
-      await instance.saved().catch(() => undefined)
+      // what the export itself sets off in the editor settles first: it is not an edit
+      await new Promise((resolve) => window.setTimeout(resolve, 0))
+      const exported = await revision()
+      const row = await artifactsApi.saveDocument(kind, doc.id, bytes, loaded, t('편집기에서 저장'))
       setLoaded(row.version)
-      markDirty(false)
       setNotice(null)
+      if ((await revision()) === exported) {
+        await instance.saved().catch(() => undefined)
+        markDirty(false)
+      } else {
+        // typed while the save ran: in the editor, not in the version just saved
+        markDirty(true)
+      }
       noteArtifactVersion(doc.id, row.version)
       void refreshArtifact(doc.id)
       return true
@@ -126,34 +168,62 @@ export function useOfficeDocument(
       busy.current = false
       setSaving(false)
     }
-  }, [kind, doc.id, editor, loaded, markDirty, noteArtifactVersion, refreshArtifact, t])
+  }, [kind, doc.id, editor, loaded, markDirty, noteArtifactVersion, refreshArtifact, revision, t])
 
-  // Before an agent turn: unsaved hand edits are saved or dropped (`Composer`).
+  /** The editor's own unsaved state, where the panel only polls it (HWP). */
+  const refresh = useCallback(async () => {
+    const ask = editor.current?.isDirty
+    if (!ask || busy.current || loaded === null) return
+    const found = await ask()
+    if (found !== dirtyRef.current && !busy.current) markDirty(found)
+  }, [editor, loaded, markDirty])
+
+  // Before an agent turn (`Composer`) or leaving the document (`leaveOffice`): unsaved hand
+  // edits are saved or dropped.
+  const latest = useRef({ save, refresh })
   useEffect(() => {
-    if (!doc.sessionId) return
-    return guardEdits(doc.sessionId, {
+    latest.current = { save, refresh }
+  })
+  useEffect(() => {
+    return guardEdits(doc.sessionId, doc.id, {
       dirty: () => dirtyRef.current,
-      ask: () => new Promise<boolean>((resolve) => setAsking(() => resolve)),
+      refresh: () => latest.current.refresh(),
+      ask: (reason) => new Promise<boolean>((resolve) => setAsking({ resolve, reason })),
+      save: () => latest.current.save(),
     })
-  }, [doc.sessionId])
+  }, [doc.sessionId, doc.id])
 
   const answer = async (choice: 'save' | 'discard' | 'cancel') => {
-    const resolve = asking
+    const ask = asking
     setAsking(null)
-    if (!resolve) return
+    if (!ask) return
+    const { resolve, reason } = ask
     if (choice === 'cancel') return resolve(false)
     if (choice === 'save') return resolve(await save())
-    await load()
-    resolve(true)
+    if (reason !== 'send') {
+      // the document goes away: nothing to load back
+      markDirty(false)
+      return resolve(true)
+    }
+    // the agent works on the saved file: the editor shows it again, or the turn waits
+    resolve(await load())
   }
 
   return {
-    loaded, loading, dirty, dirtyRef, markDirty, saving, busy, error, setError, notice,
-    load, save, asking, answer, agentWorking,
+    loaded, loading, dirty, dirtyRef, markDirty, noteEdit, saving, busy, loadingRef, error,
+    setError, notice, load, save, refresh, asking, answer, agentWorking,
   }
 }
 
 export type OfficeDocument = ReturnType<typeof useOfficeDocument>
+
+/**
+ * Phone width reads only, unless edits made at a wider width are still unsaved: then the
+ * editor and 저장 stay until they are saved or dropped.
+ */
+export function readOnlyAt(phone: boolean, dirty: boolean) {
+  return phone && !dirty
+}
 
 /** A file name from a document title. */
 export function fileStem(title: string): string {

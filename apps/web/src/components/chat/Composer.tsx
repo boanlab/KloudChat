@@ -48,7 +48,7 @@ import { ModelPicker } from './ModelPicker'
 import { SharedBotItems } from './SharedBotItems'
 import { useFileDrop, usePasteFiles } from '@/lib/useFileDrop'
 import { useT } from '@/lib/useT'
-import { askAboutEdits, hasUnsavedEdits } from '@/lib/officeGuard'
+import { askAboutEdits, hasOfficeEditor, LeaveCancelled } from '@/lib/officeGuard'
 import { isListed } from '@/lib/listed'
 import { runsOnServer } from '@/lib/serverSkills'
 import { isReading, ocrNote, useOcrProgress } from '@/lib/ocr'
@@ -1356,7 +1356,9 @@ export function Composer({
   }
   const typedLength = value.length + pasted.reduce((sum, text) => sum + text.length + 2, 0)
 
-  const submit = (spoken?: string) => {
+  /** The office editor beside the chat is being asked about unsaved edits: one send at a time. */
+  const checkingEdits = useRef(false)
+  const submit = (spoken?: string, editsChecked = false) => {
     const text = (spoken ?? [value.trim(), ...livePasted.current].filter(Boolean).join('\n\n')).trim()
     if (text.length > MESSAGE_LIMIT) {
       setChatError(t('질문은 200,000자까지 보낼 수 있습니다. 긴 자료는 「파일·사진 첨부」로 올리세요.'))
@@ -1374,11 +1376,19 @@ export function Composer({
       return
     }
     if (startPending || !text || busy || composing.current || modelSelectionPending || unsupportedVideo || uploading || editSending.current || pendingPrivacy) return
-    if (!editing && kind === 'chat' && hasUnsavedEdits(sessionId)) {
-      // the agent edits the saved file: unsaved hand edits are saved or dropped first
-      void askAboutEdits(sessionId!).then((go) => {
-        if (go) submit(spoken)
-      })
+    if (!editing && kind === 'chat' && !editsChecked && hasOfficeEditor(sessionId)) {
+      // the agent edits the saved file: unsaved hand edits (asked of the editor now, not as
+      // last polled) are saved or dropped first
+      if (checkingEdits.current) return
+      checkingEdits.current = true
+      void askAboutEdits(sessionId!)
+        .then((go) => {
+          checkingEdits.current = false
+          if (go) submit(spoken, true)
+        })
+        .catch(() => {
+          checkingEdits.current = false
+        })
       return
     }
     if (editing && editContext.current) {
@@ -2047,6 +2057,8 @@ export function Composer({
                       })
                       .catch((err: unknown) => {
                         if (agentStart.current === starting) agentStart.current = null
+                        // kept to save an office document's edits: nothing went wrong
+                        if (err instanceof LeaveCancelled) return
                         setNotice(startFailure(err, t))
                       })
                   }}

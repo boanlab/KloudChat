@@ -94,6 +94,7 @@ import { DEFAULT_PASSWORD_MIN } from '@/lib/formCheck'
 import { currentLang, translate, type Lang } from '@/lib/i18n'
 import { counters } from '@/lib/usage'
 import { setMaxUploadMb } from '@/lib/uploadLimit'
+import { LeaveCancelled, leaveOffice, officeDirty, saveOpenOffice } from '@/lib/officeGuard'
 
 /** Store-side translation (no hooks here); only strings that reach the screen. */
 const tr = (text: string) => translate(currentLang(), text)
@@ -819,6 +820,16 @@ function refusedRefresh(err: unknown): boolean {
 // Idle sign-out, else the silent refresh keeps a session alive forever; pointerdown/keydown/scroll count, mousemove does not.
 let idleTimer: ReturnType<typeof setTimeout> | null = null
 let idleTeardown: (() => void) | null = null
+/** Counts as activity for the idle sign-out: set while the watch is armed. */
+let idleRestart: (() => void) | null = null
+
+/**
+ * Activity the window's own listeners cannot see, as typing inside a framed editor (the HWP
+ * editor's iframe): it keeps the idle sign-out away as a key or click in the page does.
+ */
+export function noteActivity() {
+  idleRestart?.()
+}
 
 function armIdleWatch(minutes: number, onIdle: () => void) {
   disarmIdleWatch()
@@ -845,13 +856,24 @@ function armIdleWatch(minutes: number, onIdle: () => void) {
   for (const name of events) window.addEventListener(name, restart, { passive: true })
   document.addEventListener('visibilitychange', onWake)
   window.addEventListener('focus', onWake)
+  idleRestart = restart
   restart()
 
   idleTeardown = () => {
+    idleRestart = null
     for (const name of events) window.removeEventListener(name, restart)
     document.removeEventListener('visibilitychange', onWake)
     window.removeEventListener('focus', onWake)
   }
+}
+
+/**
+ * Signed out for idleness: nobody is there to answer about an office document's unsaved
+ * edits, so they are saved as a version first (bounded: a hung save does not keep the session).
+ */
+async function idleSignOut(get: () => State) {
+  await Promise.race([saveOpenOffice(), new Promise((resolve) => setTimeout(resolve, 15_000))])
+  await get().logout('idle')
 }
 
 function disarmIdleWatch() {
@@ -1075,7 +1097,7 @@ export const useStore = create<State>((set, get) => ({
               dictationEnabled: Boolean(c.dictationEnabled),
               passwordMinLength: c.password?.minLength ?? DEFAULT_PASSWORD_MIN,
             })
-            armIdleWatch(c.idleTimeoutMinutes ?? 0, () => void get().logout('idle'))
+            armIdleWatch(c.idleTimeoutMinutes ?? 0, () => void idleSignOut(get))
           })
           .catch(() => {})
         scheduleRefresh(session.expiresIn, () => void renewSession())
@@ -1121,7 +1143,7 @@ export const useStore = create<State>((set, get) => ({
       announce({ type: 'signed-in', userId: session.user.id })
       // Enabled kinds and the idle limit of this workspace, not the signed-out defaults.
       void get().refreshConfig().then(() => {
-        if (get().authenticated) armIdleWatch(get().idleTimeoutMinutes, () => void get().logout('idle'))
+        if (get().authenticated) armIdleWatch(get().idleTimeoutMinutes, () => void idleSignOut(get))
       })
       // `/models`, `/sessions` and the workspace are gated on `active`.
       if (session.user.status === 'active') {
@@ -1626,6 +1648,8 @@ export const useStore = create<State>((set, get) => ({
     kind,
     { projectId = null, agentId = null, routingMode = 'manual' } = {},
   ) => {
+    // the panel closes for the new conversation: its document's unsaved edits are asked about first
+    if (get().openArtifactId && officeDirty() && !(await leaveOffice())) throw new LeaveCancelled()
     // Held in the browser: the server row comes with the first send (`ensureSession`).
     const state = get()
     const agent = state.agents.find((a) => a.id === agentId)
@@ -2374,8 +2398,16 @@ export const useStore = create<State>((set, get) => ({
 
   /** Refetches on open, so the panel never edits a stale copy. */
   openArtifact: (id) => {
-    set({ openArtifactId: id })
-    if (id) void get().refreshArtifact(id)
+    const open = () => {
+      set({ openArtifactId: id })
+      if (id) void get().refreshArtifact(id)
+    }
+    // closing an office document, or opening another, asks first about its unsaved edits
+    if (get().openArtifactId && get().openArtifactId !== id && officeDirty()) {
+      void leaveOffice().then((go) => go && open())
+      return
+    }
+    open()
   },
 
   artifactVersions: {},

@@ -3,7 +3,7 @@ import { saveBlob } from '@/components/artifacts/artifactExport'
 import type { PanelMode } from '@/components/artifacts/PanelControls'
 import { OfficePanel } from '@/components/office/OfficePanel'
 import {
-  fileStem, useOfficeDocument, type OfficeEditor,
+  fileStem, readOnlyAt, useOfficeDocument, type OfficeEditor,
 } from '@/components/office/useOfficeDocument'
 import { MenuItem } from '@/components/ui'
 import { errorMessage, OFFICE_MIME } from '@/lib/api'
@@ -16,7 +16,8 @@ import { SlidesEditor, type SlidesApi } from './SlidesEditor'
  * A PowerPoint deck beside the chat: pptx-react-viewer's slide canvas under this app's own
  * Google-Slides-like chrome (`SlidesEditor`); versions, saves and the agent's turns as every
  * office document has them (`OfficePanel`). Its own chunk: the editor loads only when a deck
- * opens. Ctrl+S is the header's 저장. On a phone it is read only.
+ * opens. Ctrl+S is the header's 저장. On a phone it is read only (unless edits made at a wider
+ * width are still unsaved: they stay editable until saved or dropped).
  */
 export function PptxPanel({
   doc,
@@ -43,12 +44,15 @@ export function PptxPanel({
   const opened = useRef<{ resolve: () => void; reject: (error: Error) => void } | null>(null)
   const [ready, setReady] = useState(false)
   const state = useOfficeDocument('pptx', doc, office, ready)
-  const { busy, dirtyRef, markDirty, setError } = state
+  const { busy, dirtyRef, markDirty, noteEdit, setError } = state
+  const readOnly = readOnlyAt(phone, state.dirty)
   const fileName = `${fileStem(doc.title)}.pptx`
-  const latest = useRef({ save: state.save, agentWorking: state.agentWorking, phone, t })
+  const latest = useRef({ save: state.save, agentWorking: state.agentWorking, readOnly, t })
   useEffect(() => {
-    latest.current = { save: state.save, agentWorking: state.agentWorking, phone, t }
+    latest.current = { save: state.save, agentWorking: state.agentWorking, readOnly, t }
   })
+  /** The editor's own unsaved flag, as it last said. */
+  const editorDirty = useRef(false)
 
   useEffect(() => {
     let loads = 0
@@ -89,7 +93,7 @@ export function PptxPanel({
       if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== 's') return
       event.preventDefault()
       const now = latest.current
-      if (!now.phone && !now.agentWorking && dirtyRef.current) void now.save()
+      if (!now.readOnly && !now.agentWorking && dirtyRef.current) void now.save()
     }
     el.addEventListener('keydown', saveKey)
     return () => el.removeEventListener('keydown', saveKey)
@@ -112,6 +116,7 @@ export function PptxPanel({
       ready={ready && file !== null && !failed}
       failed={failed}
       phone={phone}
+      onRetry={() => void state.load()}
       onDownloadEdits={() => void download()}
       onClose={onClose}
       onModeChange={onModeChange}
@@ -130,12 +135,18 @@ export function PptxPanel({
             onSlide={(index) => {
               slideAt.current = index
             }}
-            canEdit={!phone}
+            canEdit={!readOnly}
             label={t('PowerPoint 편집기')}
             apiRef={slides}
             onDirty={(dirty) => {
-              // a load is not an edit
-              if (!busy.current || !dirty) markDirty(dirty)
+              editorDirty.current = dirty
+              // a load is not an edit (`noteEdit` knows); back to clean (its undo) is saved again
+              if (dirty) noteEdit()
+              else if (!busy.current) markDirty(false)
+            }}
+            onEdit={() => {
+              // each change while unsaved: a save running meanwhile leaves it unsaved
+              if (editorDirty.current) noteEdit()
             }}
             onReady={() => {
               opened.current?.resolve()
