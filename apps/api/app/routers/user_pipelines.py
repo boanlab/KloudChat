@@ -1025,9 +1025,10 @@ async def turn_response(
     outline_model: dict | None, api_key: str, routing: dict | None, trusted: list[str],
     untrusted: list[str], design_tokens: dict | None, skills_event: dict | None,
     context_steps: list[dict] | None, web_search: bool, attachments: list[str],
-    catalogue: list[dict], agent: Agent | None = None,
+    catalogue: list[dict], agent: Agent | None = None, office: str = "",
 ) -> StreamingResponse:
-    """Bound-conversation turn: fresh run, or waiting run resumed."""
+    """Bound-conversation turn: fresh run, or waiting run resumed. `office`: the file a report
+    is made as (`hwp`, `docx`; `` for the web report), as the plain report path takes it."""
     from app.routers import sessions
 
     chat = session.kind is SessionKind.chat
@@ -1063,7 +1064,8 @@ async def turn_response(
         **sessions._report_turn(user_id=user.id, model=model, outline_model=outline_model,
                                 project_id=session.project_id, routing=routing,
                                 skills_event=skills_event, context_steps=context_steps,
-                                carry_from=None, carry_note=""),
+                                carry_from=None, carry_note="", office=office),
+        "session_template": session.render_template_id or "",
         "compose": definition, "agents": {a: agents[a].wire() for a in used},
         "models": {i: models[i] for i in review_ids if i in models}, "web_search": web_search,
         "attachments": list(attachments),

@@ -291,12 +291,17 @@ class MessageForkOut(Wire):
 class HandoffIn(Wire):
     #: target document surface; agent must offer it
     kind: Literal["report", "slides"]
+    #: the file the document is made as (`SendMessage.output_format`): a report's `web`,
+    #: `hwp`, `docx`; a deck's `web`, `pptx`. Echoed back for the first send to carry.
+    output_format: Literal["web", "hwp", "docx", "pptx"] | None = None
 
 
 class HandoffOut(Wire):
     session: SessionOut
     #: conversation as text file plus its attachments, sent as writer material
     attachments: list[FileOut]
+    #: the file asked for, checked against the surface; the first send carries it
+    output_format: str | None = None
 
 
 class SessionPatch(Wire):
@@ -353,7 +358,9 @@ class SendMessage(Wire):
     privacy_decision_token: str | None = Field(default=None, max_length=4000)
     #: a report's file picked on the screen (`web` the HTML report, `hwp`, `docx`); wins over a
     #: file the request names (`report_office.asked_file`); None: the request decides
-    output_format: Literal["web", "hwp", "docx"] | None = None
+    #: a deck's: `web` the web slides, `pptx` a PowerPoint file written beside the chat (the
+    #: slides conversation gets a blank deck its PowerPoint tools write into)
+    output_format: Literal["web", "hwp", "docx", "pptx"] | None = None
     #: the document open beside the chat: chat edits and the office tools work on it, never
     #: on "the newest of its kind" (checked to be the person's and this conversation's)
     open_artifact: OpenArtifact | None = None

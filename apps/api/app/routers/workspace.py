@@ -10,7 +10,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import quote, unquote
-from uuid import uuid4
 
 from fastapi import (
     APIRouter,
@@ -73,7 +72,6 @@ from app.schemas.workspace import (
     KnowledgeUrl,
     MemoryIn,
     MemoryOut,
-    OpenedDocument,
     ProjectIn,
     ProjectOut,
     ProjectPatch,
@@ -102,7 +100,6 @@ from app.services import (
     elk_layout,
     factcheck,
     hangul,
-    hwpx_import,
     index_cleanup,
     index_client,
     lint,
@@ -817,70 +814,16 @@ async def file_documents(file_id: str, user: CurrentUser, db: DbSession):
     return [ArtifactOut.card(a) for a in rows if office_doc.source_of(a.data) == stored.id]
 
 
-@router.post("/files/{file_id}/open-as-document", response_model=OpenedDocument)
+@router.post("/files/{file_id}/open-as-document", status_code=status.HTTP_410_GONE)
 async def open_file_as_document(file_id: str, user: CurrentUser, db: DbSession):
-    """Uploaded `.hwpx` → editable report session; no model call or charge."""
-    stored = await _own(db, StoredFile, "user_id", user, file_id)
-    if not stored.name.lower().endswith(".hwpx"):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="not_a_hwpx_file"
-        )
-    try:
-        data = file_service.read_blob(stored.storage_key)
-    except OSError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="blob_missing") from None
-    try:
-        document = hwpx_import.read(data)
-    except RuntimeError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
-        ) from exc
-    parts = document.sections
-    if not parts:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="no_document_body"
-        )
-
-    title = document.title[:200] or re.sub(r"\.hwpx$", "", stored.name, flags=re.I)[:200]
-    title = title or "한글 문서"
-    session = ChatSession(
-        user_id=user.id,
-        project_id=stored.project_id,
-        kind=SessionKind.report,
-        title=title,
+    """Gone: an `.hwpx` no longer becomes a web report (HTML sections, no template). It opens
+    as itself in the HWP editor: `POST /artifacts/hwp` with `fileId` (a copy the file box keeps
+    pointing at), as the file box and an attachment's 「HWP로 열기」 do."""
+    await _own(db, StoredFile, "user_id", user, file_id)
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="open_as_document_gone: POST /artifacts/hwp with {\"fileId\": …}",
     )
-    db.add(session)
-    await db.flush()
-    artifact = Artifact(
-        user_id=user.id,
-        session_id=session.id,
-        project_id=stored.project_id,
-        kind=ArtifactKind.report,
-        title=title,
-        data={
-            "sections": [
-                richtext.markdown_section(
-                    {
-                        "id": uuid4().hex,
-                        "heading": part.heading,
-                        "level": part.level,
-                        "status": "done",
-                        "format": "html",
-                        "content": part.html,
-                    }
-                )
-                for part in parts
-            ],
-            "sources": [],
-            "citationStyle": "APA",
-        },
-    )
-    db.add(artifact)
-    await db.flush()
-    session.artifact_id = artifact.id
-    db.add(session)
-    await db.commit()
-    return OpenedDocument(id=session.id)
 
 
 @router.delete("/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT)

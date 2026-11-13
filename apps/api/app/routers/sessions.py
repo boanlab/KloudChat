@@ -295,11 +295,33 @@ async def _opened_document(
 
 
 async def _office_report(db: AsyncSession, session: ChatSession) -> Artifact | None:
-    """The HWP or Word file a report conversation wrote (`report_office`), or None."""
-    if session.kind is not SessionKind.report or not session.artifact_id:
+    """The office file a document conversation works on beside it, or None: the HWP or Word
+    file a report conversation wrote (`report_office`), the PowerPoint file a slides one
+    was asked to make (`_pptx_surface`)."""
+    if session.kind not in (SessionKind.report, SessionKind.slides) or not session.artifact_id:
         return None
     found = await db.get(Artifact, session.artifact_id)
-    return found if found is not None and found.kind in report_office.FORMATS else None
+    if found is None or found.session_id != session.id:
+        return None
+    wanted = (report_office.FORMATS if session.kind is SessionKind.report
+              else {ArtifactKind.pptx: "pptx"})
+    return found if found.kind in wanted else None
+
+
+async def _pptx_surface(db: AsyncSession, user: User, session: ChatSession) -> None:
+    """A slides conversation asked for a PowerPoint file (`output_format` `pptx`) and holding
+    no document yet gets a blank deck as its document: the turn then runs as the office chat
+    (`_office_report`) whose PowerPoint tools write into it. One flow on the server, so the
+    client sends the request with the pick and nothing else."""
+    if session.kind is not SessionKind.slides or session.artifact_id:
+        return
+    made = await pptx_doc.create(db, user_id=user.id, title="PowerPoint 문서",
+                                 data=pptx_doc.blank(), session_id=session.id,
+                                 project_id=session.project_id)
+    session.artifact_id = made.id
+    db.add(session)
+    await db.commit()
+    await db.refresh(session)
 
 
 _CHAPTER = re.compile(r"^(p(\d+)) \(heading 1\): (.+)$")
@@ -2786,7 +2808,12 @@ async def handoff_session(
         raise
     await db.refresh(target)
     files.extend(by_id[file_id] for file_id in earlier if file_id in by_id)
-    return HandoffOut(session=SessionOut.of(target, []), attachments=[FileOut.of(f) for f in files])
+    fitting = {SessionKind.report: ("web", "hwp", "docx"), SessionKind.slides: ("web", "pptx")}
+    return HandoffOut(
+        session=SessionOut.of(target, []), attachments=[FileOut.of(f) for f in files],
+        output_format=(payload.output_format
+                       if payload.output_format in fitting.get(kind, ()) else None),
+    )
 
 
 async def _template_skills(
@@ -4474,6 +4501,8 @@ async def _send_message(
     #: the document open in the panel beside the chat: chat edits work on it
     opened = (await _opened_document(db, user, session, payload.open_artifact)
               if published is None else None)
+    if published is None and payload.output_format == "pptx" and not session.pending:
+        await _pptx_surface(db, user, session)
     #: the surface this turn runs as: a report written as an HWP or Word file is worked on from
     #: here like a chat's office document, its tools and pre-read included
     kind = SessionKind.chat if await _office_report(db, session) else session.kind
@@ -4498,6 +4527,10 @@ async def _send_message(
                 "activated_skill_ids": turn_options.get(
                     "activatedSkillIds", payload.activated_skill_ids
                 ),
+                "output_format": payload.output_format or (
+                    turn_options.get("outputFormat")
+                    if turn_options.get("outputFormat") in ("web", "hwp", "docx", "pptx")
+                    else None),
             }
         )
 
@@ -5208,6 +5241,8 @@ async def _send_message(
     turn_options = {
         "webSearch": payload.web_search,
         "activatedSkillIds": active_skill_ids,
+        # the file picked on the screen: a retry after a reload makes the same file
+        **({"outputFormat": payload.output_format} if payload.output_format else {}),
     }
     # stored for retry replay; defaults store nothing
     if any(turn_options.values()):
@@ -5657,6 +5692,10 @@ async def _send_message(
             context_steps=context_steps, web_search=effective_web_search and not strict_local,
             attachments=list(payload.attachments or []), catalogue=catalogue_models,
             agent=agent_row,
+            # the file picked on the screen, as the plain report path takes it
+            office=("" if session.artifact_id or kind is not SessionKind.report
+                    else _report_output(payload.output_format or str(pending.get("output") or ""),
+                                        str(pending.get("request") or "") or typed_content)),
         )
 
     #: the stop button's signal for this report or deck (`_stoppable`)
@@ -5929,7 +5968,9 @@ async def _send_message(
         # the one open beside the chat (or its only one), never the newest of several
         preset_call = _document_preset(office_target, tool_names)
         if (preset_call is None and office_target is not None
-                and _WRITES_DOCUMENT.search(_ask_of(content))
+                and (_WRITES_DOCUMENT.search(_ask_of(content))
+                     or (session.kind is not SessionKind.chat
+                         and office_target.id == session.artifact_id))
                 and f"{office_target.kind.value}_write" in tool_names):
             # a blank document open and a document asked for: written into it, not into the
             # chat and not after a round of searches
