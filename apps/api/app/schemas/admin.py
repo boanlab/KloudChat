@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import EmailStr, Field
 
@@ -147,6 +148,8 @@ class GovernanceIn(Wire):
     adaptive_quality_enabled: bool | None = None
     adaptive_quality_model_ids: list[str] | None = Field(default=None, max_length=3)
     internal_data_strict_local: bool | None = None
+    #: strict-local turns' web search: `ask` each time, `allow` (queries only) or `off`
+    strict_local_web_search: Literal["ask", "allow", "off"] | None = None
     outline_model_id: str | None = Field(default=None, max_length=200)
     intent_filter: bool | None = None
     blocked_categories: list[str] | None = None

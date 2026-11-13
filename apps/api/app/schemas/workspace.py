@@ -100,6 +100,8 @@ class ProjectOut(Wire):
     design_system_id: str | None = None
     #: surface → template id for new sessions
     render_templates: JsonMap = Field(default_factory=dict)
+    #: strict-local web search for this project; null follows the admin (`search_consent`)
+    strict_local_web_search: str | None = None
     files: list[FileOut] = Field(default_factory=list)
     session_ids: list[str] = Field(default_factory=list)
     created_at: datetime
@@ -139,6 +141,8 @@ class ProjectPatch(Wire):
     #: explicit null clears; omitted unchanged (`exclude_unset`)
     design_system_id: str | None = None
     render_templates: dict[str, str] | None = None
+    #: explicit null follows the admin; never looser than the admin's (`search_consent`)
+    strict_local_web_search: Literal["ask", "allow", "off"] | None = None
 
 
 _CARD_CHARS = 400

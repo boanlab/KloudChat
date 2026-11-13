@@ -58,7 +58,7 @@ async function stubModels(page: Page) {
   })
 }
 
-test('웹 검색은 strict-local 모델에서 켜진 척하지 않는다', async ({ page }) => {
+test('웹 검색은 strict-local 모델에서 바로 검색하지 않고 먼저 묻는다', async ({ page }) => {
   await stubModels(page)
   await signIn(page)
 
@@ -99,17 +99,15 @@ test('웹 검색은 strict-local 모델에서 켜진 척하지 않는다', async
   await page.getByRole('button', { name: /External One/ }).click()
   await page.getByRole('button', { name: /Local Strict/ }).click()
 
-  // The wish stays on file; the row says what the turn will do, and the choices are off.
-  await expect(page.getByText('웹 검색 안 함 · 이 모델은 외부에 연결하지 않습니다')).toBeVisible()
-  await openTool(page, /^웹 검색/)
-  await expect(page.getByRole('menuitemradio', { name: /^항상/ })).toBeDisabled()
-  await page.keyboard.press('Escape')
+  // The row says what the turn will do: no search tool inside the boundary, a card before
+  // any query leaves (the admin's default, 「매번 묻기」).
+  await expect(page.getByText('웹 검색: 보내기 전에 묻기 (strict-local)')).toBeVisible()
 
   const composer = page.getByLabel('프롬프트 입력')
   await composer.fill('오늘 환율')
   await composer.press('Enter')
   await expect.poll(() => payloads.length).toBe(1)
-  expect(payloads[0]).toMatchObject({ webSearch: false })
+  expect(payloads[0]).toMatchObject({ webSearch: true })
 })
 
 test('작성 도구 옆의 커넥터 스위치는 계정 전체 설정이라고 밝힌다', async ({ page }) => {

@@ -656,6 +656,7 @@ async def get_governance(admin: AdminUser, db: DbSession):
         "adaptiveEconomyModelIds": list(policy.adaptive_economy_model_ids or []),
         "adaptiveQualityEnabled": policy.adaptive_quality_enabled,
         "internalDataStrictLocal": policy.internal_data_strict_local,
+        "strictLocalWebSearch": policy.strict_local_web_search or "ask",
         "adaptiveQualityModelIds": list(policy.adaptive_quality_model_ids or []),
         "outlineModelId": policy.outline_model_id,
         "intentFilter": policy.intent_filter,
@@ -806,6 +807,9 @@ async def put_governance(payload: GovernanceIn, request: Request, admin: AdminUs
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="adaptive_quality_models_invalid",
             )
+    if "strict_local_web_search" in patch and patch["strict_local_web_search"] is None:
+        # null is no setting: unchanged
+        del patch["strict_local_web_search"]
     if patch.get("pii_masking", policy.pii_masking):
         # masking: no raw-delivery exception, persisted so unmasking can't revive it
         patch["allow_user_raw_external"] = False

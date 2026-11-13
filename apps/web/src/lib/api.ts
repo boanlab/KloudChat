@@ -34,6 +34,8 @@ import type {
   PrivacyRouting,
   ReportArtifact,
   ReportOutput,
+  SearchConsentAnswer,
+  SearchConsentMode,
   Session,
   SessionKind,
   SessionMade,
@@ -595,7 +597,12 @@ export const authConfig = {
       /** Where 관리자에게 문의 goes. Empty when nobody can be named. */
       contactEmail: string
       enabledKinds: string[]
-      privacy: { externalDataGuard: boolean; allowUserRawExternal: boolean }
+      privacy: {
+        externalDataGuard: boolean
+        allowUserRawExternal: boolean
+        /** The admin's strict-local web-search setting; absent from older servers. */
+        strictLocalWebSearch?: SearchConsentMode
+      }
       /** Idle minutes before sign-out; 0 off. */
       idleTimeoutMinutes: number
       /** What the signup form should say before somebody is refused. */
@@ -906,6 +913,8 @@ export interface GovernancePolicy {
   externalDataGuard: boolean
   /** A turn carrying internal material (attachments, project files, memories) runs strict-local. */
   internalDataStrictLocal: boolean
+  /** Web search in a strict-local turn: ask each time, allow (queries only) or never. */
+  strictLocalWebSearch: SearchConsentMode
   allowUserRawExternal: boolean
   privacySafeModelIds: string[]
   intentFilter: boolean
@@ -1410,6 +1419,8 @@ export interface ProjectRow {
   designSystemId: string | null
   /** Surface → template; sent whole, a missing key means the built-in track. */
   renderTemplates: Record<string, string>
+  /** Web search in this project's strict-local turns; null follows the admin. */
+  strictLocalWebSearch?: SearchConsentMode | null
   files: FileRow[]
   sessionIds: string[]
   createdAt: string
@@ -2301,6 +2312,8 @@ export type StreamEvent =
   | ({ type: 'tool_result_answer' } & ToolResultAnswer)
   /** `messageId` is the stored answer's id — the one every later call must use. */
   | { type: 'done'; credits?: number; messageId?: string }
+  /** A strict-local report or deck stopped at the search card before its research. */
+  | { type: 'search_consent'; messageId: string; content: string; routing: PrivacyRouting }
 
 /** Chat, report and slides stream from one endpoint; reports emit a `section` event per section. */
 export async function* streamSession(
@@ -2329,6 +2342,8 @@ export async function* streamSession(
     answers?: Record<string, string>
     /** The failed question to run again in place, by message id; the server reuses that row. */
     retryOf?: string
+    /** The person's answer to the search card on the answer `retryOf` reruns. */
+    searchConsent?: SearchConsentAnswer
   },
   signal?: AbortSignal,
 ): AsyncGenerator<StreamEvent> {

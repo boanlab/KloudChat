@@ -248,7 +248,8 @@ export interface PrivacyRouting {
   effectiveModels: string[]
   actualModels: string[]
   actualModel?: string
-  action: PrivacyAction | 'strict_local' | 'none'
+  /** `internal_strict_local`: internal material moved the turn to a strict-local model. */
+  action: PrivacyAction | 'strict_local' | 'internal_strict_local' | 'none'
   dataBoundary: ModelInfo['dataBoundary'] | 'mixed'
   modelRoutes?: {
     routedModel: string
@@ -260,7 +261,7 @@ export interface PrivacyRouting {
   findingCounts?: { category: string; source: string; count: number }[]
   toolOutputMasked?: number
   toolOutputFindings?: { category: string; source: string; count: number }[]
-  initialAction?: PrivacyAction | 'strict_local' | 'none'
+  initialAction?: PrivacyAction | 'strict_local' | 'internal_strict_local' | 'none'
   costRouting?: CostRouting
   /** The asked model failed over and LiteLLM's fallback answered (`services/fallback_watch`). */
   fallback?: {
@@ -280,6 +281,50 @@ export interface PrivacyRouting {
   lengthCheck?: LengthCheck
   /** The model that ran a required calculation the answer model skipped. */
   calculationModel?: string
+  /** A strict-local turn's web search: the card waiting on the person, or what was decided and sent. */
+  searchConsent?: SearchConsent
+}
+
+/** Web search in a strict-local turn: ask each time, allow (queries only), or never. */
+export type SearchConsentMode = 'ask' | 'allow' | 'off'
+
+/** One proposed query, masked as it would be sent; `blocked` withholds it, `reason` says why. */
+export interface SearchConsentQuery {
+  text: string
+  masked: number
+  blocked?: string
+  reason?: string
+}
+
+/** `routing.searchConsent` (`services/search_consent`). */
+export interface SearchConsent {
+  /**
+   * `pending`: the card waits. `allowed`: the person allowed it. `auto`: policy or 「이 대화에서는
+   * 계속 허용」 let it run. `declined`, `blocked` (every query withheld), `unavailable` (policy off
+   * or no search backend) and `none` (offered, not needed): nothing was sent.
+   */
+  status: 'pending' | 'allowed' | 'auto' | 'declined' | 'blocked' | 'unavailable' | 'none'
+  /** A pending card's proposals; afterwards, the queries that were sent. */
+  queries: (SearchConsentQuery | string)[]
+  searches?: number
+  withheld?: SearchConsentQuery[]
+  scope?: 'chat' | 'document'
+  source?: 'card' | 'policy' | 'conversation'
+  decidedBy?: string
+  decidedAt?: string
+  askedAt?: string
+  remember?: boolean
+  reason?: string
+}
+
+/** The answer to a search card, sent with the rerun of its question. */
+export interface SearchConsentAnswer {
+  messageId: string
+  decision: 'allow' | 'deny'
+  /** As edited on the card; absent sends the card's own. */
+  queries?: string[]
+  /** 「이 대화에서는 계속 허용」 */
+  remember?: boolean
 }
 
 /** A cover letter's 「[제출용 답안 n]」 blocks as the server measured them (text-fit). */
@@ -980,6 +1025,8 @@ export interface Project {
   designSystemId: string | null
   /** Surface → rendering template id; a surface with no entry uses the built-in track. */
   renderTemplates: Record<string, string>
+  /** Web search in this project's strict-local turns; null follows the admin. Absent on older servers. */
+  strictLocalWebSearch?: SearchConsentMode | null
   updatedAt: string
 }
 

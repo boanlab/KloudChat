@@ -73,6 +73,8 @@ import type {
   ProjectFile,
   PendingPlan,
   ReportOutput,
+  SearchConsentAnswer,
+  SearchConsentMode,
   Session,
   Preferences,
   PrivacyAction,
@@ -97,6 +99,7 @@ import { currentLang, translate, type Lang } from '@/lib/i18n'
 import { counters } from '@/lib/usage'
 import { setMaxUploadMb } from '@/lib/uploadLimit'
 import { LeaveCancelled, leaveOffice, officeDirty, saveOpenOffice } from '@/lib/officeGuard'
+import { searchCardOf } from '@/lib/privacy'
 
 /** Store-side translation (no hooks here); only strings that reach the screen. */
 const tr = (text: string) => translate(currentLang(), text)
@@ -253,6 +256,8 @@ type SendOptions = {
   answers?: Record<string, string>
   /** Chat only: rerun this failed user message in place instead of appending. */
   retryOf?: string
+  /** The answer to the search card under `retryOf`'s question (any surface). */
+  searchConsent?: SearchConsentAnswer
   /** One-turn model override (다른 모델로 다시 생성). */
   model?: string
   /** Called as soon as a session id exists, before the stream finishes. */
@@ -292,6 +297,8 @@ interface State {
   idleTimeoutMinutes: number
   /** Whether a speech-to-text backend is configured. */
   dictationEnabled: boolean
+  /** The admin's web search in strict-local turns: ask first, queries only, or never. */
+  strictLocalWebSearch: SearchConsentMode
   bootstrap: () => Promise<void>
   login: (email: string, password: string) => Promise<void>
   signup: (email: string, password: string, name: string) => Promise<void>
@@ -406,6 +413,15 @@ interface State {
     text: string,
     opts?: SendOptions,
   ) => Promise<string>
+  /**
+   * Answers a strict-local turn's search card: its question is asked again with the decision,
+   * from the stored transcript (another tab may have answered first).
+   */
+  answerSearchConsent: (
+    sessionId: string,
+    messageId: string,
+    answer: Omit<SearchConsentAnswer, 'messageId'>,
+  ) => Promise<void>
   stopStreaming: (sessionId: string) => void
   /** 「이 단계부터 다시」: reruns a stored run from one stage; the result is a new version. */
   rerunStage: (
@@ -1796,6 +1812,30 @@ export const useStore = create<State>((set, get) => ({
     return { sessionId: fork.id, attachments: result.attachments, attachmentIdMap: result.attachmentIdMap }
   },
 
+  answerSearchConsent: async (sessionId, messageId, answer) => {
+    const questionOf = (session: Session | undefined) => {
+      const at = session?.messages.findIndex((m) => m.id === messageId) ?? -1
+      for (let i = at - 1; i >= 0; i--) if (session!.messages[i].role === 'user') return session!.messages[i]
+      return undefined
+    }
+    let session = get().sessions.find((s) => s.id === sessionId)
+    if (!session || get().running[sessionId]) return
+    if (!questionOf(session)?.persisted) {
+      // A question sent from this tab keeps its provisional id until the transcript is read back.
+      const fresh = toSession(await sessionsApi.get(sessionId))
+      set((state) => ({ sessions: state.sessions.map((s) => (s.id === sessionId ? fresh : s)) }))
+      session = fresh
+    }
+    const question = questionOf(session)
+    const card = session.messages.find((m) => m.id === messageId)
+    // Answered meanwhile (another tab, a reload): the transcript now says so.
+    if (!question || searchCardOf(card ?? {})?.status !== 'pending') return
+    await get().send(sessionId, session.kind, question.content, {
+      retryOf: question.id,
+      searchConsent: { ...answer, messageId },
+    })
+  },
+
   /** Entry point for all five surfaces; image and av hand off to their job/media paths. */
   send: async (sessionId, kind, text, opts = {}) => {
     const owner = get().user?.id
@@ -1875,7 +1915,9 @@ export const useStore = create<State>((set, get) => ({
       // The answer being rerun stays reachable behind the new one (‹ k/n ›).
       const kept = messages
         .slice(at + 1)
-        .filter((m) => m.role === 'assistant' && m.content && !m.failure && !m.error)
+        // a search card is not an answer: it goes with its decision
+        .filter((m) => m.role === 'assistant' && m.content && !m.failure && !m.error &&
+          searchCardOf(m)?.status !== 'pending')
         .flatMap((m) => [
           ...(m.superseded ?? []),
           { id: m.id, content: m.content, model: m.model, usage: m.usage, createdAt: m.createdAt },
@@ -1923,6 +1965,8 @@ export const useStore = create<State>((set, get) => ({
             attachments: opts.attachments,
             plan: opts.plan,
             renderTemplateId: opts.renderTemplateId,
+            retryOf: opts.searchConsent ? retryOf : undefined,
+            searchConsent: opts.searchConsent,
           },
         )
         return id
@@ -1944,6 +1988,8 @@ export const useStore = create<State>((set, get) => ({
             attachments: opts.attachments,
             plan: opts.plan,
             renderTemplateId: opts.renderTemplateId,
+            retryOf: opts.searchConsent ? retryOf : undefined,
+            searchConsent: opts.searchConsent,
           },
         )
         return id
@@ -1973,6 +2019,7 @@ export const useStore = create<State>((set, get) => ({
         activatedSkillIds: opts.activatedSkillIds,
         privacyAction: opts.privacyAction,
         privacyDecisionToken: opts.privacyDecisionToken,
+        searchConsent: opts.searchConsent,
         onAccepted: acceptSession,
       })
       return id
@@ -2384,8 +2431,10 @@ export const useStore = create<State>((set, get) => ({
       idleTimeoutMinutes: c.idleTimeoutMinutes ?? 0,
       dictationEnabled: Boolean(c.dictationEnabled),
       passwordMinLength: c.password?.minLength ?? DEFAULT_PASSWORD_MIN,
+      strictLocalWebSearch: c.privacy?.strictLocalWebSearch ?? 'ask',
     })
   },
+  strictLocalWebSearch: 'ask',
   passwordMinLength: DEFAULT_PASSWORD_MIN,
   enabledKinds: ['chat', 'report', 'slides'],
   avOptions: {
@@ -3408,6 +3457,7 @@ function toProject(p: ProjectRow): Project {
     skillIds: p.skillIds,
     designSystemId: p.designSystemId ?? null,
     renderTemplates: p.renderTemplates ?? {},
+    strictLocalWebSearch: p.strictLocalWebSearch ?? null,
     updatedAt: p.updatedAt,
   }
 }
@@ -3625,6 +3675,7 @@ async function streamTurn(
     retryOf?: string
     /** Answers to the agent's question card; `{}` goes on with what was given. */
     answers?: Record<string, string>
+    searchConsent?: SearchConsentAnswer
     onAccepted?: () => void
   } = {},
 ) {
@@ -3715,6 +3766,7 @@ async function streamTurn(
         privacyDecisionToken: opts.privacyDecisionToken,
         retryOf: opts.retryOf,
         answers: opts.answers,
+        searchConsent: opts.searchConsent,
       },
       controller.signal,
     )) {
@@ -3886,6 +3938,12 @@ async function streamTurn(
             assistantId = event.messageId
           }
           break
+        case 'search_consent':
+          settled = true
+          patch((m) => ({ ...m, content: event.content, routing: event.routing }))
+          adoptServerId(set, sessionId, assistantId, event.messageId)
+          assistantId = event.messageId
+          break
       }
     }
   } catch (err) {
@@ -3982,6 +4040,9 @@ async function streamReport(
     renderTemplateId?: string
     /** 「이 단계부터 다시」: streams the rerun instead of a turn, into the document already open. */
     rerun?: { runId: string; fromStage: string; label: string; answers?: Record<string, string> }
+    /** The question asked again with the answer to its search card. */
+    retryOf?: string
+    searchConsent?: SearchConsentAnswer
   } = {},
 ) {
   const draftId = uid('a')
@@ -4073,6 +4134,8 @@ async function streamReport(
         outputFormat: gate.outputFormat,
         attachments: gate.attachments,
         plan: gate.plan,
+        retryOf: gate.retryOf,
+        searchConsent: gate.searchConsent,
       },
       controller.signal,
     )) {
@@ -4106,6 +4169,13 @@ async function streamReport(
             ...message,
             steps: upsertStep(message.steps, appliedSkillsStep(e)),
           }))
+          break
+        // Research would search first: the card asks before anything is sent.
+        case 'search_consent':
+          settled = true
+          patchMessage(set, sessionId, assistantId, (m) => ({ ...m, content: e.content, routing: e.routing }))
+          adoptServerId(set, sessionId, assistantId, e.messageId)
+          assistantId = e.messageId
           break
         case 'title':
           patchReport((a) => ({ ...a, title: e.title }))
@@ -4275,6 +4345,9 @@ async function streamDeck(
     renderTemplateId?: string
     /** 「이 단계부터 다시」: streams the rerun instead of a turn, into the document already open. */
     rerun?: { runId: string; fromStage: string; label: string; answers?: Record<string, string> }
+    /** The question asked again with the answer to its search card. */
+    retryOf?: string
+    searchConsent?: SearchConsentAnswer
   } = {},
 ) {
   const draftId = uid('a')
@@ -4357,6 +4430,8 @@ async function streamDeck(
         includeFigures: gate.includeFigures,
         attachments: gate.attachments,
         plan: gate.plan,
+        retryOf: gate.retryOf,
+        searchConsent: gate.searchConsent,
       },
       controller.signal,
     )) {
@@ -4388,6 +4463,13 @@ async function streamDeck(
             ...message,
             steps: upsertStep(message.steps, appliedSkillsStep(e)),
           }))
+          break
+        // Research would search first: the card asks before anything is sent.
+        case 'search_consent':
+          settled = true
+          patchMessage(set, sessionId, assistantId, (m) => ({ ...m, content: e.content, routing: e.routing }))
+          adoptServerId(set, sessionId, assistantId, e.messageId)
+          assistantId = e.messageId
           break
         case 'title':
           patchDeck((a) => ({ ...a, title: e.title }))

@@ -136,6 +136,7 @@ from app.services import (
     red_flags,
     report_office,
     revise,
+    search_consent,
     server_notes,
     settings_store,
     skill_specs,
@@ -4575,6 +4576,17 @@ async def _send_message(
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="retry_not_latest")
         superseded = history[at + 1 :]
         history = history[:at]
+    #: the search card this turn answers: its paused answer, as stored (another tab or replica
+    #: may have answered it first)
+    consent_paused: Message | None = None
+    if payload.search_consent is not None:
+        consent_paused = next(
+            (m for m in superseded
+             if m.id == payload.search_consent.message_id and search_consent.paused(m)), None)
+        if consent_paused is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail="search_consent_stale"
+            )
 
     # ownership before privacy assembly
     rows, attachment_meta = await _owned_attachments(db, user, payload.attachments)
@@ -4587,6 +4599,8 @@ async def _send_message(
     outbound_history = [server_notes.strip(message.content) if message.role is Role.assistant
                         else message.content for message in history]
     privacy_resolution: _PrivacyResolution | None = None
+    #: what this strict-local chat turn may do about the web (`search_consent`)
+    turn_consent: search_consent.TurnConsent | None = None
     tools: list[Tool] = []
     tool_definitions: list[dict[str, Any]] = []
     candidate_tools: list[Tool] = []
@@ -4988,6 +5002,19 @@ async def _send_message(
                 tools,
                 legacy=policy.pii_masking,
             )
+        if strict_local and published is None and (
+                effective_web_search or consent_paused is not None):
+            # no web tool inside the boundary: the model may ask, the person decides
+            turn_consent = await search_consent.for_turn(
+                db, policy=policy, session=session, history=history, user_id=user.id,
+                material=[b.text for b in workspace.blocks if b.source in _INTERNAL_SOURCES],
+                needs_outside=(forced_tool == "web_search" or fresh_fact or bool(exact_reason)
+                               or search_consent.needs_outside(content)),
+                tools=bool(requested_model.get("supportsTools") and model.get("supportsTools")),
+                paused=consent_paused, answer=payload.search_consent,
+            )
+            if turn_consent.offers:
+                tools = [*tools, turn_consent.tool()]
         tool_definitions = openai_snapshot(tools)
     elif policy.pii_masking:
         # decision flow chat-only; report/slides always mask
@@ -5268,7 +5295,9 @@ async def _send_message(
     if retry_of is not None:
         # reuse question row; failed reply goes now, good one on commit as an earlier answer
         for row in superseded:
-            if row.role is Role.assistant and row.content and row.failure is None:
+            # a search card is not an answer to keep: it goes with its decision
+            if (row.role is Role.assistant and row.content and row.failure is None
+                    and not search_consent.paused(row)):
                 earlier_answers = [*(row.superseded or []), _earlier_answer(row)]
                 superseded_ids.append(row.id)
             else:
@@ -5520,6 +5549,64 @@ async def _send_message(
             agent=agent_row,
         )
 
+    #: strict-local report or deck: whether its research may search, and only what was allowed
+    document_web = False
+    if kind in (SessionKind.report, SessionKind.slides) and strict_local:
+        allowed: tuple[str, ...] = ()
+        wanted = bool(effective_web_search) and (
+            report_service.asks_public_sources(content) or not (
+                report_service._own_material(content) or report_service.material_complete(
+                    content, workspace.doc_format,
+                    has_files=bool(untrusted_context or turn_context)))
+            if kind is SessionKind.report
+            else not (payload.web_search == "auto" and report_service.given_material_suffices(
+                content, has_files=_grounded_in_files(workspace))))
+        if route in ("report", "deck") and approved_plan is None and (
+                wanted or consent_paused is not None):
+            planner = outline_model or model
+            doc_consent, allowed, planned_spend = await search_consent.for_document(
+                db, policy=policy, session=session, history=history, user_id=user.id,
+                request=content,
+                material=[b.text for b in workspace.blocks if b.source in _INTERNAL_SOURCES],
+                needs_outside=search_consent.needs_outside(content),
+                planner=planner["id"], api_key=api_key,
+                scholarly=kind is SessionKind.report and report_service.scholarly_document(content),
+                paused=consent_paused, answer=payload.search_consent,
+            )
+            planned_credits = charge_for_tokens(
+                planner, planned_spend["inputTokens"], planned_spend["outputTokens"])
+            if doc_consent.card is not None:
+                # research would search first: the queries are asked about before it runs
+                return StreamingResponse(
+                    _survive_disconnect(_search_card(
+                        user_id=user.id, session_id=session.id, card=doc_consent.card,
+                        routing=document_routing, model=planner["id"], usage=planned_spend,
+                        credits=planned_credits,
+                    )),
+                    media_type="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "Connection": "keep-alive",
+                             "X-Accel-Buffering": "no"},
+                )
+            if planned_credits:
+                settle(db, user, planned_credits, reason="chat.completion",
+                       session_id=session.id, model=planner["id"])
+            if (record := doc_consent.record(by=user.id)) is not None:
+                document_routing = {**(document_routing or {}), "searchConsent": record}
+                if record.get("status") in search_consent.AUDIT_ACTIONS:
+                    db.add(AuditEvent(
+                        actor_id=user.id,
+                        action=search_consent.AUDIT_ACTIONS[record["status"]],
+                        target=session.id, detail=f"{len(record.get('queries') or [])}",
+                        event_metadata=search_consent.audit_metadata(
+                            record, session_id=session.id, message_id=None,
+                            paused_id=consent_paused.id if consent_paused else None),
+                        ip=client_ip(request),
+                    ))
+            await db.commit()
+        # research sends only the queries the person allowed (none otherwise), wherever it runs
+        research_service.ALLOWED.set(research_service.Allowed(allowed))
+        document_web = bool(allowed)
+
     #: the stop button's signal for this report or deck (`_stoppable`)
     stopping = asyncio.Event()
     if kind is SessionKind.report:
@@ -5581,8 +5668,8 @@ async def _send_message(
                         {"id": item.id, "name": item.name, "state": item.state, "attached": True}
                         for item in (*workspace.attachments, *workspace.carried)
                     ],
-                    # no network on strict-local
-                    web_search=effective_web_search and not strict_local,
+                    # strict-local: only the searches the person allowed
+                    web_search=document_web if strict_local else effective_web_search,
                     office=office_file,
                 ),
             )),
@@ -5631,9 +5718,9 @@ async def _send_message(
                     skills_event=skills_event,
                     context_steps=context_steps,
                     outline_model=outline_model,
-                    # no network on strict-local; on 「auto」 a talk built from the person's own
-                    # material looks nothing up
-                    web_search=effective_web_search and not strict_local and not (
+                    # strict-local: only the searches the person allowed; on 「auto」 a talk
+                    # built from the person's own material looks nothing up
+                    web_search=document_web if strict_local else effective_web_search and not (
                         payload.web_search == "auto"
                         and report_service.given_material_suffices(
                             content, has_files=_grounded_in_files(workspace))),
@@ -5786,6 +5873,18 @@ async def _send_message(
             messages,
             publishing.MATERIAL_ONLY_RULE if published is not None else _MATERIAL_FIRST_RULE,
         )
+    if turn_consent is not None and search_consent.TOOL_NAME in tool_names:
+        if turn_consent.decision is not None:
+            # the queries the person allowed run first, whatever the model would ask
+            if preset_call is None and not preflight_tool:
+                preset_call = (search_consent.TOOL_NAME, {})
+            else:
+                forced_tool = search_consent.TOOL_NAME
+        elif forced_tool == "web_search":
+            # a question the server would search for: the card, not an answer from memory
+            forced_tool = search_consent.TOOL_NAME
+    if turn_consent is not None and (rule := turn_consent.instruction()):
+        messages = _with_system_rule(messages, rule)
     if preset_call is None and forced_tool is None and not preflight_tool:
         # the newest of them, when the chat has both
         preset_call = _document_preset(
@@ -5906,6 +6005,7 @@ async def _send_message(
                 side_credits=summary_credits,
                 earlier_answers=earlier_answers or None,
                 superseded_ids=superseded_ids or None,
+                consent=turn_consent,
             )
         ),
         media_type="text/event-stream",
@@ -6313,6 +6413,33 @@ def _table_analysis_instruction(files: list[StoredFile]) -> str:
     )
 
 
+async def _search_card(*, user_id: str, session_id: str, card: dict, routing: dict | None,
+                       model: str, usage: dict, credits: int) -> AsyncIterator[str]:
+    """A strict-local document's turn that stops at the search card: the card is stored on
+    the answer row (it survives a reload and any replica answers it) and nothing is sent."""
+    stored = {**(routing or {}), "searchConsent": card}
+    async with SessionLocal() as db:
+        answer = Message(
+            session_id=session_id, role=Role.assistant, content=search_consent.PAUSE_TEXT,
+            routing=stored, model=model, usage={**usage, "credits": credits},
+        )
+        db.add(answer)
+        user = await db.get(User, user_id)
+        if user is not None and credits:
+            settle(db, user, credits, reason="chat.completion", session_id=session_id, model=model)
+        db.add(AuditEvent(
+            actor_id=user_id, action=search_consent.AUDIT_ACTIONS["pending"], target=session_id,
+            detail=f"{len(card.get('queries') or [])}",
+            event_metadata={"sessionId": session_id, "messageId": answer.id,
+                            "queries": [q.get("text") for q in card.get("queries") or []]},
+        ))
+        await db.commit()
+    yield chat_service.sse({"type": "search_consent", "messageId": answer.id,
+                            "content": search_consent.PAUSE_TEXT, "routing": stored})
+    yield chat_service.sse({"type": "usage", **usage, "credits": credits})
+    yield chat_service.sse({"type": "done", "messageId": answer.id})
+
+
 async def _run_turn(*, published: publishing.PublishedTurn | None = None,
                     **kwargs: Any) -> AsyncIterator[str]:
     """Drives one assistant turn; a published bot's turn releases its slot however it ends."""
@@ -6401,6 +6528,8 @@ async def _answer_turn(
     advice: str = "",
     #: `red_flags.detect` kind of the turn: the answer opens with the emergency action
     urgent: str = "",
+    #: strict-local turn's web search: the card it may raise, or the decision it carries out
+    consent: search_consent.TurnConsent | None = None,
 ) -> AsyncIterator[str]:
     """Drives one assistant turn to completion; own DB session (request one closes)."""
     text_parts: list[str] = []
@@ -6655,8 +6784,10 @@ async def _answer_turn(
 
     # answer-generation scope; earlier classifier/search work keeps its audit
     skip_completion_work = server_abstention or tool_result_answer
+    #: the turn stopped at the search card: its words are the card's, not an answer to finish
+    paused_turn = consent is not None and consent.card is not None
     content = "".join(text_parts)
-    if content.strip() and not failed and not skip_completion_work:
+    if content.strip() and not failed and not skip_completion_work and not paused_turn:
         # agent finish pipeline (`app/pipelines/*.toml` `finish`); streamed text replaced if changed
         finish = chat_stages.bundle_for(
             answer=content, request=ctx.request, model=model, actual_model=actual_model,
@@ -6684,6 +6815,16 @@ async def _answer_turn(
         # finish records kept on `routing.run` for reloaded transcripts
         if summary := _run_summary(finish, pipe.name, "finish"):
             routing = {**routing, "run": summary}
+    if consent is not None:
+        if content.strip() and not failed and (note := consent.note(korean=not _english(
+                ctx.request))) and note.strip() not in content:
+            # written without the outside search the question wanted: said under it
+            content += note
+            yield chat_service.sse({"type": "delta", "text": note})
+        if (consent_record := consent.record(by=user_id)) is not None:
+            # what left the boundary, if anything, and on whose decision
+            routing = {**(routing or {}), "searchConsent": consent_record}
+            yield chat_service.sse({"type": "privacy_route", **routing})
     if not content.strip() and not failed and not skip_completion_work and not superseded_ids:
         # no answer, from the agent or once the finish stages cleaned it: said, not silent
         log.warning("chat turn in session %s ended without an answer", session_id)
@@ -6771,7 +6912,8 @@ async def _answer_turn(
 
     # stored and announced before title call and message commit, so the panel catches up
     new_artifact: str | None = None
-    if stored_content and not failed and not skip_completion_work and published is None:
+    if stored_content and not failed and not skip_completion_work and published is None \
+            and not paused_turn:
         new_artifact = await _store_artifacts(
             user_id=user_id,
             session_id=session_id,
@@ -6805,7 +6947,8 @@ async def _answer_turn(
     title: str | None = None
     title_credits = 0
     title_model: str | None = None
-    if is_first_turn and stored_content and not failed and not skip_completion_work:
+    if is_first_turn and stored_content and not failed and not skip_completion_work \
+            and not paused_turn:
         enrichment = await _enrichment_model(
             model, strict_local=strict_local, disable_fallbacks=disable_fallbacks
         )
@@ -6949,6 +7092,20 @@ async def _answer_turn(
             if made_ids:
                 session.artifact_id = made_ids[-1]
             db.add(session)
+            consent_record = (stored_routing or {}).get("searchConsent")
+            if consent_record and consent_record.get("status") in search_consent.AUDIT_ACTIONS:
+                # who let which queries out, and when; or that none went
+                paused_id = consent.decision.message_id if consent and consent.decision else None
+                db.add(AuditEvent(
+                    actor_id=user_id,
+                    action=search_consent.AUDIT_ACTIONS[consent_record["status"]],
+                    target=session_id,
+                    detail=f"{len(consent_record.get('queries') or [])}",
+                    event_metadata=search_consent.audit_metadata(
+                        consent_record, session_id=session_id, message_id=answer_id,
+                        paused_id=paused_id),
+                    severity="info",
+                ))
             if fallback is not None:
                 # ops record: a self-hosted answer that LiteLLM's fallback served instead
                 db.add(AuditEvent(
@@ -7007,7 +7164,8 @@ async def _answer_turn(
 
     # own transaction after durability: auto-memory needs `answer_id`
     memory_step: dict | None = None
-    if stored_content and not failed and not skip_completion_work and published is None:
+    if stored_content and not failed and not skip_completion_work and published is None \
+            and not paused_turn:
         memory_step = await _enrich_memory(
             user_id=user_id,
             session_id=session_id,

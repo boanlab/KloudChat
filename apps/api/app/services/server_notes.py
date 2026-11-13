@@ -18,7 +18,12 @@ WEB_NONE_EN = ("\n\n_The web search gave no usable results, so this answer was n
                "against it. References, figures and recent facts need checking._")
 WEB_MOSTLY_EN = ("\n\n_Most web search results were unrelated to the question, so this answer "
                  "is not fully checked. References, figures and recent facts need checking._")
-WEB_NOTES = (WEB_NONE_KO, WEB_MOSTLY_KO, WEB_NONE_EN, WEB_MOSTLY_EN)
+#: `search_consent`: a strict-local answer written without the outside search it wanted.
+NO_SEARCH_KO = "\n\n_외부 검색 없이 자료만으로 답했습니다._"
+NO_SEARCH_EN = "\n\n_Answered from the material only, without an outside search._"
+WEB_NOTES = (
+    WEB_NONE_KO, WEB_MOSTLY_KO, WEB_NONE_EN, WEB_MOSTLY_EN, NO_SEARCH_KO, NO_SEARCH_EN,
+)
 
 #: `check_stages._advice_note`'s closing line (its values vary).
 _ADVICE = re.compile(
