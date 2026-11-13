@@ -20,12 +20,18 @@ export function useBlankDocument(projectId?: string | null) {
   const ensureSession = useStore((s) => s.ensureSession)
   const setNotice = useStore((s) => s.setNotice)
   const [opening, setOpening] = useState<OfficeKind | null>(null)
-  const start = async (kind: OfficeKind) => {
+  const start = async (kind: OfficeKind, templateId?: string) => {
     if (opening) return
     setOpening(kind)
     try {
       const id = await ensureSession(await newSession('chat', projectId ? { projectId } : undefined))
-      const row = await artifactsApi.createDocument(kind, { sessionId: id, title: t(BLANK_START[kind].title) })
+      // A project's own start keeps the document in it; the server reads the project's theme.
+      const row = await artifactsApi.createDocument(kind, {
+        sessionId: id,
+        title: t(BLANK_START[kind].title),
+        // The deck's look: the picked slides template (the server falls back to the project's).
+        ...(kind === 'pptx' && templateId ? { templateId } : {}),
+      })
       navigate(`/s/${id}?artifact=${row.id}`)
     } catch (err) {
       setNotice(errorMessage(err, t(BLANK_START[kind].failed)))

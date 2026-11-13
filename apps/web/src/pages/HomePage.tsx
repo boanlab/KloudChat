@@ -6,7 +6,6 @@ import { TopBar } from '@/components/layout/TopBar'
 import { Button, Card, EmptyState } from '@/components/ui'
 import { Composer } from '@/components/chat/Composer'
 import { StartExamples, StartHeading } from '@/components/chat/EmptyStart'
-import { useBlankDocument } from '@/lib/useBlankDocument'
 import { kindMeta, kindOrder } from '@/lib/kinds'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -24,7 +23,6 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
     if (initialKind) setKind(initialKind)
   }, [initialKind])
 
-  const blank = useBlankDocument()
   /** The file picked per surface (null: the request decides). */
   const picked = useStore((s) => s.outputPick)
   const setOutputPick = useStore((s) => s.setOutputPick)
@@ -180,8 +178,6 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
           onPickOutput={active === 'report' || active === 'slides'
             ? (value) => setOutputPick(active, value)
             : undefined}
-          onBlankDocument={surfaces.includes('chat') ? (kind) => void blank.start(kind) : undefined}
-          openingDocument={blank.opening}
         />
       </div>
     </>

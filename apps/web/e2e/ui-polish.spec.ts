@@ -570,3 +570,47 @@ test('the safe model list reorders by dragging its handle on a touch screen @pho
   await expect.poll(() => fx.puts.at(-1)?.privacySafeModelIds).toEqual(['strict-local/a', 'strict-local/c'])
   expect(fx.unexpected).toEqual([])
 })
+
+test('a PowerPoint start takes the picked slides template, blank or with a request', async ({ page }, info) => {
+  const { unexpected, sends } = await composerFixture(page, info, { skills: false, agents: false, connectors: false })
+  const made: Record<string, unknown>[] = []
+  await page.route('**/api/artifacts/pptx', (route) => {
+    made.push(route.request().postDataJSON())
+    return route.fulfill({ status: 201, json: { id: 'art-pptx', kind: 'pptx', title: '새 PowerPoint 문서', data: {},
+      version: 1, sessionId: null, projectId: null, createdAt: '2026-10-09T07:00:00.000Z', updatedAt: '2026-10-09T07:00:00.000Z' } })
+  })
+  await page.goto('/new/slides')
+  await page.getByRole('button', { name: /^형식/ }).click({ timeout: 15_000 })
+  await page.getByRole('menuitemcheckbox', { name: 'PowerPoint', exact: true }).click()
+  const chip = page.getByTestId('template-chip')
+  await expect(chip).toBeEnabled()
+  await chip.click()
+  const gallery = page.getByRole('dialog', { name: '템플릿 고르기' })
+  await gallery.getByRole('button', { name: '이 템플릿으로 시작' }).first().click()
+  await expect(chip).toContainText('사업 소개')
+  // With a request: the slides turn carries the file and the template.
+  await page.getByLabel('프롬프트 입력').fill('AI 도입 효과 발표')
+  await page.getByLabel('프롬프트 입력').press('Enter')
+  await expect.poll(() => sends.at(-1)?.body.outputFormat).toBe('pptx')
+  expect(sends.at(-1)?.body.renderTemplateId).toBe('tpl-deck')
+  expect(made).toEqual([])
+  expect(unexpected).toEqual([])
+})
+
+test('a blank PowerPoint start makes the deck from the picked template', async ({ page }, info) => {
+  const { unexpected } = await composerFixture(page, info, { skills: false, agents: false, connectors: false })
+  const made: Record<string, unknown>[] = []
+  await page.route('**/api/artifacts/pptx', (route) => {
+    made.push(route.request().postDataJSON())
+    return route.fulfill({ status: 201, json: { id: 'art-pptx', kind: 'pptx', title: '새 PowerPoint 문서', data: {},
+      version: 1, sessionId: null, projectId: null, createdAt: '2026-10-09T07:00:00.000Z', updatedAt: '2026-10-09T07:00:00.000Z' } })
+  })
+  await page.goto('/new/slides')
+  await page.getByRole('button', { name: /^형식/ }).click({ timeout: 15_000 })
+  await page.getByRole('menuitemcheckbox', { name: 'PowerPoint', exact: true }).click()
+  await page.getByTestId('template-chip').click()
+  await page.getByRole('dialog', { name: '템플릿 고르기' }).getByRole('button', { name: '이 템플릿으로 시작' }).first().click()
+  await page.getByRole('button', { name: '빈 문서로 시작' }).click()
+  await expect.poll(() => made.at(-1)).toMatchObject({ templateId: 'tpl-deck', title: '새 PowerPoint 문서' })
+  expect(unexpected.filter((u) => !u.includes('/artifacts/art-pptx'))).toEqual([])
+})

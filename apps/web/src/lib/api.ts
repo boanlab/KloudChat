@@ -1565,6 +1565,8 @@ export const artifactsApi = {
     projectId?: string | null
     fileId?: string
     title?: string
+    /** A slides template for a blank PowerPoint deck; the project's default when left out. */
+    templateId?: string
   }) => call<ArtifactRow>(`/artifacts/${kind}`, body(payload)),
   /** A document with no conversation joins `sessionId` (a new chat) to be edited beside it. */
   attachDocument: (kind: OfficeKind, id: string, sessionId: string) =>

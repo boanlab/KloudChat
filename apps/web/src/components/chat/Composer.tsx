@@ -534,8 +534,10 @@ export function Composer({
       if (kind === 'report' || kind === 'slides') setOutputPick(kind, value)
     })
   const ownBlank = useBlankDocument(projectId)
+  // The slides template shown on the chip, for a blank PowerPoint start (set below).
+  const blankTemplate = useRef<string | undefined>(undefined)
   const chatEnabled = useStore((s) => s.enabledKinds.includes('chat'))
-  const onBlankDocument = onBlankProp ?? (chatEnabled ? (file: OfficeKind) => void ownBlank.start(file) : undefined)
+  const onBlankDocument = onBlankProp ?? (chatEnabled ? (file: OfficeKind) => void ownBlank.start(file, blankTemplate.current) : undefined)
   const openingDocument = onBlankProp ? openingProp : ownBlank.opening
   const isMedia = kind === 'image' || kind === 'av'
   const canWebSearch = kind === 'chat' || kind === 'report' || kind === 'slides'
@@ -990,6 +992,7 @@ export function Composer({
     // A project's default template for this surface, before anything is sent (unless taken off).
     (fresh && !projectTemplateOff ? designTemplates.find((row) => row.surface === kind && row.id === project?.renderTemplates?.[kind]) : undefined) ??
     null
+  blankTemplate.current = shownTemplate?.surface === 'slides' ? shownTemplate.id : undefined
   // Same gate as the gallery button.
   const hasTemplates =
     offersTemplates(kind) && designTemplates.some((row) => row.surface === kind)
@@ -2550,14 +2553,10 @@ export function Composer({
               opening={openingDocument}
             />
             {showTemplates && (
-              // The template beside the format, in the same chip style; opens the gallery. A
-              // PowerPoint start fills a blank file and takes no template yet: said, not offered.
+              // The template beside the format, in the same chip style; opens the gallery. Every
+              // format takes it: a PowerPoint deck is made from the picked slides template too.
               <button
                 type="button"
-                disabled={outputSurface === 'slides' && (output ?? detectedOutput) === 'pptx'}
-                title={outputSurface === 'slides' && (output ?? detectedOutput) === 'pptx'
-                  ? t('PowerPoint로 시작하면 빈 파일에 씁니다. 템플릿은 웹 슬라이드에서 고를 수 있습니다.')
-                  : undefined}
                 onClick={() => setGalleryOpen(true)}
                 aria-label={shownTemplate
                   ? t('템플릿: {name}').replace('{name}', templateText(shownTemplate, currentLang() === 'en').name)

@@ -81,8 +81,6 @@ export const EN_UI: Record<string, string> = {
   템플릿: 'Template',
   'Enter로 생성 · PowerPoint 편집기가 열리고 대화가 그 파일을 채웁니다':
     'Enter to create · the PowerPoint editor opens and the conversation fills the file',
-  'PowerPoint로 시작하면 빈 파일에 씁니다. 템플릿은 웹 슬라이드에서 고를 수 있습니다.':
-    'A PowerPoint start writes into a blank file. Templates can be picked for web slides.',
   '한글 문서 열기': 'Open HWP document',
   'Word 문서 열기': 'Open Word document',
   'PowerPoint 열기': 'Open PowerPoint',
