@@ -38,8 +38,8 @@ export const EN_UI: Record<string, string> = {
   '{name} · {n}번째': '{name}, position {n}',
   '내부 자료 때문에 strict-local로 옮길 때는 사용자가 고른 모델의 strict-local 판을 먼저 쓰고, 그것이 없으면 이 목록의 첫 번째 모델을 씁니다. 개인정보 확인 창에서는 체크된 모델 중 하나를 사용자가 고를 수 있으며, 처음에는 첫 번째 모델이 골라져 있습니다.':
     "When internal material moves a turn to strict-local, the chosen model's strict-local version is used first, else the first model of this list. On the privacy card the person can pick any checked model; the first is preselected.",
-  '프록시가 self-hosted이며 외부 대체 모델이 없다고 명시한 모델만 선택할 수 있습니다. 화살표나 끌어서 순서를 바꿉니다.':
-    'Only models the proxy declares self-hosted with no external fallback can be chosen. Reorder with the arrows or by dragging.',
+  '프록시가 self-hosted이며 외부 대체 모델이 없다고 명시한 모델만 선택할 수 있습니다. 화살표나 손잡이를 끌어서 순서를 바꿉니다.':
+    'Only models the proxy declares self-hosted with no external fallback can be chosen. Reorder with the arrows or by dragging the handle.',
   '전환할 로컬 모델': 'Local model to switch to',
   '첨부 파일·프로젝트 파일·메모리가 들어간 턴은 선택한 모델 대신 같은 모델의 strict-local 판으로 답하고, 그 세션은 이후에도 외부 모델로 승격되지 않습니다. 쌍이 없으면 아래 안전 모델 목록의 첫 번째 모델이 맡고, 목록이 비어 있으면 전송을 거절합니다.':
     'A turn that includes attachments, project files or memory is answered by the strict-local version of the chosen model instead, and the conversation never moves to an external model afterwards. Without that version, the first model of the safe model list below answers; with an empty list, the request is refused.',
@@ -94,6 +94,8 @@ export const EN_UI: Record<string, string> = {
   '이 템플릿을 쓰던 에이전트는 템플릿 없이 일합니다. 이미 만든 아티팩트는 템플릿 없이 기본 모양으로 열립니다.':
     'Agents that used this template work without one. Artifacts already made open in the default look, without a template.',
   '템플릿 없이 시작': 'Start without a template',
+  '모든 형식': 'All formats',
+  '시작일이 종료일보다 늦습니다': 'The start date is after the end date',
   // Empty states
   '새 대화 시작': 'Start a conversation',
   '검색 지우기': 'Clear search',

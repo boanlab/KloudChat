@@ -964,11 +964,16 @@ async def list_artifacts(
     before_at: datetime | None = None,
     before_id: str | None = None,
 ):
-    """Artifact cards page, newest first; `q` matches title."""
+    """Artifact cards page, newest first; `q` matches title; `kind` may be a comma list."""
     # keyset pagination on (before_at, before_id)
     query = select(Artifact).where(Artifact.user_id == user.id)
     if kind:
-        query = query.where(Artifact.kind == kind)
+        # one kind, or a family as a comma list (`report,hwp,docx`)
+        known = {member.value for member in ArtifactKind}
+        kinds = [k.strip() for k in kind.split(",")[:8] if k.strip() in known]
+        if not kinds:
+            return []
+        query = query.where(col(Artifact.kind).in_(kinds))
     if project_id:
         query = query.where(Artifact.project_id == project_id)
     if q and q.strip():
