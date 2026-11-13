@@ -165,7 +165,7 @@ def _paragraph_write(kit: Toolset, args: dict[str, Any]) -> tuple[str, bytes]:
     return title, data
 
 
-def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool]:
+def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool, Tool]:
     p, editable = kit.prefix, kit.doc.KIND.editable
     op_help = kit.op_help or _OP_HELP
 
@@ -275,6 +275,9 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool]:
                     failed=True,
                 )
         state(ctx).update(id=saved.id, version=saved.version, changed=True)
+        # what was saved, for holding the reply to it (`office_claims`)
+        state(ctx).setdefault("saved", []).append(
+            {"version": saved.version, "changes": list(result.changes)})
         lines = "\n".join(f"- {line}" for line in result.changes)
         content = f"v{saved.version}로 저장했습니다. 바뀐 곳:\n{lines}"
         if any(isinstance(op, dict) and op.get("op") in kit.renumbers for op in ops):
@@ -300,7 +303,12 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool]:
         replace = args.get("replace") is True
         async with kit.session() as db:
             found = await pick(db, ctx)
-            artifact = found.artifact if replace else None
+            # a blank document open beside the chat is written into: nothing there to keep
+            blank = (found.artifact is not None and not replace
+                     and not str((found.artifact.data or {}).get("text") or "").strip())
+            if blank:
+                state(ctx).update(id=found.artifact.id, version=found.artifact.version)
+            artifact = found.artifact if replace or blank else None
             if replace and artifact is None:
                 return (ask_which(found.choices) if found.choices else ToolResult(
                     content=f"바꿀 {kit.label} 문서가 없습니다. replace 없이 새 문서로 쓰세요.",
@@ -340,6 +348,8 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool]:
                 said = f"「{title}」을 새 문서로 만들어 편집기에 띄웠습니다." + (
                     " 이 대화의 다른 문서는 그대로 두었습니다." if kept else "")
         state(ctx).update(id=saved.id, version=saved.version, changed=True)
+        state(ctx).setdefault("saved", []).append(
+            {"version": saved.version, "changes": [f"「{title}」 작성"]})
         left = kit.edit.blanks(data)
         return ToolResult(
             content=(
@@ -348,6 +358,44 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool]:
                 + f"\n고칠 때는 {p}_read로 번호를 읽은 뒤 {p}_edit을 쓰세요."
             ),
             detail=title,
+            trace=_trace(saved.id, saved.version),
+        )
+
+    async def restore(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
+        async with kit.session() as db:
+            found = await pick(db, ctx, str(args.get("document") or ""))
+            artifact = found.artifact
+            if artifact is None:
+                return ask_which(found.choices) if found.choices else not_open()
+            current = artifact.version
+            try:
+                want = int(args.get("version") or current - 1)
+            except (TypeError, ValueError):
+                return ToolResult(content="version은 판 번호(숫자)입니다.", failed=True)
+            if not 1 <= want < current:
+                return ToolResult(
+                    content=f"되돌릴 판이 없습니다 (지금 v{current}; v1~v{current - 1} 중 하나).",
+                    failed=True)
+            try:
+                data = await office_doc.read_version(db, artifact, want)
+                if kit.doc.KIND.file_format(data) != editable:
+                    return ToolResult(content=f"v{want}은 아직 편집할 수 있는 형식이 아니라 "
+                                      "되돌리지 못합니다.", failed=True)
+                saved = await kit.doc.save(db, artifact, data, expected=current,
+                                           summary=f"v{want}로 되돌림")
+            except FileNotFoundError:
+                return ToolResult(content=f"v{want}의 파일을 찾지 못했습니다.", failed=True)
+            except kit.doc.Conflict:
+                return ToolResult(
+                    content=f"그사이 사람이 문서를 저장했습니다. {p}_read로 다시 읽고 하세요.",
+                    failed=True)
+        state(ctx).update(id=saved.id, version=saved.version, changed=True)
+        state(ctx).setdefault("saved", []).append(
+            {"version": saved.version, "changes": [f"v{want}의 내용으로 되돌림"]})
+        return ToolResult(
+            content=(f"v{want}의 내용을 v{saved.version}로 저장해 되돌렸습니다 (그 사이의 판은 "
+                     "버전 기록에 남아 있습니다)."),
+            detail=f"v{want}",
             trace=_trace(saved.id, saved.version),
         )
 
@@ -502,4 +550,24 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool]:
         read_only=False,
         wants_context=True,
     )
-    return read_tool, edit_tool, write_tool
+    restore_tool = Tool(
+        name=f"{p}_restore",
+        description=(
+            f"Undo: bring back an earlier version of the {label} document open beside the chat, "
+            "saved as its newest version (nothing is lost; every version stays in its history). "
+            "Use it when the person asks to undo or go back (「되돌려 줘」, 「이전 판으로」, "
+            "「방금 고친 거 취소」) instead of rewriting the text by hand. version: the version "
+            "to bring back; leave it out for the one before the current."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {"version": {"type": "integer"}, "document": {"type": "string"}},
+            "additionalProperties": False,
+        },
+        run=restore,
+        label="이전 판으로 되돌리는 중",
+        title="문서 되돌리기",
+        read_only=False,
+        wants_context=True,
+    )
+    return read_tool, edit_tool, write_tool, restore_tool

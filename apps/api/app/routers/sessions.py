@@ -128,6 +128,7 @@ from app.services import (
     lint,
     message_links,
     model_tier,
+    office_claims,
     office_doc,
     office_edit,
     output_language,
@@ -251,12 +252,15 @@ _STRICT_LOCAL_TOOL_NAMES = frozenset(
         "hwp_read",
         "hwp_edit",
         "hwp_write",
+        "hwp_restore",
         "docx_read",
         "docx_edit",
         "docx_write",
+        "docx_restore",
         "pptx_read",
         "pptx_edit",
         "pptx_write",
+        "pptx_restore",
     }
 )
 
@@ -347,6 +351,21 @@ _ASKS_PPTX = re.compile(
     r"(?<![A-Za-z])pptx(?![A-Za-z])|(?<![A-Za-z])(?:ms\s?)?power\s?point(?![A-Za-z])|"
     r"파워\s?포인트|(?<![A-Za-z])ppt\s{0,2}(?:파일|files?)",
     re.I,
+)
+#: a request to write, fill or change a document (not a question about it)
+_WRITES_DOCUMENT = re.compile(
+    r"작성|써\s{0,2}(?:줘|주세요|줄래)|쓰고|만들어|채워|넣어|고쳐|바꿔|수정|정리해|추가해|옮겨|"
+    r"\b(?:write|draft|fill|edit|change|update)\b", re.I)
+#: what a chat with an office document open beside it is told about writing into it
+_OFFICE_RULE = (
+    "The document 「{title}」 is open in the editor beside this chat. When the person asks to "
+    "write, fill or change a document, do it in that file with {p}_write (a blank or new "
+    "document) or {p}_read then {p}_edit: never paste the document into the chat instead, "
+    "and do not search the web unless the person asked for facts from it. Say only what the "
+    "tools report as saved; if an edit failed or an op is missing, say so plainly. Never "
+    "invent names, numbers, dates or attachments (붙임): leave a bracket blank like "
+    "「[담당자]」 and say what is still missing. Do not delete text the person typed unless "
+    "they asked for exactly that; ask first. To undo, use {p}_restore."
 )
 #: office documents a chat works on beside it: tool prefix, service, what asks for one
 _OFFICE = (
@@ -5888,6 +5907,15 @@ async def _send_message(
     if preset_call is None and forced_tool is None and not preflight_tool:
         # the one open beside the chat (or its only one), never the newest of several
         preset_call = _document_preset(office_target, tool_names)
+        if (preset_call is None and office_target is not None
+                and _WRITES_DOCUMENT.search(_ask_of(content))
+                and f"{office_target.kind.value}_write" in tool_names):
+            # a blank document open and a document asked for: written into it, not into the
+            # chat and not after a round of searches
+            forced_tool = f"{office_target.kind.value}_write"
+    if office_target is not None and kind is SessionKind.chat:
+        messages = _with_system_rule(messages, _OFFICE_RULE.format(
+            p=office_target.kind.value, title=office_target.title))
     # substantial chat request: short plan beside it; not on economy/calculator turns
     if (
         kind is SessionKind.chat
@@ -6792,6 +6820,13 @@ async def _answer_turn(
         # finish records kept on `routing.run` for reloaded transcripts
         if summary := _run_summary(finish, pipe.name, "finish"):
             routing = {**routing, "run": summary}
+    offered = {name.split("_")[0] for name in (t.name for t in tools)
+               if name.split("_")[0] in ("hwp", "docx", "pptx")
+               and name.endswith(("_edit", "_write"))}
+    if content.strip() and not failed and (said := office_claims.note(content, ctx, offered)):
+        # what the reply says it did to the document, held to the versions actually saved
+        content += said
+        yield chat_service.sse({"type": "delta", "text": said})
     if not content.strip() and not failed and not skip_completion_work and not superseded_ids:
         # no answer, from the agent or once the finish stages cleaned it: said, not silent
         log.warning("chat turn in session %s ended without an answer", session_id)

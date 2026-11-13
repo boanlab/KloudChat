@@ -7,7 +7,7 @@ from app.core.db import SessionLocal
 from app.services import hwp_doc, hwpx_edit
 from app.services.tools.office import FORMATS, Toolset, tools_for
 
-__all__ = ["FORMATS", "NAMES", "TOOLS", "hwp_edit", "hwp_read", "hwp_write"]
+__all__ = ["FORMATS", "NAMES", "TOOLS", "hwp_edit", "hwp_read", "hwp_restore", "hwp_write"]
 
 TOOLS = tools_for(Toolset(
     prefix="hwp",
@@ -22,6 +22,6 @@ TOOLS = tools_for(Toolset(
         "사람에게 문서 패널을 열어 달라고 한 뒤 다시 읽으세요."
     ),
 ))
-HWP_READ, HWP_EDIT, HWP_WRITE = TOOLS
-hwp_read, hwp_edit, hwp_write = (tool.run for tool in TOOLS)
+HWP_READ, HWP_EDIT, HWP_WRITE, HWP_RESTORE = TOOLS
+hwp_read, hwp_edit, hwp_write, hwp_restore = (tool.run for tool in TOOLS)
 NAMES = frozenset(tool.name for tool in TOOLS)

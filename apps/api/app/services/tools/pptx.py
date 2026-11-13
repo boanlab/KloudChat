@@ -10,7 +10,7 @@ from app.services import pptx_doc, pptx_ops
 from app.services import pptx_edit as edits
 from app.services.tools.office import Toolset, tools_for
 
-__all__ = ["NAMES", "TOOLS", "pptx_edit", "pptx_read", "pptx_write"]
+__all__ = ["NAMES", "TOOLS", "pptx_edit", "pptx_read", "pptx_restore", "pptx_write"]
 
 _OP_HELP = (
     "replace_text {id:'s2.3', text} · fill_blank {blank, value, at?} · "
@@ -153,6 +153,6 @@ TOOLS = tools_for(Toolset(
     },
     build=_build,
 ))
-PPTX_READ, PPTX_EDIT, PPTX_WRITE = TOOLS
-pptx_read, pptx_edit, pptx_write = (tool.run for tool in TOOLS)
+PPTX_READ, PPTX_EDIT, PPTX_WRITE, PPTX_RESTORE = TOOLS
+pptx_read, pptx_edit, pptx_write, pptx_restore = (tool.run for tool in TOOLS)
 NAMES = frozenset(tool.name for tool in TOOLS)

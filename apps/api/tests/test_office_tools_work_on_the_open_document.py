@@ -119,3 +119,29 @@ def test_the_write_tool_says_it_makes_a_new_document():
     assert "replace" in write.parameters["properties"]
     assert "replace:true only when" in write.description
     assert "document" in hwp_tools.HWP_READ.parameters["properties"]
+
+
+@pytest.mark.asyncio
+async def test_undo_brings_the_earlier_version_back_as_the_newest(local):
+    first, _ = await _two(local)
+    ctx = ToolContext(user_id=USER, session_id=SESSION, open_artifact={"id": first.id})
+    await hwp_tools.hwp_read({}, ctx)
+    await hwp_tools.hwp_edit({"ops": [{"op": "replace_text", "id": "p2", "text": "바뀐 글"}]},
+                             ctx)
+    undone = await hwp_tools.hwp_restore({}, ctx)
+    assert not undone.failed, undone.content
+    assert undone.trace == {"artifactId": first.id, "artifactVersion": 3}
+    read = await hwp_tools.hwp_read({}, ctx)
+    assert "연수 본문" in read.content and "바뀐 글" not in read.content
+    nothing = await hwp_tools.hwp_restore({"version": 9}, ctx)
+    assert nothing.failed
+
+
+@pytest.mark.asyncio
+async def test_a_blank_document_open_is_written_into(local):
+    async with local() as db:
+        blank = await hwp_doc.create(db, user_id=USER, title="빈 문서", session_id=SESSION,
+                                     data=hwp_doc.blank())
+    ctx = ToolContext(user_id=USER, session_id=SESSION, open_artifact={"id": blank.id})
+    made = await hwp_tools.hwp_write({"title": "연수 공문", "format": "plain", "body": "본문"}, ctx)
+    assert not made.failed and made.trace == {"artifactId": blank.id, "artifactVersion": 2}
