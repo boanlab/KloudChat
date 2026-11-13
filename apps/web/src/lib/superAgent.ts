@@ -20,6 +20,7 @@ export const SUPER_CLASS_LABEL: Record<SuperAgentClass, string> = {
   long: '긴 자료',
   reasoning: '복잡한 추론',
   document: '보고서·슬라이드',
+  escalation: '다시 요청·빈 답 뒤',
 }
 
 export const SUPER_CLASSES = Object.keys(SUPER_CLASS_LABEL) as SuperAgentClass[]
@@ -42,7 +43,7 @@ export function superRouteLabel(
 ): { label: string; title: string } {
   const answered = modelLabel(route.boundaryModel ?? route.selectedModel)
   const why = [t(SUPER_CLASS_LABEL[route.taskClass] ?? route.taskClass)]
-  if (route.source === 'escalated') why.push(t('다시 요청해 더 강한 설정'))
+  if (route.source === 'escalated') why.push(t('더 강한 설정으로 다시'))
   else if (route.source === 'sticky') why.push(t('앞 답과 같은 모델'))
   else if (route.source === 'deescalated') why.push(t('짧은 맺음말'))
   if (route.strictReason === 'personal_data') why.push(t('개인정보 감지로 내부 모델'))

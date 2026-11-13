@@ -1244,10 +1244,34 @@ def _super_history(history: list[Message]) -> tuple[tuple[str, str, dict | None]
     )
 
 
-def _super_reasoning(model: dict, effort: str) -> tuple[str, dict[str, Any]] | None:
-    """The writer's effort fields for `agent.TURN_REASONING`; None leaves the deployment's."""
-    fields = super_agent.reasoning_fields(str(model["id"]), effort, model)
-    return (str(model["id"]), fields) if fields else None
+def _super_reasoning(
+    model: dict, effort: str, rescue: dict | None, rescue_effort: str
+) -> dict[str, dict[str, Any]] | None:
+    """Effort fields by model for `agent.TURN_REASONING`; None leaves the deployment's."""
+    fields: dict[str, dict[str, Any]] = {}
+    for row, level in ((rescue, rescue_effort), (model, effort)):
+        if row is not None and (wanted := super_agent.reasoning_fields(
+                str(row["id"]), level, row)):
+            fields[str(row["id"])] = wanted
+    return fields or None
+
+
+def _super_rescue(
+    route: dict[str, Any], *, policy, user: User, catalogue: list[dict], writer: dict,
+    strict_local: bool,
+) -> tuple[dict | None, str]:
+    """Who rewrites an answer the routed writer left empty or cut: the table's escalation row,
+    inside the turn's boundary; `(None, …)` when that is the writer itself."""
+    rules = super_agent.normalise_rules(policy.super_agent_rules)
+    chosen, _ = super_agent.pick(
+        rules, super_agent.ESCALATION_CLASS,
+        _allowed_models(user, catalogue, kind=SessionKind.chat.value), kind="chat",
+        strict=strict_local or route.get("mode") == super_agent.SUPER_STRICT,
+        allowed=set(user.allowed_models or []), needs_tools=True,
+    )
+    if chosen is None or chosen["id"] == writer["id"] or _widens_boundary(chosen, writer):
+        return None, "default"
+    return chosen, rules[super_agent.ESCALATION_CLASS]["effort"]
 
 
 def _first_document_model(history: list[Message]) -> str | None:
@@ -6089,10 +6113,16 @@ async def _send_message(
             return answer_plan.attach(current, outline)
     else:
         plan_messages = None
+    super_rescue, rescue_effort = (
+        _super_rescue(super_route, policy=policy, user=user, catalogue=catalogue_models,
+                      writer=model, strict_local=strict_local)
+        if super_route is not None else (None, "default")
+    )
     return StreamingResponse(
         _survive_disconnect(
             _run_turn(
-                reasoning=_super_reasoning(model, super_effort) if super_route else None,
+                reasoning=_super_reasoning(model, super_effort, super_rescue, rescue_effort)
+                if super_route else None,
                 user_id=user.id,
                 api_key=api_key,
                 # visitor's words never remembered on the owner's account
@@ -6177,7 +6207,7 @@ async def _send_message(
                 ),
                 # an answer the writer left empty or only announced: the other local model
                 # writes it once more
-                rescue=await _rescue_model(
+                rescue=super_rescue or await _rescue_model(
                     user=user, catalogue=catalogue_models, writer=model,
                     strict_local=strict_local, outline=outline_model),
                 calculation_expression=(

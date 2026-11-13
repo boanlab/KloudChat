@@ -43,6 +43,9 @@ CLASSES: tuple[str, ...] = (
     "long",
     "reasoning",
     "document",
+    #: not a request's class: where a turn goes after 「다시」, 「더 자세히」 or a failed answer,
+    #: and who rewrites an answer the class's model left empty
+    "escalation",
 )
 EFFORTS: tuple[str, ...] = ("default", "none", "low", "high")
 
@@ -52,7 +55,7 @@ EFFORTS: tuple[str, ...] = ("default", "none", "low", "high")
 #: deployment's own setting). A pick that is not served or not allowed falls back along
 #: `_FALLBACKS`, then to the surface default.
 DEFAULT_RULES: dict[str, dict[str, str]] = {
-    # flash answers short and everyday turns as well as the larger models (8.4/8.2 of 10)
+    # flash answers short and everyday turns as well as the larger models (8.4 of 10)
     "simple": {
         "model": "local/qwen3.8-flash",
         "strictModel": "strict-local/qwen3.8-flash",
@@ -68,30 +71,31 @@ DEFAULT_RULES: dict[str, dict[str, str]] = {
         "strictModel": "strict-local/qwen3.8-flash",
         "effort": "none",
     },
-    # without reasoning DeepSeek V4.1 Flash got 2/10 on calculations, with it 9.5/10
+    # flash with thinking on matched DeepSeek V4.1 Flash with reasoning on these classes
+    # (8.3-8.5 of 10) at no credits; without thinking either scored 2-6
     "calc": {
-        "model": "deepseek/deepseek-v4.1-flash",
+        "model": "local/qwen3.8-flash",
         "strictModel": "strict-local/qwen3.8-flash",
         "effort": "high",
     },
     "code": {
-        "model": "deepseek/deepseek-v4.1-flash",
+        "model": "local/qwen3.8-flash",
         "strictModel": "strict-local/qwen3.8-flash",
         "effort": "high",
     },
-    # searching and citing: the search does the work, reasoning only adds time
+    # searching and citing: a strong tool user, no reasoning (8.7 vs flash 6.3)
     "current": {
         "model": "deepseek/deepseek-v4.1-flash",
         "strictModel": "strict-local/qwen3.8-flash",
         "effort": "none",
     },
     "long": {
-        "model": "deepseek/deepseek-v4.1-flash",
+        "model": "local/qwen3.8-flash",
         "strictModel": "strict-local/qwen3.8-flash",
         "effort": "high",
     },
     "reasoning": {
-        "model": "deepseek/deepseek-v4.1-flash",
+        "model": "local/qwen3.8-flash",
         "strictModel": "strict-local/qwen3.8-flash",
         "effort": "high",
     },
@@ -99,6 +103,13 @@ DEFAULT_RULES: dict[str, dict[str, str]] = {
         "model": "local/qwen3.8-27b",
         "strictModel": "strict-local/qwen3.8-27b",
         "effort": "default",
+    },
+    # a thinking flash answer came back empty 3 times in 14; DeepSeek with reasoning on
+    # never did (9 of 10 on those prompts)
+    "escalation": {
+        "model": "deepseek/deepseek-v4.1-flash",
+        "strictModel": "strict-local/qwen3.8-flash",
+        "effort": "high",
     },
 }
 
@@ -112,8 +123,8 @@ _STRICT_FALLBACKS: tuple[str, ...] = (
     "strict-local/qwen3.8-27b",
 )
 
-#: Class an escalation ("다시", "더 자세히", an empty or cut answer) moves to.
-ESCALATION_CLASS = "reasoning"
+#: Row an escalation ("다시", "더 자세히", an empty or cut answer) moves to.
+ESCALATION_CLASS = "escalation"
 
 #: Typical turn for the picker's credit estimate: the chat envelope (system prompt and tool
 #: definitions) is about 10k tokens; an answer about 1k.
@@ -503,8 +514,6 @@ def pick(
 
 
 def effort_for(rules: dict[str, dict[str, str]], decision: Decision) -> str:
-    if decision.source == "escalated":
-        return "high"
     rule = rules.get(decision.task_class) or rules["chat"]
     return rule.get("effort", "default")
 
@@ -527,7 +536,7 @@ def estimate(
     resolves here."""
     seen: dict[str, int] = {}
     for task_class in CLASSES:
-        if task_class == "document":
+        if task_class in ("document", "escalation"):
             continue
         model, _ = pick(rules, task_class, catalogue, kind="chat", strict=strict, allowed=allowed)
         if model is not None:

@@ -173,22 +173,36 @@ async def test_a_greeting_runs_on_flash_without_tools_and_says_why(monkeypatch) 
 
 
 @pytest.mark.asyncio
-async def test_a_hard_question_goes_up_with_high_effort(monkeypatch) -> None:
+async def test_a_hard_question_thinks_and_its_rescue_is_the_escalation_row(monkeypatch) -> None:
     out = await _turn(monkeypatch, "우리 DB를 MySQL에서 PostgreSQL로 옮길지 판단 기준과 위험을 "
                       "정리해 줘")
     call = out["calls"][0]
-    assert call["model"] == DEEPSEEK["id"]
-    assert call["reasoning"] == (DEEPSEEK["id"], {"reasoning": {"effort": "high"}})
+    assert call["model"] == FLASH["id"]
+    assert call["reasoning"] == {
+        FLASH["id"]: {"chat_template_kwargs": {"enable_thinking": True}},
+        DEEPSEEK["id"]: {"reasoning": {"effort": "high"}},
+    }
     assert out["route"]["effort"] == "high" and out["route"]["taskClass"] == "reasoning"
+
+
+@pytest.mark.asyncio
+async def test_a_current_fact_question_searches_on_the_table_model(monkeypatch) -> None:
+    out = await _turn(monkeypatch, "Python 3.14에서 새로 들어온 기능을 출처와 함께 알려 줘",
+                      web_search=True)
+    assert out["calls"][0]["model"] == DEEPSEEK["id"]
+    assert out["calls"][0]["tools"] == ["web_search"]
+    assert out["route"]["taskClass"] == "current"
 
 
 @pytest.mark.asyncio
 async def test_strict_entry_never_leaves_even_when_the_table_says_so(monkeypatch) -> None:
     policy = Governance(external_data_guard=True, super_agent_rules={
-        "reasoning": {"strictModel": DEEPSEEK["id"]}})
+        "reasoning": {"strictModel": DEEPSEEK["id"]},
+        "escalation": {"strictModel": DEEPSEEK["id"]}})
     out = await _turn(monkeypatch, "마이크로서비스로 쪼갤지 판단해 줘. 위험도 같이.",
                       mode="super_strict", policy=policy)
     assert sa.strict_model(next(m for m in CATALOGUE if m["id"] == out["calls"][0]["model"]))
+    assert all(model.startswith("strict-local/") for model in out["calls"][0]["reasoning"] or {})
     assert out["route"]["mode"] == "super_strict"
 
 
@@ -211,9 +225,10 @@ async def test_project_material_keeps_the_turn_inside(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_ambiguous_turn_asks_the_classifier_with_a_short_payload(monkeypatch) -> None:
-    out = await _turn(monkeypatch, "주말에 아이랑 갈 만한 실내 놀거리 알려줘", classify="calc")
+    out = await _turn(monkeypatch, "주말에 아이랑 갈 만한 실내 놀거리 알려줘", classify="current")
     assert len(out["classifier"]) == 1 and len(out["classifier"][0]) < 600
-    assert out["route"]["source"] == "classifier" and out["route"]["taskClass"] == "calc"
+    assert out["route"]["source"] == "classifier" and out["route"]["taskClass"] == "current"
+    assert out["calls"][0]["model"] == DEEPSEEK["id"]
     assert out["route"]["classifierInputTokens"] == 300
 
 
@@ -237,7 +252,7 @@ async def test_short_follow_up_stays_on_the_same_model(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_asking_again_escalates_to_the_reasoning_row(monkeypatch) -> None:
+async def test_asking_again_escalates_to_the_escalation_row(monkeypatch) -> None:
     history = [
         Message(session_id="s", role=Role.user, content="안녕"),
         Message(session_id="s", role=Role.assistant, content="안녕하세요", routing={
@@ -245,6 +260,7 @@ async def test_asking_again_escalates_to_the_reasoning_row(monkeypatch) -> None:
     ]
     out = await _turn(monkeypatch, "틀렸어. 더 자세히 다시 설명해 줘", history=history)
     assert out["route"]["source"] == "escalated" and out["route"]["effort"] == "high"
+    assert out["route"]["taskClass"] == "escalation"
     assert out["calls"][0]["model"] == DEEPSEEK["id"]
 
 

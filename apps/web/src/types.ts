@@ -128,6 +128,7 @@ export type SuperAgentClass =
   | 'long'
   | 'reasoning'
   | 'document'
+  | 'escalation'
 
 /** What a session produced, as measurements so the row can be phrased in the reader's language. */
 export interface SessionMade {

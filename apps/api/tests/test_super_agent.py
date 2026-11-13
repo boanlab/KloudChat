@@ -106,10 +106,11 @@ def test_thanks_after_a_hard_turn_comes_down() -> None:
 
 
 def test_the_table_picks_and_falls_back() -> None:
-    model, how = sa.pick(RULES, "reasoning", CATALOGUE, kind="chat", strict=False, allowed=set())
+    model, how = sa.pick(RULES, "escalation", CATALOGUE, kind="chat", strict=False,
+                         allowed=set())
     assert (model["id"], how) == ("deepseek/deepseek-v4.1-flash", "rule")
     allowed = {"local/qwen3.8-flash", "local/qwen3.8-27b"}
-    model, how = sa.pick(RULES, "reasoning", CATALOGUE, kind="chat", strict=False,
+    model, how = sa.pick(RULES, "current", CATALOGUE, kind="chat", strict=False,
                          allowed=allowed)
     assert model["id"] in allowed and how == "fallback"
 
@@ -320,8 +321,11 @@ def test_migration_carries_the_auto_lists_and_moves_auto_sessions() -> None:
 
     migration = _migration()
     assert (migration.revision, migration.down_revision) == ("0083", "0081")
-    assert migration.carried_rules('["local/qwen3.8-flash"]', ["deepseek/x", "z/y"]) == {
-        "simple": {"model": "local/qwen3.8-flash"}, "reasoning": {"model": "deepseek/x"}}
+    assert migration.carried_rules('["local/cheap"]', ["deepseek/x", "z/y"]) == {
+        "simple": {"model": "local/cheap"}, "reasoning": {"model": "deepseek/x"}}
+    # lists still at the old defaults leave the evaluated table alone
+    assert migration.carried_rules(
+        '["local/qwen3.8-flash"]', ["deepseek/deepseek-v4.1-flash", "z-ai/glm-5.3-flash"]) == {}
     assert migration.carried_rules(None, []) == {}
 
     engine = sa_core.create_engine("sqlite://")
@@ -392,7 +396,7 @@ async def test_the_writer_call_carries_the_routed_effort(monkeypatch) -> None:
     sa_roles = settings_store.model_roles_from({})
     monkeypatch.setattr(agent, "_client", client)
     monkeypatch.setattr(agent.settings_store, "model_roles", roles)
-    agent.TURN_REASONING.set(("deepseek/deepseek-v4.1-flash", {"reasoning": {"effort": "high"}}))
+    agent.TURN_REASONING.set({"deepseek/deepseek-v4.1-flash": {"reasoning": {"effort": "high"}}})
     try:
         async for _ in agent._stream_once("deepseek/deepseek-v4.1-flash", [], [], "u", "key"):
             pass

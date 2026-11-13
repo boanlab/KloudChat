@@ -3,8 +3,9 @@
 - `governance.super_agent_enabled`: the entries offered (on where either Auto lane was on;
   an installation that kept Auto off keeps Super Agent off until the admin turns it on).
 - `governance.super_agent_rules`: the admin's changes to the built-in class table
-  (`super_agent.DEFAULT_RULES`). The old lists carry over: the first economy model answers
-  simple turns, the first quality model hard ones.
+  (`super_agent.DEFAULT_RULES`). Old lists an admin changed carry over (the first economy
+  model answers simple turns, the first quality model hard ones); lists still at the old
+  defaults leave the evaluated table as it is.
 - `sessions.routing_mode`: conversations on either Auto lane move to `super`.
 
 Downgrade drops both columns and moves Super Agent conversations back to `auto`.
@@ -39,13 +40,19 @@ def _ids(value) -> list[str]:
     return [v for v in value or [] if isinstance(v, str) and v]
 
 
+#: the Auto lists a fresh installation got; left as they were, they say nothing about the admin
+_OLD_ECONOMY_DEFAULT = ["local/qwen3.8-flash"]
+_OLD_QUALITY_DEFAULT = ["deepseek/deepseek-v4.1-flash", "z-ai/glm-5.3-flash"]
+
+
 def carried_rules(economy, quality) -> dict:
-    """Admin table from the old Auto lists: economy → simple turns, quality → hard ones."""
+    """Admin table from the old Auto lists an admin changed: economy → simple turns,
+    quality → hard ones."""
     rules: dict = {}
     economy_ids, quality_ids = _ids(economy), _ids(quality)
-    if economy_ids:
+    if economy_ids and economy_ids != _OLD_ECONOMY_DEFAULT:
         rules["simple"] = {"model": economy_ids[0]}
-    if quality_ids:
+    if quality_ids and quality_ids != _OLD_QUALITY_DEFAULT:
         rules["reasoning"] = {"model": quality_ids[0]}
     return rules
 
