@@ -48,7 +48,9 @@ def _jsonb_on_sqlite(type_, compiler, **kw) -> str:
 
 def test_the_audio_is_cut_into_overlapping_ten_minute_pieces():
     pieces = video_doc.audio_pieces(1500.0)
-    assert pieces == [(0.0, 600.0), (595.0, 600.0), (1190.0, 310.0)]
+    assert pieces == [(0.0, 580.0), (575.0, 580.0), (1150.0, 350.0)]
+    # each piece stays under vLLM Whisper's 600 s ceiling
+    assert all(length <= 590 for _, length in video_doc.audio_pieces(1158.0))
     # each piece starts before the last one ends: a word at the seam is heard whole once
     for (start, length), (after, _) in zip(pieces, pieces[1:], strict=False):
         assert after < start + length
@@ -56,7 +58,7 @@ def test_the_audio_is_cut_into_overlapping_ten_minute_pieces():
 
 
 def test_a_sliver_at_the_end_joins_the_piece_before_it():
-    assert video_doc.audio_pieces(1196.0) == [(0.0, 600.0), (595.0, 601.0)]
+    assert video_doc.audio_pieces(1156.0) == [(0.0, 580.0), (575.0, 581.0)]
     assert video_doc.audio_pieces(30.0) == [(0.0, 30.0)]
     assert video_doc.audio_pieces(0) == []
 
@@ -386,7 +388,7 @@ async def test_a_video_becomes_a_time_coded_document(db, worker):
     row, parts = await _reload(db, stored.id)
     assert row.media_state == "done" and row.error is None
     # three pieces for 1250 s; three distinct pictures (the 2 s repeat dropped, 900 s read once)
-    assert worker.audio_calls == [0.0, 595.0, 1190.0]
+    assert worker.audio_calls == [0.0, 575.0, 1150.0]
     assert len(row.media["frames"]) == 3 and sorted(worker.vision_calls) == [0.0, 700.0]
     assert row.media_done == row.media_total == 6
     assert "[00:00:00]\n(화면) 슬라이드 — 슬라이드 | 글자: 글자 0\n(말) 0초 조각의 말" in row.text
@@ -424,7 +426,7 @@ async def test_a_job_taken_over_resumes_where_it_stopped(db, worker):
     assert await video_jobs.run_one()
     row, _ = await _reload(db, stored.id)
     assert row.media_state == "done"
-    assert worker.audio_calls == [595.0, 1190.0] and worker.vision_calls == []
+    assert worker.audio_calls == [575.0, 1150.0] and worker.vision_calls == []
     assert worker.frame_calls == []
     assert "이미 옮긴 말" in row.text and "이미 읽은 슬라이드" in row.text
 
@@ -462,7 +464,7 @@ async def test_a_recording_without_pictures_is_read_for_speech_only(db, worker):
     assert await video_jobs.run_one()
     row, _ = await _reload(db, stored.id)
     assert row.media_state == "done" and row.media["frames"] == []
-    assert "(화면)" not in row.text and "(말) 595초 조각의 말" in row.text
+    assert "(화면)" not in row.text and "(말) 575초 조각의 말" in row.text
 
 
 async def test_without_a_vision_model_the_speech_still_counts(db, worker, monkeypatch):

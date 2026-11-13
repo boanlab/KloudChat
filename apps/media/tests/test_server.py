@@ -91,6 +91,7 @@ class WorkerTest(unittest.TestCase):
                                        "-show_streams", "-show_format", path]))
         stream = found["streams"][0]
         self.assertEqual((stream["sample_rate"], stream["channels"]), ("16000", 1))
+        # the header states the length (Whisper refuses a FLAC that does not)
         self.assertAlmostEqual(float(found["format"]["duration"]), 10, delta=0.5)
 
     def test_a_frame_is_a_jpeg_no_wider_than_asked(self):

@@ -23,6 +23,7 @@ import logging
 import os
 import re
 import subprocess
+import tempfile
 import threading
 import time
 from http import HTTPStatus
@@ -40,6 +41,8 @@ STEP_TIMEOUT = float(os.environ.get("MEDIA_STEP_TIMEOUT", "900"))
 #: longest audio piece one /audio call returns, seconds
 MAX_PIECE = 30 * 60
 MAX_BODY = 16 * 1024
+#: scratch for audio pieces (a tmpfs in compose; the root file system is read-only)
+TMP = os.environ.get("MEDIA_TMP", tempfile.gettempdir())
 
 log = logging.getLogger("media")
 _SLOTS = threading.BoundedSemaphore(JOBS)
@@ -127,13 +130,20 @@ def probe(path: str) -> dict:
 
 
 def audio(path: str, body: dict) -> bytes:
-    """A 16 kHz mono FLAC piece: what Whisper reads, small enough for its upload limit."""
+    """A 16 kHz mono FLAC piece: what Whisper reads, small enough for its upload limit.
+
+    Written to a file, not a pipe: a piped FLAC states no length in its header, and Whisper
+    (vLLM) then reads it as endless and refuses it."""
     start = _number(body, "start", 0, 0, MAX_SECONDS)
     length = _number(body, "duration", 600, 1, MAX_PIECE)
-    return run(["ffmpeg", "-hide_banner", "-nostdin", "-loglevel", "error",
-                "-threads", str(THREADS), "-ss", f"{start:.3f}", "-t", f"{length:.3f}",
-                "-i", path, "-map", "0:a:0", "-vn", "-sn", "-dn", "-ac", "1", "-ar", "16000",
-                "-c:a", "flac", "-f", "flac", "pipe:1"])
+    with tempfile.TemporaryDirectory(dir=TMP) as folder:
+        out = os.path.join(folder, "piece.flac")
+        run(["ffmpeg", "-hide_banner", "-nostdin", "-loglevel", "error",
+             "-threads", str(THREADS), "-ss", f"{start:.3f}", "-t", f"{length:.3f}",
+             "-i", path, "-map", "0:a:0", "-vn", "-sn", "-dn", "-ac", "1", "-ar", "16000",
+             "-c:a", "flac", out])
+        with open(out, "rb") as handle:
+            return handle.read()
 
 
 _PTS = re.compile(rb"pts_time:([0-9.]+)")

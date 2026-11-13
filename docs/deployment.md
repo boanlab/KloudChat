@@ -219,9 +219,11 @@ and recordings*). It needs nothing beyond `docker compose up -d`; what to know w
   needs a body limit above `KCHAT_MAX_UPLOAD_MB`; the player streams the original with HTTP
   Range, which a proxy passes through unchanged. Keep the disk in mind: a video stays on disk
   at its full size, with up to 120 keyframes (about 15 MB) beside it.
-- **Load.** One ten-minute lecture took about 2 minutes end to end on the self-hosted Whisper
-  and flash (see the architecture section for the steps). The job loop runs on every API
-  replica and takes one video at a time per replica.
+- **Load.** Measured on the self-hosted Whisper and flash with the worker at 4 CPUs: a
+  ten-minute 720p slide webinar took 15 s end to end (scene pass 6 s, audio 6 s, six frames
+  read in 5 s, side by side), a ten-minute 1080p talk 43 s (the scene pass decodes every
+  frame: 34 s). The job loop runs on every API replica and takes one video at a time per
+  replica.
 
 ## Published images
 

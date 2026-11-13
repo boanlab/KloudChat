@@ -21,8 +21,9 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-#: one Whisper request's audio, seconds (16 kHz mono FLAC: ~10 MB, under every upload limit)
-PIECE_SEC = 600.0
+#: one Whisper request's audio, seconds (16 kHz mono FLAC: ~10 MB, under every upload limit);
+#: under vLLM Whisper's 600 s ceiling even when a short tail is folded into the last piece
+PIECE_SEC = 580.0
 #: audio both neighbouring pieces hear, so a word cut at the seam is heard whole once
 OVERLAP_SEC = 5.0
 #: a scene talked over longer than this is split, so a passage is never far from its time
