@@ -24,8 +24,18 @@ export type OfficeOptions = {
   attachment?: { id: string; name: string }
   /** A file in the file box (`/files`, where the page opens): its bytes are `boxFile`, else `file`. */
   box?: { id: string; name: string; boxFile?: Buffer; text?: string }
-  /** The document was opened from the file box file before: it is offered again. */
+  /** The document was opened from the file box file (or the attachment) before: it is offered again. */
   copied?: boolean
+  /** Hand saves wait for this before the server answers. */
+  holdSave?: Promise<void>
+  /** These fetches of the document's file (the first is 1) fail with a server error. */
+  failLoads?: number[]
+  /** The document has no conversation (made outside one); the page opens on the artifacts page. */
+  orphan?: boolean
+  /** The artifacts page opens instead of the chat. */
+  artifactsPage?: boolean
+  /** A share link to the document, read without an account: the page opens on it. */
+  shared?: { token: string }
 }
 
 export async function officeFixture(page: Page, options: OfficeOptions) {
@@ -41,6 +51,16 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
   const created: Record<string, unknown>[] = []
   /** Every request that would change a file-box file (none should). */
   const fileWrites: string[] = []
+  /** Share links made (`POST /shares`). */
+  const shares: Record<string, unknown>[] = []
+  /** Documents given a conversation (`POST /artifacts/{id}/{kind}/session`). */
+  const attached: Record<string, unknown>[] = []
+  /** Every fetch of the document's file, by the editor or a preview. */
+  const loads: string[] = []
+  /** Each hand save as it reaches the server, before a held save is answered. */
+  const received: string[] = []
+  /** Each hand save's version summary. */
+  const summaries: string[] = []
   page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
   page.on('console', (message) => {
     if (/Content Security Policy/i.test(message.text())) csp.push(message.text())
@@ -53,7 +73,8 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
   }[kind]
   let artifact = {
     id: artifactId, title: options.title, kind, version: 1, partial: false,
-    sessionId, projectId: null, createdAt: at, updatedAt: at,
+    sessionId: options.orphan ? null as string | null : sessionId, projectId: null,
+    createdAt: at, updatedAt: at,
     data: {
       format: kind === 'hwp' ? 'hwpx' : kind, size: options.file.length, text: options.title,
     },
@@ -135,6 +156,34 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
       }
       if (path === `/files/${box.id}/documents`) return json(options.copied ? [artifact] : [])
     }
+    if (options.attachment && path === `/files/${options.attachment.id}/documents`) {
+      return json(options.copied ? [artifact] : [])
+    }
+    if (options.shared && path === `/shared/${options.shared.token}`) {
+      return json({
+        kind: 'artifact', title: artifact.title, artifactKind: kind,
+        data: { format: artifact.data.format, size: artifact.data.size, text: artifact.data.text },
+        updatedAt: at,
+      })
+    }
+    if (options.shared && path === `/shared/${options.shared.token}/document`) {
+      loads.push('shared')
+      return route.fulfill({ body: file, contentType: mime })
+    }
+    if (path === '/shares' && method === 'POST') {
+      const body = request.postDataJSON()
+      shares.push(body)
+      return json({
+        id: 'share-1', token: 'shared-token', artifactId: body.artifactId ?? null,
+        sessionId: body.sessionId ?? null, scope: body.scope, views: 0, createdAt: at,
+      })
+    }
+    if (path === `/artifacts/${artifactId}/${kind}/session` && method === 'POST') {
+      const body = request.postDataJSON()
+      attached.push(body)
+      artifact = { ...artifact, sessionId: body.sessionId }
+      return json(artifact)
+    }
     if (path === '/sessions' && method === 'GET') return json([session])
     if (path === `/sessions/${session.id}` && method === 'GET') return json(session)
     if (path === `/sessions/${session.id}/messages` && method === 'GET') return json(messages)
@@ -176,6 +225,10 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
     if (path === `/artifacts/${artifactId}` && method === 'GET') return json(artifact)
     if (path === `/artifacts/${artifactId}/versions`) return json([])
     if (path === `/artifacts/${artifactId}/${kind}` && method === 'GET') {
+      loads.push(String(artifact.version))
+      if (options.failLoads?.includes(loads.length)) {
+        return route.fulfill({ status: 500, json: { detail: 'storage_unavailable' } })
+      }
       return route.fulfill({
         body: file, contentType: mime,
         headers: { 'X-Artifact-Version': String(artifact.version) },
@@ -183,7 +236,10 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
     }
     if (path === `/artifacts/${artifactId}/${kind}` && method === 'PUT') {
       const expected = url.searchParams.get('expectedVersion')
+      summaries.push(url.searchParams.get('summary') ?? '')
       const body = request.postDataBuffer()
+      received.push(expected ?? '')
+      if (options.holdSave) await options.holdSave
       saves.push({ expected, size: body?.length ?? 0 })
       heads.push(body?.subarray(0, 2).toString('latin1') ?? '')
       if (body) files.push(body)
@@ -203,8 +259,13 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
     unexpected.push(`${method} ${path}`)
     return route.fulfill({ status: 404, json: { detail: 'not_found' } })
   })
-  const opened = options.box ? '/files' : options.fromHome ? '/'
-    : options.attachment ? `/s/${sessionId}` : `/s/${sessionId}?artifact=${artifactId}`
+  const opened = options.shared ? `/share/${options.shared.token}`
+    : options.box ? '/files' : options.fromHome ? '/'
+      : options.orphan || options.artifactsPage ? '/artifacts'
+        : options.attachment ? `/s/${sessionId}` : `/s/${sessionId}?artifact=${artifactId}`
   await page.goto(opened)
-  return { unexpected, problems, saves, heads, files, sent, created, csp, fileWrites }
+  return {
+    unexpected, problems, saves, heads, files, sent, created, csp, fileWrites, shares, attached,
+    loads, summaries, received,
+  }
 }

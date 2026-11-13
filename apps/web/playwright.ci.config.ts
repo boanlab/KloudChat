@@ -141,6 +141,8 @@ const groups: Record<string, Group> = {
   'pptx-panel': { files: ['pptx-panel.spec.ts'], projects: { desktop, phone: touchPhone } },
   // HWP, Word and PowerPoint files in the file box: drawn by their editors, 편집 opens a copy
   'file-box-office': { files: ['file-box-office.spec.ts'], projects: { desktop, phone: touchPhone } },
+  // unsaved office edits never dropped unasked; phone read only, retries, share, reopen, artifacts page
+  'office-safety': { files: ['office-edit-safety.spec.ts'], projects: { desktop, phone: touchPhone } },
   // every toolbar, rail, notes and menu action against the saved file; a manual check
   // (PPTX_ACTIONS=1), as it was when the editor was chosen
   'pptx-actions': { files: ['pptx-actions.spec.ts'], projects: { desktop } },

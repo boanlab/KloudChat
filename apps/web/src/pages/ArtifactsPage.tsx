@@ -1,7 +1,9 @@
 import {
   AudioLines,
   BarChart3,
+  FilePenLine,
   FileText,
+  Loader2,
   Image as ImageIcon,
   Layers,
   MoreHorizontal,
@@ -38,7 +40,10 @@ import {
   PageHeader,
   Tabs,
 } from '@/components/ui'
-import { templateText, type DesignTemplateRow } from '@/lib/api'
+import { OfficeView } from '@/components/files/OfficeView'
+import {
+  artifactsApi, errorMessage, templateText, type DesignTemplateRow, type OfficeKind,
+} from '@/lib/api'
 import { currentLang } from '@/lib/i18n'
 import { relativeTime } from '@/lib/utils'
 import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
@@ -87,6 +92,89 @@ function templateOf(artifact: Artifact, templates: DesignTemplateRow[]) {
 }
 
 type Filter = ArtifactKind | 'all'
+
+const isOffice = (artifact: Artifact): artifact is Extract<Artifact, { kind: OfficeKind }> =>
+  artifact.kind === 'hwp' || artifact.kind === 'docx' || artifact.kind === 'pptx'
+
+/**
+ * An office document (HWP, Word, PowerPoint) as its editor draws it, read only, with 「편집기에서
+ * 열기」: beside its conversation, or beside a new chat when it has none (it joins that chat).
+ */
+function OfficeArtifactView({ artifact }: { artifact: Extract<Artifact, { kind: OfficeKind }> }) {
+  const t = useT()
+  const navigate = useNavigate()
+  const newSession = useStore((s) => s.newSession)
+  const ensureSession = useStore((s) => s.ensureSession)
+  const refreshArtifact = useStore((s) => s.refreshArtifact)
+  const [bytes, setBytes] = useState<ArrayBuffer | null>(null)
+  const [failed, setFailed] = useState<string | null>(null)
+  const [opening, setOpening] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const { kind, id, version } = artifact
+  useEffect(() => {
+    let live = true
+    artifactsApi
+      .documentFile(kind, id)
+      .then((file) => live && setBytes(file.bytes))
+      .catch((err: unknown) => live && setFailed(errorMessage(err, t('문서를 불러오지 못했습니다.'))))
+    return () => {
+      live = false
+    }
+  }, [kind, id, version, t])
+
+  const openInEditor = async () => {
+    setOpening(true)
+    setError(null)
+    try {
+      let sessionId = artifact.sessionId
+      if (!sessionId) {
+        // no conversation: a new chat to edit it beside, which it joins
+        sessionId = await ensureSession(await newSession('chat', { projectId: artifact.projectId }))
+        await artifactsApi.attachDocument(kind, id, sessionId)
+        await refreshArtifact(id)
+      }
+      navigate(`/s/${sessionId}?artifact=${id}`)
+    } catch (err) {
+      setError(errorMessage(err, t('편집기에서 열지 못했습니다.')))
+      setOpening(false)
+    }
+  }
+
+  const text = artifact.text ?? ''
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
+        <p className="min-w-0 flex-1 text-sm text-muted">
+          {error ?? (artifact.sessionId
+            ? t('편집하면 이 문서를 만든 대화 옆 편집기에서 엽니다.')
+            : t('이 문서의 대화가 없습니다. 편집하면 새 대화 옆 편집기에서 엽니다.'))}
+        </p>
+        <Button size="sm" variant="primary" disabled={opening} onClick={() => void openInEditor()}>
+          {opening ? <Loader2 size={14} className="animate-spin" /> : <FilePenLine size={14} />}
+          {t('편집기에서 열기')}
+        </Button>
+      </div>
+      <div className="relative min-h-0 flex-1 bg-elevated">
+        {failed ? (
+          <div className="absolute inset-0 overflow-auto p-4">
+            <p className="pb-3 text-sm text-muted">{failed}</p>
+            <pre className="whitespace-pre-wrap break-words font-sans text-base text-fg">{text}</pre>
+          </div>
+        ) : bytes ? (
+          <OfficeView
+            key={version}
+            kind={kind}
+            bytes={bytes}
+            name={artifact.title}
+            onFail={() => setFailed(t('이 파일은 모양대로 그리지 못해 글자만 보여 줍니다.'))}
+          />
+        ) : (
+          <LoadingState />
+        )}
+      </div>
+    </div>
+  )
+}
 
 /** Partial HTML/code bodies fetched near the viewport. */
 function CardThumb({ artifact }: { artifact: Artifact }) {
@@ -231,6 +319,9 @@ export function ArtifactsPage() {
             { id: 'image', label: t('이미지'), count: count('image') },
             { id: 'audio', label: t('오디오'), count: count('audio') },
             { id: 'video', label: t('동영상'), count: count('video') },
+            { id: 'hwp', label: t('한글'), count: count('hwp') },
+            { id: 'docx', label: 'Word', count: count('docx') },
+            { id: 'pptx', label: 'PowerPoint', count: count('pptx') },
             // Empty kinds hidden, unless open.
           ] as { id: Filter; label: string; count?: number }[]).filter((tab) => tab.id === 'all' || tab.id === filter || tab.count !== 0)}
         />
@@ -407,6 +498,8 @@ export function ArtifactsPage() {
               preview.kind === 'audio' ||
               preview.kind === 'video' ? (
               <MediaPanel artifact={preview} />
+            ) : isOffice(preview) ? (
+              <OfficeArtifactView artifact={preview} />
             ) : preview.kind === 'html' || preview.kind === 'code' ? (
               <CodePanel
                 artifact={preview}

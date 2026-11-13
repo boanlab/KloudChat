@@ -1,4 +1,4 @@
-import { Bot, Boxes, FileText, Layers, LayoutGrid, Lock, LogIn } from 'lucide-react'
+import { Bot, Boxes, Download, FileText, Layers, LayoutGrid, Lock, LogIn } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Markdown } from '@/components/chat/Markdown'
@@ -9,7 +9,10 @@ import { cleanTitleBlock, closingIndex, counterStyle, fmtClass, formatCss, secti
 import { fontFamilyFor } from '@/components/report/docType'
 import { Badge, Button } from '@/components/ui'
 import { useStore } from '@/store/useStore'
-import { ApiError, sharesApi, type MessageRow, type SharedContext, type SharedPayload } from '@/lib/api'
+import { ApiError, errorMessage, sharesApi, type MessageRow, type OfficeKind, type SharedContext, type SharedPayload } from '@/lib/api'
+import { saveBlob } from '@/components/artifacts/artifactExport'
+import { OfficeView } from '@/components/files/OfficeView'
+import { fileStem } from '@/components/office/useOfficeDocument'
 import { SharedResultCard } from '@/components/chat/ResultCard'
 import { currentLang, translate } from '@/lib/i18n'
 import { useT } from '@/lib/useT'
@@ -188,7 +191,7 @@ export function SharedPage({ onSignIn }: { onSignIn?: () => void } = {}) {
       </header>
       {artifact ? (
         <div id="shared-result" className="scroll-mt-6">
-          <SharedArtifact payload={artifact} title={payload.title} />
+          <SharedArtifact payload={artifact} title={payload.title} token={token} />
         </div>
       ) : conversation}
       {payload.kind !== 'artifact' && payload.artifact && (
@@ -219,12 +222,77 @@ function SharedSlide({ slide, design, index, total, title }: { slide: Slide; des
   return <div ref={ref} className="aspect-video w-full overflow-hidden rounded-card bg-white shadow-sm ring-1 ring-black/10"><SlideView slide={slide} scale={scale} writing={false} deckTitle={title} brand={design ?? undefined} index={index} total={total} /></div>
 }
 
+const OFFICE_KINDS: readonly string[] = ['hwp', 'docx', 'pptx']
+
+/**
+ * A shared office document (HWP, Word, PowerPoint): its file, drawn read only by its editor as
+ * the file box previews one, and a download of the shared version. When the file cannot be
+ * fetched or drawn, the text the server read from it.
+ */
+function SharedOffice({
+  token, kind, title, text, format,
+}: {
+  token: string
+  kind: OfficeKind
+  title: string
+  text: string
+  format: string
+}) {
+  const t = useT()
+  const [file, setFile] = useState<{ blob: Blob; bytes: ArrayBuffer } | null>(null)
+  const [failed, setFailed] = useState<string | null>(null)
+  useEffect(() => {
+    let live = true
+    sharesApi
+      .document(token)
+      .then(async (blob) => {
+        const bytes = await blob.arrayBuffer()
+        if (live) setFile({ blob, bytes })
+      })
+      .catch((err: unknown) => live && setFailed(errorMessage(err, t('문서를 불러오지 못했습니다.'))))
+    return () => {
+      live = false
+    }
+  }, [token, t])
+  const name = `${fileStem(title)}.${format || kind}`
+  return (
+    <div className="space-y-3" data-shared-kind={kind}>
+      <div className="flex justify-end">
+        <Button size="sm" disabled={!file} onClick={() => file && saveBlob(file.blob, name)}>
+          <Download size={14} />
+          {t('내려받기')}
+        </Button>
+      </div>
+      {file && !failed ? (
+        <div className="relative h-[75vh] overflow-hidden rounded-card border border-line">
+          <OfficeView
+            kind={kind}
+            bytes={file.bytes}
+            name={name}
+            onFail={() => setFailed(t('이 파일은 모양대로 그리지 못해 글자만 보여 줍니다.'))}
+          />
+        </div>
+      ) : failed ? (
+        <div className="rounded-card border border-line p-4">
+          <p className="pb-3 text-sm text-muted" data-testid="shared-office-note">{failed}</p>
+          <pre className="whitespace-pre-wrap break-words font-sans text-base text-fg">{text}</pre>
+        </div>
+      ) : (
+        <p className="py-12 text-center text-base text-faint">{t('문서를 여는 중…')}</p>
+      )}
+    </div>
+  )
+}
+
 export function SharedArtifact({
   payload,
   title,
+  token,
 }: {
   payload: { data: unknown; title?: string; artifactKind?: string }
   title: string
+  /** The share the payload came by: an office document's file is fetched through it. */
+  token?: string
 }) {
   const data = (payload.data ?? {}) as {
     sections?: { heading: string; content: string; level?: 1 | 2; format?: 'markdown' | 'html' }[]
@@ -238,6 +306,16 @@ export function SharedArtifact({
   const artifactTitle = payload.title || title
   // Named by the share only: an issue snapshot (no kind given) keeps its plain view.
   const kind = payload.artifactKind
+  if (kind && OFFICE_KINDS.includes(kind)) {
+    const office = (payload.data ?? {}) as { text?: string; format?: string }
+    if (token) {
+      return (
+        <SharedOffice token={token} kind={kind as OfficeKind} title={artifactTitle}
+          text={office.text ?? ''} format={office.format ?? ''} />
+      )
+    }
+    return <Markdown>{`\`\`\`\n${office.text ?? ''}\n\`\`\``}</Markdown>
+  }
   // The in-app renderers, read-only: the same frame and sandbox as the app's own preview.
   const artifact = { ...data, id: 'shared', title: artifactTitle, version: 1, kind } as Artifact
   if ((kind === 'image' || kind === 'audio' || kind === 'video') && data.src) {
