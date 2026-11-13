@@ -126,6 +126,8 @@ const groups: Record<string, Group> = {
   ux: { files: ['ux-keyboard-forms.spec.ts'], projects: { desktop, phone: pixel } },
   'admin-models': { files: ['admin-models.spec.ts'], projects: { desktop, phone: touchPhone } },
   'admin-users': { files: ['admin-users-paging.spec.ts'], projects: { desktop, phone: touchPhone } },
+  // sortable tables, CSV exports, strict-local priority, 404, tab titles, expired sign-in
+  'ui-polish': { files: ['ui-polish.spec.ts'], projects: { desktop, phone: touchPhone } },
   'share-and-index': {
     files: ['share-one-artifact.spec.ts', 'project-knowledge-reindex.spec.ts'],
     projects: { desktop },
