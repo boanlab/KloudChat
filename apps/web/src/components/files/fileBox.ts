@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { filesApi, type FileRow } from '@/lib/api'
+import { filesApi, type FileRow, type OfficeKind } from '@/lib/api'
 
 export type FileOrigin = 'upload' | 'generated'
 
@@ -38,4 +38,13 @@ export function fileSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0)} KB`
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+/** The office editor a file opens in, by its name: HWP (`.hwp`, `.hwpx`), Word, PowerPoint.
+ *  Legacy `.doc`/`.ppt` have none. */
+export function officeKindOf(name: string): OfficeKind | null {
+  if (/\.hwpx?$/i.test(name)) return 'hwp'
+  if (/\.docx$/i.test(name)) return 'docx'
+  if (/\.pptx$/i.test(name)) return 'pptx'
+  return null
 }

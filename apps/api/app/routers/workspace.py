@@ -95,6 +95,7 @@ from app.services import (
     lint,
     netguard,
     ocr_jobs,
+    office_doc,
     page_export,
     pictures,
     printing,
@@ -728,6 +729,25 @@ async def file_text(file_id: str, user: CurrentViewer, db: DbSession):
     stored = await _own(db, StoredFile, "user_id", user, file_id)
     text = stored.text or ""
     return FileTextOut(text=text[:PREVIEW_CHARS], truncated=len(text) > PREVIEW_CHARS)
+
+
+#: office documents an own file was opened as, for 「다시 열기」 in the file box
+_OFFICE_KINDS = (ArtifactKind.hwp, ArtifactKind.docx, ArtifactKind.pptx)
+
+
+@router.get("/files/{file_id}/documents", response_model=list[ArtifactOut])
+async def file_documents(file_id: str, user: CurrentUser, db: DbSession):
+    """The office documents (HWP, Word, PowerPoint) opened from this file, newest first:
+    the file box offers to reopen one rather than make another copy."""
+    stored = await _own(db, StoredFile, "user_id", user, file_id)
+    rows = (
+        await db.exec(
+            select(Artifact)
+            .where(Artifact.user_id == user.id, col(Artifact.kind).in_(_OFFICE_KINDS))
+            .order_by(col(Artifact.updated_at).desc(), col(Artifact.id).desc())
+        )
+    ).all()
+    return [ArtifactOut.card(a) for a in rows if office_doc.source_of(a.data) == stored.id]
 
 
 @router.post("/files/{file_id}/open-as-document", response_model=OpenedDocument)
@@ -1947,7 +1967,11 @@ async def restore_artifact(
         )
     )
     artifact.version += 1
+    source = office_doc.source_of(artifact.data)
     artifact.data = _clean_report_data(target.data)
+    # an office document opened from a file keeps that link whichever version is back
+    if source and isinstance(artifact.data, dict) and not office_doc.source_of(artifact.data):
+        artifact.data = office_doc.with_source(artifact.data, source)
     artifact.storage_key = target.storage_key
     # reports keep title in `data`
     if isinstance(target.data, dict) and str(target.data.get("title") or "").strip():
