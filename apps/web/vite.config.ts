@@ -51,7 +51,10 @@ const rhwpHeaders = (): Plugin => ({
  * - Its stylesheet sets its theme variables (`--font-sans`, `--color-accent`, …) on `:root`,
  *   where they would replace the app's own once a deck opens: they are set on the editor's
  *   own elements instead.
- * A new version that moves either spot fails the build rather than shipping without them.
+ * - Its utility classes share the app's names (`.text-sm`, `.px-2`, …) but read those scoped
+ *   variables, so once a deck opened they resized every element of the app that used one:
+ *   each of their selectors is kept to the editor's own elements.
+ * A new version that moves any of these spots fails the build rather than shipping without them.
  */
 const CRV_RESULT = '    slidesPaneProps,\n    mode,\n    loading,\n    error,\n    autosaveStatus,'
 const CRV_ADDED =
@@ -59,11 +62,105 @@ const CRV_ADDED =
   '    markClean: () => state.setIsDirty(false),\n'
 const CRV_ROOT = ':root,:host{'
 const CRV_SCOPE = '.kc-slides,[data-pptx-viewer],[data-pptx-scope]{'
+const CRV_UTILITIES = '@layer utilities{'
+
+const CRV_WHERE = `:where(${CRV_SCOPE.slice(0, -1)})`
+
+/** `list` split at its top-level commas (escaped ones, as in `.w-\\[min\\(a\\,b\\)\\]`, stay). */
+function splitSelectors(list: string): string[] {
+  const parts: string[] = []
+  let depth = 0
+  let start = 0
+  for (let i = 0; i < list.length; i++) {
+    const ch = list[i]
+    if (ch === '\\') i++
+    else if (ch === '(' || ch === '[') depth++
+    else if (ch === ')' || ch === ']') depth--
+    else if (ch === ',' && depth === 0) {
+      parts.push(list.slice(start, i))
+      start = i + 1
+    }
+  }
+  parts.push(list.slice(start))
+  return parts
+}
+
+/** One selector matched only inside the editor or on its own box, at the same specificity. */
+function scopeSelector(selector: string): string {
+  const s = selector.trim()
+  let at = s.length
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '\\') i++
+    else if (s[i] === ':' && s[i + 1] === ':') {
+      at = i
+      break
+    }
+  }
+  return `${CRV_WHERE} ${s},${s.slice(0, at)}${CRV_WHERE}${s.slice(at)}`
+}
+
+/** The index just past the `}` closing the block opened at `open` (strings skipped). */
+function blockEnd(css: string, open: number): number {
+  let depth = 1
+  let i = open
+  while (depth > 0 && i < css.length) {
+    const ch = css[i]
+    if (ch === '\\') i++
+    else if (ch === '"' || ch === "'") i = css.indexOf(ch, i + 1)
+    else if (ch === '{') depth++
+    else if (ch === '}') depth--
+    if (i < 0) return -1
+    i++
+  }
+  return depth === 0 ? i : -1
+}
+
+/** Every style rule in `css` (a flat run of rules and `@media`/`@supports` blocks) scoped. */
+function scopeRules(css: string): string | null {
+  let out = ''
+  let i = 0
+  while (i < css.length) {
+    const open = css.indexOf('{', i)
+    if (open < 0) {
+      out += css.slice(i)
+      break
+    }
+    const end = blockEnd(css, open + 1)
+    if (end < 0) return null
+    const head = css.slice(i, open)
+    const body = css.slice(open + 1, end - 1)
+    if (head.trimStart().startsWith('@')) {
+      const inner = scopeRules(body)
+      if (inner === null) return null
+      out += `${head}{${inner}}`
+    } else {
+      out += `${splitSelectors(head).map(scopeSelector).join(',')}{${body}}`
+    }
+    i = end
+  }
+  return out
+}
+
+/**
+ * The sheet with its `@layer utilities` rules applied only inside the editor: each selector
+ * gains a zero-specificity `:where(…)` for the editor's boxes (not `@scope`, which older
+ * Firefox and Safari drop whole).
+ */
+function scopeCrvUtilities(css: string): string | null {
+  const start = css.indexOf(CRV_UTILITIES)
+  if (start < 0) return null
+  const open = start + CRV_UTILITIES.length
+  const end = blockEnd(css, open)
+  if (end < 0) return null
+  const rules = scopeRules(css.slice(open, end - 1))
+  if (rules === null) return null
+  return css.slice(0, open) + rules + css.slice(end - 1)
+}
 
 function crvPatches(): Plugin {
   let building = false
   const seen = { script: false, sheet: false }
-  const done = { script: false, sheet: false }
+  const done = { script: false, sheet: false, utilities: false }
   return {
     name: 'kchat-crv-patches',
     enforce: 'pre',
@@ -82,7 +179,10 @@ function crvPatches(): Plugin {
         seen.sheet = true
         if (!code.includes(CRV_ROOT)) return null
         done.sheet = true
-        return { code: code.split(CRV_ROOT).join(CRV_SCOPE), map: null }
+        const themed = code.split(CRV_ROOT).join(CRV_SCOPE)
+        const scoped = scopeCrvUtilities(themed)
+        done.utilities = scoped !== null
+        return { code: scoped ?? themed, map: null }
       }
       return null
     },
@@ -93,6 +193,9 @@ function crvPatches(): Plugin {
       }
       if (seen.sheet && !done.sheet) {
         this.error('pptx-react-viewer: its stylesheet no longer sets :root,:host; update CRV_ROOT')
+      }
+      if (seen.sheet && !done.utilities) {
+        this.error('pptx-react-viewer: its stylesheet has no @layer utilities; update CRV_UTILITIES')
       }
     },
   }

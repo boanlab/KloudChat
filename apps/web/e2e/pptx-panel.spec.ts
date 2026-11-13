@@ -71,6 +71,28 @@ test('the saved deck opens with the toolbar, thumbnails and notes, and a hand ed
   expect(state.csp).toEqual([])
 })
 
+test("the editor's own utility classes leave the rest of the app's text sizes alone", async ({ page }) => {
+  test.skip((page.viewportSize()?.width ?? 0) <= 640, 'desktop width')
+  await fixture(page)
+  await opened(page)
+  // the editor's stylesheet has its own `.text-sm`, `.text-xs`, …, read from variables it sets
+  // on its own elements only: outside the editor they would size text from the parent instead
+  const sizes = await page.evaluate(() => {
+    const root = parseFloat(getComputedStyle(document.documentElement).fontSize)
+    const read = (cls: string) => {
+      const probe = document.createElement('span')
+      probe.className = cls
+      probe.textContent = '가'
+      document.body.append(probe)
+      const size = parseFloat(getComputedStyle(probe).fontSize) / root
+      probe.remove()
+      return size
+    }
+    return { sm: read('text-sm'), xs: read('text-xs') }
+  })
+  expect(sizes).toEqual({ sm: 0.75, xs: 0.6875 })
+})
+
 test('Ctrl+S in the editor saves as the header 저장 does', async ({ page }) => {
   test.skip((page.viewportSize()?.width ?? 0) <= 640, 'desktop width')
   const state = await fixture(page)
