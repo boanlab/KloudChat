@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import copy
 import datetime as dt
 import json
 import logging
@@ -5570,6 +5571,16 @@ async def _send_message(
         )
     if asked_files is not None:
         content = revise.without_export(content)
+    if route == "revise" and (undo := revise.asks_undo(typed_content))[0]:
+        # 「되돌려 줘」: an earlier version back as the newest, never the text rewritten
+        return StreamingResponse(
+            _survive_disconnect(_undo_document(
+                user_id=user.id, session_id=session.id, version=undo[1],
+                routing=document_routing)),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive",
+                     "X-Accel-Buffering": "no"},
+        )
     if route == "revise":
         # local planner judges the instruction, not the external writer
         planner = outline_model or _local_planner(
@@ -8084,6 +8095,15 @@ async def _revision_plan(
         return revise.Plan(
             scope="parts", targets=[], note=f"{skeleton[first]} ↔ {skeleton[second]}"
         ), skeleton
+    if revise.title_block_fields(
+            instruction, ((artifact.data or {}).get("titleBlock") or {}).get("fields") or []):
+        # the head's fields (작성일, 작성자 …), filled by hand in the revise route
+        return revise.Plan(scope="parts", targets=[], note=instruction), skeleton
+    if (move := revise.part_move(instruction, skeleton)) is not None:
+        # a part moved in place, never the document planned and written again
+        where = "맨 앞" if move[1] < 0 else f"{skeleton[move[1]]} 뒤"
+        return revise.Plan(scope="parts", targets=[],
+                           note=f"{skeleton[move[0]]} → {where}"), skeleton
     if (added := revise.explicit_insert(instruction, skeleton)) is not None:
         # 「위험 장을 하나 추가해 줘」 is an insert; a new-document reading would refuse it
         return added, skeleton
@@ -8165,6 +8185,11 @@ async def _revise_document(
     turn["base"] = {"artifactId": loaded.get("artifactId"), "version": loaded.get("version"),
                     "title": loaded.get("title")}
     turn["standing"] = list(loaded.get("standing") or [])
+    turn["history"] = list(loaded.get("history") or [])
+    # every part as read: one the edit was not asked to touch is saved as it was if a rewrite
+    # dropped its figures (`revise-save`)
+    turn["before_parts"] = copy.deepcopy(
+        list(loaded["data"].get("slides") if is_deck else loaded["data"].get("sections") or []))
     data = dict(loaded["data"])
     parts = list(data.get("slides") if is_deck else data.get("sections") or [])
     if not parts:
@@ -8349,6 +8374,56 @@ async def _hand_over_document(
         if step
         else {"type": "step", "id": "export", "label": "파일 만들기", "status": "error"}
     )
+    yield chat_service.sse({"type": "delta", "text": said})
+    yield chat_service.sse({"type": "usage", "inputTokens": 0, "outputTokens": 0, "credits": 0})
+    yield chat_service.sse({"type": "done"})
+
+
+async def _undo_document(
+    *,
+    user_id: str,
+    session_id: str,
+    version: int | None,
+    routing: dict[str, Any] | None = None,
+) -> AsyncIterator[str]:
+    """The conversation's document back at an earlier version (the one before the current
+    unless named), saved as its newest version from the one it read: a save made meanwhile
+    is not overwritten; nothing is rewritten by a model."""
+    if routing:
+        yield chat_service.sse({"type": "privacy_route", **routing})
+    said, artifact_id = "", None
+    async with SessionLocal() as db:
+        session = await db.get(ChatSession, session_id)
+        artifact = (await db.get(Artifact, session.artifact_id)
+                    if session is not None and session.artifact_id else None)
+        if session is None or artifact is None or artifact.user_id != user_id:
+            said = "되돌릴 문서를 찾지 못했습니다."
+        else:
+            current = artifact.version
+            want = version or current - 1
+            body = (await artifact_versions.body_at(db, artifact, want)
+                    if 1 <= want < current else None)
+            if body is None:
+                said = (f"되돌릴 판이 없습니다. 지금 v{current}이고, v1~v{current - 1} 중에서 "
+                        "고를 수 있습니다." if current > 1 else "되돌릴 이전 판이 없습니다.")
+            elif not await artifact_versions.advance(db, artifact, current, f"v{want}로 되돌림"):
+                await db.rollback()
+                said = "그사이 문서가 저장되어 되돌리지 않았습니다. 다시 요청해 주세요."
+            else:
+                artifact.data, artifact.updated_at = body, utcnow()
+                db.add(artifact)
+                artifact_id = artifact.id
+                said = (f"v{want}의 내용으로 되돌려 v{current + 1}로 저장했습니다. 그 사이의 판은 "
+                        "버전 기록에 남아 있습니다.")
+        if session is not None:
+            db.add(Message(session_id=session_id, role=Role.assistant, content=said,
+                           usage={"inputTokens": 0, "outputTokens": 0, "credits": 0},
+                           routing=routing))
+            session.updated_at = utcnow()
+            db.add(session)
+            await db.commit()
+    if artifact_id:
+        yield chat_service.sse({"type": "artifact", "artifactId": artifact_id})
     yield chat_service.sse({"type": "delta", "text": said})
     yield chat_service.sse({"type": "usage", "inputTokens": 0, "outputTokens": 0, "credits": 0})
     yield chat_service.sse({"type": "done"})

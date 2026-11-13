@@ -249,10 +249,12 @@ def test_what_is_not_a_pptx_is_refused_and_a_blank_deck_is_16_9():
     prs = _prs(blank)
     assert prs.slide_width * 9 == prs.slide_height * 16 or abs(
         prs.slide_width / prs.slide_height - 16 / 9) < 0.001
-    assert pptx_edit.outline(blank) == (
-        "슬라이드 1장\n── s1 (레이아웃: Title Slide) ──\ns1.1 (제목): (비어 있음)\n"
-        "s1.2 (부제목): (비어 있음)\n빈칸: 없음"
-    )
+    lines = pptx_edit.outline(blank).splitlines()
+    # slides are counted in order (「5장」 is s5), and the layouts it may move to are named
+    assert lines[0].startswith("슬라이드 1장 (sN은 N번째 슬라이드")
+    assert lines[1].startswith("쓸 수 있는 레이아웃: 「Title Slide」")
+    assert lines[2:] == ["── s1 (레이아웃: Title Slide) ──", "s1.1 (제목): (비어 있음)",
+                         "s1.2 (부제목): (비어 있음)", "빈칸: 없음"]
     # the stretched title placeholder spans the wider slide
     title = prs.slides[0].shapes.title
     assert title.left + title.width < prs.slide_width and title.width > prs.slide_width * 0.7

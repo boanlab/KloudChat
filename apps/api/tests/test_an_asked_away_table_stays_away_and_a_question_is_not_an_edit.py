@@ -146,21 +146,34 @@ def _deck_bundle(typed: str):
         usage={"inputTokens": 0, "outputTokens": 0})
 
 
+_ANSWER = "지금 슬라이드는 4장입니다."
+
+
+def _answers(monkeypatch) -> None:
+    from app.services import report
+
+    async def answer(model, messages, api_key, max_tokens):
+        return _ANSWER, {"inputTokens": 1, "outputTokens": 1}
+
+    monkeypatch.setattr(report, "_complete", answer)
+
+
 @pytest.mark.asyncio
-async def test_a_question_on_the_deck_screen_is_told_how_to_ask_not_called_a_new_document(
+async def test_a_question_on_the_deck_screen_is_answered_not_called_a_new_document(
         monkeypatch):
     async def planner(**_kwargs):
         return revise.Plan()  # the planner reads no change in a question
 
     monkeypatch.setattr(revise_stages.revise, "plan", planner)
+    _answers(monkeypatch)
     bundle = _deck_bundle("지금 슬라이드가 몇 장이야?")
     events = []
     with pytest.raises(Stop):
         async for event in revise_stages.Route().run(bundle, Context()):
             events.append(event)
     text = "".join(e.get("text", "") for e in events if e["type"] == "delta")
-    assert "새로 쓰려면" not in text and text.startswith("질문으로 보여 바꾼 것이 없습니다.")
-    assert "「3장을 표로 바꿔줘」처럼" in text and "챗에 첨부해 물어보세요" in text
+    # answered from the deck, not refused nor called a new document
+    assert "새로 쓰려면" not in text and text == _ANSWER
     assert bundle.document.sections == CHARTED
     # a request that reads as none is still told the old way
     bundle = _deck_bundle("다른 회사 소개 자료")
@@ -196,6 +209,7 @@ async def test_a_question_rewrites_nothing_whatever_the_planner_read(monkeypatch
         return planned
 
     monkeypatch.setattr(revise_stages.revise, "plan", planner)
+    _answers(monkeypatch)
     for given in (planned, None):
         bundle = _deck_bundle(question)
         bundle.plan.revision = given
@@ -206,8 +220,7 @@ async def test_a_question_rewrites_nothing_whatever_the_planner_read(monkeypatch
         assert not [e for e in events if e["type"] in ("slide", "section")]
         assert bundle.document.sections == CHARTED
         assert bundle.plan.revision is given
-        assert "".join(e.get("text", "") for e in events if e["type"] == "delta").startswith(
-            "질문으로 보여 바꾼 것이 없습니다.")
+        assert "".join(e.get("text", "") for e in events if e["type"] == "delta") == _ANSWER
 
 
 @pytest.mark.parametrize("ask", ["3장을 표로 바꿔줄래?", "2절을 두 문장으로 줄여줄래?",

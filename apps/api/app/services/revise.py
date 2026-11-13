@@ -420,8 +420,23 @@ def order_swap(instruction: str, parts: list[str]) -> tuple[int, int] | None:
     return found[0], found[1]
 
 
+#: a part named by its number: 「4장」, 「4번 장」, 「4번째 절」 (a number in words is not read)
+_BY_NUMBER = re.compile(
+    r"(?:제\s{0,2})?(\d{1,3})\s{0,2}(?:번\s{0,2})?(?:째\s{0,2})?(?:장|절|슬라이드|섹션|부분)?"
+    r"|(?:슬라이드|slide|section)\s{0,2}(\d{1,3})", re.I)
+#: a word saying which kind of part a name is: 「위험 요인 장」 is the part 「위험 요인」
+_KIND_WORD = re.compile(r"(?:(?<=\s)|(?<=\d)|(?<=번)|(?<=째))\s{0,2}(?:장|절|슬라이드|섹션|부분)$")
+
+
 def _match_part(name: str, parts: list[str]) -> int | None:
-    """Part by exact title, containing phrase, then shared words."""
+    """Part by its number (「4장」 is the fourth), else by exact title, containing phrase, then
+    shared words."""
+    if found := _BY_NUMBER.fullmatch(name.strip()):
+        number = int(found.group(1) or found.group(2))
+        return number - 1 if 1 <= number <= len(parts) else None
+    bare = _KIND_WORD.sub("", name.strip()).strip()
+    if bare and bare != name.strip():
+        return _match_part(bare, parts)
     squeeze = lambda t: re.sub(r"\s+", "", t).lower()  # noqa: E731
     wanted = squeeze(name)
     if not any(squeeze(part) == wanted or wanted in squeeze(part) for part in parts):
@@ -437,6 +452,85 @@ def _match_part(name: str, parts: list[str]) -> int | None:
     words = set(name.split())
     hits = [i for i, part in enumerate(parts) if words and words <= set(part.split())]
     return hits[0] if len(hits) == 1 else None
+
+
+#: 「위험 요인 장을 3번 장 뒤로 옮겨 줘」, 「3장을 맨 앞으로」: one part moved, nothing rewritten
+_PART_MOVE = re.compile(
+    r"(?P<a>[가-힣A-Za-z0-9·/&()]{1,20}(?:\s{1,8}[가-힣A-Za-z0-9·/&()]{1,20}){0,3}?)\s{0,8}"
+    r"(?:을|를)\s{1,8}"
+    r"(?:(?P<front>맨\s{0,2}(?:앞|처음|뒤|끝|마지막))|(?P<b>[가-힣A-Za-z0-9·/&()]{1,20}"
+    r"(?:\s{1,8}[가-힣A-Za-z0-9·/&()]{1,20}){0,3}?)\s{0,8}(?:의\s{0,4})?(?P<side>뒤|다음|앞))"
+    r"\s{0,4}(?:으로|로|에)\s{0,8}(?:옮겨|옮기|이동|보내|붙여|넣어|가게|오게|배치|두|"
+    r"줘|주세요|해\s{0,2}줘|$)"
+)
+
+
+def part_move(instruction: str, parts: list[str]) -> tuple[int, int] | None:
+    """`(part, after)`: the part to move and the part it goes after (-1: to the front); None
+    when the words ask no single move. No model call."""
+    text = " ".join((instruction or "").split())
+    match = _PART_MOVE.search(text)
+    if not match:
+        return None
+    moving = _match_part(match.group("a").strip(), parts)
+    if moving is None:
+        return None
+    if match.group("front"):
+        end = re.search(r"뒤|끝|마지막", match.group("front"))
+        after = len(parts) - 1 if end else -1
+    else:
+        other = _match_part(match.group("b").strip(), parts)
+        if other is None or other == moving:
+            return None
+        after = other if match.group("side") in ("뒤", "다음") else other - 1
+    if after == moving or after == moving - 1:
+        return None
+    return moving, after
+
+
+def moved(items: list, moving: int, after: int) -> list:
+    """`items` with `moving` put right after `after` (-1: first)."""
+    out = list(items)
+    item = out.pop(moving)
+    place = after + 1 if after < moving else after
+    out.insert(max(0, place), item)
+    return out
+
+
+#: 「되돌려 줘」, 「방금 고친 거 취소해」, 「이전 판으로」, 「v3으로 되돌려」: a version restore
+_UNDO = re.compile(
+    r"되돌려|되돌리|원래\s{0,2}(?:대로|상태로)\s{0,4}(?:돌려|해)|이전\s{0,2}(?:판|버전|상태)\s{0,2}"
+    r"(?:으로|로)|(?:방금|아까)\s{0,4}(?:고친|바꾼|수정한|한)\s{0,4}(?:거|것|부분)?\s{0,4}"
+    r"(?:을|를)?\s{0,4}(?:취소|무르|없던)|\b(?:undo|revert|roll\s?back)\b", re.I)
+_UNDO_TO = re.compile(
+    r"(?:v|버전\s{0,2}|판\s{0,2})(\d{1,4})|(\d{1,4})\s{0,2}(?:번째\s{0,2})?(?:판|버전)", re.I)
+
+
+def asks_undo(instruction: str) -> tuple[bool, int | None]:
+    """Whether the words ask to undo, and the version named (「v3으로」), if any."""
+    text = " ".join((instruction or "").split())
+    if not _UNDO.search(text) or len(text) > 120:
+        return False, None
+    found = _UNDO_TO.search(text)
+    return True, int(found.group(1) or found.group(2)) if found else None
+
+
+def title_block_fields(instruction: str, fields: list) -> dict[str, str]:
+    """Head fields the words set (「작성일은 2026. 11. 13., 작성 부서는 기획팀으로 해 줘」):
+    name -> value, for the names the document's head has; no model call."""
+    names = [str(f[0]) for f in fields or [] if isinstance(f, (list, tuple)) and f]
+    text = " ".join((instruction or "").split())
+    out: dict[str, str] = {}
+    for name in sorted(names, key=len, reverse=True):
+        spaced = r"\s{0,2}".join(re.escape(ch) for ch in name.replace(" ", ""))
+        found = re.search(
+            spaced + r"\s{0,2}(?:은|는|을|를|란|:|=)\s{0,4}(?P<v>[^,，\n「」]{1,60}?)\s{0,2}"
+            r"(?:(?:으로|로)?\s{0,4}(?:해|바꿔|넣어|채워|적어|수정|써|기재|변경)|(?:이고|이며|입니다)"
+            r"|,|，|$)", text)
+        if found and (value := found.group("v").strip(" '\"「」")):
+            if not any(value == v or name in value for v in out.values()):
+                out[name] = value
+    return out
 
 
 def term_swap(instruction: str) -> tuple[str, str] | None:

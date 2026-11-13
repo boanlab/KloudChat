@@ -139,9 +139,9 @@ class Route(Base):
 
     name = "revise-route"
     kind = "model"
-    reads = ("request", "document.sections", "plan.title")
+    reads = ("request", "document.sections", "document.data", "plan.title")
     writes = ("document.sections", "plan.title", "plan.revision", "document.changed",
-              "document.by_hand")
+              "document.by_hand", "document.data")
 
     async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
         report, req, doc = _report(), bundle.request, bundle.document
@@ -151,23 +151,40 @@ class Route(Base):
         # the document as loaded: tables it had are no copies this edit made
         doc.original = [str(p.get("content") or "") for p in parts]
         if revise.asks_question(instruction):
-            # a question about the document, whatever the planner read: nothing rewritten;
-            # this screen only edits, so said how to ask it
-            yield {"type": "step", "id": "route", "label": "질문", "status": "done"}
-            example = "3장을 표로 바꿔줘" if is_deck else "2절을 두 문장으로 줄여줘"
-            sample = "Make slide 3 a table" if is_deck else "Shorten section 2"
-            for event in _stopped(bundle, (
-                    "This reads as a question, so nothing was changed. On this screen, say "
-                    f"what to change (「{sample}」). To ask about the content, attach the "
-                    "downloaded file in Chat."
-                    if output_language.typed_in_english(instruction) else
-                    "질문으로 보여 바꾼 것이 없습니다. 이 화면에서는 "
-                    f"「{example}」처럼 고칠 곳을 알려 주시면 고칩니다. 내용을 물어보려면 "
-                    "내려받은 파일을 챗에 첨부해 물어보세요.")):
+            # a question about the document or the conversation: answered from them, nothing
+            # rewritten
+            yield {"type": "step", "id": "route", "label": "질문에 답하는 중", "status": "running"}
+            try:
+                answer, used = await answer_about(bundle, names)
+            except Exception as exc:  # noqa: BLE001 — said, not a crash
+                log.info("document question failed: %s", logs.safe(exc))
+                answer, used = "", {"inputTokens": 0, "outputTokens": 0}
+            bundle.usage["inputTokens"] += int(used.get("inputTokens", 0))
+            bundle.usage["outputTokens"] += int(used.get("outputTokens", 0))
+            yield {"type": "step", "id": "route", "label": "질문에 답함", "status": "done"}
+            english = output_language.typed_in_english(instruction)
+            for event in _stopped(bundle, answer or (
+                    "I could not answer from the document just now. Please ask again."
+                    if english else "지금은 문서를 읽고 답하지 못했습니다. 다시 물어봐 주세요.")):
                 yield event
             raise Stop("a question")
         changed = 0
         typed = instruction
+        head = dict(doc.data.get("titleBlock") or {}) if not is_deck else {}
+        filled = revise.title_block_fields(instruction, head.get("fields") or [])
+        if filled:
+            # the document's head (작성일, 작성 부서, 작성자 …), by hand: its own fields, no part
+            # rewritten
+            head["fields"] = [[name, filled.get(str(name), value)]
+                              for name, value, *_ in head.get("fields") or []]
+            doc.data = {**doc.data, "titleBlock": head}
+            yield {"type": "step", "id": "route", "status": "done",
+                   "label": "머리 칸 채움: " + ", ".join(f"{k} {v}" for k, v in filled.items())}
+            doc.sections, doc.by_hand, doc.changed = parts, True, len(filled)
+            bundle.plan.revision = revise.Plan(
+                scope="parts", targets=[],
+                note=", ".join(f"{k} → {v}" for k, v in filled.items()))
+            return
         rename = None if is_deck else revise.title_rename(instruction, names)
         if rename is not None and rename[1] is None:
             # the document's title, by hand; the rest of the sentence goes on without it
@@ -180,7 +197,21 @@ class Route(Base):
                 plan = revise.Plan(scope="parts", targets=[], note=f"제목 → {rename[0]}")
         swap = revise.term_swap(typed) if typed else None
         reorder = revise.order_swap(typed, names) if swap is None and typed else None
-        if reorder is not None:
+        move = (revise.part_move(typed, names) if swap is None and reorder is None and typed
+                else None)
+        if move is not None:
+            # a part moved by hand: nothing rewritten, nothing else moves
+            moving, after = move
+            where = "맨 앞" if after < 0 else f"{names[after]} 뒤"
+            parts = revise.moved(parts, moving, after)
+            yield {"type": "step", "id": "route", "status": "done",
+                   "label": f"옮기는 중: {names[moving]} → {where}"}
+            for part in parts:
+                yield _part_event(part, is_deck)
+            plan = revise.Plan(scope="parts", targets=[], note=f"{names[moving]} → {where}")
+            changed = 1
+            reorder = move
+        elif reorder is not None:
             # swap by hand: model would redraw the deck (and add a 목차)
             first, second = reorder
             parts[first], parts[second] = parts[second], parts[first]
@@ -990,6 +1021,40 @@ class Consistency(Base):
 
 for _stage in (Route(), Widen(), Rewrite(), Consistency()):
     registry.register(_stage)
+
+
+#: how much of the document and the conversation a question reads
+_ASKED_DOC, _ASKED_TALK = 24_000, 8_000
+
+_QUESTION = (
+    "The person asks a question about the document below or about this conversation. Answer "
+    "it from them only: quote or point to the part (its number and title), say plainly when "
+    "the document or the conversation does not say, and change nothing. Answer briefly in the "
+    "person's language (Korean by default, 합니다체).\n\n"
+    "# Document 「{title}」\n{document}\n\n# Conversation so far\n{talk}\n\n"
+    "# Rules the person set\n{rules}\n\n# Question\n{question}"
+)
+
+
+async def answer_about(bundle: Bundle, names: list[str]) -> tuple[str, dict]:
+    """The person's question about the document or the conversation (「몇 장으로 해 달라고
+    했죠?」, 「제가 고친 부분 남아 있나요?」), answered from them; `(text, usage)`."""
+    req = bundle.request
+    parts = bundle.document.sections
+    lines = []
+    for index, part in enumerate(parts):
+        body = " / ".join(strings(part)) if req.is_deck else str(part.get("content") or "")
+        lines.append(f"## {index + 1}. {names[index] if index < len(names) else ''}\n{body}")
+    talk = "\n".join(f"{m.get('role')}: {m.get('content')}"
+                      for m in req.turn.get("history") or [])
+    prompt = _QUESTION.format(
+        title=bundle.plan.title, document="\n\n".join(lines)[:_ASKED_DOC],
+        talk=talk[-_ASKED_TALK:] or "(없음)",
+        rules="\n".join(f"- {r}" for r in req.turn.get("standing") or []) or "(없음)",
+        question=req.instruction[:2000])
+    text, used = await _report()._complete(
+        req.model, [{"role": "user", "content": prompt}], req.api_key, 900)
+    return text.strip(), used
 
 
 def standing_note(rules: object) -> str:

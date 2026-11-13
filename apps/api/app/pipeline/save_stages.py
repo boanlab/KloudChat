@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any
@@ -474,6 +475,11 @@ class ReviseLoad(Base):
             loaded["request"] = str(asked[0].content if asked else session.title or "")
             # rules the person set for the whole conversation (「앞으로 기관명은 익명으로」)
             # and the running memory's pinned items: every revision keeps to them
+            # the conversation's latest turns, for a question about it (`answer_about`)
+            loaded["history"] = [
+                {"role": m.role.value, "content": str(m.content or "")[:1500]}
+                for m in turns[-12:] if (m.content or "").strip()
+            ]
             loaded["standing"] = standing_rules(
                 [{"role": m.role.value, "content": m.content or ""} for m in turns],
                 (session.summary or {}).get("pinned"),
@@ -517,8 +523,9 @@ class ReviseSave(Base):
 
     name = "revise-save"
     kind = "io"
-    reads = ("request", "document", "plan.title", "findings.aligned", "usage")
-    writes = ("document.saved", "document.data")
+    reads = ("request", "document", "plan.title", "plan.order", "plan.widened",
+             "plan.revision", "findings.aligned", "usage")
+    writes = ("document.saved", "document.data", "document.sections")
 
     def skip(self, bundle: Bundle) -> str:
         return "" if bundle.request.turn.get("user_id") else "no turn to store"
@@ -537,6 +544,8 @@ class ReviseSave(Base):
         is_deck = req.is_deck
         kind = ArtifactKind.deck if is_deck else ArtifactKind.report
         parts, title = bundle.document.sections, bundle.plan.title
+        parts, kept = keep_untouched(bundle, parts)
+        bundle.document.sections = parts
         aligned_step = bundle.findings.aligned
         data = dict(bundle.document.data)
         credits = host.charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
@@ -578,6 +587,9 @@ class ReviseSave(Base):
                                        english=output_language.typed_in_english(req.instruction))
                 if note := rerun_note(turn):
                     reply = f"{note} {reply}"
+                if kept:
+                    reply = (f"{reply} {', '.join(kept)}은 요청하지 않은 곳인데 다시 쓰면서 수치가 "
+                             "빠져 원래대로 두었습니다.").strip()
                 if stored.said:
                     # drafted: where the edit went first, then what it changed
                     reply = (f"{stored.said} {reply}" if stored.drafted
@@ -619,6 +631,46 @@ class ReviseSave(Base):
                              handed=handed)
         bundle.document.data = data
         bundle.document.saved = saved
+
+
+_NUMBER = re.compile(r"\d[\d,.]{0,15}")
+
+
+def _figures(part: dict) -> set[str]:
+    from app.pipeline.revise_stages import strings
+
+    return {n.rstrip(".,") for text in strings(part) for n in _NUMBER.findall(text)}
+
+
+def keep_untouched(bundle: Bundle, parts: list[dict]) -> tuple[list[dict], list[str]]:
+    """Parts the edit was not asked to touch (not a target, not widened to), put back as they
+    were when a rewrite dropped figures they stated, unless the figures it wrote instead are
+    the ones the person typed (a changed fact carried through the document). The names of the
+    parts kept."""
+    req, doc = bundle.request, bundle.document
+    before = {str(p.get("id")): p for p in req.turn.get("before_parts") or []
+              if isinstance(p, dict) and p.get("id")}
+    if not before or doc.by_hand:
+        return parts, []
+    plan = bundle.plan.revision
+    asked = set(bundle.plan.order) | set(bundle.plan.widened) | set(
+        getattr(plan, "targets", []) or [])
+    targeted = {str(parts[i].get("id")) for i in asked if 0 <= i < len(parts)}
+    typed = {n.rstrip(".,") for n in _NUMBER.findall(req.instruction or "")}
+    out, kept = list(parts), []
+    for index, part in enumerate(parts):
+        pid = str(part.get("id") or "")
+        old = before.get(pid)
+        if old is None or pid in targeted or part == old:
+            continue
+        lost = _figures(old) - _figures(part)
+        added = _figures(part) - _figures(old)
+        if lost and not (added and added <= typed):
+            out[index] = old
+            name = str(old.get("heading") or old.get("title") or "").strip()
+            unit = "장" if req.is_deck else "절"
+            kept.append(f"{index + 1}{unit}" + (f" 「{name}」" if name else ""))
+    return out, kept
 
 
 @dataclass

@@ -206,3 +206,45 @@ async def test_a_corrected_file_sent_later_wins_the_budget(maker, monkeypatch):
     await _turn(session_id, 2)
     joined = "\n".join(seen[0])
     assert "120억(정정)" in joined and "100억" not in joined
+
+
+async def test_a_move_moves_the_part_and_rewrites_nothing(maker, monkeypatch):
+    session_id, artifact_id = await _deck(maker)
+
+    async def no_rewrite(**_kwargs):
+        raise AssertionError("a move rewrites nothing")
+
+    monkeypatch.setattr(deck, "rewrite_slide", no_rewrite)
+    plan, _ = await _plan(maker, session_id, "요청 사항 장을 맨 앞으로 옮겨 줘")
+    assert plan.targets == [] and not plan.restructures
+    async for _ in sessions._revise_document(
+            user_id="u1", api_key="k", session_id=session_id, model={"id": "m"},
+            instruction="요청 사항 장을 맨 앞으로 옮겨 줘", plan=plan):
+        pass
+    async with maker() as db:
+        artifact = await db.get(Artifact, artifact_id)
+    assert [s["id"] for s in artifact.data["slides"]] == ["s2", "s0", "s1"]
+    assert artifact.data["slides"][0] == SLIDES[2]
+
+
+async def _plan(maker, session_id: str, text: str):
+    async with maker() as db:
+        session = await db.get(ChatSession, session_id)
+        return await sessions._revision_plan(db, session, instruction=text, model={"id": "m"},
+                                             api_key="k")
+
+
+async def test_undo_restores_the_version_before_as_the_newest(maker):
+    from app.services import revise
+
+    session_id, artifact_id = await _deck(maker)
+    await _hand_save(maker, artifact_id, 1, ["손으로 고친 줄"])
+    assert revise.asks_undo("방금 고친 거 취소해 줘") == (True, None)
+    assert revise.asks_undo("v1으로 되돌려 줘") == (True, 1)
+    assert revise.asks_undo("3장을 줄여 줘")[0] is False
+    events = [e async for e in sessions._undo_document(user_id="u1", session_id=session_id,
+                                                        version=None)]
+    async with maker() as db:
+        artifact = await db.get(Artifact, artifact_id)
+    assert artifact.version == 3 and artifact.data["slides"] == SLIDES
+    assert any("v1의 내용으로 되돌려 v3" in e for e in events)
