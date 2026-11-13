@@ -138,7 +138,7 @@ const BLOCKS = (result) => [
   '}',
 ].join('\n')
 const RESULT = '    slidesPaneProps,\n    mode,\n    loading,\n    error,\n    autosaveStatus,'
-const SHEET = ':root,:host{--font-sans:x;--color-accent:red}.flex{display:flex}'
+const SHEET = ':root,:host{--font-sans:x;--color-accent:red}@layer utilities{.text-sm{font-size:var(--text-sm)}@media (hover:hover){.p\\:x::placeholder{color:red}}}.flex{display:flex}'
 
 test('the PowerPoint editor gets its notes writer and save mark, and its theme stays in its own box', async (t) => {
   const root = await crvFixture(t, `const slidesPaneProps = 1, mode = 2, loading = 3, error = 4, autosaveStatus = 5\n${BLOCKS(RESULT)}`, SHEET)
@@ -152,6 +152,22 @@ test('the PowerPoint editor gets its notes writer and save mark, and its theme s
     .map((o) => String(o.source)).join('\n')
   assert.ok(!css.includes(':root'), css)
   assert.match(css, /\.kc-slides,\s*\[data-pptx-viewer\],\s*\[data-pptx-scope\]\s*\{/)
+  // its utility classes share the app's names, so they apply inside the editor only (and on its
+  // own boxes), with no specificity added
+  const where = String.raw`:where\(\.kc-slides,\s*\[data-pptx-viewer\],\s*\[data-pptx-scope\]\)`
+  assert.match(css, new RegExp(String.raw`${where}\s+\.text-sm\s*,\s*\.text-sm${where}\s*\{`))
+  assert.match(css, new RegExp(String.raw`${where}\s+\.p\\:x::placeholder\s*,\s*\.p\\:x${where}::placeholder`))
+  // and nowhere unscoped
+  assert.equal(css.split('.text-sm').length - 1, 2, css)
+})
+
+test('a PowerPoint editor stylesheet without its utilities block fails the build', async (t) => {
+  const chunk = `const slidesPaneProps = 1, mode = 2, loading = 3, error = 4, autosaveStatus = 5\n${BLOCKS(RESULT)}`
+  const root = await crvFixture(t, chunk, ':root,:host{--font-sans:x}.flex{display:flex}')
+  await assert.rejects(
+    build({ root, configFile: join(root, 'vite.config.ts'), logLevel: 'silent', build: { write: false } }),
+    /has no @layer utilities/,
+  )
 })
 
 test('a PowerPoint editor version that moved the patched spot fails the build', async (t) => {
