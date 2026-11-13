@@ -472,3 +472,40 @@ test('the outline card shows the report\'s file and sends a changed one with the
   expect(sends.at(-1)?.body.approve).toBe(true)
   expect(unexpected).toEqual([])
 })
+
+test('handing a chat to a report asks which file and carries it to the first turn', async ({ page }, info) => {
+  const agentId = `a${'1'.repeat(32)}`
+  const { unexpected, sends } = await composerFixture(page, info, { skills: false, connectors: false })
+  const chat = 'c0000000000000000000000000000080'
+  const reportId = 'r0000000000000000000000000000080'
+  const at = '2026-10-09T07:00:00.000Z'
+  const row = (id: string, kind: string, messages: unknown[]) => ({
+    id, kind, title: '에이전트 대화', model: 'fixture/model', routingMode: 'manual', projectId: null, agentId,
+    artifactId: null, pending: null, skillIds: [], renderTemplateId: null, pinned: false, messageCount: messages.length,
+    createdAt: at, updatedAt: at, messages, preview: null, made: null,
+  })
+  const talk = [
+    { id: 'm0000000000000000000000000000081', role: 'user', content: '분기 실적을 정리해 보자', attachments: [], createdAt: at },
+    { id: 'm0000000000000000000000000000082', role: 'assistant', content: '좋습니다.', attachments: [], model: 'fixture/model', createdAt: at },
+  ]
+  const handed: Record<string, unknown>[] = []
+  await page.route('**/api/sessions', (route) => route.request().method() === 'GET' ? route.fulfill({ json: [row(chat, 'chat', talk)] }) : route.fallback())
+  await page.route(`**/api/sessions/${chat}`, (route) => route.request().method() === 'GET' ? route.fulfill({ json: row(chat, 'chat', talk) }) : route.fallback())
+  await page.route(`**/api/sessions/${chat}/messages`, (route) => route.request().method() === 'GET' ? route.fulfill({ json: talk }) : route.fallback())
+  await page.route(`**/api/sessions/${chat}/handoff`, (route) => {
+    handed.push(route.request().postDataJSON())
+    return route.fulfill({ status: 201, json: { session: row(reportId, 'report', []), attachments: [], outputFormat: 'hwp' } })
+  })
+  await page.route(`**/api/sessions/${reportId}/messages`, (route) => {
+    if (route.request().method() === 'GET') return route.fulfill({ json: [] })
+    sends.push({ path: `/sessions/${reportId}/messages`, body: route.request().postDataJSON() })
+    return route.fulfill({ contentType: 'text/event-stream', body: 'data: {"type":"done"}\n\n' })
+  })
+  await page.route(`**/api/sessions/${reportId}`, (route) => route.request().method() === 'GET' ? route.fulfill({ json: row(reportId, 'report', []) }) : route.fallback())
+  await page.goto(`/s/${chat}`)
+  await page.getByRole('button', { name: '보고서 만들기' }).click({ timeout: 15_000 })
+  await page.getByRole('menuitem', { name: '한글', exact: true }).click()
+  await expect.poll(() => handed.at(-1)).toEqual({ kind: 'report', outputFormat: 'hwp' })
+  await expect.poll(() => sends.at(-1)?.body.outputFormat).toBe('hwp')
+  expect(unexpected).toEqual([])
+})

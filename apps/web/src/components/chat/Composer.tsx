@@ -23,7 +23,7 @@ import {
 } from 'lucide-react'
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { FileRow, OfficeKind, PrivacyDecision, WebSearchSetting } from '@/lib/api'
-import { ApiError, artifactsApi, transcriptionsApi } from '@/lib/api'
+import { ApiError, transcriptionsApi } from '@/lib/api'
 import { startWavRecording, type WavRecorder } from '@/lib/wavRecorder'
 import { DesignGalleryModal, offersTemplates } from '@/components/chat/DesignGallery'
 import { FileBoxPicker } from '@/components/files/FileBoxPicker'
@@ -1630,30 +1630,6 @@ export function Composer({
       }).finally(startSettled)
       return
     }
-    // 「PowerPoint」 picked (or named) on the slides screen: today's PowerPoint path, a chat
-    // with a blank deck in its editor whose tools write the request into it
-    if (kind === 'slides' && fresh && (output ?? detectedOutput) === 'pptx') {
-      void (async () => {
-        const id = await useStore.getState().ensureSession(
-          await newSession('chat', { projectId: projectId ?? null }))
-        const row = await artifactsApi.createDocument('pptx', {
-          sessionId: id, title: t('새 PowerPoint 문서'),
-        })
-        releaseStart()
-        setOutputPick('slides', null)
-        navigate(`/s/${id}?artifact=${row.id}`, { replace: true })
-        await deliverChat(id, text, sentAttachments, sentWebSearch, sentSkillIds)
-      })().finally(startSettled).catch((error: unknown) => {
-        setComposerRestore({
-          sessionId: null,
-          value: text,
-          attachments: sentAttachments,
-          activatedSkillIds: sentSkillIds,
-          error: errorMessage(error, t('PowerPoint 문서를 열지 못했습니다.')),
-        })
-      })
-      return
-    }
     if (kind === 'image') {
       // Not streamed: `generateImages` writes both halves from one call.
       void generateImages(sessionId, text, {
@@ -1776,7 +1752,10 @@ export function Composer({
       activatedSkillIds: sentSkillIds,
       renderTemplateId: shownTemplate ? shownTemplate.id : undefined,
       // a file picked beside the surface chips; else the server reads the request
-      outputFormat: kind === 'report' && fresh && output ? output as ReportOutput : undefined,
+      // PowerPoint for a deck is the same send: the server makes the blank file the turn fills.
+      outputFormat: !fresh ? undefined
+        : kind === 'report' ? (output as ReportOutput | null) ?? undefined
+          : kind === 'slides' && (output ?? detectedOutput) === 'pptx' ? 'pptx' : undefined,
       // Sending from /new/:kind creates a session; the URL has to follow it.
       onSession: (id) => {
         landedSessionId = id

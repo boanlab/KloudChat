@@ -10,7 +10,7 @@ import { MessageItem } from '@/components/chat/MessageItem'
 import { ShareButton } from '@/components/share/ShareButton'
 import { TopBar } from '@/components/layout/TopBar'
 import { JobCard } from '@/components/media/JobCard'
-import { Badge, Button, LoadingState } from '@/components/ui'
+import { Badge, Button, Dropdown, LoadingState, MenuItem, MenuLabel } from '@/components/ui'
 import { agentKinds, kindMeta } from '@/lib/kinds'
 import { directionParticle } from '@/lib/formCheck'
 import { templateText } from '@/lib/api'
@@ -18,7 +18,7 @@ import { currentLang } from '@/lib/i18n'
 import { startFailure } from '@/lib/failures'
 import { LeaveCancelled } from '@/lib/officeGuard'
 import { useStore } from '@/store/useStore'
-import type { Agent, SessionKind } from '@/types'
+import type { Agent, SessionKind, TurnOutput } from '@/types'
 import { useT } from '@/lib/useT'
 
 /** Automatic transcript retries before asking the reader. */
@@ -241,27 +241,45 @@ function HandOffButtons({ agent, sessionId }: { agent: Agent; sessionId: string 
           template && template.surface === k
             ? templateText(template, currentLang() === 'en').name
             : t(kindMeta[k].label)
+        const formats: { value: TurnOutput | undefined; label: string }[] =
+          k === 'report'
+            ? [{ value: undefined, label: '웹 보고서' }, { value: 'hwp', label: '한글' }, { value: 'docx', label: 'Word' }]
+            : [{ value: undefined, label: '웹 슬라이드' }, { value: 'pptx', label: 'PowerPoint' }]
+        const start = (outputFormat: TurnOutput | undefined) => {
+          setBusy(true)
+          void handOff(
+            sessionId,
+            k,
+            t('지금까지 나눈 대화로 {name} 초안을 만들어 주세요.').replace('{name}', name),
+            { onSession: (id) => navigate(`/s/${id}`), outputFormat },
+          )
+            .catch((err: unknown) => setNotice(startFailure(err, t)))
+            .finally(() => setBusy(false))
+        }
         return (
-          <Button
+          // The file is picked with the hand-off: a web document, or an HWP, Word or PowerPoint file.
+          <Dropdown
             key={k}
-            size="sm"
-            disabled={busy || streaming}
-            title={t('이 대화를 자료로 같은 에이전트가 {name}을 씁니다').replace('{name}', name)}
-            onClick={() => {
-              setBusy(true)
-              void handOff(
-                sessionId,
-                k,
-                t('지금까지 나눈 대화로 {name} 초안을 만들어 주세요.').replace('{name}', name),
-                { onSession: (id) => navigate(`/s/${id}`) },
-              )
-                .catch((err: unknown) => setNotice(startFailure(err, t)))
-                .finally(() => setBusy(false))
-            }}
+            align="right"
+            label={t('{name} 만들기').replace('{name}', name)}
+            trigger={() => (
+              <Button
+                size="sm"
+                disabled={busy || streaming}
+                title={t('이 대화를 자료로 같은 에이전트가 {name}을 씁니다').replace('{name}', name)}
+              >
+                <Icon size={14} />
+                {t('{name} 만들기').replace('{name}', name)}
+              </Button>
+            )}
           >
-            <Icon size={14} />
-            {t('{name} 만들기').replace('{name}', name)}
-          </Button>
+            <MenuLabel>{t('형식')}</MenuLabel>
+            {formats.map((f) => (
+              <MenuItem key={f.label} onClick={() => start(f.value)}>
+                {t(f.label)}
+              </MenuItem>
+            ))}
+          </Dropdown>
         )
       })}
     </>

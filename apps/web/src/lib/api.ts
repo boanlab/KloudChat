@@ -33,7 +33,7 @@ import type {
   PrivacyAction,
   PrivacyRouting,
   ReportArtifact,
-  ReportOutput,
+  TurnOutput,
   Session,
   SessionKind,
   SessionMade,
@@ -1204,9 +1204,9 @@ export const sessionsApi = {
   agentDraftDecided: (sessionId: string) =>
     call<AgentDraftDecided>(`/sessions/${sessionId}/agent-draft/decided`, { timeoutMs: 0 }),
   /** A report or slides session continuing this chat with its agent; the files carry the conversation. */
-  handoff: (sessionId: string, kind: 'report' | 'slides') =>
-    call<{ session: SessionRow; attachments: FileRow[] }>(
-      `/sessions/${sessionId}/handoff`, body({ kind }),
+  handoff: (sessionId: string, kind: 'report' | 'slides', outputFormat?: TurnOutput) =>
+    call<{ session: SessionRow; attachments: FileRow[]; outputFormat?: TurnOutput | null }>(
+      `/sessions/${sessionId}/handoff`, body(outputFormat ? { kind, outputFormat } : { kind }),
     ),
   forkBeforeMessage: (sessionId: string, messageId: string) =>
     call<{ session: SessionRow; attachments: FileRow[]; attachmentIdMap: Record<string, string> }>(
@@ -2369,8 +2369,8 @@ export async function* streamSession(
     plan?: Record<string, unknown>
     /** The figure card's answer — the second of the two questions. */
     includeFigures?: boolean
-    /** A report's file picked on the screen; wins over a file the request names. */
-    outputFormat?: ReportOutput
+    /** A report's file, or PowerPoint for a deck, picked on the screen; wins over the request. */
+    outputFormat?: TurnOutput
     /** Answers to a stopped turn's questions, keyed by question id. */
     answers?: Record<string, string>
     /** The failed question to run again in place, by message id; the server reuses that row. */

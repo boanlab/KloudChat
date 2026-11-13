@@ -74,6 +74,7 @@ import type {
   PendingPlan,
   ReportOutput,
   SlidesOutput,
+  TurnOutput,
   Session,
   Preferences,
   PrivacyAction,
@@ -247,8 +248,8 @@ type SendOptions = {
   approve?: boolean
   /** The figure card's answer; absent means it was not asked. */
   includeFigures?: boolean
-  /** A report's file picked on the screen (`ReportOutput`). */
-  outputFormat?: ReportOutput
+  /** A report's file, or PowerPoint for a deck, picked on the screen. */
+  outputFormat?: TurnOutput
   /** The outline as edited on the proposal card. */
   plan?: Record<string, unknown>
   /** Answers to a stopped turn's questions, keyed by question id. */
@@ -382,7 +383,9 @@ interface State {
     fromSessionId: string,
     kind: 'report' | 'slides',
     text: string,
-    opts?: Pick<SendOptions, 'webSearch' | 'onSession' | 'activatedSkillIds'> & { attachments?: FileRow[] },
+    opts?: Pick<SendOptions, 'webSearch' | 'onSession' | 'activatedSkillIds' | 'outputFormat'> & {
+      attachments?: FileRow[]
+    },
   ) => Promise<string>
   forkBeforeMessage: (sessionId: string, messageId: string) => Promise<{
     sessionId: string; attachments: FileRow[]; attachmentIdMap: Record<string, string>
@@ -1772,7 +1775,7 @@ export const useStore = create<State>((set, get) => ({
   handOff: async (fromSessionId, kind, text, opts = {}) => {
     const owner = get().user?.id
     const epoch = get().accountEpoch
-    const result = await sessionsApi.handoff(fromSessionId, kind)
+    const result = await sessionsApi.handoff(fromSessionId, kind, opts.outputFormat)
     if (!owner || owner !== get().user?.id || epoch !== get().accountEpoch || !get().authenticated) {
       throw new Error('account_changed')
     }
@@ -1793,6 +1796,8 @@ export const useStore = create<State>((set, get) => ({
       attachments: files.map((file) => file.id),
       attachmentNames: files.map((file) => file.name),
       activatedSkillIds: opts.activatedSkillIds,
+      // The file asked for on the hand-off, as the server settled it; the first turn carries it.
+      outputFormat: result.outputFormat ?? opts.outputFormat,
       onSession: opts.onSession,
     })
   },
@@ -1953,6 +1958,8 @@ export const useStore = create<State>((set, get) => ({
             answers: opts.answers,
             webSearch: opts.webSearch,
             includeFigures: opts.includeFigures,
+            // PowerPoint picked: the server makes the file this turn fills.
+            outputFormat: opts.outputFormat,
             attachments: opts.attachments,
             plan: opts.plan,
             renderTemplateId: opts.renderTemplateId,
@@ -3991,8 +3998,8 @@ async function streamReport(
     answers?: Record<string, string>
     webSearch?: WebSearchSetting
     includeFigures?: boolean
-    /** A report's file picked on the screen; kept on the waiting card. */
-    outputFormat?: ReportOutput
+    /** The file picked on the screen; kept on the waiting card. */
+    outputFormat?: TurnOutput
     plan?: Record<string, unknown>
     /** Resent with the approval: the server assembles context fresh per request. */
     attachments?: string[]
@@ -4104,7 +4111,7 @@ async function streamReport(
             attachments: gate.attachments ?? p?.attachments ?? [],
             answers: p?.answers ?? {},
             plan: e.plan,
-            output: gate.outputFormat ?? p?.output,
+            output: (gate.outputFormat === 'pptx' ? undefined : gate.outputFormat) ?? p?.output,
           }))
           break
         case 'needs':
@@ -4115,7 +4122,7 @@ async function streamReport(
             attachments: gate.attachments ?? p?.attachments ?? [],
             answers: p?.answers ?? {},
             questions: e.questions,
-            output: gate.outputFormat ?? p?.output,
+            output: (gate.outputFormat === 'pptx' ? undefined : gate.outputFormat) ?? p?.output,
           }))
           break
         case 'skills_applied':
@@ -4291,6 +4298,8 @@ async function streamDeck(
     attachments?: string[]
     renderTemplateId?: string
     /** 「이 단계부터 다시」: streams the rerun instead of a turn, into the document already open. */
+    /** `pptx`: a PowerPoint file the server makes for this turn; web slides send none. */
+    outputFormat?: TurnOutput
     rerun?: { runId: string; fromStage: string; label: string; answers?: Record<string, string> }
   } = {},
 ) {
@@ -4372,6 +4381,7 @@ async function streamDeck(
         answers: gate.answers,
         webSearch: gate.webSearch,
         includeFigures: gate.includeFigures,
+        ...(gate.outputFormat ? { outputFormat: gate.outputFormat } : {}),
         attachments: gate.attachments,
         plan: gate.plan,
       },
