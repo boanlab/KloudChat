@@ -342,7 +342,8 @@ function Intro({
       {agent && <AgentGuide agent={agent} sessionId={sessionId ?? null} kind={kind} />}
       <StartingFrom sessionId={sessionId} kind={kind} withoutAgent={Boolean(agent)} />
       {/* The same examples as the home screen, unless an agent brings its own starters. */}
-      {!agent && <StartExamples kind={kind} className="mt-2" />}
+      {/* Not on a phone: the prompt box and its notices keep the room there. */}
+      {!agent && <StartExamples kind={kind} className="mt-2 max-sm:hidden" />}
     </div>
   )
 }
