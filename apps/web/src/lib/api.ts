@@ -1438,9 +1438,10 @@ export const artifactsApi = {
     call<ArtifactRow>(`/artifacts/${id}/slides/diagram`, body({ slideId, key, src })),
   /** One reading by a reviewer. Costs a model call; annotates, never edits. */
   critique: (id: string) => call<ArtifactRow>(`/artifacts/${id}/critique`, body({})),
-  /** Puts a superseded revision back. Itself an edit, so it adds a version. */
-  restore: (id: string, version: number) =>
-    call<ArtifactRow>(`/artifacts/${id}/restore`, body({ version })),
+  /** Puts a superseded revision back. Itself an edit, so it adds a version.
+   *  `expectedVersion`: the version shown; 409 if anyone saved since, as on `update`. */
+  restore: (id: string, version: number, expectedVersion?: number) =>
+    call<ArtifactRow>(`/artifacts/${id}/restore`, body({ version, expectedVersion })),
   /** A new office document (HWP, Word, PowerPoint) in a conversation: blank, or the uploaded
    *  `fileId` (`.hwp`/`.hwpx`, `.docx`, `.pptx`). */
   createDocument: (kind: OfficeKind, payload: {

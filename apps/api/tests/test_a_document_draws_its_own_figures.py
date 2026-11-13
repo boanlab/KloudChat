@@ -341,6 +341,10 @@ class _Db:
     async def refresh(self, row):
         pass
 
+    async def exec(self, _statement):
+        """`_next_version`'s conditional UPDATE: the row is still at the version read."""
+        return type("Moved", (), {"rowcount": 1})()
+
 
 class _User:
     id = "owner"

@@ -50,8 +50,8 @@ def test_a_rewrite_keeps_the_slide_that_came_before_it() -> None:
     import inspect
 
     source = inspect.getsource(workspace_router.rewrite_slide)
-    assert "ArtifactVersion(" in source
-    assert "artifact.version += 1" in source
+    # superseded body kept, version moved in one conditional UPDATE
+    assert "_next_version(" in source
     # Charged like any other model call.
     assert 'reason="deck.rewrite"' in source
 
