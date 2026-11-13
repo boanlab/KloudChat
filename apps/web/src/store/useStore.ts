@@ -1818,9 +1818,14 @@ export const useStore = create<State>((set, get) => ({
     const owner = get().user?.id
     const epoch = get().accountEpoch
     const ownsAccount = () => owner === get().user?.id && epoch === get().accountEpoch
-    // A retry resends the original turn's options, not just its sentence.
+    // A retry resends the original turn's options, not just its sentence. The file it was asked
+    // as is not taken from here: the server keeps it on the turn (`turnOptions.outputFormat`)
+    // and reuses it when the retry names none, so it survives a reload.
     const again = opts.retryOf ? sentWith.get(opts.retryOf) : undefined
-    if (again) opts = { ...again, ...opts }
+    if (again) {
+      const { outputFormat: _kept, ...rest } = again
+      opts = { ...rest, ...opts }
+    }
     const fresh = sessionId ? null : await get().newSession(kind, { projectId: opts.projectId ?? null })
     let id: string
     try {
