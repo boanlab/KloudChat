@@ -8,7 +8,7 @@ This is the **Users · Credits** screen in the Manage menu. The top of the scree
 
 ## Approving sign-ups
 
-If the sign-up method is **Use after approval**, new accounts build up as waiting for approval and the account menu shows "N waiting for approval". Press **Approve** on a row to approve the account immediately with the default plan credits. The model gateway user and key are created at that point. Handle accounts you will not approve with **Reject**. An account that has not completed email verification shows a **Mail not verified** badge. Approving the account counts the verification as complete. Selecting several at once is not supported, so you have to approve each account individually.
+If the sign-up method is **Use after approval**, new accounts build up as waiting for approval and the account menu shows "N waiting for approval". Press **Approve** on a row to approve the account immediately with the default plan credits. The model gateway user and key are created at that point. Handle accounts you will not approve with **Reject**. An account that has not completed email verification shows a **Mail not verified** badge. Approving the account counts the verification as complete. To handle several accounts at once, tick them with the checkboxes at the start of the rows and press **Approve selected** or **Reject selected** in the bar that appears (only the selected accounts awaiting approval are handled).
 
 ## Management items per user
 

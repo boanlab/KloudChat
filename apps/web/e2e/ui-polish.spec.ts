@@ -82,13 +82,17 @@ type Fixture = {
   puts: Record<string, unknown>[]
   auditAsks: URLSearchParams[]
   exports: string[]
+  decided: string[]
   state: { expired: boolean }
 }
+
+const pendingUser = (id: string, name: string) => ({ ...admin, id, name, email: `${id}@example.test`, role: 'user',
+  status: 'pending', lastActiveAt: null, emailVerifiedAt: null })
 
 async function adminFixture(page: Page, info: TestInfo): Promise<Fixture> {
   const origin = new URL(String(info.project.use.baseURL)).origin
   const fx: Fixture = {
-    unexpected: [], puts: [], auditAsks: [], exports: [], state: { expired: false },
+    unexpected: [], puts: [], auditAsks: [], exports: [], decided: [], state: { expired: false },
     governance: {
       piiMasking: false, externalDataGuard: true, internalDataStrictLocal: true, allowUserRawExternal: false,
       privacySafeModelIds: ['strict-local/c', 'strict-local/a'], intentFilter: false, blockedCategories: [],
@@ -97,6 +101,7 @@ async function adminFixture(page: Page, info: TestInfo): Promise<Fixture> {
     },
   }
   let refreshes = 0
+  const people = [admin, pendingUser('p1', '대기 하나'), pendingUser('p2', '대기 둘')]
   page.on('pageerror', (error) => fx.unexpected.push(`pageerror: ${error.message}`))
   await page.context().routeWebSocket('**/*', (socket) => socket.close())
   await page.context().route('**/*', async (route) => {
@@ -147,9 +152,17 @@ async function adminFixture(page: Page, info: TestInfo): Promise<Fixture> {
         body: '﻿name,email\r\n',
       })
     }
+    const decide = /^\/admin\/users\/([^/]+)\/(approve|reject)$/.exec(path)
+    if (method === 'POST' && decide) {
+      fx.decided.push(`${decide[2]} ${decide[1]}`)
+      const row = people.find((p) => p.id === decide[1])!
+      row.status = decide[2] === 'approve' ? 'active' : 'suspended'
+      return json(row)
+    }
     if (method === 'GET' && path === '/admin/users/page') {
-      return json({ items: [admin], total: 1, page: 1, limit: 50,
-        counts: { all: 1, pending: 0, active: 1, suspended: 0 },
+      const count = (s: string) => people.filter((p) => p.status === s).length
+      return json({ items: people, total: people.length, page: 1, limit: 50,
+        counts: { all: people.length, pending: count('pending'), active: count('active'), suspended: count('suspended') },
         summary: { users: 1, pending: 0, creditsGranted: 1000, creditsUsed: 0, nextReset: '2099-11-01T00:00:00.000Z' } })
     }
     if (method === 'GET' && path === '/admin/models') return json(MODELS.map(({ id, label, kinds }) => ({ id, label, kinds })))
@@ -332,4 +345,22 @@ test('the privacy card lets the person pick which strict-local model takes the t
   await expect.poll(() => sent.at(-1)?.privacyModelId).toBe('strict-local/a')
   expect(sent.at(-1)?.privacyAction).toBe('route_strict_local')
   expect(unexpected).toEqual([])
+})
+
+test('pending sign-ups are approved together from a selection', async ({ page }, info) => {
+  const fx = await adminFixture(page, info)
+  await page.goto('/admin/users')
+  await expect(page.getByTestId('users-range')).toBeVisible({ timeout: 15_000 })
+  await page.getByRole('checkbox', { name: '이 페이지 전체 선택' }).check()
+  const bar = page.getByTestId('users-bulk')
+  await expect(bar).toContainText('3명 선택')
+  await expect(bar).toContainText('승인 대기 2명')
+  await bar.getByRole('button', { name: '선택 승인' }).click()
+  const dialog = page.getByRole('dialog', { name: '2명을 승인할까요?' })
+  await dialog.getByRole('button', { name: '승인' }).click()
+  await expect(page.getByText('2명을 승인했습니다.')).toBeVisible()
+  // The admin's own active account was skipped.
+  expect(fx.decided).toEqual(['approve p1', 'approve p2'])
+  await expect(bar).toBeHidden()
+  expect(fx.unexpected).toEqual([])
 })

@@ -229,6 +229,34 @@ export function AdminUsersPage() {
   }, [answered, usersPage, page, pages])
 
   const [exporting, setExporting] = useState(false)
+  // Rows ticked on this page; a pending sign-up queue is approved or rejected in one go.
+  const [ticked, setTicked] = useState<Set<string>>(new Set())
+  const [bulk, setBulk] = useState<'approve' | 'reject' | null>(null)
+  const [bulkDone, setBulkDone] = useState<string | null>(null)
+  useEffect(() => setTicked(new Set()), [filter, q, sort, order, page])
+  const tickedRows = users.filter((u) => ticked.has(u.id))
+  const tickedPending = tickedRows.filter((u) => u.status === 'pending')
+  const allTicked = users.length > 0 && users.every((u) => ticked.has(u.id))
+  const tick = (id: string) =>
+    setTicked((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  const runBulk = async (kind: 'approve' | 'reject') => {
+    const rows = tickedPending
+    setBulk(null)
+    let done = 0
+    for (const u of rows) {
+      await run(u.id, () => (kind === 'approve' ? approveUser(u.id, PLANS[0].credits) : rejectUser(u.id)))
+      done += 1
+    }
+    setTicked(new Set())
+    setBulkDone(
+      (kind === 'approve' ? t('{n}명을 승인했습니다.') : t('{n}명의 가입을 반려했습니다.')).replace('{n}', String(done)),
+    )
+  }
   const exportCsv = async () => {
     setExporting(true)
     try {
@@ -355,12 +383,79 @@ export function AdminUsersPage() {
           </div>
         </div>
 
+        {bulkDone && (
+          <p role="status" className="mb-3 rounded-control border border-line bg-elevated px-3 py-2 text-base text-muted">
+            {bulkDone}
+          </p>
+        )}
+        {ticked.size > 0 && (
+          <div
+            className="mb-3 flex flex-wrap items-center gap-2 rounded-card border border-accent/30 bg-accent/5 px-3 py-2"
+            data-testid="users-bulk"
+          >
+            <span className="text-base font-medium">{t('{n}명 선택').replace('{n}', String(tickedRows.length))}</span>
+            <span className="text-sm text-faint">
+              {t('승인 대기 {n}명').replace('{n}', String(tickedPending.length))}
+            </span>
+            <div className="ml-auto flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="primary"
+                disabled={tickedPending.length === 0 || busy.length > 0}
+                title={tickedPending.length === 0 ? t('고른 계정 중 승인 대기인 계정이 없습니다') : undefined}
+                onClick={() => setBulk('approve')}
+              >
+                <Check size={13} />
+                {t('선택 승인')}
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                disabled={tickedPending.length === 0 || busy.length > 0}
+                title={tickedPending.length === 0 ? t('고른 계정 중 승인 대기인 계정이 없습니다') : undefined}
+                onClick={() => setBulk('reject')}
+              >
+                <X size={13} />
+                {t('선택 반려')}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setTicked(new Set())}>
+                {t('선택 해제')}
+              </Button>
+            </div>
+          </div>
+        )}
+        <ConfirmDialog
+          open={bulk !== null}
+          onClose={() => setBulk(null)}
+          onConfirm={() => bulk && void runBulk(bulk)}
+          title={
+            bulk === 'approve'
+              ? t('{n}명을 승인할까요?').replace('{n}', String(tickedPending.length))
+              : t('{n}명의 가입을 반려할까요?').replace('{n}', String(tickedPending.length))
+          }
+          description={
+            bulk === 'approve'
+              ? t('기본 플랜 크레딧으로 승인하고 각 계정의 게이트웨이 키를 만듭니다. 승인 대기가 아닌 계정은 건너뜁니다.')
+              : t('반려한 계정은 정지 상태가 되어 로그인할 수 없습니다. 승인 대기가 아닌 계정은 건너뜁니다.')
+          }
+          confirmLabel={bulk === 'approve' ? t('승인') : t('반려')}
+        />
         <Card className="overflow-hidden">
           {/* Scroll box inside the card: card keeps `overflow-hidden` for rounded corners. */}
           <div className="overflow-x-auto">
             <table className="w-full text-base">
             <thead className="bg-elevated text-xs tracking-wide text-faint uppercase">
               <tr>
+                <th scope="col" className="w-10 pl-3">
+                  <input
+                    type="checkbox"
+                    className="size-4 cursor-pointer accent-[var(--accent)]"
+                    aria-label={t('이 페이지 전체 선택')}
+                    checked={allTicked}
+                    disabled={users.length === 0}
+                    onChange={() => setTicked(allTicked ? new Set() : new Set(users.map((u) => u.id)))}
+                  />
+                </th>
                 {(
                   [
                     ['name', t('사용자')],
@@ -389,7 +484,7 @@ export function AdminUsersPage() {
             <tbody>
               {visible.length === 0 && (
                 <tr className="border-t border-line">
-                  <td colSpan={5} className="px-4 py-10 text-center text-base text-faint">
+                  <td colSpan={6} className="px-4 py-10 text-center text-base text-faint">
                     {usersLoading ? (
                       <Loader2 size={16} className="mx-auto animate-spin" />
                     ) : !usersPage ? (
@@ -401,7 +496,16 @@ export function AdminUsersPage() {
                 </tr>
               )}
               {visible.map((u) => (
-                <tr key={u.id} className="border-t border-line">
+                <tr key={u.id} className={cn('border-t border-line', ticked.has(u.id) && 'bg-accent/5')}>
+                  <td className="w-10 pl-3">
+                    <input
+                      type="checkbox"
+                      className="size-4 cursor-pointer accent-[var(--accent)]"
+                      aria-label={t('{name} 선택').replace('{name}', u.name)}
+                      checked={ticked.has(u.id)}
+                      onChange={() => tick(u.id)}
+                    />
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2.5">
                       <span
