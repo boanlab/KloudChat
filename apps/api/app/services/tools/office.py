@@ -54,6 +54,9 @@ class Toolset:
     write_text: str = ""
     write_params: dict[str, Any] | None = None
     build: Callable[[dict[str, Any], Any], tuple[str, bytes]] | None = None
+    #: a kind whose look is resolved its own way (PowerPoint's slides template): awaited with
+    #: (db, ctx) before `build`, its result given to `build` as the look
+    look_for: Callable[[Any, Any], Any] | None = None
 
 
 #: ops that put a picture in: their `file` names one of the person's image files
@@ -298,6 +301,9 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool, Tool]:
         try:
             # the conversation's theme and report template (`office_look`)
             look = office_look.of(ctx.look)
+            if kit.look_for is not None:
+                async with kit.session() as db:
+                    look = await kit.look_for(db, ctx)
             title, data = (kit.build(args, look) if kit.build
                            else _paragraph_write(kit, args, look))
         except ValueError as exc:

@@ -315,8 +315,13 @@ async def _pptx_surface(db: AsyncSession, user: User, session: ChatSession) -> N
     client sends the request with the pick and nothing else."""
     if session.kind is not SessionKind.slides or session.artifact_id:
         return
+    blank = pptx_doc.blank()
+    if project_look := getattr(pptx_doc, "project_look", None):
+        # the project's theme and slides template (the conversation's pick first)
+        tokens, template = await project_look(db, user, session)
+        blank = pptx_doc.blank(tokens=tokens, template=template or "")
     made = await pptx_doc.create(db, user_id=user.id, title="PowerPoint 문서",
-                                 data=pptx_doc.blank(), session_id=session.id,
+                                 data=blank, session_id=session.id,
                                  project_id=session.project_id)
     session.artifact_id = made.id
     db.add(session)

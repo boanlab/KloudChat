@@ -24,9 +24,25 @@ _OP_HELP = (
 )
 
 
+async def _look(db: Any, ctx: Any) -> tuple[dict | None, str] | None:
+    """The deck's theme and slides template: the conversation's pick, else the project's
+    (`pptx_doc.project_look`, where the slides surface defines it)."""
+    project_look = getattr(pptx_doc, "project_look", None)
+    if project_look is None:
+        return None
+    from app.models.chat import ChatSession
+    from app.models.user import User
+
+    user = await db.get(User, ctx.user_id)
+    session = await db.get(ChatSession, ctx.session_id) if ctx.session_id else None
+    if user is None:
+        return None
+    return await project_look(db, user, session)
+
+
 def _build(args: dict[str, Any], look: Any = None) -> tuple[str, bytes]:
-    """A new deck from the arguments; `look` (the conversation's theme and template) is for
-    `pptx_doc.deck` once it takes one (the slides surface owns that)."""
+    """A new deck from the arguments, in `look` (`_look`: theme tokens and template) when
+    `pptx_doc.deck` takes one."""
     title = " ".join(str(args.get("title") or "").split())[:120]
     raw = args.get("slides")
     slides = [s for s in raw if isinstance(s, dict)] if isinstance(raw, list) else []
@@ -44,7 +60,17 @@ def _build(args: dict[str, Any], look: Any = None) -> tuple[str, bytes]:
             raise ValueError(f"slides[{index}].rows는 [[머리 칸, …], [값, …]] 꼴입니다.")
     subtitle = " ".join(str(args.get("subtitle") or "").split())[:200]
     closing = " ".join(str(args.get("closing") or "").split())[:80]
+    if isinstance(look, tuple) and _takes_look():
+        tokens, template = look
+        return title, pptx_doc.deck(title, subtitle, slides, closing, tokens=tokens,
+                                    template=template or "")
     return title, pptx_doc.deck(title, subtitle, slides, closing)
+
+
+def _takes_look() -> bool:
+    import inspect
+
+    return "tokens" in inspect.signature(pptx_doc.deck).parameters
 
 
 TOOLS = tools_for(Toolset(
@@ -154,6 +180,7 @@ TOOLS = tools_for(Toolset(
         "required": ["title", "slides"],
     },
     build=_build,
+    look_for=_look,
 ))
 PPTX_READ, PPTX_EDIT, PPTX_WRITE, PPTX_RESTORE = TOOLS
 pptx_read, pptx_edit, pptx_write, pptx_restore = (tool.run for tool in TOOLS)
