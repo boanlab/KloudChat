@@ -55,7 +55,8 @@ def test_dated_snapshot_does_not_hide_another_present_request(prompt):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("mode", list(RoutingMode))
+#: `super_strict` answers only on a strict-local model; these catalogues offer none
+@pytest.mark.parametrize("mode", [m for m in RoutingMode if m is not RoutingMode.super_strict])
 async def test_current_year_request_gets_a_best_effort_model_answer(monkeypatch, mode):
     user = User(email="synthetic@example.test", password_hash="hash", name="Synthetic")
     model = {**_external_model("synthetic/qwen"), "supportsTools": True}

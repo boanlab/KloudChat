@@ -9,6 +9,7 @@ import logging
 import re
 import time
 from collections.abc import AsyncIterator, Callable
+from contextvars import ContextVar
 from copy import deepcopy
 from typing import Any, Literal, TypedDict
 from zoneinfo import ZoneInfo
@@ -37,6 +38,12 @@ from app.services.tools import arithmetic, deferred
 from app.services.tools.base import SearchEvidence, Tool, ToolContext, ToolResult, to_openai
 
 log = logging.getLogger(__name__)
+
+#: The turn's routed writer and its reasoning fields (`super_agent.reasoning_fields`), set for
+#: the turn's task; writer calls of that model use them instead of the deployment setting.
+TURN_REASONING: ContextVar[tuple[str, dict[str, Any]] | None] = ContextVar(
+    "turn_reasoning", default=None
+)
 
 
 class ToolResultAnswerEvent(TypedDict):
@@ -213,6 +220,12 @@ async def _stream_once(
     if not self_hosted and not roles.external_thinking:
         # `thinking.switch` skips providers that refused.
         payload.update(thinking.switch(model))
+    override = TURN_REASONING.get()
+    if override is not None and override[0] == model and not capped_reasoning:
+        # the router's effort for this class replaces the deployment-wide switch
+        payload.pop("reasoning", None)
+        payload.pop("chat_template_kwargs", None)
+        payload.update(deepcopy(override[1]))
     if capped_reasoning:
         # an uncapped retry can spend every output token on reasoning and answer nothing
         payload.update(thinking.template_switch(model) if self_hosted

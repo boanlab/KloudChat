@@ -59,6 +59,7 @@ ACTIONS: frozenset[str] = frozenset(
         "filter.blocked",
         "pii.masked",
         "routing.auto",
+        "routing.super",
         "privacy.none",
         "privacy.decision_required",
         "privacy.internal_strict_local",

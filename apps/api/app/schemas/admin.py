@@ -147,6 +147,9 @@ class GovernanceIn(Wire):
     adaptive_quality_enabled: bool | None = None
     adaptive_quality_model_ids: list[str] | None = Field(default=None, max_length=3)
     internal_data_strict_local: bool | None = None
+    super_agent_enabled: bool | None = None
+    #: class → {model, strictModel, effort}; validated against the live catalogue
+    super_agent_rules: dict[str, dict[str, str]] | None = Field(default=None, max_length=20)
     outline_model_id: str | None = Field(default=None, max_length=200)
     intent_filter: bool | None = None
     blocked_categories: list[str] | None = None
