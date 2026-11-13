@@ -24,7 +24,7 @@ from app.models.workspace import (
     Visibility,
 )
 from app.schemas.auth import Preferences
-from app.services import asked_form, output_language, pictures, starter
+from app.services import asked_form, output_language, pictures, source_selection, starter
 from app.services import design as design_service
 from app.services import files as file_service
 from app.services import knowledge as knowledge_service
@@ -335,8 +335,10 @@ async def _project_knowledge(
     project: Project | None,
     focus: str = "",
     budget: int | None = None,
+    off: set[str] | None = None,
 ) -> tuple[str, list[ContextFile]]:
-    """Untrusted project knowledge within `budget`, with fates."""
+    """Untrusted project knowledge within `budget`, with fates; `off`: the sources the
+    conversation switched off (`source_selection`), left out entirely."""
     if project is None:
         return "", []
 
@@ -350,6 +352,7 @@ async def _project_knowledge(
             .order_by(col(StoredFile.created_at))
         )
     ).all()
+    files = source_selection.keep(files, off or set())
     readable = [f for f in files if f.text]
     # Fits budget → whole; else passage search.
     total = sum(len(f.text) for f in readable)
@@ -1147,7 +1150,8 @@ async def assemble(
         whole_budget, sum(f.kept_chars for f in (*attached_files, *carried_files))
     )
     knowledge, knowledge_files = await _project_knowledge(
-        db, user, project, focus or question, knowledge_budget
+        db, user, project, focus or question, knowledge_budget,
+        off=await source_selection.excluded(db, session.id) if project is not None else None,
     )
     if knowledge:
         blocks.append(ContextBlock("project.knowledge", knowledge, False))

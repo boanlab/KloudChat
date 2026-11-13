@@ -140,6 +140,7 @@ from app.services import (
     settings_store,
     skill_specs,
     skill_turn,
+    source_selection,
     starter,
     stop_signal,
     user_templates,
@@ -342,6 +343,8 @@ async def _knowledge_shelf(
             .order_by(col(StoredFile.created_at))
         )
     ).all()
+    # project sources the conversation switched off (지식 서가) are not searched
+    rows = source_selection.keep(rows, await source_selection.excluded(db, session.id))
     shelf = [
         (row.name, row.text, row.source_url)
         for row in rows

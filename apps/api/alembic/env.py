@@ -16,6 +16,7 @@ from app.models import issues as _issue_models  # noqa: F401
 from app.models import metrics as _metric_models  # noqa: F401
 from app.models import publishing as _publishing_models  # noqa: F401
 from app.models import settings as _settings_models  # noqa: F401
+from app.models import shelf as _shelf_models  # noqa: F401
 from app.models import user as _user_models  # noqa: F401
 from app.models import workspace as _workspace_models  # noqa: F401
 
