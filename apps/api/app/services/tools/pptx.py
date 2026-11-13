@@ -24,7 +24,9 @@ _OP_HELP = (
 )
 
 
-def _build(args: dict[str, Any]) -> tuple[str, bytes]:
+def _build(args: dict[str, Any], look: Any = None) -> tuple[str, bytes]:
+    """A new deck from the arguments; `look` (the conversation's theme and template) is for
+    `pptx_doc.deck` once it takes one (the slides surface owns that)."""
     title = " ".join(str(args.get("title") or "").split())[:120]
     raw = args.get("slides")
     slides = [s for s in raw if isinstance(s, dict)] if isinstance(raw, list) else []

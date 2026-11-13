@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from types import ModuleType
 from typing import Any
 
-from app.services import doc_formats, office_doc
+from app.services import doc_formats, office_doc, office_look
 from app.services.office_edit import OPS
 from app.services.tools.base import Tool, ToolContext, ToolResult
 
@@ -53,7 +53,7 @@ class Toolset:
                                            "insert_picture"})
     write_text: str = ""
     write_params: dict[str, Any] | None = None
-    build: Callable[[dict[str, Any]], tuple[str, bytes]] | None = None
+    build: Callable[[dict[str, Any], Any], tuple[str, bytes]] | None = None
 
 
 #: ops that put a picture in: their `file` names one of the person's image files
@@ -148,7 +148,8 @@ def _with_replace(params: dict[str, Any]) -> dict[str, Any]:
     }}}
 
 
-def _paragraph_write(kit: Toolset, args: dict[str, Any]) -> tuple[str, bytes]:
+def _paragraph_write(kit: Toolset, args: dict[str, Any],
+                     look: Any = None) -> tuple[str, bytes]:
     """A paragraph kind's new document: a `doc_formats` head over a markdown body."""
     title = " ".join(str(args.get("title") or "").split())[:120]
     body = str(args.get("body") or "").strip()
@@ -160,7 +161,8 @@ def _paragraph_write(kit: Toolset, args: dict[str, Any]) -> tuple[str, bytes]:
         raise ValueError(f"format은 {', '.join(FORMATS)} 중 하나입니다.")
     fields = {str(k): str(v) for k, v in raw.items() if str(v or "").strip()}
     data = (
-        kit.doc.plain(title, body) if fmt == "plain" else kit.doc.official(title, body, fields, fmt)
+        kit.doc.plain(title, body, look=look) if fmt == "plain"
+        else kit.doc.official(title, body, fields, fmt, look=look)
     )
     return title, data
 
@@ -294,7 +296,10 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool, Tool]:
 
     async def write(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
         try:
-            title, data = (kit.build or (lambda a: _paragraph_write(kit, a)))(args)
+            # the conversation's theme and report template (`office_look`)
+            look = office_look.of(ctx.look)
+            title, data = (kit.build(args, look) if kit.build
+                           else _paragraph_write(kit, args, look))
         except ValueError as exc:
             return ToolResult(content=str(exc), failed=True)
         except Exception as exc:  # noqa: BLE001 — a writer failure goes back to the model

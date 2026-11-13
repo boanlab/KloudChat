@@ -132,6 +132,7 @@ from app.services import (
     office_claims,
     office_doc,
     office_edit,
+    office_look,
     output_language,
     pptx_doc,
     prompt_tier,
@@ -4813,6 +4814,7 @@ async def _send_message(
     #: the one the pre-read and the chapter count read: open beside the chat, else the
     #: conversation's only one; several and none open, none (the tools ask which)
     office_target: Artifact | None = None
+    office_look_wire: dict | None = None
     if kind is SessionKind.chat and requested_model.get("supportsTools"):
         every: list[Artifact] = []
         for name, service, _ in _OFFICE if published is None else ():
@@ -4824,6 +4826,14 @@ async def _send_message(
             opened if opened is not None and opened in every
             else every[0] if len(every) == 1 else None
         )
+        if published is None and (every or any(asks.search(content) for *_, asks in _OFFICE)):
+            # what the office tools write takes the project's theme and report template
+            # (the conversation's own template first)
+            look = await office_look.for_project(
+                db, user, await db.get(Project, session.project_id)
+                if session.project_id else None, session.render_template_id or "")
+            office_look_wire = (
+                {"tokens": look.tokens, "templateId": look.template_id} if look else None)
         office_open = {
             name: published is None and (bool(asks.search(content)) or name in office_documents)
             for name, _, asks in _OFFICE
@@ -6022,6 +6032,7 @@ async def _send_message(
                     {"id": opened.id, "version": opened.version} if opened is not None else None
                 ),
                 standing=list(standing_rules),
+                look=office_look_wire,
                 check_options=check_options,
                 # agent's 담당 부서·연락처 may be repeated verbatim
                 check_material="\n".join([*workspace.untrusted, *(
@@ -6534,6 +6545,8 @@ async def _answer_turn(
     open_artifact: dict | None = None,
     #: rules the person set for the whole conversation (`standing_directives`)
     standing: list[str] | None = None,
+    #: the theme and report template office documents are written in (`office_look`)
+    look: dict | None = None,
     #: agent's `check_options`: trace strictness
     check_options: dict | None = None,
     #: attached/carried file text: also a valid value source
@@ -6595,6 +6608,7 @@ async def _answer_turn(
         own_scripts=dict(own_scripts or {}),
         open_artifact=dict(open_artifact or {}),
         standing=list(standing or []),
+        look=dict(look or {}),
         # latest user message, not the opening line
         request=next(
             (
