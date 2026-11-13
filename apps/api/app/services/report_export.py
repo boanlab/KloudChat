@@ -644,6 +644,15 @@ _OFFICIAL_ITEM = re.compile(
     rf"^(?:(?P<hangul>[가-하])\.|{_OFFICIAL_PAREN}(?P<paren>\d{{1,2}})\)|(?P<hparen>[가-하])\))\s+(?P<text>.+)$")
 
 
+#: an item marker the writer typed after the one the format gives (「가. 1. 목적」)
+_TYPED_MARKER = re.compile(r"^(?:\d{1,2}[.)]|[가-하][.)]|\(\d{1,2}\)|\([가-하]\))\s{1,4}(?=\S)")
+
+
+def _untyped(text: Any) -> Any:
+    """`text` without a second, typed item marker at its start: one number per item."""
+    return _TYPED_MARKER.sub("", text, count=1) if isinstance(text, str) else text
+
+
 def _official_lines(content: str, grids) -> list[tuple[str, Any, str, int]]:
     """공문 body lines: 1. / 가. / 1) / 가) as hanging items indented by level (규칙 제2조),
     not a Markdown list beside flush-left 가. lines; ※ under the item above."""
@@ -654,14 +663,17 @@ def _official_lines(content: str, grids) -> list[tuple[str, Any, str, int]]:
     for kind, text, marker, depth in _markdown_to_lines(marked, grids):
         if kind == "number":
             level = min(depth, 3)
-            out.append(("gaejo", text, marker, level))
+            out.append(("gaejo", _untyped(text), marker, level))
             continue
         if kind == "body" and (item := _OFFICIAL_ITEM.match(str(text))):
             level = 1 if item.group("hangul") else 2 if item.group("paren") else 3
             mark = (f"{item.group('hangul')}." if item.group("hangul") else
                     f"{item.group('paren')})" if item.group("paren") else f"{item.group('hparen')})")
-            out.append(("gaejo", item.group("text").strip(), mark, level))
+            out.append(("gaejo", _untyped(item.group("text").strip()), mark, level))
             continue
+        if kind == "heading":
+            # the heading's own number comes from the format; one the writer typed goes
+            text = _untyped(str(text))
         if kind == "body" and str(text).startswith("※"):
             out.append(("remark", str(text)[1:].strip(), "※", max(level + 1, 0)))
             continue

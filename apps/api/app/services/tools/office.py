@@ -534,10 +534,13 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool, Tool]:
             "body: markdown; the title is printed above it, so the body does not repeat a 제목 "
             "line. For 'official' write items as lines like `1. 관련: …`, `2. …`, "
             "`  가. 일시: …`, and attachments as an unnumbered last line "
-            "`붙임  1. 연수 일정표 1부.` (more on following lines); 「끝.」 is added for you. "
+            "`붙임  1. 연수 일정표 1부.` (more on following lines) when the person named one; "
+            "「끝.」 is added for you. "
             "Never invent names, dates, places or numbers: write a bracket blank named for what "
             "goes there, such as 「[기관명]」, 「[연수 일시]」, 「[장소]」, instead; and add no "
-            "items the request does not call for (costs, penalties, procedures)."
+            "items the request does not call for (costs, penalties, procedures); write a 붙임 line "
+            "only for attachments the person named. Number items once: the format numbers "
+            "them (write `1. 관련`, never `가. 1. 관련`)."
         )) + _REPLACE.format(p=p),
         parameters=_with_replace(kit.write_params or {
             "type": "object",
