@@ -214,6 +214,14 @@ def with_references(
 _ROW = re.compile(r"^\s*\|(.+)\|\s*$")
 _IMAGE = re.compile(r"^\s*!\[([^\]]*)\]\(([^)]+)\)\s*$")
 _FENCE = re.compile(r"^\s*```\s*([A-Za-z0-9_-]*)\s*$")
+#: a horizontal rule; a document file draws none
+_THEMATIC = re.compile(r"^\s{0,3}(?:-\s*){3,}$|^\s{0,3}(?:\*\s*){3,}$|^\s{0,3}(?:_\s*){3,}$")
+#: a quotation line, written as its text
+_QUOTE = re.compile(r"^\s{0,3}>\s?(.*)$")
+#: an HTML comment other than a page break
+_COMMENT = re.compile(r"^\s*<!--.*-->\s*$")
+#: a task-list box at the start of an item
+_TASK = re.compile(r"^\[([ xX])\]\s+")
 _PAGE_BREAK = re.compile(r"^\s*<!--\s*pagebreak\s*-->\s*$", re.I)
 
 
@@ -413,6 +421,16 @@ def _markdown_to_lines(
     out: list[tuple[str, Any, str, int]] = []
     number = 0
     counts: dict[int, int] = {}
+    #: indents of the open list levels: a child sits under its parent's text,
+    #: two spaces under 「- 」, three under 「1. 」
+    indents: list[int] = []
+
+    def level_at(indent: int) -> int:
+        while indents and indents[-1] > indent:
+            indents.pop()
+        if not indents or indents[-1] < indent:
+            indents.append(indent)
+        return len(indents) - 1
     rows: list[list[str]] = []
     table_source: list[str] = []
     plain_source: list[str] = []
@@ -497,6 +515,13 @@ def _markdown_to_lines(
             if not rows:
                 close_table()
             continue
+        if not rows and (_THEMATIC.match(line) or _COMMENT.match(line)):
+            close_table()
+            continue
+        if quoted := _QUOTE.match(line):
+            line = quoted.group(1).rstrip()
+            if not line:
+                continue
         if _RULE.match(line) and rows and (not spare or "-" in line):
             # HTML grids: empty rows for covered cells; second rule row starts a new table
             if ruled:
@@ -530,20 +555,23 @@ def _markdown_to_lines(
         if heading := re.match(r"^#{2,6}\s+(.*)$", line):
             number = 0
             counts.clear()
+            indents.clear()
             out.append(("heading", heading.group(1).strip(), "", 0))
         elif note := _NOTE.match(line):
             number = 0
             counts.clear()
+            indents.clear()
             out.append(("note", note.group(2).strip(), note.group(1), 0))
         elif bullet := re.match(r"^(\s*)[-*+]\s+(.*)$", line):
             number = 0
             counts.clear()
-            depth = min(len(bullet.group(1)) // 2, levels - 1)
-            out.append(
-                ("bullet", bullet.group(2).strip(), _MARKERS[min(depth, len(_MARKERS) - 1)], depth)
+            depth = min(level_at(len(bullet.group(1))), levels - 1)
+            item = _TASK.sub(
+                lambda box: "☑ " if box.group(1) in "xX" else "☐ ", bullet.group(2).strip()
             )
+            out.append(("bullet", item, _MARKERS[min(depth, len(_MARKERS) - 1)], depth))
         elif numbered := re.match(r"^(\s*)(\d{1,9})[.)]\s+(.*)$", line):
-            depth = min(len(numbered.group(1)) // 2, len(_MARKERS) - 1)
+            depth = min(level_at(len(numbered.group(1))), len(_MARKERS) - 1)
             # per-level counts; `is None` since a list may start at 0
             counts[depth] = (
                 counts[depth] + 1 if counts.get(depth) is not None else int(numbered.group(2))
@@ -555,6 +583,7 @@ def _markdown_to_lines(
         else:
             number = 0
             counts.clear()
+            indents.clear()
             out.append(("body", line.strip(), "", 0))
     close_table()
     if fence:
@@ -757,45 +786,44 @@ def _section_lines(
 
 
 def _strip_inline(text: str) -> str:
-    """Inline markers stripped; code spans may not open/close on a space."""
+    """Inline markers and Markdown escapes stripped; code spans may not open/close on a space."""
     text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
-    text = re.sub(r"(?<!\w)\*(.+?)\*(?!\w)", r"\1", text)
-    return re.sub(r"`(\S(?:[^`]*\S)?)`", r"\1", text)
+    text = re.sub(r"(?<![\w\\])\*(.+?)(?<!\\)\*(?!\w)", r"\1", text)
+    text = re.sub(r"~~(.+?)~~", r"\1", text)
+    text = re.sub(r"`(\S(?:[^`]*\S)?)`", r"\1", text)
+    return _UNESCAPE.sub(r"\1", text)
 
 
-_BOLD = re.compile(r"\*\*(.+?)\*\*")
+#: a Markdown backslash escape (「\*」, 「\[」), which the editor writes before literal markup
+_UNESCAPE = re.compile(r"\\([!-/:-@\[-`{-~])")
+#: `**bold**`, `*italic*`, `~~strike~~`, one level deep
+_EMPHASIS = re.compile(
+    r"\*\*(?P<bold>.+?)\*\*|~~(?P<strike>.+?)~~|(?<![\w*\\])\*(?P<italic>[^*\s](?:.*?[^*\s])?)\*(?![\w*])"
+)
+_EMPHASIS_STYLE = {
+    "bold": {"font-weight": "bold"},
+    "italic": {"font-style": "italic"},
+    "strike": {"text-decoration": "line-through"},
+}
 
 
 def _emphasis(text: str, finish: Callable[[str], str] = lambda part: part) -> dict | None:
-    """A Markdown line's `**bold**` as runs in `_next_format`'s block shape, or None when it
-    has none; a line with a link keeps the link writer instead."""
-    if "://" in text or not _BOLD.search(text):
+    """A Markdown line's bold, italic and strikethrough as styled runs, or None when it has
+    none; a line with a link keeps the link writer instead."""
+    if "://" in text or not _EMPHASIS.search(text):
         return None
     runs: list[dict] = []
     cursor = 0
-    for found in _BOLD.finditer(text):
+    for found in _EMPHASIS.finditer(text):
         if before := finish(_strip_inline(text[cursor:found.start()])):
             runs.append({"text": before, "style": {}})
-        runs.append({"text": finish(_strip_inline(found.group(1))),
-                     "style": {"font-weight": "bold"}})
+        kind = found.lastgroup or "bold"
+        runs.append({"text": finish(_strip_inline(found.group(kind))),
+                     "style": dict(_EMPHASIS_STYLE[kind])})
         cursor = found.end()
     if rest := finish(_strip_inline(text[cursor:])):
         runs.append({"text": rest, "style": {}})
     return {"runs": runs}
-
-
-def _format_key(text: str) -> str:
-    return re.sub(r"\s+", " ", _strip_inline(str(text))).strip()
-
-
-def _next_format(blocks: list[dict], text: str, cursor: int) -> tuple[dict | None, int]:
-    """Next editable-HTML block for a prose line, in document order."""
-    wanted = _format_key(text)
-    for index in range(cursor, len(blocks)):
-        block = blocks[index]
-        if _format_key(str(block.get("text") or "")) == wanted:
-            return block, index + 1
-    return None, cursor
 
 
 def _docx_styled(paragraph, block: dict, fallback: str) -> None:
@@ -2227,8 +2255,6 @@ def to_docx(
             )
             visualise_heading(section_heading, 1)
         lines = _section_lines(section, head_block, at == closing_at, "  ")
-        formatted = list(section.get("_formatting") or [])
-        format_cursor = 0
         #: notes read ahead, written after the citing sentence
         notes = {mark: str(body) for kind, body, mark, _ in lines if kind == "note"}
         cited: set[str] = set()
@@ -2281,8 +2307,7 @@ def to_docx(
                 if marker not in cited:
                     document.add_paragraph(clean, style=_BODY)
                 continue
-            block, format_cursor = _next_format(formatted, clean, format_cursor)
-            block = block or _emphasis(text)
+            block = _emphasis(text)
             if kind == "heading":
                 paragraph = document.add_heading("", level=2)
                 if number := numbers.next(2):
@@ -3173,8 +3198,6 @@ def to_pdf(
                 )
             )
         notes: list[tuple[str, str]] = []
-        formatted = list(section.get("_formatting") or [])
-        format_cursor = 0
         # non-breaking: reportlab folds plain spaces
         for kind, text, marker, depth in _section_lines(
             section, head_block, index == closing_at, "\u00a0\u00a0"
@@ -3249,7 +3272,7 @@ def to_pdf(
                     )
                 continue
             plain = _strip_inline(text)
-            block, format_cursor = _next_format(formatted, plain, format_cursor)
+            block = _emphasis(text)
             clean = _MARK.sub(
                 lambda found: f"<super>{_escape(found.group(1))}</super>",
                 _escape(plain),
@@ -3325,7 +3348,7 @@ def to_pdf(
         pdf.saveState()
         pdf.setFont(korean, 8)
         pdf.setFillColor(HexColor("#777777"))
-        header = str(page_settings.get("header") or title)
+        header = _page_header(page_settings, title)
         if header and (page > 1 or bool(page_settings.get("firstPageHeader", False))):
             pdf.drawString(document.leftMargin, A4[1] - 10 * mm, header)
         footer = str(page_settings.get("footer") or "")
@@ -3902,17 +3925,45 @@ def _hwpx_para(text: str, para_pr: int, char_pr: int = 0) -> str:
     )
 
 
+def _page_header(page_settings: dict, title: str) -> str:
+    """The running header: the title by default; one cleared on purpose stays empty."""
+    if "header" in page_settings:
+        return str(page_settings.get("header") or "").strip()
+    return str(title or "").strip()
+
+
+def _hwpx_auto_number(kind: str) -> str:
+    """A live page number (`PAGE`) or page count (`TOTAL_PAGE`) in a run."""
+    return (
+        '<hp:run charPrIDRef="5"><hp:ctrl>'
+        f'<hp:autoNum num="1" numType="{kind}">'
+        '<hp:autoNumFormat type="DIGIT" userChar="" prefixChar="" suffixChar="" supscript="0"/>'
+        "</hp:autoNum></hp:ctrl></hp:run>"
+    )
+
+
 def _hwpx_page_furniture(title: str, page_settings: dict | None) -> str:
-    """Header, footer and page-number controls."""
+    """Header, footer and page-number controls; 「현재 / 전체」 is a live page and page count."""
     if not page_settings:
         return ""
-    header = str(page_settings.get("header") or title).strip()
+    header = _page_header(page_settings, title)
     footer = str(page_settings.get("footer") or "").strip()
+    numbering = str(page_settings.get("pageNumbers") or "page-total")
+    # current / total in the footer; Hancom's page-number control draws the page alone
+    count = (
+        '<hp:p paraPrIDRef="5" styleIDRef="0">'
+        + _hwpx_auto_number("PAGE")
+        + '<hp:run charPrIDRef="5"><hp:t> / </hp:t></hp:run>'
+        + _hwpx_auto_number("TOTAL_PAGE")
+        + "</hp:p>"
+        if numbering == "page-total"
+        else ""
+    )
 
-    def control(kind: str, text: str, identifier: int) -> str:
-        if not text:
+    def control(kind: str, text: str, identifier: int, extra: str = "") -> str:
+        if not text and not extra:
             return ""
-        paragraph = _hwpx_para(text, 3, 5)
+        paragraph = (_hwpx_para(text, 3, 5) if text else "") + extra
         return (
             f'<hp:ctrl><hp:{kind} id="{identifier}" applyPageType="BOTH">'
             '<hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK"'
@@ -3921,13 +3972,16 @@ def _hwpx_page_furniture(title: str, page_settings: dict | None) -> str:
             f"{paragraph}</hp:subList></hp:{kind}></hp:ctrl>"
         )
 
-    numbering = str(page_settings.get("pageNumbers") or "page-total")
     page_number = (
         '<hp:ctrl><hp:pageNum pos="BOTTOM_RIGHT" formatType="DIGIT" sideChar=""/></hp:ctrl>'
-        if numbering != "none"
+        if numbering == "page"
         else ""
     )
-    return control("header", header, 10001) + control("footer", footer, 10002) + page_number
+    return (
+        control("header", header, 10001)
+        + control("footer", footer, 10002, count)
+        + page_number
+    )
 
 
 def _column_weights(
@@ -4540,8 +4594,6 @@ def _hwpx_document(
         number = numbers.section(section)
         if heading and not _is_attachment(section, head_block):
             body.append(_hwpx_para(f"{number}{heading}", 1, 3))
-        formatted = list(section.get("_formatting") or [])
-        format_cursor = 0
         #: footnotes under the section; malformed `<hp:footNote>` won't open
         notes: list[tuple[str, str]] = []
         for kind, text, marker, depth in _section_lines(
@@ -4660,8 +4712,7 @@ def _hwpx_document(
                     body.append(_hwpx_para("[다이어그램]", 5, 0))
                 continue
             clean = _raised_marks(_strip_inline(text))
-            block, format_cursor = _next_format(formatted, _strip_inline(text), format_cursor)
-            block = block or _emphasis(text, _raised_marks)
+            block = _emphasis(text, _raised_marks)
             if kind == "heading":
                 number = numbers.next(2)
                 body.append(

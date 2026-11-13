@@ -136,6 +136,7 @@ from app.services import (
     red_flags,
     report_office,
     revise,
+    richtext,
     server_notes,
     settings_store,
     skill_specs,
@@ -7298,7 +7299,7 @@ async def _page_save(work: PipelineBundle) -> AsyncIterator[dict]:
             title = (doc_title or session.title or request.strip()[:60] or template.name)[:200]
             summary = (rerun_note(turn) or _regeneration_summary(request))[:80]
             if written and html and session.kind is SessionKind.report:
-                # report blocks as HTML sections (re-renderable); decks keep html
+                # report blocks as Markdown sections; decks keep html
                 artifact_id = await _store_document(
                     db,
                     session,
@@ -7310,15 +7311,18 @@ async def _page_save(work: PipelineBundle) -> AsyncIterator[dict]:
                     data={
                         "kind": "report",
                         "templateId": template.id,
+                        # stored as Markdown, like every report section
                         "sections": [
-                            {
-                                "id": f"s{index}_{uuid4().hex[:6]}",
-                                "heading": block["title"],
-                                "level": 1,
-                                "status": "done",
-                                "content": block["html"],
-                                "format": "html",
-                            }
+                            richtext.markdown_section(
+                                {
+                                    "id": f"s{index}_{uuid4().hex[:6]}",
+                                    "heading": block["title"],
+                                    "level": 1,
+                                    "status": "done",
+                                    "content": block["html"],
+                                    "format": "html",
+                                }
+                            )
                             for index, block in enumerate(blocks)
                             if block.get("layout") != "cover"
                         ],

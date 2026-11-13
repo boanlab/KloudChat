@@ -858,14 +858,16 @@ async def open_file_as_document(file_id: str, user: CurrentUser, db: DbSession):
         title=title,
         data={
             "sections": [
-                {
-                    "id": uuid4().hex,
-                    "heading": part.heading,
-                    "level": part.level,
-                    "status": "done",
-                    "format": "html",
-                    "content": part.html,
-                }
+                richtext.markdown_section(
+                    {
+                        "id": uuid4().hex,
+                        "heading": part.heading,
+                        "level": part.level,
+                        "status": "done",
+                        "format": "html",
+                        "content": part.html,
+                    }
+                )
                 for part in parts
             ],
             "sources": [],
@@ -1011,8 +1013,9 @@ async def create_artifact(payload: ArtifactIn, user: CurrentUser, db: DbSession)
             detail=f"{payload.kind.value}_needs_its_file",
         )
     fields = payload.model_dump()
-    # no unsanitised HTML reaches storage
-    fields["data"] = _clean_report_data(fields.get("data"))
+    # reports are stored as Markdown only
+    if payload.kind is ArtifactKind.report:
+        fields["data"] = _clean_report_data(fields.get("data"))
     artifact = Artifact(user_id=user.id, **fields)
     db.add(artifact)
     await db.commit()
@@ -1025,17 +1028,29 @@ async def get_artifact(artifact_id: str, user: CurrentUser, db: DbSession):
     return ArtifactOut.of(await _own(db, Artifact, "user_id", user, artifact_id))
 
 
-def _clean_report_data(data: dict[str, Any] | None) -> dict[str, Any] | None:
-    """Report data with HTML section bodies sanitised."""
+def _clean_report_data(
+    data: dict[str, Any] | None, previous: dict[str, Any] | None = None
+) -> dict[str, Any] | None:
+    """Report data as stored: every section Markdown (HTML from an older client, a template
+    or an import is converted, its styling dropped). A section whose text changed from
+    `previous` loses its fact-check, whose verdicts point at the old sentences."""
     if not data or not isinstance(data.get("sections"), list):
         return data
+    before = {
+        str(row.get("id")): row
+        for row in ((previous or {}).get("sections") or [])
+        if isinstance(row, dict)
+    }
     cleaned = []
     for row in data["sections"]:
-        section = dict(row) if isinstance(row, dict) else {}
-        if section.get("format") == "html":
-            section["content"] = design_templates.sanitise(
-                str(section.get("content") or ""), editable_styles=True
-            )
+        section = richtext.markdown_section(dict(row) if isinstance(row, dict) else {})
+        was = before.get(str(section.get("id")))
+        if (
+            was is not None
+            and "factCheck" in section
+            and richtext.as_markdown(was) != section.get("content")
+        ):
+            section = {key: value for key, value in section.items() if key != "factCheck"}
         cleaned.append(section)
     return {**data, "sections": cleaned}
 
@@ -1113,8 +1128,8 @@ async def patch_artifact(
         await _own(db, Project, "user_id", user, changes["project_id"])
 
     if "data" in changes and artifact.kind is ArtifactKind.report:
-        # browser HTML sanitised at its only boundary
-        changes["data"] = _clean_report_data(changes["data"])
+        # reports are stored as Markdown only
+        changes["data"] = _clean_report_data(changes["data"], artifact.data)
 
     if "data" in changes and isinstance(changes["data"], dict):
         changes["data"] = _relint(artifact.kind, changes["data"])
@@ -1674,18 +1689,10 @@ async def add_section_image(
     mime, blob = await _picture_bytes(db, user, payload.artifact_id)
     src = f"data:{mime};base64,{base64.b64encode(blob).decode('ascii')}"
     caption = payload.caption.strip()
-    body = str(target.get("content") or "").rstrip()
-
-    if target.get("format") == "html":
-        label = design_templates.escape(caption or "그림")
-        figure = f'<figure><img src="{src}" alt="{label}" />'
-        if caption:
-            figure += f"<figcaption>{design_templates.escape(caption)}</figcaption>"
-        figure += "</figure>"
-        target["content"] = design_templates.sanitise(f"{body}{figure}", editable_styles=True)
-    else:
-        # alt text = exported caption
-        target["content"] = f"{body}\n\n![{caption}]({src})\n"
+    # an older HTML section becomes Markdown first; alt text = exported caption
+    body = str(richtext.markdown_section(target).get("content") or "").rstrip()
+    target["content"] = f"{body}\n\n![{caption}]({src})\n"
+    target["format"] = "markdown"
 
     await _next_version(
         db, artifact, artifact.version, f"{target.get('heading') or '절'} 에 그림 넣음"
@@ -2004,7 +2011,10 @@ async def restore_artifact(
     source = office_doc.source_of(artifact.data)
     base = artifact.version if expected is None else expected
     await _next_version(db, artifact, base, f"v{payload.version} 로 되돌리기 전")
-    artifact.data = _clean_report_data(target.data)
+    # an HTML-era version comes back as Markdown
+    artifact.data = (
+        _clean_report_data(target.data) if artifact.kind is ArtifactKind.report else target.data
+    )
     # an office document opened from a file keeps that link whichever version is back
     if source and isinstance(artifact.data, dict) and not office_doc.source_of(artifact.data):
         artifact.data = office_doc.with_source(artifact.data, source)

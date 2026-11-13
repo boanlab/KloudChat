@@ -158,8 +158,9 @@ async def test_completed_document_action_acknowledgement_has_no_accuracy_notice(
         assert artifact["slides"] == SLIDES
     elif surface == "page_report":
         assert artifact["sources"] == SOURCES
-        assert artifact["sections"][0]["content"] == BLOCKS[0]["html"]
-        assert artifact["sections"][0]["format"] == "html"
+        # a template block is stored as Markdown, like every report section
+        assert artifact["sections"][0]["content"] == "Source-based body [1]."
+        assert artifact["sections"][0]["format"] == "markdown"
     else:
         assert artifact["content"] == HTML
         assert artifact["blocks"] == BLOCKS
