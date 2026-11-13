@@ -279,7 +279,7 @@ test('strict-local safe models are an ordered priority list the admin moves', as
   // Checking B adds it last; dragging it to the top puts it first.
   await page.getByRole('checkbox', { name: '로컬 B' }).check()
   await expect.poll(() => fx.puts.at(-1)?.privacySafeModelIds).toEqual(['strict-local/a', 'strict-local/c', 'strict-local/b'])
-  await order.getByRole('listitem').nth(2).dragTo(order.getByRole('listitem').nth(0))
+  await order.getByRole('listitem').nth(2).locator('[data-drag-handle]').dragTo(order.getByRole('listitem').nth(0))
   await expect.poll(() => fx.puts.at(-1)?.privacySafeModelIds).toEqual(['strict-local/b', 'strict-local/a', 'strict-local/c'])
   // Unchecking takes it out of the order.
   await page.getByRole('checkbox', { name: '로컬 A' }).uncheck()
@@ -508,4 +508,65 @@ test('handing a chat to a report asks which file and carries it to the first tur
   await expect.poll(() => handed.at(-1)).toEqual({ kind: 'report', outputFormat: 'hwp' })
   await expect.poll(() => sends.at(-1)?.body.outputFormat).toBe('hwp')
   expect(unexpected).toEqual([])
+})
+
+test('the artifacts page groups HWP and Word with reports, PowerPoint with slides, and filters by format', async ({ page }, info) => {
+  const { unexpected } = await composerFixture(page, info, { skills: false, agents: false, connectors: false })
+  const asked: (string | null)[] = []
+  await page.route('**/api/artifacts/counts*', (route) =>
+    route.fulfill({ json: { counts: { report: 2, hwp: 1, docx: 3, deck: 1, pptx: 2, chart: 1 }, total: 10 } }))
+  await page.route('**/api/artifacts?*', (route) => {
+    asked.push(new URL(route.request().url()).searchParams.get('kind'))
+    return route.fulfill({ json: [] })
+  })
+  await page.route('**/api/artifacts', (route) => {
+    asked.push(null)
+    return route.fulfill({ json: [] })
+  })
+  await page.goto('/artifacts')
+  await expect(page.getByRole('tab', { name: /보고서/ })).toContainText('6', { timeout: 15_000 })
+  await expect(page.getByRole('tab', { name: /슬라이드/ })).toContainText('3')
+  await expect(page.getByRole('tab', { name: /^한글/ })).toHaveCount(0)
+  await page.getByRole('tab', { name: /보고서/ }).click()
+  await expect.poll(() => asked.at(-1)).toBe('report,hwp,docx')
+  await page.getByTestId('artifact-formats').getByRole('button', { name: /Word/ }).click()
+  await expect.poll(() => asked.at(-1)).toBe('docx')
+  await page.getByRole('tab', { name: /슬라이드/ }).click()
+  await expect.poll(() => asked.at(-1)).toBe('deck,pptx')
+  expect(unexpected).toEqual([])
+})
+
+test('admin usage takes a custom date range and asks the server for exactly those days', async ({ page }, info) => {
+  const fx = await adminFixture(page, info)
+  const asked: string[] = []
+  await page.route('**/api/admin/usage?*', (route) => {
+    asked.push(new URL(route.request().url()).search)
+    return route.fallback()
+  })
+  await page.goto('/admin/usage')
+  await expect(page.getByRole('table', { name: '사용자별' })).toBeVisible({ timeout: 15_000 })
+  await page.getByRole('button', { name: '직접 지정' }).click()
+  const range = page.getByTestId('usage-range')
+  await range.getByLabel('시작일').fill('2026-10-01')
+  await range.getByLabel('종료일').fill('2026-10-15')
+  await expect.poll(() => asked.at(-1)).toBe('?start=2026-10-01&end=2026-10-15')
+  await page.getByRole('button', { name: '30일' }).click()
+  await expect.poll(() => asked.at(-1)).toBe('?days=30')
+  expect(fx.unexpected).toEqual([])
+})
+
+test('the safe model list reorders by dragging its handle on a touch screen @phone', async ({ page }, info) => {
+  const fx = await adminFixture(page, info)
+  await page.goto('/admin/governance')
+  const order = page.getByTestId('safe-model-order')
+  await expect(order.getByRole('listitem')).toHaveText([/로컬 C/, /로컬 A/], { timeout: 15_000 })
+  const handle = order.getByRole('listitem').nth(1).locator('[data-drag-handle]')
+  const from = (await handle.boundingBox())!
+  const to = (await order.getByRole('listitem').nth(0).boundingBox())!
+  const at = (y: number) => ({ pointerId: 7, pointerType: 'touch', isPrimary: true, clientX: from.x + 4, clientY: y })
+  await handle.dispatchEvent('pointerdown', at(from.y + from.height / 2))
+  await handle.dispatchEvent('pointermove', at(to.y + to.height / 2))
+  await handle.dispatchEvent('pointerup', at(to.y + to.height / 2))
+  await expect.poll(() => fx.puts.at(-1)?.privacySafeModelIds).toEqual(['strict-local/a', 'strict-local/c'])
+  expect(fx.unexpected).toEqual([])
 })

@@ -63,7 +63,7 @@ function SafeModelPriority({
         {t('내부 자료 때문에 strict-local로 옮길 때는 사용자가 고른 모델의 strict-local 판을 먼저 쓰고, 그것이 없으면 이 목록의 첫 번째 모델을 씁니다. 개인정보 확인 창에서는 체크된 모델 중 하나를 사용자가 고를 수 있으며, 처음에는 첫 번째 모델이 골라져 있습니다.')}
       </p>
       <p className="mt-0.5 text-xs text-faint">
-        {t('프록시가 self-hosted이며 외부 대체 모델이 없다고 명시한 모델만 선택할 수 있습니다. 화살표나 끌어서 순서를 바꿉니다.')}
+        {t('프록시가 self-hosted이며 외부 대체 모델이 없다고 명시한 모델만 선택할 수 있습니다. 화살표나 손잡이를 끌어서 순서를 바꿉니다.')}
       </p>
       <p className="sr-only" role="status" aria-live="polite">
         {said}
@@ -76,35 +76,48 @@ function SafeModelPriority({
               <li
                 key={id}
                 data-model={id}
-                draggable
-                onDragStart={(e) => {
-                  setDragged(id)
-                  e.dataTransfer.effectAllowed = 'move'
-                  e.dataTransfer.setData('text/plain', id)
-                }}
-                onDragOver={(e) => {
-                  if (!dragged) return
-                  e.preventDefault()
-                  setOver(id)
-                }}
-                onDragLeave={() => setOver((o) => (o === id ? null : o))}
-                onDrop={(e) => {
-                  e.preventDefault()
-                  if (dragged) move(dragged, i)
-                  setDragged(null)
-                  setOver(null)
-                }}
-                onDragEnd={() => {
-                  setDragged(null)
-                  setOver(null)
-                }}
                 className={cn(
                   'flex items-center gap-2 rounded-control border border-line bg-panel px-2 py-1.5 text-base',
                   dragged === id && 'opacity-50',
                   over === id && dragged !== id && 'border-accent',
                 )}
               >
-                <GripVertical size={14} className="shrink-0 cursor-grab text-faint" aria-hidden />
+                {/* Pointer drag (mouse, pen and touch alike): the row under the finger is where it lands. */}
+                <span
+                  aria-hidden
+                  data-drag-handle
+                  className="-my-1 grid size-8 shrink-0 cursor-grab touch-none place-items-center text-faint active:cursor-grabbing"
+                  onPointerDown={(e) => {
+                    e.preventDefault()
+                    try {
+                      e.currentTarget.setPointerCapture(e.pointerId)
+                    } catch {
+                      // A pointer the browser no longer tracks: the moves still reach the handle.
+                    }
+                    setDragged(id)
+                    setOver(id)
+                  }}
+                  onPointerMove={(e) => {
+                    if (dragged !== id) return
+                    const rows = [...(listRef.current?.querySelectorAll<HTMLElement>('[data-model]') ?? [])]
+                    const hit = rows.find((row) => {
+                      const box = row.getBoundingClientRect()
+                      return e.clientY >= box.top && e.clientY <= box.bottom
+                    })
+                    if (hit?.dataset.model) setOver(hit.dataset.model)
+                  }}
+                  onPointerUp={() => {
+                    if (dragged === id && over && over !== id) move(id, ordered.indexOf(over))
+                    setDragged(null)
+                    setOver(null)
+                  }}
+                  onPointerCancel={() => {
+                    setDragged(null)
+                    setOver(null)
+                  }}
+                >
+                  <GripVertical size={14} />
+                </span>
                 <span className="grid size-5 shrink-0 place-items-center rounded-full bg-elevated text-xs font-semibold tabular-nums">
                   {i + 1}
                 </span>
