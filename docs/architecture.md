@@ -1792,9 +1792,9 @@ mirrors `OfficePanel` until the shared header is extracted. Under it is the
 chrome the two editors share (`components/pptx/chrome.tsx`, no editor library
 with it): one toolbar row (`DeckToolbar`) in the PowerPoint editor's order and
 icons (실행 취소, 다시 실행, 확대/축소 | 레이아웃, 이미지, 표, 차트 | 글꼴, 크기 | 굵게,
-기울임꼴, 밑줄, 텍스트 색상, 서식 지우기 | 디자인, then 검토 and 발표), where the layout,
+기울임꼴, 밑줄, 텍스트 색상, 서식 지우기 | 테마, then 검토 and 발표), where the layout,
 table and chart stand in the place of the text box and shape (a web slide places
-its content by layout) and 디자인 holds the deck's look, accent colours, this
+its content by layout) and 테마 holds the deck's look, accent colours, this
 slide's accent and several slides at once; the numbered thumbnail rail with the
 slide menu (새 슬라이드, 슬라이드 복제, 위로 이동, 아래로 이동, 슬라이드 삭제), drag to
 reorder and 「+ 새 슬라이드」; the speaker notes under the slide. A selected table,

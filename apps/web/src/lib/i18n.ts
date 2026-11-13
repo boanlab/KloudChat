@@ -3540,7 +3540,6 @@ const EN: Record<string, string> = {
   '클릭하여 발표자 노트 추가': 'Click to add speaker notes',
   // the web slides editor (DeckPanel, DeckToolbar)
   '웹 슬라이드 편집기': 'Web slides editor',
-  '디자인': 'Design',
   '서식 지우기': 'Clear formatting',
   '글꼴과 크기': 'Font and size',
   '선택한 요소': 'Selected element',

@@ -2408,6 +2408,12 @@ export function DeckPanel({
     await takeArtifact(deck, format)
   }
 
+  /** The slide show; afterwards the keys go back to the thumbnails, which step with them. */
+  const present = () => {
+    root.ref.current?.querySelector<HTMLElement>('.kc-rail-list')?.focus({ preventScroll: true })
+    setPresenting(true)
+  }
+
   // ── keys: 저장, undo and redo over the whole deck, duplicate, delete, step through slides
   const keys = useRef({ save: () => {}, undo: doc.undo, redo: doc.redo, duplicate: () => {}, removeImage, go, index, canEdit })
   keys.current = {
@@ -2719,7 +2725,7 @@ export function DeckPanel({
             >
               {t('검토')}
             </MenuItem>
-            <MenuItem icon={<Play size={14} />} disabled={writing} onClick={() => setPresenting(true)}>
+            <MenuItem icon={<Play size={14} />} disabled={writing} onClick={present}>
               {t('발표')}
             </MenuItem>
             <MenuItem icon={<RefreshCw size={14} />} disabled={writing || rewritingSlide || readOnly || agentWorking} onClick={() => void regenerateSlide()}>
@@ -2732,6 +2738,13 @@ export function DeckPanel({
             <MenuSeparator />
           </>
         }
+        extra={canEdit ? undefined : (
+          // without the toolbar (reading, a phone) the slide show is still a press away
+          <Button size="sm" variant="ghost" aria-label={t('발표')} title={t('슬라이드 쇼')} disabled={writing} onClick={present}>
+            <Play size={14} />
+            {!phone && t('발표')}
+          </Button>
+        )}
         mode={width.mode}
         onCycle={phone ? undefined : width.cycle}
         onClose={onClose}
@@ -2793,7 +2806,7 @@ export function DeckPanel({
                 reviewCount={exportWarningCount}
                 reviewOpen={reviewOpen}
                 onReview={() => setReviewOpen((open) => !open)}
-                onPresent={() => setPresenting(true)}
+                onPresent={present}
               />
             </div>
           )}

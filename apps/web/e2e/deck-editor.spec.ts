@@ -66,7 +66,7 @@ test('the toolbar, rail and notes read like the PowerPoint editor', async ({ pag
     buttons.map((b) => b.getAttribute('aria-label')))
   expect(await tools()).toEqual([
     '실행 취소', '다시 실행', '확대/축소', '레이아웃', '이미지', '표', '차트', '글꼴과 크기', '굵게', '기울임꼴',
-    '밑줄', '텍스트 색상', '더보기', '디자인', '검토', '발표',
+    '밑줄', '텍스트 색상', '더보기', '테마', '검토', '발표',
   ])
   const inRow = async () => {
     const bar = (await toolbar(page).boundingBox())!
@@ -79,7 +79,7 @@ test('the toolbar, rail and notes read like the PowerPoint editor', async ({ pag
   await page.setViewportSize({ width: 2200, height: 1000 })
   await expect.poll(tools).toEqual([
     '실행 취소', '다시 실행', '확대/축소', '레이아웃', '이미지', '표', '차트', '글꼴', '글꼴 크기 줄이기',
-    '글꼴 크기', '글꼴 크기 늘리기', '굵게', '기울임꼴', '밑줄', '텍스트 색상', '서식 지우기', '디자인', '검토', '발표',
+    '글꼴 크기', '글꼴 크기 늘리기', '굵게', '기울임꼴', '밑줄', '텍스트 색상', '서식 지우기', '테마', '검토', '발표',
   ])
   await inRow()
   await page.setViewportSize({ width: 1440, height: 900 })
@@ -96,9 +96,9 @@ test('the toolbar, rail and notes read like the PowerPoint editor', async ({ pag
   await page.keyboard.press('Escape')
   await expect(menu).toHaveCount(0)
 
-  // 디자인 holds the theme, the accent colours, this slide's look and several slides at once
-  await toolbar(page).getByRole('button', { name: '디자인' }).click()
-  const design = page.getByRole('menu', { name: '디자인' })
+  // 테마 holds the theme, the accent colours, this slide's look and several slides at once
+  await toolbar(page).getByRole('button', { name: '테마' }).click()
+  const design = page.getByRole('menu', { name: '테마' })
   await expect(design).toContainText('테마')
   await expect(design.getByRole('group', { name: '강조색 고르기' })).toBeVisible()
   await expect(design.getByRole('menuitemradio', { name: /따뜻한/ })).toHaveAttribute('aria-checked', 'true')
@@ -312,7 +312,7 @@ test('pictures: web slides beside the PowerPoint editor', { tag: '@phone' }, asy
     await page.waitForTimeout(300)
     await page.screenshot({ path: `${SHOTS}/web-slides-menu-${at}.png` })
     await page.keyboard.press('Escape')
-    await toolbar(page).getByRole('button', { name: '디자인' }).click()
+    await toolbar(page).getByRole('button', { name: '테마' }).click()
     await page.waitForTimeout(300)
     await page.screenshot({ path: `${SHOTS}/web-slides-design-${at}.png` })
   }

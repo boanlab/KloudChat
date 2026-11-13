@@ -49,7 +49,7 @@ export interface DeckToolbarProps {
   underline: boolean
   color: string
   onFormat: (command: 'bold' | 'italic' | 'underline' | 'foreColor' | 'removeFormat', value?: string) => void
-  /** The 디자인 menu's items: theme, accent colours, this slide's look, several slides at once. */
+  /** The 테마 menu's items: theme, accent colours, this slide's look, several slides at once. */
   design: (close: () => void) => ReactNode
   /** Findings to look at (검토). */
   reviewCount: number
@@ -61,7 +61,7 @@ export interface DeckToolbarProps {
 /**
  * The web slides' one toolbar row, in the PowerPoint editor's order and with its icons:
  * 실행 취소 · 다시 실행 · 확대/축소 | 레이아웃 · 이미지 · 표 · 차트 | 글꼴 · 크기 | 굵게 · 기울임꼴 ·
- * 밑줄 · 텍스트 색상 · 서식 지우기 | 디자인, then 검토 and 발표 at the end. A web slide places its
+ * 밑줄 · 텍스트 색상 · 서식 지우기 | 테마, then 검토 and 발표 at the end. A web slide places its
  * content by layout, so the layout, the table and the chart stand where the PowerPoint editor
  * inserts a text box, a shape or a table; its paragraphs follow the layout, so no paragraph
  * group. Narrow, the type controls fold into ⋮ as the PowerPoint editor folds its own.
@@ -186,7 +186,7 @@ export function DeckToolbar(p: DeckToolbarProps) {
         <Btn label={t('서식 지우기')} icon={Eraser} disabled={!p.textActive} onClick={() => p.onFormat('removeFormat')} />
       )}
       <Sep />
-      <Menu label={t('디자인')} width={288} testid="design" align="right" button={<Palette size={16} />}>
+      <Menu label={t('테마')} width={288} testid="design" align="right" button={<Palette size={16} />}>
         {p.design}
       </Menu>
       <span className="kc-fill" />

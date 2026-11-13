@@ -131,7 +131,8 @@ export interface RailProps {
 
 /**
  * Numbered thumbnails; a slide's menu (⋮ or right-click): 새 슬라이드, 슬라이드 복제, 위로 이동,
- * 아래로 이동, 슬라이드 삭제; drag to reorder; Delete removes the slide, the arrows step; and
+ * 아래로 이동, 슬라이드 삭제; drag to reorder; Delete removes the slide, the arrows, Page Up/Down,
+ * Home and End step; and
  * 「+ 새 슬라이드」 under the list.
  */
 export function SlideRail({
@@ -171,16 +172,19 @@ export function SlideRail({
       style={row ? undefined : { width: width + (compact ? 30 : 36) }}
       onKeyDown={(event) => {
         if ((event.target as HTMLElement).closest?.('input,textarea,select,.kc-ctx')) return
-        if (!canEdit && !['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return
+        const steps: Record<string, number> = {
+          ArrowDown: active + 1, ArrowRight: active + 1, PageDown: active + 1,
+          ArrowUp: active - 1, ArrowLeft: active - 1, PageUp: active - 1, Home: 0, End: count - 1,
+        }
+        if (event.key in steps) {
+          event.preventDefault()
+          onSelect(Math.max(0, Math.min(count - 1, steps[event.key])))
+          return
+        }
+        if (!canEdit) return
         if (event.key === 'Delete' || event.key === 'Backspace') {
           event.preventDefault()
           if (count > 1) onDelete(active)
-        } else if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
-          event.preventDefault()
-          onSelect(Math.min(count - 1, active + 1))
-        } else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
-          event.preventDefault()
-          onSelect(Math.max(0, active - 1))
         }
       }}>
       <div className="kc-rail-list" tabIndex={0} ref={listRef}>
