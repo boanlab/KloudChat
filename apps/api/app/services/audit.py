@@ -34,6 +34,8 @@ ACTIONS: frozenset[str] = frozenset(
         "user.delete",
         "user.models",
         "credits.set",
+        "user.export",
+        "audit.export",
         # admin: keys, settings, policy, branding
         "key.create",
         "key.revoke",

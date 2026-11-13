@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import shutil
 from datetime import UTC, datetime, time, timedelta
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
@@ -17,7 +18,14 @@ from app.models.chat import ChatSession, Message, Role
 from app.models.governance import Governance
 from app.models.user import ApiKey, AuditEvent, CreditLedger, User, UserStatus, utcnow
 from app.schemas.admin import GovernanceIn
-from app.services import adaptive_routing, api_key_usage, geoip, governance, settings_store
+from app.services import (
+    adaptive_routing,
+    api_key_usage,
+    csv_export,
+    geoip,
+    governance,
+    settings_store,
+)
 from app.services import audit as audit_service
 from app.services import credits as credits_service
 from app.services import files as file_service
@@ -514,21 +522,21 @@ async def my_usage(user: CurrentUser, db: DbSession, days: int = Query(30, ge=1,
     }
 
 
-@router.get("/audit")
-async def audit_log(
-    admin: AdminUser,
+AuditSort = Literal["at", "action", "target", "ip"]
+
+
+async def _audit_conditions(
     db: DbSession,
-    page: int = Query(1, ge=1),
-    size: int = Query(50, ge=1, le=200),
-    severity: str | None = None,
-    action: str | None = Query(None, max_length=2000),
-    account: str | None = Query(None, max_length=200),
-    q: str | None = Query(None, max_length=200),
-    q_actions: str | None = Query(None, alias="qActions", max_length=2000),
-    since: datetime | None = None,
-    until: datetime | None = None,
-):
-    """Audit events, newest first, paged; `action` comma list (`x.*` prefix), `until` exclusive."""
+    *,
+    severity: str | None,
+    action: str | None,
+    account: str | None,
+    q: str | None,
+    q_actions: str | None,
+    since: datetime | None,
+    until: datetime | None,
+) -> list:
+    """The filters the audit screen sends, as SQL conditions (list and export share them)."""
     conds = []
     if severity:
         conds.append(AuditEvent.severity == severity)
@@ -569,13 +577,66 @@ async def audit_log(
         conds.append(col(AuditEvent.at) >= since)
     if until:
         conds.append(col(AuditEvent.at) < until)
+    return conds
 
+
+def _audit_order(sort: AuditSort, order: Literal["asc", "desc"]) -> list:
+    """The column, then time and id, so a page never shifts; empty values last."""
+    desc = order == "desc"
+    column = {
+        "at": col(AuditEvent.at),
+        "action": col(AuditEvent.action),
+        "target": col(AuditEvent.target),
+        "ip": col(AuditEvent.ip),
+    }[sort]
+    if sort == "at":
+        if desc:
+            return [column.desc(), col(AuditEvent.id).desc()]
+        return [column.asc(), col(AuditEvent.id).asc()]
+    empty = case((column.is_(None), 1), (column == "", 1), else_=0)
+    return [
+        empty,
+        column.desc() if desc else column.asc(),
+        col(AuditEvent.at).desc(),
+        col(AuditEvent.id).desc(),
+    ]
+
+
+@router.get("/audit")
+async def audit_log(
+    admin: AdminUser,
+    db: DbSession,
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=200),
+    severity: str | None = None,
+    action: str | None = Query(None, max_length=2000),
+    account: str | None = Query(None, max_length=200),
+    q: str | None = Query(None, max_length=200),
+    q_actions: str | None = Query(None, alias="qActions", max_length=2000),
+    since: datetime | None = None,
+    until: datetime | None = None,
+    sort: AuditSort = "at",
+    order: Literal["asc", "desc"] = "desc",
+):
+    """Audit events, newest first unless sorted, paged.
+
+    `action` is a comma list (`x.*` takes a prefix); `until` is exclusive."""
+    conds = await _audit_conditions(
+        db,
+        severity=severity,
+        action=action,
+        account=account,
+        q=q,
+        q_actions=q_actions,
+        since=since,
+        until=until,
+    )
     total = (await db.exec(select(func.count()).select_from(AuditEvent).where(*conds))).one()
     rows = (
         await db.exec(
             select(AuditEvent)
             .where(*conds)
-            .order_by(col(AuditEvent.at).desc(), col(AuditEvent.id).desc())
+            .order_by(*_audit_order(sort, order))
             .offset((page - 1) * size)
             .limit(size)
         )
@@ -611,6 +672,95 @@ async def audit_log(
         "page": page,
         "size": size,
     }
+
+
+@router.get("/audit/export.csv")
+async def export_audit_log(
+    admin: AdminUser,
+    db: DbSession,
+    request: Request,
+    severity: str | None = None,
+    action: str | None = Query(None, max_length=2000),
+    account: str | None = Query(None, max_length=200),
+    q: str | None = Query(None, max_length=200),
+    q_actions: str | None = Query(None, alias="qActions", max_length=2000),
+    since: datetime | None = None,
+    until: datetime | None = None,
+    sort: AuditSort = "at",
+    order: Literal["asc", "desc"] = "desc",
+):
+    """The filtered trail as CSV, in the screen's order (at most `csv_export.MAX_ROWS` rows).
+
+    The export itself is recorded, with the filters it used."""
+    conds = await _audit_conditions(
+        db,
+        severity=severity,
+        action=action,
+        account=account,
+        q=q,
+        q_actions=q_actions,
+        since=since,
+        until=until,
+    )
+    rows = (
+        await db.exec(
+            select(AuditEvent)
+            .where(*conds)
+            .order_by(*_audit_order(sort, order))
+            .limit(csv_export.MAX_ROWS)
+        )
+    ).all()
+    actor_ids = {r.actor_id for r in rows if r.actor_id}
+    actors: dict[str, str] = {}
+    if actor_ids:
+        actors = {
+            u.id: u.email
+            for u in (await db.exec(select(User).where(col(User.id).in_(actor_ids)))).all()
+        }
+    filters = {
+        key: value
+        for key, value in {
+            "severity": severity,
+            "action": action,
+            "account": account,
+            "q": q,
+            "since": since.isoformat() if since else None,
+            "until": until.isoformat() if until else None,
+            "sort": sort,
+            "order": order,
+        }.items()
+        if value
+    }
+    db.add(
+        AuditEvent(
+            actor_id=admin.id,
+            action="audit.export",
+            target="감사 로그",
+            detail=f"{len(rows)} rows",
+            event_metadata={"rows": len(rows), "filters": filters},
+            ip=client_ip(request),
+            user_agent=request.headers.get("User-Agent", "")[:400],
+        )
+    )
+    await db.commit()
+    return csv_export.response(
+        f"kloudchat-audit-{csv_export.stamp()}.csv",
+        ["at", "actor", "action", "target", "detail", "severity", "ip", "region", "user_agent"],
+        (
+            [
+                r.at,
+                actors.get(r.actor_id or "", r.actor_id or "system"),
+                r.action,
+                r.target,
+                r.detail,
+                r.severity,
+                r.ip,
+                geoip.lookup(r.ip),
+                r.user_agent,
+            ]
+            for r in rows
+        ),
+    )
 
 
 def _like(text: str) -> str:

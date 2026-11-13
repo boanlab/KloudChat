@@ -59,7 +59,7 @@ from app.schemas.admin import (
 from app.schemas.auth import UserOut
 from app.schemas.workspace import ApiKeyOut
 from app.services import audit as audit_service
-from app.services import connector_defaults, ocr, settings_store, starter, tools_gateway
+from app.services import connector_defaults, csv_export, ocr, settings_store, starter, tools_gateway
 from app.services import files as file_service
 from app.services import litellm as litellm_service
 from app.services import mail as mail_service
@@ -706,6 +706,78 @@ async def list_users_page(
         limit=limit,
         counts=counts,
         summary=summary,
+    )
+
+
+@router.get("/users/export.csv")
+async def export_users(
+    admin: AdminUser,
+    db: DbSession,
+    request: Request,
+    tab: Literal["all", "pending", "active", "suspended"] = Query("all", alias="status"),
+    q: str = Query("", max_length=200),
+    sort: UserSort = "status",
+    order: Literal["asc", "desc"] = "asc",
+):
+    """The 사용자 list as CSV with this month's credits, under the screen's tab, search, order."""
+    where = []
+    search = _user_search(q)
+    if search is not None:
+        where.append(search)
+    if tab != "all":
+        where.append(col(User.status) == UserStatus(tab))
+    rows = (
+        await db.exec(
+            select(User)
+            .where(*where)
+            .order_by(*_user_order(sort, order))
+            .limit(csv_export.MAX_ROWS)
+        )
+    ).all()
+    _audit(
+        db,
+        request,
+        admin,
+        "user.export",
+        "사용자 목록",
+        f"{len(rows)} rows",
+        metadata={
+            "rows": len(rows),
+            "filters": {"status": tab, "q": q.strip(), "sort": sort, "order": order},
+        },
+    )
+    await db.commit()
+    return csv_export.response(
+        f"kloudchat-users-{csv_export.stamp()}.csv",
+        [
+            "name",
+            "email",
+            "role",
+            "status",
+            "monthly_credits",
+            "credits_used",
+            "credits_remaining",
+            "cycle_resets_at",
+            "created_at",
+            "last_active_at",
+            "email_verified_at",
+        ],
+        (
+            [
+                u.name,
+                u.email,
+                u.role,
+                u.status,
+                u.monthly_credits,
+                u.credits_used,
+                max(0, (u.monthly_credits or 0) - (u.credits_used or 0)),
+                u.cycle_resets_at,
+                u.created_at,
+                u.last_active_at,
+                u.email_verified_at,
+            ]
+            for u in rows
+        ),
     )
 
 
