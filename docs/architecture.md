@@ -1683,6 +1683,34 @@ the app's i18n; crv's own few canvas words get Korean through
 `PptxI18nProvider`. On a phone the deck is read only, its thumbnails a row under
 the slide.
 
+### Office files in the file box
+
+The file box (`FilesPage`, `components/files/FilePreview.tsx`) previews an
+`.hwp`/`.hwpx`, `.docx` or `.pptx` as its editor draws it, read only, rather than
+as extracted text. Each preview is its own lazy chunk, fetched only when a file
+of that kind is opened: `DocxPreview` mounts open-docx-editor with
+`readOnly` (pages, no ribbon), `PptxPreview` mounts `SlidesEditor` with
+`canEdit` off (canvas and thumbnails, no toolbar), and `HwpPreview` runs
+rhwp-studio in an unseen iframe and asks it for each page as SVG
+(`getPageSvg`, the first 30 pages). Those pages are put into the app's own DOM,
+so the app's Korean fonts apply; `safePage` (`officePreview.ts`) first drops
+scripts, `foreignObject`, animation, event handlers and any link that is not to
+the drawing's own parts or a `data:image/` picture. If an editor cannot draw a
+file, the preview falls back to its extracted text with a short note. Legacy
+`.doc`/`.ppt` are text previews as before.
+
+「편집」 never writes the file: it starts a chat and creates an office artifact
+from the file (`POST /artifacts/{hwp|docx|pptx}` with `fileId`), titled from the
+file name, and opens it in the editor beside the chat, where versions, saves
+and the agent's tools work as for any office document. The artifact remembers
+its file in `data.sourceFileId` (`office_doc.with_source`); saves carry it to
+every version and a restore keeps it, so no migration is needed.
+`GET /files/{id}/documents` lists the documents opened from a file, newest
+first, and the preview offers the newest whose chat still exists
+(「이어서 편집」) before 「새 사본으로 편집」 makes another. On a phone the
+preview, like the editors, only reads. The `.hwpx` 「문서로 열기」 in a chat
+(`POST /files/{id}/open-as-document`, an HTML report session) is unchanged.
+
 ### Sharing
 
 In the `shares` table **the token is the permission**: 43 random characters,

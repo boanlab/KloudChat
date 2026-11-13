@@ -35,6 +35,17 @@
           return { pageCount: 1 }
         },
         pageCount: () => 1,
+        // a page as rhwp draws it, with what a preview must never let run
+        getPageSvg: ({ page }) =>
+          '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" ' +
+          'width="794" height="1123" viewBox="0 0 794 1123" onload="window.top.pwned = 1">' +
+          '<rect width="794" height="1123" fill="#fff"/>' +
+          `<text x="80" y="120" font-size="28">${state.name} ${page + 1}쪽 ${state.bytes.length}</text>` +
+          // split: a closing script tag here would end this one
+          '<scr' + 'ipt>window.top.pwned = 2</scr' + 'ipt>' +
+          '<a href="javascript:window.top.pwned = 3"><text x="80" y="200">link</text></a>' +
+          '<foreignObject width="10" height="10"><div xmlns="http://www.w3.org/1999/xhtml">html</div></foreignObject>' +
+          '</svg>',
         exportHwpx: () => state.bytes.slice(),
         exportHwp: () => new TextEncoder().encode('HWP5'),
         notifySaved: () => {

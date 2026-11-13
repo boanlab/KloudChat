@@ -19,7 +19,7 @@ const DIRTY_POLL_MS = 1500
 
 const ZIP = [0x50, 0x4b, 0x03, 0x04]
 
-function isHwpx(bytes: ArrayBuffer): boolean {
+export function isHwpx(bytes: ArrayBuffer): boolean {
   const head = new Uint8Array(bytes, 0, Math.min(4, bytes.byteLength))
   return ZIP.every((byte, i) => head[i] === byte)
 }

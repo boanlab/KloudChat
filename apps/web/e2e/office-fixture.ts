@@ -22,6 +22,10 @@ export type OfficeOptions = {
   fromHome?: boolean
   /** A file attached to an earlier question in the chat. */
   attachment?: { id: string; name: string }
+  /** A file in the file box (`/files`, where the page opens): its bytes are `boxFile`, else `file`. */
+  box?: { id: string; name: string; boxFile?: Buffer; text?: string }
+  /** The document was opened from the file box file before: it is offered again. */
+  copied?: boolean
 }
 
 export async function officeFixture(page: Page, options: OfficeOptions) {
@@ -35,6 +39,8 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
   const csp: string[] = []
   const sent: Record<string, unknown>[] = []
   const created: Record<string, unknown>[] = []
+  /** Every request that would change a file-box file (none should). */
+  const fileWrites: string[] = []
   page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
   page.on('console', (message) => {
     if (/Content Security Policy/i.test(message.text())) csp.push(message.text())
@@ -103,8 +109,31 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
     if (path === `/artifacts/${kind}` && method === 'POST') {
       const body = request.postDataJSON()
       created.push(body)
-      artifact = { ...artifact, sessionId: session.id, title: body.title ?? options.title }
+      const named = options.box && body.fileId === options.box.id
+        ? options.box.name.replace(/\.[^.]+$/, '') : options.title
+      artifact = {
+        ...artifact, sessionId: session.id, title: body.title ?? named,
+        data: { ...artifact.data, ...(body.fileId ? { sourceFileId: body.fileId } : {}) },
+      }
       return route.fulfill({ status: 201, json: artifact })
+    }
+    const { box } = options
+    if (box && path.startsWith('/files')) {
+      if (method !== 'GET') {
+        fileWrites.push(`${method} ${path}`)
+        return route.fulfill({ status: 405, json: { detail: 'not here' } })
+      }
+      if (path === '/files') return json([{
+        id: box.id, name: box.name, size: (box.boxFile ?? options.file).length, mime, tokens: 10,
+        projectId: null, sessionId: null, preview: '', error: null, origin: 'upload', createdAt: at,
+      }])
+      if (path === `/files/${box.id}/content`) {
+        return route.fulfill({ body: box.boxFile ?? options.file, contentType: 'application/octet-stream' })
+      }
+      if (path === `/files/${box.id}/text`) {
+        return json({ text: box.text ?? '파일에서 읽은 글', truncated: false })
+      }
+      if (path === `/files/${box.id}/documents`) return json(options.copied ? [artifact] : [])
     }
     if (path === '/sessions' && method === 'GET') return json([session])
     if (path === `/sessions/${session.id}` && method === 'GET') return json(session)
@@ -174,8 +203,8 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
     unexpected.push(`${method} ${path}`)
     return route.fulfill({ status: 404, json: { detail: 'not_found' } })
   })
-  const opened = options.fromHome ? '/'
+  const opened = options.box ? '/files' : options.fromHome ? '/'
     : options.attachment ? `/s/${sessionId}` : `/s/${sessionId}?artifact=${artifactId}`
   await page.goto(opened)
-  return { unexpected, problems, saves, heads, files, sent, created, csp }
+  return { unexpected, problems, saves, heads, files, sent, created, csp, fileWrites }
 }

@@ -1,7 +1,8 @@
 """Office document artifacts (HWP, Word): one file blob per version, saved by the editor
 beside the chat or by the agent's tools.
 
-`Artifact.data` holds `{"format", "size", "text"}`; the file is `storage_key`. A version
+`Artifact.data` holds `{"format", "size", "text"}`, and `sourceFileId` when it was opened
+from a file-box file; the file is `storage_key`. A version
 moves only from the version its writer read (`expected`), in one conditional UPDATE, so a
 hand save and an agent edit cannot both land on the same version. `hwp_doc` and `docx_doc`
 say what their files are; everything else is here.
@@ -42,6 +43,21 @@ class Kind:
     file_format: Callable[[bytes], str]
     #: `Artifact.data` for a file of a format
     describe: Callable[[bytes, str], dict[str, Any]]
+
+
+#: `Artifact.data` key naming the file-box file a document was opened from (its copy's origin)
+SOURCE_KEY = "sourceFileId"
+
+
+def source_of(data: dict[str, Any] | None) -> str | None:
+    """The file-box file a document was opened from, if any."""
+    value = (data or {}).get(SOURCE_KEY)
+    return value if isinstance(value, str) and value else None
+
+
+def with_source(data: dict[str, Any], source_file_id: str | None) -> dict[str, Any]:
+    """`data` carrying the file it came from; every version keeps it."""
+    return {**data, SOURCE_KEY: source_file_id} if source_file_id else data
 
 
 async def session_document(
@@ -103,6 +119,7 @@ async def create(
     data: bytes,
     session_id: str | None = None,
     project_id: str | None = None,
+    source_file_id: str | None = None,
 ) -> Artifact:
     fmt = kind.file_format(data)
     if not fmt:
@@ -113,7 +130,7 @@ async def create(
         project_id=project_id,
         kind=kind.kind,
         title=(title.strip() or kind.untitled)[:MAX_TITLE],
-        data=kind.describe(data, fmt),
+        data=with_source(kind.describe(data, fmt), source_file_id),
     )
     artifact.storage_key = _store(artifact, 1, data, fmt)
     db.add(artifact)
@@ -147,7 +164,7 @@ async def save(
         summary=summary[:200],
     )
     key = _store(artifact, expected + 1, data, kind.editable)
-    described = kind.describe(data, kind.editable)
+    described = with_source(kind.describe(data, kind.editable), source_of(artifact.data))
     values: dict[str, Any] = {
         "version": expected + 1,
         "data": described,

@@ -1295,6 +1295,8 @@ export const filesApi = {
   downloadUrl: (id: string) => `${BASE_URL}/files/${id}/content`,
   /** Extracted text for the preview, cut at the server's limit. */
   text: (id: string) => call<{ text: string; truncated: boolean }>(`/files/${id}/text`),
+  /** The office documents (HWP, Word, PowerPoint) opened from this file, newest first. */
+  documents: (id: string) => call<ArtifactRow[]>(`/files/${id}/documents`),
   /** Reads an uploaded `.hwpx` into a new report session; nothing generated or charged. Returns the session id. */
   openAsDocument: (id: string) =>
     call<{ id: string }>(`/files/${id}/open-as-document`, { method: 'POST' }),
