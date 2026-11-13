@@ -972,14 +972,18 @@ async def assemble(
     file_budget: int | None = None,
     how_to: bool = False,
     published: bool = False,
+    kind: SessionKind | None = None,
 ) -> WorkspaceContext:
-    """Authorised context, no skill auto-activation; `how_to`/`published` drop personal data."""
+    """Authorised context, no skill auto-activation; `how_to`/`published` drop personal data.
+    `kind` is the surface the turn runs as when not the conversation's own (a report written
+    as an office file is worked on as a chat); skills still match the conversation's surface."""
+    kind = kind or session.kind
     agent = await _load_agent(db, user, session)
     project = None if published else await _load_project(db, user, session)
     design = await _load_design_system(db, user, project, agent)
     instructions = _project_instructions(project)
     # Memories chat-only; an agent may opt out (`Agent.use_memory`)
-    if (session.kind is SessionKind.chat and not how_to and not published
+    if (kind is SessionKind.chat and not how_to and not published
             and uses_memory(agent)):
         memories, memory_names, memory_total = await _memory_block(db, user, project, session)
     else:
@@ -1000,15 +1004,15 @@ async def assemble(
 
     blocks: list[ContextBlock] = []
     # Least specific first; later blocks win.
-    if not how_to and not published and (personal := _personal_block(user, session.kind)):
+    if not how_to and not published and (personal := _personal_block(user, kind)):
         blocks.append(ContextBlock("user.instructions", personal, True))
-    if text := _agent_block(agent, session.kind):
+    if text := _agent_block(agent, kind):
         blocks.append(ContextBlock("agent.instructions", text, True))
     if instructions:
         blocks.append(ContextBlock("project.instructions", instructions, True))
-    if design_block := design_service.prompt_block(design, session.kind):
+    if design_block := design_service.prompt_block(design, kind):
         blocks.append(ContextBlock("project.design", design_block, True))
-    blocks.extend(_skill_blocks(resolved, session.kind,
+    blocks.extend(_skill_blocks(resolved, kind,
                                 form=asked_form.note(question or focus) if resolved else ""))
     if agent is not None and not output_language.asks_language(question or focus):
         # the agent's language, unless this turn names one; last trusted rule so it wins
@@ -1108,9 +1112,9 @@ async def assemble(
     carried_files: tuple[ContextFile, ...] = ()
     # Fileless document turn reuses session files.
     document_followup = (
-        session.kind in (SessionKind.report, SessionKind.slides) and not attachment_ids
+        kind in (SessionKind.report, SessionKind.slides) and not attachment_ids
     )
-    if session.kind is SessionKind.chat or document_followup:
+    if kind is SessionKind.chat or document_followup:
         earlier = await _earlier_attachments(db, user, session, exclude=set(attachment_ids or []))
         if document_followup and earlier:
             given = await _given_file_ids(db, session)
@@ -1165,7 +1169,7 @@ async def assemble(
         tuple(blocks),
         applied,
         doc_format=(
-            agent.doc_format if agent is not None and session.kind is SessionKind.report else None
+            agent.doc_format if agent is not None and kind is SessionKind.report else None
         ),
         design_tokens=design_service.tokens_of(design) if design is not None else None,
         loaded_memories=memory_names,

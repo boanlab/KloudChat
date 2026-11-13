@@ -1607,6 +1607,56 @@ panels are `components/office/OfficePanel.tsx` (`useOfficeDocument` holds the
 load, save, 409, reload-on-new-version and ask-before-send logic) around their
 editor; on a phone the Word editor is read only, without its ribbon.
 
+### Reports written as HWP or Word files
+
+A report asked for as an HWP or Word file (「한글 문서로 2027 사업계획 보고서 써 줘」,
+"write the quarterly report as a Word document") is written by the report pipeline —
+outline, research, `[n]` citations and their sources, checks, figures — and stored as that
+file, not as the HTML report. `services/report_office.py` reads the format from the person's
+own words (`asked_file`: the request before pasted material and before the 「덧붙인 조건」
+the server appends; the first file named wins; 「한글로」 counts as HWP only when the
+sentence says nothing about language, so 「영어 말고 한글로」 stays the language).
+
+Routing. In a chat, `lib/documentRequest.ts` `officeReportRequest` sends such a sentence to
+the report screen when it orders a long-form document (보고서, 기획서, 제안서, 계획서,
+백서, 매뉴얼…, "report", "proposal") and is not a short one (공문, 기안문, 품의서, 메모, a
+letter, 「한 장짜리」); those, an edit, a question about documents, and any sentence in a
+chat that already has an office document open stay with the editor beside the chat and
+its `hwp_write`/`docx_write`. On the report screen any request naming a file is written as
+that file. Nothing new is stored on the session: `_send_message` passes the format
+(`office`) into `_run_report` and the pass's `Request.turn`, and `report-save`
+(`ReportSave` → `sessions._office_target`, `_store_office_report`) builds the file and
+creates the `hwp`/`docx` artifact through `office_doc.create` (a rerun of the run writes the
+same file's next version with `office_doc.save`). A conversation that already has an HTML
+report keeps it; 「한글 파일로 줘」 there is still the file hand-over. While the pass runs no
+HTML draft opens (`streamReport` checks the waiting request with `reportFileKind`); the
+file opens in `HwpPanel` / `DocxPanel` when stored.
+
+The file. `report_office.write` gives the exporters the sections as `GET
+/artifacts/{id}/export` would (`richtext.normalise`, references appended by
+`with_references`, the design tokens, the `doc_formats` title block, a 서식's Word
+template), after drawing what the browser draws for the HTML report: each `chart` fence
+as a one-slide python-pptx chart rendered by the printer (`/pptx/png`) and each `mermaid`
+figure through `diagram_render.render_png`, stored under the section's `diagrams` key that
+`report_export._diagram_picture` reads. OWPML has no chart element, so the HWPX has always
+placed a chart as a picture; the Word file does the same here (`charts_as_pictures`)
+because the web editor draws no DrawingML chart, and its 목차 is the headings as text
+(`static_toc`) since no field runs there. Without the printer a chart keeps its numbers'
+table and a mermaid figure its 「[다이어그램]」 line. Both exporters keep a line's
+`**bold**` as a bold run, write link lines left-aligned (justified, an unbreakable URL
+spread the words before it) and table cells left-aligned; in the HWPX a card's or a
+note box's title is bold and its lines are not, and a step table's head row is body
+size.
+
+Follow-ups. `sessions._office_report` finds a report conversation whose document is an
+`hwp` or `docx` artifact; `_send_message` then runs the turn as a chat turn (`kind`, passed
+to `assemble` too): the office tools join, the server reads the file first
+(`_document_preset`), and the model edits it with `hwp_edit` / `docx_edit` against the
+version it read. Hand saves in the editor and the agent's edits share the version history,
+as for any office document. The web sends those turns through the chat stream
+(`useStore.send`, `officeReport`). A report written as a file is not re-planned or revised
+by the report pipeline afterwards; a new report is a new conversation.
+
 ### PowerPoint documents
 
 A `pptx` artifact is a third office kind on the same layer (`office_doc`,

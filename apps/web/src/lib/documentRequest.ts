@@ -77,6 +77,41 @@ export const NAMES_PPTX = new RegExp([
   '(?<![A-Za-z])ppt\\s{0,2}(?:파일|files?)',
 ].join('|'), 'i')
 
+/** 「한글로 보고서 써 줘」: the word processor by its short name, unless the sentence talks about
+ *  language (「영어 말고 한글로」). Mirrors `report_office._HANGUL_TO` and `_LANGUAGE`. */
+const HANGUL_TO = /(?<![가-힣])한글\s{0,2}(?:로|으로)(?![가-힣])/
+const LANGUAGE = /영어|영문|한국어|국문|외국어|일본어|중국어|번역|언어|맞춤법|english|korean|language/i
+
+/** The office file a document request names, the first one named; mirrors the server's
+ *  `report_office.asked_file`, which decides what a report is stored as. */
+export function reportFileKind(text: string): 'hwp' | 'docx' | null {
+  const s = instructionPart(text.split('\n\n덧붙인 조건:')[0])
+  const found: [number, 'hwp' | 'docx'][] = []
+  const hwp = NAMES_HWP.exec(s) ?? (LANGUAGE.test(s) ? null : HANGUL_TO.exec(s))
+  if (hwp) found.push([hwp.index, 'hwp'])
+  const docx = NAMES_DOCX.exec(s)
+  if (docx) found.push([docx.index, 'docx'])
+  found.sort((a, b) => a[0] - b[0])
+  return found[0]?.[1] ?? null
+}
+
+/** Long-form documents the report surface writes (research, outline, sources, figures). */
+const REPORT_GENRE =
+  /(보고서|기획서|제안서|계획서|백서|매뉴얼|지침서|결과\s?보고|주간\s?보고|월간\s?보고|출장\s?보고|사후\s?분석|white paper|term paper|proposal|report)/i
+/** Short documents written straight into the editor beside the chat, even as a 보고 (「한 장짜리」). */
+const SHORT_DOCUMENT =
+  /(공문|기안문|협조문|품의서|시말서|경위서|사유서|안내문|공지문|메모|memo|편지|letter|한\s?장|1\s?장\s?짜리|한\s?페이지|1\s?페이지|one-?page)/i
+
+/** 「한글 문서로 2027 사업계획 보고서 써 줘」: a long report asked for as an HWP or Word file goes
+ *  to the report surface, which writes it as that file; a 공문 or a memo in a file, or an edit
+ *  of the file already open, stays with the editor beside the chat. */
+export function officeReportRequest(text: string): 'hwp' | 'docx' | null {
+  const kind = reportFileKind(text)
+  if (!kind || handoffSurface(text) !== 'report') return null
+  const s = instructionPart(text)
+  return REPORT_GENRE.test(s) && !SHORT_DOCUMENT.test(s) ? kind : null
+}
+
 /** The surface a chat sentence really belongs to, or null to answer it here. */
 export function handoffSurface(text: string): 'report' | 'slides' | null {
   const s = instructionPart(text).trim()

@@ -90,6 +90,7 @@ import type {
   UserRole,
 } from '@/types'
 import { fileSize, uid } from '@/lib/utils'
+import { reportFileKind } from '@/lib/documentRequest'
 import { DEFAULT_PASSWORD_MIN } from '@/lib/formCheck'
 import { currentLang, translate, type Lang } from '@/lib/i18n'
 import { counters } from '@/lib/usage'
@@ -1816,7 +1817,9 @@ export const useStore = create<State>((set, get) => ({
       accepted = true
       if (ownsAccount()) opts.onSession?.(id)
     }
-    if (kind !== 'chat') acceptSession()
+    // A report written as an office file is edited from here on through the chat's turn.
+    const turnKind: SessionKind = kind === 'report' && officeReport(get(), id) ? 'chat' : kind
+    if (turnKind !== 'chat') acceptSession()
 
     // Snapshot before the optimistic turn: a 4xx means nothing was stored, so it is rolled back.
     const before = get().sessions.find((session) => session.id === id)
@@ -1899,7 +1902,7 @@ export const useStore = create<State>((set, get) => ({
       ? (patch) => { if (ownsAccount()) set(patch) }
       : set
     const perform = async () => {
-      if (kind === 'report') {
+      if (turnKind === 'report') {
         await streamReport(
           set,
           get,
@@ -1948,7 +1951,7 @@ export const useStore = create<State>((set, get) => ({
         return id
       }
 
-      if (kind !== 'chat') {
+      if (turnKind !== 'chat') {
         handToTheComposer(set, text)
         return id
       }
@@ -1988,7 +1991,7 @@ export const useStore = create<State>((set, get) => ({
           ),
           openArtifactId: beforeOpenArtifactId,
         }))
-      } else if (kind === 'chat' && opts.reconcileBeforeRetry && !accepted && before) {
+      } else if (turnKind === 'chat' && opts.reconcileBeforeRetry && !accepted && before) {
         const stored = await sessionsApi.get(id).catch(() => null)
         if (!ownsAccount()) throw err
         const fresh = stored ? toSession(stored) : null
@@ -2001,7 +2004,7 @@ export const useStore = create<State>((set, get) => ({
         if (unchanged) throw err
         acceptSession()
         throw new ChatSendRecoveryError(fresh ? 'stored' : 'unknown')
-      } else if (kind === 'chat') {
+      } else if (turnKind === 'chat') {
         // Other failures may already have server-side output; keep the session reachable.
         acceptSession()
       }
@@ -3006,6 +3009,15 @@ function startingTemplate(state: State, kind: SessionKind, agent: Agent | undefi
 }
 
 /** Draft title while writing: the request's opening words, or on approval the outline's title. */
+/** A report written as an HWP or Word file: worked on from then on like a chat's office document
+ *  (the server runs its turns as chat turns, `sessions._office_report`). */
+function officeReport(state: Pick<State, 'sessions' | 'artifacts'>, sessionId: string): boolean {
+  const session = state.sessions.find((c) => c.id === sessionId)
+  if (session?.kind !== 'report' || !session.artifactId) return false
+  const kind = state.artifacts.find((a) => a.id === session.artifactId)?.kind
+  return kind === 'hwp' || kind === 'docx'
+}
+
 function draftTitle(
   text: string,
   gate: { approve?: boolean; plan?: Record<string, unknown> },
@@ -3992,7 +4004,9 @@ async function streamReport(
     open: get().openArtifactId,
   }
   // A planning pass produces no document, so it opens none; a rerun writes into the one there is.
-  const willWrite = gate.approve === true && !gate.rerun
+  // A report asked for as an HWP or Word file shows no HTML draft: the file opens when written.
+  const asked = get().sessions.find((c) => c.id === sessionId)?.pending?.request ?? text
+  const willWrite = gate.approve === true && !gate.rerun && !reportFileKind(asked)
   // Approved outline spent; a new proposal arrives as its own event.
   if (gate.approve === true) setPending(set, sessionId, () => null)
   const targetId = gate.rerun

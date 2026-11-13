@@ -763,6 +763,27 @@ def _strip_inline(text: str) -> str:
     return re.sub(r"`(\S(?:[^`]*\S)?)`", r"\1", text)
 
 
+_BOLD = re.compile(r"\*\*(.+?)\*\*")
+
+
+def _emphasis(text: str, finish: Callable[[str], str] = lambda part: part) -> dict | None:
+    """A Markdown line's `**bold**` as runs in `_next_format`'s block shape, or None when it
+    has none; a line with a link keeps the link writer instead."""
+    if "://" in text or not _BOLD.search(text):
+        return None
+    runs: list[dict] = []
+    cursor = 0
+    for found in _BOLD.finditer(text):
+        if before := finish(_strip_inline(text[cursor:found.start()])):
+            runs.append({"text": before, "style": {}})
+        runs.append({"text": finish(_strip_inline(found.group(1))),
+                     "style": {"font-weight": "bold"}})
+        cursor = found.end()
+    if rest := finish(_strip_inline(text[cursor:])):
+        runs.append({"text": rest, "style": {}})
+    return {"runs": runs}
+
+
 def _format_key(text: str) -> str:
     return re.sub(r"\s+", " ", _strip_inline(str(text))).strip()
 
@@ -1124,6 +1145,22 @@ def _table_of_contents(document) -> None:
     # no page break: unexpanded field would leave page 1 empty
 
 
+def _listed_contents(document, sections: list[dict], block: dict | None) -> None:
+    """The 목차 as the top-level headings, numbered as in the body; no page numbers."""
+    from docx.shared import Pt
+
+    heading = document.add_paragraph("목차", style="Heading 1")
+    heading.paragraph_format.space_after = Pt(6)
+    numbers = _HeadingNumbers(block)
+    for section in sections:
+        name = str(section.get("heading") or "").strip()
+        number = numbers.section(section)
+        if not name or section.get("level") == 2 or _is_attachment(section, block):
+            continue
+        line = document.add_paragraph(f"{number}{name}", style=_BODY)
+        line.paragraph_format.space_after = Pt(2)
+
+
 def _docx_cell_margins(table, vertical_pt: float = 3.0, horizontal_pt: float = 6.0) -> None:
     """Cell padding; Word's default is a hair."""
     from docx.oxml import OxmlElement
@@ -1186,8 +1223,9 @@ def _docx_table_styles(document) -> None:
         style.font.bold = bold
         style.paragraph_format.space_after = Pt(0)
         style.paragraph_format.line_spacing = doc_type.LEADING["table"]
-        if right:
-            style.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        # justified, Hangul in a narrow cell spreads letter by letter (「응 답 지 연」)
+        style.paragraph_format.alignment = (
+            WD_ALIGN_PARAGRAPH.RIGHT if right else WD_ALIGN_PARAGRAPH.LEFT)
 
 
 def _docx_table(document, rows: richtext.Grid | list[list[str]], accent: str = "") -> None:
@@ -2071,7 +2109,12 @@ def to_docx(
     page_settings: dict | None = None,
     title_block: dict | None = None,
     body_from_design: bool = False,
+    charts_as_pictures: bool = False,
+    static_toc: bool = False,
 ) -> bytes:
+    """Word file of the report. For a file edited in an editor that runs no fields and draws
+    no DrawingML chart: `charts_as_pictures` places a chart's stored raster (as the HWPX does),
+    `static_toc` writes the 목차 as the section headings instead of a TOC field."""
     from docx import Document
     from docx.shared import Inches, Pt, RGBColor
 
@@ -2155,7 +2198,9 @@ def to_docx(
     else:
         title_heading = document.add_heading(title, level=0)
         visualise_heading(title_heading, 0)
-    if _wants_toc(sections):
+    if _wants_toc(sections) and static_toc:
+        _listed_contents(document, sections, head_block)
+    elif _wants_toc(sections):
         _table_of_contents(document)
         _update_fields_on_open(document)
     if document_is_plain:
@@ -2209,6 +2254,10 @@ def to_docx(
                     _docx_callout(document, text)
                 continue
             if kind == "chart":
+                if charts_as_pictures and (
+                        drawn := _diagram_picture(section, {"key": diagram_key(marker)})):
+                    _docx_picture(document, drawn)
+                    continue
                 charts += 1
                 if not _docx_chart(document, text, charts, style):
                     _docx_table(document, _chart_as_rows(text), (style or {}).get("accent", ""))
@@ -2229,6 +2278,7 @@ def to_docx(
                     document.add_paragraph(clean, style=_BODY)
                 continue
             block, format_cursor = _next_format(formatted, clean, format_cursor)
+            block = block or _emphasis(text)
             if kind == "heading":
                 paragraph = document.add_heading("", level=2)
                 if number := numbers.next(2):
@@ -4014,8 +4064,10 @@ def _hwpx_table(
     figure_para_pr: int | None = None,
     cell_char_pr: list[int] | None = None,
     border_fill: int = 2,
+    title_char_pr: int | None = None,
 ) -> str:
-    """GFM table as an OWPML table paragraph; child order load-bearing; raises for line fallback."""
+    """GFM table as an OWPML table paragraph; child order load-bearing; raises for line fallback.
+    `title_char_pr`: each cell's first line in that shape (a card's or box's title in bold)."""
     grid = _export_grid(rows)
     if not grid.rows:
         raise ValueError("빈 표")
@@ -4090,7 +4142,11 @@ def _hwpx_table(
             char = head_char_pr if head else char_pr
             if cell_char_pr is not None and column < len(cell_char_pr):
                 char = cell_char_pr[column]
-            para = "".join(_hwpx_para(line, shape, char) for line in lines)
+            para = "".join(
+                _hwpx_para(line, shape,
+                           title_char_pr if title_char_pr is not None and at == 0 else char)
+                for at, line in enumerate(lines)
+            )
             width = sum(column_widths[column : column + across])
             cells.append(
                 f'<hp:tc name="" header="{1 if head else 0}" hasMargin="1" protect="0"'
@@ -4515,7 +4571,7 @@ def _hwpx_document(
                     body.extend(place(drawn))
                     continue
                 try:
-                    body.append(_hwpx_table(_chart_as_rows(text), head_char_pr=2))
+                    body.append(_hwpx_table(_chart_as_rows(text)))
                 except Exception as exc:  # noqa: BLE001 — see `_hwpx_table`
                     log.warning("hwpx chart fell back to lines: %s", exc)
                     for line in _table_as_lines(_chart_as_rows(text)):
@@ -4527,7 +4583,6 @@ def _hwpx_document(
                         _hwpx_table(
                             [["", "단계", "내용"]]
                             + [[str(i + 1), name, detail] for i, (name, detail) in enumerate(text)],
-                            head_char_pr=2,
                             widths=[1, 5, 12],
                             cell_para_pr=[6, 7, 7],
                         )
@@ -4546,7 +4601,7 @@ def _hwpx_document(
                         ]
                         for pair in _in_pairs(text)
                     ]
-                    body.append(_hwpx_table(grid, cell_para_pr=3))
+                    body.append(_hwpx_table(grid, header_row=False, title_char_pr=1))
                 except Exception as exc:  # noqa: BLE001 — see `_hwpx_table`
                     log.warning("hwpx cards fell back to lines: %s", exc)
                     for title, items in text:
@@ -4572,7 +4627,8 @@ def _hwpx_document(
                 # one cell: 한글 drops left rules on re-save
                 title, lines = text
                 try:
-                    body.append(_hwpx_table([["\n".join([title] + list(lines))]], cell_para_pr=3))
+                    body.append(_hwpx_table([["\n".join([title] + list(lines))]], header_row=False,
+                                            title_char_pr=1))
                 except Exception as exc:  # noqa: BLE001 — see `_hwpx_table`
                     log.warning("hwpx callout fell back to lines: %s", exc)
                     body.append(_hwpx_para(title, 2))
@@ -4600,6 +4656,7 @@ def _hwpx_document(
                 continue
             clean = _raised_marks(_strip_inline(text))
             block, format_cursor = _next_format(formatted, _strip_inline(text), format_cursor)
+            block = block or _emphasis(text, _raised_marks)
             if kind == "heading":
                 number = numbers.next(2)
                 body.append(
@@ -4623,11 +4680,18 @@ def _hwpx_document(
                 )
             elif kind in ("bullet", "number"):
                 base_para = (4, 8, 9)[min(depth, 2)]
+                if "://" in clean:
+                    # a reference entry: justified, its long link spreads the words before it
+                    base_para = styled_para_id({"style": {"text-align": "left"}}, base_para)
                 body.append(
                     styled_para(block, base_para, 0, f"{marker} ")
                     if block
                     else _hwpx_para(f"{marker} {clean}", base_para)
                 )
+            elif "://" in clean:
+                # justified, a long unbreakable link spreads the words before it
+                body.append(_hwpx_para(clean, styled_para_id({"style": {"text-align": "left"}},
+                                                             3)))
             else:
                 body.append(styled_para(block, 3, 0) if block else _hwpx_para(clean, 3))
         for picture in section.get("images") or []:

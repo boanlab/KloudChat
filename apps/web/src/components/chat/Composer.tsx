@@ -31,6 +31,7 @@ import { errorCode, errorMessage, PrivacyDecisionError, templateText } from '@/l
 import { refusalSentence, startFailure, withRetryWait } from '@/lib/failures'
 import {
   agentDocumentNames, agentHandoffSurface, handoffSurface, NAMES_DOCX, NAMES_HWP, NAMES_PPTX,
+  officeReportRequest,
 } from '@/lib/documentRequest'
 import { DICTATION_EVENT, isMac } from '@/lib/shortcuts'
 import { currentLang } from '@/lib/i18n'
@@ -1527,11 +1528,15 @@ export function Composer({
     }
     // Document request in chat starts a report/slides conversation; an agent chat moves only to a surface it names; a pipeline conversation answers here.
     // A chat with an HWP, Word or PowerPoint document open, or one asked for, writes in the
-    // editor beside it.
-    const officeHere = NAMES_HWP.test(text) || NAMES_DOCX.test(text) || NAMES_PPTX.test(text) ||
-      useStore.getState().artifacts.some((a) =>
-        (a.kind === 'hwp' || a.kind === 'docx' || a.kind === 'pptx') && !!sessionId &&
-        a.sessionId === sessionId)
+    // editor beside it; a long report asked for as an HWP or Word file goes to the report
+    // surface, which writes it as that file (`officeReportRequest`).
+    const documentOpen = useStore.getState().artifacts.some((a) =>
+      (a.kind === 'hwp' || a.kind === 'docx' || a.kind === 'pptx') && !!sessionId &&
+      a.sessionId === sessionId)
+    const reportAsFile = !!officeReportRequest(text) &&
+      useStore.getState().enabledKinds.includes('report')
+    const officeHere = documentOpen || (!reportAsFile &&
+      (NAMES_HWP.test(text) || NAMES_DOCX.test(text) || NAMES_PPTX.test(text)))
     const movable =
       kind === 'chat' && !session?.pipelineId && !sessionAgent?.pipelineId && !officeHere
     const detected = movable ? handoffSurface(text) : null

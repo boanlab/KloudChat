@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  agentHandoffSurface, handoffSurface, NAMES_DOCX, NAMES_HWP, NAMES_PPTX,
+  agentHandoffSurface, handoffSurface, NAMES_DOCX, NAMES_HWP, NAMES_PPTX, officeReportRequest,
+  reportFileKind,
 } from '@/lib/documentRequest'
 
 describe('handoffSurface', () => {
@@ -110,5 +111,33 @@ describe('NAMES_PPTX', () => {
     expect(NAMES_PPTX.test(asked)).toBe(true)
     expect(handoffSurface('사업 계획 발표 자료 5장 만들어 줘')).toBe('slides')
     expect(NAMES_PPTX.test('사업 계획 발표 자료 5장 만들어 줘')).toBe(false)
+  })
+})
+
+describe('officeReportRequest', () => {
+  it('sends a long report asked for as an HWP or Word file to the report screen', () => {
+    expect(officeReportRequest('한글로 2027 사업계획 보고서 써줘')).toBe('hwp')
+    expect(officeReportRequest('한글 문서로 3분기 실적 보고서 작성해 줘')).toBe('hwp')
+    expect(officeReportRequest('Word 파일로 신사업 제안서 써 줘')).toBe('docx')
+    expect(officeReportRequest('write the quarterly report as a Word document')).toBe('docx')
+  })
+
+  it('keeps a short document in a file, an edit or a question beside the chat', () => {
+    expect(officeReportRequest('직원 연수 참석을 요청하는 공문을 Word로 작성해 주세요')).toBeNull()
+    expect(officeReportRequest('한글 문서로 한 장짜리 출장 보고서 써 줘')).toBeNull()
+    expect(officeReportRequest('한글 파일로 회의 메모 정리해 줘')).toBeNull()
+    expect(officeReportRequest('한글 문서로 보고서 쓰는 방법 알려줘')).toBeNull()
+    expect(officeReportRequest('이 보고서를 Word로 고쳐 줘')).toBeNull()
+    // no file named: the HTML report as before
+    expect(officeReportRequest('2027 사업계획 보고서 써줘')).toBeNull()
+  })
+
+  it('reads 「한글로」 as the language when the sentence talks about language', () => {
+    expect(reportFileKind('영어 말고 한글로 보고서 써 줘')).toBeNull()
+    expect(reportFileKind('한글로 2027 사업계획 보고서 써줘')).toBe('hwp')
+    // the first file named, as the server decides (`report_office.asked_file`)
+    expect(reportFileKind('워드 말고 한글 파일로 보고서 써 줘')).toBe('hwp')
+    expect(reportFileKind('Word 파일로, 안 되면 한글 파일로 보고서 써 줘')).toBe('docx')
+    expect(reportFileKind('보고서 써 줘\n\n덧붙인 조건:\n- 한글 파일로 제출')).toBeNull()
   })
 })

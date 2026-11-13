@@ -137,6 +137,8 @@ const groups: Record<string, Group> = {
   'hwp-studio': { files: ['hwp-studio.spec.ts'], projects: { desktop } },
   // the real Word editor (open-docx-editor), a chunk of the bundle, against a mocked API
   'docx-panel': { files: ['docx-panel.spec.ts'], projects: { desktop, phone: touchPhone } },
+  // a report asked for as an HWP or Word file: written by the report screen, opened as the file
+  'report-as-office-file': { files: ['report-as-office-file.spec.ts'], projects: { desktop } },
   // the real PowerPoint editor (pptx-react-viewer under our chrome), a chunk of its own
   'pptx-panel': { files: ['pptx-panel.spec.ts'], projects: { desktop, phone: touchPhone } },
   // HWP, Word and PowerPoint files in the file box: drawn by their editors, 편집 opens a copy
