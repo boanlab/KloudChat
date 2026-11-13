@@ -97,6 +97,7 @@ from app.services import (
     design_extract,
     design_templates,
     diagram_render,
+    digest_jobs,
     doc_formats,
     elk_layout,
     factcheck,
@@ -634,12 +635,16 @@ async def upload_file(
         stored.error = str(exc)
     # scanned pages read in background; text layer kept meanwhile
     reading = await ocr_jobs.queue_if_scanned(stored, data)
+    # project material gets its digest once its text is whole (OCR asks for it when done)
+    digesting = not reading and digest_jobs.mark(stored)
 
     db.add(stored)
     await db.commit()
     await db.refresh(stored)
     if reading:
         ocr_jobs.wake()
+    if digesting:
+        digest_jobs.wake()
     # indexed for `search_knowledge`; never blocks the upload
     if stored.text.strip():
         if project_id:
@@ -760,9 +765,11 @@ async def add_project_url(project_id: str, payload: KnowledgeUrl, user: CurrentU
         text=text,
         tokens=file_service.estimate_tokens(text),
     )
+    digest_jobs.mark(stored)
     db.add(stored)
     await db.commit()
     await db.refresh(stored)
+    digest_jobs.wake()
     project = await db.get(Project, project_id)
     if project is not None:
         await _index_document(db, user.id, await _project_shelf_key(db, project), stored)

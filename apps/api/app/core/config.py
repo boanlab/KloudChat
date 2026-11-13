@@ -130,6 +130,9 @@ class Settings(BaseSettings):
     ocr_url: str = ""
     #: Fallback vision model for unsure pages; only if listed strict-local with vision.
     ocr_vision_model: str = "strict-local/qwen3.8-flash"
+    #: Writes per-file digests of project material (`file_digest`); only ever a strict-local
+    #: model the catalogue lists as such, so file text stays inside. Empty: code digests only.
+    knowledge_digest_model: str = "strict-local/qwen3.8-flash"
     #: Only audio destination; empty: no transcription, no outside fallback.
     whisper_url: str = ""
     code_interpreter_api_key: str = ""

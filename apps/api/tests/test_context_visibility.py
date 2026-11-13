@@ -229,15 +229,18 @@ async def test_large_project_shelf_selects_relevant_passages_instead_of_oldest_f
         focus="고체전해질 배터리 이온전도도 결과",
     )
 
-    assert [(f.name, f.state) for f in context.knowledge] == [
-        ("먼저 올린 무관 자료.md", "omitted"),
-        ("배터리 실험.pdf", "truncated"),
+    # every file is in the 「자료 목록」; only the relevant one brings passages
+    assert [(f.name, f.state, f.listed) for f in context.knowledge] == [
+        ("먼저 올린 무관 자료.md", "truncated", True),
+        ("배터리 실험.pdf", "truncated", False),
     ]
     selected = context.knowledge[1]
     assert selected.locations == ("7쪽",)
     block = next(b.text for b in context.blocks if b.source == "project.knowledge")
-    assert "이온전도도" in block
-    assert "복지 제도" not in block
+    listing, _, passages = block.partition("## 배터리 실험.pdf\n")
+    assert "1. 먼저 올린 무관 자료.md" in listing and "2. 배터리 실험.pdf" in listing
+    assert "이온전도도" in passages
+    assert "복지 제도" not in passages
 
 
 async def test_the_prompt_the_model_reads_is_unchanged_by_the_reporting(monkeypatch):

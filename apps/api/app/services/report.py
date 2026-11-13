@@ -413,26 +413,29 @@ _FORMAT_PATTERNS: dict[str, re.Pattern[str]] = {
     key: re.compile(doc_formats.BY_ID[key].match, re.I) for key in _FORMAT_GENRES
 }
 
-#: genre rules from `app/genres.toml`, in order
-def _load_genres() -> tuple[tuple[re.Pattern[str], str, re.Pattern[str] | None], ...]:
+#: genre rules from `app/genres.toml`, in order: (pattern, rule, unless, only for format)
+_Genre = tuple[re.Pattern[str], str, re.Pattern[str] | None, str]
+
+
+def _load_genres() -> tuple[_Genre, ...]:
     import tomllib
     from pathlib import Path
 
     raw = tomllib.loads((Path(__file__).resolve().parent.parent / "genres.toml")
                         .read_text(encoding="utf-8"))
-    out: list[tuple[re.Pattern[str], str, re.Pattern[str] | None]] = []
+    out: list[_Genre] = []
     for entry in raw.get("genres") or []:
         if fmt := str(entry.get("format") or ""):
             if fmt in _FORMAT_GENRES:
-                out.append((_FORMAT_PATTERNS[fmt], _FORMAT_GENRES[fmt], None))
+                out.append((_FORMAT_PATTERNS[fmt], _FORMAT_GENRES[fmt], None, ""))
             continue
         unless = str(entry.get("unless") or "")
         out.append((re.compile(str(entry["match"])), str(entry["rule"]),
-                    re.compile(unless) if unless else None))
+                    re.compile(unless) if unless else None, str(entry.get("for_format") or "")))
     return tuple(out)
 
 
-_GENRES: tuple[tuple[re.Pattern[str], str, re.Pattern[str] | None], ...] = _load_genres()
+_GENRES: tuple[_Genre, ...] = _load_genres()
 
 
 _OWN_GENRES = re.compile(
@@ -611,7 +614,11 @@ def _genre_rule(request: str, fmt: doc_formats.DocFormat | None = None,
         return _FORMAT_GENRES[fmt.id]
     # ask's first paragraph first: memo lines don't change the genre
     for instruction in dict.fromkeys((lead_instruction(request), instruction_part(request))):
-        for pattern, rule, unless in _GENRES:
+        for pattern, rule, unless, only in _GENRES:
+            # a format's own genre stays off a document of another format (a 회의록 whose
+            # memo mentions 「강의계획서 초안」)
+            if only and fmt is not None and fmt.id != only:
+                continue
             # what the ask is for: 「회의록 서비스 시장 조사」 is no 회의록
             if doc_formats.asked(pattern, instruction) and not (
                     unless and unless.search(instruction)):

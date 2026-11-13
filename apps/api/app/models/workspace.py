@@ -109,6 +109,17 @@ class StoredFile(SQLModel, table=True):
     ocr_claimed_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
     #: claim token; stale workers can't write after takeover
     ocr_claim: str | None = Field(default=None, max_length=32)
+    #: short digest of the text (`file_digest.Digest.wire`): label, title, summary, outline,
+    #: terms and the text length it was made from; null = none yet
+    digest: dict | None = Field(default=None, sa_column=_json(nullable=True))
+    #: the strict-local model that wrote `digest`
+    digest_model: str | None = Field(default=None, max_length=120)
+    digested_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
+    #: digest job: null (none asked) | queued | running | done | failed (`digest_jobs`)
+    digest_state: str | None = Field(default=None, max_length=16)
+    digest_attempts: int = Field(default=0)
+    #: last claim; a stale one is taken over
+    digest_claimed_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
 
 

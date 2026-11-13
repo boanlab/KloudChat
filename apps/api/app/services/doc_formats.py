@@ -107,6 +107,14 @@ FORMATS: tuple[DocFormat, ...] = (
         optional=("사업 기간",),
     ),
     DocFormat(
+        # Before `plan` and `event_plan`: a course's plan is not research, nor an event.
+        "syllabus", "강의계획서",
+        r"(?:강의|수업|교과목|교과|과목|학기)\s{0,3}(?:운영\s{0,3})?계획서|강의\s{0,3}계획(?:안)?(?!서)"
+        r"|syllabus|실라버스|교수\s{0,3}요목",
+        ("교과목명", "담당교수", "개설 학기", "학점·시간", "강의실", "연락처"), head="header",
+        optional=("학점·시간", "강의실", "연락처"),
+    ),
+    DocFormat(
         "plan", "연구·조사 계획서",
         r"(?:연구|조사)\s{0,3}계획|연구\s{0,3}제안서",
         ("과제명", "연구자", "소속", "연구 기간", "지도교수", "작성일"), head="cover",
