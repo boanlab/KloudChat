@@ -3496,7 +3496,7 @@ const EN: Record<string, string> = {
   '한글': 'HWP',
 
   // ── A report's or deck's file (home screen) ──────────────────────────
-  '결과 형식': 'Output',
+  '형식': 'Format',
   '웹 보고서': 'Web report',
   '기본 슬라이드': 'Slides',
   '빈 문서로 시작': 'Start blank',

@@ -1626,17 +1626,18 @@ its `hwp_write`/`docx_write`. On the report screen any request naming a file is 
 that file.
 
 Picking the file. The home screen has no document cards beside its surfaces; the formats
-are the surfaces' own. With 보고서 chosen, a 결과 형식 switch offers 웹 보고서 (the default),
-한글 and Word; with 슬라이드, 기본 슬라이드 and PowerPoint (`HomePage` `OutputPick`). The
-switch shows the file the typed request names (`Composer` reports `reportFileKind`, or
+are the surfaces' own. With 보고서 chosen, a 형식 chip in the prompt box (beside where the
+picture options sit for 이미지) offers 웹 보고서 (the default), 한글 and Word; with 슬라이드,
+기본 슬라이드 and PowerPoint (`Composer` `OutputOptions`). The chip shows the file the typed
+request names (`Composer` reports `reportFileKind`, or
 `NAMES_PPTX` for a deck) until one is picked, and a pick wins: the report request carries
 it as `outputFormat` (`SendMessage.output_format`: `web`, `hwp`, `docx`), and
 `sessions._report_output` prefers it to the request's words. The decided file is kept on the
 waiting card (`pending.output`), so the approval that writes the outline writes that file
 and the browser opens no HTML draft for it. PowerPoint on the slides screen is today's
 PowerPoint path, not the deck pipeline: the request goes to a chat that opens with a blank
-deck in the editor (`createDocument`), where the `pptx_*` tools write it. With a file picked,
-「빈 문서로 시작」 opens it blank in its editor beside a chat without a prompt, as the
+deck in the editor (`createDocument`), where the `pptx_*` tools write it. With a file picked, a
+「빈 문서로 시작」 chip beside it opens it blank in its editor beside a chat without a prompt, as the
 document cards did.
 
 Nothing new is stored on the session row: `_send_message` passes the format

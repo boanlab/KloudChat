@@ -22,7 +22,7 @@ import {
   X,
 } from 'lucide-react'
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import type { FileRow, PrivacyDecision, WebSearchSetting } from '@/lib/api'
+import type { FileRow, OfficeKind, PrivacyDecision, WebSearchSetting } from '@/lib/api'
 import { ApiError, artifactsApi, transcriptionsApi } from '@/lib/api'
 import { startWavRecording, type WavRecorder } from '@/lib/wavRecorder'
 import { DesignGalleryModal, offersTemplates } from '@/components/chat/DesignGallery'
@@ -169,6 +169,64 @@ function OptionGroup<T extends string | number>({
         </Fragment>
       ))}
     </Dropdown>
+  )
+}
+
+/** A report's or deck's file: the web report or an HWP or Word file the report screen writes;
+ *  the deck screen's deck or a PowerPoint file in its editor beside a chat. */
+const OUTPUTS = {
+  report: [
+    { value: 'web', label: '웹 보고서' },
+    { value: 'hwp', label: '한글' },
+    { value: 'docx', label: 'Word' },
+  ],
+  slides: [
+    { value: 'deck', label: '기본 슬라이드' },
+    { value: 'pptx', label: 'PowerPoint' },
+  ],
+} as const satisfies Record<'report' | 'slides', readonly { value: ReportOutput | SlidesOutput; label: string }[]>
+
+/** The 형식 chip of a new report or deck, as the picture options are chips; a picked file also
+ *  offers 「빈 문서로 시작」. */
+function OutputOptions({
+  surface,
+  shown,
+  onPick,
+  onBlank,
+  opening,
+}: {
+  surface: 'report' | 'slides'
+  shown: ReportOutput | SlidesOutput
+  onPick: (value: ReportOutput | SlidesOutput) => void
+  onBlank?: (kind: OfficeKind) => void
+  opening: OfficeKind | null
+}) {
+  const t = useT()
+  const file = shown === 'hwp' || shown === 'docx' || shown === 'pptx' ? shown : null
+  const label = (value: ReportOutput | SlidesOutput) =>
+    t(OUTPUTS[surface].find((option) => option.value === value)?.label ?? value)
+  return (
+    <>
+      <OptionGroup<ReportOutput | SlidesOutput>
+        label={t('형식')}
+        value={shown}
+        options={OUTPUTS[surface].map((option) => option.value)}
+        onChange={onPick}
+        format={label}
+      />
+      {file && onBlank && (
+        <button
+          type="button"
+          onClick={() => onBlank(file)}
+          disabled={opening !== null}
+          title={t('입력 없이 빈 문서를 편집기에 엽니다')}
+          className="flex h-8 items-center gap-1.5 rounded-control border border-line px-2.5 text-sm text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-60"
+        >
+          {opening === file ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
+          {t('빈 문서로 시작')}
+        </button>
+      )}
+    </>
   )
 }
 
@@ -445,15 +503,23 @@ export function Composer({
   autoFocus,
   output,
   onDetectOutput,
+  onPickOutput,
+  onBlankDocument,
+  openingDocument = null,
 }: {
   sessionId: string | null
   kind: SessionKind
   projectId?: string | null
   autoFocus?: boolean
-  /** A new report's or deck's file picked beside the surface chips; wins over the request. */
+  /** A new report's or deck's file picked in the 형식 chip; wins over the request. */
   output?: ReportOutput | SlidesOutput | null
   /** The file the typed request names (「한글 문서로」, 「PowerPoint로」), for that pick's default. */
   onDetectOutput?: (detected: ReportOutput | SlidesOutput | null) => void
+  /** Shows the 형식 chip for a new report or deck; the person's pick. */
+  onPickOutput?: (value: ReportOutput | SlidesOutput) => void
+  /** 「빈 문서로 시작」 beside a picked file: that file blank in its editor beside a chat. */
+  onBlankDocument?: (kind: OfficeKind) => void
+  openingDocument?: OfficeKind | null
 }) {
   const t = useT()
   const isMedia = kind === 'image' || kind === 'av'
@@ -883,6 +949,8 @@ export function Composer({
   useEffect(() => {
     onDetectOutput?.(detectedOutput)
   }, [detectedOutput, onDetectOutput])
+  // A new report or deck picks the file it is made as.
+  const outputSurface = !sessionId && (kind === 'report' || kind === 'slides') ? kind : null
   const session = sessions.find((candidate) => candidate.id === effectiveSessionId)
   // A generation awaiting an answer or approval (document surfaces only).
   const pending = session?.pending ?? null
@@ -2452,6 +2520,18 @@ export function Composer({
                 {t('첨부하지 못했습니다: {names}').replace('{names}', uploadFailed.join(' · '))}
               </p>
             )}
+          </div>
+        )}
+
+        {outputSurface && onPickOutput && (
+          <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-2.5 py-2">
+            <OutputOptions
+              surface={outputSurface}
+              shown={output ?? detectedOutput ?? (outputSurface === 'report' ? 'web' : 'deck')}
+              onPick={onPickOutput}
+              onBlank={onBlankDocument}
+              opening={openingDocument}
+            />
           </div>
         )}
 

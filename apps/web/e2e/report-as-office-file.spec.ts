@@ -197,14 +197,13 @@ test('a short document asked for as a file stays with the editor beside the chat
 
 test('the report screen\'s pick goes with the request and wins over its words', async ({ page }) => {
   const state = await fixture(page, 'hwp', '/new/report')
-  const output = page.getByRole('group', { name: '결과 형식' })
+  const format = page.getByRole('button', { name: /^형식/ })
   // a request naming Word shows Word picked, until a pick of the person's own
   await page.getByLabel('프롬프트 입력').fill('Word 파일로 2027 사업계획 보고서 써 줘')
-  await expect(output.getByRole('button', { name: 'Word', exact: true }))
-    .toHaveAttribute('aria-pressed', 'true')
-  await output.getByRole('button', { name: '한글', exact: true }).click()
-  await expect(output.getByRole('button', { name: '한글', exact: true }))
-    .toHaveAttribute('aria-pressed', 'true')
+  await expect(format).toContainText('Word')
+  await page.getByRole('button', { name: /^형식/ }).click()
+  await page.getByRole('menuitemcheckbox', { name: '한글', exact: true }).click()
+  await expect(format).toContainText('한글')
   await page.getByLabel('프롬프트 입력').press('Enter')
   await expect.poll(() => state.sent.map((body) => body.outputFormat)).toEqual(['hwp'])
   expect(state.created.map((body) => body.kind)).toEqual(['report'])
@@ -213,9 +212,9 @@ test('the report screen\'s pick goes with the request and wins over its words', 
 
 test('PowerPoint on the slides screen is a chat that writes into a blank deck', async ({ page }) => {
   const state = await fixture(page, 'hwp', '/new/slides')
-  const output = page.getByRole('group', { name: '결과 형식' })
-  await expect(output.getByRole('button', { name: '기본 슬라이드' })).toHaveAttribute('aria-pressed', 'true')
-  await output.getByRole('button', { name: 'PowerPoint', exact: true }).click()
+  await expect(page.getByRole('button', { name: /^형식/ })).toContainText('기본 슬라이드')
+  await page.getByRole('button', { name: /^형식/ }).click()
+  await page.getByRole('menuitemcheckbox', { name: 'PowerPoint', exact: true }).click()
   await ask(page, 'AI 도입 효과를 발표할 자료 만들어 줘')
   await expect.poll(() => state.created.map((body) => body.kind)).toEqual(['chat'])
   await expect.poll(() => state.documents.length).toBe(1)

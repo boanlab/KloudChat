@@ -146,9 +146,10 @@ test('home opens a blank HWP document from the report surface\'s 한글 pick', a
   await expect(page.getByRole('button', { name: '한글 문서', exact: true })).toHaveCount(0)
   await expect(page.getByRole('button', { name: '빈 문서로 시작' })).toHaveCount(0)
   await page.getByRole('group', { name: '만들 것' }).getByRole('button', { name: '보고서' }).click()
-  const output = page.getByRole('group', { name: '결과 형식' })
-  await expect(output.getByRole('button', { name: '웹 보고서' })).toHaveAttribute('aria-pressed', 'true')
-  await output.getByRole('button', { name: '한글', exact: true }).click()
+  // the 형식 chip in the prompt box, as the picture options are chips
+  await expect(page.getByRole('button', { name: /^형식/ })).toContainText('웹 보고서')
+  await page.getByRole('button', { name: /^형식/ }).click()
+  await page.getByRole('menuitemcheckbox', { name: '한글', exact: true }).click()
   await page.getByRole('button', { name: '빈 문서로 시작' }).click()
   await expect(page).toHaveURL(/\/s\/[0-9a-z_-]+/)
   await expect(editor(page).locator('#doc')).toHaveText(`document.hwpx ${hwpx.length}`)
