@@ -187,8 +187,11 @@ Migrations live under `alembic/versions/`. The principal tables:
 - `messages.superseded` — answers a rerun of the same question replaced, oldest
   first (`{id, content, model, usage, steps, artifactIds, routing, rating,
   createdAt}`); the conversation continues from the row that carries them.
-- `sessions.summary` — `{through, text, turns}`: the summary standing in for the
-  turns too old to send once a conversation outgrows the model's window (§7).
+- `sessions.summary` — `{through, text, turns, pinned}`: the running memory standing
+  in for the turns too old to send once a conversation outgrows the model's window
+  (§7) — a summary, the pinned facts and rules (`[{label, value}]`, oldest first), and
+  the last message it covers, which is also where the kept part of the conversation
+  starts.
 - `sessions.skill_ids` — the skills switched on for the conversation (§6 Chat).
 - `messages.failure` — how a turn ended when it did not end in an answer.
   `no_answer` sits on the question, `interrupted` on a partial reply, and
@@ -2139,20 +2142,49 @@ to the sentence about it; earlier files, knowledge and memories stay in that
 opening block, which is a stable prefix across turns.
 
 **The conversation is fitted to the model's window** (`context.fit_history`),
-once the model is final. The fixed parts of the request — system turn, reference
-block, this turn's attachment and question, tool schemas — are counted with a
-deliberately high token estimate (`context.estimate_tokens`, about 1.2× the
-gateway's count on Qwen), an answer reserve is held back, and the earlier turns
-that do not fit the rest are dropped oldest first, at a question boundary, to
-80 % of the budget so the next few turns fit without another cut. The dropped
-turns go in as a trusted 「이전 대화 요약」 ("summary of the earlier conversation") block written by the enrichment model
-(`services/conversation_summary`, in batches of about 14k characters when a lot
-is dropped at once) and cached on `sessions.summary` by the id of the last
-message it covers, so a later cut summarises only the turns since. A summary
-that could not be written is said so, never invented; the turn's timeline shows
-how many messages were summarised; the cost settles as `chat.summary`. A
-prompt the provider still refuses for length is reported as
-`context_length_exceeded` with a sentence that says what to do.
+once the model is final. Every model has one (`context.effective_window`): the
+window its catalogue row states (LiteLLM metadata or a `MODEL_OVERRIDES`
+`context_window`), else `DEFAULT_CONTEXT_WINDOW` (128k tokens) — most hosted
+models state none, and without it they were sent the whole conversation every
+turn. The estimate below is calibrated on the self-hosted Qwen tokenizer; another
+model may count the same Korean text up to 1.4× higher (GLM), so outside the
+self-hosted group the window is read 1.5× smaller in the estimate's units. The
+attached-text budget follows the same window (`file_budget`). The fixed
+parts of the request — system turn, reference block, this turn's attachment and
+question, tool schemas — are counted with a deliberately high token estimate
+(`context.estimate_tokens`, about 1.2× the gateway's count on Qwen), an answer
+reserve is held back, and the earlier turns that do not fit the rest are dropped
+oldest first, at a question boundary.
+
+**The cut moves in chunks.** A new cut keeps 60 % of the budget, and it stays where
+it is — at the message after the last one the cached memory covers — for as long as
+the turns since still fit; only then does it move forward again. So the memory is
+rewritten once every several turns rather than on every turn, and the request's
+prefix (system turn with the memory, the kept turns) stays the same between cuts,
+which a provider's prompt cache can reuse.
+
+**The dropped turns become a running memory** in a trusted 「이전 대화 요약」 ("summary of the
+earlier conversation") block written by the enrichment model (`services/conversation_summary`):
+the previous memory plus only the newly dropped turns (in batches of about 24k
+characters when a lot goes at once) yield the next one. It has two parts. The
+**pinned facts and rules** — what the user stated about themselves and their task
+(names, codes, budgets, dates, places, counts), data they gave for something built
+in the conversation, and rules they set — are written as `label: value` items and
+*merged*, never rewritten: the summariser returns only new or changed items, a changed
+value replaces its label, a withdrawn rule leaves, and everything else stays however
+many cuts later (`merge_pinned`, oldest first, bounded). The **summary** carries the
+rest — what was done, decided and left open — in the conversation's language
+(`context.conversation_language`: a standing language rule, else the language of the
+user's own words). Both are cached on `sessions.summary` by the id of the last message
+they cover. A memory that could not be written is said so, never invented (the pinned
+items already kept still go); the turn's timeline shows how many messages were
+summarised; the cost settles as `chat.summary`. Material pasted into a request the cut
+dropped (2,000 characters or more, the newest three) is carried like an earlier upload
+(`context.carried_pastes`): excerpted around the current question with its end kept, in
+the reference block, within a quarter of the history budget — so a question about a long
+paste one turn later still reads the paste, not only its summary. A prompt the provider
+still refuses for length is reported as `context_length_exceeded` with a sentence that
+says what to do.
 
 The design block sits after the project's own instructions and before the
 skills: the look is a property of the project, and a skill switched on for this
@@ -2275,10 +2307,22 @@ prompts and free-form model reasoning are never persisted.
 
 **Standing rules are repeated next to the question.** An earlier user message
 that sets a rule for every later answer (「앞으로 … 세 문장 이내로」, "from now on … within three sentences";
-"from now on answer in English") is replayed verbatim as a short exchange right before the
-latest question (`standing_directives`, chat only, the three most recent, a
-withdrawal such as 「원래대로」 ("back to normal") clears them). The rule still sits in the
-transcript; the replay is where a small model attends. A skill fetched through
+"keep this whole conversation in English") is replayed verbatim as a short exchange right before the
+latest question (`standing_directives`, chat only). A rule is read as a *scope* and an
+*aspect*: a scope that reaches past this answer (「앞으로」, 「항상」, 「이 대화 내내」, "from now
+on", "the whole conversation") makes a rule on its own; a weaker one (「계속」, 「유지」, "keep",
+"stick to") only when it names what it sets — the language, the tone (「존댓말」), the
+format (「표로」, 「개조식」) or the length — so 「계속 진행해 줘」 ("keep going") stays a task, and
+「이번만」 ("just this once") is never standing. A short message is replayed whole; in a long one
+only its rule sentences, and pasted material never sets a rule. A later rule replaces an
+earlier one on the same aspect (a new answer language replaces the old one), up to five are
+kept, and a withdrawal such as 「원래대로」 ("back to normal") clears them. The rules are read off
+the **whole** conversation, not only the turns that still fit the window, so a rule set in a
+turn the window has cut still travels with every question. A standing English rule also sets
+the answer language when the question is in Korean: the system turn says so, the replay adds it
+as a plain line of its own, and the acknowledgements the envelope writes for the assistant
+(after the replay and after this turn's attachment) are in English too — a Korean 「네, …」 right
+before the question pulled answers back to Korean. The replay is where a small model attends. A skill fetched through
 `use_skill` is told that such rules take precedence over its own instructions.
 
 **The auto toggle's forced search asks about the world.** `needs_web_search`
@@ -2337,9 +2381,11 @@ form only and uses a neutral domain, so its content is not repeated as fact.
   that turns internal after saving, or a redirect to an internal host, is not
   dialed; environment proxies are not used for these calls. Catalogue
   connectors and an administrator's own may name internal hosts.
-- A cached conversation summary is part of the turn's privacy scan (with the
-  history) and is masked under the policy in force when it is reused, not only
-  the one in force when it was written.
+- A cached conversation memory — the summary and its pinned items — is part of the
+  turn's privacy scan (with the history) and is masked under the policy in force when
+  it is reused, not only the one in force when it was written; the summariser's prompt
+  and reply pass the same masker, and the memory is stored masked when the turn's
+  policy masks at rest.
 - Report sections reach storage sanitised on every path — create, update and
   restore alike (`_clean_report_data`).
 - A document edit — fact-check, review, a section, slide or block rewrite, a

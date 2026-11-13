@@ -100,6 +100,9 @@ class Settings(BaseSettings):
     # Disk fill ratio triggering removal of deleted accounts' files, oldest first; 0 disables.
     storage_reclaim_at: float = 0.8
     file_context_chars: int = 24_000
+    #: Window (tokens) a chat is fitted to when the model's own is not known (most hosted
+    #: models): longer conversations are cut and summarised instead of resent whole.
+    default_context_window: int = 131_072
 
     # Bootstrap values; admin screen overrides. Empty address drops the tool.
     searxng_url: str = ""
