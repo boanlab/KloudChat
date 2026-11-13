@@ -1,6 +1,9 @@
 import { expect, test, type Page } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
-import { approveOnce, signIn, ribbonTab } from './helpers'
+import {
+  approveOnce, deckEditor, deckHeader, deckNotes, deckPanel, deckReview, deckStage, deckThumbs,
+  deckTitle, deckToolbar, deckToolbarMenu, deckType, saveDeck, signIn, ribbonTab,
+} from './helpers'
 
 /** The report and deck panels as working surfaces, on artifacts posted straight to the API. */
 
@@ -85,6 +88,11 @@ test.describe('슬라이드 패널', () => {
     await page.close()
   })
 
+  /** Waits for the PATCH 저장 sends. */
+  const patched = (page: Page) => page.waitForResponse((response) =>
+    response.url().includes(`/api/artifacts/${deckId}`) && response.request().method() === 'PATCH',
+  )
+
   test('레일이 모든 장을 담고, 고른 장이 무대에 선다', async ({ page }) => {
     await signIn(page)
     const panel = await openPreview(page, title)
@@ -93,101 +101,85 @@ test.describe('슬라이드 패널', () => {
       await expect(heading).toHaveCSS('white-space', 'nowrap')
     }
     // Rail and stage share one renderer: title size / width is the same ratio on both.
-    const thumb = panel.locator('nav button.aspect-video').first()
-    const stage = panel.locator('div.aspect-video').filter({ hasText: SLIDES[0].title }).last()
+    const thumb = deckThumbs(page).first().locator('.kc-tframe')
+    const stage = deckStage(page).locator('div.aspect-video').first()
+    await expect(stage).toContainText(SLIDES[0].title)
     const [thumbMetric, stageMetric] = await Promise.all([
       thumb.evaluate((node) => ({ width: node.getBoundingClientRect().width, font: Number.parseFloat(getComputedStyle(node.querySelector('h3')!).fontSize) })),
       stage.evaluate((node) => ({ width: node.getBoundingClientRect().width, font: Number.parseFloat(getComputedStyle(node.querySelector('h3')!).fontSize) })),
     ])
     expect(Math.abs(thumbMetric.font / thumbMetric.width - stageMetric.font / stageMetric.width)).toBeLessThan(0.015)
-    await expect(panel.locator('button.aspect-video')).toHaveCount(SLIDES.length)
-    await expect(
-      panel.getByRole('button', { name: '장 목록' }),
-    ).toContainText(`/${SLIDES.length}`)
+    // One numbered thumbnail per slide.
+    await expect(deckThumbs(page)).toHaveCount(SLIDES.length)
+    await expect(deckThumbs(page).locator('.kc-num')).toHaveText(SLIDES.map((_, i) => String(i + 1)))
 
     // The stage follows the rail.
-    await panel.getByRole('button', { name: '3번 장' }).click()
-    await expect(panel.getByText('python -m venv .venv').first()).toBeVisible()
-
-    await panel.getByRole('button', { name: '차례로' }).click()
-    await expect(panel.getByText('왜 격리하는가').first()).toBeVisible()
-    await expect(panel.getByText('요약').first()).toBeVisible()
-    await panel.getByRole('button', { name: '그림으로' }).click()
-    await expect(panel.locator('button.aspect-video')).toHaveCount(SLIDES.length)
+    await deckEditor(page).getByRole('button', { name: '3번 장' }).click()
+    await expect(deckThumbs(page).nth(2)).toHaveAttribute('aria-current', 'true')
+    await expect(deckStage(page).getByText('python -m venv .venv').first()).toBeVisible()
+    // End in the rail goes to the last slide.
+    await deckEditor(page).locator('.kc-rail-list').focus()
+    await page.keyboard.press('End')
+    await expect(deckThumbs(page).nth(SLIDES.length - 1)).toHaveAttribute('aria-current', 'true')
+    await expect(deckStage(page).getByText('환경은 코드의 일부다').first()).toBeVisible()
   })
 
   test('앞뒤 화살표로 장을 넘긴다', async ({ page }) => {
     await signIn(page)
-    const panel = await openPreview(page, title)
-
-    await expect(panel.getByRole('button', { name: '이전 장' })).toBeDisabled()
-    await panel.getByRole('button', { name: '다음 장' }).click()
-    await expect(panel.getByText('의존성 충돌').first()).toBeVisible()
-    await expect(panel.getByText('여기서 사례를 든다')).toBeVisible()
-    await panel.getByRole('button', { name: '이전 장' }).click()
-    await expect(panel.getByText('연구실 신입생 대상').first()).toBeVisible()
+    await openPreview(page, title)
+    // A press on the slide's surround, then the arrows step the slides; the notes follow.
+    await deckThumbs(page).first().click()
+    await deckStage(page).click({ position: { x: 4, y: 4 } })
+    await page.keyboard.press('ArrowRight')
+    await expect(deckThumbs(page).nth(1)).toHaveAttribute('aria-current', 'true')
+    await expect(deckStage(page).getByText('의존성 충돌').first()).toBeVisible()
+    await expect(deckNotes(page)).toHaveValue('여기서 사례를 든다')
+    await page.keyboard.press('ArrowLeft')
+    await expect(deckThumbs(page).first()).toHaveAttribute('aria-current', 'true')
+    await expect(deckStage(page).getByText('연구실 신입생 대상').first()).toBeVisible()
   })
 
-  test('320px 폭에서도 머리말과 편집 버튼이 눌리지 않는다', async ({ page }) => {
+  test('320px 폭에서는 읽기만 하고, 머리말 버튼이 눌린다', async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 720 })
     await signIn(page)
     const panel = await openPreview(page, title)
 
-    // Reading: one header row of icons, each a full touch target inside the screen.
-    const head = panel.getByLabel('빠른 도구')
-    for (const name of [/^검토/, '발표', '내려받기', '편집', '더보기', '닫기']) {
-      const button = head.getByRole('button', { name, exact: typeof name === 'string' }).first()
+    // A phone reads only: no toolbar, no 저장; 발표 sits in the header.
+    await expect(panel.getByTestId('office-read-only')).toBeVisible()
+    await expect(deckToolbar(page)).toHaveCount(0)
+    await expect(deckHeader(page).getByRole('button', { name: '저장', exact: true })).toHaveCount(0)
+    await expect(deckEditor(page).locator('[contenteditable="true"]')).toHaveCount(0)
+    await expect(deckNotes(page)).toHaveAttribute('readonly', '')
+
+    // One header row of icons, each a full touch target inside the screen.
+    const head = deckHeader(page)
+    for (const name of ['발표', '내려받기', '더보기', '닫기']) {
+      const button = head.getByRole('button', { name, exact: true }).first()
       await expect(button).toBeVisible()
       const box = await button.boundingBox()
       expect(box?.height).toBeGreaterThanOrEqual(31.5)
       expect(box?.width).toBeGreaterThanOrEqual(31.5)
       expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(320)
     }
-    // 장 목록 folds into ⋯ at this width.
+    // Sharing folds into 더보기 at this width; the menu stays on screen.
     await head.getByRole('button', { name: '더보기' }).click()
-    await expect(page.getByRole('menuitemcheckbox', { name: /장 목록/ })).toBeVisible()
+    await expect(page.getByRole('menuitem', { name: '이 아티팩트만 공유' })).toBeVisible()
+    const moreMenu = page.locator('[role="menu"]:visible').first()
+    const moreBox = await moreMenu.boundingBox()
+    expect(moreBox?.x).toBeGreaterThanOrEqual(0)
+    expect((moreBox?.x ?? 0) + (moreBox?.width ?? 0)).toBeLessThanOrEqual(320)
     await page.keyboard.press('Escape')
 
-    // Editing: the four editing tabs fit, End reaches the last.
-    await ribbonTab(page, '테마')
-    const menu = panel.getByRole('tablist', { name: '슬라이드 메뉴' })
-    for (const tab of ['글자', '삽입', '테마', '검토']) await expect(menu.getByRole('tab', { name: tab })).toBeVisible()
-    await menu.getByRole('tab', { name: '테마' }).focus()
-    await page.keyboard.press('End')
-    const lastTab = menu.getByRole('tab', { name: '검토' })
-    await expect(lastTab).toHaveAttribute('aria-selected', 'true')
-    const lastTabBox = await lastTab.boundingBox()
-    expect(lastTabBox?.x).toBeGreaterThanOrEqual(0)
-    expect((lastTabBox?.x ?? 0) + (lastTabBox?.width ?? 0)).toBeLessThanOrEqual(320)
-
-    await ribbonTab(page, '테마')
-    await panel.getByRole('button', { name: '슬라이드 디자인 고르기' }).click()
-    const designMenu = page.getByRole('menu')
-    await expect(designMenu).toBeVisible()
-    const designMenuBox = await designMenu.boundingBox()
-    expect(designMenuBox?.x).toBeGreaterThanOrEqual(0)
-    expect((designMenuBox?.x ?? 0) + (designMenuBox?.width ?? 0)).toBeLessThanOrEqual(320)
-    await page.keyboard.press('Escape')
-    await ribbonTab(page, '글자')
-    const toolbar = panel.getByLabel('슬라이드 편집 도구')
-    await expect(toolbar).toBeVisible()
-    // 저장 and 취소 sit in the header while a slide is open.
-    await expect(head.getByRole('button', { name: '저장' })).toBeVisible()
-    await expect(head.getByRole('button', { name: '편집 취소' })).toBeVisible()
-    for (const button of await head.getByRole('button').all()) {
-      expect((await button.boundingBox())?.height).toBeGreaterThanOrEqual(39.5)
-    }
-    // The ribbon row scrolls on overflow; the row itself must fit the viewport.
-    const ribbonRow = panel.getByRole('tabpanel', { name: '글자' })
-    expect(await ribbonRow.evaluate((node) => node.clientWidth)).toBeLessThanOrEqual(320)
-    await expect(ribbonRow.getByLabel('슬라이드 편집 도구')).toBeVisible()
-    await expect(toolbar.getByRole('button', { name: '슬라이드 편집 실행 취소' })).toHaveCSS('flex-shrink', '0')
+    // The slides still step in the rail, which runs under the slide.
+    await deckEditor(page).getByRole('button', { name: '2번 장' }).click()
+    await expect(deckNotes(page)).toHaveValue('여기서 사례를 든다')
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320)
   })
 
   test('발표 모드는 노트를 달고 키보드로 넘어간다', async ({ page }) => {
     await signIn(page)
-    const panel = await openPreview(page, title)
-    await panel.getByLabel('빠른 도구').getByRole('button', { name: '발표' }).click()
+    await openPreview(page, title)
+    await deckToolbar(page).getByRole('button', { name: '발표', exact: true }).click()
 
     const stage = page.getByRole('dialog', { name: '발표 모드' })
     await expect(stage).toBeVisible()
@@ -204,28 +196,25 @@ test.describe('슬라이드 패널', () => {
 
     await page.keyboard.press('Escape')
     await expect(stage).toBeHidden()
-    await expect(panel.getByLabel('빠른 도구').getByRole('button', { name: '발표' })).toBeVisible()
+    await expect(deckToolbar(page).getByRole('button', { name: '발표', exact: true })).toBeVisible()
   })
 
   test('장별 검토 메모를 저장하고 해결 상태로 관리한다', async ({ page }) => {
     await signIn(page)
     let panel = await openPreview(page, title)
-    await panel.getByLabel('빠른 도구').getByRole('button', { name: /^검토/ }).click()
-    const review = panel.locator('aside[aria-label="검토 메모"]')
-    await expect(review).toBeVisible()
+    const review = await deckReview(page)
     await expect(review.getByText('1번 장에 메모')).toBeVisible()
 
+    // Review notes are notes on the deck, not edits of it: saved at once.
     await review.getByLabel('메모 내용').fill('표지의 대상 독자를 더 크게 보여 주세요.')
-    const saved = page.waitForResponse((response) =>
-      response.url().includes(`/api/artifacts/${deckId}`) && response.request().method() === 'PATCH',
-    )
+    const saved = patched(page)
     await review.getByRole('button', { name: '메모 추가' }).click()
     await saved
     await expect(review.getByText('표지의 대상 독자를 더 크게 보여 주세요.')).toBeVisible()
     await expect(panel.getByLabel('미해결 메모 1개')).toBeVisible()
 
     await review.getByRole('button', { name: '검토 메모 닫기' }).click()
-    await panel.getByRole('button', { name: '내려받기', exact: true }).click()
+    await deckHeader(page).getByRole('button', { name: '내려받기', exact: true }).click()
     await expect(page.getByText(/내보내기 전 확인 \d+건/)).toBeVisible()
     await page.getByRole('menuitem', { name: '미해결 검토 메모 1개' }).click()
     await expect(review).toBeVisible()
@@ -233,54 +222,53 @@ test.describe('슬라이드 패널', () => {
     // Notes are artifact data.
     await page.reload()
     panel = await openPreview(page, title)
-    await panel.getByLabel('빠른 도구').getByRole('button', { name: /^검토/ }).click()
-    const restored = panel.locator('aside[aria-label="검토 메모"]')
+    const restored = await deckReview(page)
     await expect(restored.getByText('표지의 대상 독자를 더 크게 보여 주세요.')).toBeVisible()
 
-    const resolved = page.waitForResponse((response) =>
-      response.url().includes(`/api/artifacts/${deckId}`) && response.request().method() === 'PATCH',
-    )
+    const resolved = patched(page)
     await restored.getByRole('button', { name: '해결로 표시' }).click()
     await resolved
     await expect(restored.getByRole('button', { name: '다시 열기' })).toBeVisible()
 
-    // A later slide edit must not erase review metadata.
+    // A later slide edit, saved with 저장, must not erase review metadata.
     await restored.getByRole('button', { name: '검토 메모 닫기' }).click()
-    await ribbonTab(page, '글자')
-    await panel.getByLabel('슬라이드 텍스트').fill('가상환경 관리\n연구실 신입생 대상\n검토 뒤에도 남는 본문')
-    await panel.getByRole('button', { name: '저장', exact: true }).click()
-    await expect(panel.getByLabel('슬라이드 텍스트')).toHaveCount(0)
+    await deckThumbs(page).first().click()
+    await deckType(deckTitle(page), '가상환경 관리 (검토 뒤)')
+    await saveDeck(page)
+    await expect(panel.getByText('그사이 다른 판이 저장되어 저장하지 않았습니다.')).toHaveCount(0)
 
     await page.reload()
     panel = await openPreview(page, title)
-    await panel.getByLabel('빠른 도구').getByRole('button', { name: /^검토/ }).click()
-    await expect(panel.getByText('표지의 대상 독자를 더 크게 보여 주세요.')).toBeVisible()
-    await expect(panel.getByRole('button', { name: '다시 열기' })).toBeVisible()
+    const again = await deckReview(page)
+    await expect(again.getByText('표지의 대상 독자를 더 크게 보여 주세요.')).toBeVisible()
+    await expect(again.getByRole('button', { name: '다시 열기' })).toBeVisible()
 
-    const deleted = page.waitForResponse((response) =>
-      response.url().includes(`/api/artifacts/${deckId}`) && response.request().method() === 'PATCH',
-    )
-    await panel.getByRole('button', { name: '메모 삭제' }).click()
+    const deleted = patched(page)
+    await again.getByRole('button', { name: '메모 삭제' }).click()
     await deleted
     await expect(panel.getByText('표지의 대상 독자를 더 크게 보여 주세요.')).toHaveCount(0)
   })
 
-  test('편집·팩트체크·내보내기는 메뉴에서 바로 찾는다', async ({ page }) => {
+  test('팩트체크·다시 만들기·내보내기는 머리말에서 바로 찾는다', async ({ page }) => {
     await signIn(page)
-    const panel = await openPreview(page, title)
-    await expect(panel.getByRole('button', { name: '팩트체크' })).toBeVisible()
-    await expect(panel.getByLabel('빠른 도구').getByRole('button', { name: '편집', exact: true })).toBeVisible()
-    await expect(panel.getByRole('button', { name: '내려받기', exact: true })).toBeEnabled()
+    await openPreview(page, title)
+    await expect(deckToolbar(page)).toBeVisible()
+    await expect(deckHeader(page).getByRole('button', { name: '내려받기', exact: true })).toBeEnabled()
+    await deckHeader(page).getByRole('button', { name: '더보기' }).click()
+    for (const name of ['검토', '발표', '이 장 다시 만들기', '이 장 팩트체크', '버전 기록']) {
+      await expect(page.getByRole('menuitem', { name, exact: true })).toBeVisible()
+    }
+    await page.keyboard.press('Escape')
   })
 
   test('내려받기 메뉴에서 PPTX와 PDF를 실제로 내려받는다', async ({ page }) => {
     await signIn(page)
-    const panel = await openPreview(page, title)
+    await openPreview(page, title)
     for (const [label, extension, magic] of [
       ['PowerPoint', 'pptx', 'PK'],
       ['PDF (발표용)', 'pdf', '%PDF'],
     ] as const) {
-      await panel.getByRole('button', { name: '내려받기', exact: true }).click()
+      await deckHeader(page).getByRole('button', { name: '내려받기', exact: true }).click()
       const download = page.waitForEvent('download', { timeout: 90_000 })
       await page.getByRole('menuitem', { name: label }).click()
       const file = await download
@@ -293,36 +281,41 @@ test.describe('슬라이드 패널', () => {
     }
   })
 
-  test('편집은 머리말에 한 번만 나타난다', async ({ page }) => {
+  test('편집 토글 없이 도구 줄은 하나다', async ({ page }) => {
     await signIn(page)
     const panel = await openPreview(page, title)
-    await expect(panel.getByLabel('빠른 도구').getByRole('button', { name: '편집', exact: true })).toHaveCount(1)
+    // Always editable on a desktop, as the PowerPoint editor is: no 편집, no tabs.
+    await expect(deckHeader(page).getByRole('button', { name: '편집', exact: true })).toHaveCount(0)
+    await expect(panel.getByRole('tab')).toHaveCount(0)
     await expect(panel.getByLabel('즐겨찾기')).toHaveCount(0)
-    await ribbonTab(page, '글자')
-    await expect(panel.getByLabel('슬라이드 편집 도구')).toBeVisible()
+    await expect(deckToolbar(page)).toHaveCount(1)
+    await expect(deckStage(page).locator('[contenteditable="true"]').first()).toBeVisible()
   })
 
   test('슬라이드 변경을 저장하지 않고 닫으려면 먼저 확인한다', async ({ page }) => {
     await signIn(page)
     const panel = await openPreview(page, title)
-    await ribbonTab(page, '글자')
-    await panel.getByLabel('슬라이드 텍스트').fill('아직 저장하지 않은 슬라이드 본문')
-    await panel.getByLabel('발표 노트').fill('아직 저장하지 않은 발표 노트')
-    await panel.getByLabel('빠른 도구').getByRole('button', { name: '닫기' }).click()
-    const confirm = page.getByRole('dialog', { name: '저장하지 않은 변경 내용이 있습니다' })
+    await deckThumbs(page).first().click()
+    await deckType(deckTitle(page), '아직 저장하지 않은 슬라이드 제목')
+    await deckNotes(page).fill('아직 저장하지 않은 발표자 노트')
+    await deckNotes(page).blur()
+    await expect(deckHeader(page).getByText('저장 안 됨')).toBeVisible()
+    await deckHeader(page).getByRole('button', { name: '닫기' }).click()
+    const confirm = page.getByRole('dialog', { name: /저장하지 않은 (편집|변경 내용)이 있습니다/ })
     await expect(confirm).toBeVisible()
     await confirm.getByRole('button', { name: '취소' }).click()
     await expect(panel).toBeVisible()
-    await panel.getByLabel('빠른 도구').getByRole('button', { name: '닫기' }).click()
-    await confirm.getByRole('button', { name: '저장하지 않고 닫기' }).click()
-    await expect(panel).toHaveCount(0)
+    await expect(deckNotes(page)).toHaveValue('아직 저장하지 않은 발표자 노트')
+    await deckHeader(page).getByRole('button', { name: '닫기' }).click()
+    await confirm.getByRole('button', { name: /^(버리기|저장하지 않고 닫기)$/ }).click()
+    await expect(deckPanel(page)).toHaveCount(0)
   })
 
   test('슬라이드 편집 중 다른 저장을 덮어쓰지 않고 최신본으로 복구한다', async ({ page }) => {
     await signIn(page)
     const panel = await openPreview(page, title)
-    await ribbonTab(page, '글자')
-    await panel.getByLabel('슬라이드 텍스트').fill('로컬 제목\n로컬 편집 내용')
+    await deckThumbs(page).first().click()
+    await deckType(deckTitle(page), '로컬 제목')
 
     await page.evaluate(async ([fn, id]) => {
       const artifact = await eval(fn as string)(`/api/artifacts/${id}`)
@@ -335,33 +328,38 @@ test.describe('슬라이드 패널', () => {
       })
     }, [AS_USER, deckId] as const)
 
-    await panel.getByLabel('빠른 도구').getByRole('button', { name: '저장' }).click()
-    await expect(panel.getByText(/다른 곳에서 이미 수정/)).toBeVisible()
-    await expect(panel.getByLabel('슬라이드 텍스트')).toHaveValue(/로컬 편집 내용/)
-    await expect(panel.getByRole('button', { name: '내 편집 내용 복사' })).toBeVisible()
+    // 저장 is conditional on the version the edits started from: it does not overwrite.
+    await deckHeader(page).getByRole('button', { name: '저장', exact: true }).click()
+    const notice = panel.getByRole('status').filter({ hasText: '그사이 다른 판이 저장되어 저장하지 않았습니다.' })
+    await expect(notice).toBeVisible()
+    await expect(deckTitle(page)).toHaveText('로컬 제목')
+    await expect(deckHeader(page).getByText('저장 안 됨')).toBeVisible()
+    await expect(notice.getByRole('button', { name: '내 편집 내려받기' })).toBeVisible()
 
     const stored = await page.evaluate(async ([fn, id]) => await eval(fn as string)(`/api/artifacts/${id}`), [AS_USER, deckId] as const)
     expect((stored as { data: { slides: Array<{ body?: string }> } }).data.slides[0].body).toBe('외부 편집 보존')
 
-    await panel.getByRole('button', { name: '최신본 불러오기' }).click()
-    await expect(panel.getByText(/다른 곳에서 이미 수정/)).toHaveCount(0)
-    await expect(panel.getByLabel('슬라이드 텍스트')).toHaveValue(/외부 편집 보존/)
-    await expect(panel.getByLabel('슬라이드 텍스트')).not.toHaveValue(/로컬 편집 내용/)
+    await notice.getByRole('button', { name: '최신 판 불러오기' }).click()
+    await expect(notice).toHaveCount(0)
+    await expect(deckStage(page).getByText('외부 편집 보존').first()).toBeVisible()
+    await expect(deckTitle(page)).not.toHaveText('로컬 제목')
   })
 
   test('Ctrl+S로 슬라이드 편집을 저장한다', async ({ page }) => {
     await signIn(page)
-    const panel = await openPreview(page, title)
-    await ribbonTab(page, '글자')
-    const source = panel.getByLabel('슬라이드 텍스트')
-    await source.fill('키보드 저장\nCtrl+S로 저장한 슬라이드')
+    await openPreview(page, title)
+    await deckThumbs(page).nth(2).click()
+    const box = deckTitle(page)
+    await box.click()
+    await box.fill('Ctrl+S로 저장한 슬라이드')
     expect(await page.evaluate(() => window.dispatchEvent(new Event('beforeunload', { cancelable: true })))).toBe(false)
-    const saved = page.waitForResponse((response) => response.url().includes(`/api/artifacts/${deckId}`) && response.request().method() === 'PATCH')
-    await source.press('Control+s')
+    const saved = patched(page)
+    // Ctrl+S from inside the box commits it and saves, as the PowerPoint editor does.
+    await box.press('Control+s')
     await saved
+    await expect(deckHeader(page).getByText('저장 안 됨')).toHaveCount(0)
     expect(await page.evaluate(() => window.dispatchEvent(new Event('beforeunload', { cancelable: true })))).toBe(true)
-    await expect(source).toHaveCount(0)
-    await expect(panel.getByText('Ctrl+S로 저장한 슬라이드').first()).toBeVisible()
+    await expect(deckStage(page).getByText('Ctrl+S로 저장한 슬라이드').first()).toBeVisible()
   })
 
   test('이전 슬라이드를 확인 후 복원하고 바로 다시 편집한다', async ({ page }) => {
@@ -375,10 +373,11 @@ test.describe('슬라이드 패널', () => {
     }), [AS_USER, deckId, changed, before.version] as const)
 
     const panel = await openPreview(page, title)
-    await ribbonTab(page, '글자')
-    await panel.getByLabel('슬라이드 텍스트').fill('저장하지 않은 슬라이드 편집')
-    await ribbonTab(page, '검토')
-    await panel.getByRole('button', { name: /버전 기록/ }).click()
+    await deckThumbs(page).first().click()
+    await deckType(deckTitle(page), '저장하지 않은 슬라이드 편집')
+    // 버전 기록 from the header's 더보기, as on every document panel.
+    await deckHeader(page).getByRole('button', { name: '더보기' }).click()
+    await page.getByRole('menuitem', { name: '버전 기록' }).click()
     const history = page.getByRole('dialog', { name: '버전 기록' })
     await history.getByRole('button', { name: `v${before.version} 내용 보기` }).click()
     await expect(history.getByLabel(`v${before.version} 내용 미리보기`)).toContainText(before.data.slides[0].body ?? before.data.slides[0].title)
@@ -388,14 +387,15 @@ test.describe('슬라이드 패널', () => {
     const confirm = page.getByRole('dialog', { name: `v${before.version}으로 되돌릴까요?` })
     await expect(confirm).toContainText('저장하지 않은 변경 내용은 사라집니다')
     await confirm.getByRole('button', { name: '이 버전으로 복원' }).click()
-    await expect(panel.getByLabel('슬라이드 텍스트')).toHaveCount(0)
+    await expect(deckHeader(page).getByText('저장 안 됨')).toHaveCount(0)
+    await expect(panel.getByText('저장하지 않은 슬라이드 편집')).toHaveCount(0)
     await expect(panel.getByText('복원하면 사라질 슬라이드 문장')).toHaveCount(0)
 
-    await ribbonTab(page, '테마')
-    await ribbonTab(page, '글자')
-    await panel.getByLabel('슬라이드 텍스트').fill('복원 뒤 재저장\n정상 저장 확인')
-    await panel.getByLabel('빠른 도구').getByRole('button', { name: '저장' }).click()
-    await expect(panel.getByLabel('슬라이드 텍스트')).toHaveCount(0)
+    // Editing straight after the restore saves on the restored version.
+    await deckThumbs(page).first().click()
+    await deckType(deckTitle(page), '복원 뒤 재저장')
+    await saveDeck(page)
+    await expect(panel.getByText('그사이 다른 판이 저장되어 저장하지 않았습니다.')).toHaveCount(0)
   })
 
   test('같은 덱을 세 가지 디자인 계열로 바꾸고 저장한다', async ({ page }) => {
@@ -403,19 +403,20 @@ test.describe('슬라이드 패널', () => {
     const panel = await openPreview(page, title)
 
     const captures: Buffer[] = []
-    for (const [buttonName, storedStyle] of [
+    for (const [look, storedStyle] of [
       ['포스터형', 'poster'],
       ['미니멀', 'minimal'],
       ['편집형', 'editorial'],
     ] as const) {
-      const saved = page.waitForResponse((response) =>
-        response.url().includes(`/api/artifacts/${deckId}`) && response.request().method() === 'PATCH',
-      )
-      await panel.getByRole('button', { name: buttonName, exact: true }).click()
+      // 테마 › a look; like every edit it is saved with 저장
+      const menu = await deckToolbarMenu(page, '테마')
+      await menu.getByRole('menuitemradio', { name: look, exact: true }).click()
+      const saved = patched(page)
+      await saveDeck(page)
       await saved
-      await expect(
-        panel.getByRole('button', { name: buttonName, exact: true }),
-      ).toHaveAttribute('aria-pressed', 'true')
+      const again = await deckToolbarMenu(page, '테마')
+      await expect(again.getByRole('menuitemradio', { name: look, exact: true })).toHaveAttribute('aria-checked', 'true')
+      await page.keyboard.press('Escape')
       const artifact = await page.evaluate(
         async ([fn, id]) => await eval(fn as string)(`/api/artifacts/${id}`),
         [AS_USER, deckId] as const,
@@ -426,9 +427,11 @@ test.describe('슬라이드 패널', () => {
     expect(captures[0].equals(captures[1])).toBe(false)
     expect(captures[1].equals(captures[2])).toBe(false)
 
-    await panel.getByRole('button', { name: '덱 색 고르기' }).click()
-    const recoloured = page.waitForResponse((response) => response.url().includes(`/api/artifacts/${deckId}`) && response.request().method() === 'PATCH')
-    await page.getByRole('menuitemcheckbox', { name: '청록', exact: true }).click()
+    // 테마 › 강조색
+    const menu = await deckToolbarMenu(page, '테마')
+    await menu.getByRole('group', { name: '강조색 고르기' }).getByRole('button', { name: '청록', exact: true }).click()
+    const recoloured = patched(page)
+    await saveDeck(page)
     await recoloured
     const recolouredDeck = await page.evaluate(async ([fn, id]) => await eval(fn as string)(`/api/artifacts/${id}`), [AS_USER, deckId] as const)
     expect((recolouredDeck as { data: { design: { accent: string; visualStyle: string } } }).data.design).toMatchObject({ accent: '#0f766e', visualStyle: 'editorial' })
