@@ -93,7 +93,7 @@ function Flow({ props }: { props: PanelProps }) {
       <div>
         <span className="text-muted">{t('받는 것')}</span> ·{' '}
         {from.length
-          ? from.map((f) => (f === START ? t('대화의 요청과 첨부') : `${t(name(f))}${t('의 결과')}`)).join(', ')
+          ? from.map((f) => (f === START ? t('대화의 요청과 첨부') : t('{name}의 결과').replace('{name}', t(name(f))))).join(', ')
           : t('없음 — 앞 단계와 이어지지 않았습니다')}
       </div>
       <div>

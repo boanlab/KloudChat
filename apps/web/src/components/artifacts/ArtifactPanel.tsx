@@ -668,13 +668,13 @@ export function MediaPanel({
       : artifact.kind === 'audio'
         ? [
             [t('프롬프트'), artifact.prompt],
-            [t('유형'), audioKindLabel[artifact.audioKind]],
-            [t('길이'), `${artifact.durationSec}초`],
+            [t('유형'), t(audioKindLabel[artifact.audioKind])],
+            [t('길이'), t('{n}초').replace('{n}', String(artifact.durationSec))],
             [t('모델'), artifact.model],
           ]
         : [
             [t('프롬프트'), artifact.prompt],
-            [t('길이'), `${artifact.durationSec}초`],
+            [t('길이'), t('{n}초').replace('{n}', String(artifact.durationSec))],
             [t('비율'), artifact.aspect],
             [t('모델'), artifact.model],
           ]
@@ -795,15 +795,25 @@ function useSplit(enabled: boolean) {
   }
 
   /** Keyboard step. */
-  const nudge = (by: number) =>
+  const nudge = (by: number, base?: number) =>
     setWidth((w) => {
-      const from = w ?? Math.round(window.innerWidth * 0.45)
+      const from = w ?? base ?? Math.round(window.innerWidth * 0.45)
       const next = Math.min(Math.max(320, from + by), Math.max(320, window.innerWidth - CHAT_EDGE_MIN))
       localStorage.setItem(WIDTH_KEY, String(next))
       return next
     })
 
   return { width, start, nudge, reset: () => { setWidth(null); localStorage.removeItem(WIDTH_KEY) } }
+}
+
+const PANEL_MIN = 320
+const panelMax = () => Math.max(PANEL_MIN, window.innerWidth - CHAT_EDGE_MIN)
+
+/** The width the mode's CSS gives the panel before any drag, for the separator's value and first key step. */
+function defaultPanelWidth(mode: PanelMode, selfWide: boolean): number {
+  const vw = window.innerWidth
+  const css = mode === 'full' ? vw : mode === 'wide' ? Math.max(720, vw * 0.6) : selfWide ? Math.max(460, vw * 0.52) : Math.max(340, vw * 0.38)
+  return Math.round(Math.min(panelMax(), css))
 }
 
 export function ArtifactPanel() {
@@ -861,6 +871,9 @@ export function ArtifactPanel() {
         <div
           role="separator"
           aria-orientation="vertical"
+          aria-valuemin={PANEL_MIN}
+          aria-valuemax={panelMax()}
+          aria-valuenow={split.width ?? defaultPanelWidth(mode, selfWide)}
           aria-label={t('패널 너비 조절')}
           title={t('끌어서 너비를 조절합니다. 두 번 누르면 기본값으로 돌아갑니다.')}
           tabIndex={0}
@@ -870,8 +883,8 @@ export function ArtifactPanel() {
           }}
           onDoubleClick={split.reset}
           onKeyDown={(e) => {
-            if (e.key === 'ArrowLeft') split.nudge(40)
-            if (e.key === 'ArrowRight') split.nudge(-40)
+            if (e.key === 'ArrowLeft') split.nudge(40, defaultPanelWidth(mode, selfWide))
+            if (e.key === 'ArrowRight') split.nudge(-40, defaultPanelWidth(mode, selfWide))
             if (e.key === 'Home') split.reset()
           }}
           className="group absolute inset-y-0 -left-1 z-30 w-2 cursor-col-resize focus-visible:outline-none"
