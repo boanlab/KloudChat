@@ -111,8 +111,19 @@ test('an answer\'s time marks open the player at that moment', async ({ page }, 
   await page.route(`**/api/files/${videoId}/media`, (route) => route.fulfill({ json: mediaInfo() }))
   await page.route(`**/api/files/${videoId}/frames/**`, (route) =>
     route.fulfill({ contentType: 'image/jpeg', body: TINY_JPEG }))
-  await page.route(`**/api/files/${videoId}/stream**`, (route) =>
-    route.fulfill({ contentType: 'video/webm', body: CLIP }))
+  // the server answers ranges (FileResponse); the player seeks with them
+  await page.route(`**/api/files/${videoId}/stream**`, (route) => {
+    const range = /bytes=(\d+)-(\d*)/.exec(route.request().headers()['range'] ?? '')
+    if (!range) return route.fulfill({ contentType: 'video/webm', headers: { 'Accept-Ranges': 'bytes' }, body: CLIP })
+    const start = Number(range[1])
+    const end = range[2] ? Math.min(Number(range[2]), CLIP.length - 1) : CLIP.length - 1
+    return route.fulfill({
+      status: 206,
+      contentType: 'video/webm',
+      headers: { 'Accept-Ranges': 'bytes', 'Content-Range': `bytes ${start}-${end}/${CLIP.length}` },
+      body: CLIP.subarray(start, end + 1),
+    })
+  })
   await page.goto(`/s/${chatId}`)
   const chips = page.getByTestId('time-chip')
   await expect(chips.first()).toBeVisible()

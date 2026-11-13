@@ -2344,6 +2344,7 @@ export function Composer({
           attachments.length > 0 ||
           pasted.length > 0 ||
           uploadFailed.length > 0 ||
+          uploading ||
           webSearchChip ||
           sessionAgent ||
           activeSkills.length > 0 ||
