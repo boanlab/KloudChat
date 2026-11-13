@@ -406,8 +406,9 @@ async def test_a_video_becomes_a_time_coded_document(db, worker):
     speech = [r for r in ledger if r.reason == video_jobs.REASON_SPEECH]
     vision = [r for r in ledger if r.reason == video_jobs.REASON_VISION]
     assert sum(r.units for r in speech) == 1250 and {r.unit for r in speech} == {"seconds"}
-    # a self-hosted vision model is free: its tokens are recorded, nothing deducted
-    assert len(vision) == 3 and all(r.delta == 0 for r in vision)
+    # a self-hosted vision model is free: its tokens are recorded, nothing deducted; the
+    # picture shown again was not read again, so it has no row
+    assert len(vision) == 2 and all(r.delta == 0 for r in vision)
     assert sum(r.units for r in vision) == 2 * 940
 
 

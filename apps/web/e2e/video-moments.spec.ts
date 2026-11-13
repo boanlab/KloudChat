@@ -1,5 +1,4 @@
 import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
 import { at, chatId, composerFixture } from './composer-fixture'
 
@@ -11,7 +10,7 @@ import { at, chatId, composerFixture } from './composer-fixture'
 
 const videoId = 'v0000000000000000000000000000001'
 /** A 13-minute 64×36 clip, a frame a second (made with ffmpeg; a few KB). */
-const CLIP = readFileSync(join(__dirname, 'fixtures', 'thirteen-minutes.webm'))
+const CLIP = readFileSync(new URL('./fixtures/thirteen-minutes.webm', import.meta.url))
 const PIECE = 64 * 1024
 
 function videoRow(extra: Record<string, unknown>) {
