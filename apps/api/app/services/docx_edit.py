@@ -418,6 +418,8 @@ def _mark(doc: _Doc, paragraph: etree._Element) -> str:
         marks.append(f"heading {found.group(1)}")
     if paragraph.find(f"{_PPR}/{_w('numPr')}") is not None or name.startswith("List"):
         marks.append("list")
+    if paragraph.find(f".//{_w('drawing')}") is not None:
+        marks.append("picture")
     return f" ({', '.join(marks)})" if marks else ""
 
 
@@ -448,10 +450,11 @@ def outline(data: bytes) -> str:
         if block.tag == _P:
             index += 1
             text = _own_text(block)
-            if not text.strip():
+            pictured = block.find(f".//{_w('drawing')}") is not None
+            if not text.strip() and not pictured:
                 out.empty(index)
             else:
-                out.paragraph(index, text, _mark(doc, block))
+                out.paragraph(index, text if text.strip() else "(그림)", _mark(doc, block))
             continue
         tid = f"t{doc.tables.index(block) + 1}"
         merged = _merged(block)
@@ -589,8 +592,12 @@ def _text_arg(op: dict, name: str = "text") -> str:
     return office_edit.text_arg(op, name, DocxError)
 
 
-def apply(data: bytes, ops: list[dict]) -> Result:
-    """Every op or none: targets resolve against `data` before anything changes."""
+def apply(data: bytes, ops: list[dict],
+          pictures: dict[str, tuple[str, bytes]] | None = None) -> Result:
+    """Every op or none: targets resolve against `data` before anything changes. `pictures`:
+    the image files picture ops name (`file`), found by the tool."""
+    from app.services import docx_ops
+
     office_edit.check_ops(ops, DocxError)
     doc = _load(data)
     plan: list[tuple[dict, object]] = []
@@ -636,6 +643,8 @@ def apply(data: bytes, ops: list[dict]) -> Result:
         elif kind == "insert_table":
             rows = office_edit.table_arg(op, DocxError)
             plan.append((op, (_paragraph(doc, op.get("after"))[1], rows)))
+        elif kind in docx_ops.OPS:
+            plan.append((op, docx_ops.resolve(doc, op, pictures or {})))
         else:
             raise office_edit.unknown_op(kind, DocxError)
 
@@ -682,6 +691,8 @@ def apply(data: bytes, ops: list[dict]) -> Result:
             for made in reversed(_new_table(doc, rows)):
                 anchor.addnext(made)
             changes.append(f"{op['after']} 뒤에 표 추가 ({len(rows)}줄 × {len(rows[0])}칸)")
+        elif kind in docx_ops.OPS:
+            changes.append(docx_ops.run(doc, op, target))
     out = io.BytesIO()
     doc.document.save(out)
     return Result(out.getvalue(), changes)

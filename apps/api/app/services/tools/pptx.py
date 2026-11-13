@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.db import SessionLocal
-from app.services import pptx_doc
+from app.services import pptx_doc, pptx_ops
 from app.services import pptx_edit as edits
 from app.services.tools.office import Toolset, tools_for
 
@@ -17,7 +17,10 @@ _OP_HELP = (
     "set_cell {table:'s3.2', row, col, text} · set_notes {slide:'s2', text} · "
     "insert_table_row {table, after} · delete_table_row {table, row} · "
     "add_slide {after:'s3', title, body, like?} · duplicate_slide {id:'s2', after?} · "
-    "delete_slide {id} · move_slide {id, after} ('s0' = to the front)"
+    "delete_slide {id} · move_slide {id, after} ('s0' = to the front) · "
+    "insert_table {slide, rows, replace?} · insert_table_column {table, after} · "
+    "delete_table_column {table, col} · insert_picture {slide, file, replace?} · "
+    "replace_picture {id, file} · change_layout {slide, layout}"
 )
 
 
@@ -50,9 +53,9 @@ TOOLS = tools_for(Toolset(
     error=edits.PptxError,
     # looked up per run, so a test can swap the database
     session=lambda: SessionLocal(),
-    ops=edits.OPS,
+    ops=edits.OPS + pptx_ops.OPS,
     op_help=_OP_HELP,
-    renumbers=edits.RENUMBERS,
+    renumbers=edits.RENUMBERS | pptx_ops.RENUMBERS,
     read_text=(
         "Read the PowerPoint deck open beside this chat, as the person last saved it in the "
         "editor. Returns each slide `── s2 (레이아웃: …) ──` and its shapes `s2.1 (제목): …`, "
@@ -73,16 +76,25 @@ TOOLS = tools_for(Toolset(
         "speaker notes; insert_table_row {table, after}; delete_table_row {table, row}; "
         "add_slide {after:'s3', title, body} adds a slide shaped like slide `after` (or "
         "like:'s2'), body one line per bullet; duplicate_slide {id, after?}; delete_slide "
-        "{id}; move_slide {id, after} (after:'s0' moves it to the front). Charts, pictures and "
-        "SmartArt cannot be edited. Put only facts the person gave; anything still unknown "
-        "stays a bracket blank like 「[담당자]」."
+        "{id}; move_slide {id, after} (after:'s0' moves it to the front). "
+        "「5장」 means s5, the fifth slide in order, not a number printed on a slide. "
+        "insert_table {slide:'s4', rows: [['구분','값'], ['…','…']], replace:'s4.2'} puts a "
+        "real table on the slide (in place of shape s4.2 when given; a request to show a "
+        "slide 「as a table」 is this, never table-like lines of text); insert_table_column "
+        "{table:'s3.2', after: col}; delete_table_column {table, col}; insert_picture "
+        "{slide, file, replace?} and replace_picture {id:'s2.4', file} with `file` an image "
+        "the person attached or a tool made in this conversation (its name or id); "
+        "change_layout {slide, layout} moves a slide to another layout pptx_read lists, its "
+        "content kept. Charts and SmartArt cannot be edited, and a chart cannot be made: say "
+        "so. Put only facts the person gave; anything still unknown stays a bracket blank "
+        "like 「[담당자]」."
     ),
     edit_items={
         "type": "object",
         # where an op acts, then what it puts there: a model that writes the keys in this
         # order (DeepSeek) otherwise ends a set_cell at `col`, without its text
         "properties": {
-            "op": {"type": "string", "enum": list(edits.OPS)},
+            "op": {"type": "string", "enum": list(edits.OPS + pptx_ops.OPS)},
             "id": {"type": "string"},
             "slide": {"type": "string"},
             "table": {"type": "string"},
@@ -96,6 +108,10 @@ TOOLS = tools_for(Toolset(
             "value": {"type": "string"},
             "title": {"type": "string"},
             "body": {"type": "string"},
+            "rows": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}},
+            "replace": {"type": "string"},
+            "file": {"type": "string"},
+            "layout": {"type": "string"},
         },
         "required": ["op"],
     },

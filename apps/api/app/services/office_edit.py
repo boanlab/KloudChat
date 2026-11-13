@@ -18,6 +18,10 @@ MAX_TEXT = 4000
 OPS = (
     "replace_text", "fill_blank", "set_cell", "insert_paragraph", "delete_paragraph",
     "insert_table_row", "delete_table_row", "insert_table",
+    # formatting, layout, tables, pictures, page (`docx_ops`, `hwpx_ops`)
+    "set_style", "format_text", "align", "move_paragraphs", "insert_table_column",
+    "delete_table_column", "merge_cells", "split_cell", "insert_picture", "replace_picture",
+    "page_setup",
 )
 #: a new table's size: rows (its head row included) and columns
 MAX_TABLE_ROWS, MAX_TABLE_COLS = 40, 8

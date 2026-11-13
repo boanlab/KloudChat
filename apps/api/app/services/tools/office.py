@@ -49,7 +49,8 @@ class Toolset:
     edit_text: str = ""
     edit_items: dict[str, Any] | None = None
     renumbers: frozenset[str] = frozenset({"insert_paragraph", "delete_paragraph",
-                                           "insert_table"})
+                                           "insert_table", "move_paragraphs",
+                                           "insert_picture"})
     write_text: str = ""
     write_params: dict[str, Any] | None = None
     build: Callable[[dict[str, Any]], tuple[str, bytes]] | None = None
@@ -110,9 +111,14 @@ def _trace(artifact_id: str, version: int) -> dict[str, Any]:
 
 
 _OP_HELP = (
-    "replace_text {id, text} · fill_blank {blank, value} · set_cell {table, row, col, text} · "
-    "insert_paragraph {after, text} · delete_paragraph {id} · insert_table_row {table, after} · "
-    "delete_table_row {table, row} · insert_table {after, rows}"
+    "replace_text {id, text} · fill_blank {blank, value} · set_cell {table, row, col, text, "
+    "whole?} · insert_paragraph {after, text} · delete_paragraph {id} · insert_table_row "
+    "{table, after} · delete_table_row {table, row} · insert_table {after, rows} · set_style "
+    "{id, style} · format_text {id, find?, bold?, italic?, underline?, color?, size?} · align "
+    "{id, align} · move_paragraphs {from, to, after} · insert_table_column {table, after} · "
+    "delete_table_column {table, col} · merge_cells {table, row, col, span_rows, span_cols} · "
+    "split_cell {table, row, col} · insert_picture {after, file} · replace_picture {id, file} · "
+    "page_setup {orientation?, margins_mm?, header?, footer?, page_numbers?}"
 )
 
 _HEADS = ", ".join(
@@ -377,14 +383,32 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool]:
             "{blank:'[연수명]', value:'교원연수'} fills every place that blank appears, or only "
             f"one place with at:'p6' or at:'t1 r3c1' ({p}_read lists where each blank stands: "
             "give `at` when the same blank means different things, such as a date in the head "
-            "and another in the body); set_cell {table:'t1', row, col, text}; insert_paragraph "
-            "{after:'p7', text} (takes p7's format); delete_paragraph {id}; insert_table_row "
-            "{table, after}; delete_table_row {table, row}; insert_table {after:'p7', rows: "
-            "[['구분','내용'], ['…','…']]} adds a new table after p7, its first row the head "
-            "(a caption is an insert_paragraph before it). When one line holds several blanks "
-            "that one fact fills (「[YYYY. MM. DD.] [HH:MM] ~ [HH:MM]」), rewrite that line with "
-            "replace_text instead. Put only facts the person gave; anything still unknown stays "
-            "a bracket blank like 「[담당자]」."
+            "and another in the body); set_cell {table:'t1', row, col, text} rewrites the "
+            "cell's text, one line per paragraph (\\n between), keeping its other contents; "
+            "whole:true empties the cell first (only when asked to replace the whole cell); "
+            "insert_paragraph {after:'p7', text} (takes p7's format); delete_paragraph {id}; "
+            "insert_table_row {table, after}; delete_table_row {table, row}; insert_table "
+            "{after:'p7', rows: [['구분','내용'], ['…','…']]} adds a new table after p7, its "
+            "first row the head (a caption is an insert_paragraph before it). "
+            "Format: set_style {id, style: title | heading 1 | heading 2 | heading 3 | body}; "
+            "format_text {id:'p5' or 't1 r2c1', find:'3억 원' (leave out for the whole "
+            "paragraph), bold, italic, underline (true/false), color:'#C00000', size: pt}; "
+            "align {id, align: left | center | right | justify}. "
+            "Move: move_paragraphs {from:'p9', to:'p14', after:'p3'} moves p9~p14 (a chapter "
+            "with its body and tables) after p3. "
+            "Tables: insert_table_column {table, after: col}; delete_table_column {table, col}; "
+            "merge_cells {table, row, col, span_rows, span_cols}; split_cell {table, row, col}. "
+            "Pictures: insert_picture {after:'p5', file, width_mm?}; replace_picture {id:'p6', "
+            "file} — `file` is the name or id of an image the person attached or a tool made in "
+            "this conversation. Page: page_setup {orientation: portrait | landscape, "
+            "margins_mm: {top, bottom, left, right}, header, footer, page_numbers: true/false}. "
+            "Ops that move or add paragraphs renumber what follows: read again before the next "
+            "edit. It cannot edit charts, text boxes, footnotes or a table of contents, and "
+            "cannot make a chart: say so instead of pasting one into the chat. "
+            "When one line holds several blanks that one fact fills (「[YYYY. MM. DD.] [HH:MM] "
+            "~ [HH:MM]」), rewrite that line with replace_text instead. Put only facts the "
+            "person gave; anything still unknown stays a bracket blank like 「[담당자]」; never "
+            "delete text the person typed unless they asked for that very text to go."
         ),
         parameters={
             "type": "object",
@@ -408,6 +432,29 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool]:
                             "value": {"type": "string"},
                             "rows": {"type": "array",
                                      "items": {"type": "array", "items": {"type": "string"}}},
+                            "whole": {"type": "boolean"},
+                            "style": {"type": "string"},
+                            "find": {"type": "string"},
+                            "bold": {"type": "boolean"},
+                            "italic": {"type": "boolean"},
+                            "underline": {"type": "boolean"},
+                            "color": {"type": "string"},
+                            "size": {"type": "number"},
+                            "align": {"type": "string",
+                                      "enum": ["left", "center", "right", "justify"]},
+                            "from": {"type": "string"},
+                            "to": {"type": "string"},
+                            "span_rows": {"type": "integer"},
+                            "span_cols": {"type": "integer"},
+                            "file": {"type": "string"},
+                            "width_mm": {"type": "number"},
+                            "orientation": {"type": "string",
+                                            "enum": ["portrait", "landscape"]},
+                            "margins_mm": {"type": "object",
+                                           "additionalProperties": {"type": "number"}},
+                            "header": {"type": "string"},
+                            "footer": {"type": "string"},
+                            "page_numbers": {"type": "boolean"},
                         },
                         "required": ["op"],
                     },

@@ -54,6 +54,8 @@ class _Doc:
     #: top-level paragraphs in reading order
     paragraphs: list[etree._Element] = field(default_factory=list)
     tables: list[_Table] = field(default_factory=list)
+    #: files added to the package (a picture's `BinData/…`), stored as they are
+    added: dict[str, bytes] = field(default_factory=dict)
 
 
 def _sections(archive: zipfile.ZipFile) -> list[str]:
@@ -220,9 +222,12 @@ def outline(data: bytes) -> str:
     for index, paragraph in enumerate(doc.paragraphs, start=1):
         pid = f"p{index}"
         text = _own_text(paragraph)
-        if not text.strip() and pid not in tables_at:
+        pictured = paragraph.find(f".//{{{HP}}}pic") is not None
+        if not text.strip() and pid not in tables_at and not pictured:
             out.empty(index)
             continue
+        if pictured and not text.strip():
+            text = "(그림)"
         out.paragraph(index, text, marks.get(index - 1, ""))
         for table in tables_at.get(pid, []):
             cells = [(r, c, _cell_text(cell)) for r, c, cell in _cells(table.element)]
@@ -552,8 +557,12 @@ def _text_arg(op: dict, name: str = "text") -> str:
     return office_edit.text_arg(op, name, HwpxError)
 
 
-def apply(data: bytes, ops: list[dict]) -> Result:
-    """Every op or none: targets resolve against `data` before anything changes."""
+def apply(data: bytes, ops: list[dict],
+          pictures: dict[str, tuple[str, bytes]] | None = None) -> Result:
+    """Every op or none: targets resolve against `data` before anything changes. `pictures`:
+    the image files picture ops name (`file`), found by the tool."""
+    from app.services import hwpx_ops
+
     office_edit.check_ops(ops, HwpxError)
     archive, doc = _load(data)
     # resolve first: ids name the version the model read
@@ -603,6 +612,8 @@ def apply(data: bytes, ops: list[dict]) -> Result:
                 shapes = _import_shapes(_header(archive, doc))
             plan.append((op, (_paragraph(doc, op.get("after"))[1],
                               _remapped(_table_paragraph(rows), shapes))))
+        elif kind in hwpx_ops.OPS:
+            plan.append((op, hwpx_ops.resolve(archive, doc, op, pictures or {})))
         else:
             raise office_edit.unknown_op(kind, HwpxError)
 
@@ -652,6 +663,8 @@ def apply(data: bytes, ops: list[dict]) -> Result:
             rows = op["rows"]
             changes.append(f"{op['after']} 뒤에 표 추가 ({len(rows)}줄 × "
                            f"{max(len(row) for row in rows)}칸)")
+        elif kind in hwpx_ops.OPS:
+            changes.append(hwpx_ops.run(archive, doc, op, target))
     return Result(_write(archive, doc), changes)
 
 
@@ -703,11 +716,38 @@ def _font_id(head: etree._Element, lang: str, face: str) -> str:
     return new
 
 
-def _import_shapes(head: etree._Element) -> dict[str, dict[str, str]]:
-    """The house shapes a new table uses, put into a file's own header under ids of its own:
-    an equal definition already there is reused, any other is added with a fresh id, so a file
-    made in 한글 (whose `charPr` 1 may be a red 20 pt title) never lends its own meaning to
-    the table. House id -> file id, per kind."""
+def _listing(head: etree._Element, kind: str) -> etree._Element:
+    listing = next(head.iter(f"{{{HH}}}{_LISTS[kind]}"), None)
+    if listing is None:
+        raise HwpxError("문서 머리(header.xml)에 모양 목록이 없습니다.")
+    return listing
+
+
+def _define(head: etree._Element, kind: str, made: etree._Element) -> str:
+    """The id of a definition equal to `made` in the file's header, `made` added under a fresh
+    id when there is none."""
+    listing = _listing(head, kind)
+    defined = {str(e.get("id")): e for e in listing.iterchildren(f"{{{HH}}}{kind}")}
+    same = next((i for i, e in defined.items() if _bare(e) == _bare(made)), None)
+    if same is not None:
+        return same
+    ids = [int(i) for i in defined if i.isdigit()]
+    same = str(max(ids, default=-1) + 1)
+    made = copy.deepcopy(made)
+    made.set("id", same)
+    made.tail = listing[-1].tail if len(listing) else None
+    listing.append(made)
+    listing.set("itemCnt", str(len(defined) + 1))
+    return same
+
+
+def _import_shapes(head: etree._Element, wanted: dict[str, tuple[str, ...]] | None = None
+                   ) -> dict[str, dict[str, str]]:
+    """House shapes (`wanted`, the new table's by default) put into a file's own header under
+    ids of its own: an equal definition already there is reused, any other is added with a
+    fresh id, so a file made in 한글 (whose `charPr` 1 may be a red 20 pt title) never lends
+    its own meaning to what is added. House id -> file id, per kind."""
+    wanted = wanted or _HOUSE
     house = _house_header()
     house_faces = {
         (f.getparent().get("lang") or "").lower(): {}
@@ -716,17 +756,13 @@ def _import_shapes(head: etree._Element) -> dict[str, dict[str, str]]:
     for font in house.iter(f"{{{HH}}}font"):
         house_faces[(font.getparent().get("lang") or "").lower()][str(font.get("id"))] = \
             font.get("face")
-    remap: dict[str, dict[str, str]] = {kind: {} for kind in _HOUSE}
+    remap: dict[str, dict[str, str]] = {kind: {} for kind in _LISTS}
     for kind in ("borderFill", "charPr", "paraPr"):
-        listing = next(head.iter(f"{{{HH}}}{_LISTS[kind]}"), None)
-        if listing is None:
-            raise HwpxError("문서 머리(header.xml)에 모양 목록이 없어 표를 넣을 수 없습니다.")
-        defined = {str(e.get("id")): e for e in listing.iterchildren(f"{{{HH}}}{kind}")}
-        for house_id in _HOUSE[kind]:
+        for house_id in wanted.get(kind, ()):
             source = next((e for e in house.iter(f"{{{HH}}}{kind}")
                            if e.get("id") == house_id), None)
             if source is None:
-                raise HwpxError("표 모양을 찾지 못했습니다.")
+                raise HwpxError("문서 모양을 찾지 못했습니다.")
             made = copy.deepcopy(source)
             for node in made.iter():
                 ref = node.get("borderFillIDRef")
@@ -737,16 +773,7 @@ def _import_shapes(head: etree._Element) -> dict[str, dict[str, str]]:
                     face = house_faces.get(slot, {}).get(str(fonts.get(slot)))
                     if face:
                         fonts.set(slot, _font_id(head, slot.upper(), face))
-            same = next((i for i, e in defined.items() if _bare(e) == _bare(made)), None)
-            if same is None:
-                ids = [int(i) for i in defined if i.isdigit()]
-                same = str(max(ids, default=-1) + 1)
-                made.set("id", same)
-                made.tail = listing[-1].tail if len(listing) else None
-                listing.append(made)
-                defined[same] = made
-                listing.set("itemCnt", str(len(defined)))
-            remap[kind][house_id] = same
+            remap[kind][house_id] = _define(head, kind, made)
     return remap
 
 
@@ -755,7 +782,7 @@ def _remapped(element: etree._Element, remap: dict[str, dict[str, str]]) -> etre
     for node in element.iter():
         for attr, kind in _REFS.items():
             value = node.get(attr)
-            if value is not None and value in remap[kind]:
+            if value is not None and value in remap.get(kind, {}):
                 node.set(attr, remap[kind][value])
     return element
 
@@ -795,8 +822,11 @@ def _write(archive: zipfile.ZipFile, doc: _Doc) -> bytes:
             target.writestr(
                 zipfile.ZipInfo("mimetype"), archive.read("mimetype"), zipfile.ZIP_STORED
             )
-        for name in names:
+        for name in [*names, *(n for n in doc.added if n not in names)]:
             if name == "mimetype":
+                continue
+            if name in doc.added:
+                target.writestr(zipfile.ZipInfo(name), doc.added[name], zipfile.ZIP_STORED)
                 continue
             if name in doc.roots:
                 body = etree.tostring(

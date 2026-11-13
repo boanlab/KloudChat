@@ -503,7 +503,12 @@ def outline(data: bytes) -> str:
     blanks."""
     deck = _index(_load(data))
     out = office_edit.Outline()
-    out.line(f"슬라이드 {len(deck.slides)}장")
+    out.line(f"슬라이드 {len(deck.slides)}장 (sN은 N번째 슬라이드: 「5장」은 s5, 슬라이드에 찍힌 "
+             "쪽 번호가 아니라 차례로 셉니다)")
+    layouts = [lay.name for master in deck.prs.slide_masters for lay in master.slide_layouts
+               if lay.name]
+    if len(layouts) > 1:
+        out.line("쓸 수 있는 레이아웃: " + ", ".join(f"「{name}」" for name in layouts))
     for number, entry in enumerate(deck.slides, 1):
         said = [f"레이아웃: {entry.slide.slide_layout.name or '-'}"]
         if entry.slide._element.get("show") in ("0", "false"):
@@ -913,8 +918,12 @@ def _lines_arg(op: dict, name: str = "text") -> str:
     return office_edit.text_arg({**op, name: value}, name, PptxError)
 
 
-def apply(data: bytes, ops: list[dict]) -> Result:
-    """Every op or none: targets resolve against `data` before anything changes."""
+def apply(data: bytes, ops: list[dict],
+          pictures: dict[str, tuple[str, bytes]] | None = None) -> Result:
+    """Every op or none: targets resolve against `data` before anything changes. Tables,
+    pictures and layouts are `pptx_ops`'s; `pictures` the image files they name."""
+    from app.services import pptx_ops
+
     office_edit.check_ops(ops, PptxError)
     deck = _index(_load(data))
     ids = deck.prs.slides._sldIdLst
@@ -978,8 +987,10 @@ def apply(data: bytes, ops: list[dict]) -> Result:
             index = _slide_ref(deck, op.get("id"))
             after = _slide_ref(deck, op.get("after"), zero=True)
             plan.append((op, (entries[index], entries[after] if after >= 0 else None)))
+        elif kind in pptx_ops.OPS:
+            plan.append((op, pptx_ops.resolve(deck, op, pictures or {})))
         else:
-            raise PptxError(f"모르는 op {kind!r}: {', '.join(OPS)} 중 하나.")
+            raise PptxError(f"모르는 op {kind!r}: {', '.join(OPS + pptx_ops.OPS)} 중 하나.")
     deleting = sum(1 for op, _ in plan if op["op"] == "delete_slide")
     adding = sum(1 for op, _ in plan if op["op"] in ("add_slide", "duplicate_slide"))
     if len(deck.slides) + adding - deleting < 1:
@@ -1053,6 +1064,8 @@ def apply(data: bytes, ops: list[dict]) -> Result:
                     anchor.addnext(entry)
             where = "맨 앞으로" if anchor is None else f"{op['after']} 뒤로"
             changes.append(f"{op['id']}를 {where} 옮김")
+        elif kind in pptx_ops.OPS:
+            changes.append(pptx_ops.run(deck, op, target))
     return Result(_save(deck.prs), changes)
 
 
