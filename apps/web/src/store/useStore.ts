@@ -4177,11 +4177,19 @@ async function streamReport(
             assistantId = e.messageId
           }
           break
+        case 'delta':
+          // an edit made in place with the document tools answers in words, as a chat does
+          patchMessage(set, sessionId, assistantId, (m) => ({ ...m, content: (m.content ?? '') + e.text }))
+          break
         case 'step':
           if (e.stage) {
             const stage = e.stage
             patchMessage(set, sessionId, assistantId, (m) => withStage(m, stage))
             break
+          }
+          if (e.artifactId && e.status === 'done') {
+            // a document tool saved a version mid-turn: the panel shows it now
+            void get().refreshArtifact(e.artifactId)
           }
           set((s) => ({
             sessions: s.sessions.map((c) =>
@@ -4443,11 +4451,19 @@ async function streamDeck(
             assistantId = e.messageId
           }
           break
+        case 'delta':
+          // an edit made in place with the document tools answers in words, as a chat does
+          patchMessage(set, sessionId, assistantId, (m) => ({ ...m, content: (m.content ?? '') + e.text }))
+          break
         case 'step':
           if (e.stage) {
             const stage = e.stage
             patchMessage(set, sessionId, assistantId, (m) => withStage(m, stage))
             break
+          }
+          if (e.artifactId && e.status === 'done') {
+            // a document tool saved a version mid-turn: the panel shows it now
+            void get().refreshArtifact(e.artifactId)
           }
           set((s) => ({
             sessions: s.sessions.map((c) =>

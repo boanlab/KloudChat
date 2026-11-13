@@ -545,6 +545,48 @@ def theme_accent(instruction: str) -> str | None:
     return word.upper() if word.startswith("#") else _COLOURS.get(word.lower())
 
 
+#: 「절반으로」, 「반으로 줄여」, 「3분의 1로」, 「짧게 줄여」: a shortening ask, and the share kept
+_SHORTEN = re.compile(r"줄여|줄이|짧게|간추|요약|압축|절반|반으로|분의\s{0,2}\d|\b(?:shorten|trim|"
+                      r"condense|half)\b", re.I)
+_SHARE = re.compile(r"(\d{1,2})\s{0,2}분의\s{0,2}(\d{1,2})|절반|반으로|\bhalf\b", re.I)
+_LIST_LINE = re.compile(r"^\s{0,8}(?:[-*+]|\d{1,3}[.)]|[□○ㅇ◦■●])\s{1,4}\S", re.M)
+
+
+def _blocks(text: str) -> tuple[int, int]:
+    """(tables, list items) a Markdown body has."""
+    from app.services import web_doc_edit
+
+    return len(web_doc_edit.tables(text)), len(_LIST_LINE.findall(text))
+
+
+def shortening_loss(before: str, after: str, ask: str) -> str | None:
+    """Why a shortening edit takes too much, or None: asked to shorten (「절반으로」, 「줄여」),
+    it may not keep less than half of the share asked (a third of the text for 「절반」, a
+    quarter when no share is named), nor drop every table or every list item the part had —
+    shortening shortens, it never deletes whole blocks. Not a shortening ask: None."""
+    if not _SHORTEN.search(ask or "") or not before.strip():
+        return None
+    kept = len(" ".join(after.split())) / max(1, len(" ".join(before.split())))
+    share = 0.5
+    if found := _SHARE.search(ask):
+        if found.group(1) and found.group(2):
+            share = max(0.05, int(found.group(2)) / max(1, int(found.group(1))))
+            if share > 1:
+                share = 1 / share
+    floor = share * 0.6 if _SHARE.search(ask) else 0.25
+    tables_before, items_before = _blocks(before)
+    tables_after, items_after = _blocks(after)
+    if tables_before and not tables_after:
+        return ("줄이라는 요청인데 표가 통째로 빠졌습니다. 표는 남기고 줄 수나 글을 줄이세요 "
+                "(표를 빼라는 요청이면 사람에게 확인하세요).")
+    if items_before >= 2 and not items_after:
+        return "줄이라는 요청인데 목록이 통째로 빠졌습니다. 항목 수나 문장을 줄이세요."
+    if kept < floor:
+        return (f"줄이라는 요청인데 글이 {round(kept * 100)}%만 남습니다. 요청한 만큼만 "
+                "줄이세요.")
+    return None
+
+
 def title_block_fields(instruction: str, fields: list) -> dict[str, str]:
     """Head fields the words set (「작성일은 2026. 11. 13., 작성 부서는 기획팀으로 해 줘」):
     name -> value, for the names the document's head has; no model call."""

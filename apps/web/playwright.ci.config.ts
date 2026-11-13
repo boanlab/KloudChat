@@ -72,7 +72,7 @@ const groups: Record<string, Group> = {
     projects: { desktop, phone: touchPhone },
   },
   'i18n-gates': { files: ['i18n-audit-gates.spec.ts'], projects: { default: { ...devices['Desktop Chrome'] } } },
-  'report-table': { files: ['report-table-roundtrip.spec.ts', 'report-title-block.spec.ts', 'report-broken-picture.spec.ts', 'report-follows-a-dropped-stream.spec.ts'], projects: { default: desktop } },
+  'report-table': { files: ['report-table-roundtrip.spec.ts', 'report-title-block.spec.ts', 'report-broken-picture.spec.ts', 'report-follows-a-dropped-stream.spec.ts', 'report-edits-in-place.spec.ts'], projects: { default: desktop } },
   // the web report as one Markdown document: one editor, 「Markdown 원문」, sections split back by heading
   'report-markdown': { files: ['report-markdown-editor.spec.ts'], projects: { default: desktop } },
   'session-hydration': {

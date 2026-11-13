@@ -23,14 +23,23 @@ _ABOUT = re.compile(
 #: a sentence saying it could not
 _FAILED = re.compile(r"못했|실패|할 수 없|불가능|\b(?:could not|couldn't|failed|unable)\b", re.I)
 #: what each kind is called in the note
-_NAMES = {"hwp": "한글 문서", "docx": "Word 문서", "pptx": "PowerPoint 문서"}
+_NAMES = {"hwp": "한글 문서", "docx": "Word 문서", "pptx": "PowerPoint 문서",
+          "report": "웹 보고서", "deck": "웹 슬라이드"}
+
+
+def _state(ctx: Any, kind: str) -> dict:
+    """The tools' record of a kind: the office ones on the context, the web ones in its
+    sandbox (`tools/web_doc`)."""
+    if kind in ("report", "deck"):
+        return (getattr(ctx, "sandbox", None) or {}).get(f"_{kind}") or {}
+    return getattr(ctx, kind, None) or {}
 
 
 def saved_by(ctx: Any) -> list[tuple[str, dict]]:
     """(kind, record) for every version the office tools saved this turn."""
     out = []
     for kind in _NAMES:
-        for record in (getattr(ctx, kind, None) or {}).get("saved") or []:
+        for record in _state(ctx, kind).get("saved") or []:
             out.append((kind, record))
     return out
 
@@ -48,7 +57,7 @@ def note(reply: str, ctx: Any, offered: set[str]) -> str:
         if not claims:
             return ""
         kinds = [k for k in _NAMES if k in offered]
-        seen = [(getattr(ctx, k, None) or {}) for k in kinds]
+        seen = [_state(ctx, k) for k in kinds]
         version = next((s.get("version") for s in seen if s.get("version")), None)
         at = f" v{version}" if version else ""
         named = "·".join(_NAMES[k] for k in kinds)

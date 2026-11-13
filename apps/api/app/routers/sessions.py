@@ -308,6 +308,37 @@ async def _office_report(db: AsyncSession, session: ChatSession) -> Artifact | N
     return found if found.kind in wanted else None
 
 
+#: 「전체를 다시 써」, 「처음부터 다시」: the whole document written anew, by its writer
+_WHOLE_REWRITE = re.compile(
+    r"(?:전체|전부|통째로|처음부터|새로)\s{0,4}(?:를|을)?\s{0,4}(?:다시\s{0,4})?(?:써|작성|만들)|"
+    r"다시\s{0,4}(?:써|작성해|만들어)\s{0,4}(?:줘|주세요)\s{0,2}$|\b(?:rewrite|redo)\s+(?:the\s+)?"
+    r"(?:whole|entire|all)\b", re.I)
+
+
+async def _web_edit_target(db: AsyncSession, session: ChatSession,
+                           payload: SendMessage) -> Artifact | None:
+    """The web report or deck an edit turn works on in place (`report_*`/`deck_*` tools), or
+    None for a turn the document writers keep: a waiting card, an approval or answers, a new
+    document, a new structure or a whole rewrite asked in so many words, a file hand-over, an
+    undo (a version restore)."""
+    if session.kind not in (SessionKind.report, SessionKind.slides) or not session.artifact_id:
+        return None
+    if session.pending or payload.approve or payload.answers is not None:
+        return None
+    text = payload.content or ""
+    if (revise.obviously_new(text) or revise.asks_restructure(text)
+            or _WHOLE_REWRITE.search(text) or revise.asks_undo(text)[0]
+            or (revise.export_request(text) or (None, True))[1] is False):
+        return None
+    found = await db.get(Artifact, session.artifact_id)
+    wanted = ArtifactKind.report if session.kind is SessionKind.report else ArtifactKind.deck
+    if (found is None or found.kind is not wanted or found.session_id != session.id
+            or not (found.data or {}).get("sections" if wanted is ArtifactKind.report
+                                           else "slides")):
+        return None
+    return found
+
+
 async def _pptx_surface(db: AsyncSession, user: User, session: ChatSession) -> None:
     """A slides conversation asked for a PowerPoint file (`output_format` `pptx`) and holding
     no document yet gets a blank deck as its document: the turn then runs as the office chat
@@ -369,7 +400,9 @@ def _document_preset(
     tool = f"{document.kind.value}_read"
     if tool not in tool_names:
         return None
-    return (tool, {}) if str((document.data or {}).get("text") or "").strip() else None
+    data = document.data or {}
+    return (tool, {}) if (str(data.get("text") or "").strip() or data.get("sections")
+                          or data.get("slides")) else None
 
 
 #: 「한글 문서로」, 「Word로」: a request for an HWP or Word document (`report_office`)
@@ -395,6 +428,18 @@ _OFFICE_RULE = (
     "invent names, numbers, dates or attachments (붙임): leave a bracket blank like "
     "「[담당자]」 and say what is still missing. Do not delete text the person typed unless "
     "they asked for exactly that; ask first. To undo, use {p}_restore."
+)
+#: what a web report or deck conversation's edit turn is told (`tools/web_doc`)
+_WEB_RULE = (
+    "The document 「{title}」 is open beside this chat. The person's message is about it: "
+    "answer a question from {p}_read; for a change, call {p}_read, then {p}_edit with the "
+    "smallest ops that do exactly what was asked (a word: replace_text; one section or slide: "
+    "only that one). Leave every other part as it is. Keep counts the person gave (slides, "
+    "sections, items, sentences) and say the real count after. Say only what the tool reports "
+    "as saved; if an op was refused, say so plainly. Never invent names, numbers, dates or "
+    "attachments: leave a bracket blank like 「[담당자]」 and say what is missing. Do not delete "
+    "text the person typed unless they asked for exactly that; ask first. Shortening "
+    "(「절반으로」, 「줄여」) shortens: keep the tables and lists, cut words and rows."
 )
 #: office documents a chat works on beside it: tool prefix, service, what asks for one
 _OFFICE = (
@@ -4539,6 +4584,12 @@ async def _send_message(
             }
         )
 
+    #: the web report or deck this turn edits in place with targeted ops, as the office files
+    #: are (`tools/web_doc`): the turn runs as the conversation's chat with those tools
+    web_edit = (await _web_edit_target(db, session, payload)
+                if published is None and kind is not SessionKind.chat else None)
+    if web_edit is not None:
+        kind = SessionKind.chat
     #: a question about the document, or an edit of a named part, while a card waits: not
     #: its answer; the card stays for a question, goes for an edit
     card_aside = _sets_card_aside(session, payload, kind)
@@ -4876,6 +4927,10 @@ async def _send_message(
             name: published is None and (bool(asks.search(content)) or name in office_documents)
             for name, _, asks in _OFFICE
         }
+        if web_edit is not None:
+            # the conversation's web report or deck, edited in place
+            office_open["deck" if web_edit.kind is ArtifactKind.deck else "report"] = True
+            office_target = office_target or web_edit
         skill_shelf = [] if published is not None else await _skill_shelf(
             db, user, agent=agent_row,
             exclude={*active_skill_ids, *((agent_row.active_skill_ids or []) if agent_row else [])}
@@ -5981,7 +6036,9 @@ async def _send_message(
             # chat and not after a round of searches
             forced_tool = f"{office_target.kind.value}_write"
     if office_target is not None and kind is SessionKind.chat:
-        messages = _with_system_rule(messages, _OFFICE_RULE.format(
+        rule = (_WEB_RULE if office_target.kind in (ArtifactKind.report, ArtifactKind.deck)
+                else _OFFICE_RULE)
+        messages = _with_system_rule(messages, rule.format(
             p=office_target.kind.value, title=office_target.title))
     # substantial chat request: short plan beside it; not on economy/calculator turns
     if (
@@ -6892,7 +6949,7 @@ async def _answer_turn(
         if summary := _run_summary(finish, pipe.name, "finish"):
             routing = {**routing, "run": summary}
     offered = {name.split("_")[0] for name in (t.name for t in tools)
-               if name.split("_")[0] in ("hwp", "docx", "pptx")
+               if name.split("_")[0] in ("hwp", "docx", "pptx", "report", "deck")
                and name.endswith(("_edit", "_write"))}
     if content.strip() and not failed and (said := office_claims.note(content, ctx, offered)):
         # what the reply says it did to the document, held to the versions actually saved

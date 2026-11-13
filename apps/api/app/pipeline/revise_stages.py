@@ -758,6 +758,11 @@ class Rewrite(Base):
                         # part: sent back once, then the part stays
                         faults = revise.new_faults(before, body, heading=label,
                                                    instruction=instruction)
+                        if loss := revise.shortening_loss(before, body,
+                                                          " / ".join(asks) or _typed(bundle)):
+                            # shortening shortens: a table or list gone whole, or far more
+                            # cut than asked, is sent back, then the part stays
+                            faults.append(loss)
                         if shortening:
                             faults += revise.drift_faults(before, body, [
                                 str(p.get("content") or "") for i, p in enumerate(parts)
