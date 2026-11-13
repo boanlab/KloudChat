@@ -68,7 +68,7 @@ async function searchFixture(page: Page, testInfo: TestInfo) {
   const state = await hubFixture(page, testInfo, { conversations: 0 })
   const searches: URLSearchParams[] = []
   // Page routes run before the fixture's context route.
-  await page.route('**/api/sessions', (route) =>
+  await page.route(/\/api\/sessions(\?|$)/, (route) =>
     route.request().method() === 'GET' ? route.fulfill({ json: rows }) : route.fallback())
   await page.route(/\/api\/sessions\/[^/?]+(\/[a-z]+)?(\?.*)?$/, (route) => {
     if (route.request().method() !== 'GET') return route.fallback()

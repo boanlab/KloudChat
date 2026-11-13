@@ -167,7 +167,7 @@ test('model changes after a decision update the hidden reusable session', async 
 
   const hiddenSessionId = 'hidden-privacy-session'
   const session = emptyChatSession(hiddenSessionId)
-  await page.route('**/api/sessions', async (route) => {
+  await page.route(/\/api\/sessions(\?|$)/, async (route) => {
     if (route.request().method() !== 'POST') {
       await route.continue()
       return
@@ -220,7 +220,7 @@ test('a late privacy decision never overwrites a newer draft or attachment', asy
   await signIn(page)
 
   const hiddenSessionId = 'late-privacy-session'
-  await page.route('**/api/sessions', async (route) => {
+  await page.route(/\/api\/sessions(\?|$)/, async (route) => {
     if (route.request().method() !== 'POST') {
       await route.continue()
       return

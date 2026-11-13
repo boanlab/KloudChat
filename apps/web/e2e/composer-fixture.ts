@@ -203,6 +203,21 @@ export async function composerFixture(
         { type: 'usage', inputTokens: 4, outputTokens: 4, credits: 0 }, { type: 'done' },
       ].map((event) => `data: ${JSON.stringify(event)}\n\n`).join('') })
     }
+    if (method === 'GET' && path === '/files/page') {
+      // The file box: origin, name search and a page at a time, as the server answers them.
+      const q = (url.searchParams.get('q') ?? '').toLowerCase()
+      const origin = url.searchParams.get('origin')
+      const limit = Number(url.searchParams.get('limit') ?? 50)
+      const start = Number(url.searchParams.get('cursor') ?? 0)
+      const named = box.filter((row) => !row.agentId && (!q || String(row.name).toLowerCase().includes(q)))
+      const originOf = (row: Record<string, unknown>) => (row.origin === 'generated' ? 'generated' : 'upload')
+      const all = named.filter((row) => !origin || originOf(row) === origin)
+      const items = all.slice(start, start + limit)
+      return json({
+        items, total: all.length, next: start + limit < all.length ? String(start + limit) : null,
+        counts: { upload: named.filter((row) => originOf(row) === 'upload').length, generated: named.filter((row) => originOf(row) === 'generated').length },
+      })
+    }
     if (method === 'GET' && path === '/files') {
       const sessionId = url.searchParams.get('session_id')
       return json(sessionId ? box.filter((row) => row.sessionId === sessionId) : box)

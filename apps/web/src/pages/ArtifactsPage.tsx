@@ -235,6 +235,7 @@ export function ArtifactsPage() {
     artifactsLoading,
     artifactsLoadingMore,
     artifactsHasMore,
+    artifactsMoreFailed,
     artifactCounts,
     artifactsFailed,
     refreshArtifact,
@@ -437,7 +438,12 @@ export function ArtifactsPage() {
           )}
 
           {artifactsHasMore && (
-            <div className="mt-4 flex justify-center">
+            <div className="mt-4 flex flex-col items-center gap-2">
+              {artifactsMoreFailed && (
+                <p role="alert" className="text-base text-danger">
+                  {t('다음 아티팩트를 불러오지 못했습니다. 다시 시도하세요.')}
+                </p>
+              )}
               <Button
                 variant="secondary"
                 disabled={artifactsLoadingMore}
@@ -445,10 +451,12 @@ export function ArtifactsPage() {
               >
                 {artifactsLoadingMore
                   ? t('불러오는 중…')
-                  : t('{n}개 더 보기').replace(
-                      '{n}',
-                      String(Math.max(0, (total ?? artifacts.length) - artifacts.length)),
-                    )}
+                  : artifactsMoreFailed
+                    ? t('다시 시도')
+                    : t('{n}개 더 보기').replace(
+                        '{n}',
+                        String(Math.max(0, (total ?? artifacts.length) - artifacts.length)),
+                      )}
               </Button>
             </div>
           )}

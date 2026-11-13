@@ -7,7 +7,8 @@ import { PageBody } from '@/components/layout/AppShell'
 import { AdminReadsCard, ApiTab, ChannelsCard } from '@/components/publishing/BotChannels'
 import { PublicationSettingsForm } from '@/components/publishing/PublicationSettingsForm'
 import { ScopePicker } from '@/components/publishing/ScopePicker'
-import { Badge, Button, Card, ConfirmDialog, EmptyState, Field, Input, LoadingState, ResourceStatus, Select, Tabs } from '@/components/ui'
+import { Badge, Button, Card, ConfirmDialog, EmptyState, Field, Input, LoadingState, ReloadNotice, ResourceStatus, Select, Tabs } from '@/components/ui'
+import { LoadMore } from '@/components/ui/ShowMore'
 import {
   ApiError,
   errorMessage,
@@ -34,6 +35,7 @@ import {
   VISIBILITY_LABEL,
   type SettingsDraft,
 } from '@/lib/publishing'
+import { useCursorList } from '@/lib/useCursorList'
 import { useResource } from '@/lib/useResource'
 import { useT } from '@/lib/useT'
 import { cn, formatDate } from '@/lib/utils'
@@ -435,11 +437,11 @@ function StatsTab({ id }: { id: string }) {
 
 function ConversationsTab({ pub }: { pub: Publication }) {
   const t = useT()
-  const [rows, setRows] = useState<BotConversationRow[] | null>(null)
   const [open, setOpen] = useState<(BotConversationRow & { messages: BotTranscriptMessage[] }) | null>(null)
-  useEffect(() => {
-    publicationsApi.conversations(pub.id).then(setRows).catch(() => setRows([]))
-  }, [pub.id])
+  // A page at a time: a busy bot holds far more than one screen.
+  const list = useCursorList((cursor) => publicationsApi.conversationsPage(pub.id, { cursor, limit: 50 }), [pub.id])
+  const rows = list.rows
+  if (list.failed) return <ReloadNotice onRetry={() => void list.load()} />
   if (rows === null) return <LoadingState />
   return (
     <div className="space-y-4">
@@ -448,6 +450,9 @@ function ConversationsTab({ pub }: { pub: Publication }) {
           ? t('방문자가 보낸 대화와, 대화 열람에 동의한 뒤의 대화입니다. 개인정보는 가려서 보입니다.')
           : t('방문자가 「만든 사람에게 보내기」로 보낸 대화만 보입니다. 개인정보는 가려서 보입니다.')}
       </p>
+      {rows.length > 0 && (
+        <p className="text-sm text-faint">{t('대화 {n}개').replace('{n}', list.total.toLocaleString())}</p>
+      )}
       {rows.length === 0 ? (
         <EmptyState icon={<Upload size={18} />} title={t('보낸 대화가 없습니다')} />
       ) : (
@@ -470,6 +475,17 @@ function ConversationsTab({ pub }: { pub: Publication }) {
                 </button>
               </li>
             ))}
+            {list.hasMore && (
+              <li>
+                <LoadMore
+                  remaining={list.total - rows.length}
+                  loading={list.loadingMore}
+                  failed={list.moreFailed}
+                  failedText={t('다음 대화를 불러오지 못했습니다.')}
+                  onMore={() => void list.loadMore()}
+                />
+              </li>
+            )}
           </ul>
           <Card className="min-w-0 p-4">
             {open ? (

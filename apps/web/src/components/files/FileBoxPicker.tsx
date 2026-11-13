@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { Button, LoadingState, Modal, ReloadNotice } from '@/components/ui'
+import { LoadMore } from '@/components/ui/ShowMore'
 import type { FileRow } from '@/lib/api'
 import { useT } from '@/lib/useT'
 import { FileBoxFilter, FileLine } from './FileBoxList'
-import { shownFiles, useFileBox, type FileOrigin } from './fileBox'
+import { useFileBox, type FileOrigin } from './fileBox'
 
 /** 「파일함에서 고르기」: files already in the account attached again, nothing uploaded. */
 export function FileBoxPicker({
@@ -19,24 +20,25 @@ export function FileBoxPicker({
   attached: string[]
 }) {
   const t = useT()
-  const box = useFileBox(open)
   const [origin, setOrigin] = useState<FileOrigin>('upload')
   const [query, setQuery] = useState('')
-  const [picked, setPicked] = useState<Set<string>>(new Set())
-  const shown = useMemo(() => shownFiles(box.rows, origin, query), [box.rows, origin, query])
+  const box = useFileBox(open, origin, query)
+  // Picked rows are kept whole: a search or another tab may no longer list them.
+  const [picked, setPicked] = useState<Map<string, FileRow>>(new Map())
+  const shown = box.rows
   const close = () => {
-    setPicked(new Set())
+    setPicked(new Map())
     setQuery('')
     onClose()
   }
-  const toggle = (id: string) =>
+  const toggle = (row: FileRow) =>
     setPicked((current) => {
-      const next = new Set(current)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
+      const next = new Map(current)
+      if (next.has(row.id)) next.delete(row.id)
+      else next.set(row.id, row)
       return next
     })
-  const chosen = box.rows.filter((row) => picked.has(row.id) && !attached.includes(row.id))
+  const chosen = [...picked.values()].filter((row) => !attached.includes(row.id))
 
   return (
     <Modal
@@ -61,7 +63,7 @@ export function FileBoxPicker({
         </>
       }
     >
-      <FileBoxFilter rows={box.rows} origin={origin} onOrigin={setOrigin} query={query} onQuery={setQuery} />
+      <FileBoxFilter counts={box.counts} origin={origin} onOrigin={setOrigin} query={query} onQuery={setQuery} />
       {box.failed && <ReloadNotice onRetry={() => void box.load()} />}
       <div className="max-h-[50vh] overflow-y-auto">
         {box.loading ? (
@@ -85,13 +87,22 @@ export function FileBoxPicker({
                       disabled={already}
                       aria-label={t('{name} 고르기').replace('{name}', row.name)}
                       className="size-4 cursor-pointer accent-[var(--color-accent)]"
-                      onChange={() => toggle(row.id)}
+                      onChange={() => toggle(row)}
                     />
                   </label>
                 }
               />
             )
           })
+        )}
+        {box.hasMore && (
+          <LoadMore
+            remaining={box.total - shown.length}
+            loading={box.loadingMore}
+            failed={box.moreFailed}
+            failedText={t('다음 파일을 불러오지 못했습니다.')}
+            onMore={() => void box.loadMore()}
+          />
         )}
       </div>
     </Modal>

@@ -6,7 +6,7 @@ import type { FileRow } from '@/lib/api'
 import { relativeTime } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
-import { fileSize, originOf, type FileOrigin } from './fileBox'
+import { fileSize, type FileOrigin } from './fileBox'
 
 /** The file's kind at a glance: picture, table, document, other. */
 function FileGlyph({ row }: { row: FileRow }) {
@@ -19,20 +19,20 @@ function FileGlyph({ row }: { row: FileRow }) {
 
 /** 올린 파일 / 대화에서 만든 파일 tabs and the name search over them. */
 export function FileBoxFilter({
-  rows,
+  counts,
   origin,
   onOrigin,
   query,
   onQuery,
 }: {
-  rows: FileRow[]
+  /** Per origin, for the current search: the server counts every file, not just the page held. */
+  counts: Record<FileOrigin, number>
   origin: FileOrigin
   onOrigin: (next: FileOrigin) => void
   query: string
   onQuery: (next: string) => void
 }) {
   const t = useT()
-  const count = (o: FileOrigin) => rows.filter((row) => originOf(row) === o).length
   return (
     <>
       <div className="relative mb-3 max-w-sm">
@@ -49,8 +49,8 @@ export function FileBoxFilter({
         value={origin}
         onChange={onOrigin}
         tabs={[
-          { id: 'upload', label: t('올린 파일'), count: count('upload') },
-          { id: 'generated', label: t('대화에서 만든 파일'), count: count('generated') },
+          { id: 'upload', label: t('올린 파일'), count: counts.upload },
+          { id: 'generated', label: t('대화에서 만든 파일'), count: counts.generated },
         ]}
       />
     </>
@@ -64,14 +64,14 @@ function FilePlace({ row }: { row: FileRow }) {
   const session = useStore((s) => s.sessions.find((c) => c.id === row.sessionId))
   if (project) {
     return (
-      <Link to={`/projects/${project.id}`} className="truncate hover:text-fg hover:underline">
+      <Link to={`/projects/${project.id}`} className="inline-block max-w-full truncate align-middle leading-6 hover:text-fg hover:underline">
         {project.emoji} {project.name}
       </Link>
     )
   }
   if (session) {
     return (
-      <Link to={`/s/${session.id}`} className="truncate hover:text-fg hover:underline">
+      <Link to={`/s/${session.id}`} className="inline-block max-w-full truncate align-middle leading-6 hover:text-fg hover:underline">
         {session.title || t('제목 없는 대화')}
       </Link>
     )
@@ -92,16 +92,22 @@ export function FileLine({
   onOpen?: () => void
 }) {
   return (
-    <div data-testid="file-row" className="flex items-center gap-2 border-b border-line px-1 py-2 last:border-b-0">
+    // A phone moves the controls under the name, so the name keeps the row's width.
+    <div data-testid="file-row" className="flex flex-wrap items-center gap-x-2 border-b border-line px-1 py-2 last:border-b-0 sm:flex-nowrap">
       {lead}
       <FileGlyph row={row} />
       <div className="min-w-0 flex-1">
         {onOpen ? (
-          <button type="button" onClick={onOpen} className="block max-w-full truncate text-left text-base font-medium hover:underline" title={row.name}>
+          <button
+            type="button"
+            onClick={onOpen}
+            className="block min-h-6 max-w-full truncate text-left text-base font-medium hover:underline max-sm:line-clamp-2 max-sm:whitespace-normal max-sm:break-all"
+            title={row.name}
+          >
             {row.name}
           </button>
         ) : (
-          <p className="truncate text-base font-medium" title={row.name}>{row.name}</p>
+          <p className="truncate text-base font-medium max-sm:line-clamp-2 max-sm:whitespace-normal max-sm:break-all" title={row.name}>{row.name}</p>
         )}
         <p className="flex min-w-0 flex-wrap items-center gap-x-2 text-xs text-faint">
           <span>{fileSize(row.size)}</span>
@@ -109,7 +115,7 @@ export function FileLine({
           <FilePlace row={row} />
         </p>
       </div>
-      {actions}
+      {actions && <div className="flex shrink-0 items-center max-sm:-mt-1 max-sm:basis-full max-sm:justify-end">{actions}</div>}
     </div>
   )
 }

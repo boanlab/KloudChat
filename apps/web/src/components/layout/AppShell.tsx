@@ -220,7 +220,8 @@ export function AppShell() {
         // While the drawer is a modal, the page it skips to is inert: out of the Tab order.
         tabIndex={drawerOpen ? -1 : undefined}
         aria-hidden={drawerOpen || undefined}
-        className="sr-only z-[200] rounded-control bg-accent text-base font-medium text-accent-fg focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:px-3 focus:py-2.5"
+        // Full size and above the screen until focused, not a 1px box: still a 24px target.
+        className="fixed top-2 left-2 z-[200] -translate-y-[calc(100%+1rem)] rounded-control bg-accent px-3 py-2.5 text-base font-medium text-accent-fg focus:translate-y-0"
       >
         {t('본문으로 건너뛰기')}
       </a>

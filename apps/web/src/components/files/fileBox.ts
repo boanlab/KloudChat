@@ -1,38 +1,94 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { filesApi, type FileRow, type OfficeKind } from '@/lib/api'
 
 export type FileOrigin = 'upload' | 'generated'
 
-/** The account's files, uploaded and made in conversations alike; agents' knowledge left out. */
-export function useFileBox(enabled = true) {
+/** Rows per file-box page. */
+export const FILE_PAGE = 50
+
+/**
+ * The account's files of one origin, a page at a time, uploaded and made in conversations alike;
+ * agents' knowledge left out. The name search runs on the server, so it reaches every file.
+ */
+export function useFileBox(enabled = true, origin: FileOrigin = 'upload', query = '') {
   const [rows, setRows] = useState<FileRow[]>([])
+  const [counts, setCounts] = useState<Record<FileOrigin, number>>({ upload: 0, generated: 0 })
+  const [total, setTotal] = useState(0)
+  const [next, setNext] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [failed, setFailed] = useState(false)
+  // Which origin and search the held rows answer; another one shows as loading, not as old rows.
+  const [heldFor, setHeldFor] = useState<string | null>(null)
+  const [moreFailed, setMoreFailed] = useState(false)
+  // Typing outruns the network: only the latest request's answer is shown.
+  const asked = useRef(0)
+  const q = query.trim()
+
   const load = useCallback(async () => {
+    const ticket = ++asked.current
     setLoading(true)
     setFailed(false)
+    setMoreFailed(false)
     try {
-      // An agent's knowledge belongs to the agent's page, not the file box.
-      setRows((await filesApi.list()).filter((row) => !row.agentId))
+      const page = await filesApi.page({ box: true, origin, q, limit: FILE_PAGE })
+      if (ticket !== asked.current) return
+      setRows(page.items)
+      setHeldFor(`${origin}|${q}`)
+      setCounts(page.counts)
+      setTotal(page.total)
+      setNext(page.next)
     } catch {
-      setFailed(true)
+      if (ticket === asked.current) setFailed(true)
     } finally {
-      setLoading(false)
+      if (ticket === asked.current) setLoading(false)
     }
-  }, [])
+  }, [origin, q])
+
+  const loadMore = useCallback(async () => {
+    if (!next || loadingMore) return
+    const ticket = asked.current
+    setLoadingMore(true)
+    setMoreFailed(false)
+    try {
+      const page = await filesApi.page({ box: true, origin, q, cursor: next, limit: FILE_PAGE })
+      if (ticket !== asked.current) return
+      setRows((held) => [...held, ...page.items.filter((row) => !held.some((h) => h.id === row.id))])
+      setCounts(page.counts)
+      setTotal(page.total)
+      setNext(page.next)
+    } catch {
+      if (ticket === asked.current) setMoreFailed(true)
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [next, loadingMore, origin, q])
+
   useEffect(() => {
-    if (enabled) void load()
-  }, [enabled, load])
-  return { rows, setRows, loading, failed, load }
+    if (!enabled) return
+    // A pause while typing: one request per settled query, not per key.
+    const timer = setTimeout(() => void load(), q ? 250 : 0)
+    return () => clearTimeout(timer)
+  }, [enabled, load, q])
+
+  /** Drops rows deleted here, keeping the counts in step. */
+  const removeRows = (ids: string[]) => {
+    const gone = rows.filter((row) => ids.includes(row.id))
+    if (!gone.length) return
+    setRows((held) => held.filter((row) => !ids.includes(row.id)))
+    setCounts((c) => {
+      const out = { ...c }
+      for (const row of gone) out[originOf(row)] = Math.max(0, out[originOf(row)] - 1)
+      return out
+    })
+    setTotal((n) => Math.max(0, n - gone.length))
+  }
+
+  const fresh = heldFor === `${origin}|${q}`
+  return { rows: fresh ? rows : [], loading: loading || (!fresh && !failed), counts, total, hasMore: fresh && next !== null, loadingMore, failed, moreFailed, load, loadMore, removeRows }
 }
 
 export const originOf = (row: FileRow): FileOrigin => (row.origin === 'generated' ? 'generated' : 'upload')
-
-/** Rows of one origin whose name holds the query (case and spaces aside). */
-export function shownFiles(rows: FileRow[], origin: FileOrigin, query: string) {
-  const q = query.trim().toLowerCase()
-  return rows.filter((row) => originOf(row) === origin && (!q || row.name.toLowerCase().includes(q)))
-}
 
 export function fileSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`

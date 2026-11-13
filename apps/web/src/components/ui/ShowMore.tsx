@@ -30,3 +30,42 @@ export function ShowMore({ hidden, onMore }: { hidden: number; onMore: () => voi
     </button>
   )
 }
+
+/** The next server page: 「{n}개 더 보기」, its failure said above it and the button retrying. */
+export function LoadMore({
+  remaining,
+  loading,
+  failed,
+  failedText,
+  onMore,
+}: {
+  remaining: number
+  loading: boolean
+  failed: boolean
+  /** What did not arrive, e.g. 「다음 파일을 불러오지 못했습니다.」 */
+  failedText: string
+  onMore: () => void
+}) {
+  const t = (text: string) => translate(currentLang(), text)
+  return (
+    <div className="mt-2 flex flex-col items-center gap-2">
+      {failed && (
+        <p role="alert" className="text-base text-danger">
+          {failedText}
+        </p>
+      )}
+      <button
+        type="button"
+        disabled={loading}
+        onClick={onMore}
+        className="min-h-9 w-full rounded-control border border-line py-2 text-base text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-45"
+      >
+        {loading
+          ? t('불러오는 중…')
+          : failed
+            ? t('다시 시도')
+            : t('{n}개 더 보기').replace('{n}', Math.max(0, remaining).toLocaleString())}
+      </button>
+    </div>
+  )
+}

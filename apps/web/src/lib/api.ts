@@ -1169,9 +1169,10 @@ export const sessionsApi = {
     ),
   /** Asks the running turn to stop. Sent before the fetch is aborted: a closed socket alone looks like a changed tab. */
   stop: (sessionId: string) => call<void>(`/sessions/${sessionId}/stop`, { method: 'POST' }),
-  list: (params?: { kind?: string; projectId?: string }) =>
+  /** `limit`: every pinned row plus that many of the most recently touched; without it, all. */
+  list: (params?: { kind?: string; projectId?: string; limit?: number }) =>
     call<SessionRow[]>(
-      `/sessions${params ? `?${new URLSearchParams(params as Record<string, string>)}` : ''}`,
+      `/sessions${queryOf({ kind: params?.kind, project_id: params?.projectId, limit: params?.limit })}`,
     ),
   get: (id: string) => call<SessionRow>(`/sessions/${id}`),
   /** `all` resolved server-side, so a conversation from another tab is not spared. */
@@ -1300,7 +1301,43 @@ export interface FileRow {
   createdAt: string
 }
 
+/** One keyset page: `next` is the cursor for the following page, null on the last. */
+export interface CursorPage<T> {
+  items: T[]
+  total: number
+  next: string | null
+}
+
+/** Query string from the set values only; keys are the route's own (snake case). */
+function queryOf(params: Record<string, string | number | boolean | undefined | null>) {
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== '' && value !== false) query.set(key, String(value))
+  }
+  const text = query.toString()
+  return text ? `?${text}` : ''
+}
+
 export const filesApi = {
+  /** One file-box page: `box` leaves agents' knowledge out; `counts` per origin ignore `origin`. */
+  page: (params: {
+    box?: boolean
+    origin?: 'upload' | 'generated'
+    q?: string
+    projectId?: string
+    cursor?: string | null
+    limit?: number
+  }) =>
+    call<CursorPage<FileRow> & { counts: { upload: number; generated: number } }>(
+      `/files/page${queryOf({
+        box: params.box ? 'true' : undefined,
+        origin: params.origin,
+        q: params.q?.trim(),
+        project_id: params.projectId,
+        cursor: params.cursor,
+        limit: params.limit,
+      })}`,
+    ),
   list: (params?: { projectId?: string; sessionId?: string }) => {
     // The route reads snake-case query names.
     const query = new URLSearchParams({
@@ -2701,6 +2738,10 @@ export const publicationsApi = {
     call<Publication>(`/publications/${id}/versions/${versionId}/activate`, { method: 'POST' }),
   stats: (id: string, days = 30) => call<PublicationStats>(`/publications/${id}/stats?days=${days}`),
   conversations: (id: string) => call<BotConversationRow[]>(`/publications/${id}/conversations`),
+  conversationsPage: (id: string, params: { cursor?: string | null; limit?: number }) =>
+    call<CursorPage<BotConversationRow>>(
+      `/publications/${id}/conversations/page${queryOf({ cursor: params.cursor, limit: params.limit })}`,
+    ),
   conversation: (id: string, sessionId: string) =>
     call<BotConversationRow & { messages: BotTranscriptMessage[] }>(`/publications/${id}/conversations/${sessionId}`),
   /** The channels wanted, as a whole: closing applies at once, opening is asked of an administrator. */
@@ -2787,6 +2828,21 @@ export const adminPublicationsApi = {
   /** Every conversation of the bot, for an abuse review; the reason is recorded and the owner sees it. */
   conversations: (id: string, reason: string) =>
     call<BotConversationRow[]>(`/admin/publications/${id}/conversations?reason=${encodeURIComponent(reason)}`),
+  /** Every conversation a page at a time; the dates (YYYY-MM-DD, inclusive) reach old ones. */
+  conversationsPage: (
+    id: string,
+    reason: string,
+    params: { cursor?: string | null; limit?: number; dateFrom?: string; dateTo?: string },
+  ) =>
+    call<CursorPage<BotConversationRow>>(
+      `/admin/publications/${id}/conversations/page${queryOf({
+        reason,
+        cursor: params.cursor,
+        limit: params.limit,
+        date_from: params.dateFrom,
+        date_to: params.dateTo,
+      })}`,
+    ),
   conversation: (id: string, sessionId: string, reason: string) =>
     call<BotConversationRow & { messages: BotTranscriptMessage[] }>(
       `/admin/publications/${id}/conversations/${sessionId}?reason=${encodeURIComponent(reason)}`,
@@ -2969,6 +3025,11 @@ export const issuesApi = {
   sessionInfo: (sessionId: string) => call<IssueSessionInfo>(`/issues/session-info/${sessionId}`),
   create: (payload: IssueCreate) => call<IssueRow>('/issues', body(payload)),
   list: () => call<IssueRow[]>('/issues'),
+  /** My reports a page at a time; `unread` keeps those with admin activity I have not seen. */
+  page: (params: { cursor?: string | null; limit?: number; unread?: boolean }) =>
+    call<CursorPage<IssueRow> & { unread: number }>(
+      `/issues/page${queryOf({ cursor: params.cursor, limit: params.limit, unread: params.unread ? 'true' : undefined })}`,
+    ),
   unread: () => call<{ count: number }>('/issues/unread'),
   get: (id: string) => call<IssueDetail>(`/issues/${id}`),
   markRead: (id: string) => call<{ ok: boolean }>(`/issues/${id}/read`, { method: 'POST' }),

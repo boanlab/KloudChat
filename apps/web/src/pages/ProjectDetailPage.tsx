@@ -35,6 +35,7 @@ import { useFileDrop } from '@/lib/useFileDrop'
 import { useStore } from '@/store/useStore'
 import { startFailure } from '@/lib/failures'
 import type { MemoryEntry } from '@/types'
+import { useMarkUnsaved } from '@/lib/unsaved'
 import { useT } from '@/lib/useT'
 import { isListed } from '@/lib/listed'
 import { KNOWLEDGE_ACCEPT, knowledgeRefusal } from '@/lib/knowledgeFiles'
@@ -127,6 +128,15 @@ export function ProjectDetailPage() {
   useEffect(() => {
     void loadWorkspace()
   }, [loadWorkspace])
+
+  // The sidebar holds only the recent conversations; the project's older ones come with it.
+  const loadProjectSessions = useStore((s) => s.loadProjectSessions)
+  useEffect(() => {
+    if (projectId) void loadProjectSessions(projectId).catch(() => {})
+  }, [projectId, loadProjectSessions])
+
+  // Instructions typed and not saved: leaving asks first.
+  useMarkUnsaved(`project.instructions.${projectId}`, dirty)
 
   // Fill once loaded, unless already edited.
   useEffect(() => {
@@ -486,7 +496,7 @@ export function ProjectDetailPage() {
               <option value="">{t('사용 안 함 — 기본 모양')}</option>
               {designs.filter((d) => isListed(d) || d.id === project.designSystemId).map((d) => (
                 <option key={d.id} value={d.id}>
-                  {d.name}
+                  {t(d.name)}
                 </option>
               ))}
             </select>
