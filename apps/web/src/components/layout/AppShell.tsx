@@ -167,7 +167,7 @@ function useTabTitle(pathname: string) {
   }, [brand])
   useEffect(() => {
     const label = routeTitle(pathname)
-    setPageTitle(sessionTitle ?? projectName ?? (label ? t(label) : ''))
+    setPageTitle(sessionTitle || projectName || (label ? t(label) : ''))
   }, [pathname, sessionTitle, projectName, t])
   useEffect(() => {
     setUnreadTitle(unread)
