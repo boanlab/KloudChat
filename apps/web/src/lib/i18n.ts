@@ -3649,6 +3649,8 @@ const EN: Record<string, string> = {
   '모델 서버 오류로 답변을 받지 못했습니다. 잠시 후 다시 시도하세요.': 'A model server error cut the answer short. Try again shortly.',
   '대화를 시작하지 못했습니다.': 'The conversation could not be started.',
   '답변이 중간에 끊겨 여기까지만 남았습니다.': 'The answer broke off, and this is what remains.',
+  '중단됨 — 답변이 끝나기 전에 끊겼습니다.': 'Interrupted — the answer was cut off before it finished.',
+  '다시 보내기': 'Send again',
   '여기서 멈췄습니다.': 'Stopped here.',
 
   // ── why a control is disabled ─────────────────────────────────────

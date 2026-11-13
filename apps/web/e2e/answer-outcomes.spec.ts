@@ -78,6 +78,42 @@ test('끊긴 답은 끊겼다고 붙이고, 아래 오류와 함께 보인다', 
   await page.screenshot({ path: testInfo.outputPath('partial-answer.png') })
 })
 
+test('재시작으로 끊긴 질문은 중단됨이라고 말하고 다시 보내기를 준다', async ({ page }, testInfo) => {
+  await sessionFixture(page, testInfo, [{ ...question, failure: 'interrupted' }])
+  const sent: Row[] = []
+  await page.route(`**/api/sessions/${id}/messages`, async (route) => {
+    sent.push(route.request().postDataJSON() as Row)
+    await route.fulfill({
+      headers: { 'content-type': 'text/event-stream' },
+      body: `data: ${JSON.stringify({ type: 'delta', text: '분석했습니다.' })}\n\n`
+        + `data: ${JSON.stringify({ type: 'done' })}\n\n`,
+    })
+  })
+  await page.goto(`/s/${id}`)
+  await expect(page.getByText('중단됨 — 답변이 끝나기 전에 끊겼습니다.')).toBeVisible()
+  await page.getByRole('button', { name: '다시 보내기' }).click()
+  await expect.poll(() => sent.map((body) => body.retryOf)).toEqual(['m1'])
+  await expect(page.getByText('분석했습니다.')).toBeVisible()
+})
+
+test('답을 기다리다 그만두면 조용히 멈추지 않고 중단됨과 다시 보내기를 보인다', async ({ page }, testInfo) => {
+  test.setTimeout(120_000)
+  await page.clock.install({ time: new Date(at) })
+  // The question is still unanswered on the server: the page polls it for ten minutes.
+  await sessionFixture(page, testInfo, [question])
+  await page.goto(`/s/${id}`)
+  await expect(page.getByText('실험 데이터를 분석해 줘.')).toBeVisible()
+  await expect(page.getByText('중단됨 — 답변이 끝나기 전에 끊겼습니다.')).toHaveCount(0)
+  const notice = page.getByText('중단됨 — 답변이 끝나기 전에 끊겼습니다.')
+  // One poll every 3 s; each step lets its read finish before the next timer.
+  for (let polls = 0; polls < 205 && !(await notice.isVisible()); polls++) {
+    await page.clock.fastForward(3_000)
+    await page.waitForTimeout(15)
+  }
+  await expect(notice).toBeVisible()
+  await expect(page.getByRole('button', { name: '다시 보내기' })).toBeVisible()
+})
+
 test('다 쓴 답에는 끊김 표시가 없다', async ({ page }, testInfo) => {
   await sessionFixture(page, testInfo, [question, {
     id: 'm2', role: 'assistant', content: '분석을 마쳤습니다.', createdAt: at, model: 'fixture/model', steps: [],

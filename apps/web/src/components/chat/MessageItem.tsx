@@ -165,6 +165,11 @@ function turnFailureNotice(
     return media ? t('요청한 만큼 만들어지지 않았습니다.') : t('여기서 멈췄습니다.')
   }
   if (message.failure === 'interrupted') {
+    if (message.role === 'user') {
+      // On the question: the turn was cut before any answer (a server restart, or a dropped
+      // answer the browser stopped waiting for).
+      return media ? t('요청한 만큼 만들어지지 않았습니다.') : t('중단됨 — 답변이 끝나기 전에 끊겼습니다.')
+    }
     return media
       ? t('요청한 만큼 만들어지지 않았습니다.')
       : t('답변이 중간에 끊겨 여기까지만 남았습니다.')
@@ -531,6 +536,7 @@ function MessageItemInner({
                   messageId={message.id}
                   prompt={message.content}
                   kind={sessionKind ?? 'chat'}
+                  label={message.failure === 'interrupted' && !message.error ? '다시 보내기' : undefined}
                 />
               )}
             </div>
