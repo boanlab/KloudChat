@@ -49,6 +49,10 @@ type Group = {
 const groups: Record<string, Group> = {
   freshness: { files: ['freshness-abstention.spec.ts', 'grounded-answer.spec.ts'], projects: { default: {} } },
   'edit-resend': { files: ['edit-resend-message.spec.ts'], projects: { desktop: { viewport: desktop.viewport }, mobile: narrow } },
+  'super-agent': {
+    files: ['super-agent.spec.ts'],
+    projects: { desktop: baseProfile('desktop'), phone: touchPhone },
+  },
   'auto-badge': {
     files: ['auto-routing.spec.ts'],
     grep: /라우팅 기준에 따라|품질 라우팅 결과는 영어|품질 상향 응답은|처리 내역의 전체 모델 정보/,

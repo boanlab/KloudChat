@@ -110,8 +110,24 @@ export interface ModelInfo {
 
 /** `av` covers audio and video: one surface, producing an `audio` or `video` artifact by mode. */
 export type SessionKind = 'chat' | 'report' | 'slides' | 'image' | 'av'
-/** `auto` routes low-complexity turns cheaper; `auto_quality` routes high-complexity turns up. */
-export type RoutingMode = 'manual' | 'auto' | 'auto_quality'
+/**
+ * `super` picks model, reasoning effort and tools per turn from the task class; `super_strict`
+ * does so among strict-local models only. `auto`/`auto_quality` are the earlier lanes, kept for
+ * comparison (no longer offered).
+ */
+export type RoutingMode = 'manual' | 'auto' | 'auto_quality' | 'super' | 'super_strict'
+
+/** Super Agent's task classes (server `super_agent.CLASSES`). */
+export type SuperAgentClass =
+  | 'simple'
+  | 'chat'
+  | 'transform'
+  | 'calc'
+  | 'code'
+  | 'current'
+  | 'long'
+  | 'reasoning'
+  | 'document'
 
 /** What a session produced, as measurements so the row can be phrased in the reader's language. */
 export interface SessionMade {
@@ -242,6 +258,29 @@ export interface CostRouting {
   estimatedCreditsSaved?: number
 }
 
+/** Why Super Agent answered this turn with this model (`routing.superAgent`). */
+export interface SuperAgentRoute {
+  mode: 'super' | 'super_strict'
+  taskClass: SuperAgentClass
+  /** How the class was found: rules, the classifier, a follow-up, an escalation. */
+  source: 'rule' | 'classifier' | 'sticky' | 'escalated' | 'deescalated' | 'document'
+  reasonCode: string
+  selectedModel: string
+  effort: 'default' | 'none' | 'low' | 'high'
+  /** rule | sticky | fallback | default | any */
+  pick: string
+  tools: 'none' | 'full'
+  routerVersion: string
+  /** Privacy routing moved the turn after the pick (strict-local twin, safe model). */
+  boundaryModel?: string
+  strictReason?: 'personal_data' | 'internal_data'
+  classifierModel?: string
+  classifierConfidence?: number
+  classifierInputTokens?: number
+  classifierOutputTokens?: number
+  classifierMs?: number
+}
+
 export interface PrivacyRouting {
   requestedModels: string[]
   routedModels: string[]
@@ -262,6 +301,7 @@ export interface PrivacyRouting {
   toolOutputFindings?: { category: string; source: string; count: number }[]
   initialAction?: PrivacyAction | 'strict_local' | 'none'
   costRouting?: CostRouting
+  superAgent?: SuperAgentRoute
   /** The asked model failed over and LiteLLM's fallback answered (`services/fallback_watch`). */
   fallback?: {
     requestedModel: string

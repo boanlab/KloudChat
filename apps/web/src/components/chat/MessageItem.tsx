@@ -8,6 +8,7 @@ import {
   Download,
   FileType,
   Flag,
+  Gauge,
   Loader2,
   Paperclip,
   Pencil,
@@ -41,6 +42,7 @@ import { TurnProgress } from './TurnProgress'
 import { copyText } from '@/lib/clipboard'
 import { useT } from '@/lib/useT'
 import { tokenTotals } from '@/lib/usage'
+import { superRouteLabel } from '@/lib/superAgent'
 
 function costRouteDecisionLabel(
   route: CostRouting,
@@ -381,7 +383,10 @@ function MessageItemInner({
   )
   const fallback = routing?.fallback
   const showRouting = Boolean(
-    routing && (routing.action !== 'none' || actualModelChanged || routing.costRouting || fallback),
+    routing && (
+      routing.action !== 'none' || actualModelChanged || routing.costRouting ||
+      routing.superAgent || fallback
+    ),
   )
   const messageBoundary =
     model?.dataBoundary ??
@@ -551,6 +556,14 @@ function MessageItemInner({
 
   const costRoute = routing?.costRouting
   const costRouteDisplay = costRoute ? costRoutePresentation(costRoute, models, t) : null
+  const superRoute = routing?.superAgent
+  const superRouteDisplay = superRoute
+    ? superRouteLabel(
+        superRoute,
+        (id) => models.find((model) => model.id === id)?.label ?? id,
+        t,
+      )
+    : null
   const linked = (message.artifactIds ?? [])
     .map((id) => artifacts.find((a) => a.id === id))
     .filter((a) => a !== undefined)
@@ -569,6 +582,7 @@ function MessageItemInner({
   const routingBadges = routing
     ? [
         costRoute && costRouteDisplay,
+        superRouteDisplay,
         requestProtection,
         messageBoundary,
         routing.toolOutputMasked,
@@ -625,6 +639,16 @@ function MessageItemInner({
                 className="max-w-full whitespace-normal! [overflow-wrap:anywhere]"
               >
                 {costRouteDisplay.label}
+              </Badge>
+            )}
+            {superRouteDisplay && (
+              <Badge
+                tone="accent"
+                title={superRouteDisplay.title}
+                className="max-w-full whitespace-normal! [overflow-wrap:anywhere]"
+              >
+                <Gauge size={11} />
+                {superRouteDisplay.label}
               </Badge>
             )}
             {requestProtection && (
