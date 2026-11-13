@@ -234,7 +234,7 @@ export function LoginPage() {
             {t('생성형 AI 워크스페이스')}
           </h1>
           <p className="mt-3 text-base leading-relaxed text-muted">
-            {t('자료와 지침을 프로젝트에 모아 두면, 모든 화면이 같은 맥락 위에서 작동합니다. 만든 아티팩트는 아티팩트 화면에 쌓이고 문서로 내보낼 수 있습니다.')}
+            {t('자료와 지침을 프로젝트에 모아 두면, 모든 화면이 같은 맥락 위에서 작동합니다. 보고서는 웹 보고서·한글·Word로, 슬라이드는 웹 슬라이드·PowerPoint로 만들고, 만든 것은 아티팩트 화면에 쌓입니다.')}
           </p>
           <ul className="mt-8 space-y-3">
             {(enabledKinds ?? []).map((kind) => {

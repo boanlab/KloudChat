@@ -615,7 +615,15 @@ export function SessionPage() {
             {sessionArtifact && !openArtifactId && (
               <Button size="sm" onClick={() => openArtifact(sessionArtifact.id)}>
                 <PanelRight size={14} />
-                {t(meta.panelLabel)}
+                {t(
+                  sessionArtifact.kind === 'hwp'
+                    ? '한글 문서 열기'
+                    : sessionArtifact.kind === 'docx'
+                      ? 'Word 문서 열기'
+                      : sessionArtifact.kind === 'pptx'
+                        ? 'PowerPoint 열기'
+                        : meta.panelLabel,
+                )}
               </Button>
             )}
           </>

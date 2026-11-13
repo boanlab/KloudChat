@@ -2569,15 +2569,20 @@ export function Composer({
               opening={openingDocument}
             />
             {showTemplates && (
-              // The template beside the format, in the same chip style; opens the gallery.
+              // The template beside the format, in the same chip style; opens the gallery. A
+              // PowerPoint start fills a blank file and takes no template yet: said, not offered.
               <button
                 type="button"
+                disabled={outputSurface === 'slides' && (output ?? detectedOutput) === 'pptx'}
+                title={outputSurface === 'slides' && (output ?? detectedOutput) === 'pptx'
+                  ? t('PowerPoint로 시작하면 빈 파일에 씁니다. 템플릿은 웹 슬라이드에서 고를 수 있습니다.')
+                  : undefined}
                 onClick={() => setGalleryOpen(true)}
                 aria-label={shownTemplate
                   ? t('템플릿: {name}').replace('{name}', templateText(shownTemplate, currentLang() === 'en').name)
                   : t('템플릿 고르기')}
                 data-testid="template-chip"
-                className="flex h-8 max-w-[16rem] items-center gap-1.5 rounded-control border border-line px-2.5 text-sm text-muted transition-colors hover:bg-elevated hover:text-fg"
+                className="flex h-8 max-w-[16rem] items-center gap-1.5 rounded-control border border-line px-2.5 text-sm text-muted transition-colors hover:bg-elevated hover:text-fg disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
               >
                 <span className="text-faint">{t('템플릿')}</span>
                 <span className="truncate font-medium">
@@ -2767,7 +2772,9 @@ export function Composer({
                 ? t('Enter로 생성 · 음성과 음악은 아티팩트에 쌓입니다')
                 : kind === 'av'
                   ? t('Enter로 생성 · 영상은 몇 분 걸리고 진행은 카드에 표시됩니다')
-                  : kind === 'slides'
+                  : kind === 'slides' && outputSurface && (output ?? detectedOutput) === 'pptx'
+                    ? t('Enter로 생성 · PowerPoint 편집기가 열리고 대화가 그 파일을 채웁니다')
+                    : kind === 'slides'
                     ? t('Enter로 생성 · 구성을 잡은 뒤 한 장씩 채웁니다')
                     : `${t('Enter 전송, Shift+Enter 줄바꿈')}, ${isMac() ? 'Cmd' : 'Ctrl'}+/ ${t('단축키 보기')}`}
       </p>

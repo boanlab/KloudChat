@@ -79,6 +79,15 @@ export const EN_UI: Record<string, string> = {
     'Made as web slides or PowerPoint. Pick the format and template, then give the topic',
   '템플릿: {name}': 'Template: {name}',
   템플릿: 'Template',
+  'Enter로 생성 · PowerPoint 편집기가 열리고 대화가 그 파일을 채웁니다':
+    'Enter to create · the PowerPoint editor opens and the conversation fills the file',
+  'PowerPoint로 시작하면 빈 파일에 씁니다. 템플릿은 웹 슬라이드에서 고를 수 있습니다.':
+    'A PowerPoint start writes into a blank file. Templates can be picked for web slides.',
+  '한글 문서 열기': 'Open HWP document',
+  'Word 문서 열기': 'Open Word document',
+  'PowerPoint 열기': 'Open PowerPoint',
+  '자료와 지침을 프로젝트에 모아 두면, 모든 화면이 같은 맥락 위에서 작동합니다. 보고서는 웹 보고서·한글·Word로, 슬라이드는 웹 슬라이드·PowerPoint로 만들고, 만든 것은 아티팩트 화면에 쌓입니다.':
+    'Gather material and instructions in a project and every screen works from the same context. Reports come as web reports, HWP or Word, slides as web slides or PowerPoint, and what you make collects on the Artifacts screen.',
   // Empty states
   '새 대화 시작': 'Start a conversation',
   '검색 지우기': 'Clear search',

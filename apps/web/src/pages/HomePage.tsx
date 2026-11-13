@@ -1,6 +1,6 @@
 import { Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import { Button, Card, EmptyState } from '@/components/ui'
@@ -9,7 +9,7 @@ import { useBlankDocument } from '@/lib/useBlankDocument'
 import { kindMeta, kindOrder } from '@/lib/kinds'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
-import type { SessionKind } from '@/types'
+import type { ReportOutput, SessionKind, SlidesOutput } from '@/types'
 import { useT } from '@/lib/useT'
 
 /** Per-surface examples under the greeting; click fills the composer. */
@@ -62,6 +62,17 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
   /** The file picked per surface (null: the request decides). */
   const picked = useStore((s) => s.outputPick)
   const setOutputPick = useStore((s) => s.setOutputPick)
+  // A deep link picks the file: /new/report?format=hwp, /new/slides?format=pptx.
+  const [params] = useSearchParams()
+  const linkedFormat = params.get('format')
+  useEffect(() => {
+    if (!linkedFormat) return
+    if (initialKind === 'report' && ['web', 'hwp', 'docx'].includes(linkedFormat)) {
+      setOutputPick('report', linkedFormat as ReportOutput)
+    } else if (initialKind === 'slides' && ['deck', 'pptx'].includes(linkedFormat)) {
+      setOutputPick('slides', linkedFormat as SlidesOutput)
+    }
+  }, [initialKind, linkedFormat, setOutputPick])
 
   const openArtifact = useStore((s) => s.openArtifact)
   useEffect(() => {
