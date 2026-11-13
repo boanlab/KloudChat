@@ -47,6 +47,7 @@ import type {
   ModelInfo, PrivacyAction, ReportOutput, SessionKind, Skill, SlidesOutput, WebSearchMode,
 } from '@/types'
 import { servedAspect, servedAspects } from '@/lib/aspects'
+import { ContextGauge } from './ContextGauge'
 import { ModelPicker } from './ModelPicker'
 import { SharedBotItems } from './SharedBotItems'
 import { useFileDrop, usePasteFiles } from '@/lib/useFileDrop'
@@ -2248,6 +2249,16 @@ export function Composer({
     />
     </fieldset>
   )
+  const contextGauge = (
+    <ContextGauge
+      sessionId={sessionId ?? reusableSessionId}
+      kind={kind}
+      projectId={projectId}
+      draft={value}
+      attachmentIds={attachments.filter((f) => !f.error).map((f) => f.id)}
+      phone={phone}
+    />
+  )
   const sendButton = (
     <button
       onClick={streaming && sessionId ? () => stopStreaming(sessionId) : () => submit()}
@@ -2642,6 +2653,7 @@ export function Composer({
             {plusMenu}
             {micButton}
             <div className="ml-auto flex min-w-0 items-center gap-1">
+              {contextGauge}
               {modelPicker}
               {sendButton}
             </div>
@@ -2649,7 +2661,7 @@ export function Composer({
         )}
       </div>
       {/* The phone's line has no room for the model; it sits just under the box. */}
-      {phone && modelPicker && <div className="mt-1 flex justify-end">{modelPicker}</div>}
+      {phone && modelPicker && <div className="mt-1 flex items-center justify-end gap-1">{contextGauge}{modelPicker}</div>}
       {mediaError && (
         <p
           role="status"

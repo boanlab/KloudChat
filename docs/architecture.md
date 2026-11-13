@@ -2363,6 +2363,27 @@ paste one turn later still reads the paste, not only its summary. A prompt the p
 still refuses for length is reported as `context_length_exceeded` with a sentence that
 says what to do.
 
+**The composer shows how much of the window the next turn takes.** A gauge beside the
+model picker (`components/chat/ContextGauge.tsx`, chat only) asks
+`POST /sessions/context-usage` (`routers/context_usage.py`) — with no conversation yet,
+for the project's or agent's base cost — when the conversation, the model or the
+attachments change. The route assembles the next turn with the turn's own pieces — the
+same workspace context, tool schemas, `build_messages` envelope, `fit_history` cut,
+pasted-material carry and cached memory — counted with `estimate_tokens`, and calls no
+model and writes nothing. It answers the window (stated, and the one fitted to after the
+foreign-tokenizer factor), the answer reserve, the estimated request split into base
+system prompt, agent/project instructions, summary and memory, files and project
+knowledge, kept history, the draft and tool schemas; whether older turns already run on
+the summary and how much history still fits before the next cut; and the provider's own
+input count for the last answer (every tool round added up). Wording-driven extras the
+turn adds (a date rule, a calculation brief, a forced search's instructions) are left
+out, so the figure is an estimate, within a few percent of what is sent. The draft is
+counted in the browser as it is typed (`lib/contextGauge.ts`, the same estimator), so
+typing does not call the server. The ring turns amber at 80 % of the summary threshold
+(`window − reserve`) or once the conversation runs on a summary, and red where this turn
+would cut older messages. Under Auto the gauge measures against the model that answered
+last, else the conversation's default, and says so.
+
 The design block sits after the project's own instructions and before the
 skills: the look is a property of the project, and a skill switched on for this
 turn is the more specific instruction, so it comes later and wins.

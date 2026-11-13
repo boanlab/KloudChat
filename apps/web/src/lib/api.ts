@@ -56,6 +56,7 @@ import { objectParticle, topicParticle } from './formCheck'
 import { currentLang, currentLocale, translate } from './i18n'
 import { setServiceTimeZone } from './serviceTime'
 import { overUploadLimit, tooLargeMessage } from './uploadLimit'
+import type { ContextQuery, ContextUsage } from './contextGauge'
 
 export const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
 
@@ -1176,6 +1177,8 @@ export const sessionsApi = {
       `/sessions${queryOf({ kind: params?.kind, project_id: params?.projectId, limit: params?.limit })}`,
     ),
   get: (id: string) => call<SessionRow>(`/sessions/${id}`),
+  /** The next turn's share of the model's window (`lib/contextGauge.ts`); no model call. */
+  contextUsage: (query: ContextQuery) => call<ContextUsage>('/sessions/context-usage', body(query)),
   /** `all` resolved server-side, so a conversation from another tab is not spared. */
   /** `files`: the files attached or made in them go too; else they stay in the file box. */
   deleteMany: (payload: { ids?: string[]; all?: boolean; artifacts?: boolean; files?: boolean }) =>

@@ -1,6 +1,7 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { openSidebar } from './helpers'
 import { viewport } from './project'
+import { contextUsage } from './shell-mocks'
 import type { IssueRow } from '../src/lib/api'
 
 /**
@@ -95,6 +96,8 @@ async function fixture(page: Page, testInfo: TestInfo, { admin = false } = {}) {
     if (!url.pathname.startsWith('/api/')) return route.continue()
     const path = url.pathname.slice(4)
     const method = request.method()
+    // the composer's context gauge reads with a POST; not one of the calls under test
+    if (method === 'POST' && path === '/sessions/context-usage') return route.fulfill({ json: contextUsage() })
     if (method !== 'GET' && path !== '/auth/refresh') calls.push(`${method} ${path}`)
     const json = () => (request.postDataJSON() ?? {}) as Record<string, unknown>
     if (method === 'POST' && path === '/auth/refresh') return route.fulfill({ json: { accessToken: 'fixture-only', expiresIn: 3600,
