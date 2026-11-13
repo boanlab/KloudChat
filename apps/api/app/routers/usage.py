@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import shutil
 from datetime import UTC, datetime, time, timedelta
+from datetime import date as date_cls
 from typing import Literal
 from zoneinfo import ZoneInfo
 
@@ -113,8 +114,10 @@ _SPEND_SURFACE = case(
 )
 
 
-def _events(since: datetime, user_id: str | None = None):
-    """Turns ∪ ledger spend as (day, model, kind, user_id, credits, requests, units, searches)."""
+def _events(since: datetime, user_id: str | None = None, until: datetime | None = None):
+    """Turns ∪ ledger spend as (day, model, kind, user_id, credits, requests, units, searches).
+
+    `until` is exclusive; None runs to now."""
     turns = (
         select(
             _local_day(col(Message.created_at)).label("day"),
@@ -163,6 +166,9 @@ def _events(since: datetime, user_id: str | None = None):
             CreditLedger.created_at >= since,
         )
     )
+    if until is not None:
+        turns = turns.where(Message.created_at < until)
+        spend = spend.where(CreditLedger.created_at < until)
     if user_id is not None:
         turns = turns.where(ChatSession.user_id == user_id)
         spend = spend.where(CreditLedger.user_id == user_id)
@@ -186,10 +192,38 @@ def _kind(kind) -> str:
     return getattr(kind, "value", kind)
 
 
+def _window(start: date_cls, end: date_cls) -> tuple[datetime, datetime, int]:
+    """Service-zone calendar days `start`..`end` inclusive, as UTC bounds (end exclusive)."""
+    if end < start:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="range_reversed"
+        )
+    days = (end - start).days + 1
+    if days > 366:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="range_too_long"
+        )
+    since = datetime.combine(start, time(), tzinfo=_zone()).astimezone(UTC)
+    until = datetime.combine(end + timedelta(days=1), time(), tzinfo=_zone()).astimezone(UTC)
+    return since, until, days
+
+
 @router.get("/usage")
-async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=90)):
-    since = _since(days)
-    events = _events(since)
+async def usage(
+    admin: AdminUser,
+    db: DbSession,
+    days: int = Query(7, ge=1, le=90),
+    start: date_cls | None = None,
+    end: date_cls | None = None,
+):
+    """The last `days` days, or the calendar days `start`..`end` (service zone, inclusive)."""
+    until: datetime | None = None
+    if start is not None or end is not None:
+        today = datetime.now(_zone()).date()
+        since, until, days = _window(start or end or today, end or today)
+    else:
+        since = _since(days)
+    events = _events(since, until=until)
     credits = func.coalesce(func.sum(events.c.credits), 0)
     requests = func.coalesce(func.sum(events.c.requests), 0)
     units = func.coalesce(func.sum(events.c.units), 0)
@@ -279,6 +313,7 @@ async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=9
     return {
         "days": days,
         "since": since,
+        "until": until,
         "totals": {
             "credits": int(spent),
             "requests": int(request_count),

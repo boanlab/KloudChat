@@ -3,15 +3,15 @@ import { useEffect, useState } from 'react'
 import { type StorageReport, usageApi } from '@/lib/api'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
-import { Button, Card, PageHeader } from '@/components/ui'
+import { Button, Card, Input, PageHeader } from '@/components/ui'
 import { DataTable } from '@/components/ui/DataTable'
 import { ListSearch, NoMatch } from '@/components/ui/ListSearch'
 import { downloadCsv } from '@/lib/csv'
-import { matchesQuery } from '@/lib/utils'
+import { matchesQuery, serviceDate, shiftDate } from '@/lib/utils'
 import { kindMeta } from '@/lib/kinds'
 import { useStore } from '@/store/useStore'
 import type { SessionKind } from '@/types'
-import { useT } from '@/lib/useT'
+import { useT, useTIn } from '@/lib/useT'
 
 function Bars({
   rows,
@@ -76,14 +76,24 @@ type UsageRow = {
 
 export function AdminUsagePage() {
   const t = useT()
+  const tPeriod = useTIn('period')
   const { usage, loadUsage } = useStore()
   const [days, setDays] = useState<number>(7)
+  // 직접 지정: calendar days in the service zone, both ends included.
+  const [custom, setCustom] = useState(false)
+  const today = serviceDate(new Date())
+  const [from, setFrom] = useState(() => shiftDate(today, -29))
+  const [to, setTo] = useState(today)
+  const range = custom && from && to && from <= to ? { start: from, end: to } : undefined
   const [storage, setStorage] = useState<StorageReport | null>(null)
   const [userQuery, setUserQuery] = useState('')
 
   useEffect(() => {
-    void loadUsage(days)
-  }, [loadUsage, days])
+    if (custom && !range) return
+    void loadUsage(days, range)
+    // `range` is rebuilt every render; its two dates are what matter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadUsage, days, custom, range?.start, range?.end])
   useEffect(() => {
     void usageApi.storage().then(setStorage).catch(() => setStorage(null))
   }, [])
@@ -162,7 +172,7 @@ export function AdminUsagePage() {
 
   const exportCsv = () => {
     if (!usage) return
-    downloadCsv(`kloudchat-usage-${days}d.csv`, [
+    downloadCsv(range ? `kloudchat-usage-${range.start}_${range.end}.csv` : `kloudchat-usage-${days}d.csv`, [
       [t('날짜'), t('크레딧'), t('요청'), t('웹 검색')],
       ...usage.daily.map((d) => [d.date, d.credits, d.requests, d.searches]),
       [],
@@ -197,9 +207,13 @@ export function AdminUsagePage() {
                 {RANGES.map((r) => (
                   <button
                     key={r}
-                    onClick={() => setDays(r)}
+                    onClick={() => {
+                      setCustom(false)
+                      setDays(r)
+                    }}
+                    aria-pressed={!custom && days === r}
                     className={
-                      days === r
+                      !custom && days === r
                         ? 'min-w-11 rounded-control bg-elevated px-3 py-2 text-sm font-medium'
                         : 'min-w-11 rounded-control px-3 py-2 text-sm text-muted hover:text-fg'
                     }
@@ -207,6 +221,17 @@ export function AdminUsagePage() {
                     {t('{n}일').replace('{n}', String(r))}
                   </button>
                 ))}
+                <button
+                  onClick={() => setCustom(true)}
+                  aria-pressed={custom}
+                  className={
+                    custom
+                      ? 'min-w-11 rounded-control bg-elevated px-3 py-2 text-sm font-medium'
+                      : 'min-w-11 rounded-control px-3 py-2 text-sm text-muted hover:text-fg'
+                  }
+                >
+                  {tPeriod('직접 지정')}
+                </button>
               </div>
               <Button onClick={exportCsv} disabled={!usage}>
                 <Download size={15} />
@@ -215,6 +240,30 @@ export function AdminUsagePage() {
             </div>
           }
         />
+
+        {custom && (
+          <div className="mb-4 flex flex-wrap items-center gap-2" data-testid="usage-range">
+            <Input
+              type="date"
+              value={from}
+              max={to || today}
+              onChange={(e) => setFrom(e.target.value)}
+              aria-label={t('시작일')}
+              className="w-auto"
+            />
+            <span className="text-faint">–</span>
+            <Input
+              type="date"
+              value={to}
+              min={from || undefined}
+              max={today}
+              onChange={(e) => setTo(e.target.value)}
+              aria-label={t('종료일')}
+              className="w-auto"
+            />
+            {!range && <span className="text-sm text-danger">{t('시작일이 종료일보다 늦습니다')}</span>}
+          </div>
+        )}
 
         {!usage ? (
           <Card className="p-10 text-center text-base text-muted">{t('집계를 불러오는 중입니다…')}</Card>

@@ -27,7 +27,7 @@ import { useTableSort } from '@/components/ui/useTableSort'
 import type { SortDir, SortState } from '@/lib/tableSort'
 import { Pager } from '@/components/ui/Pager'
 import { browserName, formatDateTime, serviceDate, serviceMidnight, shiftDate } from '@/lib/utils'
-import { useT } from '@/lib/useT'
+import { useT, useTIn } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 import { useResource } from '@/lib/useResource'
 
@@ -76,6 +76,7 @@ function useSettled<T>(value: T, ms = 300): T {
 
 export function AuditLog({ onTotal }: { onTotal?: (total: number) => void }) {
   const t = useT()
+  const tPeriod = useTIn('period')
   const models = useStore((s) => s.models)
   const [catalogue, setCatalogue] = useState<{ id: string; label: string }[]>([])
   const [query, setQuery] = useState('')
@@ -215,7 +216,7 @@ export function AuditLog({ onTotal }: { onTotal?: (total: number) => void }) {
           <option value="today">{t('오늘')}</option>
           <option value="7d">{t('최근 7일')}</option>
           <option value="30d">{t('최근 30일')}</option>
-          <option value="custom">{t('직접 지정')}</option>
+          <option value="custom">{tPeriod('직접 지정')}</option>
         </Select>
       </div>
       {period === 'custom' && (

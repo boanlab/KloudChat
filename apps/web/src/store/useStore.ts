@@ -471,7 +471,7 @@ interface State {
   // ── governance (admin) ────────────────────────────────────────────────
   /** Null until fetched. */
   usage: UsageReport | null
-  loadUsage: (days?: number) => Promise<void>
+  loadUsage: (days?: number, range?: { start: string; end: string }) => Promise<void>
   /** Null until fetched. */
   apiKeys: ApiKeyRow[] | null
   loadApiKeys: () => Promise<void>
@@ -1369,8 +1369,8 @@ export const useStore = create<State>((set, get) => ({
     (Date.now() - workspaceLoadedAt < WORKSPACE_FRESH_MS ? Promise.resolve() : get().loadWorkspace()),
 
   usage: null,
-  loadUsage: async (days = 7) => {
-    const report = await usageApi.report(days).catch(() => null)
+  loadUsage: async (days = 7, range) => {
+    const report = await usageApi.report(days, range).catch(() => null)
     if (report) set({ usage: report })
   },
   apiKeys: null,

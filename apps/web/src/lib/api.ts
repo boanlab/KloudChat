@@ -1112,7 +1112,11 @@ export const usageApi = {
       method: 'PUT',
       body: JSON.stringify(patch),
     }),
-  report: (days = 7) => call<UsageReport>(`/admin/usage?days=${days}`),
+  /** The last `days` days, or the service-zone calendar days `range.start`..`range.end`. */
+  report: (days = 7, range?: { start: string; end: string }) =>
+    call<UsageReport>(
+      range ? `/admin/usage?start=${range.start}&end=${range.end}` : `/admin/usage?days=${days}`,
+    ),
   /** Disk the uploads and generated media take, per account, and what is left. */
   storage: () => call<StorageReport>('/admin/storage'),
   /** Removes every deleted account's files now, without waiting for the fill mark. */
