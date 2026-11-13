@@ -60,6 +60,7 @@ async function fixture(page: Page, testInfo: TestInfo, html = false) {
     if (method === 'GET' && path === `/sessions/${sessionId}`) return route.fulfill({ json: session })
     if (method === 'GET' && path === '/artifacts') return route.fulfill({ json: [artifact] })
     if (method === 'GET' && path === `/artifacts/${artifactId}`) return route.fulfill({ json: artifact })
+    if (method === 'POST' && path === `/artifacts/${artifactId}/deck-overflow`) return route.fulfill({ json: [] })
     if (method === 'GET' && path === '/artifacts/counts') return route.fulfill({ json: { counts: { [data.kind]: 1 }, total: 1 } })
     const shell = shellRead(method, path)
     if (shell) return route.fulfill(shell)

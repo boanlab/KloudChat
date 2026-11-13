@@ -1989,6 +1989,22 @@ export function DeckPanel({
   const [fitLimitReached, setFitLimitReached] = useState(false)
   const [opError, setOpError] = useState<string | null>(null)
   const [zoom, setZoom] = useState<'fit' | number>('fit')
+  /** Slides whose text the `.pptx` cannot fit even at the type floor (the server lays them
+   *  out as the export does), checked a moment after the slides last changed. */
+  const [exportOverflow, setExportOverflow] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    if (writing || !slides.length) return undefined
+    let live = true
+    const timer = window.setTimeout(() => {
+      artifactsApi.deckOverflow(deck.id, slides, content.design)
+        .then((found) => { if (live) setExportOverflow(new Set(found.map((row) => row.slideId))) })
+        .catch(() => undefined)
+    }, 1200)
+    return () => {
+      live = false
+      window.clearTimeout(timer)
+    }
+  }, [deck.id, slides, content.design, writing])
   const fit = useFitWidth()
   const stageWidth = zoom === 'fit' ? (fit.width ?? 0) : Math.round(NATURAL_WIDTH * zoom)
   const scale = stageWidth > 0 ? stageWidth / 400 : 1
@@ -2391,7 +2407,9 @@ export function DeckPanel({
   const weakSlides = slides
     .map((s, i) => (s.factCheck?.claims.some((c) => c.verdict !== 'supported') ? i : -1))
     .filter((i) => i >= 0)
-  const overflowRisks = slides.map((candidate, i) => (overflowRisk(candidate) ? i : -1)).filter((i) => i >= 0)
+  const overflowRisks = slides
+    .map((candidate, i) => (overflowRisk(candidate) || exportOverflow.has(candidate.id) ? i : -1))
+    .filter((i) => i >= 0)
   const unresolvedReviews = reviewComments.filter((comment) => comment.status === 'open')
   const exportWarningCount = weakSlides.length + overflowRisks.length + unresolvedReviews.length
 
@@ -2905,11 +2923,15 @@ export function DeckPanel({
                   </Button>
                 </div>
               )}
-              {canEdit && slide && (overflowing || overflowRisk(slide)) && (
+              {canEdit && slide && (overflowing || overflowRisk(slide) || exportOverflow.has(slide.id)) && (
                 <div className="kc-strip" role="status" data-testid="deck-overflow">
                   <TriangleAlert size={14} className="shrink-0 text-warn" />
                   <span className="min-w-0 flex-1">
-                    {fitLimitReached ? t('한 장에 넣기 어렵습니다.') : t('글이 장 밖으로 넘칩니다.')}
+                    {fitLimitReached
+                      ? t('한 장에 넣기 어렵습니다.')
+                      : !overflowing && exportOverflow.has(slide.id)
+                        ? t('PowerPoint로 내보내면 이 장의 글이 칸을 넘칩니다.')
+                        : t('글이 장 밖으로 넘칩니다.')}
                   </span>
                   {overflowing && !fitLimitReached && (
                     <Button size="sm" disabled={autoFitting} aria-label={t('잘린 내용 자동 맞춤')}

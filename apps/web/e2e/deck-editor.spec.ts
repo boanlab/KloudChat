@@ -356,6 +356,26 @@ test('in the artifacts page preview the keys work as in the panel', async ({ pag
   await expect(rail).toHaveCount(4)
   await page.keyboard.press('End')
   await expect(rail.nth(3)).toHaveAttribute('aria-current', 'true')
+  // closing the preview over an edit asks first, with the documents' own question
+  await page.keyboard.press('Control+d')
+  await preview.locator('header').first().getByRole('button', { name: '닫기' }).click()
+  const ask = page.getByRole('dialog', { name: '저장하지 않은 편집이 있습니다' })
+  await expect(ask).toBeVisible()
+  await expect(ask.getByRole('button')).toContainText(['취소', '버리기', '저장'])
+  await ask.getByRole('button', { name: '취소' }).click()
+  await expect(rail).toHaveCount(5)
+})
+
+test('a slide the PowerPoint export cannot fit says so, and 장 나누기 is offered', async ({ page }, testInfo) => {
+  test.skip(viewport(testInfo) === 'phone', 'desktop width')
+  await resultsFixture(page, testInfo, { deckOverflow: [{ slideId: 'sl1_61d7d8', index: 1, what: ['신청서 제출'] }] })
+  await open(page)
+  await thumbs(page).nth(1).click()
+  const strip = editor(page).getByTestId('deck-overflow')
+  await expect(strip).toContainText('PowerPoint로 내보내면 이 장의 글이 칸을 넘칩니다.')
+  await expect(strip.getByRole('button', { name: '이 장을 두 장으로 나누기' })).toBeVisible()
+  await thumbs(page).nth(2).click()
+  await expect(strip).toHaveCount(0)
 })
 
 test('a phone reads only, with the same note as the PowerPoint editor', { tag: '@phone' }, async ({ page }, testInfo) => {

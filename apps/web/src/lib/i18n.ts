@@ -3557,6 +3557,7 @@ const EN: Record<string, string> = {
   '다음 장으로 옮기기': 'Move to a new slide',
   '보관한 내용 지우기': 'Delete kept content',
   '글이 장 밖으로 넘칩니다.': 'The text runs off the slide.',
+  'PowerPoint로 내보내면 이 장의 글이 칸을 넘칩니다.': 'Exported to PowerPoint, the text on this slide overflows its boxes.',
   '이 작업은 저장된 덱을 고칩니다. 지금 편집을 저장할까요, 버릴까요?': 'This changes the saved deck. Save your edits first, or discard them?',
   '버리고 계속': 'Discard and continue',
   '저장하고 계속': 'Save and continue',

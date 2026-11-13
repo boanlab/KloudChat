@@ -1502,6 +1502,12 @@ export const artifactsApi = {
   addSlideImage: (id: string, slideId: string, artifactId: string, caption: string) =>
     call<ArtifactRow>(`/artifacts/${id}/slides/image`, body({ slideId, artifactId, caption })),
   /** This browser's raster of `slide.diagram`, stored for the exporters. Free, no version. */
+  /** Slides whose text the `.pptx` cannot fit even at the type floor, for the slides given
+   *  (the editor's, unsaved edits included). Free, no version. */
+  deckOverflow: (id: string, slides: unknown[], design?: unknown) =>
+    call<{ slideId: string; index: number; what: string[] }[]>(
+      `/artifacts/${id}/deck-overflow`, body({ slides, design: design ?? null }),
+    ),
   storeSlideDiagram: (id: string, slideId: string, key: string, src: string) =>
     call<ArtifactRow>(`/artifacts/${id}/slides/diagram`, body({ slideId, key, src })),
   /** One reading by a reviewer. Costs a model call; annotates, never edits. */
