@@ -110,7 +110,7 @@ export function SourceGuide({
           {!made ? (
             <Button size="sm" disabled={asking} onClick={() => void make(guide?.state === 'failed')}>
               <Sparkles size={13} />
-              {compact ? t('추천 질문 만들기') : withNames(t('{guide} 만들기'), t)}
+              {compact ? t('질문 예시 만들기') : withNames(t('{guide} 만들기'), t)}
             </Button>
           ) : (
             <Button variant="ghost" size="sm" disabled={asking} onClick={() => void make(true)}>

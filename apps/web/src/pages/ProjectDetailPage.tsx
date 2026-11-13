@@ -730,7 +730,7 @@ export function ProjectDetailPage() {
                     <Sparkles size={15} className="shrink-0 text-accent" />
                     <span className="min-w-0 flex-1">
                       <span className="block text-base font-medium">{withNames(t('프로젝트 전체 {guide}'), t)}</span>
-                      <span className="block text-sm text-muted">{t('자료 전체의 요약과 추천 질문입니다. 질문을 누르면 새 대화의 입력창에 들어갑니다.')}</span>
+                      <span className="block text-sm text-muted">{t('자료 전체의 요약과 질문 예시입니다. 질문을 누르면 새 대화의 입력창에 들어갑니다.')}</span>
                     </span>
                   </button>
                   {projectGuide && (
