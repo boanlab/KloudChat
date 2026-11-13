@@ -170,6 +170,21 @@ class Route(Base):
             raise Stop("a question")
         changed = 0
         typed = instruction
+        if accent := revise.theme_accent(instruction):
+            # a theme's colour: the document's design, by hand; no slide or section rewritten
+            doc.data = {**doc.data, "design": {**dict(doc.data.get("design") or {}),
+                                               "accent": accent}}
+            yield {"type": "step", "id": "route", "status": "done",
+                   "label": f"강조색 바꿈: {accent}"}
+            if is_deck:
+                # a slide that carries its own accent takes the new one
+                parts = [{**p, "accent": accent} if p.get("accent") else p for p in parts]
+                for part in parts:
+                    yield _part_event(part, is_deck)
+            doc.sections, doc.by_hand, doc.changed = parts, True, 1
+            bundle.plan.revision = revise.Plan(scope="parts", targets=[],
+                                               note=f"강조색 → {accent}")
+            return
         head = dict(doc.data.get("titleBlock") or {}) if not is_deck else {}
         filled = revise.title_block_fields(instruction, head.get("fields") or [])
         if filled:

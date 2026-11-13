@@ -8150,6 +8150,9 @@ async def _revision_plan(
         return revise.Plan(
             scope="parts", targets=[], note=f"{skeleton[first]} ↔ {skeleton[second]}"
         ), skeleton
+    if revise.theme_accent(instruction):
+        # a theme colour, set in the design by hand in the revise route
+        return revise.Plan(scope="parts", targets=[], note=instruction), skeleton
     if revise.title_block_fields(
             instruction, ((artifact.data or {}).get("titleBlock") or {}).get("fields") or []):
         # the head's fields (작성일, 작성자 …), filled by hand in the revise route

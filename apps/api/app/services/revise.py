@@ -515,6 +515,36 @@ def asks_undo(instruction: str) -> tuple[bool, int | None]:
     return True, int(found.group(1) or found.group(2)) if found else None
 
 
+#: colour words a theme request names, as the accent they mean
+_COLOURS = {
+    "남색": "#1F3A68", "네이비": "#1F3A68", "navy": "#1F3A68", "파란": "#2563EB", "파랑": "#2563EB",
+    "blue": "#2563EB", "하늘": "#3BA3D0", "빨간": "#C0392B", "빨강": "#C0392B", "red": "#C0392B",
+    "초록": "#2E7D32", "녹색": "#2E7D32", "green": "#2E7D32", "주황": "#E67E22",
+    "orange": "#E67E22", "보라": "#6B4FA0", "purple": "#6B4FA0", "검정": "#222222",
+    "검은": "#222222", "black": "#222222", "회색": "#6B7280", "gray": "#6B7280",
+    "grey": "#6B7280", "분홍": "#D63384", "pink": "#D63384", "갈색": "#8B5A2B",
+    "노란": "#D4A017", "노랑": "#D4A017", "청록": "#0F766E", "teal": "#0F766E",
+}
+_THEME = re.compile(
+    r"(?P<colour>" + "|".join(sorted(map(re.escape, _COLOURS), key=len, reverse=True)) +
+    r"|#[0-9A-Fa-f]{6})\s{0,2}(?:색|빛)?\s{0,4}(?:계열\s{0,2})?(?:의\s{0,2})?"
+    r"(?:테마|강조\s{0,2}색|색상|색깔|색|톤|theme|accent)?\s{0,4}(?:으로|로)\s{0,4}"
+    r"(?:바꿔|바꾸|해\s{0,2}줘|해\s{0,2}주세요|변경|맞춰)", re.I)
+_THEME_WORD = re.compile(
+    r"테마|강조\s{0,2}색|색상|색깔|\b(?:theme|accent|colou?r)\b|색\s{0,2}(?:으로|로)", re.I)
+
+
+def theme_accent(instruction: str) -> str | None:
+    """The accent colour a theme request names (「남색 테마로 바꿔 줘」 → #1F3A68): set in the
+    document's design, never written into a slide or a section as text."""
+    text = " ".join((instruction or "").split())
+    found = _THEME.search(text)
+    if not found or not _THEME_WORD.search(text) or len(text) > 80:
+        return None
+    word = found.group("colour")
+    return word.upper() if word.startswith("#") else _COLOURS.get(word.lower())
+
+
 def title_block_fields(instruction: str, fields: list) -> dict[str, str]:
     """Head fields the words set (「작성일은 2026. 11. 13., 작성 부서는 기획팀으로 해 줘」):
     name -> value, for the names the document's head has; no model call."""

@@ -77,3 +77,11 @@ def test_a_part_nobody_asked_about_keeps_its_figures():
     carried[2] = dict(carried[2], content="위험 본문 150억")
     parts, kept = keep_untouched(bundle, carried)
     assert parts[2]["content"] == "위험 본문 150억" and kept == []
+
+
+@pytest.mark.asyncio
+async def test_a_theme_colour_goes_to_the_design_not_into_the_text():
+    bundle = _bundle("남색 테마로 바꿔 줘")
+    await _route(bundle)
+    assert bundle.document.data["design"]["accent"] == "#1F3A68"
+    assert bundle.document.sections == SECTIONS and bundle.document.by_hand
