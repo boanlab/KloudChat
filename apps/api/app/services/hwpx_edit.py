@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from lxml import etree
 
 from app.services import office_edit
+from app.services.files import open_capped_zip
 from app.services.office_edit import BLANK, Result, short
 
 HP = "http://www.hancom.co.kr/hwpml/2011/paragraph"
@@ -61,9 +62,11 @@ def _sections(archive: zipfile.ZipFile) -> list[str]:
 
 def _load(data: bytes) -> tuple[zipfile.ZipFile, _Doc]:
     try:
-        archive = zipfile.ZipFile(io.BytesIO(data))
+        archive = open_capped_zip(data)
     except zipfile.BadZipFile as exc:
         raise HwpxError("HWPX 파일이 아닙니다.") from exc
+    except RuntimeError as exc:  # zip bomb limits
+        raise HwpxError(str(exc)) from exc
     names = _sections(archive)
     if not names:
         raise HwpxError("본문(section) 없는 HWPX입니다.")
@@ -71,7 +74,7 @@ def _load(data: bytes) -> tuple[zipfile.ZipFile, _Doc]:
     for name in names:
         try:
             root = etree.fromstring(archive.read(name), _PARSER)
-        except etree.XMLSyntaxError as exc:
+        except (etree.XMLSyntaxError, zipfile.BadZipFile) as exc:
             raise HwpxError(f"{name}을 읽지 못했습니다.") from exc
         doc.roots[name] = root
         for paragraph in root:
@@ -260,8 +263,9 @@ def _new_paragraph(like: etree._Element, text: str) -> etree._Element:
         (run for run in like.iterchildren(_RUN) if run.find(_T) is not None),
         like.find(_RUN),
     )
-    run = etree.SubElement(paragraph, _RUN, charPrIDRef=first.get("charPrIDRef", "0")
-                           if first is not None else "0")
+    run = etree.SubElement(
+        paragraph, _RUN, charPrIDRef=first.get("charPrIDRef", "0") if first is not None else "0"
+    )
     etree.SubElement(run, _T)
     _set_text(paragraph, text)
     return paragraph
@@ -379,7 +383,7 @@ def apply(data: bytes, ops: list[dict]) -> Result:
     plan: list[tuple[dict, object]] = []
     for op in ops:
         if not isinstance(op, dict):
-            raise HwpxError("op마다 {\"op\": ...} 객체여야 합니다.")
+            raise HwpxError('op마다 {"op": ...} 객체여야 합니다.')
         kind = op.get("op")
         if kind == "replace_text":
             plan.append((op, _paragraph(doc, op.get("id"))[1]))

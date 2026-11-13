@@ -248,16 +248,60 @@ def _from_pdf(data: bytes) -> str:
 _MAX_UNPACKED = 64 * 1024 * 1024
 _MAX_ENTRIES = 4_000
 _MAX_MEMBER = 32 * 1024 * 1024
+#: members larger than this must not inflate more than _MAX_RATIO times
+_RATIO_FLOOR = 1024 * 1024
+_MAX_RATIO = 200
+#: methods whose decompressor honours an output bound (bzip2/lzma inflate a chunk unbounded)
+_SAFE_METHODS = frozenset({zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED})
 
 
-def _open_zip(data: bytes) -> zipfile.ZipFile:
-    """Archive after declared-size checks."""
-    archive = zipfile.ZipFile(io.BytesIO(data))
-    infos = archive.infolist()
-    if len(infos) > _MAX_ENTRIES or sum(info.file_size for info in infos) > _MAX_UNPACKED:
+class CappedZipFile(zipfile.ZipFile):
+    """Read-only archive whose declared sizes were checked; `read` stays capped as well.
+
+    zipfile stops inflating a member at its declared `file_size`, so the declared checks
+    in `open_capped_zip` bound real memory; `read` also counts what was actually unpacked.
+    """
+
+    _unpacked = 0
+
+    def read(self, name, pwd=None) -> bytes:  # noqa: D102 — zipfile.ZipFile.read, capped
+        with self.open(name, "r", pwd) as handle:
+            raw = handle.read(_MAX_MEMBER + 1)
+        if len(raw) > _MAX_MEMBER:
+            raise RuntimeError("압축 문서의 항목이 너무 큽니다.")
+        self._unpacked += len(raw)
+        if self._unpacked > _MAX_UNPACKED:
+            raise RuntimeError("압축 문서가 너무 큽니다.")
+        return raw
+
+
+def open_capped_zip(data: bytes) -> CappedZipFile:
+    """Archive after declared-size, member-count, ratio and method checks (zip bomb).
+
+    Raises `zipfile.BadZipFile` for a non-archive, `RuntimeError` for a refused one.
+    """
+    archive = CappedZipFile(io.BytesIO(data))
+    try:
+        infos = archive.infolist()
+        if len(infos) > _MAX_ENTRIES or sum(info.file_size for info in infos) > _MAX_UNPACKED:
+            raise RuntimeError("압축 문서가 너무 큽니다.")
+        for info in infos:
+            if info.file_size > _MAX_MEMBER:
+                raise RuntimeError("압축 문서의 항목이 너무 큽니다.")
+            if info.compress_type not in _SAFE_METHODS:
+                raise RuntimeError("지원하지 않는 압축 방식의 문서입니다.")
+            if info.file_size > _RATIO_FLOOR and (
+                info.file_size > _MAX_RATIO * max(info.compress_size, 1)
+            ):
+                raise RuntimeError("압축 문서가 비정상적으로 압축되어 있습니다.")
+    except BaseException:
         archive.close()
-        raise RuntimeError("압축 문서가 너무 큽니다.")
+        raise
     return archive
+
+
+#: older name, kept for the extractors and editors that import it
+_open_zip = open_capped_zip
 
 
 def _member(archive: zipfile.ZipFile, name: str) -> str:

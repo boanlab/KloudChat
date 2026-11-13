@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import io
 import logging
 import re
 import xml.etree.ElementTree as ET
@@ -11,6 +10,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.services import richtext
+from app.services.files import open_capped_zip
 
 log = logging.getLogger(__name__)
 
@@ -407,13 +407,19 @@ def _title_index(blocks: list[Block], body: float) -> int | None:
 def read(data: bytes) -> Document:
     """Parse into a `Document`; headingless file = one section. `RuntimeError` on bad archive."""
     try:
-        archive = zipfile.ZipFile(io.BytesIO(data))
+        archive = open_capped_zip(data)
     except zipfile.BadZipFile as exc:
         raise RuntimeError(
             "한글 문서(.hwpx)를 열지 못했습니다. 파일이 손상되었을 수 있습니다."
         ) from exc
 
-    blocks, _ = _blocks(archive)
+    with archive:
+        try:
+            blocks, _ = _blocks(archive)
+        except zipfile.BadZipFile as exc:  # a member that lies about its size fails its CRC
+            raise RuntimeError(
+                "한글 문서(.hwpx)를 열지 못했습니다. 파일이 손상되었을 수 있습니다."
+            ) from exc
     if not blocks:
         raise RuntimeError("한글 문서(.hwpx)에서 본문을 찾지 못했습니다.")
 
