@@ -291,13 +291,13 @@ async def run_skill_script(args: dict[str, Any], ctx: ToolContext) -> ToolResult
         return await _run_own(own[0], own[1], args, ctx)
     package = skill_packages.find(str(args.get("skill") or ""))
     if package is None or not package.scripts:
-        offered = ", ".join(p.key for p in skill_packages.scripted())
+        offered = _scripts_listed(skill_packages.scripted())
         return ToolResult(content=f"오류: 스크립트가 있는 스킬이 아닙니다. 쓸 수 있는 스킬: {offered}", failed=True)
     script = str(args.get("script") or "").strip() or next(iter(package.scripts))
     path = package.script_path(script)
     if path is None:
         return ToolResult(
-            content=f"오류: {package.key} 에 {script} 스크립트가 없습니다. 있는 것: {', '.join(package.scripts)}",
+            content=f"오류: {package.key} 에 {script} 스크립트가 없습니다. 있는 것: {_scripts_listed([package])}",
             failed=True,
         )
     script_args = args.get("args") or {}
@@ -359,12 +359,11 @@ async def run_skill_script(args: dict[str, Any], ctx: ToolContext) -> ToolResult
 
 
 def _skill_tool_description(own: dict[str, dict[str, Any]] | None = None) -> str:
-    lines = []
-    for package in skill_packages.scripted():
-        scripts = ", ".join(
-            f"{name}({summary})" if summary else name for name, summary in package.scripts.items()
-        )
-        lines.append(f"{package.key} 「{package.name}」: {scripts}")
+    """Each script by skill key, skill name and script name; what a script does and its args
+    are in the skill's own instructions, and a wrong name gets the summaries back
+    (`_scripts_listed`), so the schema every hop carries stays short."""
+    lines = [f"{package.key} 「{package.name}」: {', '.join(package.scripts)}"
+             for package in skill_packages.scripted()]
     for key, row in (own or {}).items():
         lines.append(f"{key} 「{row.get('name')}」(직접 올린 스킬): "
                      + ", ".join(sorted(row.get("files") or {})))
@@ -373,6 +372,16 @@ def _skill_tool_description(own: dict[str, dict[str, Any]] | None = None) -> str
         "PDF 표 추출, 여러 수치 검산처럼 아래 스크립트가 하는 일은 코드를 쓰지 말고 이 도구를 "
         "쓰세요. args 는 스킬 지침에 적힌 대로 넘기고, 입력 파일 이름은 args.file 에 넣습니다. "
         "결과 파일은 사용자에게 내려받기 단추로 붙습니다. 스크립트: " + "; ".join(lines)
+    )
+
+
+def _scripts_listed(packages: list[Any]) -> str:
+    """Scripts with what each does, for a call that named a wrong skill or script."""
+    return "; ".join(
+        f"{package.key} 「{package.name}」: " + ", ".join(
+            f"{name}({summary})" if summary else name
+            for name, summary in package.scripts.items())
+        for package in packages
     )
 
 

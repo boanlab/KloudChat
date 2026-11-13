@@ -9,7 +9,7 @@ from collections.abc import Callable
 import httpx
 
 from app.core.config import settings
-from app.services import settings_store
+from app.services import settings_store, usage_fields
 
 log = logging.getLogger(__name__)
 
@@ -120,6 +120,7 @@ async def distill(model: str, messages: list[str], api_key: str, *, strict_local
     raw = data.get("usage") or {}
     spent["inputTokens"] = int(raw.get("prompt_tokens") or 0)
     spent["outputTokens"] = int(raw.get("completion_tokens") or 0)
+    usage_fields.add_cached(spent, usage_fields.spent(raw))
     choices = data.get("choices") or []
     reply = str(((choices[0] if choices else {}).get("message") or {}).get("content") or "")
     if masker is not None and reply:

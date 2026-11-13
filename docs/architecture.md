@@ -135,6 +135,18 @@ price a fraction of the real one.
 Video rates exist in one place, `services/videogen.py:_RATES`, and the
 catalogue re-exports them verbatim, so a quote and a charge cannot diverge.
 
+**Cached prompt tokens are recorded, not discounted.** Providers report the part of a
+prompt they served from their prefix cache under different names
+(`prompt_tokens_details.cached_tokens`, DeepSeek's `prompt_cache_hit_tokens`,
+`cache_read_input_tokens`); `services/usage_fields` reads all of them, and every model call
+that counts tokens (agent hops, titles, summaries, document writers, revisions, checks)
+carries the figure as `cachedInputTokens` beside `inputTokens`, of which it is a part. A
+turn's total lands on `messages.usage.cachedInputTokens` (absent when the provider
+reported none), and the agent logs each hop's prompt and cached tokens. Credits still
+charge every input token at `inputCreditCost`: the gateway's model entries carry no
+cache-read price, and through OpenRouter the discount depends on which upstream provider
+served the call.
+
 **A model whose price is unknown is dropped from the list.** Upstream returning
 0 means "price unknown", not "free"; taken at face value it bills real money
 against a zero counter. Dropped models appear in the admin screen with the
@@ -1057,6 +1069,8 @@ changes what a group gets, and test both a self-hosted and a strong external wri
 | Duration must-haves (`report_checks.must_status`, `duration_limit`, `option_duration`) | a lead time or period (납기, 보증 기간) is judged in days from the material's own words, never on the reading's unitless number; the limit is the one written with its unit or a deadline counted from a written contract day, else the must is not judged and said so; a range across the limit is open; a longer period the option sells as an extension meets a minimum, said with its cost | same | same; the block is data to weigh (`_must_block(data=True)`) |
 | A 「있음」 the material never writes (`report_checks._mentions`) | a yes/no must read as met for an option whose lines say nothing of it is open (조건 미확인), not 충족 | same | same |
 | Cost readings settled from the price lines (`report_checks.price_lines_reading`, `_compare_cost`) | when the two readings differ, code reads the plainly written price lines (unit price × count, per month/year/once, 「… 시 N% 할인」, VAT basis) as the third reading instead of a thinking read; when no two agree its totals stand; a reading agreeing with it takes its scenarios; a line it cannot read (usage price, two amounts in a clause, an amount outside the options) leaves the old vote; two readings agreeing against it stand | same | same |
+| System prompt order (`context.system_prompt(cache_order=…)`, `model_tier.cache_ordered`) | the old order (date and session blocks before the tool rules and contracts) while `self_hosted_prompt_cache_order` is off, as it is while the 27B's vLLM prefix cache is off | fixed blocks first, then the search toggle, the date, the session's blocks and one line keeping the contracts above them | as small external, on the light prompt |
+| Large connectors by name (`tools/deferred`, `connector_tools_eager_max`) | every schema sent, while `self_hosted_defer_connector_tools` is off (the 27B's choice with an extra load step is unmeasured) | tools of a connector over the limit sent by name; `load_tools` brings their schemas | as small external |
 
 ### Pipelines
 
@@ -2270,6 +2284,34 @@ the privacy dialog.
 The selectable guard covers chat. Reports, slides, media
 generation and the `/llm` compatibility API always mask and present no
 decision flow.
+
+### Prompt caching
+
+Every agent hop resends the system turn, the tool schemas and the conversation, and a
+provider (DeepSeek, GLM and others behind OpenRouter) or the vLLM prefix cache reuses the
+longest prompt prefix it has seen. `context.system_prompt(cache_order=True)` therefore puts
+what is the same for every turn of the deployment first: the surface, accuracy, language and
+writing rules, the tool rules, the chat task contract and the grounding instruction; then the
+web-search toggle, today's date, and the session's own blocks (agent, project, theme,
+memories, skills, the turn's language rule). Nothing that changes per day, person or session
+sits before the date. Those contracts used to come last so that nothing after them could
+override them; in this order a closing line says they still apply over the blocks after the
+date. The answer policy `freshness.with_answer_policy` appends per turn stays at the end.
+Tool schemas follow the system turn in the chat templates, so a change anywhere in the system
+turn ends the reusable prefix before them; within a turn every hop after the first reuses the
+whole prefix. Who gets this order is in § Mechanisms by model group.
+
+The tool schemas are the other fixed cost of every hop. Built-in descriptions carry the rules
+a model needs before it calls a tool; what it needs only after a call comes back in the
+result (`run_skill_script` names its scripts, and a wrong name returns what each does). A
+connector with more enabled tools than `connector_tools_eager_max` goes out by name
+(`tools/deferred`): its tools are listed with one line each in the description of a
+`load_tools` tool, the model loads the ones it needs, and their full definitions come back
+as that tool's result and are offered from the next hop. Smaller connectors, built-ins and
+the tools a turn must call at once (a forced or preset tool, a skill's source tool) go out
+whole, a direct call to a deferred tool still runs, and the loader's text comes from the
+same tool-definition snapshot the privacy scan read. A `load_tools` result is not material:
+it gets no source number and adds no number sources.
 
 ### Auto routing
 

@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 import httpx
 
 from app.core.config import settings
-from app.services import settings_store
+from app.services import settings_store, usage_fields
 
 log = logging.getLogger(__name__)
 
@@ -278,6 +278,7 @@ async def summarize(
         raw = data.get("usage") or {}
         spent["inputTokens"] += int(raw.get("prompt_tokens") or 0)
         spent["outputTokens"] += int(raw.get("completion_tokens") or 0)
+        usage_fields.add_cached(spent, usage_fields.spent(raw))
         choices = data.get("choices") or []
         if not choices:
             return None, spent

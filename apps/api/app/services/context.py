@@ -396,15 +396,25 @@ def system_prompt(
     web_search_auto: bool = False,
     extra: list[str] | None = None,
     light: bool = False,
+    cache_order: bool = False,
 ) -> str:
     """System turn; `extra` = caller-ordered workspace blocks; `light` = the strong-writer
     setup (`model_tier.strong`): date, tools, structure, the person's settings, one line
-    against invention — no writing rules."""
+    against invention — no writing rules. `cache_order` (`model_tier.cache_ordered`): the
+    deployment's fixed blocks first, so a provider or vLLM prefix cache can reuse them across
+    turns and sessions; then the date, then `extra`, then one line keeping the contracts
+    above the blocks that now follow them."""
     if light:
         return _light_prompt(
             kind, with_tools=with_tools, web_search=web_search,
             web_search_available=web_search_available, web_search_auto=web_search_auto,
-            extra=extra,
+            extra=extra, cache_order=cache_order,
+        )
+    if cache_order:
+        return _cache_ordered(
+            _fixed_parts(kind, with_tools=with_tools),
+            _search_part(web_search, web_search_available, web_search_auto, light=False),
+            extra,
         )
     parts = [
         _SURFACE_DEFAULTS.get(kind, _SURFACE_DEFAULTS[SessionKind.chat]),
@@ -440,9 +450,16 @@ def _light_prompt(
     web_search_available: bool,
     web_search_auto: bool,
     extra: list[str] | None,
+    cache_order: bool = False,
 ) -> str:
     from app.services.prompt_tier import ANTI_FABRICATION
 
+    if cache_order:
+        return _cache_ordered(
+            [*_light_fixed_parts(kind, with_tools=with_tools), ANTI_FABRICATION],
+            _search_part(web_search, web_search_available, web_search_auto, light=True),
+            extra,
+        )
     parts = [_LIGHT_SURFACE.get(kind, _LIGHT_SURFACE[SessionKind.chat]), _LIGHT_KOREAN]
     if kind is not SessionKind.chat:
         parts.append(_DOCUMENT_LANGUAGE)
@@ -456,6 +473,60 @@ def _light_prompt(
         else:
             parts.append(_LIGHT_SEARCH_AUTO if web_search_auto else _LIGHT_SEARCH_ON)
     parts.append(ANTI_FABRICATION)
+    return "\n\n".join(parts)
+
+
+#: closing line of a cache-ordered prompt: the contracts keep the precedence their last place
+#: gave them
+_CONTRACTS_HOLD = (
+    "The rules before today's date (accuracy, tools, the task contract, grounding) still "
+    "apply over the workspace, agent and style blocks after it."
+)
+
+
+def _fixed_parts(kind: SessionKind, *, with_tools: bool) -> list[str]:
+    """The full prompt's per-deployment constants, in the order `system_prompt` gives them."""
+    parts = [
+        _SURFACE_DEFAULTS.get(kind, _SURFACE_DEFAULTS[SessionKind.chat]),
+        _CORE_ACCURACY,
+        _KOREAN_ONLY,
+        _WRITING if kind is SessionKind.chat else _DOCUMENT_LANGUAGE,
+    ]
+    if with_tools:
+        parts.append(_TOOL_RULES)
+    if kind is SessionKind.chat:
+        parts.append(_CHAT_TASK_CONTRACT)
+    parts.append(FRESHNESS_INSTRUCTION)
+    return parts
+
+
+def _light_fixed_parts(kind: SessionKind, *, with_tools: bool) -> list[str]:
+    parts = [_LIGHT_SURFACE.get(kind, _LIGHT_SURFACE[SessionKind.chat]), _LIGHT_KOREAN]
+    if kind is not SessionKind.chat:
+        parts.append(_DOCUMENT_LANGUAGE)
+    if with_tools:
+        parts.append(_LIGHT_TOOLS)
+    return parts
+
+
+def _search_part(on: bool, available: bool, auto: bool, *, light: bool) -> str:
+    """The web-search block (a per-request toggle), or ""."""
+    if not on:
+        return ""
+    if not available:
+        return _LIGHT_SEARCH_BLOCKED if light else _WEB_SEARCH_BLOCKED
+    if light:
+        return _LIGHT_SEARCH_AUTO if auto else _LIGHT_SEARCH_ON
+    return _WEB_SEARCH_AUTO if auto else _WEB_SEARCH_NUDGE
+
+
+def _cache_ordered(fixed: list[str], search: str, extra: list[str] | None) -> str:
+    """Fixed blocks, the search toggle, today's date, the session's blocks: what changes
+    least comes first."""
+    blocks = [p for p in (extra or []) if p and p.strip()]
+    parts = [*fixed, *([search] if search else []), _today(), *blocks]
+    if blocks:
+        parts.append(_CONTRACTS_HOLD)
     return "\n\n".join(parts)
 
 
@@ -480,6 +551,7 @@ def build_messages(
     remind_standing: bool = False,
     standing: list[str] | None = None,
     light: bool = False,
+    cache_order: bool = False,
 ) -> list[dict[str, str]]:
     """System turn, reference data, `history`; directives and attachments before the question.
     `standing` = directives read off the whole conversation when `history` is only its
@@ -515,6 +587,7 @@ def build_messages(
         web_search_auto=web_search_auto,
         extra=rules,
         light=light,
+        cache_order=cache_order,
     )
     messages = [{"role": "system", "content": prompt}]
     references = [part for part in (untrusted_context or []) if part and part.strip()]

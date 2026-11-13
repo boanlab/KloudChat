@@ -68,7 +68,7 @@ def test_translation_keeps_form_and_adds_nothing():
 def test_the_chat_turn_offers_the_tools_the_two_file_skills_need():
     tool = sandbox_tools.RUN_SKILL_SCRIPT
     assert "xlsx-build" in tool.parameters["properties"]["skill"]["enum"]
-    assert "xlsx-build 「엑셀 파일 만들기」: build(" in tool.description
+    assert "xlsx-build 「엑셀 파일 만들기」: build" in tool.description
 
 
 async def test_create_chart_is_on_every_chat_turn_strict_local_included(monkeypatch):

@@ -43,6 +43,7 @@ from app.services import (
     table_mend,
     thinking,
     units,
+    usage_fields,
     weekdays,
 )
 from app.services import deck as deck_rules
@@ -1331,12 +1332,7 @@ async def _complete(
             first = payload.get("usage") or {}
             # both calls billed and counted
             payload = retried
-            payload["usage"] = {
-                "prompt_tokens": int(first.get("prompt_tokens") or 0)
-                + int(spent.get("prompt_tokens") or 0),
-                "completion_tokens": int(first.get("completion_tokens") or 0)
-                + int(spent.get("completion_tokens") or 0),
-            }
+            payload["usage"] = usage_fields.merged_raw(first, spent)
 
     # cut-off answer re-asked once with more room
     choice = (payload.get("choices") or [{}])[0]
@@ -1358,19 +1354,11 @@ async def _complete(
             first = payload.get("usage") or {}
             payload = again.json()
             spent = payload.get("usage") or {}
-            payload["usage"] = {
-                "prompt_tokens": int(first.get("prompt_tokens") or 0)
-                + int(spent.get("prompt_tokens") or 0),
-                "completion_tokens": int(first.get("completion_tokens") or 0)
-                + int(spent.get("completion_tokens") or 0),
-            }
+            payload["usage"] = usage_fields.merged_raw(first, spent)
 
     text = (payload["choices"][0]["message"]["content"] or "").strip()
     raw = payload.get("usage") or {}
-    return text, {
-        "inputTokens": int(raw.get("prompt_tokens") or 0),
-        "outputTokens": int(raw.get("completion_tokens") or 0),
-    }
+    return text, usage_fields.spent(raw)
 
 
 _THINK_BLOCK = re.compile(r"<think>[\s\S]*?</think>", re.I)
@@ -1401,10 +1389,7 @@ async def _complete_thinking(
     message = (payload.get("choices") or [{}])[0].get("message") or {}
     text = _THINK_BLOCK.sub("", message.get("content") or "").strip()
     raw = payload.get("usage") or {}
-    return text, {
-        "inputTokens": int(raw.get("prompt_tokens") or 0),
-        "outputTokens": int(raw.get("completion_tokens") or 0),
-    }
+    return text, usage_fields.spent(raw)
 
 
 #: Korean label → renderer style name
@@ -2435,6 +2420,7 @@ async def judge_figure_sentences(
         text, used = reply
         spent["inputTokens"] += used.get("inputTokens", 0)
         spent["outputTokens"] += used.get("outputTokens", 0)
+        usage_fields.add_cached(spent, used)
         if text.strip().startswith("예"):
             found.append((index, sentence, f"이 문장은 확정 수치({figures[7:]})와 어긋난다. 정해진 "
                           "값으로 고치고 그 값으로 계산한 수치도 맞춰라. 다른 경우를 말하는 문장이면 "

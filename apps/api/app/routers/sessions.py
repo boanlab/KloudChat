@@ -4934,6 +4934,7 @@ async def _send_message(
             standing=standing_rules,
             # the writer at call time: an auto route may change it (`model_tier`)
             light=model_tier.strong(model["id"]),
+            cache_order=model_tier.cache_ordered(model["id"]),
         )
         # after `build_messages`, never inside — see `context.with_pictures`
         return with_pictures(built, [picture.uri for picture in workspace.pictures])
@@ -4941,6 +4942,7 @@ async def _send_message(
     messages = envelope(wire_history)
     #: the tier `messages` was built for; an auto route to the other tier rebuilds them
     built_light = model_tier.strong(model["id"])
+    built_cache_order = model_tier.cache_ordered(model["id"])
     #: auto routing swapped in the tool-free envelope
     routed_down = False
 
@@ -5005,8 +5007,11 @@ async def _send_message(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="insufficient_credits"
         )
-    if session.kind is SessionKind.chat and model_tier.strong(model["id"]) != built_light:
-        # routed to a writer of the other tier: its own setup
+    if session.kind is SessionKind.chat and (
+        model_tier.strong(model["id"]) != built_light
+        or model_tier.cache_ordered(model["id"]) != built_cache_order
+    ):
+        # routed to a writer of the other tier (or prompt order): its own setup
         messages = envelope(wire_history, economy=routed_down)
     if model_tier.strong(model["id"]):
         # the step log says which setup the writer got (evaluation reads it)

@@ -29,10 +29,11 @@ from app.services import (
     server_notes,
     settings_store,
     thinking,
+    usage_fields,
 )
 from app.services.chat import ChatStreamError, step_label, step_title
 from app.services.context import instruction_part, literature_request
-from app.services.tools import arithmetic
+from app.services.tools import arithmetic, deferred
 from app.services.tools.base import SearchEvidence, Tool, ToolContext, ToolResult, to_openai
 
 log = logging.getLogger(__name__)
@@ -121,6 +122,7 @@ class _Accumulator:
             u = chunk["usage"]
             self.usage["inputTokens"] += int(u.get("prompt_tokens") or 0)
             self.usage["outputTokens"] += int(u.get("completion_tokens") or 0)
+            usage_fields.add_cached(self.usage, usage_fields.spent(u))
 
         text: str | None = None
         for choice in chunk.get("choices") or []:
@@ -1717,6 +1719,12 @@ async def run_turn(
         or settings.max_tool_hops < 1
     ):
         raise ChatStreamError("preflight_tool_unavailable")
+    #: large connectors sent by name until the model loads them (`tools/deferred`)
+    deferral = deferred.plan(model, tools, tool_definitions, eager={
+        name for name in (force_tool, preflight_tool, preset_call[0] if preset_call else None,
+                          *source_tools) if name})
+    if deferral is not None and deferral.loader is not None:
+        by_name[deferral.loader.name] = deferral.loader
     conversation = list(messages)
     #: a strong writer gets the light loop notes (`model_tier`); the person's fixed form
     #: (「조언만」, 「다른 건 쓰지 마」) gets no grounding paragraphs or source list
@@ -1894,6 +1902,10 @@ async def run_turn(
                     definition for definition in hop_definitions
                     if definition.get("function", {}).get("name") in gate_names
                 ]
+        if deferral is not None and not closing and not (
+            preflight_tool and not preflight_completed
+        ):
+            hop_tools, hop_definitions = deferral.narrow(hop_tools, hop_definitions)
         if disable_fallbacks:
             stream_kwargs["disable_fallbacks"] = True
         # Without `tool_definitions`, `_stream_once` converts `tools`.
@@ -1969,6 +1981,11 @@ async def run_turn(
                 acc = _Accumulator()
         assert acc is not None
         last_hop = acc
+        if not running_preset:
+            # per-hop prompt size and provider cache hits (token-savings measurement)
+            log.info("hop %d %s: prompt %d cached %d output %d", hop, hop_model,
+                     acc.usage["inputTokens"], acc.usage.get(usage_fields.CACHED, 0),
+                     acc.usage["outputTokens"])
 
         if (acc.looped and not running_preset and not preflight_tool and not loop_retried
                 and hop_model == model):
@@ -1980,6 +1997,7 @@ async def run_turn(
                         model, sum(len(t) for t in hop_text))
             usage["inputTokens"] += acc.usage["inputTokens"]
             usage["outputTokens"] += acc.usage["outputTokens"]
+            usage_fields.add_cached(usage, acc.usage)
             if hop_text and not freshness_request:
                 del answer_text[len(answer_text) - len(hop_text) :]
                 yield {"type": "retract", "text": "".join(hop_text)}
@@ -2029,6 +2047,7 @@ async def run_turn(
             for key in ("inputTokens", "outputTokens"):
                 counter = f"model:{hop_model}:{key}"
                 usage[counter] = usage.get(counter, 0) + acc.usage[key]
+            usage_fields.add_cached(usage, acc.usage, f"model:{hop_model}:cachedInputTokens")
             actual = acc.actual_model or hop_model
             ran = bool(acc.actual_model or any(acc.usage.values()) or acc.calls or acc.content)
             if ran and f"handoff:{actual}" not in reported_models:
@@ -2038,6 +2057,7 @@ async def run_turn(
         else:
             usage["inputTokens"] += acc.usage["inputTokens"]
             usage["outputTokens"] += acc.usage["outputTokens"]
+            usage_fields.add_cached(usage, acc.usage)
         if hop_model == model and acc.actual_model and acc.actual_model not in reported_models:
             reported_models.add(acc.actual_model)
             yield {
@@ -2414,10 +2434,14 @@ async def run_turn(
             _, call, tool = item
             if tool is None:
                 return ToolResult(content=f"오류: 알 수 없는 도구 {call['name']}", failed=True)
-            if ctx.allowed and tool.name not in ctx.allowed:
+            loading = deferral is not None and tool is deferral.loader
+            if ctx.allowed and tool.name not in ctx.allowed and not loading:
                 return ToolResult(
                     content=f"오류: {tool.name} 도구가 허용되지 않았습니다.", failed=True
                 )
+            if deferral is not None:
+                # a deferred tool called by name runs, and is offered whole from now on
+                deferral.mark_called(tool.name)
             key = (tool.name, call["arguments"])
             reuse_arithmetic = bool(
                 arithmetic_gate_pending
@@ -2469,6 +2493,15 @@ async def run_turn(
         arithmetic_results: list[bool] = []
 
         for (index, call, tool), result in zip(planned, results, strict=True):
+            if deferral is not None and tool is not None and tool is deferral.loader:
+                # schemas, not material: no source numbers, no number sources
+                yield {"type": "step", "id": f"h{hop}_{index}",
+                       "label": visible_label(tool, call["name"], done=True),
+                       "status": "error" if result.failed else "done",
+                       **({"detail": result.detail} if result.detail else {})}
+                conversation.append({"role": "tool", "tool_call_id": call["id"] or f"call_{index}",
+                                     "name": call["name"], "content": result.content})
+                continue
             if prerequisite_batch:
                 if result.failed or result.empty or not result.content.strip():
                     result.failed = True
@@ -2750,11 +2783,13 @@ async def run_turn(
         if retry is not None and writer == model:
             usage["inputTokens"] += retry.usage["inputTokens"]
             usage["outputTokens"] += retry.usage["outputTokens"]
+            usage_fields.add_cached(usage, retry.usage)
         elif retry is not None:
             # the other model's tokens at its own price
             for key in ("inputTokens", "outputTokens"):
                 counter = f"model:{writer}:{key}"
                 usage[counter] = usage.get(counter, 0) + retry.usage[key]
+            usage_fields.add_cached(usage, retry.usage, f"model:{writer}:cachedInputTokens")
         spoken = "".join(written)
         if (retry is None or retry.calls or retry.looped or retry.runaway
                 or not internal_words.strip_tool_calls(spoken).strip()):

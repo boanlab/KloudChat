@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 
 import httpx
 
-from app.services import captions, settings_store
+from app.services import captions, settings_store, usage_fields
 
 log = logging.getLogger(__name__)
 
@@ -192,10 +192,7 @@ async def plan(
         reply.get("reasoning_content") or reply.get("reasoning") or ""
     ).strip()
     decided = _parse(text, len(parts), message)
-    decided.usage = {
-        "inputTokens": int(raw.get("prompt_tokens") or 0),
-        "outputTokens": int(raw.get("completion_tokens") or 0),
-    }
+    decided.usage = usage_fields.spent(raw)
     decided = within_named_parts(decided, parts, message)
     decided = named_target(into_existing_part(decided, parts, message), parts, message)
     decided = numbered_target(decided, parts, message)

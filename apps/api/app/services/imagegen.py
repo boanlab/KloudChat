@@ -17,7 +17,7 @@ import httpx
 from PIL import Image
 
 from app.services import files as file_service
-from app.services import settings_store, thinking
+from app.services import settings_store, thinking, usage_fields
 
 log = logging.getLogger(__name__)
 
@@ -330,14 +330,8 @@ async def plan(
     text = _unfenced(text)
     if len(text) < 40 or "Style:" not in text:
         log.info("image prompt planner answered oddly; sending the request as typed")
-        return request.strip(), {
-            "inputTokens": int(raw.get("prompt_tokens") or 0),
-            "outputTokens": int(raw.get("completion_tokens") or 0),
-        }
-    return text, {
-        "inputTokens": int(raw.get("prompt_tokens") or 0),
-        "outputTokens": int(raw.get("completion_tokens") or 0),
-    }
+        return request.strip(), usage_fields.spent(raw)
+    return text, usage_fields.spent(raw)
 
 
 def _unfenced(text: str) -> str:

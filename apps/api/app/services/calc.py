@@ -6,7 +6,7 @@ import asyncio
 import logging
 import re
 
-from app.services import scheduling, settings_store
+from app.services import scheduling, settings_store, usage_fields
 from app.services.context import instruction_part, pasted_material, prompt_request
 
 log = logging.getLogger("kchat")
@@ -124,6 +124,7 @@ async def _one_run(
             return []
         usage["inputTokens"] += spent.get("inputTokens", 0)
         usage["outputTokens"] += spent.get("outputTokens", 0)
+        usage_fields.add_cached(usage, spent)
         code = _code_of(text)
         if not code:
             error = "\n\n앞 답에 코드 블록이 없었다. ```python 블록 하나로 답하라."

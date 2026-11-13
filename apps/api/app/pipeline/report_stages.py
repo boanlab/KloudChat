@@ -54,6 +54,7 @@ from app.services import (
     table_integrity,
     table_mend,
     units,
+    usage_fields,
     value_guard,
     verify,
     weekdays,
@@ -130,6 +131,7 @@ def _count(bundle: Bundle, spent: dict, *, planner: bool = False) -> None:
         return
     bundle.usage["inputTokens"] += spent.get("inputTokens", 0)
     bundle.usage["outputTokens"] += spent.get("outputTokens", 0)
+    usage_fields.add_cached(bundle.usage, spent)
 
 
 def _usage(bundle: Bundle) -> dict[str, Any]:
@@ -1732,6 +1734,7 @@ class TitleBlock(Base):
             bundle.spec.format, req.text, bundle.plan.title, req.judge, req.api_key, given)
         bundle.usage["inputTokens"] += spent.get("inputTokens", 0)
         bundle.usage["outputTokens"] += spent.get("outputTokens", 0)
+        usage_fields.add_cached(bundle.usage, spent)
         if prepass is not None and prepass.rfp and "rfp-client" in prepass.settings.head:
             # cover names the RFP's client, never a guess or the proposer
             head_fixed, client_problem = report_checks.client_head(

@@ -1677,9 +1677,11 @@ async def test_auto_context_fit_uses_the_envelope_retained_by_the_lane(
     )
     definitions = openai_snapshot([tool])
     history = [{"role": "user", "content": question}]
-    economy_messages = context.build_messages(sessions_router.SessionKind.chat, history)
+    # external candidates get the cache-ordered prompt (`model_tier.cache_ordered`)
+    economy_messages = context.build_messages(
+        sessions_router.SessionKind.chat, history, cache_order=True)
     full_messages = context.build_messages(
-        sessions_router.SessionKind.chat, history, with_tools=True
+        sessions_router.SessionKind.chat, history, with_tools=True, cache_order=True
     )
 
     def size(envelope):
