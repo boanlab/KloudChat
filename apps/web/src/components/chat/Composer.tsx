@@ -1460,7 +1460,7 @@ export function Composer({
       return
     }
     if (startPending || !text || busy || composing.current || modelSelectionPending || unsupportedVideo || uploading || editSending.current || pendingPrivacy) return
-    if (!editing && kind === 'chat' && !editsChecked && hasOfficeEditor(sessionId)) {
+    if (!editing && (kind === 'chat' || kind === 'report') && !editsChecked && hasOfficeEditor(sessionId)) {
       // the agent edits the saved file: unsaved hand edits (asked of the editor now, not as
       // last polled) are saved or dropped first
       if (checkingEdits.current) return

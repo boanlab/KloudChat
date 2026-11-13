@@ -656,8 +656,8 @@ export interface ReportSection {
   level: 1 | 2
   status: 'pending' | 'streaming' | 'done'
   content: string
-  /** Absent means `markdown`. `html` is a hand-formatted section; the server sanitises it (`services/richtext.py`). */
-  format?: 'markdown' | 'html'
+  /** Always Markdown: the web report is one Markdown document (`lib/reportDoc.ts`); the server converts any HTML it is sent. */
+  format?: 'markdown'
   /** Rendered mermaid diagrams keyed by source hash; the browser renders and posts them, the exporters read them. */
   diagrams?: Record<string, string>
   factCheck?: FactCheck
