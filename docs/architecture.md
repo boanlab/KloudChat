@@ -1663,7 +1663,11 @@ headings the outline marks: the Word outline names heading styles, and the HWPX 
 (`hwpx_edit._heading_marks`) marks short lines set larger than the body text — the one
 largest line as `(title)`, the next sizes as `(heading 1)`, `(heading 2)`, a cover label
 above the title left out — so a report's chapters can be counted in either file; figure
-captions are set in the small note shape, not a heading's. The web sends those turns
+captions are set in the small note shape, and the Word file's listed 목차 head is bold body
+text, so neither counts as a chapter. The server also counts for the model: when the ask
+names a chapter by number, `sessions._named_parts` adds where it stands (「3장: p13~p18
+「핵심 가정」」, by `revise.numbered_parts` over the `(heading 1)` lines) to the turn's
+context, as a report revision resolves 「3장」 in code. The web sends those turns
 through the chat stream
 (`useStore.send`, `officeReport`). A report written as a file is not re-planned or revised
 by the report pipeline afterwards; a new report is a new conversation.

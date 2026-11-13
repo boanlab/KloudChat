@@ -110,6 +110,7 @@ from app.services import (
     date_rules,
     design_templates,
     docx_doc,
+    docx_edit,
     exact_facts,
     fallback_watch,
     figures,
@@ -119,12 +120,15 @@ from app.services import (
     governance,
     grounding,
     hwp_doc,
+    hwpx_edit,
     illustrations,
     imagegen,
     index_cleanup,
     lint,
     message_links,
     model_tier,
+    office_doc,
+    office_edit,
     output_language,
     pptx_doc,
     prompt_tier,
@@ -260,6 +264,35 @@ async def _office_report(db: AsyncSession, session: ChatSession) -> Artifact | N
         return None
     found = await db.get(Artifact, session.artifact_id)
     return found if found is not None and found.kind in report_office.FORMATS else None
+
+
+_CHAPTER = re.compile(r"^(p(\d+)) \(heading 1\): (.+)$")
+
+
+def _named_parts(document: Artifact, ask: str) -> str:
+    """Where 「3장」, 「2절」 of the ask stand in an HWP or Word file: its `(heading 1)` lines in
+    order (`revise.numbered_parts`, as a report's revision counts them), with the paragraphs
+    each runs over; `` when the ask names none or the file has no such headings."""
+    edit = {ArtifactKind.hwp: hwpx_edit, ArtifactKind.docx: docx_edit}.get(document.kind)
+    if edit is None or not re.search(r"\d", ask or ""):
+        return ""
+    try:
+        lines = edit.outline(office_doc.read(document)).splitlines()
+    except (OSError, ValueError):
+        return ""
+    chapters = [(m.group(1), int(m.group(2)), m.group(3)) for line in lines
+                if (m := _CHAPTER.match(line))]
+    targets = revise.numbered_parts(ask, [name for _, _, name in chapters]) or []
+    said = []
+    for index in targets:
+        pid, at, name = chapters[index]
+        end = chapters[index + 1][1] - 1 if index + 1 < len(chapters) else None
+        span = f"{pid}~p{end}" if end and end > at else pid
+        said.append(f"- {index + 1}장: {span} 「{office_edit.short(name, 60)}」 (제목 {pid})")
+    if not said:
+        return ""
+    return ("# 메시지의 장 번호가 가리키는 곳 (문서의 장 제목을 차례로 센 것)\n"
+            + "\n".join(said))
 
 
 def _document_preset(
@@ -4966,6 +4999,10 @@ async def _send_message(
         untrusted_context = [
             b.text for b in workspace.blocks if not b.trusted and b.source != "attachment"
         ]
+        newest = max(office_documents.values(), key=lambda a: a.updated_at, default=None)
+        if newest is not None and (located := _named_parts(newest, _ask_of(content))):
+            # 「3장」 counted by the server on the file's chapter headings, every model alike
+            untrusted_context = [*untrusted_context, located]
     if privacy_resolution and privacy_resolution.mask_outbound:
         trusted_context = _mask_list(trusted_context, legacy=policy.pii_masking)
         untrusted_context = _mask_list(untrusted_context, legacy=policy.pii_masking)

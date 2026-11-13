@@ -287,3 +287,15 @@ def test_the_hwp_outline_names_its_chapters_so_a_numbered_part_can_be_found():
     heads = [line.split(": ", 1)[1] for line in lines if "(heading 1)" in line]
     assert any("(title): 2027년 사업계획" in line for line in lines)
     assert heads[:3] == ["개요", "시장", "3장"] and heads[-1] == "참고문헌"
+
+
+@pytest.mark.parametrize("kind", [ArtifactKind.hwp, ArtifactKind.docx])
+def test_a_numbered_chapter_is_located_by_the_server(kind, monkeypatch):
+    # the model is told where 「3장」 stands, counted on the file's chapter headings
+    data = report_office.file_bytes(kind, "2027년 사업계획", _report_data())
+    monkeypatch.setattr(sessions.office_doc, "read", lambda _artifact: data)
+    document = Artifact(user_id="u", kind=kind, title="t", data={})
+    said = sessions._named_parts(document, "3장을 두 문단으로 줄여 줘")
+    assert "3장:" in said and "「3장」" in said and "「시장」" not in said
+    assert sessions._named_parts(document, "결론을 다듬어 줘") == ""
+    assert sessions._named_parts(document, "99장을 지워 줘") == ""

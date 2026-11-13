@@ -1146,10 +1146,14 @@ def _table_of_contents(document) -> None:
 
 
 def _listed_contents(document, sections: list[dict], block: dict | None) -> None:
-    """The 목차 as the top-level headings, numbered as in the body; no page numbers."""
+    """The 목차 as the top-level headings, numbered as in the body; no page numbers. Its own
+    head is bold body text, not a Heading 1: a chapter count (「3장」) skips it."""
     from docx.shared import Pt
 
-    heading = document.add_paragraph("목차", style="Heading 1")
+    heading = document.add_paragraph(style=_BODY)
+    label = heading.add_run("목차")
+    label.bold = True
+    label.font.size = Pt(doc_type.TYPE["h1"])
     heading.paragraph_format.space_after = Pt(6)
     numbers = _HeadingNumbers(block)
     for section in sections:
