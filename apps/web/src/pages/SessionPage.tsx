@@ -11,6 +11,9 @@ import { ShareButton } from '@/components/share/ShareButton'
 import { DesignGallery } from '@/components/chat/DesignGallery'
 import { TopBar } from '@/components/layout/TopBar'
 import { JobCard } from '@/components/media/JobCard'
+import { CitationLayer, SourcesButton } from '@/components/shelf/CitationLayer'
+import { SourcesPanel } from '@/components/shelf/SourcesPanel'
+import { SelectionNote } from '@/components/shelf/SelectionNote'
 import { Badge, Button, LoadingState } from '@/components/ui'
 import { agentKinds, kindMeta } from '@/lib/kinds'
 import { directionParticle } from '@/lib/formCheck'
@@ -520,6 +523,8 @@ export function SessionPage() {
   // Screen readers hear an answer land; text read on demand.
   const wasStreaming = useRef(false)
   const [announcement, setAnnouncement] = useState('')
+  // 지식 서가: the project's sources beside the conversation.
+  const [sourcesOpen, setSourcesOpen] = useState(false)
   const lastError = session?.messages.at(-1)?.error
   useEffect(() => {
     if (wasStreaming.current && !streaming) {
@@ -615,6 +620,9 @@ export function SessionPage() {
             {session.kind === 'chat' && agent && session.messages.length > 0 && (
               <HandOffButtons agent={agent} sessionId={session.id} />
             )}
+            {project && session && !session.unsent && (
+              <SourcesButton open={sourcesOpen} onToggle={() => setSourcesOpen((v) => !v)} />
+            )}
             {session && !session.unsent && <ShareButton session={session} />}
             {sessionArtifact && !openArtifactId && (
               <Button size="sm" onClick={() => openArtifact(sessionArtifact.id)}>
@@ -641,6 +649,7 @@ export function SessionPage() {
                 className="relative min-h-0 flex-1 overflow-y-auto"
                 data-testid="transcript"
               >
+                <CitationLayer projectId={project?.id}>
                 <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6">
                   {/* Per-message boundary: one malformed turn loses only its bubble. */}
                   {timeline.map((item, i) =>
@@ -662,6 +671,8 @@ export function SessionPage() {
                   )}
                   {proposalAt === timeline.length && proposal}
                 </div>
+                </CitationLayer>
+                {project && <SelectionNote projectId={project.id} sessionId={session.id} container={scrollRef} />}
               </div>
               {awayFromBottom && (
                 <div className="pointer-events-none relative">
@@ -697,6 +708,9 @@ export function SessionPage() {
             </>
           )}
         </div>
+        {project && session && sourcesOpen && (
+          <SourcesPanel sessionId={session.id} projectId={project.id} onClose={() => setSourcesOpen(false)} />
+        )}
         {openArtifactId && <ArtifactPanel />}
       </div>
     </>

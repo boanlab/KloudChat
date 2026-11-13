@@ -573,6 +573,8 @@ interface State {
   uploadFile: (file: File, opts?: { projectId?: string; sessionId?: string }) => Promise<FileRow>
   /** A fresher copy of a project file (its scanned pages were read meanwhile). */
   refreshProjectFile: (row: FileRow) => void
+  /** A source added outside the upload path (pasted text, a note made a source): listed first. */
+  addProjectFile: (projectId: string, row: FileRow) => void
   /** Indexes the project's unindexed documents, then reloads its rows; returns the counts. */
   reindexProject: (projectId: string) => Promise<{ attempted: number; indexed: number }>
   addProjectUrl: (projectId: string, url: string) => Promise<FileRow>
@@ -2564,6 +2566,14 @@ export const useStore = create<State>((set, get) => ({
       projects: s.projects.map((p) =>
         p.files.some((f) => f.id === row.id)
           ? { ...p, files: p.files.map((f) => (f.id === row.id ? toProjectFile(row) : f)) }
+          : p,
+      ),
+    })),
+  addProjectFile: (projectId, row) =>
+    set((s) => ({
+      projects: s.projects.map((p) =>
+        p.id === projectId
+          ? { ...p, files: [toProjectFile(row), ...p.files.filter((f) => f.id !== row.id)] }
           : p,
       ),
     })),

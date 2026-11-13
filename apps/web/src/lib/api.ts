@@ -56,6 +56,7 @@ import { objectParticle, topicParticle } from './formCheck'
 import { currentLang, currentLocale, translate } from './i18n'
 import { setServiceTimeZone } from './serviceTime'
 import { overUploadLimit, tooLargeMessage } from './uploadLimit'
+import type { Located, Note, ShelfListing, SourceGuide, SpeechPlan, StudioEstimate, StudioItem, StudioRequest } from './shelf'
 
 export const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
 
@@ -3337,4 +3338,63 @@ export const clientErrorsApi = {
     version: string
     requestId: string
   }) => call<void>('/client-errors', body(report)),
+}
+
+// ── 지식 서가 (knowledge shelf) ─────────────────────────────────────────────
+
+/** Fetches a protected endpoint as text (an export) with the bearer token. */
+async function authedText(path: string): Promise<Blob> {
+  const res = await authedFetch(`${BASE_URL}${path}`)
+  if (!res.ok) {
+    const detail = await readDetail(res)
+    if (res.status === 401) throw new UnauthorizedError(detail)
+    throw new ApiError(res.status, detail)
+  }
+  return res.blob()
+}
+
+export const shelfApi = {
+  sources: (projectId: string) => call<ShelfListing>(`/projects/${projectId}/shelf`),
+  addText: (projectId: string, title: string, text: string) =>
+    call<FileRow>(`/projects/${projectId}/shelf/text`, body({ title, text })),
+  guide: (projectId: string, subject: string) =>
+    call<SourceGuide>(`/projects/${projectId}/shelf/guide/${subject}`),
+  makeGuide: (projectId: string, subject: string, force = false) =>
+    call<SourceGuide>(
+      `/projects/${projectId}/shelf/guide/${subject}${force ? '?force=true' : ''}`,
+      { method: 'POST' },
+    ),
+  locate: (projectId: string, query: { fileId?: string; name?: string; q?: string; page?: number | null }) => {
+    const params = new URLSearchParams()
+    if (query.fileId) params.set('file_id', query.fileId)
+    if (query.name) params.set('name', query.name)
+    if (query.q) params.set('q', query.q.slice(0, 1500))
+    if (query.page) params.set('page', String(query.page))
+    return call<Located>(`/projects/${projectId}/shelf/locate?${params}`)
+  },
+  selection: (sessionId: string) => call<{ off: string[] }>(`/sessions/${sessionId}/sources`),
+  setSelection: (sessionId: string, off: string[]) =>
+    call<{ off: string[] }>(`/sessions/${sessionId}/sources`, { method: 'PUT', body: JSON.stringify({ off }) }),
+  studio: (projectId: string) => call<StudioItem[]>(`/projects/${projectId}/studio`),
+  estimate: (projectId: string, request: StudioRequest) =>
+    call<StudioEstimate>(`/projects/${projectId}/studio/estimate`, body(request)),
+  start: (projectId: string, request: StudioRequest) =>
+    call<StudioItem>(`/projects/${projectId}/studio`, body(request)),
+  item: (id: string) => call<StudioItem>(`/studio/${id}`),
+  regenerate: (id: string) => call<StudioItem>(`/studio/${id}/regenerate`, { method: 'POST' }),
+  remove: (id: string) => call<void>(`/studio/${id}`, { method: 'DELETE' }),
+  exportSet: (id: string, format: 'csv' | 'anki') => authedText(`/studio/${id}/export?format=${format}`),
+  sheet: (id: string, format: 'web' | 'hwp' | 'docx') =>
+    call<{ sessionId: string; artifactId: string }>(`/studio/${id}/sheet`, body({ format })),
+  speech: (id: string, consent: boolean) =>
+    call<StudioItem>(`/studio/${id}/speech`, body({ consent })),
+  speechPlan: (projectId: string, length: string) =>
+    call<SpeechPlan>(`/projects/${projectId}/studio/speech?length=${length}`),
+  notes: (projectId: string) => call<Note[]>(`/projects/${projectId}/notes`),
+  addNote: (projectId: string, note: { title?: string; body: string; origin?: 'manual' | 'answer' | 'selection'; sessionId?: string | null; messageId?: string | null }) =>
+    call<Note>(`/projects/${projectId}/notes`, body(note)),
+  editNote: (id: string, patch: { title?: string; body?: string; expected?: string }) =>
+    call<Note>(`/notes/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  removeNote: (id: string) => call<void>(`/notes/${id}`, { method: 'DELETE' }),
+  noteToSource: (id: string) => call<FileRow>(`/notes/${id}/source`, { method: 'POST' }),
 }
