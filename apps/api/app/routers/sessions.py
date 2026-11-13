@@ -8101,11 +8101,16 @@ async def _deck_save(work: PipelineBundle) -> AsyncIterator[dict]:
                 message = Message(
                     session_id=session_id,
                     role=Role.assistant,
-                    content=" ".join([*drafted, rerun_note(turn) or _restructured_said(
-                        work.document.before if carry_from else [], slides,
-                        # in the deck's language, or the language the reshape was asked in
-                        english=deck_service.deck_language(slides) == "en" or bool(
-                            carry_from) and output_language.typed_in_english(carry_note))]),
+                    content=" ".join(x for x in [
+                        *drafted, rerun_note(turn) or _restructured_said(
+                            work.document.before if carry_from else [], slides,
+                            # in the deck's language, or the language the reshape was asked in
+                            english=deck_service.deck_language(slides) == "en" or bool(
+                                carry_from) and output_language.typed_in_english(carry_note)),
+                        # the count asked, held to the count written
+                        deck_service.count_note(
+                            carry_note or request, len(deck_service.filled(slides)),
+                            english=deck_service.deck_language(slides) == "en")] if x),
                     usage={**usage, "credits": credits},
                     model=model["id"],
                     steps=_prelude_steps(skills_event, context_steps) or None,

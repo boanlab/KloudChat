@@ -399,11 +399,13 @@ class ReportSave(Base):
                     message = Message(
                         session_id=session_id,
                         role=Role.assistant,
-                        content=" ".join([*drafted, (
+                        content=" ".join(x for x in [*drafted, (
                             rerun_note(turn)
                             or _written_note(len(written), title_block,
                                              english=captions.of_sections(written)
-                                             == captions.EN, office=office))]),
+                                             == captions.EN, office=office)),
+                            # the count asked, held to the count written
+                            section_count_note(request, len(written))] if x),
                         usage={**usage, "credits": credits},
                         model=model["id"],
                         steps=host._prelude_steps(turn.get("skills_event"),
@@ -741,6 +743,17 @@ async def store_revision(db: Any, session: Any, base: dict, *, kind: Any, title:
 
 for _stage in (ReportSave(), ReviseLoad(), ReviseSave()):
     registry.register(_stage)
+
+
+def section_count_note(request: str, written: int) -> str:
+    """「요청하신 5개 절과 달리 6개 절입니다.」 when the count asked is not the count written."""
+    from app.services import report as report_service
+
+    wanted = report_service.requested_sections(request)
+    if not wanted or wanted == written:
+        return ""
+    return (f"요청하신 {wanted}개 절과 달리 {written}개 절입니다. 합치거나 나눌 절을 말씀해 "
+            "주시면 맞추겠습니다.")
 
 
 def _written_note(count: int, title_block: dict | None, *, english: bool = False,
