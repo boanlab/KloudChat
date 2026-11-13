@@ -77,6 +77,8 @@ export interface StudioEstimate {
   modelLabel: string
   strict: boolean
   required: boolean
+  /** The writer thinks before answering: better on long material, minutes rather than seconds. */
+  thinking?: boolean
   inputTokens: number
   outputTokens: number
   credits: number

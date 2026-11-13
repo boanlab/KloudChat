@@ -2757,7 +2757,7 @@ the vector hits too, which are kept only for documents still on the shelf).
 
 **Guides and citations.** `source_guides` (one row per source, plus `subject = "project"`)
 holds a summary, key topics and suggested questions, written in the background by the
-strict-local guide model (`KNOWLEDGE_GUIDE_MODEL`) the first time someone opens one and kept
+strict-local guide model (`shelf_models`) the first time someone opens one and kept
 until the material's signature (ids and text lengths) changes; a per-file digest
 (`files.digest`, when present) fills the summary meanwhile. A chat answer that cites project
 material ends with a source list of names: the project files a turn was given are numbered
@@ -2803,11 +2803,21 @@ the 메모함: notes pinned from an answer or a selection or written by hand, sa
 with a version check (`expected` → `note_conflict`), and made into a source (a `.md` file,
 indexed like an upload; later edits update it).
 
+**Models.** Which model writes each output kind, and with what reasoning effort, is one table
+(`services/shelf_models.py`, overridable as JSON in `KNOWLEDGE_MODELS`): a strict-local pick
+and a pick for where material may leave. On a ten-lecture project judged by Sonnet, flash beat
+the 27B on the briefing (7 vs 6), the glossary (7 vs 5) and the quiz (8 vs 7). With thinking
+on, flash ran past a 14k-token room on every long document, so documents are written without
+thinking and quizzes and flashcards with it; a thinking call that runs out of room is answered
+again without thinking. Where material may leave, each kind takes the Super Agent's escalation
+pick (DeepSeek V4.1 Flash, reasoning on). At most `KNOWLEDGE_CONCURRENCY` calls (2) run at once
+per replica, since flash serves conversations on the same node.
+
 **Boundaries and billing.** Project sources are internal material: while
 `governance.internal_data_strict_local` holds, guides and studio outputs use a strict-local
 model only (`shelf_calls.route`; asking for another is refused with
-`internal_data_requires_strict_local`); otherwise the strict-local model is still the default
-and an outside one sees the text masked for personal data. Every call is a side call billed
+`internal_data_requires_strict_local`); otherwise an outside pick sees the text masked for
+personal data. Every call is a side call billed
 at the full rate with no cache discount, or a zero-credit token row on a self-hosted model;
 `POST /projects/{id}/studio/estimate` shows tokens and credits before anything runs. Speech
 for an audio overview uses a strict-local speech model when the catalogue lists one; the

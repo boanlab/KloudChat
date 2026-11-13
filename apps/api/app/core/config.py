@@ -112,11 +112,11 @@ class Settings(BaseSettings):
     # Disk fill ratio triggering removal of deleted accounts' files, oldest first; 0 disables.
     storage_reclaim_at: float = 0.8
     file_context_chars: int = 24_000
-    #: 지식 서가: writes studio outputs, quizzes and audio scripts from project sources; used
-    #: only when the catalogue lists it strict-local (else another strict-local chat model).
-    knowledge_studio_model: str = "strict-local/qwen3.8-27b"
-    #: 지식 서가: writes source guides (summary, topics, suggested questions); same rule.
-    knowledge_guide_model: str = "strict-local/qwen3.8-flash"
+    #: 지식 서가: models per output kind over `services/shelf_models.DEFAULTS` (JSON, e.g.
+    #: {"quiz": {"strictModel": "strict-local/qwen3.8-27b", "effort": "none"}}); empty: defaults
+    knowledge_models: str = ""
+    #: 지식 서가: model calls in flight at once per replica (flash serves production too)
+    knowledge_concurrency: int = 2
     #: Window (tokens) a chat is fitted to when the model's own is not known (most hosted
     #: models): longer conversations are cut and summarised instead of resent whole.
     default_context_window: int = 131_072

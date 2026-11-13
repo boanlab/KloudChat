@@ -104,7 +104,7 @@ async def estimate(db, user: User, project: Project, kind: str, ids: list[str] |
     files = await sources_for(db, user, project.id, ids)
     if not files:
         raise shelf_calls.ShelfError("no_sources", 422)
-    how = await shelf_calls.route(user, asked=options.get("model"))
+    how = await shelf_calls.route(user, kind=kind, asked=options.get("model"))
     made = shelf_sources.bundle(files, source_budget(how.model))
     system = studio_kinds.system_prompt(kind, "ko", options)
     input_tokens = shelf_calls.tokens_of(system) + shelf_calls.tokens_of(made.text)
@@ -116,6 +116,9 @@ async def estimate(db, user: User, project: Project, kind: str, ids: list[str] |
     # the checks' re-ask: what failed, with its passages, rewritten once
     input_tokens += output_tokens
     output_tokens += output_tokens // 3
+    if how.effort in ("low", "high"):
+        # thinking before each answer
+        output_tokens += thinking_tokens(kind, options)
     out = {
         "kind": kind,
         "sources": len(files),
@@ -124,6 +127,7 @@ async def estimate(db, user: User, project: Project, kind: str, ids: list[str] |
         "modelLabel": how.model.get("label") or how.model["id"],
         "strict": how.strict,
         "required": how.required,
+        "thinking": how.effort in ("low", "high"),
         "inputTokens": input_tokens,
         "outputTokens": output_tokens,
         "credits": shelf_calls.estimate(how.model, input_tokens, output_tokens),
@@ -135,12 +139,20 @@ async def estimate(db, user: User, project: Project, kind: str, ids: list[str] |
     return out
 
 
+def thinking_tokens(kind: str, options: dict[str, Any]) -> int:
+    """Typical thinking a writer with reasoning on spends on an output, all its calls."""
+    calls = 2
+    if kind == "audio":
+        calls += studio_kinds.AUDIO_SECTIONS.get(str(options.get("length") or "standard"), 5)
+    return 6000 * calls
+
+
 async def start(db, user: User, project: Project, kind: str, ids: list[str] | None,
                 options: dict[str, Any], *, title: str = "") -> StudioItem:
     files = await sources_for(db, user, project.id, ids)
     if not files:
         raise shelf_calls.ShelfError("no_sources", 422)
-    how = await shelf_calls.route(user, asked=options.get("model"))
+    how = await shelf_calls.route(user, kind=kind, asked=options.get("model"))
     if not shelf_calls.headroom(user, shelf_calls.estimate(how.model, 1000, 1000)):
         raise shelf_calls.ShelfError("insufficient_credits", 422)
     item = StudioItem(user_id=user.id, project_id=project.id, kind=kind,
@@ -171,7 +183,7 @@ async def _complete_json(user: User, how: shelf_calls.Route, system: str, prompt
             "\n\nYour previous answer was not a readable JSON object. Answer again with the "
             "JSON object only.")
         answer, usage = await shelf_calls.complete(user, how.model, system + extra, prompt,
-                                                   max_tokens)
+                                                   max_tokens, effort=how.effort)
         _add_usage(item, shelf_calls.bill(db, user, how.model, usage, REASON))
         data = shelf_jobs.parse_json(answer)
         if data is not None:
@@ -210,7 +222,7 @@ async def _write(db, user: User, item: StudioItem) -> None:
     files = await sources_for(db, user, item.project_id, list(item.source_ids or []))
     if not files:
         raise shelf_calls.ShelfError("no_sources", 422)
-    how = await shelf_calls.route(user, asked=options.get("model"))
+    how = await shelf_calls.route(user, kind=item.kind, asked=options.get("model"))
     made = shelf_sources.bundle(files, source_budget(how.model))
     language = studio_kinds.language_of(made.text, str(options.get("language") or "auto"))
     system = studio_kinds.system_prompt(item.kind, language, options)
@@ -288,18 +300,20 @@ async def _checked(db, user: User, how: shelf_calls.Route, item: StudioItem,
     by_number = {s.number: texts.get(s.file_id, "") for s in made.sources}
     names = {s.number: s.name for s in made.sources}
     try:
-        reader = await shelf_calls.route(user, role="guide")
+        reader = await shelf_calls.route(user, role="proofread")
     except shelf_calls.ShelfError:
         reader = None
 
     async def write(system: str, prompt: str, most: int) -> tuple[str, dict]:
+        # an edit of a few sentences needs no thinking
         return await shelf_calls.complete(user, how.model, system,
                                           shelf_calls.outgoing(prompt, how), most)
 
     async def proofread(system: str, prompt: str, most: int) -> tuple[str, dict]:
         assert reader is not None
         return await shelf_calls.complete(user, reader.model, system,
-                                          shelf_calls.outgoing(prompt, reader), most)
+                                          shelf_calls.outgoing(prompt, reader), most,
+                                          effort=reader.effort)
 
     # the writer and the guide model proofread side by side: each misses what the other sees
     readers = [write] + ([proofread] if reader is not None

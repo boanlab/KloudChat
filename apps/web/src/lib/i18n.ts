@@ -4,6 +4,8 @@ export type Lang = 'ko' | 'en'
 
 const EN: Record<string, string> = {
   // 지식 서가 (knowledge shelf): feature names first, so a rename is one place
+  '생각하며 씀': 'Thinks first',
+  '생각하며 쓰므로 몇 분 걸릴 수 있습니다. 다 되면 아래 목록에 나타납니다.': 'It thinks before writing, so it can take a few minutes. It appears in the list below when done.',
   '지식 서가': 'Knowledge shelf',
   '자료 안내': 'Source guide',
   '스튜디오': 'Studio',

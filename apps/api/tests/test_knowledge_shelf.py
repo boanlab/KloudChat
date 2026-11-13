@@ -121,12 +121,12 @@ async def shelf(monkeypatch, tmp_path):
     redo: list[str] = []
     answerable: list[list[int]] = []
 
-    async def complete(user, model, system, prompt, max_tokens):
+    async def complete(user, model, system, prompt, max_tokens, effort="none"):
         usage = {"inputTokens": 1000, "outputTokens": 200}
         # the checks' calls answer from their own queues (none queued: nothing to report)
         if system.startswith("You proofread"):
             calls.append({"model": model["id"], "system": system, "prompt": prompt,
-                          "check": "proofread"})
+                          "check": "proofread", "effort": effort})
             return json.dumps({str(n): "garbled: 어색함" for n in garbled}), usage
         if system.startswith("You fix sentences"):
             calls.append({"model": model["id"], "system": system, "prompt": prompt,
@@ -138,7 +138,8 @@ async def shelf(monkeypatch, tmp_path):
             marked = answerable.pop(0) if answerable else list(range(1, 9))
             return json.dumps({str(n): "yes" if n in marked else "no: 자료에 없음"
                                for n in range(1, 9)}), usage
-        calls.append({"model": model["id"], "system": system, "prompt": prompt})
+        calls.append({"model": model["id"], "system": system, "prompt": prompt,
+                      "effort": effort})
         return answers.pop(0), usage
 
     monkeypatch.setattr(shelf_calls, "policy", policy)
@@ -711,3 +712,94 @@ def test_a_name_glossed_like_the_sources_but_spelt_otherwise_is_mended():
     # a question or card front carries no citation
     made = studio_kinds.cards({"cards": [{"front": "벡터 시계란? [2]", "back": "칸 [1]"}]}, 2)
     assert made[0]["front"] == "벡터 시계란?"
+
+
+async def test_each_output_kind_takes_its_model_and_effort_from_one_table(monkeypatch):
+    flash = {**STRICT, "id": "strict-local/qwen3.8-flash"}
+    deepseek = {**OUTSIDE, "id": "deepseek/deepseek-v4.1-flash"}
+    rules = SimpleNamespace(internal_data_strict_local=True, external_data_guard=True,
+                            pii_masking=False)
+
+    async def policy():
+        return rules
+
+    async def catalogue():
+        return {"models": [STRICT, flash, deepseek], "defaultChatModel": STRICT["id"]}
+
+    monkeypatch.setattr(shelf_calls, "policy", policy)
+    monkeypatch.setattr(shelf_calls.model_service, "list_models_for_egress", catalogue)
+    me = User(id="me", email="me@example.test", password_hash="x", name="Me")
+    how = await shelf_calls.route(me, kind="quiz")
+    assert (how.model["id"], how.effort, how.strict) == (flash["id"], "high", True)
+    assert (await shelf_calls.route(me, kind="briefing")).effort == "none"
+    assert (await shelf_calls.route(me, role="guide")).effort == "none"
+    # where internal data may leave, the kind's outside pick (masked)
+    rules.internal_data_strict_local = False
+    how = await shelf_calls.route(me, kind="briefing")
+    assert how.model["id"] == deepseek["id"] and how.mask and not how.strict
+    # one setting overrides the table
+    monkeypatch.setattr(settings, "knowledge_models",
+                        '{"quiz": {"model": "strict-local/qwen3.8-27b", "effort": "none"}}')
+    how = await shelf_calls.route(me, kind="quiz")
+    assert (how.model["id"], how.effort) == (STRICT["id"], "none")
+
+
+async def test_thinking_on_widens_the_budget_and_turns_the_template_switch_on(monkeypatch):
+    sent: list[dict] = []
+
+    async def post(api_key, payload):
+        sent.append(payload)
+        return {"choices": [{"message": {"content": "<think>음</think>답"}}],
+                "usage": {"prompt_tokens": 5, "completion_tokens": 7}}
+
+    async def key(user):
+        return "k"
+
+    async def credentials(user):
+        return "http://litellm", "k"
+
+    from app.services import litellm as litellm_service
+
+    monkeypatch.setattr(shelf_calls, "_post", post)
+    monkeypatch.setattr(litellm_service, "ensure_key", key)
+    monkeypatch.setattr(litellm_service, "credentials_for", credentials)
+    monkeypatch.setattr(settings, "self_hosted_thinking_models", "qwen3")
+    me = User(id="me", email="me@example.test", password_hash="x", name="Me")
+    flash = {"id": "strict-local/qwen3.8-flash"}
+    text, usage = await shelf_calls.complete(me, flash, "s", "p", 1000, effort="high")
+    assert text == "답" and usage == {"inputTokens": 5, "outputTokens": 7}
+    assert sent[0]["chat_template_kwargs"] == {"enable_thinking": True}
+    assert sent[0]["max_tokens"] > 1000
+    await shelf_calls.complete(me, flash, "s", "p", 1000)
+    assert sent[1]["chat_template_kwargs"] == {"enable_thinking": False}
+    assert sent[1]["max_tokens"] == 1000
+
+
+async def test_thinking_that_runs_out_of_room_is_answered_again_without_it(monkeypatch):
+    sent: list[dict] = []
+
+    async def post(api_key, payload):
+        sent.append(payload)
+        if len(sent) == 1:
+            return {"choices": [{"message": {"content": ""}, "finish_reason": "length"}],
+                    "usage": {"prompt_tokens": 5, "completion_tokens": 9000}}
+        return {"choices": [{"message": {"content": "{}"}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 5, "completion_tokens": 10}}
+
+    async def key(user):
+        return "k"
+
+    async def credentials(user):
+        return "http://litellm", "k"
+
+    from app.services import litellm as litellm_service
+
+    monkeypatch.setattr(shelf_calls, "_post", post)
+    monkeypatch.setattr(litellm_service, "ensure_key", key)
+    monkeypatch.setattr(litellm_service, "credentials_for", credentials)
+    monkeypatch.setattr(settings, "self_hosted_thinking_models", "qwen3")
+    me = User(id="me", email="me@example.test", password_hash="x", name="Me")
+    text, usage = await shelf_calls.complete(me, {"id": "strict-local/qwen3.8-flash"}, "s", "p",
+                                             1000, effort="high")
+    assert text == "{}" and usage == {"inputTokens": 10, "outputTokens": 9010}
+    assert sent[1]["chat_template_kwargs"] == {"enable_thinking": False}

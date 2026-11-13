@@ -159,7 +159,11 @@ export function StudioDialog({
                 <Badge tone="warn">{t('바깥 모델')}</Badge>
               )}
               <span className="font-medium">{estimate.modelLabel}</span>
+              {estimate.thinking && <Badge>{t('생각하며 씀')}</Badge>}
             </p>
+            {estimate.thinking && (
+              <p className="text-muted">{t('생각하며 쓰므로 몇 분 걸릴 수 있습니다. 다 되면 아래 목록에 나타납니다.')}</p>
+            )}
             <p>
               {t('자료 {n}개 · 읽는 양 약 {in} 토큰 · 쓰는 양 약 {out} 토큰')
                 .replace('{n}', String(estimate.sources))

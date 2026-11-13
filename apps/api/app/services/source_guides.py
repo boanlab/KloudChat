@@ -110,7 +110,8 @@ async def answerable(user: User, judges: list, questions: list[str], files: list
         prompt = shelf_calls.outgoing("\n\n".join(blocks).replace("</", "< /"), how)
         try:
             answer, usage = await shelf_calls.complete(user, how.model, _ANSWERABLE, prompt,
-                                                       80 + 60 * len(questions))
+                                                       80 + 60 * len(questions),
+                                                       effort=how.effort)
         except Exception as exc:  # noqa: BLE001 — this judge's verdicts are missing
             log.info("guide question check failed: %s", logs.safe(exc))
             continue
@@ -205,7 +206,7 @@ async def _write(guide_id: str, user_id: str, project_id: str, subject: str) -> 
                 raise ValueError("guide answer unreadable")
             readable = files if subject == PROJECT else [stored]
             # two judges, each unsteady alone: a question either finds unanswered goes
-            writer = await shelf_calls.route(user, role="write")
+            writer = await shelf_calls.route(user, role="answerable")
             judges = [how] + ([writer] if writer.model["id"] != how.model["id"] else [])
             made["questions"] = await answerable(user, judges, made["questions"], readable, db)
             # a question with a misspelt term or a slip of script is left out
