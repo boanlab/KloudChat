@@ -2317,6 +2317,8 @@ export async function* streamSession(
     renderTemplateId?: string
     privacyAction?: PrivacyAction
     privacyDecisionToken?: string
+    /** With `route_strict_local`: the safe model picked on the privacy card. */
+    privacyModelId?: string
     /** Write the outline waiting on this session instead of planning another. */
     approve?: boolean
     /** Outline as edited on the card; titles and order theirs, layouts the planner's. */

@@ -241,6 +241,7 @@ type SendOptions = {
   renderTemplateId?: string
   privacyAction?: PrivacyAction
   privacyDecisionToken?: string
+  privacyModelId?: string
   /** Write the pending outline instead of planning again (이대로 생성). */
   approve?: boolean
   /** The figure card's answer; absent means it was not asked. */
@@ -1973,6 +1974,7 @@ export const useStore = create<State>((set, get) => ({
         activatedSkillIds: opts.activatedSkillIds,
         privacyAction: opts.privacyAction,
         privacyDecisionToken: opts.privacyDecisionToken,
+        privacyModelId: opts.privacyModelId,
         onAccepted: acceptSession,
       })
       return id
@@ -3622,6 +3624,7 @@ async function streamTurn(
     activatedSkillIds?: string[]
     privacyAction?: PrivacyAction
     privacyDecisionToken?: string
+    privacyModelId?: string
     retryOf?: string
     /** Answers to the agent's question card; `{}` goes on with what was given. */
     answers?: Record<string, string>
@@ -3713,6 +3716,7 @@ async function streamTurn(
         activatedSkillIds: opts.activatedSkillIds,
         privacyAction: opts.privacyAction,
         privacyDecisionToken: opts.privacyDecisionToken,
+        privacyModelId: opts.privacyModelId,
         retryOf: opts.retryOf,
         answers: opts.answers,
       },

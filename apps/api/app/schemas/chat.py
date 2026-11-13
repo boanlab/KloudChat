@@ -343,6 +343,9 @@ class SendMessage(Wire):
         None
     )
     privacy_decision_token: str | None = Field(default=None, max_length=4000)
+    #: with `route_strict_local`: the safe model picked on the privacy card (one it offered);
+    #: None or another id takes the first in the admin's priority order
+    privacy_model_id: str | None = Field(default=None, max_length=200)
     #: a report's file picked on the screen (`web` the HTML report, `hwp`, `docx`); wins over a
     #: file the request names (`report_office.asked_file`); None: the request decides
     output_format: Literal["web", "hwp", "docx"] | None = None

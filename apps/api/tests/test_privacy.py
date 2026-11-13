@@ -908,7 +908,7 @@ async def test_raw_external_still_carries_what_the_record_was_masked_by(monkeypa
 
 
 @pytest.mark.asyncio
-async def test_safe_route_priority_matches_visible_catalogue_order(monkeypatch) -> None:
+async def test_safe_route_priority_follows_the_admin_order(monkeypatch) -> None:
     monkeypatch.setattr(governance.settings, "jwt_secret", "test-secret-that-is-at-least-32-bytes")
     user = User(email="person@example.test", password_hash="hash", name="Person")
     session = ChatSession(user_id=user.id)
@@ -925,7 +925,7 @@ async def test_safe_route_priority_matches_visible_catalogue_order(monkeypatch) 
     }
     policy = Governance(
         external_data_guard=True,
-        # Opposite to the catalogue order; rows are normalized at resolution.
+        # Opposite to the catalogue order: the admin's order on the governance screen wins.
         privacy_safe_model_ids=[strict_b["id"], strict_a["id"]],
     )
     sources = {"current_input": "send person@example.com"}
@@ -955,7 +955,7 @@ async def test_safe_route_priority_matches_visible_catalogue_order(monkeypatch) 
     )
 
     assert isinstance(routed, _PrivacyResolution)
-    assert routed.models == [strict_a]
+    assert routed.models == [strict_b]
 
 
 class _NoRows:

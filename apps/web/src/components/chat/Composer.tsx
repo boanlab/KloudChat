@@ -40,7 +40,7 @@ import { FINDING_LABEL } from '@/lib/privacy'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 import { useNavigate } from 'react-router-dom'
 import { agentStartKind, distinctAgents, kindMeta } from '@/lib/kinds'
-import { Badge, Button, Dropdown, MenuItem, MenuLabel, MenuSeparator, Modal } from '@/components/ui'
+import { Badge, Button, Dropdown, MenuItem, MenuLabel, MenuSeparator, Modal, Select } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { ChatSendRecoveryError, FIGURE_STYLES, composerKey, effectiveModelId, useStore } from '@/store/useStore'
 import type {
@@ -635,6 +635,10 @@ export function Composer({
   livePasted.current = pasted
   const [reusableSessionId, setReusableSessionId] = useState<string | null>(null)
   const [privacyRetrying, setPrivacyRetrying] = useState(false)
+  // The safe model picked on the privacy card, for that card's decision only.
+  const [safeChoice, setSafeChoice] = useState<{ token: string; id: string } | null>(null)
+  const safePick =
+    pendingPrivacy && safeChoice?.token === pendingPrivacy.decision.decisionToken ? safeChoice.id : undefined
   const [modelSelectionPending, setModelSelectionPending] = useState(false)
   const [chatError, setChatError] = useState<string | null>(null)
   // A form a picked template brought with it; taken once and cleared.
@@ -1189,6 +1193,7 @@ export function Composer({
     action?: PrivacyAction,
     decisionToken?: string,
     restoreToken?: number,
+    privacyModelId?: string,
   ) => {
     setChatError(null)
     const resolvedSessionId = targetSessionId ?? reusableSessionId
@@ -1219,6 +1224,7 @@ export function Composer({
         activatedSkillIds: skillIds,
         privacyAction: action,
         privacyDecisionToken: decisionToken,
+        privacyModelId,
         reconcileBeforeRetry: Boolean(editScope),
         onSession: (id) => {
           if (!ownsView()) return
@@ -2749,6 +2755,24 @@ export function Composer({
                 </Badge>
               ))}
             </div>
+            {pendingPrivacy.decision.allowedActions.includes('route_strict_local') &&
+              pendingPrivacy.decision.safeModels.length > 1 && (
+                <label className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="text-muted">{t('전환할 로컬 모델')}</span>
+                  <Select
+                    value={safePick ?? pendingPrivacy.decision.safeModels[0].id}
+                    onChange={(e) => setSafeChoice({ token: pendingPrivacy.decision.decisionToken, id: e.target.value })}
+                    disabled={privacyRetrying}
+                    className="h-8 w-auto min-w-0 flex-1"
+                  >
+                    {pendingPrivacy.decision.safeModels.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+              )}
             <div className="grid gap-2 sm:grid-cols-2">
               {pendingPrivacy.decision.allowedActions.includes('route_strict_local') && (
                 <Button
@@ -2765,6 +2789,8 @@ export function Composer({
                       'route_strict_local',
                       pendingPrivacy.decision.decisionToken,
                       pendingPrivacy.restoreToken,
+                      // The pick on this card; the first offered when none was made.
+                      safePick ?? pendingPrivacy.decision.safeModels[0]?.id,
                     )
                       .catch(() => undefined)
                       .finally(() => setPrivacyRetrying(false))

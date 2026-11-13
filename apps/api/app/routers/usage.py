@@ -637,14 +637,18 @@ async def get_governance(admin: AdminUser, db: DbSession):
     policy = await db.get(Governance, "default")
     policy = policy or Governance()
     catalogue = await model_service.list_models()
-    configured_safe_ids = set(policy.privacy_safe_model_ids or [])
-    ordered_safe_ids = [
+    # the admin's priority order; models no longer strict-local in the catalogue drop out
+    strict_ids = {
         model["id"]
         for model in catalogue["models"]
-        if model["id"] in configured_safe_ids
-        and model.get("dataBoundary") == "self_hosted"
+        if model.get("dataBoundary") == "self_hosted"
         and model.get("strictLocal") is True
         and "chat" in model.get("kinds", [])
+    }
+    ordered_safe_ids = [
+        model_id
+        for model_id in dict.fromkeys(policy.privacy_safe_model_ids or [])
+        if model_id in strict_ids
     ]
     return {
         "piiMasking": policy.pii_masking,
@@ -688,14 +692,14 @@ async def put_governance(payload: GovernanceIn, request: Request, admin: AdminUs
                 )
     if "privacy_safe_model_ids" in patch:
         catalogue = await model_service.list_models()
-        strict_order = [
+        strict_ids = {
             model["id"]
             for model in catalogue["models"]
             if model.get("dataBoundary") == "self_hosted"
             and model.get("strictLocal") is True
             and "chat" in model.get("kinds", [])
-        ]
-        strict_ids = set(strict_order)
+        }
+        # the list is a priority order: kept as sent, duplicates dropped
         requested = list(dict.fromkeys(patch["privacy_safe_model_ids"] or []))
         invalid = [model_id for model_id in requested if model_id not in strict_ids]
         if invalid:
@@ -703,10 +707,7 @@ async def put_governance(payload: GovernanceIn, request: Request, admin: AdminUs
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="privacy_safe_models_must_be_strict_local",
             )
-        requested_set = set(requested)
-        patch["privacy_safe_model_ids"] = [
-            model_id for model_id in strict_order if model_id in requested_set
-        ]
+        patch["privacy_safe_model_ids"] = requested
     if {
         "adaptive_routing_enabled",
         "adaptive_classifier_model_id",
