@@ -3498,7 +3498,7 @@ const EN: Record<string, string> = {
   // ── A report's or deck's file (home screen) ──────────────────────────
   '형식': 'Format',
   '웹 보고서': 'Web report',
-  '기본 슬라이드': 'Slides',
+  '웹 슬라이드': 'Web slides',
   '빈 문서로 시작': 'Start blank',
   '입력 없이 빈 문서를 편집기에 엽니다': 'Open a blank document in the editor, without a prompt',
 

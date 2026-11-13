@@ -212,7 +212,7 @@ test('the report screen\'s pick goes with the request and wins over its words', 
 
 test('PowerPoint on the slides screen is a chat that writes into a blank deck', async ({ page }) => {
   const state = await fixture(page, 'hwp', '/new/slides')
-  await expect(page.getByRole('button', { name: /^형식/ })).toContainText('기본 슬라이드')
+  await expect(page.getByRole('button', { name: /^형식/ })).toContainText('웹 슬라이드')
   await page.getByRole('button', { name: /^형식/ }).click()
   await page.getByRole('menuitemcheckbox', { name: 'PowerPoint', exact: true }).click()
   await ask(page, 'AI 도입 효과를 발표할 자료 만들어 줘')

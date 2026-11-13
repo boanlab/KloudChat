@@ -1628,7 +1628,7 @@ that file.
 Picking the file. The home screen has no document cards beside its surfaces; the formats
 are the surfaces' own. With 보고서 chosen, a 형식 chip in the prompt box (beside where the
 picture options sit for 이미지) offers 웹 보고서 (the default), 한글 and Word; with 슬라이드,
-기본 슬라이드 and PowerPoint (`Composer` `OutputOptions`). The chip shows the file the typed
+웹 슬라이드 and PowerPoint (`Composer` `OutputOptions`). The chip shows the file the typed
 request names (`Composer` reports `reportFileKind`, or
 `NAMES_PPTX` for a deck) until one is picked, and a pick wins: the report request carries
 it as `outputFormat` (`SendMessage.output_format`: `web`, `hwp`, `docx`), and

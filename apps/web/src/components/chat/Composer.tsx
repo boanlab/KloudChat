@@ -181,7 +181,7 @@ const OUTPUTS = {
     { value: 'docx', label: 'Word' },
   ],
   slides: [
-    { value: 'deck', label: '기본 슬라이드' },
+    { value: 'deck', label: '웹 슬라이드' },
     { value: 'pptx', label: 'PowerPoint' },
   ],
 } as const satisfies Record<'report' | 'slides', readonly { value: ReportOutput | SlidesOutput; label: string }[]>

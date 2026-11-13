@@ -207,7 +207,7 @@ test('home opens a blank PowerPoint deck from the slides surface\'s PowerPoint p
   const state = await fixture(page, { fromHome: true, file: blank })
   await expect(page.getByRole('button', { name: 'PowerPoint', exact: true })).toHaveCount(0)
   await page.getByRole('group', { name: '만들 것' }).getByRole('button', { name: '슬라이드' }).click()
-  await expect(page.getByRole('button', { name: /^형식/ })).toContainText('기본 슬라이드')
+  await expect(page.getByRole('button', { name: /^형식/ })).toContainText('웹 슬라이드')
   await page.getByRole('button', { name: /^형식/ }).click()
   await page.getByRole('menuitemcheckbox', { name: 'PowerPoint', exact: true }).click()
   await page.getByRole('button', { name: '빈 문서로 시작' }).click()
