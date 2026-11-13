@@ -280,6 +280,58 @@ test('unsaved edits ask before the panel closes; a lost race shows the conflict 
   await expect(unsaved(page)).toBeVisible()
 })
 
+test('the deck locks while the agent works, then shows its version where the person was', async ({ page }, testInfo) => {
+  test.skip(viewport(testInfo) === 'phone', 'desktop width')
+  const recorded = await resultsFixture(page, testInfo)
+  let release!: () => void
+  const held = new Promise<void>((resolve) => (release = resolve))
+  let turned = false
+  const sent: string[] = []
+  // the agent's turn: held until released; its tools save v2 of the deck meanwhile
+  await page.route(`**/api/sessions/${deckSession}/**`, async (route) => {
+    const request = route.request()
+    if (request.method() !== 'POST') return route.fallback()
+    sent.push(new URL(request.url()).pathname)
+    await held
+    turned = true
+    return route.fulfill({
+      status: 200,
+      headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' },
+      body: [
+        { type: 'step', id: 'h1_0', label: '슬라이드 수정', status: 'done', artifactId: deckId, artifactVersion: 2 },
+        { type: 'delta', text: '3번 장 제목을 고쳤습니다.' },
+        { type: 'artifact', artifactId: deckId, deliberate: true },
+        { type: 'usage', inputTokens: 10, outputTokens: 5, credits: 1 },
+        { type: 'done' },
+      ].map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''),
+    })
+  })
+  await page.route(`**/api/artifacts/${deckId}`, async (route) => {
+    if (route.request().method() !== 'GET' || !turned) return route.fallback()
+    const slides = deckFixture.data.slides.map((slide, i) => (i === 2 ? { ...slide, title: '역할 비교(에이전트)' } : slide))
+    return route.fulfill({ json: {
+      id: deckId, title: deckFixture.title, kind: 'deck', version: 2, partial: false, sessionId: deckSession,
+      projectId: null, createdAt: '2026-10-08T00:00:00.000Z', updatedAt: '2026-10-08T00:07:00.000Z',
+      data: { ...deckFixture.data, slides },
+    } })
+  })
+  await open(page)
+  await thumbs(page).nth(2).click()
+  await page.getByRole('textbox', { name: '프롬프트 입력' }).first().fill('3번 장 제목을 고쳐 줘')
+  await page.keyboard.press('Enter')
+  await expect(panel(page).getByTestId('deck-agent-lock')).toBeVisible()
+  await expect(toolbar(page)).toHaveCount(0)
+  release()
+  await expect(panel(page).getByTestId('deck-agent-lock')).toBeHidden()
+  await expect(header(page).getByText('v2', { exact: true })).toBeVisible()
+  // the new version in place, on the slide the person was on, nothing asked
+  await expect(thumbs(page).nth(2)).toHaveAttribute('aria-current', 'true')
+  await expect(editor(page).locator('.kc-canvas')).toContainText('역할 비교(에이전트)')
+  await expect(unsaved(page)).toHaveCount(0)
+  expect(sent).toHaveLength(1)
+  expect(recorded.problems).toEqual([])
+})
+
 test('a phone reads only, with the same note as the PowerPoint editor', { tag: '@phone' }, async ({ page }, testInfo) => {
   test.skip(viewport(testInfo) !== 'phone', 'phone width')
   await resultsFixture(page, testInfo)
