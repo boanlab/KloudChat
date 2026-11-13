@@ -4,8 +4,8 @@ import { Badge, Button, ConfirmDialog, Modal } from '@/components/ui'
 import { ApiError, artifactsApi, errorMessage } from '@/lib/api'
 import type { ArtifactVersionRow } from '@/lib/api'
 import { useStore } from '@/store/useStore'
-import { relativeTime } from '@/lib/utils'
 import { useT } from '@/lib/useT'
+import { RelTime } from '@/components/ui/RelTime'
 
 function historicalText(data: Record<string, unknown> | null): string {
   if (!data) return ''
@@ -197,7 +197,7 @@ export function VersionHistory({
               <Badge>v{v}</Badge>
               <div className="min-w-0 flex-1">
                 <p className="text-base">{summary || t('편집')}</p>
-                <p className="text-xs text-faint">{relativeTime(createdAt)}</p>
+                <p className="text-xs text-faint"><RelTime iso={createdAt} /></p>
               </div>
               <div className="col-span-2 flex flex-wrap justify-end gap-1.5 sm:col-span-1">
                 <Button

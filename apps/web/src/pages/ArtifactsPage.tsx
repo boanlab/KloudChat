@@ -45,11 +45,11 @@ import {
   artifactsApi, errorMessage, templateText, type DesignTemplateRow, type OfficeKind,
 } from '@/lib/api'
 import { currentLang } from '@/lib/i18n'
-import { relativeTime } from '@/lib/utils'
 import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
 import { useStore } from '@/store/useStore'
 import type { Artifact, ArtifactKind } from '@/types'
 import { useT } from '@/lib/useT'
+import { RelTime } from '@/components/ui/RelTime'
 
 const kindIcon: Record<ArtifactKind, typeof FileText> = {
   report: FileText,
@@ -417,7 +417,7 @@ export function ArtifactsPage() {
                             {project.emoji} {project.name}
                           </span>
                         )}
-                        <span>{relativeTime(a.updatedAt)}</span>
+                        <RelTime iso={a.updatedAt} />
                       </div>
                       {session && (
                         <Button

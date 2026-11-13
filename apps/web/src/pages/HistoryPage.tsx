@@ -13,7 +13,7 @@ import {
 } from '@/components/ui'
 import { kindMeta } from '@/lib/kinds'
 import { errorMessage, historyApi, searchApi, type SearchRun } from '@/lib/api'
-import { cn, relativeTime } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { DeleteFilesChoice } from '@/components/files/DeleteFilesChoice'
 import { PageBody } from '@/components/layout/AppShell'
@@ -21,6 +21,7 @@ import { TopBar } from '@/components/layout/TopBar'
 import { dayLabel, dayOf } from '@/lib/days'
 import { useT } from '@/lib/useT'
 import type { SessionKind } from '@/types'
+import { RelTime } from '@/components/ui/RelTime'
 
 /** Server pages list and search alike. */
 const PAGE_SIZE = 50
@@ -390,7 +391,7 @@ export function HistoryPage() {
                     </button>
                     <Badge className="shrink-0 max-sm:hidden">{t(meta?.label ?? s.kind)}</Badge>
                     <span className="w-20 shrink-0 pr-1 text-right text-xs text-faint tabular-nums max-sm:w-14">
-                      {relativeTime(s.updatedAt)}
+                      <RelTime iso={s.updatedAt} />
                     </span>
                   </div>
                 </Fragment>

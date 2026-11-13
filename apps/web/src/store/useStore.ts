@@ -288,7 +288,7 @@ interface State {
   /** Seconds left on a sign-in lockout (`Retry-After`), when the server said. */
   authRetryAfter: number | null
   /** Set when the session ended by idle timeout rather than 로그아웃. */
-  signedOutReason: 'idle' | null
+  signedOutReason: 'idle' | 'expired' | null
   /** Minutes of inactivity allowed; 0 is off. */
   idleTimeoutMinutes: number
   /** Whether a speech-to-text backend is configured. */
@@ -990,12 +990,13 @@ function rememberSignedOut(out: boolean) {
 }
 
 /** The refresh cookie was refused: signed out here, unsent work kept for the same person. */
-function endSession(set: Set) {
+function endSession(set: Set, expired = false) {
   cancelRefresh()
   disarmIdleWatch()
   setAccessToken(null)
   rememberSignedOut(true)
-  set({ authenticated: false, user: null, authLoading: false })
+  // A session that ended under a signed-in tab says why on the sign-in screen.
+  set({ authenticated: false, user: null, authLoading: false, ...(expired ? { signedOutReason: 'expired' as const } : {}) })
 }
 
 /** First half of signing out: half-typed questions must not outlive the account on a shared PC. */
@@ -1128,7 +1129,7 @@ export const useStore = create<State>((set, get) => ({
         // network or a 5xx says nothing about the cookie: a signed-in tab keeps its session,
         // and either way the refresh is tried again.
         if (refusedRefresh(err)) {
-          endSession(set)
+          endSession(set, get().authenticated)
         } else if (get().authenticated) {
           retryRefreshLater(() => void get().bootstrap())
         } else {
@@ -1386,7 +1387,11 @@ export const useStore = create<State>((set, get) => ({
   setGovernance: async (patch) => {
     // Optimistic; the reload below is what the screen trusts.
     set((s) => (s.governance ? { governance: { ...s.governance, ...patch } } : s))
-    const result = await usageApi.setGovernance(patch).catch(() => null)
+    const result = await usageApi.setGovernance(patch).catch((err) => {
+      // The reload puts the saved policy back on screen; say the change did not hold.
+      get().setToast({ text: errorMessage(err, tr('정책을 저장하지 못했습니다. 화면은 저장된 값으로 돌아갑니다.')) })
+      return null
+    })
     await get().loadGovernance()
     return result?.clearedMessages ?? 0
   },
@@ -4802,7 +4807,7 @@ export function renewSession(): Promise<boolean> {
       scheduleRefresh(session.expiresIn, () => void renewSession())
       return true
     } catch (err) {
-      if (refusedRefresh(err)) endSession(set)
+      if (refusedRefresh(err)) endSession(set, true)
       else retryRefreshLater(() => void renewSession())
       return false
     } finally {

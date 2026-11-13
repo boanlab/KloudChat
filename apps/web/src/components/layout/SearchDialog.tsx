@@ -6,10 +6,11 @@ import { kindMeta } from '@/lib/kinds'
 import { artifactIcon, artifactLabel } from '@/lib/resultMeta'
 import { isMac } from '@/lib/shortcuts'
 import { useT } from '@/lib/useT'
-import { cn, relativeTime } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { Session } from '@/types'
 import { isImeKey } from '@/lib/ime'
+import { RelTime } from '@/components/ui/RelTime'
 
 /** Window event opening the dialog (⌘K, sidebar 검색 box). */
 const OPEN_EVENT = 'kloudchat:search'
@@ -283,7 +284,7 @@ export function SearchDialog() {
         <div key={row.key} {...common}>
           <Icon size={15} className="mt-0.5 shrink-0" style={{ color: meta.color }} aria-hidden />
           <span className="min-w-0 flex-1 truncate text-base">{row.session.title || t('제목 없는 대화')}</span>
-          <span className="shrink-0 text-xs text-faint">{relativeTime(row.session.updatedAt)}</span>
+          <span className="shrink-0 text-xs text-faint"><RelTime iso={row.session.updatedAt} /></span>
         </div>
       )
     }
@@ -314,7 +315,7 @@ export function SearchDialog() {
             </span>
           )}
         </span>
-        <span className="shrink-0 pt-0.5 text-xs text-faint">{relativeTime(hit.updatedAt)}</span>
+        <span className="shrink-0 pt-0.5 text-xs text-faint"><RelTime iso={hit.updatedAt} /></span>
       </div>
     )
   }

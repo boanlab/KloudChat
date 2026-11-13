@@ -305,6 +305,13 @@ export function LoginPage() {
             </div>
           )}
 
+          {signedOutReason === 'expired' && !resetToken && !forgotOpen && (
+            <div role="status" className="mt-5 flex items-start gap-2 rounded-control border border-line bg-elevated px-3 py-2.5 text-base text-muted">
+              <Clock size={14} className="mt-0.5 shrink-0" />
+              <span>{t('로그인이 만료되었습니다. 다시 로그인하면 하던 화면으로 돌아갑니다.')}</span>
+            </div>
+          )}
+
           {signedOutReason === 'idle' && !resetToken && !forgotOpen && (
             <div className="mt-5 flex items-start gap-2 rounded-control border border-line bg-elevated px-3 py-2.5 text-base text-muted">
               <Clock size={14} className="mt-0.5 shrink-0" />

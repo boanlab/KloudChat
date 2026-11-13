@@ -39,6 +39,7 @@ import { useMarkUnsaved } from '@/lib/unsaved'
 import { useT } from '@/lib/useT'
 import { isListed } from '@/lib/listed'
 import { KNOWLEDGE_ACCEPT, knowledgeRefusal } from '@/lib/knowledgeFiles'
+import { RelTime } from '@/components/ui/RelTime'
 
 type Tab = 'sessions' | 'knowledge' | 'skills' | 'memory'
 
@@ -631,7 +632,7 @@ export function ProjectDetailPage() {
                           </p>
                         </div>
                         <span className="shrink-0 text-xs text-faint">
-                          {relativeTime(c.updatedAt)}
+                          <RelTime iso={c.updatedAt} />
                         </span>
                         <Button
                           variant="ghost"
@@ -713,7 +714,7 @@ export function ProjectDetailPage() {
                         {f.name}
                       </button>
                       <span className="block text-xs text-faint">
-                        {f.sourceUrl ? t('웹페이지 스냅샷') : f.size} · {t('{n} 토큰').replace('{n}', formatTokens(f.tokens))} · {relativeTime(f.addedAt)}
+                        {f.sourceUrl ? t('웹페이지 스냅샷') : f.size} · {t('{n} 토큰').replace('{n}', formatTokens(f.tokens))} · <RelTime iso={f.addedAt} />
                       </span>
                       {f.error && (
                         <span className="block text-xs text-warn">

@@ -27,6 +27,9 @@ import {
 } from '@/lib/publishing'
 import { useT } from '@/lib/useT'
 import { formatDateTime } from '@/lib/utils'
+import { CopyButton } from '@/components/ui/CopyButton'
+import { ListSearch, NoMatch } from '@/components/ui/ListSearch'
+import { matchesQuery } from '@/lib/utils'
 
 type View = 'pending' | 'all'
 
@@ -112,6 +115,8 @@ function PublicationList() {
   const [view, setView] = useState<View>('pending')
   const [rows, setRows] = useState<AdminPublication[] | null>(null)
   const [failed, setFailed] = useState(false)
+  const [query, setQuery] = useState('')
+  const shown = rows?.filter((row) => matchesQuery(query, row.title, row.ownerName, row.ownerEmail)) ?? null
 
   const load = useCallback(() => {
     adminPublicationsApi.list(view === 'pending').then(
@@ -132,24 +137,27 @@ function PublicationList() {
           title={t('공개 챗봇')}
           description={t('구성원이 공개한 챗봇입니다. 로그인하지 않은 사람에게 여는 링크 공개·외부 공개는 여기서 승인해야 열립니다.')}
         />
-        <div className="mb-4">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <Tabs
             tabs={[
-              { id: 'pending', label: t('승인 대기') },
-              { id: 'all', label: t('모든 챗봇') },
+              { id: 'pending', label: t('승인 대기'), count: view === 'pending' ? rows?.length : undefined },
+              { id: 'all', label: t('모든 챗봇'), count: view === 'all' ? rows?.length : undefined },
             ]}
             value={view}
             onChange={(next) => setView(next as View)}
           />
+          {rows && rows.length > 0 && <ListSearch value={query} onChange={setQuery} label={t('챗봇 검색')} className="w-64" />}
         </div>
         {failed && <ReloadNotice onRetry={load} />}
         {rows === null && !failed ? (
           <LoadingState />
         ) : rows && rows.length === 0 ? (
           <EmptyState icon={<Bot size={18} />} title={view === 'pending' ? t('승인을 기다리는 요청이 없습니다') : t('공개된 챗봇이 없습니다')} />
+        ) : shown && shown.length === 0 ? (
+          <NoMatch />
         ) : (
           <ul className="divide-y divide-line rounded-card border border-line bg-panel" data-testid="admin-publications">
-            {rows?.map((row) => (
+            {shown?.map((row) => (
               <li key={row.id}>
                 <button
                   type="button"
@@ -269,10 +277,13 @@ function ReviewView({ id }: { id: string }) {
               {data.owner.name} · {data.owner.email}
             </p>
           </div>
-          <a href={`/b/${pub.slug}`} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center gap-1.5 rounded-control border border-line px-3 text-base hover:bg-elevated">
-            <ExternalLink size={14} aria-hidden />
-            {t('열기')}
-          </a>
+          <div className="flex items-center gap-1">
+            <CopyButton text={`${window.location.origin}/b/${pub.slug}`} label={t('챗봇 주소')} className="size-9" />
+            <a href={`/b/${pub.slug}`} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center gap-1.5 rounded-control border border-line px-3 text-base hover:bg-elevated">
+              <ExternalLink size={14} aria-hidden />
+              {t('열기')}
+            </a>
+          </div>
         </header>
 
         {pending && (

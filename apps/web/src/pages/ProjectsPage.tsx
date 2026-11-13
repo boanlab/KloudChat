@@ -19,12 +19,13 @@ import {
 import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
 import { ListSearch, NoMatch } from '@/components/ui/ListSearch'
 import { ShowMore, usePaged } from '@/components/ui/ShowMore'
-import { matchesQuery, relativeTime } from '@/lib/utils'
+import { matchesQuery } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { NAME_LIMIT } from '@/lib/limits'
 import { useT } from '@/lib/useT'
 import { errorMessage } from '@/lib/api'
 import { missingMessage } from '@/lib/formCheck'
+import { RelTime } from '@/components/ui/RelTime'
 
 export function ProjectsPage() {
   const t = useT()
@@ -146,7 +147,7 @@ export function ProjectsPage() {
                         <FileText size={11} />
                         {p.files.length}
                       </span>
-                      <span>{relativeTime(p.updatedAt)}</span>
+                      <RelTime iso={p.updatedAt} />
                     </div>
                   </div>
                 </div>
