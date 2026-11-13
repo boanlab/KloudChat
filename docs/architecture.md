@@ -1910,8 +1910,26 @@ done (charts, text boxes, footnotes, a table of contents). After the turn
 `office_claims.note` holds the reply to what the tools saved: a claimed change with no
 saved version, or a claimed failure with one, gets a sentence saying what is so.
 
-**Web report and web deck revisions** run the `revise` flow on the loaded parts. By
-hand, with no model: a part moved (「위험 요인 장을 3번 장 뒤로」, `revise.part_move`;
+**Web report and web deck edits** work like the office files. A report or slides
+conversation with a finished document runs an edit turn as its chat
+(`_web_edit_target`) with `report_read`/`report_edit` or `deck_read`/`deck_edit`
+(`tools/web_doc.py`, ops in `web_doc_edit.py`): the outline numbers sections and slides in
+order, and the ops change only what they name. A report takes span replacement, blank
+filling, one section rewritten, sections renamed, added, deleted or moved, Markdown table
+cells, rows and columns, the title, the head fields and the theme. A deck takes the same plus a
+slide's title, subtitle, body or speaker notes alone (a notes request changes only
+`slides[i].notes`), its list items, a real table, slide duplication and its design
+(`design.visualStyle`, `accent`, `font`, the slides surface's own fields). The tool saves
+from the version it read, as a hand save does. The writers keep what is not an edit in
+place: a new document, a new structure or a whole rewrite asked in so many words, an undo,
+a file hand-over, an answer to a waiting card. A shortening (「절반으로」, 「줄여」) that would
+drop a part's table or list whole, or cut far more than the share asked, is refused in both
+paths (`revise.shortening_loss`). Counts asked are held: 「5장 정도」 aims at 5, and a reply
+says when the slides or sections written differ from the count asked
+(`deck.count_note`, `save_stages.section_count_note`).
+
+**Web report and web deck revisions by the writers** run the `revise` flow on the loaded
+parts. By hand, with no model: a part moved (「위험 요인 장을 3번 장 뒤로」, `revise.part_move`;
 numbers name parts as titles do), two swapped, a theme colour (`revise.theme_accent`
 → `design.accent`), the head fields 작성일·작성 부서·작성자 (`revise.title_block_fields`
 → `titleBlock`). A question about the document or the conversation is answered from
