@@ -31,6 +31,7 @@ from app.services import (
     figure_text,
     fonts,
     pictures,
+    pptx_edit,
     slide_patterns,
 )
 
@@ -822,6 +823,17 @@ _PH = (
 )
 
 
+def _bullet(
+    paragraph, *, colour: RGBColor, size: float, char: str = "•", em: float = pptx_edit.HANG_EM
+) -> None:
+    """A real bullet (`a:buChar`) in `colour` before the paragraph's text, which hangs `em`
+    of its `size` under itself (`marL` and a negative `indent`) the way a bulleted list does in
+    PowerPoint."""
+    pptx_edit.set_bullet(
+        paragraph._p, char=char, colour=str(colour), hang=int(size * em * _EMU_PER_PT)
+    )
+
+
 def _placeholder(box, kind: str, index: int) -> None:
     """Marks a textbox as a `kind` placeholder (outline text)."""
     from pptx.oxml import parse_xml
@@ -1120,6 +1132,71 @@ class _Text:
     align: str
     valign: str
     leading: float
+    #: `lines` end in a display ellipsis: `.pptx` writes `text` whole and shrinks it to fit
+    cut: bool = False
+
+
+@dataclass
+class _List:
+    """Bulleted items that did not fit their box at the floor size: the `.pdf` draws what
+    fits (the scene's `pdf` items), the `.pptx` writes every item whole, shrunk to fit."""
+
+    x: float
+    y: float
+    w: float
+    h: float
+    items: list[str]
+    size: float
+    colour: _Colour
+    dot: _Colour
+    leading: float
+
+
+#: the least size a `.pptx` writes overflowing text at before it asks PowerPoint to shrink
+_LEAST_PT = 8.0
+
+
+def _fit_whole(
+    paragraphs: list[str], face: str, size: float, width: float, height: float, leading: float,
+    gap: float = 0.0,
+) -> tuple[float, float]:
+    """`(size, scale)` writing every paragraph whole in the box: the largest size from `size`
+    down to `_LEAST_PT` that fits, and when even that does not, the `normAutofit` font scale
+    (0–1) PowerPoint is to draw it at."""
+    measure = max(1.0, width * 0.94)
+
+    def need(at: float) -> float:
+        lines = sum(len(_wrap(p, face, at, measure) or [""]) for p in paragraphs)
+        return lines * at * leading + max(0, len(paragraphs) - 1) * at * gap
+
+    current = size
+    while need(current) > height + 0.5 and current > _LEAST_PT:
+        current = max(_LEAST_PT, current - 0.5)
+    used = need(current)
+    if used <= height + 0.5:
+        return current, 1.0
+    # area goes with the square of the size
+    return current, max(0.25, (height / used) ** 0.5 * 0.95)
+
+
+def _autofit(frame, scale: float) -> None:
+    """`a:normAutofit` on the frame: PowerPoint and LibreOffice shrink the text to the box,
+    from `scale` (1 = as written) until it is next laid out."""
+    body = frame._txBody.find(qn("a:bodyPr"))
+    for child in list(body):
+        if child.tag in (qn("a:noAutofit"), qn("a:spAutoFit"), qn("a:normAutofit")):
+            body.remove(child)
+    fit = body.makeelement(qn("a:normAutofit"), {})
+    if scale < 1.0:
+        fit.set("fontScale", str(int(round(scale * 100000))))
+        fit.set("lnSpcReduction", "10000")
+    # schema: prstTxWarp, then the autofit, then scene3d / sp3d / flatTx / extLst
+    later = next((c for c in body if c.tag in (
+        qn("a:scene3d"), qn("a:sp3d"), qn("a:flatTx"), qn("a:extLst"))), None)
+    if later is not None:
+        later.addprevious(fit)
+    else:
+        body.append(fit)
 
 
 class _Scene:
@@ -1183,11 +1260,12 @@ class _Scene:
         least = min(start, float(deck_type.FLOOR_PT) if floor is None else floor)
         face = self.bold_face if bold else self.font
         fitted, lines, cut = _fit_text(text, face, start, w, h, leading, least)
-        shown = text
-        if cut:
-            shown = text[: max(1, sum(len(line) for line in lines) - 1)].rstrip() + "…"
+        # the ellipsis is the `.pdf`'s, in `lines`; the text itself stays whole
         self.items.append(
-            ("text", _Text(x, y, w, h, shown, lines, fitted, bold, colour, align, valign, leading))
+            (
+                "text",
+                _Text(x, y, w, h, text, lines, fitted, bold, colour, align, valign, leading, cut),
+            )
         )
         return len(lines) * fitted * leading
 
@@ -1214,6 +1292,13 @@ class _Scene:
             if total <= h + 0.5 or current <= least:
                 break
             current = max(least, current - (2 if current > 16 else 1))
+        whole = total <= h + 0.5
+        if not whole:
+            # the `.pptx` writes them all (`_List`); what follows is the `.pdf`'s alone
+            self.items.append(
+                ("list", _List(x, y, w, h, list(items), current, colour, dot, leading))
+            )
+        start = len(self.items)
         cursor = y
         for item, lines in zip(items, wrapped, strict=True):
             line_height = current * leading
@@ -1234,6 +1319,8 @@ class _Scene:
                 floor=current,
             )
             cursor += len(lines) * line_height + current * 0.55
+        if not whole:
+            self.items[start:] = [("pdf", item) for item in self.items[start:]]
 
     def arrow(self, x1, y, x2, *, colour, head=9.0, width=2.5) -> None:
         """Horizontal arrow `x1` → `x2` at `y`."""
@@ -2272,6 +2359,29 @@ def _pptx_scene(slide, scene: _Scene, faces: tuple[str, str]) -> None:
 
     for item in scene.items:
         kind = item[0]
+        if kind == "pdf":
+            continue
+        if kind == "list":
+            listed: _List = item[1]
+            size, scale = _fit_whole(
+                listed.items, scene.font, listed.size, listed.w - 18, listed.h, listed.leading,
+                gap=0.55,
+            )
+            frame = _textbox(slide, left=listed.x, top=listed.y, width=listed.w, height=listed.h)
+            frame.margin_left = frame.margin_right = 0
+            frame.margin_top = frame.margin_bottom = 0
+            for position, words in enumerate(listed.items):
+                paragraph = frame.paragraphs[0] if position == 0 else frame.add_paragraph()
+                paragraph.line_spacing = Pt(size * listed.leading)
+                paragraph.space_after = Pt(size * 0.55)
+                pptx_edit.set_bullet(
+                    paragraph._p, colour=str(_rgb_of(listed.dot)), hang=int(18 * _EMU_PER_PT)
+                )
+                run = paragraph.add_run()
+                run.text = words
+                _font(run, size=round(size * 2) / 2, colour=_rgb_of(listed.colour), faces=faces)
+            _autofit(frame, scale)
+            continue
         if kind == "rect":
             _, x, y, w, h, fill, line, width, radius = item
             shape = _shape(
@@ -2310,12 +2420,24 @@ def _pptx_scene(slide, scene: _Scene, faces: tuple[str, str]) -> None:
             paragraph.alignment = {"center": PP_ALIGN.CENTER, "right": PP_ALIGN.RIGHT}.get(
                 text.align, PP_ALIGN.LEFT
             )
-            paragraph.line_spacing = Pt(text.size * text.leading)
+            size, scale = text.size, 1.0
+            if text.cut:
+                # whole, never the `.pdf`'s ellipsis: smaller, and PowerPoint told to fit it
+                size, scale = _fit_whole(
+                    [text.text],
+                    scene.bold_face if text.bold else scene.font,
+                    text.size,
+                    text.w,
+                    text.h,
+                    text.leading,
+                )
+                _autofit(frame, scale)
+            paragraph.line_spacing = Pt(size * text.leading)
             run = paragraph.add_run()
             run.text = text.text
             _font(
                 run,
-                size=round(text.size * 2) / 2,
+                size=round(size * 2) / 2,
                 bold=text.bold,
                 colour=_rgb_of(text.colour),
                 faces=faces,
@@ -2325,6 +2447,10 @@ def _pptx_scene(slide, scene: _Scene, faces: tuple[str, str]) -> None:
 def _pdf_scene(pdf, scene: _Scene) -> None:
     """Paints a scene on the canvas (reportlab y flipped)."""
     for item in scene.items:
+        if item[0] == "list":
+            continue
+        if item[0] == "pdf":
+            item = item[1]
         kind = item[0]
         if kind in ("rect", "oval"):
             x, y, w, h, fill, line, width = item[1:8]
@@ -3121,9 +3247,14 @@ def to_pptx(
                     paragraph = listing.paragraphs[0] if position == 0 else listing.add_paragraph()
                     paragraph.alignment = PP_ALIGN.LEFT
                     paragraph.space_after = Pt(10)
-                    marker = paragraph.add_run()
-                    marker.text = "— "
-                    paint(marker, size=_u("closingBullets"), bold=True, colour=cover_muted)
+                    _bullet(
+                        paragraph,
+                        colour=cover_muted,
+                        size=max(deck_type.FLOOR_PT, round(_u("closingBullets") * typescale[0])),
+                        char="—",
+                        # a dash is a full em wide: the text a space after it
+                        em=1.5,
+                    )
                     paint_rich(
                         paragraph,
                         data,
@@ -3538,9 +3669,9 @@ def to_pptx(
                         )
                         paragraph.line_spacing = Pt(line_pt)
                         paragraph.space_after = Pt(gap_pt)
-                        marker = paragraph.add_run()
-                        marker.text = "• "
-                        paint(marker, size=size, bold=True, colour=accent)
+                        # a real bullet in the accent, the text hanging: a wrapped line
+                        # starts under the text, and editing the text leaves the bullet alone
+                        _bullet(paragraph, colour=accent, size=drawn)
                         paint_rich(paragraph, data, f"bullets.{bullet_at}", text, size=size)
                         bullet_at += 1
             elif body:
@@ -3663,11 +3794,16 @@ def to_pptx(
             run = frame.paragraphs[0].add_run()
             run.text = str(index + 1)
             paint(run, size=_u("pageNumber"), bold=True, colour=_WHITE)
+            # a field, so a copied or moved slide shows its own number
+            pptx_edit.slide_number_field(run._r, index + 1)
 
         notes = str(data.get("notes") or "").strip()
         if notes:
             slide.notes_slide.notes_text_frame.text = notes
 
+    for slide in presentation.slides:
+        # a line break in an item's own text is a break, never a raw LF in a run
+        pptx_edit.breaks_in_runs(slide._element)
     buffer = io.BytesIO()
     presentation.save(buffer)
     return buffer.getvalue()

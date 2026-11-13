@@ -34,8 +34,9 @@ from app.services.files import _open_zip
 from app.services.office_edit import BLANK, Result, short
 
 __all__ = [
-    "BLANK", "OPS", "PptxError", "Result", "apply", "blanks", "blank_deck", "outline",
-    "plain_text",
+    "BLANK", "OPS", "PptxError", "Result", "apply", "blanks", "blank_deck",
+    "breaks_in_runs", "heal_written_bullets", "healed", "normalise", "outline", "plain_text",
+    "set_bullet", "slide_number_field",
 ]
 
 OPS = (
@@ -163,7 +164,7 @@ def _index(prs) -> _Deck:
     return deck
 
 
-def _load(data: bytes):
+def _load(data: bytes, *, heal: bool = True):
     if data[:4] != b"PK\x03\x04":
         raise PptxError("PowerPoint 문서(.pptx)가 아닙니다.")
     try:
@@ -172,10 +173,14 @@ def _load(data: bytes):
         prs = Presentation(io.BytesIO(data))
     except Exception as exc:  # noqa: BLE001 — any unreadable package is the same answer
         raise PptxError("PowerPoint 문서(.pptx)가 아니거나 손상된 파일입니다.") from exc
+    if heal:
+        # read and edited normalised, so an edit saves the deck healed
+        normalise(prs)
     return prs
 
 
 def _save(prs) -> bytes:
+    _renumber(prs)
     out = io.BytesIO()
     prs.save(out)
     return out.getvalue()
@@ -235,6 +240,255 @@ def _marker(paragraph: etree._Element) -> etree._Element | None:
     return None
 
 
+#: marks that are never text where they stand: a run of one of them alone is a bullet; a
+#: dash or a middle dot is one only with the space after it (「-5%」 split in runs is a sign)
+_SIGNS = "•▪◦‣●○■□◆◇➢➤✓✔"
+#: `a:pPr` children in schema order (CT_TextParagraphProperties)
+_PPR_ORDER = tuple(qn(f"a:{tag}") for tag in (
+    "lnSpc", "spcBef", "spcAft", "buClrTx", "buClr", "buSzTx", "buSzPct", "buSzPts",
+    "buFontTx", "buFont", "buNone", "buAutoNum", "buChar", "buBlip", "tabLst", "defRPr",
+    "extLst",
+))
+_BU_KINDS = tuple(qn(f"a:{tag}") for tag in ("buNone", "buAutoNum", "buChar", "buBlip"))
+_BU_COLOURS = (qn("a:buClrTx"), qn("a:buClr"))
+_BU_FONTS = (qn("a:buFontTx"), qn("a:buFont"))
+_COLOUR_TAGS = tuple(qn(f"a:{tag}") for tag in (
+    "srgbClr", "schemeClr", "scrgbClr", "hslClr", "sysClr", "prstClr",
+))
+#: hanging indent of a bullet, in ems of its text
+HANG_EM = 0.9
+
+
+def _ppr(paragraph: etree._Element) -> etree._Element:
+    props = paragraph.find(_A_PPR)
+    if props is None:
+        props = etree.Element(_A_PPR)
+        paragraph.insert(0, props)
+    return props
+
+
+def _put(props: etree._Element, element: etree._Element) -> None:
+    """`element` into `a:pPr` at its schema place."""
+    rank = _PPR_ORDER.index(element.tag)
+    later = next((c for c in props if c.tag in _PPR_ORDER and _PPR_ORDER.index(c.tag) > rank),
+                 None)
+    if later is not None:
+        later.addprevious(element)
+    else:
+        props.append(element)
+
+
+def set_bullet(
+    paragraph: etree._Element,
+    *,
+    char: str = "•",
+    colour: str | etree._Element | None = None,
+    hang: int,
+    numbered: str | None = None,
+) -> None:
+    """A real bullet on the paragraph: `char` (or `numbered`, an `a:buAutoNum` scheme such as
+    `arabicPeriod`) in `colour` (an `RRGGBB` or a colour element), drawn in the text's own font
+    and size, the text hanging `hang` EMU right of it so a wrapped line starts under the text
+    rather than under the bullet."""
+    props = _ppr(paragraph)
+    for child in list(props):
+        if child.tag in _BU_KINDS or child.tag in _BU_COLOURS or child.tag in _BU_FONTS:
+            props.remove(child)
+    if colour is not None:
+        holder = etree.Element(qn("a:buClr"))
+        if isinstance(colour, str):
+            etree.SubElement(holder, qn("a:srgbClr")).set("val", colour.upper())
+        else:
+            holder.append(copy.deepcopy(colour))
+        _put(props, holder)
+    if numbered:
+        mark = etree.Element(qn("a:buAutoNum"))
+        mark.set("type", numbered)
+    else:
+        mark = etree.Element(qn("a:buChar"))
+        mark.set("char", char)
+    _put(props, mark)
+    base = int(props.get("marL") or 0)
+    indent = int(props.get("indent") or 0)
+    if indent < 0:
+        # already hanging: the text stays where it was
+        base += indent
+    props.set("marL", str(max(0, base) + hang))
+    props.set("indent", str(-hang))
+
+
+def _sign_of(text: str) -> str:
+    """The bullet a lone run `text` writes, or ``."""
+    found = _MARKER.fullmatch(text)
+    if not found:
+        return ""
+    sign = text.strip()
+    if sign in _SIGNS or (text != text.rstrip() and sign):
+        return sign
+    return ""
+
+
+def _run_size(run: etree._Element | None) -> int:
+    """A run's size in hundredths of a point, 0 when it inherits one."""
+    props = run.find(_A_RPR) if run is not None else None
+    try:
+        return int(props.get("sz")) if props is not None and props.get("sz") else 0
+    except ValueError:
+        return 0
+
+
+def _heal_paragraph(paragraph: etree._Element) -> bool:
+    """A bullet written as text in a run of its own (「• 」, often bold in the accent colour,
+    with `a:buNone`) made a real one in that colour: the run goes, and a wrapped line hangs
+    under the text instead of starting under the bullet. Old house decks wrote theirs so."""
+    runs = _runs(paragraph)
+    if len(runs) < 2:
+        return False
+    sign = _sign_of(runs[0].find(_A_T).text or "")
+    if not sign or not "".join(r.find(_A_T).text or "" for r in runs[1:]).strip():
+        return False
+    props = paragraph.find(_A_PPR)
+    if props is not None and any(props.find(qn(f"a:{tag}")) is not None
+                                 for tag in ("buAutoNum", "buChar", "buBlip")):
+        return False
+    marker = runs[0]
+    fill = marker.find(_A_RPR).find(qn("a:solidFill")) if marker.find(_A_RPR) is not None else None
+    colour = next((c for c in fill if c.tag in _COLOUR_TAGS), None) if fill is not None else None
+    size = _run_size(runs[1]) or _run_size(marker) or 1800
+    paragraph.remove(marker)
+    # the text's first run starts where the bullet was: no space left over before it
+    first = runs[1].find(_A_T)
+    first.text = (first.text or "").lstrip()
+    set_bullet(paragraph, char=sign, colour=colour, hang=int(size / 100 * HANG_EM * 12700))
+    return True
+
+
+def heal_written_bullets(prs) -> int:
+    """Every written bullet in the deck's text (slides, groups, table cells) made a real one
+    (`_heal_paragraph`); how many."""
+    healed = 0
+    for slide in prs.slides:
+        for paragraph in slide._element.iter(_A_P):
+            healed += _heal_paragraph(paragraph)
+    return healed
+
+
+#: a line break written into a run's text: LF, CR (python-pptx escapes it `_x000D_`), CRLF, VT
+_RAW_BREAK = re.compile(r"_x000D_\n|_x000D_|_x000B_|\r\n|[\r\n\v]")
+
+
+def breaks_in_runs(root: etree._Element) -> int:
+    """Every line break written as a character inside a run's text made an `a:br` between
+    two runs of that format; how many runs were split. PowerPoint draws a raw LF in `a:t` as
+    nothing or a box, and the editor's text model reads it as a paragraph end that borrows
+    the paragraph before's runs by character offset (a wrapped line unindented, its first
+    letters in the bullet's colour)."""
+    split = 0
+    for run in list(root.iter(_A_R)):
+        leaf = run.find(_A_T)
+        text = leaf.text if leaf is not None else None
+        if not text or not _RAW_BREAK.search(text):
+            continue
+        props = run.find(_A_RPR)
+        parts = _RAW_BREAK.split(text)
+        made: list[etree._Element] = []
+        for index, part in enumerate(parts):
+            if index:
+                br = etree.Element(_A_BR)
+                if props is not None:
+                    br.append(copy.deepcopy(props))
+                made.append(br)
+            if part:
+                piece = copy.deepcopy(run)
+                piece.find(_A_T).text = part
+                made.append(piece)
+        for element in made:
+            run.addprevious(element)
+        run.getparent().remove(run)
+        split += 1
+    return split
+
+
+def slide_number_field(run: etree._Element, number: int) -> etree._Element:
+    """The run made a slide-number field (`a:fld type="slidenum"`) showing `number` now, so a
+    copied or moved slide shows its own number."""
+    field_ = etree.Element(qn("a:fld"))
+    field_.set("id", "{B6F15528-21DE-4FAA-801E-634DDDAF4B2B}")
+    field_.set("type", "slidenum")
+    props = run.find(_A_RPR)
+    if props is not None:
+        field_.append(copy.deepcopy(props))
+    etree.SubElement(field_, _A_T).text = str(number)
+    run.addprevious(field_)
+    run.getparent().remove(run)
+    return field_
+
+
+def _static_numbers(prs) -> int:
+    """A house deck's page number written as static text (its corner chip: one run that is
+    the slide's own number, in the bottom-right corner) made a slide-number field."""
+    made = 0
+    width, height = prs.slide_width or 0, prs.slide_height or 0
+    for number, slide in enumerate(prs.slides, 1):
+        for shape in slide.shapes:
+            if shape.is_placeholder or not shape.has_text_frame or shape.top is None:
+                continue
+            if shape.top < height * 0.85 or shape.left < width * 0.8:
+                continue
+            paragraphs = _paragraphs(shape.text_frame._txBody)
+            runs = _runs(paragraphs[0]) if len(paragraphs) == 1 else []
+            if len(runs) == 1 and (runs[0].find(_A_T).text or "").strip() == str(number):
+                slide_number_field(runs[0], number)
+                made += 1
+    return made
+
+
+def _renumber(prs) -> None:
+    """Each slide-number field's shown text set to its slide's place, as PowerPoint does when
+    it lays the deck out (a copied slide carries its source's number until then)."""
+    for number, slide in enumerate(prs.slides, 1):
+        for found in slide._element.iter(qn("a:fld")):
+            leaf = found.find(_A_T)
+            if found.get("type") == "slidenum" and leaf is not None:
+                leaf.text = str(number)
+
+
+def normalise(prs) -> int:
+    """The deck's text as the editor and PowerPoint read it right: line breaks written into
+    run text made `a:br`, written bullets made real ones, a static page number a field; how
+    many places changed."""
+    changed = 0
+    for slide in prs.slides:
+        changed += breaks_in_runs(slide._element)
+    changed += heal_written_bullets(prs)
+    changed += _static_numbers(prs)
+    return changed
+
+
+def healed(data: bytes) -> bytes:
+    """The deck normalised (`normalise`): `data` itself when nothing needed it, so a deck
+    opened in the editor heals before it is edited."""
+    prs = _load(data, heal=False)
+    return _save(prs) if normalise(prs) else data
+
+
+def _bullet_sign(paragraph: etree._Element) -> str:
+    """The character of the paragraph's own `a:buChar`, or ``."""
+    props = paragraph.find(_A_PPR)
+    mark = props.find(qn("a:buChar")) if props is not None else None
+    return (mark.get("char") or "").strip() if mark is not None else ""
+
+
+def _without_sign(paragraph: etree._Element, text: str) -> str:
+    """`text` without a leading copy of the paragraph's own bullet (「• 하나」 for a bulleted
+    line), so a line written with its bullet is not bulleted twice."""
+    sign = _bullet_sign(paragraph)
+    stripped = text.lstrip()
+    if sign and stripped.startswith(sign) and stripped[len(sign):len(sign) + 1].isspace():
+        return stripped[len(sign):].lstrip()
+    return text
+
+
 def _run_props(paragraph: etree._Element) -> etree._Element | None:
     """The format the paragraph's text is mostly in: its longest run's (a short bold label
     or a coloured bullet before it does not decide), else the paragraph mark's."""
@@ -248,6 +502,7 @@ def _set_text(paragraph: etree._Element, text: str) -> None:
     """Paragraph text replaced in one run in the format the text was mostly in; fields and
     breaks go, a 「↵」 is a break. A written bullet before the text stays, unless the new
     text brings its own."""
+    text = _without_sign(paragraph, text)
     marker = _marker(paragraph)
     if marker is not None:
         sign = (marker.find(_A_T).text or "").strip()
@@ -321,6 +576,7 @@ def _splice(pieces: list[tuple[etree._Element, str]], starts: list[int],
 
 def _rewrite(paragraph: etree._Element, text: str) -> None:
     """The paragraph's text made `text`, touching only what changed (docx_edit._rewrite)."""
+    text = _without_sign(paragraph, text)
     pieces = _pieces(paragraph)
     old = "".join(t for _, t in pieces)
     if old == text:
@@ -1057,11 +1313,11 @@ def apply(data: bytes, ops: list[dict]) -> Result:
 
 
 def written_bullets_only(data: bytes) -> bytes:
-    """No automatic bullet under a written one. The house exporter marks a slide's body box
-    as the body placeholder (for the outline view) and writes its own 「• 」 runs; on its blank
-    layout the placeholder falls back to the master's bulleted body style, so PowerPoint and
-    the editor would draw a second bullet. Each paragraph of a body placeholder that sets no
-    bullet of its own gets `a:buNone`."""
+    """No automatic bullet the deck did not ask for. The house exporter marks a slide's body
+    box as the body placeholder (for the outline view) and sets each bullet itself (`a:buChar`);
+    on its blank layout a placeholder paragraph that sets none falls back to the master's
+    bulleted body style, so PowerPoint and the editor would draw a bullet before a plain line.
+    Each paragraph of a body placeholder that sets no bullet of its own gets `a:buNone`."""
     prs = _load(data)
     changed = False
     for slide in prs.slides:

@@ -70,7 +70,7 @@ def company() -> bytes:
 
 def house() -> bytes:
     """A deck from KloudChat's own export: free text boxes, the title also in a 1 pt hidden
-    placeholder, written 「• 」 bullet runs in the accent colour."""
+    placeholder, real bullets (`a:buChar`) in the accent colour."""
     return deck_export.to_pptx("사업 점검", [
         {"layout": "title", "title": "2026년 하반기 사업 점검", "body": "[발표자]"},
         {"layout": "bullets", "title": "핵심 요약",
@@ -212,12 +212,14 @@ def test_a_slide_added_to_a_house_deck_copies_the_look_and_keeps_its_bullets():
     ])
     text = pptx_edit.outline(result.data)
     assert "s3.1 (제목): 다음 단계" in text
-    assert "s3.2 (본문), 2줄:\n    • 점검 [일정] 확정\n    • 보고" in text
+    assert "s3.2 (본문), 2줄:\n    점검 [일정] 확정\n    보고" in text
     slide = _prs(result.data).slides[2]
     body = next(s for s in slide.shapes if s.has_text_frame and "보고" in s.text_frame.text)
-    bullet, words = body.text_frame.paragraphs[0].runs
-    # the written bullet keeps the accent colour, the words the ink
-    assert bullet.text == "• " and bullet.font.color.rgb != words.font.color.rgb
+    (words,) = body.text_frame.paragraphs[0].runs
+    props = body.text_frame.paragraphs[0]._p.find(qn("a:pPr"))
+    # the bullet keeps the accent colour, the words the ink
+    assert props.find(qn("a:buChar")) is not None and words.text == "점검 [일정] 확정"
+    assert props.find(qn("a:buClr"))[0].get("val") != str(words.font.color.rgb)
     # the copied slide's notes are not the old slide's
     assert not slide.has_notes_slide or not slide.notes_slide.notes_text_frame.text
 
@@ -288,15 +290,17 @@ def test_a_cell_given_as_a_value_or_a_number_is_still_written():
         pptx_edit.apply(company(), [{"op": "set_cell", "table": "s3.2", "row": 1, "col": 1}])
 
 
-def test_a_written_deck_has_no_automatic_bullet_under_its_written_ones():
+def test_a_written_deck_has_one_bullet_per_line_and_a_plain_line_none():
     data = pptx_doc.deck("보고", "", [{"title": "배경", "bullets": ["하나", "둘"]}])
     body = next(
         shape for shape in _prs(data).slides[1].shapes
         if shape.has_text_frame and "하나" in shape.text_frame.text
     )
     for paragraph in body.text_frame.paragraphs:
-        assert paragraph._p.find(qn("a:pPr")).find(qn("a:buNone")) is not None
-    # a line added later copies its neighbour, bullet setting and all
+        props = paragraph._p.find(qn("a:pPr"))
+        assert props.find(qn("a:buChar")) is not None and props.find(qn("a:buNone")) is None
+    # a line added later copies its neighbour, bullet setting and all; a line given with
+    # its bullet is not bulleted twice
     added = pptx_edit.apply(data, [
         {"op": "replace_text", "id": "s2.2", "text": "• 하나\n• 둘\n• 셋"},
     ])
@@ -304,8 +308,9 @@ def test_a_written_deck_has_no_automatic_bullet_under_its_written_ones():
         s for s in _prs(added.data).slides[1].shapes
         if s.has_text_frame and "셋" in s.text_frame.text
     )
+    assert [p.text for p in body.text_frame.paragraphs] == ["하나", "둘", "셋"]
     assert all(
-        p._p.find(qn("a:pPr")).find(qn("a:buNone")) is not None
+        p._p.find(qn("a:pPr")).find(qn("a:buChar")) is not None
         for p in body.text_frame.paragraphs
     )
 
@@ -320,7 +325,13 @@ def test_a_slide_added_after_a_table_slide_takes_a_bullet_slide_and_leaves_the_f
     ])
     text = pptx_edit.outline(result.data)
     assert "s4.1 (제목): 위험 요인" in text
-    assert "s4.2 (본문), 2줄:\n    • 인력 부족\n    • 일정 지연" in text
+    assert "s4.2 (본문), 2줄:\n    인력 부족\n    일정 지연" in text
+    slide = _prs(result.data).slides[3]
+    body = next(s for s in slide.shapes if s.has_text_frame and "인력" in s.text_frame.text)
+    assert all(
+        p._p.find(qn("a:pPr")).find(qn("a:buChar")) is not None
+        for p in body.text_frame.paragraphs
+    )
     # the footer is still the deck's title, as on every other slide
     assert "s4.3: 사업 계획" in text
 

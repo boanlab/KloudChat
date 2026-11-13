@@ -20,7 +20,7 @@ from app.routers.workspace import _own
 from app.schemas.auth import Wire
 from app.schemas.workspace import ArtifactOut
 from app.services import files as file_service
-from app.services import office_doc
+from app.services import office_doc, pptx_edit
 
 
 class DocumentCreate(Wire):
@@ -122,6 +122,13 @@ def router_for(spec: Routes) -> APIRouter:
         except (OSError, FileNotFoundError):
             raise HTTPException(status.HTTP_404_NOT_FOUND, detail="blob_missing") from None
         fmt = kind.file_format(data) or kind.editable
+        if fmt == "pptx":
+            # a deck written before real bullets heals as it opens (the same bytes when it
+            # needs nothing): character bullets, line breaks inside runs, static page numbers
+            try:
+                data = pptx_edit.healed(data)
+            except Exception:  # noqa: BLE001 - the file as stored still opens
+                pass
         name = office_doc.download_name(artifact.title, fmt)
         return Response(
             content=data,

@@ -142,7 +142,7 @@ const groups: Record<string, Group> = {
   // a report asked for as an HWP or Word file: written by the report screen, opened as the file
   'report-as-office-file': { files: ['report-as-office-file.spec.ts'], projects: { desktop } },
   // the real PowerPoint editor (pptx-react-viewer under our chrome), a chunk of its own
-  'pptx-panel': { files: ['pptx-panel.spec.ts'], projects: { desktop, phone: touchPhone } },
+  'pptx-panel': { files: ['pptx-panel.spec.ts', 'pptx-bullets.spec.ts'], projects: { desktop, phone: touchPhone } },
   // HWP, Word and PowerPoint files in the file box: drawn by their editors, 편집 opens a copy
   'file-box-office': { files: ['file-box-office.spec.ts'], projects: { desktop, phone: touchPhone } },
   // unsaved office edits never dropped unasked; phone read only, retries, share, reopen, artifacts page

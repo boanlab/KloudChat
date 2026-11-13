@@ -10,7 +10,9 @@ from typing import Any
 
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.models.workspace import Artifact, ArtifactKind
+from app.models.chat import ChatSession, SessionKind
+from app.models.user import User
+from app.models.workspace import Artifact, ArtifactKind, Project
 from app.services import deck_export, office_doc, pptx_edit
 from app.services.office_doc import Conflict, read, read_version
 
@@ -48,9 +50,20 @@ def blank() -> bytes:
     return pptx_edit.blank_deck()
 
 
-def deck(title: str, subtitle: str, slides: list[dict[str, Any]], closing: str = "") -> bytes:
+def deck(
+    title: str,
+    subtitle: str,
+    slides: list[dict[str, Any]],
+    closing: str = "",
+    *,
+    tokens: dict[str, str] | None = None,
+    template: str = "",
+) -> bytes:
     """A new deck in the house look (`deck_export`): a cover, then a slide per entry, as
-    bullets, or a table when it has rows; `closing` adds a last slide with that line."""
+    bullets, or a table when it has rows; `closing` adds a last slide with that line. `tokens`
+    (the design system's `{accent, ink, muted, font, …}`) and `template` (a slides 서식's
+    `template.pptx` path, for its masters, layouts and theme) are what a web deck's `.pptx`
+    takes (`deck_export.to_pptx`); `project_look` finds a conversation's."""
     made: list[dict[str, Any]] = [{"layout": "title", "title": title, "body": subtitle}]
     for slide in slides[:MAX_WRITE]:
         rows = [[str(cell) for cell in row] for row in slide.get("rows") or [] if row]
@@ -68,7 +81,33 @@ def deck(title: str, subtitle: str, slides: list[dict[str, Any]], closing: str =
         made.append(entry)
     if closing.strip():
         made.append({"layout": "closing", "title": closing.strip(), "body": ""})
-    return pptx_edit.written_bullets_only(deck_export.to_pptx(title, made))
+    return pptx_edit.written_bullets_only(
+        deck_export.to_pptx(title, made, tokens=tokens, template=template)
+    )
+
+
+async def project_look(
+    db: AsyncSession, user: User, session: ChatSession
+) -> tuple[dict[str, str] | None, str]:
+    """`(tokens, template)` a deck written in this conversation takes, as its web decks do:
+    the design system of its agent or project (`workspace_context.design_for`), and the
+    `template.pptx` of its project's default slides 서식 (`Project.render_templates`), else
+    `(None, "")` — the house look."""
+    from app.services import design, design_templates, workspace_context
+
+    try:
+        chosen = await workspace_context.design_for(db, user, session)
+    except workspace_context.WorkspaceContextError:
+        chosen = None
+    tokens = design.tokens_of(chosen) if chosen is not None else None
+    template = ""
+    project = await db.get(Project, session.project_id) if session.project_id else None
+    if project is not None and project.user_id == user.id:
+        found = design_templates.rendering(
+            design_templates.default_for(project.render_templates, SessionKind.slides)
+        )
+        template = found.pptx_template if found is not None else ""
+    return tokens, template
 
 
 async def session_document(db: AsyncSession, user_id: str, session_id: str) -> Artifact | None:
