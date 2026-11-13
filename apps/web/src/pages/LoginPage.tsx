@@ -12,6 +12,7 @@ import type { SessionKind } from '@/types'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
 import { PasswordInput } from '@/components/ui/PasswordInput'
+import { usePageTitle } from '@/lib/pageTitle'
 
 type FieldKey = 'name' | 'email' | 'password'
 
@@ -38,6 +39,7 @@ export function LoginPage() {
   const lang = useStore((s) => s.lang)
   const { login, signup, authError, authRetryAfter, bootstrap, signedOutReason, adoptSession } = useStore()
   const [mode, setMode] = useState<'login' | 'signup'>('login')
+  usePageTitle(mode === 'signup' ? t('회원가입') : t('로그인'))
   // No router while signed out: `?token=` on `/verify` confirms signup, elsewhere resets a password.
   const [resetToken, setResetToken] = useState(() =>
     window.location.pathname === '/verify'

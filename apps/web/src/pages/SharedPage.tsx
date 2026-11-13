@@ -20,6 +20,7 @@ import { SlideView } from '@/components/slides/DeckPanel'
 import { ArtifactPreview, MediaPanel } from '@/components/artifacts/ArtifactPanel'
 import { ChartView } from '@/components/chart/ChartPanel'
 import type { Artifact, ChartArtifact, DesignTokens, Slide } from '@/types'
+import { usePageTitle } from '@/lib/pageTitle'
 
 /** Starting agent, project, format; wording matches SessionPage's `StartingFrom`. */
 function StartedWithPanel({ context }: { context: SharedContext }) {
@@ -79,6 +80,7 @@ export function SharedPage({ onSignIn }: { onSignIn?: () => void } = {}) {
   // Member-only link: asked again once sign-in (or refresh cookie) lands.
   const authenticated = useStore((s) => s.authenticated)
   const [attempt, setAttempt] = useState(0)
+  usePageTitle(payload?.title)
 
   useEffect(() => {
     let live = true

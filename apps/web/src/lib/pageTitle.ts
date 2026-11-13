@@ -1,3 +1,5 @@
+import { useEffect } from 'react'
+
 /** The tab title: 「(unread) page · brand」, the page named as the sidebar and menus name it. */
 
 /** Korean source labels (translated where used); the first match wins. */
@@ -38,7 +40,8 @@ export function routeTitle(pathname: string): string | null {
   return ROUTES.find(([re]) => re.test(pathname))?.[1] ?? null
 }
 
-let brand = ''
+// The shipped <title> until the instance's own name arrives.
+let brand = typeof document === 'undefined' ? '' : document.title
 let page = ''
 let claimed: string | null = null
 let unread = 0
@@ -71,4 +74,13 @@ export function setUnreadTitle(count: number) {
 export function claimPageTitle(name: string | null) {
   claimed = name
   write()
+}
+
+/** A screen outside the app shell (a shared page, a bot, sign-in) names the tab while shown. */
+export function usePageTitle(name: string | null | undefined) {
+  useEffect(() => {
+    if (!name) return
+    claimPageTitle(name)
+    return () => claimPageTitle(null)
+  }, [name])
 }
