@@ -257,6 +257,11 @@ test('unsaved edits ask before the panel closes; a lost race shows the conflict 
   await expect(dialog.getByRole('button')).toContainText(['취소', '버리고 보내기', '저장하고 보내기'])
   await dialog.getByRole('button', { name: '취소' }).click()
   await expect(notes(page)).toHaveValue('닫기 전에')
+  // 새 대화 asks the same before the panel goes
+  await page.getByRole('link', { name: '새 대화' }).first().click()
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('button', { name: '취소' }).click()
+  await expect(notes(page)).toHaveValue('닫기 전에')
 
   // someone saved v2 meanwhile: 저장 does not overwrite it
   await page.route(`**/api/artifacts/${deckId}`, async (route) => {
