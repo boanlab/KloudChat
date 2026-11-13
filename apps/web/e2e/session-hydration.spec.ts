@@ -297,7 +297,7 @@ for (const kind of ['chat', 'report', 'slides'] as const) {
         await page.goto(`/s/${id}`)
         const composer = page.getByLabel('프롬프트 입력')
         await expect(composer).toHaveAttribute('placeholder', placeholders[kind])
-        const label = selection === 'pending inheritance' ? 'Agent 기본 모델'
+        const label = selection === 'pending inheritance' ? '에이전트 기본 모델'
           : selection === 'loaded inheritance' ? 'Agent fixture' : 'Fixture'
         const picker = page.getByRole('button', { name: label, exact: true }).first()
         await expect(picker).toBeVisible()
@@ -340,7 +340,7 @@ for (const language of ['ko', 'en'] as const) {
       state.list.release()
       state.detail.release()
       await page.goto(`/s/${id}`)
-      const label = language === 'ko' ? 'Agent 기본 모델' : 'Agent default model'
+      const label = language === 'ko' ? '에이전트 기본 모델' : 'Agent default model'
       await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible()
       await page.screenshot({ path: info.outputPath(`agent-model-${language}-pending.png`), animations: 'disabled' })
       state.agents.release()
@@ -362,7 +362,7 @@ for (const kind of ['report', 'slides'] as const) {
       state.list.release()
       state.detail.release()
       await page.goto(`/s/${id}`)
-      await page.getByRole('button', { name: 'Agent 기본 모델', exact: true }).click()
+      await page.getByRole('button', { name: '에이전트 기본 모델', exact: true }).click()
       await page.getByRole('menuitemradio', { name: /^Fixture/ }).click()
       await expect.poll(() => state.writes.length).toBe(1)
       expect(state.writes[0]).toEqual({ method: 'PATCH', path: `/sessions/${id}`,

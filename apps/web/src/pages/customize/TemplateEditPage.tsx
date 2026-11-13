@@ -120,7 +120,7 @@ export function TemplateEditPage() {
       const raw = await userTemplatesApi.start(id)
       setValue((v) => ({ ...fromStart(raw), name: v?.name || '', visibility: v?.visibility ?? 'private' }))
     } catch (err) {
-      setError(errorMessage(err, t('기본 템플릿을 불러오지 못했습니다.')))
+      setError(errorMessage(err, t('기본 제공 템플릿을 불러오지 못했습니다.')))
     }
   }
   useEffect(() => {
@@ -196,7 +196,7 @@ export function TemplateEditPage() {
             )}
             <RequiredNote />
             {!row && (
-              <Field label={t('기본 템플릿에서 시작')} hint={t('고르면 그 템플릿의 모든 설정이 채워집니다. 고친 뒤 저장합니다.')}>
+              <Field label={t('기본 제공 템플릿에서 시작')} hint={t('고르면 그 템플릿의 모든 설정이 채워집니다. 고친 뒤 저장합니다.')}>
                 <Select value="" onChange={(e) => void startFrom(e.target.value)}>
                   <option value="">{t('빈 템플릿')}</option>
                   {catalogue.starts.map((s) => (
@@ -387,7 +387,7 @@ export function TemplateEditPage() {
               navigate('/customize/templates', { replace: true })
             }}
             title={t('{name} 삭제').replace('{name}', row?.name ?? '')}
-            description={t('이 템플릿을 쓰던 에이전트는 템플릿 없이 일합니다. 이미 만든 아티팩트는 기본 템플릿으로 열립니다.')}
+            description={t('이 템플릿을 쓰던 에이전트는 템플릿 없이 일합니다. 이미 만든 아티팩트는 템플릿 없이 기본 모양으로 열립니다.')}
           />
         </div>
       </PageBody>

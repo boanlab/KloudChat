@@ -965,7 +965,7 @@ const EN: Record<string, string> = {
   '이 대화에서 정한 것:': 'Settled in this conversation:',
   // Templates and themes
   '테마': 'Theme',
-  '기본 템플릿': 'Default templates',
+  '기본 템플릿': 'Default template',
   '{kind} 템플릿': '{kind} template',
   '아티팩트가 이 템플릿으로 나옵니다': 'the artifact comes out in this template',
   '이 대화의 말투를 이 테마에 맞춥니다': 'this conversation takes its voice from the theme',

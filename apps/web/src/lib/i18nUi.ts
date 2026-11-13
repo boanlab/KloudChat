@@ -88,6 +88,11 @@ export const EN_UI: Record<string, string> = {
   'PowerPoint 열기': 'Open PowerPoint',
   '자료와 지침을 프로젝트에 모아 두면, 모든 화면이 같은 맥락 위에서 작동합니다. 보고서는 웹 보고서·한글·Word로, 슬라이드는 웹 슬라이드·PowerPoint로 만들고, 만든 것은 아티팩트 화면에 쌓입니다.':
     'Gather material and instructions in a project and every screen works from the same context. Reports come as web reports, HWP or Word, slides as web slides or PowerPoint, and what you make collects on the Artifacts screen.',
+  '에이전트 기본 모델': 'Agent default model',
+  '기본 제공 템플릿에서 시작': 'Start from a built-in template',
+  '기본 제공 템플릿을 불러오지 못했습니다.': 'Could not load the built-in templates.',
+  '이 템플릿을 쓰던 에이전트는 템플릿 없이 일합니다. 이미 만든 아티팩트는 템플릿 없이 기본 모양으로 열립니다.':
+    'Agents that used this template work without one. Artifacts already made open in the default look, without a template.',
   // Empty states
   '새 대화 시작': 'Start a conversation',
   '검색 지우기': 'Clear search',
