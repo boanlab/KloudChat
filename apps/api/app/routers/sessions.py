@@ -2393,7 +2393,23 @@ async def get_session(session_id: str, user: CurrentUser, db: DbSession):
     history = await _history(db, session_id)
     made = {} if any(m.content for m in history) else await _made(db, [session_id])
     links = await message_links.run_links(db, session_id)
-    return SessionOut.of(session, history, made=made.get(session_id), links=links)
+    out = SessionOut.of(session, history, made=made.get(session_id), links=links)
+    if out.artifact_id is None and session.kind == SessionKind.chat:
+        # a chat whose HWP, Word or PowerPoint document was saved before the turn recorded it
+        # (or whose record was cleared) reopens on its newest one
+        out.artifact_id = await _newest_office_document(db, session_id)
+    return out
+
+
+async def _newest_office_document(db: AsyncSession, session_id: str) -> str | None:
+    kinds = [ArtifactKind.hwp, ArtifactKind.docx, ArtifactKind.pptx]
+    row = (await db.exec(
+        select(Artifact.id)
+        .where(Artifact.session_id == session_id, col(Artifact.kind).in_(kinds))
+        .order_by(col(Artifact.updated_at).desc())
+        .limit(1)
+    )).first()
+    return row
 
 
 @router.post("", response_model=SessionOut, status_code=status.HTTP_201_CREATED)
@@ -6775,12 +6791,16 @@ async def _answer_turn(
                     "deliberate": bool(ctx.pending_artifacts),
                 }
             )
+    # the HWP, Word or PowerPoint documents the tools saved this turn: the editor opens on
+    # them, the answer carries their card and the chat reopens on the last
+    office_made: list[str] = []
     for saved in (ctx.hwp, ctx.docx, ctx.pptx):
-        if saved.get("changed") and saved.get("id") != new_artifact:
-            # the HWP, Word or PowerPoint tools saved a version: the editor opens on it
+        if saved.get("changed") and saved.get("id") and saved["id"] != new_artifact:
+            office_made.append(saved["id"])
             yield chat_service.sse(
                 {"type": "artifact", "artifactId": saved["id"], "deliberate": True}
             )
+    made_ids = [*([new_artifact] if new_artifact else []), *office_made]
 
     title: str | None = None
     title_credits = 0
@@ -6818,7 +6838,7 @@ async def _answer_turn(
                     usage={**usage, "credits": credits + partner_total},
                     model=stored_actual_model,
                     routing=stored_routing,
-                    artifact_ids=[new_artifact] if new_artifact else None,
+                    artifact_ids=made_ids or None,
                     superseded=earlier_answers or None,
                     # partial answer kept, labelled by who ended it
                     failure=(
@@ -6926,8 +6946,8 @@ async def _answer_turn(
                     routing_audit.event_metadata = audit_metadata
                     db.add(routing_audit)
             session.updated_at = utcnow()
-            if new_artifact:
-                session.artifact_id = new_artifact
+            if made_ids:
+                session.artifact_id = made_ids[-1]
             db.add(session)
             if fallback is not None:
                 # ops record: a self-hosted answer that LiteLLM's fallback served instead
