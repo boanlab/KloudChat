@@ -228,6 +228,8 @@ class ArtifactVersionDetailOut(ArtifactVersionOut):
 
 class ArtifactRestore(Wire):
     version: int
+    #: optimistic check, as on ArtifactPatch: the version the client restores over
+    expected_version: int | None = None
 
 
 class ArtifactPatch(Wire):

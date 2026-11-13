@@ -283,6 +283,39 @@ first — Alembic has no down-migration guarantee here.
 
 Rolling back means restoring the dump, not running a downgrade.
 
+### Restarting the API without cutting answers
+
+`docker compose up -d` recreates every `api` replica at once, so answers in
+progress stop together. Each replica shuts down gracefully — it stops
+accepting, gives open answers up to 120 s to finish, stores the rest as
+interrupted (the reader gets 「중단됨」 and **다시 보내기**) and frees their
+conversations — within the 150 s `stop_grace_period` in `docker-compose.yml`.
+Keep that grace period when you write your own compose file; Docker's default
+of 10 s kills answers mid-sentence.
+
+To keep serving through an API-only deploy, replace the replicas one at a time:
+
+```bash
+docker compose pull api               # the new image under the same tag
+bash scripts/rolling-restart-api.sh   # runs `migrate` first, then one replica at a time
+```
+
+For each replica the script starts a new one beside it, waits until it is
+healthy, then stops the old one with the full grace period. It runs the
+migrations while old replicas still serve, so use it only when the release's
+migrations are additive; otherwise take the full `docker compose up -d` above.
+By hand, the same thing for one replica:
+
+```bash
+docker compose up -d --no-deps --no-recreate --scale api=$((N + 1)) api
+docker inspect -f '{{.State.Health.Status}}' <new container>   # until healthy
+docker stop --time 150 <old container> && docker rm <old container>
+```
+
+While both run, the new replica is told the configured replica count
+(`API_REPLICAS`), so with one configured replica **Stop** may not reach a turn
+still running on the old one for those few seconds.
+
 ## Operational checks
 
 ```bash

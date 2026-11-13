@@ -4547,7 +4547,8 @@ function dropMediaTurn(set: Set, sessionId: string, ...ids: string[]) {
   }))
 }
 
-/** Polls a transcript ending on a user message until answered, the person leaves, or ten minutes pass. */
+/** Polls a transcript ending on a user message until answered, the person leaves, or ten minutes
+ *  pass (then the question says 「중단됨」 with a resend). */
 async function watchForTheAnswer(set: Set, get: Get, sessionId: string) {
   const answered = () => {
     const session = get().sessions.find((c) => c.id === sessionId)
@@ -4560,6 +4561,7 @@ async function watchForTheAnswer(set: Set, get: Get, sessionId: string) {
   if (answered() || get().running[sessionId]) return
 
   let cancelled = false
+  let timedOut = false
   beginRun(set, sessionId, () => { cancelled = true })
 
   try {
@@ -4577,9 +4579,36 @@ async function watchForTheAnswer(set: Set, get: Get, sessionId: string) {
       }))
       return
     }
+    timedOut = true
   } finally {
     endRun(set, sessionId)
   }
+  if (timedOut) await giveUpOnDetachedTurn(set, get, sessionId)
+}
+
+/** The browser stopped waiting on a dropped turn: rather than leaving it silent, the question
+ *  says 「중단됨」 with a resend (`RetryActions`). Read once more first — the answer may have just
+ *  landed; local rows after the question (the provisional error) give way to it. */
+async function giveUpOnDetachedTurn(set: Set, get: Get, sessionId: string, draftId?: string) {
+  const row = await sessionsApi.get(sessionId).catch(() => null)
+  if (get().activeSessionId !== sessionId || get().running[sessionId]) return
+  const fresh = row ? toSession(row) : null
+  set((state) => ({
+    sessions: state.sessions.map((session) => {
+      if (session.id !== sessionId) return session
+      const base = fresh ?? session
+      const at = base.messages.map((m) => m.role).lastIndexOf('user')
+      const question = base.messages[at]
+      // answered, waiting on the person, or already marked: nothing to give up on
+      if (!question || base.pending || question.failure || !question.persisted) return base
+      if (fresh && at < fresh.messages.length - 1) return base
+      return {
+        ...base,
+        messages: [...base.messages.slice(0, at), { ...question, failure: 'interrupted' as const }],
+      }
+    }),
+    artifacts: draftId ? state.artifacts.filter((a) => a.id !== draftId) : state.artifacts,
+  }))
 }
 
 /** Response dropped while the detached turn works: poll the transcript and replace the provisional error once durable. */
@@ -4600,11 +4629,13 @@ async function watchForDetachedAnswer(set: Set, get: Get, sessionId: string) {
     }))
     return
   }
+  await giveUpOnDetachedTurn(set, get, sessionId)
 }
 
 /** A report/deck response dropped while the turn writes on: shown running, polled, then opened. */
 async function watchForDetachedDocument(set: Set, get: Get, sessionId: string, draftId: string) {
   let cancelled = false
+  let timedOut = false
   // The stop button stays: it stops the turn on the server (`stopStreaming`) and ends the watch.
   beginRun(set, sessionId, () => { cancelled = true })
   try {
@@ -4627,9 +4658,11 @@ async function watchForDetachedDocument(set: Set, get: Get, sessionId: string, d
       }))
       return
     }
+    timedOut = true
   } finally {
     endRun(set, sessionId)
   }
+  if (timedOut) await giveUpOnDetachedTurn(set, get, sessionId, draftId)
 }
 
 /** Deducts on completion; nothing is held up front. */

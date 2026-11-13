@@ -1,7 +1,7 @@
 import { History } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Badge, Button, ConfirmDialog, Modal } from '@/components/ui'
-import { artifactsApi, errorMessage } from '@/lib/api'
+import { ApiError, artifactsApi, errorMessage } from '@/lib/api'
 import type { ArtifactVersionRow } from '@/lib/api'
 import { useStore } from '@/store/useStore'
 import { relativeTime } from '@/lib/utils'
@@ -123,13 +123,16 @@ export function VersionHistory({
     setRestoring(version)
     setError(null)
     try {
-      // Restore snapshots the current revision first: stays restorable.
-      await artifactsApi.restore(artifact.id, version)
+      // Restore snapshots the current revision first: stays restorable. Conditional on the
+      // version on screen: a save from elsewhere since then is not silently replaced.
+      await artifactsApi.restore(artifact.id, version, artifact.version)
       await refreshArtifact(artifact.id)
       onRestored?.()
       setOpen(false)
     } catch (err) {
       setError(errorMessage(err, t('되돌리지 못했습니다.')))
+      // 409: someone saved since; catch the panel up so the next try starts from that save
+      if (err instanceof ApiError && err.status === 409) void refreshArtifact(artifact.id)
     } finally {
       setRestoring(null)
     }

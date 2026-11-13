@@ -286,6 +286,9 @@ interface SendOptions {
   timeoutMs?: number
   /** Sent again once when the network dropped it; only for requests safe to repeat. */
   retryNetwork?: boolean
+  /** `init.signal` stays linked after the headers, so it also stops the body read; only for
+   *  a signal made for this one request. */
+  signalCoversBody?: boolean
 }
 
 /** One request with this tab's credentials: a lapsed token is renewed first, and once on a 401. */
@@ -318,7 +321,7 @@ async function send(url: string, init: RequestInit = {}, opts: SendOptions = {})
       throw err
     } finally {
       clearTimeout(timer)
-      init.signal?.removeEventListener('abort', abort)
+      if (!opts.signalCoversBody) init.signal?.removeEventListener('abort', abort)
     }
   }
   const sent = accessToken
@@ -343,17 +346,46 @@ const authedFetch = (url: string, init: RequestInit = {}) => send(url, init)
 async function call<T>(path: string, init: RequestInit & { timeoutMs?: number } = {}): Promise<T> {
   const { timeoutMs, ...rest } = init
   const read = !rest.method || rest.method === 'GET'
-  const res = await send(
-    `${BASE_URL}${path}`,
-    { ...rest, headers: { 'Content-Type': 'application/json', ...rest.headers } },
-    { timeoutMs: timeoutMs ?? (read ? READ_TIMEOUT_MS : 0), retryNetwork: read },
-  )
-  if (!res.ok) {
-    const detail = await readDetail(res)
-    if (res.status === 401) throw new UnauthorizedError(detail)
-    throw new ApiError(res.status, detail, retryAfter(res))
+  const limit = timeoutMs ?? (read ? READ_TIMEOUT_MS : 0)
+  // The limit runs until the body is read, not just the headers: a server that sends its
+  // headers and then stalls mid-body is stopped too.
+  const deadline = limit ? new AbortController() : null
+  const caller = rest.signal
+  const abort = () => deadline?.abort()
+  if (deadline && caller) {
+    caller.addEventListener('abort', abort, { once: true })
+    if (caller.aborted) abort()
   }
-  return res.status === 204 ? (undefined as T) : ((await res.json()) as T)
+  let timedOut = false
+  const timer = deadline
+    ? setTimeout(() => {
+      timedOut = true
+      abort()
+    }, limit)
+    : undefined
+  try {
+    const res = await send(
+      `${BASE_URL}${path}`,
+      {
+        ...rest,
+        signal: deadline?.signal ?? caller,
+        headers: { 'Content-Type': 'application/json', ...rest.headers },
+      },
+      { retryNetwork: read, signalCoversBody: Boolean(deadline) },
+    )
+    if (!res.ok) {
+      const detail = await readDetail(res)
+      if (res.status === 401) throw new UnauthorizedError(detail)
+      throw new ApiError(res.status, detail, retryAfter(res))
+    }
+    return res.status === 204 ? (undefined as T) : ((await res.json()) as T)
+  } catch (err) {
+    if (timedOut) throw new RequestTimeoutError()
+    throw err
+  } finally {
+    clearTimeout(timer)
+    caller?.removeEventListener('abort', abort)
+  }
 }
 
 const body = (v: unknown) => ({ method: 'POST', body: JSON.stringify(v) })
@@ -1438,9 +1470,10 @@ export const artifactsApi = {
     call<ArtifactRow>(`/artifacts/${id}/slides/diagram`, body({ slideId, key, src })),
   /** One reading by a reviewer. Costs a model call; annotates, never edits. */
   critique: (id: string) => call<ArtifactRow>(`/artifacts/${id}/critique`, body({})),
-  /** Puts a superseded revision back. Itself an edit, so it adds a version. */
-  restore: (id: string, version: number) =>
-    call<ArtifactRow>(`/artifacts/${id}/restore`, body({ version })),
+  /** Puts a superseded revision back. Itself an edit, so it adds a version.
+   *  `expectedVersion`: the version shown; 409 if anyone saved since, as on `update`. */
+  restore: (id: string, version: number, expectedVersion?: number) =>
+    call<ArtifactRow>(`/artifacts/${id}/restore`, body({ version, expectedVersion })),
   /** A new office document (HWP, Word, PowerPoint) in a conversation: blank, or the uploaded
    *  `fileId` (`.hwp`/`.hwpx`, `.docx`, `.pptx`). */
   createDocument: (kind: OfficeKind, payload: {
@@ -2282,6 +2315,9 @@ function withStallGuard<T>(work: Promise<T>, onStall: () => void): Promise<T> {
   ]).finally(() => clearTimeout(timer)) as Promise<T>
 }
 
+/** A stream renews a token this close to lapsing before it starts. */
+const STREAM_TOKEN_MARGIN_MS = 30_000
+
 async function* postStream(
   path: string,
   payload: unknown,
@@ -2292,10 +2328,11 @@ async function* postStream(
   const abort = () => controller.abort()
   signal?.addEventListener('abort', abort, { once: true })
   if (signal?.aborted) abort()
-  // Renewed before it starts; a turn that has started is never sent twice.
-  if (renewer && !(botEmbedded && path.startsWith('/b/')) && tokenStale()) await renewer()
+  const renew = renewer && !(botEmbedded && path.startsWith('/b/')) ? renewer : null
+  // Renewed before it starts (with a margin for clock skew); a turn that started is never sent twice.
+  if (renew && tokenStale(STREAM_TOKEN_MARGIN_MS)) await renew()
 
-  const res = await withStallGuard(
+  const open = () => withStallGuard(
     fetch(`${BASE_URL}${path}`, {
       method: 'POST',
       signal: controller.signal,
@@ -2308,6 +2345,14 @@ async function* postStream(
     }),
     abort,
   )
+  const sent = accessToken
+  let res = await open()
+  // A 401 is the sign-in check refusing the token before the route runs: no turn was taken,
+  // so it is sent once more with a renewed token instead of asking the person to resend.
+  if (res.status === 401 && sent && renew && (accessToken !== sent || (await renew()))) {
+    await res.body?.cancel().catch(() => undefined)
+    res = await open()
+  }
   // A refused turn answers with JSON, not a stream; surfaced as an ApiError.
   if (!res.ok) {
     let detail: string | null = null

@@ -94,6 +94,10 @@ class Settings(BaseSettings):
     research_timeout_sec: float = 1800.0
     max_tool_hops: int = 8
     chat_stall_sec: int = 180
+    #: At shutdown, how long running turns may still finish, counted from the stop signal;
+    #: then they are stopped and stored as interrupted. Keep under the container's stop
+    #: grace period (docker-compose.yml `stop_grace_period`) less about 20 s.
+    turn_drain_sec: int = 120
     #: Self-hosted writers get the cache-ordered system prompt too (`model_tier.cache_ordered`);
     #: off while the 27B's vLLM prefix cache is off, where the order buys nothing.
     self_hosted_prompt_cache_order: bool = False

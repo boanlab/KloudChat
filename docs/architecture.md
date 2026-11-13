@@ -2529,13 +2529,53 @@ form only and uses a neutral domain, so its content is not repeated as fact.
   or charged after it.
 - A chat turn is claimed on the session row (`running_turn`, `running_since`)
   in the same transaction as its question, released when the
-  answer settles or stop is pressed, and ignored once older than ten minutes.
-  Two replicas serialize on the row; the second sees the claim and answers 409.
+  answer settles or stop is pressed, renewed every minute while it runs, and
+  ignored once four minutes stale. Two replicas serialize on the row; the
+  second sees the claim and answers 409. Restarts free claims without waiting
+  for that bound (below, "Restarts and turn claims").
+- A save, picture insert, rewrite or restore of a report, deck or page moves
+  the version in one conditional `UPDATE … WHERE id = … AND version = expected`
+  (`workspace._next_version`), the way office documents save
+  (`office_doc.save`): of two writers that read the same version — two
+  replicas, or an edit that lands while a rewrite waits on its model — exactly
+  one matches the row and the other gets 409 with nothing written. A restore
+  carries the version on screen (`expectedVersion`, sent by the version
+  history of every panel); without it, the version it read. Annotations that
+  add no version (fact-check, review, stored diagram rasters) are not checked.
+- **Restarts and turn claims.** On SIGTERM uvicorn stops accepting and waits
+  up to 120 s for open responses (`--timeout-graceful-shutdown 120`); the
+  lifespan then gives turns still running — those whose reader left included —
+  the rest of `TURN_DRAIN_SEC` (120 s, counted from the signal), stops what is
+  left through the stop signal with the label *interrupted* (a partial answer
+  is kept, as on **Stop**), cancels anything still there after ten seconds,
+  and frees every claim this process holds, marking a question left without an
+  answer `failure = interrupted` (`sessions.drain_turns`). The container's
+  `stop_grace_period` (150 s) sits above that; Docker's default 10 s would cut
+  answers and leave their conversations claimed. A claim token names its
+  replica and boot (`<host>:<boot>:<random>`); the host name survives a restart
+  of the same container, so a replica that crashed frees what its earlier boot
+  held as soon as it starts again (`free_claims_of_earlier_boots`), never
+  another replica's claims. A replica that dies and is replaced rather than
+  restarted is covered by the four-minute stale bound. The SSE response sends
+  a `: keep-alive` comment after 15 s of silence (`_heartbeat`), from its own
+  timer, so a tool call that runs for minutes keeps the proxies' idle timers
+  reset. The browser follows a dropped answer by polling the transcript (10
+  minutes for an answer, 30 for a document); a question marked interrupted, or
+  a poll that runs out, shows 「중단됨」 with **다시 보내기** under the
+  question. Deploys replace replicas one at a time
+  (`scripts/rolling-restart-api.sh`, see `docs/deployment.md`).
 - The first signup is decided under a transaction-scoped advisory lock, so two
   simultaneous first signups cannot both become the administrator.
-- Office and HWPX archives are opened only after their declared sizes pass a
-  limit (64 MB unpacked, 4,000 entries, 32 MB a member), and parsing runs in a
-  worker thread so one upload cannot stall the event loop.
+- Office and HWPX archives — text extraction, HWPX import, and the HWPX,
+  Word and PowerPoint editors — are opened only through
+  `files.open_capped_zip`: declared sizes must pass a limit (64 MB unpacked,
+  4,000 entries, 32 MB a member), a member over 1 MB may not inflate more than
+  200 times its packed size, and only stored or deflated members are accepted
+  (bzip2 and LZMA inflate a chunk without an output bound). `zipfile` stops
+  inflating a member at its declared size, so a member lying about it fails its
+  CRC instead of growing; `CappedZipFile.read` still counts what it actually
+  unpacks. Parsing runs in a worker thread so one upload cannot stall the
+  event loop.
 - The shared view renders a section through the same component as the owner's
   view, so an edited HTML body shows there too.
 - The release workflow publishes an image only after the CI workflow passed on

@@ -7,7 +7,10 @@ import contextlib
 import datetime as dt
 import json
 import logging
+import os
 import re
+import socket
+import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextvars import ContextVar, copy_context
@@ -409,19 +412,120 @@ async def _skill_shelf(
     return shelf
 
 
-#: Claim not renewed for this long = crash leftover.
-_CLAIM_TTL_SEC = 600
+#: Claim not renewed for this long = crash leftover (four missed renewals). A replica that
+#: restarts frees its own earlier boot's claims at once (`free_claims_of_earlier_boots`);
+#: this bounds the rest, such as a crashed container that was replaced rather than restarted.
+_CLAIM_TTL_SEC = 240
 #: How often a running turn renews its claim (`_keep_claim`); well inside the TTL.
 _CLAIM_REFRESH_SEC = 60.0
 #: Claim tokens by session, request → releasing turn.
 _CLAIMS: dict[str, str] = {}
 #: This request's claim `(session id, token)` until a turn stream takes it over.
 _TURN_CLAIM: ContextVar[tuple[str, str] | None] = ContextVar("turn_claim", default=None)
+#: Who holds a claim: `<replica>:<boot>:<random>`. The replica name is the container's host
+#: name, which survives a restart of the same container, so the next boot can tell its own
+#: dead claims from a live replica's. Two processes must not share it (`REPLICA_ID`).
+_REPLICA = (os.environ.get("REPLICA_ID") or socket.gethostname() or "api").replace(":", "-")[:64]
+_BOOT = uuid.uuid4().hex[:12]
+#: Set when this process starts going down (`shutdown_started`) and while it drains: a turn
+#: stopped from then on was cut by the restart, not by its reader, and is stored interrupted.
+_SHUTDOWN: dict[str, float | bool] = {"since": 0.0, "stopping": False}
+
+
+def _claim_token() -> str:
+    return f"{_REPLICA}:{_BOOT}:{uuid.uuid4().hex}"
+
+
+def _stopped_failure() -> TurnFailure:
+    """How a turn ended by its stop signal is stored: the reader's stop, or the restart's."""
+    return TurnFailure.interrupted if _SHUTDOWN["stopping"] else TurnFailure.stopped
+
+
+async def _interrupt_turn(session_id: str, token: str) -> bool:
+    """Frees `token`'s claim on the session and marks the question it left unanswered as
+    interrupted, so the reader is offered a resend instead of a turn that never ends."""
+    try:
+        async with SessionLocal() as db:
+            freed = await db.exec(
+                update(ChatSession)
+                .where(ChatSession.id == session_id, ChatSession.running_turn == token)
+                .values(running_turn=None, running_since=None)
+                .execution_options(synchronize_session=False)
+            )
+            if getattr(freed, "rowcount", 0) != 1:
+                return False
+            last = (await db.exec(
+                select(Message).where(Message.session_id == session_id)
+                .order_by(col(Message.created_at).desc()).limit(1)
+            )).first()
+            if last is not None and last.role is Role.user and last.failure is None:
+                last.failure = TurnFailure.interrupted
+                db.add(last)
+            await db.commit()
+    except Exception as exc:  # noqa: BLE001 — the TTL still frees it
+        log.warning("turn claim for %s not freed: %s", logs.safe(session_id), logs.safe(exc))
+        return False
+    if _CLAIMS.get(session_id) == token:
+        _CLAIMS.pop(session_id, None)
+    return True
+
+
+async def free_claims_of_earlier_boots() -> int:
+    """At startup: frees the claims an earlier boot of this replica held (a crash or a kill
+    left them), marking their questions interrupted. Other replicas' claims are untouched."""
+    mine = f"{_REPLICA}:"
+    now = f"{_REPLICA}:{_BOOT}:"
+    try:
+        async with SessionLocal() as db:
+            held = (await db.exec(
+                select(ChatSession.id, ChatSession.running_turn)
+                .where(col(ChatSession.running_turn).is_not(None))
+            )).all()
+    except Exception as exc:  # noqa: BLE001 — the TTL still frees them
+        log.warning("earlier turn claims not read: %s", logs.safe(exc))
+        return 0
+    freed = 0
+    for session_id, token in held:
+        if token and token.startswith(mine) and not token.startswith(now):
+            freed += await _interrupt_turn(session_id, token)
+    if freed:
+        log.info("freed %d turn claim(s) left by an earlier boot of %s", freed, _REPLICA)
+    return freed
+
+
+def shutdown_started() -> None:
+    """Notes when the stop signal arrived; `drain_turns` counts its wait from here."""
+    if not _SHUTDOWN["since"]:
+        _SHUTDOWN["since"] = time.monotonic()
+
+
+async def drain_turns(wait_sec: float, *, settle_sec: float = 10.0) -> None:
+    """At shutdown: lets this process's turns run until `wait_sec` after the stop signal,
+    stops the rest (partial answers kept, stored as interrupted), then frees every claim it
+    still holds with its question marked interrupted. Nothing is left locked for the TTL."""
+    since = float(_SHUTDOWN["since"]) or time.monotonic()
+    running = {task for task in _DETACHED if not task.done()}
+    left = max(0.0, wait_sec - (time.monotonic() - since))
+    if running and left:
+        log.info("shutdown: waiting up to %.0fs for %d turn(s)", left, len(running))
+        _, running = await asyncio.wait(running, timeout=left)
+    _SHUTDOWN["stopping"] = True
+    if running:
+        log.warning("shutdown: stopping %d turn(s) still running", len(running))
+        for session_id in list(_STOPPING):
+            fire_stop_locally(session_id)
+        _, running = await asyncio.wait(running, timeout=settle_sec)
+    for task in running:
+        task.cancel()
+    if running:
+        await asyncio.wait(running, timeout=5.0)
+    for session_id, token in list(_CLAIMS.items()):
+        await _interrupt_turn(session_id, token)
 
 
 async def _claim_turn(db: AsyncSession, session: ChatSession) -> bool:
     """Claims this session's turn across replicas via one conditional update; caller commits."""
-    token = uuid.uuid4().hex
+    token = _claim_token()
     stale = utcnow() - timedelta(seconds=_CLAIM_TTL_SEC)
     try:
         result = await db.exec(
@@ -472,6 +576,10 @@ async def _keep_claim(session_id: str, token: str) -> None:
 
 async def _release_turn(session_id: str, token: str | None = None) -> None:
     """Releases the session's turn: `token`'s claim, this process's (None), or any ("": stop)."""
+    if token and _SHUTDOWN["stopping"]:
+        # a turn the restart ended: its unanswered question is marked for a resend
+        await _interrupt_turn(session_id, token)
+        return
     if token is None:
         token = _CLAIMS.pop(session_id, None)
         if token is None:
@@ -5835,7 +5943,7 @@ async def _settle_stopped_document(*, session_id: str, user_id: str, model: dict
                 .order_by(col(Message.created_at).desc()).limit(1)
             )).first()
             if last is not None and last.role is Role.user and last.failure is None:
-                last.failure = TurnFailure.stopped
+                last.failure = _stopped_failure()
                 db.add(last)
             if user is not None:
                 settle(db, user, credits, reason=reason, session_id=session_id,
@@ -6380,9 +6488,9 @@ async def _answer_turn(
                 yield chat_service.sse({"type": "privacy_route", **routing})
                 continue
             yield chat_service.sse(event)
-        # stopped turn still settles; only the label differs
+        # stopped turn still settles; only the label differs (a restart's stop: interrupted)
         if stopping.is_set():
-            failed = "stopped"
+            failed = "interrupted" if _SHUTDOWN["stopping"] else "stopped"
     except chat_service.ChatStreamError as exc:
         log.warning("chat stream failed for session %s: %s", session_id, exc)
         failed = str(exc)
@@ -6443,7 +6551,8 @@ async def _answer_turn(
         yield chat_service.sse(_error_event(
             "답을 완성하지 못했습니다. 다시 시도하거나 다른 모델을 골라 보세요.",
             code="no_answer"))
-    if failed == "stopped" and not any(usage.values()) and not skip_completion_work:
+    stopped_here = failed in ("stopped", "interrupted")
+    if stopped_here and not any(usage.values()) and not skip_completion_work:
         # stopped stream has no usage chunk: estimate, marked
         usage = {
             "inputTokens": file_service.estimate_tokens(
@@ -6633,7 +6742,11 @@ async def _answer_turn(
                 if question is not None:
                     # stopped before first token = stopped, not unanswered
                     question.failure = (
-                        TurnFailure.stopped if failed == "stopped" else TurnFailure.no_answer
+                        TurnFailure.stopped
+                        if failed == "stopped"
+                        else TurnFailure.interrupted
+                        if failed == "interrupted"
+                        else TurnFailure.no_answer
                     )
                     db.add(question)
             # searches spent quota regardless of outcome

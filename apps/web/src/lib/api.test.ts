@@ -6,6 +6,7 @@ import {
   modelsApi,
   setAccessToken,
   setSessionRenewer,
+  streamSession,
 } from '@/lib/api'
 
 const json = (body: unknown, init: ResponseInit = {}) =>
@@ -83,6 +84,24 @@ describe('call', () => {
     expect((err as ApiError).detail).toBe('응답이 늦어 요청을 멈췄습니다. 잠시 뒤 다시 시도하세요.')
   })
 
+  it('keeps the read limit running while the body is read', async () => {
+    vi.useFakeTimers()
+    // Headers arrive at once; the body never finishes.
+    vi.stubGlobal('fetch', vi.fn((_url: string, init: RequestInit) => {
+      const body = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('{"models":'))
+          init.signal?.addEventListener('abort', () =>
+            controller.error(new DOMException('aborted', 'AbortError')))
+        },
+      })
+      return Promise.resolve(new Response(body, { headers: { 'content-type': 'application/json' } }))
+    }))
+    const pending = modelsApi.list().catch((e: unknown) => e)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(await pending).toBeInstanceOf(RequestTimeoutError)
+  })
+
   it('sends a read once more when the network dropped it, a write never', async () => {
     const read = vi.fn()
       .mockRejectedValueOnce(new TypeError('Failed to fetch'))
@@ -95,6 +114,53 @@ describe('call', () => {
     vi.stubGlobal('fetch', write)
     await expect(auth.updateMe({ name: 'x' })).rejects.toBeInstanceOf(TypeError)
     expect(write).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('streamSession', () => {
+  const sse = (...events: unknown[]) =>
+    new Response(events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join(''), {
+      headers: { 'content-type': 'text/event-stream' },
+    })
+
+  it('renews the token on a 401 at the start and sends the turn once more', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(json({ detail: 'unauthorized' }, { status: 401 }))
+      .mockResolvedValueOnce(sse({ type: 'delta', text: '안녕' }, { type: 'done' }))
+    vi.stubGlobal('fetch', fetch)
+    const renew = vi.fn(async () => {
+      setAccessToken('new', 3600)
+      return true
+    })
+    setSessionRenewer(renew)
+    const seen = []
+    for await (const event of streamSession('s1', { content: '질문' })) seen.push(event.type)
+    expect(seen).toEqual(['delta', 'done'])
+    expect(renew).toHaveBeenCalledTimes(1)
+    expect(fetch.mock.calls.map(bearer)).toEqual(['Bearer old', 'Bearer new'])
+  })
+
+  it('does not send the turn again when the token could not be renewed', async () => {
+    const fetch = vi.fn().mockResolvedValue(json({ detail: 'unauthorized' }, { status: 401 }))
+    vi.stubGlobal('fetch', fetch)
+    setSessionRenewer(async () => false)
+    const run = async () => {
+      for await (const _ of streamSession('s1', { content: '질문' })) { /* drained */ }
+    }
+    await expect(run()).rejects.toMatchObject({ status: 401 })
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('renews a token about to lapse before it starts', async () => {
+    setAccessToken('old', 10)
+    const fetch = vi.fn().mockResolvedValue(sse({ type: 'done' }))
+    vi.stubGlobal('fetch', fetch)
+    setSessionRenewer(async () => {
+      setAccessToken('new', 3600)
+      return true
+    })
+    for await (const _ of streamSession('s1', { content: '질문' })) { /* drained */ }
+    expect(fetch.mock.calls.map(bearer)).toEqual(['Bearer new'])
   })
 })
 

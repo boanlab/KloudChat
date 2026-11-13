@@ -992,6 +992,41 @@ def _relint(kind: ArtifactKind, data: dict) -> dict:
     return {**data, "lint": lint.wire(findings)}
 
 
+_STALE_ARTIFACT = (
+    "이 아티팩트는 다른 곳에서 이미 수정되었습니다. 최신 내용을 받은 뒤 다시 저장하세요."
+)
+
+
+async def _next_version(db: DbSession, artifact: Artifact, expected: int, summary: str) -> None:
+    """Move `artifact` from `expected` to the next version in one conditional UPDATE and
+    snapshot the superseded body; 409 when another writer moved it first.
+
+    The check is the UPDATE itself (`WHERE id = … AND version = expected`), not a comparison
+    in Python: of two writers that both read `expected` — two API replicas, or an edit that
+    lands while a rewrite waits on its model — exactly one matches the row, and the row lock
+    it takes holds until this transaction ends.
+    """
+    moved = await db.exec(
+        update(Artifact)
+        .where(col(Artifact.id) == artifact.id, col(Artifact.version) == expected)
+        .values(version=expected + 1)
+        .execution_options(synchronize_session=False)
+    )
+    if moved.rowcount != 1:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_STALE_ARTIFACT)
+    db.add(
+        ArtifactVersion(
+            artifact_id=artifact.id,
+            version=expected,
+            data=artifact.data,
+            storage_key=artifact.storage_key,
+            summary=summary,
+        )
+    )
+    artifact.version = expected + 1
+
+
 @router.patch("/artifacts/{artifact_id}", response_model=ArtifactOut)
 async def patch_artifact(
     artifact_id: str, payload: ArtifactPatch, user: CurrentUser, db: DbSession
@@ -1001,15 +1036,9 @@ async def patch_artifact(
     summary = changes.pop("summary", "")
     expected = changes.pop("expected_version", None)
 
-    # optimistic concurrency: check in this transaction
+    # optimistic concurrency: early answer here; a data change is settled by `_next_version`
     if expected is not None and expected != artifact.version:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "이 아티팩트는 다른 곳에서 이미 수정되었습니다. "
-                "최신 내용을 받은 뒤 다시 저장하세요."
-            ),
-        )
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_STALE_ARTIFACT)
 
     if changes.get("project_id"):
         # own project only; foreign → 404
@@ -1023,16 +1052,8 @@ async def patch_artifact(
         changes["data"] = _relint(artifact.kind, changes["data"])
 
     if "data" in changes:
-        db.add(
-            ArtifactVersion(
-                artifact_id=artifact.id,
-                version=artifact.version,
-                data=artifact.data,
-                storage_key=artifact.storage_key,
-                summary=summary,
-            )
-        )
-        artifact.version += 1
+        base = artifact.version if expected is None else expected
+        await _next_version(db, artifact, base, summary)
 
     for field, value in changes.items():
         setattr(artifact, field, value)
@@ -1457,18 +1478,9 @@ async def add_slide_image(artifact_id: str, payload: SlideImage, user: CurrentUs
         # hand-placed picture replaces deck's own figure
         target.pop("diagram", None)
 
-    db.add(
-        ArtifactVersion(
-            artifact_id=artifact.id,
-            version=artifact.version,
-            data=artifact.data,
-            storage_key=artifact.storage_key,
-            summary=f"{target.get('title') or ''} 에 그림 넣음",
-        )
-    )
+    await _next_version(db, artifact, artifact.version, f"{target.get('title') or ''} 에 그림 넣음")
     data["slides"] = slides
     artifact.data = data
-    artifact.version += 1
     artifact.updated_at = utcnow()
     db.add(artifact)
     await db.commit()
@@ -1554,14 +1566,8 @@ async def add_block_image(artifact_id: str, payload: BlockImage, user: CurrentUs
         caption=caption,
     )
 
-    db.add(
-        ArtifactVersion(
-            artifact_id=artifact.id,
-            version=artifact.version,
-            data=artifact.data,
-            storage_key=artifact.storage_key,
-            summary=f"{blocks[payload.index].get('title')} 에 그림 넣음",
-        )
+    await _next_version(
+        db, artifact, artifact.version, f"{blocks[payload.index].get('title')} 에 그림 넣음"
     )
     # same sanitiser as model output
     blocks[payload.index]["html"] = design_templates.sanitise(
@@ -1575,7 +1581,6 @@ async def add_block_image(artifact_id: str, payload: BlockImage, user: CurrentUs
         body=design_templates.assemble(template, blocks),
     )
     artifact.data = data
-    artifact.version += 1
     artifact.updated_at = utcnow()
     db.add(artifact)
     await db.commit()
@@ -1614,18 +1619,11 @@ async def add_section_image(
         # alt text = exported caption
         target["content"] = f"{body}\n\n![{caption}]({src})\n"
 
-    db.add(
-        ArtifactVersion(
-            artifact_id=artifact.id,
-            version=artifact.version,
-            data=artifact.data,
-            storage_key=artifact.storage_key,
-            summary=f"{target.get('heading') or '절'} 에 그림 넣음",
-        )
+    await _next_version(
+        db, artifact, artifact.version, f"{target.get('heading') or '절'} 에 그림 넣음"
     )
     data["sections"] = sections
     artifact.data = data
-    artifact.version += 1
     artifact.updated_at = utcnow()
     db.add(artifact)
     await db.commit()
@@ -1692,14 +1690,8 @@ async def rewrite_block(
     if not fragment.strip():
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="rewrite_empty")
 
-    db.add(
-        ArtifactVersion(
-            artifact_id=artifact.id,
-            version=artifact.version,
-            data=artifact.data,
-            storage_key=artifact.storage_key,
-            summary=f"{blocks[payload.index].get('title')} 다시 씀",
-        )
+    await _next_version(
+        db, artifact, artifact.version, f"{blocks[payload.index].get('title')} 다시 씀"
     )
     # embedded pictures survive the rewrite
     blocks[payload.index]["html"] = fragment + design_templates.pictures_in(
@@ -1720,7 +1712,6 @@ async def rewrite_block(
         )
     )
     artifact.data = data
-    artifact.version += 1
     artifact.updated_at = utcnow()
     db.add(artifact)
 
@@ -1793,15 +1784,7 @@ async def rewrite_section(
     if not body.strip():
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="rewrite_empty")
 
-    db.add(
-        ArtifactVersion(
-            artifact_id=artifact.id,
-            version=artifact.version,
-            data=artifact.data,
-            storage_key=artifact.storage_key,
-            summary=f"{target.get('heading')} 다시 씀",
-        )
-    )
+    await _next_version(db, artifact, artifact.version, f"{target.get('heading')} 다시 씀")
     target["content"] = pictures.drop_broken(hangul.tidy_spacing(hangul.read_back(body)[0]))
     # model output is Markdown
     target["format"] = "markdown"
@@ -1810,7 +1793,6 @@ async def rewrite_section(
     data["wordCount"] = report_service.word_count(sections)
     data = _relint(artifact.kind, data)
     artifact.data = data
-    artifact.version += 1
     artifact.updated_at = utcnow()
     db.add(artifact)
 
@@ -1877,19 +1859,10 @@ async def rewrite_slide(
             status_code=status.HTTP_502_BAD_GATEWAY, detail="rewrite_failed"
         ) from exc
 
-    db.add(
-        ArtifactVersion(
-            artifact_id=artifact.id,
-            version=artifact.version,
-            data=artifact.data,
-            storage_key=artifact.storage_key,
-            summary=f"{target.get('title')} 다시 씀",
-        )
-    )
+    await _next_version(db, artifact, artifact.version, f"{target.get('title')} 다시 씀")
     slides[slides.index(target)] = written
     data["slides"] = slides
     artifact.data = data
-    artifact.version += 1
     artifact.updated_at = utcnow()
     db.add(artifact)
 
@@ -1956,18 +1929,13 @@ async def restore_artifact(
     ).first()
     if target is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "no such version")
+    expected = payload.expected_version
+    if expected is not None and expected != artifact.version:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_STALE_ARTIFACT)
 
-    db.add(
-        ArtifactVersion(
-            artifact_id=artifact.id,
-            version=artifact.version,
-            data=artifact.data,
-            storage_key=artifact.storage_key,
-            summary=f"v{payload.version} 로 되돌리기 전",
-        )
-    )
-    artifact.version += 1
     source = office_doc.source_of(artifact.data)
+    base = artifact.version if expected is None else expected
+    await _next_version(db, artifact, base, f"v{payload.version} 로 되돌리기 전")
     artifact.data = _clean_report_data(target.data)
     # an office document opened from a file keeps that link whichever version is back
     if source and isinstance(artifact.data, dict) and not office_doc.source_of(artifact.data):

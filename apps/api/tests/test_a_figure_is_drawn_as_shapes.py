@@ -147,6 +147,10 @@ class _Db:
     async def refresh(self, _row) -> None:
         return None
 
+    async def exec(self, _statement):
+        """`_next_version`'s conditional UPDATE: the row is still at the version read."""
+        return type("Moved", (), {"rowcount": 1})()
+
 
 class _User:
     id = "u1"
