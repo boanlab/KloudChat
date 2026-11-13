@@ -53,7 +53,7 @@ authorizes raw, masked or strict-local egress.
 | Deployment | `PERF_*` | Performance monitoring: mounts, targets and thresholds of this host. |
 | Product, seeded once | `DEFAULT_CHAT_MODEL`, `DEFAULT_REPORT_MODEL`, `DEFAULT_SLIDES_MODEL`, `DEFAULT_IMAGE_MODEL`, `DEFAULT_AUDIO_MODEL`, `DEFAULT_VIDEO_MODEL`, `TITLE_MODEL`, `CODE_MODEL`, `CODE_FALLBACK_MODEL`, `SELF_HOSTED_CHAT_THINKING`, `EXTERNAL_CHAT_THINKING` | **System › Model** (`models.*`, `thinking.*` in `system_settings`). The environment seeds a fresh install once. |
 | Product, seeded once | `DEFAULT_MONTHLY_CREDITS` | **System › Signup** (`credits.default_monthly`). Seeded once the same way. |
-| Product, environment as fallback | `ADAPTIVE_ROUTING_DEFAULT`, `ADAPTIVE_CLASSIFIER_MODEL_DEFAULT`, `ADAPTIVE_ECONOMY_MODELS_DEFAULT`, `ADAPTIVE_QUALITY_DEFAULT`, `ADAPTIVE_QUALITY_MODELS_DEFAULT`, `OUTLINE_MODEL_DEFAULT`, `INTERNAL_DATA_STRICT_LOCAL_DEFAULT` | **System › Routing** and **Security · audit** (`governance` row). The environment only fills the row when it is first created. |
+| Product, environment as fallback | `ADAPTIVE_ROUTING_DEFAULT`, `ADAPTIVE_CLASSIFIER_MODEL_DEFAULT`, `ADAPTIVE_ECONOMY_MODELS_DEFAULT`, `ADAPTIVE_QUALITY_DEFAULT`, `ADAPTIVE_QUALITY_MODELS_DEFAULT`, `SUPER_AGENT_DEFAULT`, `OUTLINE_MODEL_DEFAULT`, `INTERNAL_DATA_STRICT_LOCAL_DEFAULT` | **System › Routing** and **Security · audit** (`governance` row). The environment only fills the row when it is first created. |
 | Product, environment as fallback | `BRAND_NAME`, `SIGNUP_MODE`, `SMTP_HOST` … `SMTP_FROM` | **System › Branding / Signup / Mail**. A stored value wins; with none stored the environment applies. |
 | Product, admin screen only | enabled surfaces, OCR on/off, reading mode, vision model, page limit, contact address, signup domains and verification, logo, governance policies | No environment variable. |
 
@@ -156,13 +156,18 @@ it when nobody is mid-turn):
 | `KCHAT_DEFAULT_IMAGE_MODEL` | `DEFAULT_IMAGE_MODEL` | `bytedance-seed/seedream-5-0-flash` | Default picture model, for the image surface and for pictures in reports and decks. The picture models are whatever the gateway's catalogue lists; one that does not honour an aspect ratio is offered square only (`imagegen.aspects_for`). Absent from the catalogue → pictures are unavailable until an administrator picks one (`409 default_image_model_unset`); outside an account's allowlist → the first picture model it may use. A strict-local conversation never uses it: see [Governance](#governance-security--audit-admingovernance). |
 | `KCHAT_DEFAULT_AUDIO_MODEL` / `KCHAT_DEFAULT_VIDEO_MODEL` | `DEFAULT_AUDIO_MODEL` / `DEFAULT_VIDEO_MODEL` | `openai/gpt-audio-mini` / `google/veo-3.1-lite` | The Audio / Video surface keeps one default per modality. Absent from the catalogue → that mode is unavailable until an administrator picks one (`409 default_audio_model_unset` for audio). |
 
-### Auto routing
+### Super Agent and the earlier Auto lanes
 
-Auto has two lanes, each with its own switch under **System › Routing**. A
-fresh governance row turns both on (`ADAPTIVE_ROUTING_DEFAULT`,
-`ADAPTIVE_QUALITY_DEFAULT`), with `local/qwen3.8-flash` as the economy model
-and `deepseek/deepseek-v4.1-flash`, `z-ai/glm-5.3-flash` as upgrade models;
-a lane with no usable model is not offered:
+**System › Routing** holds the Super Agent switch (`super_agent_enabled`, on for a fresh
+installation through `SUPER_AGENT_DEFAULT`), its classifier (`adaptive_classifier_model_id`,
+a live zero-cost strict-local model) and the class table (`super_agent_rules`, the admin's
+changes to `super_agent.DEFAULT_RULES`; see docs/architecture.md, "Super Agent"). A `super`
+pick must be a chat model the gateway serves; a `super_strict` pick must be strict-local.
+
+The earlier Auto lanes (`adaptive_routing_enabled`, `adaptive_economy_model_ids`,
+`adaptive_quality_enabled`, `adaptive_quality_model_ids`) are no longer offered in the picker;
+migration 0083 moved their first models into the table (economy → simple, upgrade →
+reasoning) and their conversations to Super Agent. The API still accepts them for comparison:
 
 - **Auto · Save credits** (cost) sends a turn classified as low-complexity to one of
   one to three ordered economy models: cheaper than the chosen model on known
@@ -171,9 +176,6 @@ a lane with no usable model is not offered:
 - **Auto · Favour quality** (quality) sends a turn classified as high-complexity to one
   of one to three ordered upgrade models. An upgrade never widens the data
   boundary of the chosen model and keeps the turn's tools.
-
-Both need one live classifier model declared by LiteLLM as `self_hosted` and
-`strictLocal`, with zero input and output credit cost.
 
 A model's boundary comes from the gateway's catalogue metadata
 (`kchat_data_boundary`): `external`; `hybrid`, a `local/` model that runs on
@@ -440,8 +442,9 @@ selectable as it is, marked unavailable, and is not swapped silently.
 
 ### Routing
 
-The Auto routing classifier, economy and upgrade models — see
-[Auto routing](#auto-routing) — and the outline model, which plans
+Super Agent's switch, classifier and class table — see
+[Super Agent and the earlier Auto lanes](#super-agent-and-the-earlier-auto-lanes) — and the
+outline model, which plans
 a document before the surface's own model writes it.
 
 #### Which model does what
@@ -458,7 +461,7 @@ better on Korean institutional requests:
 | Judging: key figures, cost and score readings, checks, repairs, title block | the outline model, else the writer | follows the outline model |
 | Calculation programs for a document (`calc`) | the outline model, else the writer | follows the outline model |
 | Missing-information questions judged against the material | the outline model's `strict-local/` twin, else the first strict-local model | follows the outline model |
-| Auto classifier | `strict-local/qwen3.8-flash` | **System › Routing › Complexity classifier** |
+| Super Agent classifier | `strict-local/qwen3.8-flash` | **System › Routing › 분류 모델** |
 | Titles, memories, running summary | `local/qwen3.8-flash` | **System › Model › Titles, memories and summaries model** |
 | `run_code` file programs | `local/qwen3.8-27b`, then Flash | **System › Model › Code-writing model**, its fallback |
 | Re-reading scanned pages | `strict-local/qwen3.8-flash` | **System › Features › Text from scans (OCR)** |

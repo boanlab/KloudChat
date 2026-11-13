@@ -33,7 +33,7 @@ All of them can be changed on this tab and on the **Routing** and **Features** t
 
 ## Routing
 
-The routing settings are described in [Policy and routing](policy#auto-routing).
+The routing settings are described in [Policy and routing](policy#super-agent).
 
 ## Features
 

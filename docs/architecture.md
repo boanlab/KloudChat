@@ -214,7 +214,7 @@ Migrations live under `alembic/versions/`. The principal tables:
   addresses, model roles, enabled surfaces, OCR, branding, SMTP, signup policy.
   Database values override environment variables
 - `governance` — the one instance-wide policy row: privacy guard and masking,
-  internal-material routing, Auto routing lanes, outline model, intent filter,
+  internal-material routing, Super Agent and the earlier Auto lanes, outline model, intent filter,
   idle sign-out, retention
 
 `files` carries the scope it belongs to: `project_id` for project knowledge,
@@ -2476,7 +2476,70 @@ whole, a direct call to a deferred tool still runs, and the loader's text comes 
 same tool-definition snapshot the privacy scan read. A `load_tools` result is not material:
 it gets no source number and adds no number sources.
 
-### Auto routing
+### Super Agent
+
+Super Agent is two picker entries, `routing_mode` `super` and `super_strict`, that choose a
+model, a reasoning effort and a tool budget for every turn (`services/super_agent.py`). Both
+replace the two Auto lanes in the picker; conversations on an Auto lane were moved to `super`
+by migration 0083. The Auto code below stays for comparison and for sessions set through the
+API.
+
+**Task class first, by rules.** Each turn is sorted into `simple`, `chat`, `transform`
+(translate, summarise, proofread), `calc`, `code`, `current` (facts that change; search
+switched on), `long` (large pasted material or conversation), `reasoning` or `document`
+(report and deck sessions). Rules read only the ask, not material pasted with it
+(`split_ask`): a meeting memo that mentions 「코드 프리즈」 is not a coding task. Calculation and
+current-fact cues reuse `calculation_policy` and `freshness`. Only a turn the rules cannot
+place (short or unmarked) goes to the classifier: a zero-cost strict-local model
+(`adaptive_classifier_model_id`, else the table's strict `simple` model) that receives the
+request and the previous question, each cut short — about 300 tokens, against the 4,000+ of
+Auto's whole-envelope classifier — and answers one JSON class. A failure or a confidence
+under 0.6 keeps the rule's answer. The classifier is never called when the turn holds
+personal data.
+
+**The table.** `DEFAULT_RULES` maps every class to a model for `super`, a strict-local model
+for `super_strict`, and an effort (`default`, `none`, `low`, `high`); the admin edits it in
+설정 › 시스템 › 라우팅 and only changes are stored (`governance.super_agent_rules`). Effort
+becomes the request fields of the routed writer only (`agent.TURN_REASONING`): OpenRouter
+`reasoning.effort` for external models (the lowest offered level when a model cannot turn
+reasoning off), the vLLM template switch for self-hosted ones (`enable_thinking` for Qwen,
+`thinking` for DeepSeek). A table model that is not served, not allowed, too small for the
+conversation, without tools a class needs or without vision for pictures falls back along a
+short list, then to the surface default. Defaults come from the 2026-11-13 evaluation (31
+scenarios, judged blind by Sonnet and Opus separately):
+
+| Class | `super` | `super_strict` | Effort | Why |
+|---|---|---|---|---|
+| simple, chat, transform | Qwen3.8 Flash | strict Flash | none | Flash matched every larger model (8.5/8.2 of 10) |
+| calc, code, long, reasoning | Qwen3.8 Flash | strict Flash | high | thinking Flash 8.3–8.5 vs 2–6 without; free |
+| current | DeepSeek V4.1 Flash | strict Flash (no search) | none | searches and cites best (8.7 vs Flash 6.3) |
+| document | Qwen3.8 27B | strict 27B | default | 6.0 free vs GLM-5.3 6.7 at ~800 credits |
+| escalation | DeepSeek V4.1 Flash | strict Flash | high | never empty; 9/10 where thinking Flash left nothing |
+
+**Escalation, de-escalation, stickiness.** 「다시」, 「더 자세히」, 「틀렸어」 and the like, or an
+empty or failed previous answer, move the turn to the `escalation` row; that row's model also
+rewrites, inside the same turn, an answer the class's model left empty or cut (the rescue
+writer, with its own effort). A thanks or 「ok」 after a hard turn comes down to `simple`. A
+short follow-up with no markers of its own keeps the previous turn's class and model (one
+voice per thread, and the provider's prefix cache stays warm), and every revision of a report
+or deck keeps the model that wrote its first version (`_first_document_model`). The pick is
+the turn's: `sessions.model` is not overwritten.
+
+**Boundaries.** `super_strict` picks only `self_hosted` strict-local models; with none usable
+the turn is refused (503 `strict_local_unavailable`), never answered outside, and titles,
+summaries and checks follow the strict writer. In `super`, personal data in the conversation
+or internal material (attachments, a project, `internal_data_strict_local`) picks from the
+strict-local column instead of asking, and the privacy resolution still runs on the pick as
+for a manual choice. The user's `allowed_models` bound every pick.
+
+**What the person sees.** The answer's processing row reads 「이번 답: Qwen3.8 Flash · 간단한
+질문」 plus the reason when there is one (same model as before, retried stronger, personal data
+kept inside); its title names rules or classifier, the effort, tools and the classifier's
+tokens and time. The picker shows each entry with a typical answer's credits (10k tokens in,
+1k out) across the table. The route is stored as `routing.superAgent` and audited as
+`routing.super`.
+
+### Auto routing (earlier lanes)
 
 Auto is a session mode, not a model alias. `sessions.model` always stores the
 last real model the person selected; the separate `routing_mode` field is
