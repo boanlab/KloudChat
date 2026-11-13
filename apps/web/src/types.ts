@@ -821,6 +821,11 @@ export interface Slide {
   factCheck?: FactCheck
   /** Text size as a multiple of the template's; `deck_export` applies the same. */
   textScale?: number
+  /**
+   * Content a layout change could not show, kept rather than dropped: lines of text and a
+   * chart. A later layout change takes it back where the new layout has room for it.
+   */
+  held?: { lines?: string[]; chart?: Slide['chart'] }
   /** Sanitised inline HTML keyed by text slot (`title`, `bullets.0`, `rows.1.2`, …); the plain fields stay canonical. */
   richText?: Record<string, string>
   /** `src` is a `data:` URI so the deck stays one self-contained file. */

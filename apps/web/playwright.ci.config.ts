@@ -120,6 +120,8 @@ const groups: Record<string, Group> = {
     projects: { desktop },
   },
   results: { files: ['results.spec.ts', 'panel-header.spec.ts'], projects: { desktop, phone: pixel } },
+  // the web slides as the PowerPoint editor: header, toolbar, rail, notes, keys, saves, phone
+  'deck-editor': { files: ['deck-editor.spec.ts'], projects: { desktop, phone: touchPhone } },
   search: { files: ['search-dialog.spec.ts'], projects: { desktop, phone: pixel } },
   publishing: { files: ['publishing.spec.ts'], projects: { desktop, phone: pixel } },
   ocr: { files: ['ocr.spec.ts'], projects: { desktop, phone: touchPhone } },
