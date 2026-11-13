@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
 import { strFromU8, unzipSync } from 'fflate'
-import { officeFixture, type OfficeOptions } from './office-fixture'
+import { artifactId, officeFixture, type OfficeOptions } from './office-fixture'
 
 /**
  * The Word panel beside a chat, with the real open-docx-editor: it loads the saved version,
@@ -123,6 +123,8 @@ test('the editor locks while the agent works, then shows its version', async ({ 
   await expect(docxPanel(page).locator('.odx-content')).not.toBeFocused()
   await expect(page.getByText('· 문서 확인 2회 · 문서 편집 2회')).toBeVisible()
   expect(state.sent).toHaveLength(1)
+  // the turn names the document open beside the chat, at the version on screen
+  expect(state.sent[0].openArtifact).toEqual({ id: artifactId, version: 1 })
   expect(state.unexpected).toEqual([])
 })
 
@@ -140,6 +142,8 @@ test('unsaved hand edits are saved before the agent turn when the person says so
   await ask.getByRole('button', { name: '저장하고 보내기' }).click()
   await expect.poll(() => state.sent.length).toBe(1)
   expect(state.saves).toEqual([{ expected: '1', size: expect.any(Number) }])
+  // the version the hand save made is the one the turn works from
+  expect(state.sent[0].openArtifact).toEqual({ id: artifactId, version: 2 })
   await expect(panel(page).locator('header').getByText('v3', { exact: true })).toBeVisible()
 })
 

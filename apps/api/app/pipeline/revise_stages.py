@@ -436,6 +436,8 @@ class Rewrite(Base):
         today = req.today if isinstance(req.today, dt.date) else None
         #: the document as it stood: its percentages and sums are no new ones
         deck_before = "\n".join(s for p in parts for s in strings(p)) if is_deck else ""
+        #: rules the person set for the whole conversation, added to every part's note
+        standing = standing_note(req.turn.get("standing"))
         parts_before = [] if is_deck else [str(p.get("content") or "") for p in parts]
         for index in bundle.plan.order:
             part = parts[index]
@@ -517,7 +519,8 @@ class Rewrite(Base):
                         model=req.model,
                         api_key=req.api_key,
                         note=(plan.note if asked == instruction else asked) + (
-                            _OWN_POINTS if deck_service.requested_layout(asked) else ""),
+                            _OWN_POINTS if deck_service.requested_layout(asked) else ""
+                        ) + standing,
                         material=material,
                         typed=asked,
                         notes_only=revise.notes_only(asked),
@@ -546,7 +549,8 @@ class Rewrite(Base):
                                 target_id=str(part.get("id") or ""), model=req.model,
                                 api_key=req.api_key,
                                 note=(plan.note if asked == instruction else asked)
-                                + f"\nKeep every figure the slide shows now: {', '.join(lost)}.",
+                                + f"\nKeep every figure the slide shows now: {', '.join(lost)}."
+                                + standing,
                                 material=material, typed=asked)
                         except Exception as exc:  # noqa: BLE001 — the first rewrite stands
                             log.info("slide rewrite to keep figures failed: %s", logs.safe(exc))
@@ -600,6 +604,7 @@ class Rewrite(Base):
                         else f"{plan.note}\n사용자가 입력한 문장(그대로 반영): "
                         f"{(plan.typed or instruction).strip()[:400]}"
                     )
+                    note += standing
                     #: numbered tables and figures this edit took out of the part
                     emptied = doc.emptied.get(str(part.get("id") or ""), [])
                     if emptied:
@@ -985,6 +990,17 @@ class Consistency(Base):
 
 for _stage in (Route(), Widen(), Rewrite(), Consistency()):
     registry.register(_stage)
+
+
+def standing_note(rules: object) -> str:
+    """The rules the person set for the whole conversation, as a rewrite note's last lines
+    (「앞으로 기관명은 익명으로」 holds for every later edit, not only the turn it was said in)."""
+    lines = [" ".join(str(x).split()) for x in rules or [] if str(x).strip()] \
+        if isinstance(rules, list) else []
+    if not lines:
+        return ""
+    return ("\nThe person set these rules earlier in the conversation; they hold for this "
+            "rewrite too (keep to every one):\n" + "\n".join(f"- {x}" for x in lines))
 
 
 def bundle_for(*, request: str, instruction: str, model: dict, planner: dict | None,

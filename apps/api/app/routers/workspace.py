@@ -91,6 +91,7 @@ from app.schemas.workspace import (
     ToolCatalogOut,
 )
 from app.services import (
+    artifact_versions,
     audit,
     critique,
     deck_export,
@@ -1081,33 +1082,11 @@ _STALE_ARTIFACT = (
 
 
 async def _next_version(db: DbSession, artifact: Artifact, expected: int, summary: str) -> None:
-    """Move `artifact` from `expected` to the next version in one conditional UPDATE and
-    snapshot the superseded body; 409 when another writer moved it first.
-
-    The check is the UPDATE itself (`WHERE id = … AND version = expected`), not a comparison
-    in Python: of two writers that both read `expected` — two API replicas, or an edit that
-    lands while a rewrite waits on its model — exactly one matches the row, and the row lock
-    it takes holds until this transaction ends.
-    """
-    moved = await db.exec(
-        update(Artifact)
-        .where(col(Artifact.id) == artifact.id, col(Artifact.version) == expected)
-        .values(version=expected + 1)
-        .execution_options(synchronize_session=False)
-    )
-    if moved.rowcount != 1:
+    """Move `artifact` from `expected` to the next version and snapshot the superseded body
+    (`artifact_versions.advance`); 409 when another writer moved it first."""
+    if not await artifact_versions.advance(db, artifact, expected, summary):
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_STALE_ARTIFACT)
-    db.add(
-        ArtifactVersion(
-            artifact_id=artifact.id,
-            version=expected,
-            data=artifact.data,
-            storage_key=artifact.storage_key,
-            summary=summary,
-        )
-    )
-    artifact.version = expected + 1
 
 
 @router.patch("/artifacts/{artifact_id}", response_model=ArtifactOut)

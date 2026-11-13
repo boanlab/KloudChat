@@ -318,6 +318,14 @@ class SessionPatch(Wire):
         return value
 
 
+class OpenArtifact(Wire):
+    """The document open in the panel beside the chat when a turn is sent: the one a chat
+    edit works on, at the version the person sees."""
+
+    id: str = Field(min_length=1, max_length=64)
+    version: int | None = Field(default=None, ge=1)
+
+
 class SendMessage(Wire):
     content: str = Field(min_length=1, max_length=200_000)
     attachments: list[str] | None = None
@@ -346,6 +354,9 @@ class SendMessage(Wire):
     #: a report's file picked on the screen (`web` the HTML report, `hwp`, `docx`); wins over a
     #: file the request names (`report_office.asked_file`); None: the request decides
     output_format: Literal["web", "hwp", "docx"] | None = None
+    #: the document open beside the chat: chat edits and the office tools work on it, never
+    #: on "the newest of its kind" (checked to be the person's and this conversation's)
+    open_artifact: OpenArtifact | None = None
 
 
 class Transcription(Wire):

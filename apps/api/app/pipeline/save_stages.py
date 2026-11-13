@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from typing import Any
 
 from app.pipeline import marks as doc_marks
@@ -368,12 +369,14 @@ class ReportSave(Base):
                         data["marks"] = marks
                     summary = (rerun_note(turn) or host._regeneration_summary(request))[:80]
                     office = await host._office_target(db, session, turn)
+                    #: a hand save landed while this turn wrote: the result kept apart
+                    drafted: list[str] = []
                     if office is not None:
                         # asked for as an HWP or Word file: that file is the document
                         artifact_id = await host._store_office_report(
                             db, session, office, user_id=user_id,
                             project_id=turn.get("project_id"), title=title, summary=summary,
-                            data=data,
+                            data=data, base=turn.get("base"), drafted=drafted,
                         )
                     else:
                         artifact_id = await host._store_document(
@@ -385,17 +388,21 @@ class ReportSave(Base):
                             title=title,
                             summary=summary,
                             data=data,
+                            base=turn.get("base"),
+                            drafted=drafted,
                         )
-                    session.artifact_id = artifact_id
+                    if not drafted:
+                        session.artifact_id = artifact_id
                     # proposal became the document
                     session.pending = None
                     message = Message(
                         session_id=session_id,
                         role=Role.assistant,
-                        content=(rerun_note(turn)
-                                 or _written_note(len(written), title_block,
-                                                  english=captions.of_sections(written)
-                                                  == captions.EN, office=office)),
+                        content=" ".join([*drafted, (
+                            rerun_note(turn)
+                            or _written_note(len(written), title_block,
+                                             english=captions.of_sections(written)
+                                             == captions.EN, office=office))]),
                         usage={**usage, "credits": credits},
                         model=model["id"],
                         steps=host._prelude_steps(turn.get("skills_event"),
@@ -442,6 +449,7 @@ class ReviseLoad(Base):
 
         from app.models.chat import ChatSession, Message, Role
         from app.models.workspace import Artifact, StoredFile
+        from app.services.context import standing_rules
 
         user_id, session_id = turn["user_id"], req.session_id
         async with host.SessionLocal() as db:
@@ -450,8 +458,10 @@ class ReviseLoad(Base):
             if session is None or artifact is None or not artifact.data:
                 bundle.document.loaded = {"missing": True}
                 return
+            # pinned: the revision is saved only onto the version it read (`ReviseSave`)
             loaded: dict[str, Any] = {"kind": artifact.kind.value, "data": dict(artifact.data),
-                                      "title": artifact.title or "", "artifactId": artifact.id}
+                                      "title": artifact.title or "", "artifactId": artifact.id,
+                                      "version": artifact.version}
             # source request and files, so rewrites keep to material instead of inventing values
             turns = (
                 await db.exec(
@@ -462,6 +472,12 @@ class ReviseLoad(Base):
             ).all()
             asked = [m for m in turns if m.role is Role.user and (m.content or "").strip()]
             loaded["request"] = str(asked[0].content if asked else session.title or "")
+            # rules the person set for the whole conversation (「앞으로 기관명은 익명으로」)
+            # and the running memory's pinned items: every revision keeps to them
+            loaded["standing"] = standing_rules(
+                [{"role": m.role.value, "content": m.content or ""} for m in turns],
+                (session.summary or {}).get("pinned"),
+            )
             file_ids = list(
                 dict.fromkeys(
                     str(a.get("id"))
@@ -480,12 +496,17 @@ class ReviseLoad(Base):
                     )
                 ).all()
                 budget = host.file_budget(turn["model"])
-                for stored in sorted(files, key=lambda f: file_ids.index(f.id)):
-                    if not stored.text or budget <= 0:
+                # newest first: a corrected file sent later wins the budget over the one it
+                # corrects, and a file sent again under the same name replaces the older one
+                taken: dict[str, str] = {}
+                for stored in sorted(files, key=lambda f: file_ids.index(f.id), reverse=True):
+                    if not stored.text or budget <= 0 or stored.name in taken:
                         continue
                     text = stored.text[:budget]
                     budget -= len(text)
-                    material.append(f"## {stored.name}\n{text}")
+                    taken[stored.name] = f"## {stored.name}\n{text}"
+                # read in the order they were given
+                material = list(reversed(taken.values()))
             loaded["material"] = material
             loaded["fileIds"] = file_ids
         bundle.document.loaded = loaded
@@ -521,37 +542,48 @@ class ReviseSave(Base):
         credits = host.charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
         saved: dict[str, Any] = {"artifactId": None, "credits": credits, "messageId": None,
                                  "reply": "", "handed": None}
+
+        def derive(body: dict) -> dict:
+            """Keys every writer derives from the parts: word count, lint, marks re-found."""
+            if is_deck:
+                return body
+            sections = list(body.get("sections") or [])
+            body["wordCount"] = report_service.word_count(sections)
+            body["lint"] = lint.wire(lint.check(lint.from_sections(sections)))
+            # existing marks re-found in the revised body
+            if marks := doc_marks.relocate(body.get("marks"), sections):
+                body["marks"] = marks
+            else:
+                body.pop("marks", None)
+            return body
+
         async with host.SessionLocal() as db:
             session = await db.get(ChatSession, session_id)
             user = await db.get(User, user_id)
             if session is not None and user is not None:
                 data["slides" if is_deck else "sections"] = parts
-                if not is_deck:
-                    data["wordCount"] = report_service.word_count(parts)
-                    data["lint"] = lint.wire(lint.check(lint.from_sections(parts)))
-                    # existing marks re-found in the revised body
-                    if marks := doc_marks.relocate(data.get("marks"), parts):
-                        data["marks"] = marks
-                    else:
-                        data.pop("marks", None)
-                # `_store_document` keeps the previous body as a version
-                artifact_id = await host._store_document(
-                    db,
-                    session,
+                derive(data)
+                summary = (rerun_note(turn) or req.instruction.strip()[:80] or "문서 수정")[:80]
+                base = dict(turn.get("base") or {})
+                stored = await store_revision(
+                    db, session, base, kind=kind, title=title or "문서", data=data,
+                    summary=summary, parts="slides" if is_deck else "sections", derive=derive,
                     user_id=user_id,
-                    project_id=session.project_id,
-                    kind=kind,
-                    title=title or "문서",
-                    summary=(rerun_note(turn) or req.instruction.strip()[:80] or "문서 수정")[:80],
-                    data=data,
                 )
-                session.artifact_id = artifact_id
+                artifact_id = stored.artifact_id
+                if not stored.drafted:
+                    session.artifact_id = artifact_id
+                    data = stored.data
                 reply = revision_reply(bundle.document, bundle.plan.revision, is_deck=is_deck,
                                        english=output_language.typed_in_english(req.instruction))
                 if note := rerun_note(turn):
                     reply = f"{note} {reply}"
+                if stored.said:
+                    # drafted: where the edit went first, then what it changed
+                    reply = (f"{stored.said} {reply}" if stored.drafted
+                             else f"{reply} {stored.said}").strip()
                 handed = None
-                if export_after is not None:
+                if export_after is not None and not stored.drafted:
                     await db.flush()
                     revised = await db.get(Artifact, artifact_id)
                     if revised is not None:
@@ -587,6 +619,72 @@ class ReviseSave(Base):
                              handed=handed)
         bundle.document.data = data
         bundle.document.saved = saved
+
+
+@dataclass
+class Stored:
+    """Where a revision went: `artifact_id`, its body (`data`, merged when it was put onto a
+    newer version), and the reply's sentence about a race it met (`said`)."""
+
+    artifact_id: str
+    data: dict
+    drafted: bool = False
+    said: str = ""
+
+
+async def store_revision(db: Any, session: Any, base: dict, *, kind: Any, title: str,
+                         data: dict, summary: str, parts: str, derive: Any,
+                         user_id: str) -> Stored:
+    """The revision saved onto the version it read (`base`: `artifactId`, `version`), never
+    over a save made meanwhile: when the person (or another writer) saved in between, the
+    parts the revision changed are put onto their version if nobody touched them there
+    (`artifact_versions.merge`); otherwise the revision is kept apart as a draft beside the
+    document and the person is told. With no pinned version (an old run) it is stored as
+    before (`_store_document`)."""
+    from app.models.user import utcnow
+    from app.models.workspace import Artifact
+    from app.services import artifact_versions
+
+    host = _host()
+    artifact = (await db.get(Artifact, str(base.get("artifactId") or ""))
+                if base.get("artifactId") else None)
+    expected = base.get("version")
+    if (artifact is None or not isinstance(expected, int) or artifact.kind is not kind
+            or artifact.user_id != user_id or artifact.session_id != session.id):
+        artifact_id = await host._store_document(
+            db, session, user_id=user_id, project_id=session.project_id, kind=kind,
+            title=title, summary=summary, data=data)
+        return Stored(artifact_id, data)
+    if await artifact_versions.advance(db, artifact, expected, summary):
+        host.follow_document_title(session, title)
+        artifact.data, artifact.title, artifact.updated_at = data, title, utcnow()
+        db.add(artifact)
+        return Stored(artifact.id, data)
+    # someone saved since the revision read the document
+    await db.refresh(artifact)
+    newer = artifact.version
+    before = await artifact_versions.body_at(db, artifact, expected)
+    merged = artifact_versions.merge(
+        before or {}, data, dict(artifact.data or {}), parts=parts,
+        title=(str(base.get("title") or ""), title, artifact.title or ""),
+    ) if before is not None else None
+    if merged is not None:
+        body, merged_title = merged
+        body = derive(body)
+        if await artifact_versions.advance(db, artifact, newer, f"{summary} · v{newer}에 합침"):
+            host.follow_document_title(session, merged_title)
+            artifact.data, artifact.title, artifact.updated_at = body, merged_title, utcnow()
+            db.add(artifact)
+            return Stored(artifact.id, body, said=(
+                f"고치는 사이 저장된 v{newer}의 다른 곳은 그대로 두고, 고친 곳만 그 위에 합쳐 "
+                f"v{newer + 1}로 저장했습니다."))
+        await db.refresh(artifact)
+        newer = artifact.version
+    kept = await artifact_versions.draft(db, artifact, title=title, data=data)
+    return Stored(kept.id, data, drafted=True, said=(
+        f"고치는 사이 「{artifact.title}」이 v{newer}로 저장되었고 같은 곳이 바뀌어 있어, 그 판을 "
+        f"덮어쓰지 않았습니다. 이번 수정은 「{kept.title}」으로 따로 남겼으니 열어서 비교해 보고 "
+        "필요한 곳을 옮기거나, 지금 판에서 다시 요청해 주세요."))
 
 
 for _stage in (ReportSave(), ReviseLoad(), ReviseSave()):

@@ -94,6 +94,12 @@ class ToolContext:
     docx: dict[str, Any] = field(default_factory=dict)
     #: PowerPoint tools: the same, for the conversation's `.pptx`.
     pptx: dict[str, Any] = field(default_factory=dict)
+    #: The document open in the panel when the turn was sent, `{"id", "version"}` (checked
+    #: to be the person's and this conversation's): what the office tools work on.
+    open_artifact: dict[str, Any] = field(default_factory=dict)
+    #: Rules the person set earlier in the conversation (「앞으로 기관명은 익명으로」): every
+    #: office tool turn is reminded of them.
+    standing: list[str] = field(default_factory=list)
 
 
 def to_openai(tools: list[Tool]) -> list[dict[str, Any]]:

@@ -100,15 +100,15 @@ TOOLS = tools_for(Toolset(
         "required": ["op"],
     },
     write_text=(
-        "Write a new PowerPoint deck into the editor beside the chat (replacing what is there, "
-        "as a new version): a cover with title and subtitle, then one slide per entry of "
-        "`slides`, each {title, bullets: [...]} or {title, rows: [[header, …], [value, …]]} "
-        "for a table, with optional notes (speaker notes); `closing` adds a last slide with "
-        "that line. Use it only when the person asks for a new PowerPoint file; to change the "
-        "open deck use pptx_read and pptx_edit. Bullets are short lines, three to five a "
-        "slide. Never invent names, dates, places or numbers: write a bracket blank named for "
-        "what goes there, such as 「[담당자]」, 「[YYYY. MM. DD.]」, 「[매출액]」, instead; and "
-        "add no slides the request does not call for."
+        "Write a new PowerPoint deck and open it in the editor beside the chat: a cover with "
+        "title and subtitle, then one slide per entry of `slides`, each {title, bullets: [...]} "
+        "or {title, rows: [[header, …], [value, …]]} for a table, with optional notes "
+        "(speaker notes); `closing` adds a last slide with that line. Use it only when the "
+        "person asks for a new PowerPoint file; to change the open deck use pptx_read and "
+        "pptx_edit. Bullets are short lines, three to five a slide. Never invent names, dates, "
+        "places or numbers: write a bracket blank named for what goes there, such as "
+        "「[담당자]」, 「[YYYY. MM. DD.]」, 「[매출액]」, instead; and add no slides the request "
+        "does not call for."
     ),
     write_params={
         "type": "object",

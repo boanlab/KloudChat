@@ -1,4 +1,4 @@
-import type { WebSearchSetting } from '@/lib/api'
+import type { OpenArtifact, WebSearchSetting } from '@/lib/api'
 import { forgetStoredDraft, purgeStoredDrafts } from '@/lib/drafts'
 import { findUnsent, forgetUnsent, keepUnsent, purgeUnsent, unsentId } from '@/lib/unsentSessions'
 import { create } from 'zustand'
@@ -3607,6 +3607,19 @@ function toConnector(c: ConnectorRow): Connector {
 }
 
 /** One chat turn: an empty assistant message is filled in place as events arrive. */
+/**
+ * The document open in the panel, as a turn carries it (`openArtifact`): the server's chat edits
+ * and office tools work on it, never on "the newest of its kind". A local draft is not sent.
+ */
+function openTarget(get: Get): OpenArtifact | undefined {
+  const id = get().openArtifactId
+  if (!id) return undefined
+  const artifact = get().artifacts.find((a) => a.id === id)
+  if (artifact?.draft) return undefined
+  const version = get().artifactVersions[id] ?? artifact?.version
+  return version ? { id, version } : { id }
+}
+
 async function streamTurn(
   set: Set,
   get: Get,
@@ -3715,6 +3728,7 @@ async function streamTurn(
         privacyDecisionToken: opts.privacyDecisionToken,
         retryOf: opts.retryOf,
         answers: opts.answers,
+        openArtifact: openTarget(get),
       },
       controller.signal,
     )) {
@@ -4010,6 +4024,8 @@ async function streamReport(
     artifactId: get().sessions.find((c) => c.id === sessionId)?.artifactId ?? null,
     open: get().openArtifactId,
   }
+  // The document the person sees, sent with the turn before a draft takes the panel.
+  const opened = openTarget(get)
   // A planning pass produces no document, so it opens none; a rerun writes into the one there is.
   // A report written as an HWP or Word file shows no HTML draft: the file opens when written.
   const waiting = get().sessions.find((c) => c.id === sessionId)?.pending
@@ -4073,6 +4089,7 @@ async function streamReport(
         outputFormat: gate.outputFormat,
         attachments: gate.attachments,
         plan: gate.plan,
+        openArtifact: opened,
       },
       controller.signal,
     )) {
@@ -4301,6 +4318,8 @@ async function streamDeck(
     artifactId: get().sessions.find((c) => c.id === sessionId)?.artifactId ?? null,
     open: get().openArtifactId,
   }
+  // The document the person sees, sent with the turn before a draft takes the panel.
+  const opened = openTarget(get)
   // A planning pass produces no document, so it opens none; a rerun writes into the one there is.
   const willWrite = gate.approve === true && !gate.rerun
   // Approved outline spent; a new proposal arrives as its own event.
@@ -4357,6 +4376,7 @@ async function streamDeck(
         includeFigures: gate.includeFigures,
         attachments: gate.attachments,
         plan: gate.plan,
+        openArtifact: opened,
       },
       controller.signal,
     )) {
