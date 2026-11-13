@@ -5,23 +5,18 @@ import {
   ChevronRight,
   Eraser,
   Grid2x2,
-  History,
-  Share2,
-  Eye,
   Image as ImageIcon,
   ImagePlus,
   ListPlus,
   Loader2,
   Maximize,
   MessageSquare,
-  MoreHorizontal,
   PanelLeft,
   PanelRight,
   Palette,
   Play,
   Presentation,
   Rows3,
-  Save,
   RefreshCw,
   ShieldQuestion,
   Trash2,
@@ -31,14 +26,12 @@ import {
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  PanelControls,
   usePanelWidth,
   type PanelMode,
 } from '@/components/artifacts/PanelControls'
 import { useMediaQuery } from '@/lib/useMediaQuery'
-import { Badge, Button, Dropdown, Input, MenuItem, MenuSeparator, Modal, Textarea } from '@/components/ui'
+import { Button, Input, MenuItem, MenuSeparator, Modal, Textarea } from '@/components/ui'
 import { DownloadMenu, ReuseItems } from '@/components/artifacts/ResultActions'
-import { ShareButton } from '@/components/share/ShareButton'
 import { artifactsApi, errorMessage } from '@/lib/api'
 import { mediaFailure } from '@/lib/failures'
 import { FRAMES, drawIntoFitting, frameElement, paperStyles, rasterise, slideTheme } from '@/lib/mermaid'
@@ -58,7 +51,8 @@ import { useT, useTIn } from '@/lib/useT'
 import { PicturePicker } from '@/components/artifacts/PicturePicker'
 import { NotesPane, SlideRail } from '@/components/pptx/chrome'
 import { DeckToolbar } from '@/components/slides/DeckToolbar'
-import { useDeckDocument, type DeckAskReason } from '@/components/slides/useDeckDocument'
+import { useDeckDocument } from '@/components/slides/useDeckDocument'
+import { DocumentAsk, DocumentHeader, DocumentLock, DocumentNotice, DocumentReadOnlyNote } from '@/components/document/DocumentChrome'
 import { fontFamilyFor } from '@/components/report/docType'
 import { PAIRED, heldCount, pairFields, pairedLayout, relayout } from '@/components/slides/relayout'
 
@@ -1883,27 +1877,11 @@ function SlideThumbnail({ deck, slide, index, writing }: { deck: DeckArtifact; s
 }
 
 /**
- * What the unsaved-edits question says, by why it is asked. The first three are the office
- * panel's own (`components/office/OfficePanel.tsx`).
- * TODO(doc-unify): take these and the header below from the shared document panel header once
- * it is extracted from OfficePanel; until then they mirror its labels and order.
+ * What the unsaved-edits question says for the web slides' own reasons: a server step on the
+ * saved deck, and a download (made from the saved version). The shared reasons (an agent turn,
+ * leaving, a reload) are `DocumentAsk`'s.
  */
-const ASK: Record<DeckAskReason, { description: string; discard: string; save: string }> = {
-  send: {
-    description: '에이전트는 저장된 문서를 고칩니다. 지금 편집을 저장할까요, 버릴까요?',
-    discard: '버리고 보내기',
-    save: '저장하고 보내기',
-  },
-  leave: {
-    description: '이 문서를 떠나면 저장하지 않은 편집이 사라집니다. 저장할까요?',
-    discard: '버리기',
-    save: '저장',
-  },
-  reload: {
-    description: '새 버전을 쓰려면 페이지를 새로 고쳐야 합니다. 그 전에 지금 편집을 저장할까요?',
-    discard: '버리기',
-    save: '저장',
-  },
+const DECK_ASK: Record<'op' | 'export', { description: string; discard: string; save: string }> = {
   op: {
     description: '이 작업은 저장된 덱을 고칩니다. 지금 편집을 저장할까요, 버릴까요?',
     discard: '버리고 계속',
@@ -1992,7 +1970,6 @@ export function DeckPanel({
   const slide = slides[index] as Slide | undefined
   const [selectedElement, setSelectedElement] = useState<SlideElement | null>(null)
   const [historyRequest, setHistoryRequest] = useState<{ nonce: number; version?: number } | null>(null)
-  const [sharing, setSharing] = useState(false)
   const [picturing, setPicturing] = useState(false)
   const [rewritingSlide, setRewritingSlide] = useState(false)
   const [checking, setChecking] = useState(false)
@@ -2684,158 +2661,90 @@ export function DeckPanel({
     </>
   )
 
-  const ask = ASK[doc.asking?.reason ?? 'send']
+  const deckAsk = DECK_ASK[doc.asking?.reason === 'export' ? 'export' : 'op']
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden" data-deck-panel={deck.id}>
-      {/* The header every document panel has (`OfficePanel`): title, version, 저장 안 됨, 저장,
-          내려받기, 공유, 더보기, width and close. */}
-      <header className="flex items-center gap-2 border-b border-line px-4 py-2.5 max-sm:px-2">
-        <Presentation size={15} className="shrink-0 text-accent" />
-        <p className="min-w-0 flex-1 truncate text-base font-medium" title={deck.title}>{deck.title}</p>
-        <Badge>v{deck.version}</Badge>
-        {dirty && !phone && <span className="shrink-0 text-xs text-warn">{t('저장 안 됨')}</span>}
-        {!readOnly && (
-          <Button
-            size="sm"
-            variant={dirty ? 'primary' : 'secondary'}
-            disabled={!dirty || saving || agentWorking || writing}
-            aria-label={t('저장')}
-            aria-keyshortcuts="Control+S Meta+S"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => keys.current.save()}
-          >
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            {!phone && t('저장')}
-          </Button>
-        )}
-        <DownloadMenu
-          artifact={deck}
-          compact={phone}
-          disabled={writing}
-          take={download}
-          checksHeading={t('내보내기 전 확인 {n}건').replace('{n}', String(exportWarningCount))}
-          checks={[
-            ...(overflowRisks.length > 0 ? [{
-              label: t('잘림 위험 {n}장 확인').replace('{n}', String(overflowRisks.length)),
-              icon: <TriangleAlert size={14} />,
-              onClick: () => go(overflowRisks[0]),
-            }] : []),
-            ...(weakSlides.length > 0 ? [{
-              label: t('근거 확인 필요 {n}장').replace('{n}', String(weakSlides.length)),
-              icon: <ShieldQuestion size={14} />,
-              onClick: () => go(weakSlides[0]),
-            }] : []),
-            ...(unresolvedReviews.length > 0 ? [{
-              label: t('미해결 검토 메모 {n}개').replace('{n}', String(unresolvedReviews.length)),
-              icon: <MessageSquare size={14} />,
-              onClick: () => {
-                const target = slides.findIndex((candidate) => candidate.id === unresolvedReviews[0].slideId)
-                if (target >= 0) go(target)
-                setReviewOpen(true)
-              },
-            }] : []),
-          ]}
-        />
-        {/* at phone width the header is full: sharing is in the 더보기 menu */}
-        {!phone && (
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={t('이 아티팩트만 공유')}
-            title={t('이 아티팩트만 공유')}
+      {/* The header every document panel has (`DocumentHeader`): title, version, 저장 안 됨,
+          저장, 내려받기, 공유, 더보기, width and close. */}
+      <DocumentHeader
+        icon={<Presentation size={15} className="shrink-0 text-accent" />}
+        title={deck.title}
+        version={deck.version}
+        dirty={dirty}
+        saving={saving}
+        canSave={!agentWorking && !writing}
+        showSave={!readOnly}
+        compact={phone}
+        onSave={() => keys.current.save()}
+        download={
+          <DownloadMenu
+            artifact={deck}
+            compact={phone}
             disabled={writing}
-            onClick={() => setSharing(true)}
-          >
-            <Share2 size={15} />
-          </Button>
-        )}
-        <ShareButton artifact={deck} open={sharing} onClose={() => setSharing(false)} />
-        <Dropdown
-          align="right"
-          trigger={() => (
-            <Button variant="ghost" size="icon" aria-label={t('더보기')}>
-              <MoreHorizontal size={15} />
-            </Button>
-          )}
-        >
-          {phone && (
-            <MenuItem icon={<Share2 size={14} />} disabled={writing} onClick={() => setSharing(true)}>
-              {t('이 아티팩트만 공유')}
+            take={download}
+            checksHeading={t('내보내기 전 확인 {n}건').replace('{n}', String(exportWarningCount))}
+            checks={[
+              ...(overflowRisks.length > 0 ? [{
+                label: t('잘림 위험 {n}장 확인').replace('{n}', String(overflowRisks.length)),
+                icon: <TriangleAlert size={14} />,
+                onClick: () => go(overflowRisks[0]),
+              }] : []),
+              ...(weakSlides.length > 0 ? [{
+                label: t('근거 확인 필요 {n}장').replace('{n}', String(weakSlides.length)),
+                icon: <ShieldQuestion size={14} />,
+                onClick: () => go(weakSlides[0]),
+              }] : []),
+              ...(unresolvedReviews.length > 0 ? [{
+                label: t('미해결 검토 메모 {n}개').replace('{n}', String(unresolvedReviews.length)),
+                icon: <MessageSquare size={14} />,
+                onClick: () => {
+                  const target = slides.findIndex((candidate) => candidate.id === unresolvedReviews[0].slideId)
+                  if (target >= 0) go(target)
+                  setReviewOpen(true)
+                },
+              }] : []),
+            ]}
+          />
+        }
+        artifact={deck}
+        historyRequest={historyRequest}
+        history={{ hasUnsavedChanges: dirty, currentData: deck, onRestored: () => doc.reset() }}
+        more={
+          <>
+            <MenuItem
+              icon={<ShieldQuestion size={14} />}
+              hint={exportWarningCount > 0 ? String(exportWarningCount) : undefined}
+              onClick={() => setReviewOpen(true)}
+            >
+              {t('검토')}
             </MenuItem>
-          )}
-          <MenuItem icon={<History size={14} />} onClick={() => setHistoryRequest((r) => ({ nonce: (r?.nonce ?? 0) + 1 }))}>
-            {t('버전 기록')}
-          </MenuItem>
-          <MenuItem
-            icon={<ShieldQuestion size={14} />}
-            hint={exportWarningCount > 0 ? String(exportWarningCount) : undefined}
-            onClick={() => setReviewOpen(true)}
-          >
-            {t('검토')}
-          </MenuItem>
-          <MenuItem icon={<Play size={14} />} disabled={writing} onClick={() => setPresenting(true)}>
-            {t('발표')}
-          </MenuItem>
-          <MenuSeparator />
-          <MenuItem icon={<RefreshCw size={14} />} disabled={writing || rewritingSlide || readOnly || agentWorking} onClick={() => void regenerateSlide()}>
-            {rewritingSlide ? t('다시 만드는 중…') : t('이 장 다시 만들기')}
-          </MenuItem>
-          <MenuItem icon={checking ? <Loader2 size={14} className="animate-spin" /> : <ShieldQuestion size={14} />} disabled={writing || checking || readOnly || agentWorking} onClick={() => void runFactCheck()}>
-            {t('이 장 팩트체크')}
-          </MenuItem>
-          <MenuSeparator />
-          <ReuseItems artifact={deck} />
-        </Dropdown>
-        <VersionHistory
-          bare
-          request={historyRequest}
-          artifact={deck}
-          hasUnsavedChanges={dirty}
-          currentData={deck}
-          onRestored={() => doc.reset()}
-        />
-        <PanelControls mode={width.mode} onCycle={phone ? undefined : width.cycle} onClose={onClose} />
-      </header>
+            <MenuItem icon={<Play size={14} />} disabled={writing} onClick={() => setPresenting(true)}>
+              {t('발표')}
+            </MenuItem>
+            <MenuItem icon={<RefreshCw size={14} />} disabled={writing || rewritingSlide || readOnly || agentWorking} onClick={() => void regenerateSlide()}>
+              {rewritingSlide ? t('다시 만드는 중…') : t('이 장 다시 만들기')}
+            </MenuItem>
+            <MenuItem icon={checking ? <Loader2 size={14} className="animate-spin" /> : <ShieldQuestion size={14} />} disabled={writing || checking || readOnly || agentWorking} onClick={() => void runFactCheck()}>
+              {t('이 장 팩트체크')}
+            </MenuItem>
+            <ReuseItems artifact={deck} />
+            <MenuSeparator />
+          </>
+        }
+        mode={width.mode}
+        onCycle={phone ? undefined : width.cycle}
+        onClose={onClose}
+      />
 
-      {(notice || error) && (
-        <div role="status" className="flex flex-wrap items-center gap-2 border-b border-line bg-elevated px-4 py-2 text-sm">
-          <span className="min-w-0 flex-1">
-            {notice === 'conflict'
-              ? t('그사이 다른 판이 저장되어 저장하지 않았습니다.')
-              : notice === 'behind'
-                ? t('에이전트가 새 판을 저장했습니다. 지금 편집은 아직 저장되지 않았습니다.')
-                : error}
-          </span>
-          {notice && (
-            <>
-              <Button size="sm" onClick={downloadEdits}>
-                {t('내 편집 내려받기')}
-              </Button>
-              <Button size="sm" variant="primary" onClick={() => void doc.load()}>
-                {t('최신 판 불러오기')}
-              </Button>
-            </>
-          )}
-          {!notice && error && (
-            <Button size="sm" variant="ghost" aria-label={t('닫기')} onClick={() => { doc.setError(''); setOpError(null) }}>
-              <X size={14} />
-            </Button>
-          )}
-        </div>
-      )}
+      <DocumentNotice
+        notice={notice}
+        message={error || undefined}
+        onDownloadEdits={downloadEdits}
+        onLoadLatest={() => void doc.load()}
+      />
 
-      {phone && (
-        <p
-          className="flex items-center gap-2 border-b border-line bg-elevated px-4 py-1.5 text-xs text-muted"
-          data-testid="office-read-only"
-        >
-          <Eye size={13} className="shrink-0" />
-          {readOnly
-            ? t('휴대폰에서는 읽기만 합니다. 고칠 내용은 대화에서 에이전트에게 부탁하세요.')
-            : t('이 폭에서는 읽기만 합니다. 저장하지 않은 편집을 먼저 저장하거나 버리세요.')}
-        </p>
-      )}
+      {phone && <DocumentReadOnlyNote readOnly={readOnly} testId="office-read-only" />}
 
       <div className="relative min-h-0 flex-1 bg-elevated">
         <div
@@ -3116,17 +3025,7 @@ export function DeckPanel({
           </aside>
         )}
 
-        {agentWorking && (
-          <div
-            className="absolute inset-0 z-40 grid place-items-center bg-panel/60 backdrop-blur-[1px]"
-            data-testid="deck-agent-lock"
-          >
-            <span className="flex items-center gap-2 rounded-card border border-line bg-panel px-3 py-2 text-sm shadow-sm">
-              <Loader2 size={15} className="animate-spin text-accent" />
-              {t('에이전트가 문서를 고치는 중…')}
-            </span>
-          </div>
-        )}
+        {agentWorking && <DocumentLock testId="deck-agent-lock" />}
       </div>
 
       {slide && <SlidePicture deck={deck} slide={slide} open={picturing} onClose={() => setPicturing(false)} />}
@@ -3138,18 +3037,22 @@ export function DeckPanel({
           onClose={() => setPresenting(false)}
         />
       )}
+      <DocumentAsk
+        reason={doc.asking && doc.asking.reason !== 'op' && doc.asking.reason !== 'export' ? doc.asking.reason : null}
+        onAnswer={(choice) => void doc.answer(choice)}
+      />
       <Modal
-        open={doc.asking !== null}
+        open={doc.asking?.reason === 'op' || doc.asking?.reason === 'export'}
         onClose={() => void doc.answer('cancel')}
         title={t('저장하지 않은 편집이 있습니다')}
-        description={t(ask.description)}
+        description={t(deckAsk.description)}
         width="max-w-md"
         footer={
           <div className="flex justify-end gap-2">
             <Button onClick={() => void doc.answer('cancel')}>{t('취소')}</Button>
-            <Button onClick={() => void doc.answer('discard')}>{t(ask.discard)}</Button>
+            <Button onClick={() => void doc.answer('discard')}>{t(deckAsk.discard)}</Button>
             <Button variant="primary" onClick={() => void doc.answer('save')}>
-              {t(ask.save)}
+              {t(deckAsk.save)}
             </Button>
           </div>
         }
