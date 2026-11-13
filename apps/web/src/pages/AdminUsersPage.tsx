@@ -1,8 +1,6 @@
 import {
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
   Check,
+  Download,
   SlidersHorizontal,
   KeyRound,
   UserPen,
@@ -33,12 +31,15 @@ import {
   Tabs,
 } from '@/components/ui'
 import { adminApi, ApiError, errorMessage, type AdminKeys } from '@/lib/api'
-import { cn, formatDate, relativeTime } from '@/lib/utils'
+import { cn, formatCompact, formatDate, relativeTime } from '@/lib/utils'
 import { Pager } from '@/components/ui/Pager'
+import { SortHeader } from '@/components/ui/DataTable'
+import { CopyButton } from '@/components/ui/CopyButton'
 import { useStore } from '@/store/useStore'
 import type { User, UserSort, UserStatus } from '@/types'
 import { useT } from '@/lib/useT'
 import { USER_STATUS_LABEL } from '@/lib/userStatus'
+import { RelTime } from '@/components/ui/RelTime'
 
 const statusTone = {
   active: 'success',
@@ -102,45 +103,6 @@ function useListParams() {
       { replace },
     )
   return { tab, sort, order, page, q, update }
-}
-
-/** A column heading that sorts: the button names the column, the cell carries `aria-sort`. */
-function SortHeader({
-  column,
-  label,
-  sort,
-  order,
-  onSort,
-}: {
-  column: UserSort
-  label: string
-  sort: UserSort
-  order: 'asc' | 'desc'
-  onSort: (column: UserSort) => void
-}) {
-  const t = useT()
-  const active = sort === column
-  const Arrow = !active ? ArrowUpDown : order === 'asc' ? ArrowUp : ArrowDown
-  return (
-    <th
-      scope="col"
-      aria-sort={active ? (order === 'asc' ? 'ascending' : 'descending') : 'none'}
-      className="px-4 py-1.5 text-left font-semibold"
-    >
-      <button
-        type="button"
-        onClick={() => onSort(column)}
-        title={t('{column} 기준으로 정렬').replace('{column}', label)}
-        className={cn(
-          '-mx-1.5 inline-flex items-center gap-1 rounded-control whitespace-nowrap px-1.5 py-1 tracking-wide uppercase transition-colors hover:bg-line/40 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent',
-          active && 'text-fg',
-        )}
-      >
-        {label}
-        <Arrow size={12} aria-hidden className={active ? undefined : 'opacity-50'} />
-      </button>
-    </th>
-  )
 }
 
 function CreditBar({ user }: { user: User }) {
@@ -266,6 +228,18 @@ export function AdminUsersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [answered, usersPage, page, pages])
 
+  const [exporting, setExporting] = useState(false)
+  const exportCsv = async () => {
+    setExporting(true)
+    try {
+      await adminApi.usersCsv({ status: filter, q, sort, order })
+    } catch (err) {
+      setToast({ text: errorMessage(err, t('CSV를 내보내지 못했습니다. 잠시 후 다시 시도하세요.')) })
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const onSort = (column: UserSort) =>
     update(
       column === sort
@@ -327,13 +301,16 @@ export function AdminUsersPage() {
             { label: t('승인 대기'), value: summary ? summary.pending.toLocaleString() : '—' },
             {
               label: t('이번 달 사용 / 배정'),
-              value: `${(totalUsed / 1_000_000).toFixed(1)}M / ${(totalGranted / 1_000_000).toFixed(1)}M`,
+              value: summary ? `${formatCompact(totalUsed)} / ${formatCompact(totalGranted)}` : '—',
+              exact: `${totalUsed.toLocaleString()} / ${totalGranted.toLocaleString()}`,
             },
             { label: t('다음 리필'), value: resetDate ? formatDate(resetDate) : '—' },
-          ].map((s) => (
+          ].map((s: { label: string; value: string; exact?: string }) => (
             <Card key={s.label} className="px-4 py-3">
               <p className="text-xs tracking-wide text-faint uppercase">{s.label}</p>
-              <p className="mt-1 text-lg font-semibold tabular-nums sm:text-xl">{s.value}</p>
+              <p className="mt-1 text-lg font-semibold tabular-nums sm:text-xl" title={s.exact}>
+                {s.value}
+              </p>
             </Card>
           ))}
         </div>
@@ -350,15 +327,31 @@ export function AdminUsersPage() {
               { id: 'suspended', label: t('정지') },
             ]}
           />
-          <div className="relative">
-            <Search size={14} className="absolute top-1/2 left-2.5 -translate-y-1/2 text-faint" />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={t('이름 또는 이메일')}
-              aria-label={t('사용자 검색')}
-              className="h-8 w-56 pl-8 text-base"
-            />
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <Search size={14} className="absolute top-1/2 left-2.5 -translate-y-1/2 text-faint" />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={t('이름 또는 이메일')}
+                aria-label={t('사용자 검색')}
+                className="h-8 w-56 pl-8 text-base"
+              />
+            </div>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={exporting || !usersPage || usersPage.total === 0}
+              title={
+                !usersPage || usersPage.total === 0
+                  ? t('내보낼 사용자가 없습니다')
+                  : t('지금 탭·검색·정렬로 모든 쪽을 CSV로 받습니다. 내보낸 일은 감사 로그에 남습니다.')
+              }
+              onClick={() => void exportCsv()}
+            >
+              {exporting ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+              {t('CSV 내보내기')}
+            </Button>
           </div>
         </div>
 
@@ -376,13 +369,16 @@ export function AdminUsersPage() {
                     ['last_active', t('마지막 활동')],
                   ] as const
                 ).map(([column, label]) => (
+                  // Server-sorted pages: a heading flips between the two directions.
                   <SortHeader
                     key={column}
-                    column={column}
+                    columnKey={column}
                     label={label}
-                    sort={sort}
-                    order={order}
-                    onSort={onSort}
+                    sort={{ key: sort, dir: order }}
+                    onSort={(key) => onSort(key as UserSort)}
+                    first={FIRST_ORDER[column]}
+                    className="px-4 py-1.5 font-semibold"
+                    buttonClassName="tracking-wide uppercase"
                   />
                 ))}
                 <th scope="col" className="px-4 py-2.5 text-right font-semibold">
@@ -424,7 +420,10 @@ export function AdminUsersPage() {
                             </Badge>
                           )}
                         </p>
-                        <p className="truncate text-xs text-faint">{u.email}</p>
+                        <p className="flex min-w-0 items-center gap-0.5 text-xs text-faint">
+                          <span className="truncate">{u.email}</span>
+                          <CopyButton text={u.email} label={t('이메일')} className="size-5" />
+                        </p>
                         {/* No key: turns fall back to the master key, unattributed. */}
                         <p className="mt-0.5 flex items-center gap-1 text-2xs text-faint">
                           <KeyRound size={9} />
@@ -455,7 +454,7 @@ export function AdminUsersPage() {
                     <CreditBar user={u} />
                   </td>
                   <td className="px-4 py-3 text-xs text-muted">
-                    {relativeTime(u.lastActiveAt)}
+                    <RelTime iso={u.lastActiveAt} />
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-1.5">

@@ -1,4 +1,4 @@
-import { Search } from 'lucide-react'
+import { Download, Loader2, Search } from 'lucide-react'
 import {
   Fragment,
   useCallback,
@@ -9,7 +9,7 @@ import {
   type MouseEvent,
   type ReactNode,
 } from 'react'
-import { adminApi, usageApi, type AuditQuery, type AuditRow } from '@/lib/api'
+import { adminApi, errorMessage, usageApi, type AuditQuery, type AuditRow } from '@/lib/api'
 import {
   ACTION_GROUPS,
   FIELD_LABEL,
@@ -20,7 +20,10 @@ import {
   targetParts,
   valueWords,
 } from '@/lib/auditLabels'
-import { Badge, Card, Input, Modal, ResourceStatus, Select } from '@/components/ui'
+import { Badge, Button, Card, Input, Modal, ResourceStatus, Select } from '@/components/ui'
+import { CopyButton } from '@/components/ui/CopyButton'
+import { SortHeader, useTableSort } from '@/components/ui/DataTable'
+import type { SortDir, SortState } from '@/lib/tableSort'
 import { Pager } from '@/components/ui/Pager'
 import { browserName, formatDateTime, serviceDate, serviceMidnight, shiftDate } from '@/lib/utils'
 import { useT } from '@/lib/useT'
@@ -34,6 +37,10 @@ const SEVERITY: Record<string, 'neutral' | 'warn' | 'danger'> = {
 }
 
 const SIZES = [25, 50, 100, 200]
+
+const SORT_KEYS = ['at', 'action', 'target', 'ip'] as const
+/** What the trail shows unsorted: newest first. */
+const NEWEST: SortState = { key: 'at', dir: 'desc' }
 
 /** Mirrors `audit.MASK`. */
 const SECRET = '••••'
@@ -80,6 +87,10 @@ export function AuditLog({ onTotal }: { onTotal?: (total: number) => void }) {
   const [size, setSize] = useState(50)
   const [selected, setSelected] = useState<AuditRow | null>(null)
   const settledQuery = useSettled(query)
+  // Server-side order; newest first unless a heading says otherwise (kept in this browser).
+  const [sort, toggleSort] = useTableSort('admin.audit', { keys: SORT_KEYS, initial: NEWEST, clearable: false })
+  const [exporting, setExporting] = useState(false)
+  const setToast = useStore((s) => s.setToast)
   const settledAccount = useSettled(account)
 
   useEffect(() => {
@@ -103,8 +114,26 @@ export function AuditLog({ onTotal }: { onTotal?: (total: number) => void }) {
       account: settledAccount.trim() || undefined,
       action: ACTION_GROUPS.find((g) => g.id === group)?.codes,
       ...periodRange(period, from, to),
+      ...(sort ? { sort: sort.key as NonNullable<AuditQuery['sort']>, order: sort.dir } : {}),
     }
-  }, [page, size, settledQuery, settledAccount, group, period, from, to, t])
+  }, [page, size, settledQuery, settledAccount, group, period, from, to, t, sort])
+
+  const exportCsv = async () => {
+    setExporting(true)
+    try {
+      // Every page under the same filters and order.
+      const { page: _page, size: _size, ...filters } = request
+      await usageApi.auditCsv(filters)
+    } catch (err) {
+      setToast({ text: errorMessage(err, t('CSV를 내보내지 못했습니다. 잠시 후 다시 시도하세요.')) })
+    } finally {
+      setExporting(false)
+    }
+  }
+  const onSort = (key: string, first: SortDir) => {
+    toggleSort(key, first)
+    setPage(1)
+  }
 
   const audit = useResource(() => usageApi.audit(request), [request])
   const data = audit.data
@@ -210,6 +239,44 @@ export function AuditLog({ onTotal }: { onTotal?: (total: number) => void }) {
         </div>
       )}
 
+      <div className="mb-2 flex flex-wrap items-center justify-end gap-2">
+        {/* Phone: the table is a list, so the order is a menu. */}
+        <div className="lg:hidden">
+          <Select
+            value={sort ? `${sort.key}:${sort.dir}` : 'at:desc'}
+            onChange={(e) => {
+              const [key, dir] = e.target.value.split(':') as [string, SortDir]
+              if (key === sort?.key && dir === sort?.dir) return
+              // Same column: the toggle flips to the other direction; another: opens at `dir`.
+              toggleSort(key, dir)
+              setPage(1)
+            }}
+            aria-label={t('정렬')}
+            className="h-8 w-auto text-sm"
+          >
+            <option value="at:desc">{t('최신순')}</option>
+            <option value="at:asc">{t('오래된 순')}</option>
+            <option value="action:asc">{t('행위순')}</option>
+            <option value="target:asc">{t('대상순')}</option>
+            <option value="ip:asc">{t('접속 위치순')}</option>
+          </Select>
+        </div>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => void exportCsv()}
+          disabled={exporting || !data || total === 0}
+          title={
+            !data || total === 0
+              ? t('내보낼 기록이 없습니다')
+              : t('지금 조건과 정렬로 모든 쪽을 CSV로 받습니다. 내보낸 일도 감사 로그에 남습니다.')
+          }
+        >
+          {exporting ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+          {t('CSV 내보내기')}
+        </Button>
+      </div>
+
       {audit.status === 'error' || !data ? (
         <Card>
           <ResourceStatus
@@ -233,13 +300,13 @@ export function AuditLog({ onTotal }: { onTotal?: (total: number) => void }) {
               <col className="w-[18%]" />
               <col className="w-[15rem]" />
             </colgroup>
-            <thead className="border-b border-line text-left text-xs tracking-wide text-faint uppercase">
+            <thead className="sticky top-0 z-[1] border-b border-line bg-panel text-left text-xs tracking-wide text-faint uppercase">
               <tr>
-                <th className="px-4 py-2.5 font-medium">{t('시각')}</th>
-                <th className="px-4 py-2.5 font-medium">{t('계정')}</th>
-                <th className="px-4 py-2.5 font-medium">{t('행위')}</th>
-                <th className="px-4 py-2.5 font-medium">{t('대상')}</th>
-                <th className="px-4 py-2.5 font-medium">{t('접속 위치')}</th>
+                <SortHeader label={t('시각')} columnKey="at" sort={sort} onSort={onSort} first="desc" className="px-4 py-1.5" />
+                <th scope="col" className="px-4 py-2.5 font-medium">{t('계정')}</th>
+                <SortHeader label={t('행위')} columnKey="action" sort={sort} onSort={onSort} className="px-4 py-1.5" />
+                <SortHeader label={t('대상')} columnKey="target" sort={sort} onSort={onSort} className="px-4 py-1.5" />
+                <SortHeader label={t('접속 위치')} columnKey="ip" sort={sort} onSort={onSort} className="px-4 py-1.5" />
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
@@ -405,11 +472,30 @@ function Details({ row, modelName }: { row: AuditRow; modelName: (id: string) =>
         data-testid="audit-detail"
       >
         {item('시각', <span className="tabular-nums">{formatDateTime(row.at)}</span>)}
-        {item('계정', t(row.actor))}
+        {item(
+          '계정',
+          <span className="inline-flex items-center gap-1">
+            {t(row.actor)}
+            {row.actor.includes('@') && <CopyButton text={row.actor} label={t('계정')} />}
+          </span>,
+        )}
         {item('행위', <Badge tone={SEVERITY[row.severity] ?? 'neutral'}>{t(actionLabel(row))}</Badge>)}
         {item('대상', <Target row={row} />)}
         {item('내용', words || '—')}
-        {item('접속 위치', <span className="font-mono tabular-nums">{place || '—'}</span>)}
+        {item(
+          '접속 위치',
+          <span className="inline-flex items-center gap-1">
+            <span className="font-mono tabular-nums">{place || '—'}</span>
+            {row.ip && <CopyButton text={row.ip} label={t('IP 주소')} />}
+          </span>,
+        )}
+        {item(
+          '기록 ID',
+          <span className="inline-flex items-center gap-1">
+            <span className="font-mono text-xs break-all text-muted">{row.id}</span>
+            <CopyButton text={row.id} label={t('기록 ID')} />
+          </span>,
+        )}
         {item(
           '브라우저',
           row.userAgent ? (

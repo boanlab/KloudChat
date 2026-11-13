@@ -25,7 +25,7 @@ In an environment where every model runs on organization servers, **Personal dat
 
 ## Audit log
 
-Time, account, action, target, and access location. The log covers sign-ins, failures, approvals, suspensions, permission changes, setting changes, key issuance, discards, password resets, token reuse detection, and more. Search by account, action, or IP. It cannot be edited or deleted from the screen.
+Time, account, action, target, and access location. The log covers sign-ins, failures, approvals, suspensions, permission changes, setting changes, key issuance, discards, password resets, token reuse detection, and more. Search by account, action, or IP. The Time, Action, Target and Access location headings sort the log on the server. **Export CSV** downloads every page under the current filters and order (up to 50,000 rows), and the export itself is recorded in the audit log. It cannot be edited or deleted from the screen.
 
 ## Auto routing
 

@@ -391,6 +391,33 @@ async function call<T>(path: string, init: RequestInit & { timeoutMs?: number } 
 
 const body = (v: unknown) => ({ method: 'POST', body: JSON.stringify(v) })
 
+/** Saves a file the server streams (CSV exports), named as the server names it. */
+async function download(path: string, fallback: string): Promise<void> {
+  const res = await send(`${BASE_URL}${path}`)
+  if (!res.ok) {
+    const detail = await readDetail(res)
+    if (res.status === 401) throw new UnauthorizedError(detail)
+    throw new ApiError(res.status, detail, retryAfter(res))
+  }
+  let name = fallback
+  const encoded = res.headers.get('Content-Disposition')?.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
+  if (encoded) {
+    try {
+      name = decodeURIComponent(encoded).replace(/[\\/:*?"<>|]+/g, '_') || fallback
+    } catch {
+      // A malformed name keeps the fallback.
+    }
+  }
+  const url = URL.createObjectURL(await res.blob())
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = name
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
 /* ── auth: argon2id, short-lived JWT, rotating refresh cookie; signup pending until approved ── */
 
 export interface AuthSession {
@@ -729,6 +756,12 @@ export const adminApi = {
     if (query.q.trim()) params.set('q', query.q.trim())
     return call<UserPage>(`/admin/users/page?${params}`)
   },
+  /** The list as CSV under the same tab, search and order (every page); the export is audited. */
+  usersCsv: (query: Pick<UserListQuery, 'status' | 'q' | 'sort' | 'order'>) => {
+    const params = new URLSearchParams({ status: query.status, sort: query.sort, order: query.order })
+    if (query.q.trim()) params.set('q', query.q.trim())
+    return download(`/admin/users/export.csv?${params}`, 'kloudchat-users.csv')
+  },
   /** Approval and allowance together: an active account without credits reads as a bug. */
   approve: (id: string, monthlyCredits?: number) =>
     call<User>(`/admin/users/${id}/approve`, body({ monthlyCredits: monthlyCredits ?? null })),
@@ -899,6 +932,9 @@ export interface AuditQuery {
   /** ISO instants; `until` is exclusive. */
   since?: string
   until?: string
+  /** Server-side column order; newest first when absent. */
+  sort?: 'at' | 'action' | 'target' | 'ip'
+  order?: 'asc' | 'desc'
 }
 
 export interface GovernancePolicy {
@@ -1091,6 +1127,14 @@ export const usageApi = {
       if (value !== undefined && value !== '') params.set(key, String(value))
     }
     return call<AuditPage>(`/admin/audit?${params}`)
+  },
+  /** The filtered trail as CSV in the same order (every page); the export is itself recorded. */
+  auditCsv: (query: Omit<AuditQuery, 'page' | 'size'>) => {
+    const params = new URLSearchParams()
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== undefined && value !== '') params.set(key, String(value))
+    }
+    return download(`/admin/audit/export.csv?${params}`, 'kloudchat-audit.csv')
   },
 }
 
