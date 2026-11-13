@@ -45,6 +45,8 @@ _ALLOWED_TAGS = {
     "li",
     "strong",
     "em",
+    "u",  # the editor's 밑줄 and 취소선; the exporters read both
+    "s",
     "blockquote",
     "code",
     "figure",
