@@ -279,7 +279,7 @@ def test_a_table_is_added_to_the_written_file(kind):
                            "rows": [[str(c) for c in range(9)]]}])
 
 
-def test_an_hwp_file_made_elsewhere_gets_no_table_it_would_break():
+def test_an_hwp_file_made_elsewhere_gets_a_table_with_shapes_of_its_own():
     data = report_office.file_bytes(ArtifactKind.hwp, "제목", _report_data())
     source = io.BytesIO(data)
     out = io.BytesIO()
@@ -289,9 +289,16 @@ def test_an_hwp_file_made_elsewhere_gets_no_table_it_would_break():
             if item.filename == "Contents/header.xml":
                 body = body.replace(b'<hh:borderFill id="3"', b'<hh:borderFill id="33"')
             after.writestr(item, body)
-    with pytest.raises(hwpx_edit.HwpxError, match="새 표를 넣을 수 없습니다"):
-        hwpx_edit.apply(out.getvalue(), [{"op": "insert_table", "after": "p2",
-                                          "rows": [["a", "b"]]}])
+    # the head row's border is missing under its house id: it is brought in under a new one
+    edited = hwpx_edit.apply(out.getvalue(), [{"op": "insert_table", "after": "p2",
+                                               "rows": [["a", "b"], ["1", "2"]]}]).data
+    with zipfile.ZipFile(io.BytesIO(edited)) as archive:
+        header = archive.read("Contents/header.xml").decode()
+        section = archive.read("Contents/section0.xml").decode()
+    assert '<hh:borderFill id="33"' in header
+    assert 'header="1" hasMargin="1" protect="0" editable="0" dirty="0" borderFillIDRef="3"' \
+        not in section
+    assert "r0: a | b" in hwpx_edit.outline(edited)
 
 
 def test_the_hwp_outline_names_its_chapters_so_a_numbered_part_can_be_found():
