@@ -22,6 +22,7 @@ from app.services.files import open_capped_zip
 from app.services.office_edit import BLANK, Result, short
 
 HP = "http://www.hancom.co.kr/hwpml/2011/paragraph"
+HH = "http://www.hancom.co.kr/hwpml/2011/head"
 _P, _RUN, _T, _TBL = f"{{{HP}}}p", f"{{{HP}}}run", f"{{{HP}}}t", f"{{{HP}}}tbl"
 _TR, _TC, _SUBLIST = f"{{{HP}}}tr", f"{{{HP}}}tc", f"{{{HP}}}subList"
 _LINESEG = f"{{{HP}}}linesegarray"
@@ -159,12 +160,62 @@ def _texts(doc: _Doc) -> list[str]:
     return out
 
 
+def _char_sizes(archive: zipfile.ZipFile) -> dict[str, tuple[int, bool]]:
+    """`charPr` id → (height, bold), from the header; empty when it cannot be read."""
+    try:
+        header = etree.fromstring(archive.read("Contents/header.xml"), _PARSER)
+    except (KeyError, etree.XMLSyntaxError):
+        return {}
+    out: dict[str, tuple[int, bool]] = {}
+    for shape in header.iter(f"{{{HH}}}charPr"):
+        try:
+            height = int(shape.get("height") or 0)
+        except ValueError:
+            continue
+        out[str(shape.get("id"))] = (height, shape.find(f"{{{HH}}}bold") is not None)
+    return out
+
+
+def _heading_marks(archive: zipfile.ZipFile, doc: _Doc) -> dict[int, str]:
+    """「 (title)」, 「 (heading 1)」…: short bold lines set larger than the body, by size, as
+    Word's outline shows its heading styles (`docx_edit._mark`); 「3장」 is then countable."""
+    sizes = _char_sizes(archive)
+    shaped: list[tuple[int, int, bool, int]] = []  # (index, height, bold, length)
+    for index, paragraph in enumerate(doc.paragraphs):
+        run = next((r for r in paragraph.iterchildren(_RUN) if r.find(_T) is not None), None)
+        text = _own_text(paragraph).strip()
+        if run is None or not text or paragraph.find(f".//{_TBL}") is not None:
+            continue
+        height, bold = sizes.get(str(run.get("charPrIDRef")), (0, False))
+        shaped.append((index, height, bold, len(text)))
+    if not shaped:
+        return {}
+    heights = [height for _, height, _, _ in shaped]
+    body = max(set(heights), key=heights.count)
+    # a heading is set larger than the body (bold or not: a light style keeps its size)
+    heads = [(index, height) for index, height, _, n in shaped if height > body and n <= 80]
+    levels = sorted({height for _, height in heads}, reverse=True)
+    if not levels:
+        return {}
+    marks: dict[int, str] = {}
+    if len(levels) > 1 and sum(1 for _, h in heads if h == levels[0]) == 1:
+        title = next(index for index, h in heads if h == levels[0])
+        marks[title] = " (title)"
+        # a cover's label above the title is no chapter
+        heads = [(index, h) for index, h in heads if index > title]
+        levels = sorted({h for _, h in heads}, reverse=True)
+    names = {h: f"heading {level}" for level, h in enumerate(levels[:3], start=1)}
+    marks.update({index: f" ({names[h]})" for index, h in heads if h in names})
+    return marks
+
+
 def outline(data: bytes) -> str:
     """Numbered outline: `p3: text`, `t1 (3×2)` with `r0: a | b` rows, then the blanks."""
-    _, doc = _load(data)
+    archive, doc = _load(data)
     tables_at: dict[str, list[_Table]] = {}
     for table in doc.tables:
         tables_at.setdefault(table.paragraph, []).append(table)
+    marks = _heading_marks(archive, doc)
     out = office_edit.Outline()
     for index, paragraph in enumerate(doc.paragraphs, start=1):
         pid = f"p{index}"
@@ -172,7 +223,7 @@ def outline(data: bytes) -> str:
         if not text.strip() and pid not in tables_at:
             out.empty(index)
             continue
-        out.paragraph(index, text)
+        out.paragraph(index, text, marks.get(index - 1, ""))
         for table in tables_at.get(pid, []):
             cells = [(r, c, _cell_text(cell)) for r, c, cell in _cells(table.element)]
             out.table(table.id, _shape(table.element), _merged(table.element), cells, pid)
@@ -418,6 +469,10 @@ def apply(data: bytes, ops: list[dict]) -> Result:
             if kind == "delete_table_row" and len(rows) < 2:
                 raise HwpxError("줄이 하나뿐인 표의 줄은 지울 수 없습니다.")
             plan.append((op, (table, rows[index])))
+        elif kind == "insert_table":
+            rows = office_edit.table_arg(op, HwpxError)
+            _house_shapes(archive)
+            plan.append((op, (_paragraph(doc, op.get("after"))[1], _table_paragraph(rows))))
         else:
             raise office_edit.unknown_op(kind, HwpxError)
 
@@ -461,7 +516,47 @@ def apply(data: bytes, ops: list[dict]) -> Result:
             table.remove(row)
             _renumber_rows(table)
             changes.append(f"{op['table']} r{op['row']} 줄 삭제")
+        elif kind == "insert_table":
+            anchor, made = target
+            anchor.addnext(made)
+            rows = op["rows"]
+            changes.append(f"{op['after']} 뒤에 표 추가 ({len(rows)}줄 × "
+                           f"{max(len(row) for row in rows)}칸)")
     return Result(_write(archive, doc), changes)
+
+
+#: the shapes a new table is drawn in: `report_export`'s house header (bordered cells, the
+#: thick-ruled head row, body and bold body text, a left-aligned cell paragraph)
+_HOUSE = {"borderFill": {"2", "3"}, "charPr": {"0", "1"}, "paraPr": {"3", "7"}}
+
+
+def _house_shapes(archive: zipfile.ZipFile) -> None:
+    """A new table borrows the house shapes by id; a file without them (one made in 한글
+    rather than here) gets no new table rather than a broken one."""
+    try:
+        header = etree.fromstring(archive.read("Contents/header.xml"), _PARSER)
+    except (KeyError, etree.XMLSyntaxError) as exc:
+        raise HwpxError("문서 머리(header.xml)를 읽지 못해 표를 넣을 수 없습니다.") from exc
+    for name, wanted in _HOUSE.items():
+        have = {element.get("id") for element in header.iter(f"{{{HH}}}{name}")}
+        if not wanted <= have:
+            raise HwpxError("이 문서에는 새 표를 넣을 수 없습니다. 있는 표에 줄을 넣거나 "
+                            "(insert_table_row) 표 내용을 문단으로 쓰세요.")
+
+
+def _table_paragraph(rows: list[list[str]]) -> etree._Element:
+    """A table paragraph as the HWPX export draws one, head row first."""
+    from app.services import report_export
+
+    try:
+        xml = report_export._hwpx_table(rows)
+    except Exception as exc:  # noqa: BLE001 — the exporter's own refusals, said to the model
+        raise HwpxError(f"insert_table: 표를 만들지 못했습니다 ({exc}).") from exc
+    wrapped = etree.fromstring(
+        f'<w xmlns:hp="{HP}" xmlns:hc="http://www.hancom.co.kr/hwpml/2011/core">{xml}</w>',
+        _PARSER,
+    )
+    return wrapped[0]
 
 
 def _write(archive: zipfile.ZipFile, doc: _Doc) -> bytes:

@@ -4526,7 +4526,8 @@ def _hwpx_document(
         out = [_hwpx_picture(index, data)]
         caption = str(picture.get("caption") or "").strip()
         if caption:
-            out.append(_hwpx_para(caption, 5, 4))
+            # small and regular, as under a figure in the Word file: not a second heading
+            out.append(_hwpx_para(caption, 5, 5))
         return out
 
     closing_at = _last_body(sections)

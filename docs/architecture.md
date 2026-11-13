@@ -1653,7 +1653,18 @@ Follow-ups. `sessions._office_report` finds a report conversation whose document
 to `assemble` too): the office tools join, the server reads the file first
 (`_document_preset`), and the model edits it with `hwp_edit` / `docx_edit` against the
 version it read. Hand saves in the editor and the agent's edits share the version history,
-as for any office document. The web sends those turns through the chat stream
+as for any office document. 「표 추가」 is the `insert_table` op of both editors
+(`{after, rows}`, the first row the head): the table is drawn as the exporters draw one
+(`report_export._hwpx_table` / `_docx_table`), so it matches the report's own tables; an HWPX
+made elsewhere whose header lacks the house border, paragraph and character shapes those
+tables point to gets a refusal that names `insert_table_row` instead of a broken file, and
+a Word file without the table style gets plain bordered cells. 「3장」 is counted on the
+headings the outline marks: the Word outline names heading styles, and the HWPX outline
+(`hwpx_edit._heading_marks`) marks short lines set larger than the body text — the one
+largest line as `(title)`, the next sizes as `(heading 1)`, `(heading 2)`, a cover label
+above the title left out — so a report's chapters can be counted in either file; figure
+captions are set in the small note shape, not a heading's. The web sends those turns
+through the chat stream
 (`useStore.send`, `officeReport`). A report written as a file is not re-planned or revised
 by the report pipeline afterwards; a new report is a new conversation.
 

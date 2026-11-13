@@ -17,8 +17,10 @@ MAX_TEXT = 4000
 
 OPS = (
     "replace_text", "fill_blank", "set_cell", "insert_paragraph", "delete_paragraph",
-    "insert_table_row", "delete_table_row",
+    "insert_table_row", "delete_table_row", "insert_table",
 )
+#: a new table's size: rows (its head row included) and columns
+MAX_TABLE_ROWS, MAX_TABLE_COLS = 40, 8
 
 
 @dataclass
@@ -74,6 +76,31 @@ def text_arg(op: dict, name: str, error: type[ValueError]) -> str:
     if len(value) > MAX_TEXT:
         raise error(f"{op.get('op')}: {name}이 {MAX_TEXT}자를 넘습니다.")
     return value.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def table_arg(op: dict, error: type[ValueError]) -> list[list[str]]:
+    """`rows` of an `insert_table`: lists of cell text, the first row its head; short rows
+    padded to the widest."""
+    rows = op.get("rows")
+    if (not isinstance(rows, list) or not rows
+            or not all(isinstance(row, list) and row for row in rows)):
+        raise error("insert_table: rows는 [[머리 칸, …], [칸, …], …] 꼴이어야 합니다.")
+    width = max(len(row) for row in rows)
+    if len(rows) > MAX_TABLE_ROWS or width > MAX_TABLE_COLS:
+        raise error(f"insert_table: 표는 {MAX_TABLE_ROWS}줄 × {MAX_TABLE_COLS}칸까지입니다.")
+    out: list[list[str]] = []
+    for row in rows:
+        cells = []
+        for cell in row:
+            if not isinstance(cell, (str, int, float)):
+                raise error("insert_table: 칸은 글자여야 합니다.")
+            text = " ".join(str(cell).split())
+            if len(text) > MAX_TEXT:
+                raise error(f"insert_table: 한 칸이 {MAX_TEXT}자를 넘습니다.")
+            # a 「|」 would split the cell when the exporters read the row
+            cells.append(text.replace("|", "/"))
+        out.append(cells + [""] * (width - len(cells)))
+    return out
 
 
 def check_ops(ops: object, error: type[ValueError]) -> list:

@@ -233,3 +233,57 @@ def test_its_follow_ups_run_as_chat_turns_with_the_office_tools_and_the_pre_read
     assert "session.kind is SessionKind.chat" not in source
     # the format reaches the report run from the request (or its waiting outline)
     assert "report_office.asked_file(" in source and "office=office_file" in source
+
+
+@pytest.mark.parametrize("kind", [ArtifactKind.hwp, ArtifactKind.docx])
+def test_a_table_is_added_to_the_written_file(kind):
+    # 「표 추가」: a follow-up adds a new table after a paragraph, its first row the head
+    edit, error = ((hwpx_edit, hwpx_edit.HwpxError) if kind is ArtifactKind.hwp
+                   else (docx_edit, docx_edit.DocxError))
+    data = report_office.file_bytes(kind, "2027년 사업계획", _report_data())
+    before = edit.outline(data)
+    tables = before.count("(표 ")
+    made = edit.apply(data, [
+        {"op": "insert_paragraph", "after": "p3", "text": "표 9. 핵심 요약"},
+        {"op": "insert_table", "after": "p3",
+         "rows": [["구분", "내용"], ["시장", "예산 증가"], ["과제", "[담당자] 지정"]]},
+    ])
+    after = edit.outline(made.data)
+    assert after.count("(표 ") == tables + 1
+    assert "r0: 구분 | 내용" in after and "r2: 과제 | [담당자] 지정" in after
+    assert any("표 추가" in line for line in made.changes)
+    # the new table is a table the next edit can work on
+    table = next(line.split()[0] for line in after.splitlines()
+                 if line.startswith("t") and "3×2" in line)
+    again = edit.apply(made.data, [{"op": "set_cell", "table": table, "row": 1, "col": 1,
+                                    "text": "예산 30% 증가"}])
+    assert "예산 30% 증가" in edit.outline(again.data)
+    with pytest.raises(error):
+        edit.apply(data, [{"op": "insert_table", "after": "p3", "rows": "구분|내용"}])
+    with pytest.raises(error):
+        edit.apply(data, [{"op": "insert_table", "after": "p3",
+                           "rows": [[str(c) for c in range(9)]]}])
+
+
+def test_an_hwp_file_made_elsewhere_gets_no_table_it_would_break():
+    data = report_office.file_bytes(ArtifactKind.hwp, "제목", _report_data())
+    source = io.BytesIO(data)
+    out = io.BytesIO()
+    with zipfile.ZipFile(source) as before, zipfile.ZipFile(out, "w") as after:
+        for item in before.infolist():
+            body = before.read(item.filename)
+            if item.filename == "Contents/header.xml":
+                body = body.replace(b'<hh:borderFill id="3"', b'<hh:borderFill id="33"')
+            after.writestr(item, body)
+    with pytest.raises(hwpx_edit.HwpxError, match="새 표를 넣을 수 없습니다"):
+        hwpx_edit.apply(out.getvalue(), [{"op": "insert_table", "after": "p2",
+                                          "rows": [["a", "b"]]}])
+
+
+def test_the_hwp_outline_names_its_chapters_so_a_numbered_part_can_be_found():
+    # 「3장 줄여 줘」: the model counts the headings the outline marks, as in a Word file
+    data = report_office.file_bytes(ArtifactKind.hwp, "2027년 사업계획", _report_data())
+    lines = hwpx_edit.outline(data).splitlines()
+    heads = [line.split(": ", 1)[1] for line in lines if "(heading 1)" in line]
+    assert any("(title): 2027년 사업계획" in line for line in lines)
+    assert heads[:3] == ["개요", "시장", "3장"] and heads[-1] == "참고문헌"

@@ -342,7 +342,8 @@ def test_a_figure_is_centred_in_every_format():
     section_xml = hwpx.read("Contents/section0.xml").decode()
     # Paragraph shape 5 is the centred one.
     assert '<hp:p paraPrIDRef="5" styleIDRef="0"><hp:run charPrIDRef="0"><hp:pic' in section_xml
-    assert '<hp:p paraPrIDRef="5" styleIDRef="0"><hp:run charPrIDRef="4">' in section_xml
+    # the caption centred too, in the small regular note shape (not a heading's)
+    assert '<hp:p paraPrIDRef="5" styleIDRef="0"><hp:run charPrIDRef="5">' in section_xml
     header = hwpx.read("Contents/header.xml").decode()
     assert '<hh:paraPr id="5"' in header and 'horizontal="CENTER"' in header
 
