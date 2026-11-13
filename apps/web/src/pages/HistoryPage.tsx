@@ -7,7 +7,6 @@ import {
   ConfirmDialog,
   EmptyState,
   Input,
-  LoadingState,
   Modal,
   ReloadNotice,
 } from '@/components/ui'
@@ -22,6 +21,7 @@ import { dayLabel, dayOf } from '@/lib/days'
 import { useT } from '@/lib/useT'
 import type { SessionKind } from '@/types'
 import { RelTime } from '@/components/ui/RelTime'
+import { ListSkeleton } from '@/components/ui/Skeleton'
 
 /** Server pages list and search alike. */
 const PAGE_SIZE = 50
@@ -339,7 +339,7 @@ export function HistoryPage() {
 
       <div className={cn('mt-2', loading && listing && 'opacity-60')} aria-busy={loading}>
         {loading && !listing ? (
-          <LoadingState />
+          <ListSkeleton />
         ) : rows.length === 0 && !failed ? (
           <EmptyState
             icon={<MessageSquare size={18} />}

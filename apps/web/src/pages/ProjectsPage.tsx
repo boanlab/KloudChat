@@ -9,7 +9,6 @@ import {
   EmptyState,
   Field,
   Input,
-  LoadingState,
   Modal,
   PageHeader,
   ReloadNotice,
@@ -29,6 +28,7 @@ import { missingMessage } from '@/lib/formCheck'
 import { RelTime } from '@/components/ui/RelTime'
 import { sortRows } from '@/lib/tableSort'
 import { currentLocale } from '@/lib/i18n'
+import { ListSkeleton } from '@/components/ui/Skeleton'
 
 type ProjectOrder = 'updated' | 'name' | 'chats'
 const ORDER_KEY = 'kloudchat.sort.projects'
@@ -117,7 +117,7 @@ export function ProjectsPage() {
         {workspaceFailed && <ReloadNotice onRetry={() => void loadWorkspace()} />}
 
         {workspaceLoading && projects.length === 0 ? (
-          <LoadingState />
+          <ListSkeleton variant="cards" rows={4} />
         ) : projects.length === 0 ? (
           <EmptyState
             icon={<Boxes size={18} />}

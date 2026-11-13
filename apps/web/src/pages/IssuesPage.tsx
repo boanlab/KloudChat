@@ -4,12 +4,13 @@ import { useLocation, useSearchParams } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import { IssueThread, StatusBadge } from '@/components/issues/IssueThread'
-import { Badge, Button, EmptyState, LoadingState, ReloadNotice, Tabs } from '@/components/ui'
+import { Badge, Button, EmptyState, ReloadNotice, Tabs } from '@/components/ui'
 import { LoadMore } from '@/components/ui/ShowMore'
 import { issuesApi, type IssueDetail, type IssueRow } from '@/lib/api'
 import { KIND_LABEL, useIssues } from '@/lib/issues'
 import { useT } from '@/lib/useT'
 import { cn, formatDateTime } from '@/lib/utils'
+import { ListSkeleton } from '@/components/ui/Skeleton'
 
 /** Reports per page. */
 const ISSUE_PAGE = 30
@@ -120,7 +121,7 @@ export function IssuesPage() {
         </div>
         {failed && <ReloadNotice onRetry={load} />}
         {rows === null && !failed ? (
-          <LoadingState />
+          <ListSkeleton />
         ) : rows && rows.length === 0 ? (
           filter === 'unread' ? (
             <EmptyState icon={<Flag size={18} />} title={t('새 답변이 없습니다')} description={t('관리자가 답하면 여기에 모입니다.')} />
@@ -267,7 +268,7 @@ function IssueItem({
               </Button>
             </div>
           ) : (
-            <LoadingState />
+            <ListSkeleton />
           )}
         </div>
       )}

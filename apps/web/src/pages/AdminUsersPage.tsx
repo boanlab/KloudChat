@@ -443,7 +443,7 @@ export function AdminUsersPage() {
         <Card className="overflow-hidden">
           {/* Scroll box inside the card: card keeps `overflow-hidden` for rounded corners. */}
           <div className="overflow-x-auto">
-            <table className="w-full text-base">
+            <table className="w-full text-base" aria-busy={usersLoading || undefined}>
             <thead className="bg-elevated text-xs tracking-wide text-faint uppercase">
               <tr>
                 <th scope="col" className="w-10 pl-3">
@@ -482,7 +482,18 @@ export function AdminUsersPage() {
               </tr>
             </thead>
             <tbody>
-              {visible.length === 0 && (
+              {visible.length === 0 && usersLoading &&
+                // The table's shape while the first page loads.
+                Array.from({ length: 5 }, (_, i) => (
+                  <tr key={`skeleton-${i}`} className="border-t border-line" aria-hidden data-testid="users-skeleton">
+                    {[2.5, 40, 16, 36, 20, 24].map((w, j) => (
+                      <td key={j} className="px-4 py-3.5">
+                        <div className="h-3.5 rounded bg-line/60 motion-safe:animate-pulse" style={{ width: j === 0 ? '1rem' : `${w * 2}%` }} />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              {visible.length === 0 && !usersLoading && (
                 <tr className="border-t border-line">
                   <td colSpan={6} className="px-4 py-10 text-center text-base text-faint">
                     {usersLoading ? (

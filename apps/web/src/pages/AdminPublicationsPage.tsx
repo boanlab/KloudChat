@@ -30,6 +30,7 @@ import { formatDateTime } from '@/lib/utils'
 import { CopyButton } from '@/components/ui/CopyButton'
 import { ListSearch, NoMatch } from '@/components/ui/ListSearch'
 import { matchesQuery } from '@/lib/utils'
+import { ListSkeleton } from '@/components/ui/Skeleton'
 
 type View = 'pending' | 'all'
 
@@ -150,7 +151,7 @@ function PublicationList() {
         </div>
         {failed && <ReloadNotice onRetry={load} />}
         {rows === null && !failed ? (
-          <LoadingState />
+          <ListSkeleton />
         ) : rows && rows.length === 0 ? (
           <EmptyState icon={<Bot size={18} />} title={view === 'pending' ? t('승인을 기다리는 요청이 없습니다') : t('공개된 챗봇이 없습니다')} />
         ) : shown && shown.length === 0 ? (
