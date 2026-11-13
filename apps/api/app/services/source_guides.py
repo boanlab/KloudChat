@@ -38,7 +38,8 @@ Rules:
 - "topics": 3-8 key topics, short noun phrases, in the material's order.
 - "questions": {count} questions a reader could ask about this material and get answered
   FROM it. Each is a full question, specific to its content (names, terms, figures that
-  appear in it), not generic ("이 자료의 요점은?" is too generic).
+  appear in it), not generic ("이 자료의 요점은?" is too generic). Each must be answerable
+  from the material alone: never link topics the material does not link itself.
 Answer with one JSON object only:
 {{"summary": "...", "topics": ["..."], "questions": ["..."]}}
 예: {{"summary": "분산 시스템에서 사건 순서를 논리 시계로 정하는 방법을 다룬다. 램포트 시계와

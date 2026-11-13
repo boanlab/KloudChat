@@ -100,7 +100,8 @@ _SPECS: dict[str, tuple[str, str]] = {
   plausible but clearly wrong by the sources) and the rest "short" (a short answer of a
   word or phrase). "answer": for mc the 0-based index of the correct choice, for short the
   answer text. "explanation": why, from the sources, with citation. "cite": source numbers.
-- No question whose answer is not stated in the sources. No 「모두 정답」/「정답 없음」.
+- No question whose answer is not stated in the sources. No 「모두 정답」/「정답 없음」. No two
+  choices may say the same thing in other words (an equivalent formula, a synonym).
 예: {{"type": "mc", "question": "램포트 시계 값이 C(a) < C(b)일 때 항상 참인 것은?",
 "choices": ["a가 b보다 먼저 일어났다", "a와 b는 동시에 일어났다", "b가 a의 원인이다",
 "a가 b의 원인일 수도, 아닐 수도 있다"], "answer": 3,
@@ -493,7 +494,15 @@ def script_text(lines: list[dict], language: str = "ko") -> str:
     return "\n".join(f"{names[line['speaker']]}: {line['text']}" for line in lines)
 
 
+def cites_nothing(kind: str, doc: dict[str, Any]) -> bool:
+    """A cited kind whose document carries no citation at all (a mind map cites none)."""
+    if kind == "mindmap":
+        return False
+    return not cited("\n".join(str(s.get("content") or "") for s in doc.get("sections") or []))
+
+
 __all__ = ["AUDIO_LENGTH", "DOCUMENTS", "KINDS", "MAX_TOKENS", "SETS", "cards", "cited",
+           "cites_nothing",
            "clean_citations", "document", "export_anki", "export_csv", "language_of",
            "mindmap_source", "quiz", "report_data", "script", "script_text", "sheet_sections",
            "system_prompt", "user_prompt"]

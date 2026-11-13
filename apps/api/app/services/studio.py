@@ -218,11 +218,25 @@ async def _write(db, user: User, item: StudioItem) -> None:
                                "partial": made.partial, "strict": how.strict}
     if item.kind in studio_kinds.DOCUMENTS:
         doc = studio_kinds.document(item.kind, data, count, language)
+        if doc is not None and studio_kinds.cites_nothing(item.kind, doc):
+            # the writer left out the source numbers: asked once more, the better one kept
+            again, c, i, o = await _complete_json(
+                user, how, system + _CITE_AGAIN, prompt, studio_kinds.MAX_TOKENS[item.kind], db)
+            item.credits += c
+            item.input_tokens += i
+            item.output_tokens += o
+            redo = studio_kinds.document(item.kind, again, count, language) if again else None
+            if redo is not None and not studio_kinds.cites_nothing(item.kind, redo):
+                doc = redo
         if doc is None:
             raise ValueError("empty document")
         content.update(doc)
+        if language == "ko":
+            content = await _korean_only(user, how, content, db, item)
+            doc = {"title": content["title"], "sections": content["sections"]}
         item.content = content
         await _save_document(db, user, item, doc, sources, str(options.get("format") or "web"))
+        return
     elif item.kind == "quiz":
         questions = studio_kinds.quiz(data, count, random.Random())
         if len(questions) < 3:
@@ -243,6 +257,62 @@ async def _write(db, user: User, item: StudioItem) -> None:
         item.content = content
         item.speech_state = "idle"
         item.speech_total = len(lines)
+    if language == "ko" and item.content:
+        item.content = await _korean_only(user, how, item.content, db, item)
+
+
+_CITE_AGAIN = ("\n\nYour previous answer cited no sources. Every statement taken from a source "
+               "must end with its source number in square brackets, like [2].")
+
+#: joins the texts of one mend call; a line of its own, never inside a sentence
+_SEP = "\n\u241e\n"
+#: the fields of an output that are prose a reader sees
+_PROSE = ("title", "content", "question", "explanation", "front", "back", "text", "answer")
+
+
+def _prose_slots(content: dict[str, Any]) -> list[tuple[dict, str]]:
+    slots: list[tuple[dict, str]] = []
+    if isinstance(content.get("title"), str):
+        slots.append((content, "title"))
+    for group in ("sections", "questions", "cards", "lines"):
+        for row in content.get(group) or []:
+            for key in _PROSE:
+                if isinstance(row, dict) and isinstance(row.get(key), str):
+                    slots.append((row, key))
+            for i, choice in enumerate(row.get("choices") or [] if isinstance(row, dict) else []):
+                if isinstance(choice, str):
+                    slots.append((row["choices"], i))  # type: ignore[arg-type]
+    return slots
+
+
+async def _korean_only(user: User, how: shelf_calls.Route, content: dict[str, Any], db,
+                       item: StudioItem) -> dict[str, Any]:
+    """Chinese words slipped into Korean output (a self-hosted writer's habit) said in Korean:
+    the sentences holding them rewritten in one call, else read in Hangul (`stray_han`)."""
+    from app.services import stray_han
+
+    slots = _prose_slots(content)
+    joined = _SEP.join(str(holder[key]) for holder, key in slots)
+    if not stray_han.strays(joined):
+        return content
+    spent: dict = {}
+
+    async def complete(model, messages, api_key, max_tokens):
+        return await shelf_calls.complete(user, how.model, "You correct Korean text.",
+                                          messages[0]["content"], max_tokens)
+
+    mended, _ = await stray_han.mend(joined, complete=complete, model=str(how.model["id"]),
+                                     usage=spent)
+    if spent:
+        c, i, o = shelf_calls.bill(db, user, how.model, spent, REASON)
+        item.credits += c
+        item.input_tokens += i
+        item.output_tokens += o
+    parts = mended.split(_SEP)
+    if len(parts) == len(slots):
+        for (holder, key), text in zip(slots, parts, strict=True):
+            holder[key] = text
+    return content
 
 
 async def _save_document(db, user: User, item: StudioItem, doc: dict[str, Any],

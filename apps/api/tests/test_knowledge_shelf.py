@@ -511,3 +511,23 @@ def test_the_migration_makes_the_tables_the_models_read():
         with Operations.context(MigrationContext.configure(conn)):
             migration.downgrade()
         assert not {m.__table__.name for m in models} & set(sa.inspect(conn).get_table_names())
+
+
+async def test_a_document_without_citations_is_asked_again_and_chinese_slips_are_mended(shelf):
+    uncited = {"title": "브리핑", "summary": "분散 시스템은 여러 컴퓨터로 동작한다.",
+               "sections": [{"heading": "핵심 내용", "content": "- 전역 시계가 없다."}]}
+    cited = {"title": "브리핑", "summary": "분散 시스템은 여러 컴퓨터로 동작한다 [1].",
+             "sections": [{"heading": "핵심 내용", "content": "- 전역 시계가 없다 [1]."}]}
+    shelf.answers.extend([json.dumps(uncited, ensure_ascii=False),
+                          json.dumps(cited, ensure_ascii=False),
+                          json.dumps(["분산 시스템은 여러 컴퓨터로 동작한다 [1]."],
+                                     ensure_ascii=False)])
+    started = await shelf.client.post(f"/projects/{shelf.ids.project}/studio", json={
+        "kind": "briefing", "sourceIds": [shelf.ids.lecture]})
+    await shelf_jobs.drain()
+    item = (await shelf.client.get(f"/studio/{started.json()['id']}")).json()
+    assert item["state"] == "done", item
+    body = "\n".join(s["content"] for s in item["content"]["sections"])
+    assert "[1]" in body and "散" not in body and "분산 시스템은" in body
+    # first answer, the re-ask, and the Korean rewrite
+    assert len(shelf.calls) == 3 and "cited no sources" in shelf.calls[1]["system"]
