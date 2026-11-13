@@ -652,6 +652,8 @@ export function Composer({
   const [privacyRetrying, setPrivacyRetrying] = useState(false)
   // The safe model picked on the privacy card, for that card's decision only.
   const [safeChoice, setSafeChoice] = useState<{ token: string; id: string } | null>(null)
+  // The project's default template taken off on this start.
+  const [projectTemplateOff, setProjectTemplateOff] = useState(false)
   const safePick =
     pendingPrivacy && safeChoice?.token === pendingPrivacy.decision.decisionToken ? safeChoice.id : undefined
   const [modelSelectionPending, setModelSelectionPending] = useState(false)
@@ -985,8 +987,8 @@ export function Composer({
   const shownTemplate =
     (pendingTemplate?.surface === kind ? pendingTemplate : null) ??
     designTemplates.find((row) => row.id === session?.renderTemplateId) ??
-    // A project's default template for this surface, before anything is sent.
-    (fresh ? designTemplates.find((row) => row.surface === kind && row.id === project?.renderTemplates?.[kind]) : undefined) ??
+    // A project's default template for this surface, before anything is sent (unless taken off).
+    (fresh && !projectTemplateOff ? designTemplates.find((row) => row.surface === kind && row.id === project?.renderTemplates?.[kind]) : undefined) ??
     null
   // Same gate as the gallery button.
   const hasTemplates =
@@ -2402,7 +2404,7 @@ export function Composer({
                 {project.emoji} {project.name}
               </Badge>
             )}
-            {shownTemplate && (
+            {shownTemplate && !(outputSurface && showTemplates) && (
               <Badge tone="accent" title={t('이 대화의 템플릿')}>
                 <LayoutGrid size={11} />
                 {/* Named by its role: beside an agent of the same name (「@회의록」) it reads as the form. */}
@@ -2588,6 +2590,21 @@ export function Composer({
                 <span className="truncate font-medium">
                   {shownTemplate ? templateText(shownTemplate, currentLang() === 'en').name : t('기본값')}
                 </span>
+              </button>
+            )}
+            {showTemplates && shownTemplate && (
+              <button
+                type="button"
+                onClick={() => {
+                  setPendingTemplate(null)
+                  setProjectTemplateOff(true)
+                  if (session?.renderTemplateId) void setSessionTemplate(session.id, null)
+                }}
+                aria-label={t('{name} 템플릿 해제').replace('{name}', templateText(shownTemplate, currentLang() === 'en').name)}
+                title={t('템플릿 없이 시작')}
+                className="-ml-1 grid size-8 place-items-center rounded-control text-faint hover:bg-elevated hover:text-fg"
+              >
+                <X size={13} />
               </button>
             )}
           </div>

@@ -93,6 +93,7 @@ export const EN_UI: Record<string, string> = {
   '기본 제공 템플릿을 불러오지 못했습니다.': 'Could not load the built-in templates.',
   '이 템플릿을 쓰던 에이전트는 템플릿 없이 일합니다. 이미 만든 아티팩트는 템플릿 없이 기본 모양으로 열립니다.':
     'Agents that used this template work without one. Artifacts already made open in the default look, without a template.',
+  '템플릿 없이 시작': 'Start without a template',
   // Empty states
   '새 대화 시작': 'Start a conversation',
   '검색 지우기': 'Clear search',
