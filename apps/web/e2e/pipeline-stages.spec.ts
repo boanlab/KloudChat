@@ -29,11 +29,11 @@ function stage(name: string, label: string, kind: string, status: string, extra:
 }
 
 const stages = [
-  stage('research', '자료 모으기', 'io', 'done', { summary: '첨부 2개 · 검색 없음', rerunnable: false }),
-  stage('calc', '계산', 'compute', 'done', { summary: '값 4개 정함' }),
+  stage('research', '자료 모으기', 'io', 'done', { summary: '첨부 2개 · 검색 없음', rerunnable: false, hasEvidence: false }),
+  stage('calc', '계산', 'compute', 'done', { summary: '값 4개 정함', hasEvidence: true }),
   stage('prepass', '사전 계산', 'compute', 'skipped', { reason: 'no prepass steps for this format' }),
   stage('figures', '도식', 'model', 'skipped', { reason: 'no figures planned' }),
-  stage('draft', '본문 작성', 'model', 'done', { summary: '절 3개', ms: 18_400 }),
+  stage('draft', '본문 작성', 'model', 'done', { summary: '절 3개', ms: 18_400, hasEvidence: false }),
   stage('check:grounding', '근거 확인', 'check', 'done', { summary: '자료에 없는 값 1개를 빈칸으로' }),
   stage('verify', '검증', 'check', 'done', { summary: '고침 2건 · 남은 것 1건' }),
   stage('quality', '품질 점검', 'check', 'failed', { reason: 'judge model timed out', rerunnable: true }),
@@ -279,6 +279,9 @@ test('report: stage list, evidence, marks, fill, rerun', { tag: '@phone' }, asyn
   // Status icons say what they mean.
   await expect(list.getByRole('img', { name: '실패' })).toBeVisible()
   await list.getByRole('button', { name: '해당 없는 단계 2개' }).click()
+  // A stage that kept nothing to read offers no 「보기」 (the server says so with `hasEvidence`).
+  await expect(list.getByRole('button', { name: '본문 작성 근거 보기', exact: true })).toHaveCount(0)
+  await expect(list.getByRole('button', { name: '자료 모으기 근거 보기', exact: true })).toHaveCount(0)
   await list.getByRole('button', { name: '검증 근거 보기', exact: true }).click()
   await expect(list.getByText('10월 7일').first()).toBeVisible()
   await list.getByRole('button', { name: '계산 근거 보기', exact: true }).click()

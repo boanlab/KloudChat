@@ -41,6 +41,17 @@ STATUS_WORDS = {"skipped": "해당 없음", "stopped": "멈춤", "failed": "실�
                 "cancelled": "중단"}
 
 
+def shows_evidence(evidence: dict[str, Any] | None) -> bool:
+    """Whether a stage's evidence has a part the surface shows (web `hasEvidence`)."""
+    e = evidence or {}
+    findings = e.get("findings") or {}
+    return bool(
+        e.get("computed") or e.get("computedBlock")
+        or findings.get("before") or findings.get("after")
+        or e.get("changes") or e.get("code") or e.get("questions")
+    )
+
+
 @dataclass(slots=True)
 class StepRecord:
     """One stage's outcome: bundle, log and run record."""
@@ -81,6 +92,8 @@ class StepRecord:
         }
         if self.tokens:
             out["tokens"] = dict(self.tokens)
+        # Whether 「보기」 has anything to show, also when the evidence itself is left out.
+        out["hasEvidence"] = shows_evidence(self.evidence)
         if evidence and self.evidence:
             out["evidence"] = self.evidence
         return out

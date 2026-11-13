@@ -203,7 +203,9 @@ function StageRow({
   const shown = evidence ? { ...stage, evidence } : stage
   // Read with the stored evidence once it is fetched: a check that left findings turns to 「!」.
   const tone = stageTone(shown)
-  const viewable = hasEvidence(shown) || !!stage.reason || (!stage.evidence && !missing)
+  // 「보기」 only where there is something to read: shown evidence, a recorded reason, or stored
+  // evidence the server says exists (`hasEvidence`; a record written before it, unknown, may).
+  const viewable = hasEvidence(shown) || !!stage.reason || (!stage.evidence && !missing && stage.hasEvidence !== false)
   const toggle = async () => {
     const next = !open
     setOpen(next)
@@ -211,8 +213,12 @@ function StageRow({
     setLoading(true)
     const found = await loadEvidence()
     setLoading(false)
-    if (found) setEvidence(found)
-    else setMissing(true)
+    if (found && hasEvidence({ ...stage, evidence: found })) setEvidence(found)
+    else {
+      setMissing(true)
+      // nothing to read after all: fold away rather than show an empty box
+      if (!stage.reason) setOpen(false)
+    }
   }
   const rerun = async () => {
     setConfirming(false)

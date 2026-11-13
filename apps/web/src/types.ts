@@ -355,6 +355,8 @@ export interface PipelineStage {
   attempt?: number
   rerunnable?: boolean
   evidence?: StageEvidence
+  /** Whether stored evidence has anything to show, sent also when `evidence` is left out. */
+  hasEvidence?: boolean
 }
 
 /** A pipeline run a message settled (`routing.run`), or the one streaming now. */
