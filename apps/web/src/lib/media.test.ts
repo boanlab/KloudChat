@@ -41,6 +41,15 @@ describe('time marks in an answer', () => {
     )
   })
 
+  it('takes copies of one file for one video', () => {
+    // walk 11-14: four copies of lecture10.webm in the project left every mark unlinked
+    const copies = [lecture, { ...lecture, id: 'v3' }, { ...lecture, id: 'v4' }]
+    expect(linkTimestamps('개요 [00:00:10], 결론 [00:09:30].', copies)).toBe(
+      '개요 [00:00:10](/files?open=v1&t=10), 결론 [00:09:30](/files?open=v1&t=570).',
+    )
+    expect(linkTimestamps('개요 [00:00:10].', [...copies, demo])).toBe('개요 [00:00:10].')
+  })
+
   it('leaves clock times, date-times and marks past the video alone', () => {
     expect(linkTimestamps('회의는 14:30에 시작합니다', [lecture])).toBe('회의는 14:30에 시작합니다')
     expect(linkTimestamps('기준 2026-11-14 13:55:02', [lecture])).toBe('기준 2026-11-14 13:55:02')

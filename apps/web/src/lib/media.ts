@@ -111,8 +111,11 @@ const STAMP =
  * the conversation has. Code and links are left alone; a mark with no clear video, or past
  * the end of a video whose length is known, stays text.
  */
-export function linkTimestamps(text: string, videos: VideoRef[]): string {
+export function linkTimestamps(text: string, given: VideoRef[]): string {
   if (!/\d:[0-5]\d/.test(text)) return text
+  // The same file uploaded again (attached in several of the project's chats) is one video:
+  // its copies would otherwise leave every mark without a clear one. The first copy wins.
+  const videos = given.filter((v, i) => given.findIndex((o) => o.name === v.name) === i)
   const linked = [...new Set([...text.matchAll(/\/files\?open=([A-Za-z0-9-]{1,64})/g)].map((m) => m[1]))]
   const fallback = linked.length === 1 ? linked[0] : videos.length === 1 ? videos[0].id : null
   return text

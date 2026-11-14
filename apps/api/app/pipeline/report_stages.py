@@ -2620,12 +2620,12 @@ class Quality(Base):
 def coverage_items(req, sources: list[dict]) -> list[coverage.Item]:
     """The project files an each-item request is about, with their citation numbers."""
     ordinals = {str(src.get("id") or ""): int(src.get("ordinal") or 0) for src in sources or []}
-    return [
+    return coverage.asked_of(coverage.distinct([
         coverage.Item(str(item.get("name") or ""), str(item.get("label") or ""),
                       str(item.get("title") or ""), ordinals.get(str(item.get("id") or ""), 0))
         for item in req.project_sources or []
         if not item.get("attached") and item.get("state") in ("included", "truncated")
-    ]
+    ]), req.text)
 
 
 class Coverage(Base):

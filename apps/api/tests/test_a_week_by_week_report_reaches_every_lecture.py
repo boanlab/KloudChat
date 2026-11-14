@@ -183,3 +183,27 @@ def test_an_item_stops_short_of_the_next_lecture():
     assert items
     assert all(block.count("\n") < fact_check._ITEM_LINES for _, block in items)
     assert not any("**05강_" in block and "가상화의 원리" in block for _, block in items)
+
+
+def test_a_file_uploaded_again_is_one_item_to_cover():
+    """Walk 11-14 rerun: four copies of lecture10.webm in the project gave four sections."""
+    from app.services import coverage
+
+    items = [coverage.Item("01강.pdf", "1강", "개요"), coverage.Item("lecture10.webm", "", ""),
+             coverage.Item("lecture10.webm", "", ""), coverage.Item("02강.pdf", "2강", "모델")]
+    assert [i.name for i in coverage.distinct(items)] == ["01강.pdf", "lecture10.webm", "02강.pdf"]
+
+
+def test_a_request_scoped_to_some_lectures_is_about_those_only():
+    """Walk 11-14 rerun: 「1~7강을 강별로 … 8강의 문제」 planned all 22 project files."""
+    from app.services import coverage
+
+    items = [coverage.Item(f"{n:02d}강.pdf", f"{n}강", "") for n in range(1, 21)]
+    items.append(coverage.Item("메모.md", "", ""))
+    asked = ("중간고사 대비 요약 보고서를 써 줘. 1~7강 핵심 개념을 강별로 정리하고, "
+             "8강의 자주 틀리는 문제도")
+    assert [i.label for i in coverage.asked_of(items, asked)] == [f"{n}강" for n in range(1, 9)]
+    # no unit named, or units no file carries: every file
+    every = "올린 강의 자료 20개 전체를 주차별로 요약해 줘"
+    assert coverage.asked_of(items, every) == items
+    assert coverage.asked_of(items, "3~4주차를 각각 정리") == items
