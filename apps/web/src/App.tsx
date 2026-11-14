@@ -124,7 +124,7 @@ function useLandingAfterSignIn(authenticated: boolean, authLoading: boolean, rol
     was.current = !authenticated && !authLoading
     if (!signedIn || !role) return
     if (window.location.pathname.startsWith('/admin') && role !== 'admin') navigate('/', { replace: true })
-  }, [authenticated, role, navigate])
+  }, [authenticated, authLoading, role, navigate])
 }
 
 /** Share link; a members-only link offers 로그인 in place, same address. */

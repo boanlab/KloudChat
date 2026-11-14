@@ -278,7 +278,7 @@ export function HistoryPage() {
       </p>
 
       {/* No conversation at all: nothing to search, pick or delete; the empty state says what to do. */}
-      {everyone !== 0 && (
+      {!(everyone === 0 && !urlQuery && !needle) && (
       <div className="mt-5 flex flex-wrap items-center gap-2" data-history-tools="">
         <div className="relative min-w-0 flex-1 max-sm:basis-full">
           <Search size={14} className="absolute top-1/2 left-3 -translate-y-1/2 text-faint" />
