@@ -70,7 +70,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Test config paths
+      # Vite's path aliases, and every e2e spec in exactly one CI group or listed as live
+      # (`playwright.ci.config.ts` refuses to load otherwise).
+      - name: Test configs
         run: npm run test:config
 
       - name: Unit tests

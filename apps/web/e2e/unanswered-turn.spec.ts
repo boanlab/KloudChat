@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test'
-import { signIn } from './helpers'
+import { composerFixture } from './composer-fixture'
 
 /** A stored `failure` mark on a turn is shown with a retry when the conversation is reopened. Transcripts served from here. */
 
@@ -82,15 +82,15 @@ async function serve(
           `data: ${JSON.stringify({ type: 'done' })}\n\n`,
       })
     }
-    return route.continue()
+    return route.fallback()
   })
 }
 
 test('답변이 오지 않은 질문은 다시 열어도 그 사실과 다시 물어볼 길을 함께 보여 준다', async ({
   page,
-}) => {
+}, testInfo) => {
   test.setTimeout(120_000)
-  await signIn(page)
+  await composerFixture(page, testInfo)
   const sent: string[] = []
   await serve(page, [message({ failure: 'no_answer' })], sent, '지자체마다 다릅니다.')
 
@@ -105,9 +105,9 @@ test('답변이 오지 않은 질문은 다시 열어도 그 사실과 다시 �
   await expect(page.getByText(QUESTION)).toHaveCount(1)
 })
 
-test('중간에 끊긴 답변은 쓰다 만 내용과 함께 끊겼다고 말한다', async ({ page }) => {
+test('중간에 끊긴 답변은 쓰다 만 내용과 함께 끊겼다고 말한다', async ({ page }, testInfo) => {
   test.setTimeout(120_000)
-  await signIn(page)
+  await composerFixture(page, testInfo)
   await serve(
     page,
     [
@@ -131,9 +131,9 @@ test('중간에 끊긴 답변은 쓰다 만 내용과 함께 끊겼다고 말한
   await expect(page.getByRole('button', { name: '다시 시도' })).toHaveCount(1)
 })
 
-test('답변이 온 대화는 실패한 것처럼 보이지 않는다', async ({ page }) => {
+test('답변이 온 대화는 실패한 것처럼 보이지 않는다', async ({ page }, testInfo) => {
   test.setTimeout(120_000)
-  await signIn(page)
+  await composerFixture(page, testInfo)
   await serve(
     page,
     [message({}), message({ id: 'm_2', role: 'assistant', content: '지자체마다 다릅니다.' })],
@@ -147,9 +147,9 @@ test('답변이 온 대화는 실패한 것처럼 보이지 않는다', async ({
   await expect(page.getByRole('button', { name: '다시 시도' })).toHaveCount(0)
 })
 
-test('아직 답이 오는 중인 질문은 실패로 보이지 않는다', async ({ page }) => {
+test('아직 답이 오는 중인 질문은 실패로 보이지 않는다', async ({ page }, testInfo) => {
   test.setTimeout(120_000)
-  await signIn(page)
+  await composerFixture(page, testInfo)
   const sent: string[] = []
   // The answer is held back, so the question is still being answered during the checks.
   await serve(page, [], sent, '지자체마다 다릅니다.', 10_000)

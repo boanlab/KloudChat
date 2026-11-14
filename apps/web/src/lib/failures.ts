@@ -49,6 +49,16 @@ const REFUSALS: Record<string, string> = {
     '개인정보 검사기를 사용할 수 없어 요청을 보내지 못했습니다. 잠시 후 다시 시도하세요.',
 }
 
+/**
+ * A send our API refused before writing the turn: any 4xx, and the privacy checker's outage
+ * (503 `governance_unavailable`, refused before any egress). The draft goes back to the box;
+ * a bare 502–504 from a gateway is not this (the turn may be running).
+ */
+export function refusedBeforeWrite(error: unknown): error is ApiError {
+  if (!(error instanceof ApiError)) return false
+  return (error.status >= 400 && error.status < 500) || errorCode(error) === 'governance_unavailable'
+}
+
 /** A refused picture, figure or document edit: our sentence for a known code, else `fallback`. */
 export function mediaFailure(err: unknown, fallback: string, t: T): string {
   const code = err instanceof ApiError && err.status < 500 ? errorCode(err) : ''

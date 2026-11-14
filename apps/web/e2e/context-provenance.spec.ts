@@ -165,7 +165,7 @@ test('턴이 받은 메모리·첨부·프로젝트 지식이 타임라인 한 �
   await mockChat(page)
   await answerOnce(page)
 
-  const timeline = page.getByRole('button').filter({ hasText: '메모리 1건 저장' })
+  const timeline = page.getByRole('button', { name: /^답했습니다 · 메모리 2건 참고/ })
   await expect(timeline).toBeVisible({ timeout: 15_000 })
   await timeline.click()
 
@@ -181,18 +181,19 @@ test('접힌 타임라인은 받은 것만 나열하다 끝나지 않는다', as
   await mockChat(page)
   await answerOnce(page)
 
-  const timeline = page.getByRole('button').filter({ hasText: '메모리 1건 저장' })
+  const timeline = page.getByRole('button', { name: /^답했습니다 · 메모리 2건 참고/ })
   await expect(timeline).toBeVisible({ timeout: 15_000 })
-  // Five steps: three named, the rest counted.
-  await expect(timeline).toContainText('외 1개')
-  await expect(timeline).toContainText('5단계')
+  // The outcome first, then five steps: three named, the rest counted.
+  await expect(timeline).toHaveAccessibleName(
+    '답했습니다 · 메모리 2건 참고 · 첨부 2개 중 1개 잘림 · 프로젝트 지식 3개 중 1개 빠짐 · 외 2개',
+  )
 })
 
 test('자동 메모리가 쓴 기록은 그 턴 안에서 보인다', async ({ page }) => {
   await mockChat(page)
   await answerOnce(page)
 
-  const timeline = page.getByRole('button').filter({ hasText: '메모리 1건 저장' })
+  const timeline = page.getByRole('button', { name: /^답했습니다 · 메모리 2건 참고/ })
   await timeline.click()
   await expect(page.getByText('자동 메모리에 추가됨')).toBeVisible()
 })

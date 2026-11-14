@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { signIn } from './helpers'
+import { composerFixture } from './composer-fixture'
 import { openTool, setWebSearch, toolNames } from './composer-tools'
 
 /** Composer toolbar switches say what the turn will do and which of them are account-wide. */
@@ -40,7 +40,7 @@ const emptySession = {
 async function stubModels(page: Page) {
   await page.route('**/api/models', async (route) => {
     if (route.request().method() !== 'GET') {
-      await route.continue()
+      await route.fallback()
       return
     }
     await route.fulfill({
@@ -58,14 +58,14 @@ async function stubModels(page: Page) {
   })
 }
 
-test('웹 검색은 strict-local 모델에서 바로 검색하지 않고 먼저 묻는다', async ({ page }) => {
+test('웹 검색은 strict-local 모델에서 바로 검색하지 않고 먼저 묻는다', async ({ page }, testInfo) => {
   await stubModels(page)
-  await signIn(page)
+  await composerFixture(page, testInfo)
 
   const payloads: Record<string, unknown>[] = []
   await page.route(/\/api\/sessions(\?|$)/, async (route) => {
     if (route.request().method() !== 'POST') {
-      await route.continue()
+      await route.fallback()
       return
     }
     await route.fulfill({
@@ -76,7 +76,7 @@ test('웹 검색은 strict-local 모델에서 바로 검색하지 않고 먼저 
   })
   await page.route('**/api/sessions/*/messages', async (route) => {
     if (route.request().method() !== 'POST') {
-      await route.continue()
+      await route.fallback()
       return
     }
     payloads.push(route.request().postDataJSON() as Record<string, unknown>)
@@ -97,7 +97,7 @@ test('웹 검색은 strict-local 모델에서 바로 검색하지 않고 먼저 
   await expect(page.getByText('웹 검색: 항상', { exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: /External One/ }).click()
-  await page.getByRole('button', { name: /Local Strict/ }).click()
+  await page.getByRole('menuitemradio', { name: /Local Strict/ }).click()
 
   // The row says what the turn will do: no search tool inside the boundary, a card before
   // any query leaves (the admin's default, 「매번 묻기」).
@@ -110,11 +110,11 @@ test('웹 검색은 strict-local 모델에서 바로 검색하지 않고 먼저 
   expect(payloads[0]).toMatchObject({ webSearch: true })
 })
 
-test('작성 도구 옆의 커넥터 스위치는 계정 전체 설정이라고 밝힌다', async ({ page }) => {
+test('작성 도구 옆의 커넥터 스위치는 계정 전체 설정이라고 밝힌다', async ({ page }, testInfo) => {
   await stubModels(page)
   await page.route('**/api/connectors', async (route) => {
     if (route.request().method() !== 'GET') {
-      await route.continue()
+      await route.fallback()
       return
     }
     await route.fulfill({
@@ -142,7 +142,7 @@ test('작성 도구 옆의 커넥터 스위치는 계정 전체 설정이라고 
       ]),
     })
   })
-  await signIn(page)
+  await composerFixture(page, testInfo)
 
   await page.goto('/new/chat')
   await openTool(page, /^커넥터/)
@@ -151,11 +151,11 @@ test('작성 도구 옆의 커넥터 스위치는 계정 전체 설정이라고 
   ).toBeVisible()
 })
 
-test('웹 검색 토글은 글을 쓰는 모든 화면에 있다', async ({ page }) => {
+test('웹 검색 토글은 글을 쓰는 모든 화면에 있다', async ({ page }, testInfo) => {
   // One model every text surface may select.
   await page.route('**/api/models', async (route) => {
     if (route.request().method() !== 'GET') {
-      await route.continue()
+      await route.fallback()
       return
     }
     await route.fulfill({
@@ -170,7 +170,7 @@ test('웹 검색 토글은 글을 쓰는 모든 화면에 있다', async ({ page
       }),
     })
   })
-  await signIn(page)
+  await composerFixture(page, testInfo)
 
   const offersSearch = async () => (await toolNames(page)).filter((name) => name.startsWith('웹 검색')).length
   await page.goto('/new/chat')

@@ -94,6 +94,14 @@ function sessionRow(id: string, kind: string, messages: Record<string, unknown>[
 
 type SentTurn = { path: string; body: Record<string, unknown> }
 
+/**
+ * A turn's answer as a spec writes it: the stream's events, or a refusal before the turn
+ * is written (`status` + `json`). The fixture stores what the server would (the question,
+ * the partial or whole answer, the failure), so the transcript read back after the stream
+ * agrees with the screen.
+ */
+export type TurnReply = { events: Record<string, unknown>[] } | { status: number; json: unknown }
+
 export async function composerFixture(
   page: Page,
   testInfo: TestInfo,
@@ -105,6 +113,7 @@ export async function composerFixture(
     files = [],
     kinds = ['chat', 'report', 'slides', 'image', 'av'],
     reply = answer,
+    turn,
   }: {
     skills?: boolean
     agents?: boolean
@@ -116,6 +125,8 @@ export async function composerFixture(
     kinds?: string[]
     /** The stored answer in the fixture conversation. */
     reply?: string
+    /** Answers each `POST /sessions/:id/messages`; without it every turn gets 「확인했습니다.」. */
+    turn?: (body: Record<string, unknown>, sends: number) => TurnReply
   } = {},
 ) {
   const origin = new URL(String(testInfo.project.use.baseURL)).origin
@@ -175,7 +186,8 @@ export async function composerFixture(
       : [])
     if (method === 'GET' && path === '/connectors') return json(connectors ? [connector] : [])
     if (method === 'GET' && path === '/design-templates') return json(templates)
-    if (method === 'GET' && path === '/sessions') return json([...rows.values()])
+    // The list carries no transcripts, as the server's does not.
+    if (method === 'GET' && path === '/sessions') return json([...rows.values()].map((row) => ({ ...row, messages: null })))
     if (method === 'GET' && path === '/artifacts/counts') return json({ counts: {}, total: 0 })
     if (method === 'POST' && path === '/sessions') {
       // An unsent conversation is created under the id it was opened with.
@@ -199,6 +211,29 @@ export async function composerFixture(
     }
     const sendMatch = path.match(/^\/sessions\/([^/]+)\/messages$/)
     if (sendMatch && method === 'GET') return json((rows.get(sendMatch[1])?.messages as unknown[]) ?? [])
+    if (sendMatch && method === 'POST' && turn) {
+      sends.push({ path, body })
+      const answered = turn(body, sends.length)
+      if (!('events' in answered)) return json(answered.json, answered.status)
+      const row = rows.get(sendMatch[1])
+      const messages = ((row?.messages as Record<string, unknown>[] | undefined) ?? []).slice()
+      const stamp = () => `m${String(next++).padStart(31, '0')}`
+      // A retry answers the same question again: the old answer goes, the question stays.
+      const retried = messages.findIndex((m) => m.id === body.retryOf)
+      if (retried >= 0) messages.splice(retried + 1)
+      else messages.push({ id: stamp(), role: 'user', content: body.content, attachments: [], createdAt: at })
+      const text = answered.events.filter((e) => e.type === 'delta').map((e) => String(e.text)).join('')
+      const failed = answered.events.some((e) => e.type === 'error')
+      if (text) {
+        messages.push({ id: stamp(), role: 'assistant', content: text, attachments: [], model: 'fixture/model',
+          createdAt: at, ...(failed ? { failure: 'interrupted' } : {}) })
+      } else if (failed) {
+        messages[messages.length - 1] = { ...messages[messages.length - 1], failure: 'no_answer' }
+      }
+      if (row) Object.assign(row, { messages, messageCount: messages.length })
+      return route.fulfill({ contentType: 'text/event-stream',
+        body: answered.events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join('') })
+    }
     if (sendMatch && method === 'POST') {
       sends.push({ path, body })
       return route.fulfill({ contentType: 'text/event-stream', body: [

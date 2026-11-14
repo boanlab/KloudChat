@@ -1,5 +1,7 @@
+import { readdirSync } from 'node:fs'
 import { defineConfig, devices, type PlaywrightTestProject } from '@playwright/test'
 import base from './playwright.config'
+import { liveSpecs } from './e2e/live-specs'
 import shardWeights from './e2e/shard-weights.json' with { type: 'json' }
 
 /**
@@ -15,7 +17,9 @@ import shardWeights from './e2e/shard-weights.json' with { type: 'json' }
  * (`shardOf` below), by measured time rather than by count.
  *
  * The live-stack suite (a running app at 5173 and a seeded account) stays in
- * `playwright.config.ts`.
+ * `playwright.config.ts`; its specs are listed in `e2e/live-specs.ts`. Every other spec must be
+ * in exactly one group below: the config refuses to load otherwise (`homeless` below), so a new
+ * fixture spec cannot be left out of CI by accident.
  */
 
 const port = Number(process.env.E2E_PORT ?? 5390)
@@ -58,7 +62,7 @@ const groups: Record<string, Group> = {
   'auto-badge': {
     files: ['auto-routing.spec.ts'],
     grep: /라우팅 기준에 따라|품질 라우팅 결과는 영어|품질 상향 응답은|처리 내역의 전체 모델 정보/,
-    projects: { desktop: baseProfile('desktop'), laptop: baseProfile('laptop') },
+    projects: { desktop: baseProfile('desktop') },
   },
   presentation: {
     files: ['slides-presentation.spec.ts'],
@@ -77,7 +81,7 @@ const groups: Record<string, Group> = {
     files: ['composer-plus.spec.ts', 'composer-races.spec.ts', 'share-sign-in.spec.ts', 'file-box.spec.ts', 'home-layout.spec.ts', 'context-gauge.spec.ts'],
     projects: { desktop, phone: touchPhone },
   },
-  'i18n-gates': { files: ['i18n-audit-gates.spec.ts'], projects: { default: { ...devices['Desktop Chrome'] } } },
+  'i18n-gates': { files: ['i18n-audit-gates.spec.ts', 'i18n-placeholders.spec.ts'], projects: { default: { ...devices['Desktop Chrome'] } } },
   'report-table': { files: ['report-table-roundtrip.spec.ts', 'report-title-block.spec.ts', 'report-broken-picture.spec.ts', 'report-follows-a-dropped-stream.spec.ts', 'report-edits-in-place.spec.ts'], projects: { default: desktop } },
   // the web report as one Markdown document: one editor, 「Markdown 원문」, sections split back by heading
   'report-markdown': { files: ['report-markdown-editor.spec.ts'], projects: { default: desktop } },
@@ -98,10 +102,36 @@ const groups: Record<string, Group> = {
   'audit-log': { files: ['audit-log.spec.ts'], projects: { desktop: desktopChrome, phone: desktopChromePhone } },
   security: { files: ['security-paging.spec.ts'], projects: { desktop: desktopChrome, phone: desktopChromePhone } },
   pipeline: {
-    files: ['pipeline-stages.spec.ts', 'user-pipelines.spec.ts'],
+    files: ['pipeline-stages.spec.ts', 'user-pipelines.spec.ts', 'pipeline-chat-stays.spec.ts'],
     projects: { desktop, phone: pixelNative },
   },
   chain: { files: ['chain-canvas.spec.ts'], projects: { desktop, phone: pixelNative } },
+  // a turn's end on screen: a failed or cut answer and its reason, 다시 시도, an unanswered
+  // question reopened, the timeline of what the turn was given, rating, 원본 작업 열기
+  turns: {
+    files: [
+      'error-display.spec.ts',
+      'retry-in-place.spec.ts',
+      'prompt-copy.spec.ts',
+      'unanswered-turn.spec.ts',
+      'tool-recovery-status.spec.ts',
+      'context-provenance.spec.ts',
+      'dead-controls.spec.ts',
+      'plain-code-fence.spec.ts',
+    ],
+    projects: { desktop },
+  },
+  // what the composer carries between conversations, its per-turn switches, the privacy card
+  'composer-state': {
+    files: ['composer-handoff.spec.ts', 'per-turn-controls.spec.ts', 'model-catalogue.spec.ts', 'privacy-guard.spec.ts'],
+    projects: { desktop },
+  },
+  // skills chosen for a turn: the limit, the timeline, refusals that hand the draft back
+  'skill-runtime': { files: ['skill-runtime.spec.ts'], projects: { desktop } },
+  // the video options a model can make; cancelling a clip job
+  'media-jobs': { files: ['av-options.spec.ts', 'job-cancel.spec.ts'], projects: { desktop } },
+  // a shared deck or report keeps its design; a document template previews as pages
+  'shared-look': { files: ['shared-design.spec.ts', 'template-preview-pages.spec.ts'], projects: { default: desktop } },
   issues: { files: ['issue-reports.spec.ts'], projects: { desktop } },
   session: { files: ['session-renewal.spec.ts'], projects: { desktop } },
   'serving-guards': { files: ['serving-guards.spec.ts'], projects: { desktop } },
@@ -166,6 +196,33 @@ const groups: Record<string, Group> = {
   // (PPTX_ACTIONS=1), as it was when the editor was chosen
   'pptx-actions': { files: ['pptx-actions.spec.ts'], projects: { desktop } },
 }
+
+/**
+ * What is wrong with where the specs are: a spec in no group and not live, in two groups, in a
+ * group and the live list, or a listed file that does not exist. Empty when every spec on
+ * disk runs in CI exactly once (in each of its group's viewports) or is live.
+ */
+function homeless(): string[] {
+  const onDisk = readdirSync(new URL('./e2e', import.meta.url)).filter((name) => name.endsWith('.spec.ts'))
+  const grouped = Object.entries(groups).flatMap(([group, { files }]) => files.map((file) => ({ group, file })))
+  const problems: string[] = []
+  for (const file of onDisk) {
+    const homes = grouped.filter((row) => row.file === file).map((row) => row.group)
+    const live = liveSpecs.includes(file)
+    if (homes.length > 1) problems.push(`${file} is in more than one group: ${homes.join(', ')}`)
+    if (homes.length && live) problems.push(`${file} is in group ${homes[0]} and in e2e/live-specs.ts`)
+    if (!homes.length && !live) {
+      problems.push(`${file} is in no group of playwright.ci.config.ts and not in e2e/live-specs.ts`)
+    }
+  }
+  for (const file of [...grouped.map((row) => row.file), ...liveSpecs]) {
+    if (!onDisk.includes(file)) problems.push(`${file} is listed but there is no e2e/${file}`)
+  }
+  return [...new Set(problems)]
+}
+
+const problems = homeless()
+if (problems.length) throw new Error(`playwright.ci.config.ts:\n  ${problems.join('\n  ')}`)
 
 const projects: PlaywrightTestProject[] = Object.entries(groups).flatMap(([group, { files, grep, projects }]) =>
   Object.entries(projects).map(([viewport, use]) => ({

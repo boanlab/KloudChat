@@ -9,7 +9,7 @@ import {
   errorMessage,
 } from '@/lib/api'
 import { servedAspect } from '@/lib/aspects'
-import { mediaFailure, refusalSentence, streamFailureSentence, withRetryWait } from '@/lib/failures'
+import { mediaFailure, refusedBeforeWrite, refusalSentence, streamFailureSentence, withRetryWait } from '@/lib/failures'
 import {
   ApiError,
   PrivacyDecisionError,
@@ -116,9 +116,6 @@ const earlierAnswers = new Map<string, NonNullable<Message['superseded']>>()
 type Theme = 'light' | 'dark' | 'system'
 type SidebarMode = 'full' | 'rail' | 'hidden'
 
-/** A client refusal is returned before send writes its first Message. */
-const isClientRefusal = (error: unknown): error is ApiError =>
-  error instanceof ApiError && error.status >= 400 && error.status < 500
 
 /** A failed HTTP response is not proof that the server stored nothing. */
 export class ChatSendRecoveryError extends Error {
@@ -2119,7 +2116,7 @@ export const useStore = create<State>((set, get) => ({
     } catch (err) {
       if (!ownsAccount()) throw err
       if (err instanceof PrivacyDecisionError) err.sessionId = id
-      if (isClientRefusal(err) && before) {
+      if (refusedBeforeWrite(err) && before) {
         set((state) => ({
           sessions: state.sessions.map((session) =>
             session.id === id ? before : session,
@@ -4101,7 +4098,7 @@ async function streamTurn(
     } else if (err instanceof DOMException && err.name === 'AbortError') {
       settled = true
       patch((m) => ({ ...m, failure: 'stopped' }))
-    } else if (isClientRefusal(err)) {
+    } else if (refusedBeforeWrite(err)) {
       settled = true
       let sentence =
         refusalSentence(errorCode(err), tr) ??
@@ -4425,7 +4422,7 @@ async function streamReport(
   } catch (err) {
     settled = true
     // A refused rerun stored nothing: its placeholder answer goes, and the stage row says why.
-    if (gate.rerun && isClientRefusal(err)) {
+    if (gate.rerun && refusedBeforeWrite(err)) {
       set((s) => ({
         sessions: s.sessions.map((c) =>
           c.id === sessionId ? { ...c, messages: c.messages.filter((m) => m.id !== assistantId) } : c,
@@ -4447,7 +4444,7 @@ async function streamReport(
           ),
         }))
       }
-    } else if (accepted && !isClientRefusal(err)) {
+    } else if (accepted && !refusedBeforeWrite(err)) {
       // The response dropped, not the turn: it is still being written on the server.
       followDetachedTurn = true
     } else {
@@ -4456,7 +4453,7 @@ async function streamReport(
         error: errorMessage(err, tr('보고서를 만들지 못했습니다.')),
       }))
     }
-    if (isClientRefusal(err)) throw err
+    if (refusedBeforeWrite(err)) throw err
   } finally {
     if (!settled && accepted) followDetachedTurn = true
     else if (!settled) {
@@ -4714,7 +4711,7 @@ async function streamDeck(
   } catch (err) {
     settled = true
     // A refused rerun stored nothing: its placeholder answer goes, and the stage row says why.
-    if (gate.rerun && isClientRefusal(err)) {
+    if (gate.rerun && refusedBeforeWrite(err)) {
       set((s) => ({
         sessions: s.sessions.map((c) =>
           c.id === sessionId ? { ...c, messages: c.messages.filter((m) => m.id !== assistantId) } : c,
@@ -4736,7 +4733,7 @@ async function streamDeck(
           ),
         }))
       }
-    } else if (accepted && !isClientRefusal(err)) {
+    } else if (accepted && !refusedBeforeWrite(err)) {
       // The response dropped, not the turn: it is still being written on the server.
       followDetachedTurn = true
     } else {
@@ -4745,7 +4742,7 @@ async function streamDeck(
         error: errorMessage(err, tr('슬라이드를 만들지 못했습니다.')),
       }))
     }
-    if (isClientRefusal(err)) throw err
+    if (refusedBeforeWrite(err)) throw err
   } finally {
     if (!settled && accepted) followDetachedTurn = true
     else if (!settled) {
