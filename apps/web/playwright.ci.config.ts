@@ -176,6 +176,9 @@ const groups: Record<string, Group> = {
     projects: { desktop },
   },
   'failed-saves': { files: ['saves-that-fail.spec.ts'], projects: { desktop } },
+  // screens a product walk-through found broken: project rows and boxes, the template picker
+  // and a failed answer at phone widths (390 and 360), 접근 제한, an empty history, a mind map
+  'screen-states': { files: ['screen-states.spec.ts'], projects: { desktop, phone: touchPhone } },
   // 지식 서가: sources panel, source viewer, studio, quiz player, notes
   'knowledge-shelf': { files: ['knowledge-shelf.spec.ts'], projects: { desktop, phone: touchPhone } },
   // HWP panel against a stand-in editor; the real studio (built by rhwp/build-studio.sh into

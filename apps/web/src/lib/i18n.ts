@@ -2343,8 +2343,14 @@ const EN: Record<string, string> = {
   'MCP 서버를 붙여 외부 시스템을 도구로 씁니다. 인증 정보는 서버에만 저장되고, 도구 단위로 켜고 끌 수 있습니다.':
     'Attach an MCP server to use outside systems as tools. Credentials stay on the server, and each tool can be turned on or off.',
   'PDF (발표용)': 'PDF (for presenting)',
-  'PDF, 마크다운, CSV를 올려 두면 이 프로젝트의 모든 대화에서 참조합니다.':
-    'Upload PDF, Markdown or CSV and every conversation in this project can draw on it.',
+  '{kinds} 파일을 올려 두면 이 프로젝트의 모든 대화에서 참조합니다.':
+    'Upload {kinds} files and every conversation in this project can draw on them.',
+  '모두 펼치기': 'Expand all',
+  '모두 접기': 'Collapse all',
+  '그림 {n}장': '{n} pictures',
+  '영상 {n}개': '{n} videos',
+  '내레이션 {n}개': '{n} narrations',
+  '음악 {n}곡': '{n} music tracks',
   'v{n} 로 되돌리기': 'Restore v{n}',
   '{date} 리필': 'refills {date}',
   '{date}에 {n} 크레딧으로 리필됩니다. 남은 크레딧은 이월되지 않습니다. 한도 변경은 관리자에게 문의하세요.':

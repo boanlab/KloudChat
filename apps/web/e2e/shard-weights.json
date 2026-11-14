@@ -55,6 +55,8 @@
  "report-table/default": 27.7,
  "results/desktop": 22.6,
  "results/phone": 4.0,
+ "screen-states/desktop": 25.0,
+ "screen-states/phone": 20.0,
  "search-consent/desktop": 5.8,
  "search-consent/phone": 1.3,
  "search-masking/default": 8.1,

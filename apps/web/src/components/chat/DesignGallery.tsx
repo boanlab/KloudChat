@@ -355,7 +355,8 @@ export function DesignGalleryModal({
             </Link>
           )}
         </div>
-        <div className="mb-3 flex items-center gap-2">
+        {/* On a phone the search takes its own full-width line under the categories. */}
+        <div className="mb-3 flex flex-wrap items-center gap-2">
           <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
             {(categories.length > 1 || hasOwn) &&
               (['all', ...(hasOwn ? [MINE] : []), ...categories] as const).map((c) => (
@@ -390,7 +391,7 @@ export function DesignGalleryModal({
               {t('숨김 포함')}
             </Button>
           )}
-          <div className="relative shrink-0">
+          <div className="relative shrink-0 max-sm:shrink max-sm:basis-full">
             <Search
               size={13}
               className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-faint"
@@ -403,7 +404,7 @@ export function DesignGalleryModal({
                 setQuery(e.target.value)
                 setPage(0)
               }}
-              className="h-8 w-44 pl-7 text-sm"
+              className="h-8 w-44 pl-7 text-sm max-sm:w-full"
             />
           </div>
         </div>

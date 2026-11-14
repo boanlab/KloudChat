@@ -9,6 +9,8 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import 'katex/dist/katex.min.css'
 import { Diagram } from '@/components/report/Diagram'
+import { MindMap } from '@/components/report/MindMap'
+import { isMindmap } from '@/lib/mindmap'
 import { CardGrid, Callout } from '@/components/report/CardGrid'
 import { ChartBlock } from '@/components/report/ChartBlock'
 import { KpiStrip } from '@/components/report/KpiStrip'
@@ -249,13 +251,27 @@ function DiagramBlock({ source, owner }: { source: string; owner?: DiagramOwner 
       live = false
     }
   }, [source])
+  const stored = owner && key ? owner.stored?.[key] : undefined
+  if (isMindmap(source)) {
+    // Read as a tree; the picture the exports place is still drawn and stored, out of sight.
+    return (
+      <>
+        <MindMap source={source} />
+        {owner && key && !stored && (
+          <div hidden>
+            <Diagram source={source} artifactId={owner.artifactId} sectionId={owner.sectionId} diagramKey={key} />
+          </div>
+        )}
+      </>
+    )
+  }
   return (
     <Diagram
       source={source}
       artifactId={owner?.artifactId}
       sectionId={owner?.sectionId}
       diagramKey={key}
-      stored={owner && key ? owner.stored?.[key] : undefined}
+      stored={stored}
     />
   )
 }
