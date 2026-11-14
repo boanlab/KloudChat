@@ -1190,6 +1190,13 @@ async def design_for(db: AsyncSession, user: User, session: ChatSession) -> Desi
     return await _load_design_system(db, user, await _load_project(db, user, session), agent)
 
 
+async def design_for_project(
+    db: AsyncSession, user: User, project: Project | None
+) -> DesignSystem | None:
+    """A project's design system, for a document made in it outside a conversation."""
+    return await _load_design_system(db, user, project)
+
+
 async def agent_settings(
     db: AsyncSession, user: User, session: ChatSession
 ) -> tuple[str | None, list[str] | None, float | None]:

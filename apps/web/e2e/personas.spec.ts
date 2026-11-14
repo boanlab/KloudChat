@@ -281,8 +281,9 @@ test.describe('페르소나 커버리지', () => {
                 break
               case 'biz-notes':
                 await openNewest(page, '슬라이드')
+                // the speaker notes sit under the slide, as in the PowerPoint editor
                 await probe(
-                  page.locator('aside').getByText('발표 노트', { exact: true }),
+                  page.getByRole('textbox', { name: '발표자 노트' }),
                 ).toBeVisible()
                 break
 

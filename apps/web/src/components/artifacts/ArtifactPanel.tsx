@@ -950,7 +950,9 @@ export function ArtifactPanel() {
               onModeChange={changeMode}
             />
           ) : artifact.kind === 'deck' ? (
+            // one editor per deck: its hand edits and undo belong to that deck
             <DeckPanel
+              key={artifact.id}
               deck={artifact}
               onClose={() => openArtifact(null)}
               onModeChange={changeMode}

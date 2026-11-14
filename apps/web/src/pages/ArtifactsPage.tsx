@@ -1,3 +1,4 @@
+import { leaveOffice, officeDirty } from '@/lib/officeGuard'
 import {
   AudioLines,
   BarChart3,
@@ -281,7 +282,16 @@ export function ArtifactsPage() {
     setPreviewMode('wide')
     setPreviewDirty(false)
   }
-  const requestPreviewClose = () => previewDirty ? setConfirmPreviewClose(true) : closePreview()
+  // a document on the shared unsaved guard (the web slides, office files) asks its own
+  // 저장 / 버리기 / 취소; any other unsaved preview asks here
+  const requestPreviewClose = () => {
+    if (officeDirty()) {
+      void leaveOffice().then((go) => go && closePreview())
+      return
+    }
+    if (previewDirty) setConfirmPreviewClose(true)
+    else closePreview()
+  }
   // Undefined until counts arrive: no number rather than 0.
   const count = (k: ArtifactKind) => (artifactCounts ? (artifactCounts[k] ?? 0) : undefined)
   const total = artifactCounts
@@ -499,7 +509,7 @@ export function ArtifactsPage() {
             {preview.kind === 'report' ? (
               <ReportPanel report={preview} onModeChange={setPreviewMode} onClose={closePreview} onDirtyChange={setPreviewDirty} />
             ) : preview.kind === 'deck' ? (
-              <DeckPanel deck={preview} onModeChange={setPreviewMode} onClose={closePreview} onDirtyChange={setPreviewDirty} />
+              <DeckPanel deck={preview} onModeChange={setPreviewMode} onClose={requestPreviewClose} onDirtyChange={setPreviewDirty} />
             ) : preview.kind === 'chart' ? (
               <ChartPanel chart={preview} onModeChange={setPreviewMode} />
             ) : preview.kind === 'image' ||

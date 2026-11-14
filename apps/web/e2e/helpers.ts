@@ -382,3 +382,108 @@ export async function ribbonTab(page: Page, name: string) {
   await editMode(page)
   await page.getByRole('tab', { name, exact: true }).click()
 }
+
+// ── the web slides panel (PowerPoint-editor-like: always editable on a desktop, saved with 저장)
+
+/** The web slides panel, in the side panel or in the gallery's preview dialog. */
+export function deckPanel(page: Page) {
+  return page.locator('[data-deck-panel]').first()
+}
+
+/** The deck panel's document header: title · vN · 저장 안 됨 · 저장 · 내려받기 · 공유 · 더보기. */
+export function deckHeader(page: Page) {
+  return deckPanel(page).locator('header').first()
+}
+
+/** The editor region: rail, stage, notes and the strips over the slide. */
+export function deckEditor(page: Page) {
+  return deckPanel(page).getByRole('region', { name: '웹 슬라이드 편집기' })
+}
+
+/** The one toolbar row (absent on a phone and while the deck is being written). */
+export function deckToolbar(page: Page) {
+  return deckPanel(page).getByRole('toolbar', { name: '슬라이드 도구' })
+}
+
+/** The rail's numbered thumbnails (`aria-label` 「N번 장」, `aria-current` on the slide shown). */
+export function deckThumbs(page: Page) {
+  return deckEditor(page).locator('.kc-thumb')
+}
+
+/** The slide shown, on the stage. */
+export function deckStage(page: Page) {
+  return deckEditor(page).locator('.kc-canvas')
+}
+
+/** The speaker notes of the slide shown; they commit on blur. */
+export function deckNotes(page: Page) {
+  return deckEditor(page).getByRole('textbox', { name: '발표자 노트' })
+}
+
+/** Opens a toolbar menu (레이아웃, 이미지, 테마 …) and returns it. */
+export async function deckToolbarMenu(page: Page, name: string) {
+  await deckToolbar(page).getByRole('button', { name, exact: true }).click()
+  return page.getByRole('menu', { name, exact: true })
+}
+
+/** Picks a layout from the toolbar's 레이아웃 menu, by its whole label (「카드」, not 「카드 3개」). */
+export async function deckLayout(page: Page, layout: string | RegExp) {
+  const menu = await deckToolbarMenu(page, '레이아웃')
+  await menu.getByRole('menuitemradio', { name: layout, exact: true }).first().click()
+}
+
+/** Selects an element on the stage (`table`, `metrics`, `cards`, `chart`, `image`, `title`, `content`). */
+export async function deckSelect(page: Page, element: string) {
+  // Elements take the selection on pointer down, as the PowerPoint editor's shapes do.
+  await deckStage(page).locator(`[data-slide-element="${element}"]`).first().click()
+}
+
+/** The editor shown for the selected element (table rows, chart series, picture caption). */
+export function deckSelection(page: Page) {
+  return deckEditor(page).getByRole('region', { name: '선택한 요소' })
+}
+
+/** Presses 저장 in the header and waits for the edits to be saved. */
+export async function saveDeck(page: Page) {
+  const active = page.locator(':focus')
+  // a box being typed in, or the notes, commit as they are left
+  if (await active.count()) await active.first().blur().catch(() => undefined)
+  await deckHeader(page).getByRole('button', { name: '저장', exact: true }).click()
+  await expect(deckHeader(page).getByText('저장 안 됨')).toHaveCount(0, { timeout: 30_000 })
+}
+
+/** Opens the 검토 pane (the toolbar's 검토, or 더보기 › 검토 where there is no toolbar). */
+export async function deckReview(page: Page) {
+  const pane = deckPanel(page).getByRole('complementary', { name: '검토 메모' })
+  if (await pane.isVisible().catch(() => false)) return pane
+  const button = deckToolbar(page).getByRole('button', { name: /^검토/ })
+  if (await button.isVisible().catch(() => false)) await button.click()
+  else {
+    await deckHeader(page).getByRole('button', { name: '더보기' }).click()
+    await page.locator('[role="menu"]:visible').getByRole('menuitem', { name: '검토' }).first().click()
+  }
+  await expect(pane).toBeVisible()
+  return pane
+}
+
+/** The title box of the slide shown, typed into in place. */
+export function deckTitle(page: Page) {
+  return deckStage(page).locator('[data-slide-element="title"]').first()
+}
+
+/** Replaces the text of a box on the slide and leaves it, which commits it to the working copy. */
+export async function deckType(box: ReturnType<Page['locator']>, text: string) {
+  await box.click()
+  await box.fill(text)
+  await box.blur()
+}
+
+/** Sets the type size (% of the selection's own size, or the slide's) from the toolbar, folded or not. */
+export async function deckTextSize(page: Page, percent: number) {
+  const toolbar = deckToolbar(page)
+  const folded = toolbar.getByRole('button', { name: '글꼴과 크기', exact: true })
+  // narrow, the font and size controls fold into one menu
+  if (await folded.isVisible().catch(() => false)) await folded.click()
+  await toolbar.getByRole('button', { name: '글꼴 크기', exact: true }).click()
+  await page.getByRole('menu', { name: '글꼴 크기', exact: true }).getByRole('button', { name: `${percent}%`, exact: true }).click()
+}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
@@ -45,6 +46,7 @@ from app.models.workspace import (
     Visibility,
 )
 from app.pipeline import compose
+from app.schemas.auth import Wire
 from app.schemas.chat import MessageOut, MessageRatingIn
 from app.schemas.workspace import (
     AgentCreateIn,
@@ -2900,6 +2902,35 @@ async def export_artifact(artifact_id: str, user: CurrentUser, db: DbSession, fo
     if artifact.kind not in (ArtifactKind.report, ArtifactKind.deck, ArtifactKind.html):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_exportable")
     return await _export_document(artifact, format)
+
+
+class DeckOverflowIn(Wire):
+    #: the slides as the editor holds them (unsaved edits included); none = the saved ones
+    slides: list[dict] | None = None
+    design: dict | None = None
+
+
+@router.post("/artifacts/{artifact_id}/deck-overflow")
+async def deck_overflow(
+    artifact_id: str, payload: DeckOverflowIn, user: CurrentUser, db: DbSession
+) -> list[dict]:
+    """Slides whose text the `.pptx` cannot fit even at the type floor, as the export writes
+    them (`deck_export.overflowing_slides`): the web editor offers to move it on or split."""
+    artifact = await _own(db, Artifact, "user_id", user, artifact_id)
+    if artifact.kind is not ArtifactKind.deck:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_a_deck")
+    data = artifact.data or {}
+    slides = payload.slides if payload.slides is not None else list(data.get("slides") or [])
+    tokens = payload.design or data.get("design") or None
+    chosen = design_templates.get(data.get("templateId") or "")
+    await elk_layout.prepare(deck_export.figure_sources(slides))
+    return await asyncio.to_thread(
+        deck_export.overflowing_slides,
+        artifact.title or "슬라이드",
+        slides,
+        tokens=tokens,
+        template=chosen.pptx_template if chosen else "",
+    )
 
 
 def export_formats(artifact: Artifact) -> tuple[str, ...]:

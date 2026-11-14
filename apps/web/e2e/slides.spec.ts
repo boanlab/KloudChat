@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { expect, test } from '@playwright/test'
-import { approvePlan, signIn, ribbonTab } from './helpers'
+import { approvePlan, deckHeader, deckNotes, deckPanel, deckThumbs, deckTitle, deckType, saveDeck, signIn } from './helpers'
 
 /** Entry names from a zip's central directory; nothing is inflated. */
 function zipNames(buffer: Buffer): string[] {
@@ -42,12 +42,12 @@ test('슬라이드를 만들면 장별로 채워지고 pptx 로 받을 수 있�
   // Nothing is written until the plan is approved.
   await approvePlan(page)
 
-  // The outline lands first: the whole deck is on screen before any slide is written.
-  // The 장 목록 button reads 「current/total」.
-  await expect(page.getByRole('button', { name: '장 목록' })).toHaveText(/\d+\/[1-9]\d*/, { timeout: 120_000 })
+  // The outline lands first: the whole deck is on screen before any slide is written,
+  // a numbered thumbnail per slide in the rail.
+  await expect(deckThumbs(page).first()).toBeVisible({ timeout: 120_000 })
 
   // 내보내기 stays disabled while any slide is still empty.
-  const exportButton = page.getByRole('button', { name: '내려받기', exact: true })
+  const exportButton = deckHeader(page).getByRole('button', { name: '내려받기', exact: true })
   await expect(exportButton).toBeEnabled({ timeout: 360_000 })
 
   // Found by session (the account is shared) and read by id (listing rows are partial).
@@ -112,7 +112,7 @@ test('슬라이드를 만들면 장별로 채워지고 pptx 로 받을 수 있�
 
   expect(stored.title).not.toContain('만들어줘')
 
-  await expect(page.locator('button.aspect-video')).toHaveCount(slides.length)
+  await expect(deckThumbs(page)).toHaveCount(slides.length)
 
   const download = page.waitForEvent('download', { timeout: 60_000 })
   await exportButton.click()
@@ -138,19 +138,21 @@ test('슬라이드 한 장을 고치면 저장되고 새로고침 뒤에도 남�
   await expect(card).toBeVisible({ timeout: 20_000 })
   await card.click()
   await expect(page.getByRole('dialog')).toBeVisible({ timeout: 20_000 })
-  await expect(page.locator('[data-panel="artifact"] header, [role="dialog"] header').first().getByRole('button', { name: '편집', exact: true })).toBeVisible({ timeout: 20_000 })
+  // The slide is editable in place: no 편집 toggle, nothing saved until 저장.
+  await expect(deckThumbs(page).first()).toBeVisible({ timeout: 20_000 })
+  await deckThumbs(page).first().click()
 
   const edited = `수정한 제목 ${Date.now()}`
-  await ribbonTab(page, '글자')
-  await page.getByLabel('슬라이드 텍스트').fill(`${edited}\n첫째 항목\n둘째 항목`)
-  await page.getByLabel('발표 노트').fill('여기서는 이렇게 말한다')
-  await page.getByRole('button', { name: '저장', exact: true }).click()
+  await deckType(deckTitle(page), edited)
+  await deckNotes(page).fill('여기서는 이렇게 말한다')
+  await deckNotes(page).blur()
+  await expect(deckHeader(page).getByText('저장 안 됨')).toBeVisible()
+  await saveDeck(page)
 
-  // A refused save leaves the editor open; check for that first.
-  await expect(page.getByText(/다른 곳에서 이미 수정/)).toHaveCount(0)
-  await expect(page.getByLabel('슬라이드 텍스트')).toHaveCount(0, { timeout: 20_000 })
-  await expect(page.getByText('여기서는 이렇게 말한다')).toBeVisible({ timeout: 20_000 })
-  await expect(page.getByText(edited).first()).toBeVisible()
+  // A refused save says so and keeps the edits unsaved; check for that first.
+  await expect(deckPanel(page).getByText('그사이 다른 판이 저장되어 저장하지 않았습니다.')).toHaveCount(0)
+  await expect(deckNotes(page)).toHaveValue('여기서는 이렇게 말한다')
+  await expect(deckTitle(page)).toHaveText(edited)
 
   // Survives a reload: the server has it.
   await page.reload()

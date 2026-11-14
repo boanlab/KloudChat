@@ -1,7 +1,7 @@
 /** Every control on the report and deck panels has an observable consequence.
  *  Runs on existing artifacts; nothing is generated. */
 import { expect, test, type Locator, type Page } from '@playwright/test'
-import { E2E_ADMIN, signIn, openAndSeedReport } from './helpers'
+import { E2E_ADMIN, deckHeader, deckReview, deckToolbar, signIn, openAndSeedReport } from './helpers'
 
 /** Titles of finished artifacts of one kind, newest first; an unwritten part disables 내보내기 and 발표. */
 async function titles(page: Page, kind: string, least = 1): Promise<string[]> {
@@ -171,13 +171,13 @@ test('페이지뷰의 편집 토글이 편집기를 연다', async ({ page }) =>
 
 test('슬라이드 패널이 약속한 컨트롤을 내놓는다', async ({ page }) => {
   test.skip(!(await open(page, 'deck')), '덱 아티팩트가 없습니다')
+  // No 편집 toggle and no tabs: the header and the one toolbar row, then the 검토 pane.
+  await expect(deckToolbar(page)).toBeVisible({ timeout: 30_000 })
   const named: string[] = []
   named.push(...await controls(page.getByRole('dialog')))
-  for (const tab of ['글자', '삽입', '테마', '검토']) {
-    await ribbon(page, tab)
-    named.push(...await controls(page.getByRole('dialog')))
-  }
-  for (const label of ['내려받기', '발표', '검사 결과']) {
+  await deckReview(page)
+  named.push(...await controls(page.getByRole('dialog')))
+  for (const label of ['내려받기', '더보기', '레이아웃', '이미지', '테마', '발표', '검사 결과']) {
     expect(named, `${label} 가 사라졌다`).toContain(label)
   }
 })
@@ -185,7 +185,7 @@ test('슬라이드 패널이 약속한 컨트롤을 내놓는다', async ({ page
 test('발표 모드가 켜지고, 넘어가고, 장 목록을 열고, 꺼진다', async ({ page }) => {
   // At least two slides, or the arrow keys have nowhere to go.
   test.skip(!(await open(page, 'deck', 2)), '두 장 이상인 덱이 없습니다')
-  await page.getByLabel('빠른 도구').getByRole('button', { name: '발표', exact: true }).click()
+  await deckToolbar(page).getByRole('button', { name: '발표', exact: true }).click()
   const end = page.getByRole('button', { name: '발표 끝내기' })
   await expect(end).toBeVisible({ timeout: 15_000 })
   await expect(page.getByRole('button', { name: '발표 시간 다시 시작' })).toBeVisible()
@@ -211,9 +211,8 @@ test('발표 모드가 켜지고, 넘어가고, 장 목록을 열고, 꺼진다'
 
 test('슬라이드 내보내기가 파일을 준다', async ({ page }) => {
   test.skip(!(await open(page, 'deck')), '덱 아티팩트가 없습니다')
-  await ribbon(page, '파일')
   for (const [label, extension] of [['PowerPoint', 'pptx'], ['PDF (발표용)', 'pdf'], ['텍스트 (노트 포함)', 'md']] as const) {
-    await page.getByRole('button', { name: '내려받기' }).click()
+    await deckHeader(page).getByRole('button', { name: '내려받기' }).click()
     await expect(item(page, label).first()).toBeVisible({ timeout: 10_000 })
     const download = page.waitForEvent('download', { timeout: 90_000 })
     await item(page, label).first().click()
@@ -225,8 +224,9 @@ test('슬라이드 내보내기가 파일을 준다', async ({ page }) => {
 
 test('덱의 검사 결과도 열린다', async ({ page }) => {
   test.skip(!(await open(page, 'deck')), '덱 아티팩트가 없습니다')
-  await ribbon(page, '검토')
-  await page.getByRole('button', { name: '검사 결과' }).click()
+  // 검사 결과 is in the 검토 pane, opened from the toolbar
+  const review = await deckReview(page)
+  await review.getByRole('button', { name: '검사 결과' }).click()
   await expect(page.getByText('자동 검사').or(page.getByText('검토')).first()).toBeVisible({
     timeout: 10_000,
   })

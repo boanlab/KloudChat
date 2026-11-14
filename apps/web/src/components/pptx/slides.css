@@ -125,6 +125,7 @@
 .kc-thumb { position: relative; display: flex; align-items: flex-start; gap: 4px; padding: 4px 0; cursor: pointer; }
 .kc-num { flex: none; width: 22px; padding-top: 2px; color: var(--kc-sub); font-size: 11px; text-align: right; }
 .kc-tframe {
+  position: relative;
   overflow: hidden;
   border: 2px solid transparent;
   border-radius: 6px;
@@ -223,3 +224,13 @@
 .kc-slides.phone .kc-thumb { flex-direction: column; }
 .kc-slides.phone .kc-num { width: auto; text-align: left; }
 .kc-slides.phone .kc-tmore { display: none; }
+/* the web slides' toolbar (DeckToolbar): the end of the row, a count, a labelled button, and
+   the group captions inside a menu */
+.kc-fill { flex: 1; min-width: 4px; }
+.kc-count { min-width: 16px; padding: 0 4px; border-radius: 8px; background: #fde7c4; color: #7a4b00; font-size: 11px; font-weight: 600; }
+.kc-word { font-size: 13px; }
+.kc-mlabel { padding: 8px 14px 4px; color: var(--kc-sub); font-size: 11px; font-weight: 600; }
+.kc-item .kc-hint { margin-left: auto; padding-left: 8px; color: #80868b; font-size: 11px; }
+.kc-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 6px; padding: 6px 10px; border: 1px solid #f3d9a4; border-radius: 8px; background: #fff8e8; color: var(--kc-ink); font-size: 12px; }
+.kc-strip[role="group"] { border-color: #c7d7f5; background: #eef4fd; }
+.kc-props { flex: none; max-height: 40%; margin-top: 6px; overflow-y: auto; }
