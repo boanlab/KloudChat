@@ -41,6 +41,7 @@ import { SearchConsentCard } from './SearchConsentCard'
 import { doingPhrase, waitingCardMessageId } from '@/lib/stages'
 import { TurnProgress } from './TurnProgress'
 import { copyText } from '@/lib/clipboard'
+import { PinNoteButton } from '@/components/shelf/PinNoteButton'
 import { useT } from '@/lib/useT'
 import { tokenTotals } from '@/lib/usage'
 import { superRouteLabel } from '@/lib/superAgent'
@@ -838,6 +839,7 @@ function MessageItemInner({
           <div className="mt-2 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-faint">
             <span className="flex items-center gap-1">
             {copyButton(t('복사'))}
+            <PinNoteButton sessionId={sessionId} messageId={message.id} content={message.content} />
             <Button
               variant="ghost"
               size="icon"

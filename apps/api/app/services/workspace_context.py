@@ -31,6 +31,7 @@ from app.services import (
     file_digest,
     output_language,
     pictures,
+    source_selection,
     starter,
 )
 from app.services import design as design_service
@@ -440,11 +441,13 @@ async def _project_knowledge(
     budget: int | None = None,
     *,
     vector: bool = False,
+    off: set[str] | None = None,
 ) -> tuple[str, list[ContextFile]]:
     """Untrusted project knowledge within `budget`, with fates. A project that fits goes
     whole; a larger one gets its 「자료 목록」 (every file with its digest) and then passages:
     the best few for a focused turn (words and, when `vector`, the index), or the best one of
-    every file for a turn that asks about each item (`coverage.asks_each`)."""
+    every file for a turn that asks about each item (`coverage.asks_each`). `off`: the sources
+    the conversation switched off (`source_selection`), left out entirely."""
     if project is None:
         return "", []
 
@@ -458,6 +461,7 @@ async def _project_knowledge(
             .order_by(col(StoredFile.created_at))
         )
     ).all()
+    files = source_selection.keep(files, off or set())
     readable = [f for f in files if f.text]
     budget = budget or settings.file_context_chars
     total = sum(len(f.text) for f in readable)
@@ -1273,7 +1277,8 @@ async def assemble(
         whole_budget, sum(f.kept_chars for f in (*attached_files, *carried_files))
     )
     knowledge, knowledge_files = await _project_knowledge(
-        db, user, project, focus or question, knowledge_budget, vector=vector
+        db, user, project, focus or question, knowledge_budget, vector=vector,
+        off=await source_selection.excluded(db, session.id) if project is not None else None,
     )
     if knowledge:
         blocks.append(ContextBlock("project.knowledge", knowledge, False))

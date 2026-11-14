@@ -42,8 +42,13 @@ import { isListed } from '@/lib/listed'
 import { KNOWLEDGE_ACCEPT, knowledgeRefusal } from '@/lib/knowledgeFiles'
 import { RelTime } from '@/components/ui/RelTime'
 import { TemplateMiniature } from '@/components/chat/DesignGallery'
+import { SHELF_NAMES, withNames } from '@/lib/shelfNames'
+import { AddTextModal } from '@/components/shelf/AddTextModal'
+import { NotesTab } from '@/components/shelf/NotesTab'
+import { SourceGuide } from '@/components/shelf/SourceGuide'
+import { StudioTab } from '@/components/shelf/StudioTab'
 
-type Tab = 'sessions' | 'knowledge' | 'skills' | 'memory'
+type Tab = 'sessions' | 'knowledge' | 'studio' | 'notes' | 'skills' | 'memory'
 
 /** Closes the menu on pick. */
 function EmojiGrid({ onPick }: { onPick: (emoji: string) => void }) {
@@ -94,6 +99,8 @@ export function ProjectDetailPage() {
     deleteMemory,
     refreshProjectFile,
     reindexProject,
+    addProjectFile,
+    setDraft,
   } = useStore()
   const project = projects.find((p) => p.id === projectId)
   // Scanned files read in the background; rows follow the pages.
@@ -117,6 +124,10 @@ export function ProjectDetailPage() {
   const [urlDraft, setUrlDraft] = useState('')
   const [urlBusy, setUrlBusy] = useState(false)
   const [expandedFile, setExpandedFile] = useState<string | null>(null)
+  // 지식 서가: a file's guide open, the project's guide open, pasted text.
+  const [guideFile, setGuideFile] = useState<string | null>(null)
+  const [projectGuide, setProjectGuide] = useState(false)
+  const [pasting, setPasting] = useState(false)
   // 색인하기: documents the meaning search does not cover yet.
   const [reindexing, setReindexing] = useState(false)
   const [reindexNote, setReindexNote] = useState<string | null>(null)
@@ -229,6 +240,15 @@ export function ProjectDetailPage() {
       setFileError(errorMessage(err, t('파일을 내려받지 못했습니다.')))
     }
   }
+
+  /** A suggested question: a new conversation in the project with it in the composer. */
+  const ask = (question: string) =>
+    void newSession('chat', { projectId: project.id })
+      .then((id) => {
+        navigate(`/s/${id}`)
+        setDraft(question)
+      })
+      .catch((err: unknown) => setNotice(startFailure(err, t)))
 
   const saveUrl = async () => {
     if (urlBusy) return
@@ -584,6 +604,8 @@ export function ProjectDetailPage() {
           tabs={[
             { id: 'sessions', label: t('작업'), count: projectSessions.length },
             { id: 'knowledge', label: t('지식'), count: project.files.length },
+            { id: 'studio', label: t(SHELF_NAMES.studio) },
+            { id: 'notes', label: t(SHELF_NAMES.notes) },
             { id: 'skills', label: t('스킬'), count: projectSkills.length },
             { id: 'memory', label: t('메모리'), count: projectMemories.length },
           ]}
@@ -711,7 +733,11 @@ export function ProjectDetailPage() {
                     void addKnowledgeFiles(picked)
                   }}
                 />
-                <div className="flex gap-2">
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button size="sm" onClick={() => setPasting(true)}>
+                    <Plus size={14} />
+                    {t('텍스트')}
+                  </Button>
                   <Button size="sm" onClick={() => setUrlOpen(true)}>
                     <Link2 size={14} />
                     {t('웹 자료')}
@@ -722,6 +748,27 @@ export function ProjectDetailPage() {
                   </Button>
                 </div>
               </div>
+              {project.files.length > 0 && (
+                <Card className="px-4 py-3" data-testid="project-guide">
+                  <button
+                    type="button"
+                    aria-expanded={projectGuide}
+                    onClick={() => setProjectGuide((v) => !v)}
+                    className="flex w-full items-center gap-2 text-left"
+                  >
+                    <Sparkles size={15} className="shrink-0 text-accent" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-base font-medium">{withNames(t('프로젝트 전체 {guide}'), t)}</span>
+                      <span className="block text-sm text-muted">{t('자료 전체의 요약과 질문 예시입니다. 질문을 누르면 새 대화의 입력창에 들어갑니다.')}</span>
+                    </span>
+                  </button>
+                  {projectGuide && (
+                    <div className="mt-3 border-t border-line pt-3">
+                      <SourceGuide projectId={project.id} subject="project" onAsk={ask} />
+                    </div>
+                  )}
+                </Card>
+              )}
               {project.files.length === 0 ? (
                 <EmptyState
                   icon={<FileText size={18} />}
@@ -775,6 +822,16 @@ export function ProjectDetailPage() {
                         {t('색인 안 됨')}
                       </span>
                     )}
+                    {!f.error && f.tokens > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-expanded={guideFile === f.id}
+                        onClick={() => setGuideFile((id) => (id === f.id ? null : f.id))}
+                      >
+                        {t(SHELF_NAMES.guide)}
+                      </Button>
+                    )}
                     {f.preview && (
                       <Button variant="ghost" size="sm" onClick={() => setExpandedFile((id) => id === f.id ? null : f.id)}>
                         {expandedFile === f.id ? t('미리보기 닫기') : t('읽은 내용 확인')}
@@ -790,6 +847,11 @@ export function ProjectDetailPage() {
                       <Trash2 size={14} />
                     </Button>
                     </div>
+                    {guideFile === f.id && (
+                      <div className="mt-2 border-t border-line pt-2">
+                        <SourceGuide projectId={project.id} subject={f.id} onAsk={ask} />
+                      </div>
+                    )}
                     {expandedFile === f.id && f.preview && (
                       <div className="mt-2 rounded-control border border-line bg-elevated px-3 py-2 text-sm leading-relaxed text-muted" data-testid="knowledge-preview">
                         {f.preview}
@@ -818,6 +880,10 @@ export function ProjectDetailPage() {
               {fileError && <p role="alert" className="text-base text-danger">{fileError}</p>}
             </div>
           )}
+
+          {tab === 'studio' && <StudioTab projectId={project.id} />}
+
+          {tab === 'notes' && <NotesTab projectId={project.id} />}
 
           {tab === 'skills' && (
             <div className="space-y-2">
@@ -955,6 +1021,13 @@ export function ProjectDetailPage() {
         }}
         title={t('{name} 삭제').replace('{name}', project.name)}
         description={t(DELETE_SCOPE)}
+      />
+
+      <AddTextModal
+        projectId={project.id}
+        open={pasting}
+        onClose={() => setPasting(false)}
+        onAdded={(row) => addProjectFile(project.id, row)}
       />
 
       <MemoryEditor

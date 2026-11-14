@@ -18,6 +18,8 @@ Go to the sidebar → **Projects** → New project, then enter a name, a descrip
 |---|---|
 | Conversations | Start a new conversation in this project, and add existing conversations to the project or remove them from it. |
 | Knowledge | Add files and register addresses as **web material**. Web material stores the content as it was at registration time. It shows how many tokens each file uses and how much of the context it takes up. You can check the recognized content, download the original, and delete it. A file that meaning-based search does not cover yet is marked **Not indexed**; **Index now** sends it again. A deleted file can be brought back with **Undo** at the bottom of the screen for a few seconds. |
+| Studio | Makes a study guide, FAQ, briefing, timeline, glossary, mind map, quiz, flashcards or audio overview from the sources you pick. See [Knowledge shelf](./knowledge-shelf.md). |
+| Notes | Collects answers, selected passages and notes written by hand, and makes a note a source. |
 | Skills | Skills you pick with **Choose skills** appear first in this project's composer. |
 | Memory | Memory shared at the project level. Conclusions that an agent leaves through **Share note** also accumulate here. |
 

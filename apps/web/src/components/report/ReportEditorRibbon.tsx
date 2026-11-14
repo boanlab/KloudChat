@@ -30,7 +30,7 @@ import {
 import { useEffect, useState } from 'react'
 import { RibbonButton, RibbonGroup } from '@/components/artifacts/ArtifactRibbon'
 import { cn } from '@/lib/utils'
-import { useT } from '@/lib/useT'
+import { useT, useTIn } from '@/lib/useT'
 import type { Source } from '@/types'
 
 export type EditorRibbonTab = 'home' | 'insert' | 'review' | 'view'
@@ -89,6 +89,7 @@ export function ReportEditorRibbon({
   onOutline: () => void
 }) {
   const t = useT()
+  const tComment = useTIn('reportComment')
   useEditorTick(editor)
   // The Markdown text is edited instead while 「Markdown 원문」 is on.
   const off = !editor || sourceMode
@@ -275,7 +276,7 @@ export function ReportEditorRibbon({
   if (tab === 'review') {
     return (
       <RibbonGroup label={t('메모')}>
-        <RibbonButton big icon={<MessageSquarePlus size={16} />} label={t('새 메모')} title={t('선택한 문장에 메모')} disabled={off || Boolean(editor?.state.selection.empty)} onClick={onComment} />
+        <RibbonButton big icon={<MessageSquarePlus size={16} />} label={tComment('새 메모')} title={t('선택한 문장에 메모')} disabled={off || Boolean(editor?.state.selection.empty)} onClick={onComment} />
         <RibbonButton big icon={<MessagesSquare size={16} />} label={`${t('검토 메모')} ${openComments}`} pressed={commentsOpen} onClick={onComments} />
       </RibbonGroup>
     )

@@ -144,8 +144,10 @@ from app.services import (
     search_consent,
     server_notes,
     settings_store,
+    shelf_sources,
     skill_specs,
     skill_turn,
+    source_selection,
     starter,
     stop_signal,
     super_agent,
@@ -482,6 +484,9 @@ async def _knowledge_shelf(
             .order_by(col(StoredFile.created_at))
         )
     ).all()
+    # project sources the conversation switched off (지식 서가) are not searched
+    if session.project_id:
+        rows = source_selection.keep(rows, await source_selection.excluded(db, session.id))
     shelf = [
         (row.name, row.text, row.source_url)
         for row in rows
@@ -6559,6 +6564,8 @@ async def _send_message(
                     [agent_row.contact] if agent_row is not None and agent_row.contact.strip()
                     else [])]),
                 carries_material=material_turn,
+                # project files read this turn, numbered for citation (지식 서가 jumps to them)
+                cited_material=await shelf_sources.given_texts(db, workspace.knowledge),
                 agent_key=agent_key or "",
                 calculation_required=calculation_required,
                 # calculator-skipping writer hands off to the outline model
@@ -7106,6 +7113,8 @@ async def _answer_turn(
     check_material: str = "",
     #: turn reads files, project knowledge or pasted material: the answer is traced to them
     carries_material: bool = False,
+    #: project files given this turn, name → text; numbered so the answer can cite them
+    cited_material: dict[str, str] | None = None,
     #: catalogue agent key: which pipeline finishes the answer
     agent_key: str = "",
     #: `exact_facts.advice_domain` of the turn: writer rule and grounding check
@@ -7252,6 +7261,7 @@ async def _answer_turn(
                 **({"freshness_request": freshness_request} if freshness_request else {}),
                 **({"caveat_request": caveat_request} if caveat_request else {}),
                 **({"material_given": True} if carries_material else {}),
+                **({"cited_material": cited_material} if cited_material else {}),
                 **({"deep_search": True} if _deep_search(skill_keys, skill_specs) else {}),
             ),
             stopping,

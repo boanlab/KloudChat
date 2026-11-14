@@ -20,6 +20,7 @@ from app.core.config import settings
 from app.services import (
     answer_plan,
     calc_check,
+    claim_support,
     current_evidence,
     fallback_watch,
     internal_words,
@@ -1190,8 +1191,11 @@ def _link_citations(answer: str, sources: list[str],
             return match.group(0)
         if seen:
             claim = _claim_at(piece, match.start())
-            kept = [n for n in wanted if sources[n - 1].startswith(MATERIAL_SOURCE)
-                    or not _unrelated(claim, seen.get(sources[n - 1], ""))]
+            kept = [n for n in wanted if (
+                claim_support.backed(claim, seen[sources[n - 1]])
+                if sources[n - 1].startswith(MATERIAL_SOURCE) and sources[n - 1] in seen
+                else sources[n - 1].startswith(MATERIAL_SOURCE)
+                or not _unrelated(claim, seen.get(sources[n - 1], "")))]
             if not kept:
                 return "\x00"
             wanted = kept
@@ -1260,6 +1264,30 @@ _LISTED_SOURCE = re.compile(r"^\s{0,3}[-*]\s{1,3}\[(\d{1,2})\]\s{1,3}(?:\[([^\]\
                             r"(https?://[^\s)]{1,500})?")
 #: what an unverified-link note says (earlier answers' notes are not sources)
 _MEMORY_NOTES = ("기억으로 적은", "written from memory")
+
+
+_MATERIAL_NOTE = (
+    "# Citing project files\n"
+    "The project files above are numbered for citation:\n{listed}\n"
+    "After a statement taken from one of them, put its number in square brackets, like "
+    "{example}. Use only these numbers for these files.\n"
+    "예: 「벡터 시계로 동시성을 판단할 수 있습니다 {example}.」"
+)
+
+
+def _with_material_numbers(messages: list[dict[str, Any]], sources: list[str],
+                           names: list[str] | tuple[str, ...]) -> list[dict[str, Any]]:
+    """`messages` with the turn's project files numbered as material sources (after the numbers
+    earlier answers used) and a system note saying which number is which file."""
+    numbered = [(_source_number(MATERIAL_SOURCE + name, sources), name)
+                for name in dict.fromkeys(n for n in names if n)]
+    if not numbered:
+        return messages
+    note = _MATERIAL_NOTE.format(
+        listed="\n".join(f"[{n}] {name}" for n, name in numbered),
+        example=f"[{numbered[0][0]}]")
+    at = next((i for i, m in enumerate(messages) if m.get("role") != "system"), len(messages))
+    return [*messages[:at], {"role": "system", "content": note}, *messages[at:]]
 
 
 def _earlier_sources(messages: list[dict[str, Any]]) -> tuple[list[str], dict[str, str]]:
@@ -1678,6 +1706,10 @@ async def run_turn(
     #: A turned-on skill searches deep (`process.deep_search`): twice the searches, as a
     #: document's research does.
     deep_search: bool = False,
+    #: Project files the context gave whole or in part, name → text: numbered as material
+    #: sources before any search, so the answer cites them 「[n]」 and lists them by name
+    #: under it; a citation of one the claim's words are not in is taken out.
+    cited_material: dict[str, str] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """One assistant turn to a final answer; exactly one `usage`, `done` left to caller."""
     search_scale = 2 if deep_search else 1
@@ -1825,8 +1857,12 @@ async def run_turn(
     #: turn that cites 「[6]」 again means the same source); "" where an
     #: earlier number is unknown.
     sources, source_titles = _earlier_sources(messages)
-    #: what the writer read under each URL this turn (title, snippet, excerpt)
-    source_seen: dict[str, str] = {}
+    if cited_material:
+        messages = _with_material_numbers(messages, sources, list(cited_material))
+    #: what the writer read under each URL this turn (title, snippet, excerpt); a project
+    #: file given whole is read under its material number
+    source_seen: dict[str, str] = {MATERIAL_SOURCE + name: text
+                                   for name, text in (cited_material or {}).items()}
     #: URLs earlier answers gave (not those they already flagged): found then, not written
     #: from memory now.
     earlier_urls = {u for m in messages if m.get("role") == "assistant"

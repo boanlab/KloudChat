@@ -1,7 +1,7 @@
 import { Check, Copy, X } from 'lucide-react'
 import { detachTables } from '@/lib/markdownTables'
 import { escapeCurrency } from '@/lib/mathDollars'
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useContext, useEffect, useMemo, useState } from 'react'
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import rehypeKatex from 'rehype-katex'
 import remarkCjkFriendly from 'remark-cjk-friendly'
@@ -19,6 +19,7 @@ import { copyText } from '@/lib/clipboard'
 import { MarkdownTable, MarkdownTh } from './MarkdownTable'
 import { useT } from '@/lib/useT'
 import { rehypePlaceholders } from '@/lib/placeholders'
+import { CitationContext, citationHref, linkCitations } from '@/lib/shelfCitations'
 
 // Embedded raster pictures only; the same rule as `services/pictures.py`.
 const EMBEDDED_PICTURE =
@@ -266,7 +267,17 @@ export function MarkdownBody({
   className?: string
   owner?: DiagramOwner
 }) {
-  const source = useMemo(() => detachTables(normaliseMath(withoutBrokenPictures(children))), [children])
+  const t = useT()
+  // In a project conversation, a citation of project material opens the source viewer.
+  const openCitation = useContext(CitationContext)
+  const cited = useMemo(
+    () => (openCitation ? linkCitations(children) : null),
+    [children, openCitation],
+  )
+  const source = useMemo(
+    () => detachTables(normaliseMath(withoutBrokenPictures(cited?.content ?? children))),
+    [children, cited],
+  )
   return (
     <div
       className={cn(
@@ -322,6 +333,22 @@ export function MarkdownBody({
           },
           strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
           a: ({ children, href }) => {
+            const target = openCitation && cited ? citationHref(href) : null
+            const cites = target ? cited?.sources.get(target[0]) : undefined
+            if (target && cites && openCitation) {
+              return (
+                <button
+                  type="button"
+                  data-citation={target[0]}
+                  aria-label={t('출처 {n} 원문 보기: {name}').replace('{n}', String(target[0])).replace('{name}', cites.name)}
+                  title={cites.name}
+                  onClick={() => openCitation({ n: target[0], source: cites, claim: cited?.claims[target[1]] ?? '' })}
+                  className="mx-0.5 inline-block rounded border border-accent/40 bg-accent-soft px-1 align-baseline text-[0.72em] leading-snug text-accent hover:bg-accent hover:text-accent-fg"
+                >
+                  {target[0]}
+                </button>
+              )
+            }
             // A source citation the server linked: `[[3]](url)` renders as a small badge.
             const citation =
               Array.isArray(children) && children.length === 1

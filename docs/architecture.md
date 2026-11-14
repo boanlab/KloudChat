@@ -3123,6 +3123,89 @@ everything, which an embedding-model change needs).
 urlsafe randomness, minted on first use and never derived from `agent_id`,
 which travels in URLs and API responses. Deleting an agent drops its collection.
 
+### Knowledge shelf (지식 서가)
+
+The project's sources — its `files` rows: uploads, web snapshots, pasted text, notes made
+into sources, video/recording transcripts — get three things on top of §7's injection and
+the `search_knowledge` shelf. User-facing names live in `apps/web/src/lib/shelfNames.ts`
+(server titles in `services/shelf_names.py`), so the working name can change in one place.
+
+**Per-conversation selection.** `source_selections` keeps, per conversation, the source ids
+switched *off* (no row = all on; a source added later starts on). `source_selection.keep`
+drops them in both places a turn reads project material: `workspace_context._project_knowledge`
+(injection) and `sessions._knowledge_shelf` (the lexical shelf, and through `_living_hits`
+the vector hits too, which are kept only for documents still on the shelf).
+
+**Guides and citations.** `source_guides` (one row per source, plus `subject = "project"`)
+holds a summary, key topics and suggested questions, written in the background by the
+strict-local guide model (`shelf_models`) the first time someone opens one and kept
+until the material's signature (ids and text lengths) changes; a per-file digest
+(`files.digest`, when present) fills the summary meanwhile. A chat answer that cites project
+material ends with a source list of names: the project files a turn was given are numbered
+as material sources before any search (`agent._with_material_numbers`, from the context's
+`knowledge` fates, after the numbers earlier answers used), a system note tells the writer
+which number is which file, and search passages (`agent._number_sources`) number on after
+them; material citations keep their plain `[n]` and the server lists them by name. A
+citation of a project file the citing sentence is not backed by (`claim_support`) is taken
+out before the answer is linked. The web links its
+inline `[n]` to the source viewer, which asks `GET /projects/{id}/shelf/locate` for the
+passage closest to the citing sentence (`shelf_sources.locate`: lexical chunk score, then
+the best sentence), its page from `[페이지 n]` marks and, for a transcript, its
+`[HH:MM:SS]` time code; a video plays from there in the file box (`/files?open=<id>&t=<s>`).
+
+**Studio and notes.** `studio_items` are one-click outputs grounded in the sources the person
+picks: documents (study guide, FAQ, briefing, timeline, glossary, mind map), quiz and
+flashcard sets, and two-voice audio overview scripts. `studio.start` writes a `running` row
+and returns; the work runs on its own DB session (`shelf_jobs.spawn`; a row older than 20
+minutes in `running` reads as failed). The sources are numbered `[n] name` within the
+writer's window (`shelf_sources.bundle`: small ones whole, long ones read in windows spread
+to their end), the model answers one JSON object per kind (`studio_kinds`), and code then
+holds the output to its sources: citations of numbers outside the list are removed, a
+document with no citation at all is asked for once more, a glossary keeps only terms
+written in the sources, and quiz items need a valid key, distinct choices (shuffled so the
+key's place carries no pattern) and an explanation. `shelf_checks` then reads every
+sentence, question and card: its script (Japanese kana, Chinese outside a gloss, other
+scripts, a Hangul word glued to Latin letters, an English word the sources never use, a
+source term misspelt by one letter), its grounding (`claim_support`: the numbers of a cited
+sentence must be in its cited sources and at least 35% of its content words, matched with
+up to two letters of particle or ending), and its fluency (the writer and the guide model
+each give a verdict per sentence; a verdict naming the sources' own wording is ignored).
+What fails goes back to the writer once, in one call, with its problem and its cited
+passages; what still fails is mended in code (a script slip) or dropped (an unbacked or
+garbled sentence, or an item left without its question or answer). An audio overview is
+planned in sections (3, 5 or 7 by length), each written to its share of the length (asked
+50% long, as writers fall short) and asked once to be longer when it lands under 80%; each
+line keeps its section's sources, and the explainer's lines are grounded against them.
+Guide questions are kept only when the writer and the guide model both find every part of
+the answer in the question's best passages. Documents are saved as a report artifact
+(or an HWP/Word file through `report_office`) in a conversation of their own, so they open,
+edit and export in the document panel; quiz sheets take the same path. `project_notes` is
+the 메모함: notes pinned from an answer or a selection or written by hand, saved explicitly
+with a version check (`expected` → `note_conflict`), and made into a source (a `.md` file,
+indexed like an upload; later edits update it).
+
+**Models.** Which model writes each output kind, and with what reasoning effort, is one table
+(`services/shelf_models.py`, overridable as JSON in `KNOWLEDGE_MODELS`): a strict-local pick
+and a pick for where material may leave. On a ten-lecture project judged by Sonnet, flash beat
+the 27B on the briefing (7 vs 6), the glossary (7 vs 5) and the quiz (8 vs 7). With thinking
+on, flash ran past a 14k-token room on every long document, so documents are written without
+thinking and quizzes and flashcards with it; a thinking call that runs out of room is answered
+again without thinking. Where material may leave, each kind takes the Super Agent's escalation
+pick (DeepSeek V4.1 Flash, reasoning on). At most `KNOWLEDGE_CONCURRENCY` calls (2) run at once
+per replica, since flash serves conversations on the same node.
+
+**Boundaries and billing.** Project sources are internal material: while
+`governance.internal_data_strict_local` holds, guides and studio outputs use a strict-local
+model only (`shelf_calls.route`; asking for another is refused with
+`internal_data_requires_strict_local`); otherwise an outside pick sees the text masked for
+personal data. Every call is a side call billed
+at the full rate with no cache discount, or a zero-credit token row on a self-hosted model;
+`POST /projects/{id}/studio/estimate` shows tokens and credits before anything runs. Speech
+for an audio overview uses a strict-local speech model when the catalogue lists one; the
+only speech models on the current LLM stack are outside ones (`gpt-audio`), so speech is
+offered only where internal data may leave, after the person consents to the script
+(masked) going out; otherwise the script alone, with the reason.
+
 ---
 
 ## 9. Frontend structure
