@@ -23,7 +23,7 @@ import time
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import Field
 from sqlmodel import select
 
@@ -35,7 +35,7 @@ from app.models.workspace import FileUpload, Project, StoredFile
 from app.schemas.auth import Wire
 from app.schemas.workspace import FileOut
 from app.services import files as file_service
-from app.services import transcribe, video_jobs, video_read
+from app.services import media_client, transcribe, video_jobs, video_read
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["media"])
@@ -83,6 +83,8 @@ class MediaOut(Wire):
     stream_url: str = ""
     #: a keyframe thumbnail: replace `{n}` with the frame number (`{n}s` small)
     frame_url: str = ""
+    #: the picture at any moment (the player's poster): replace `{t}` with seconds
+    poster_url: str = ""
 
 
 def _limit_mb() -> int:
@@ -314,6 +316,8 @@ async def file_media(file_id: str, user: CurrentUser, db: DbSession):
         timings={k: float(v) for k, v in (media.get("timings") or {}).items()},
         stream_url=f"{base}/stream?{query}" if video_jobs.is_media(stored.mime) else "",
         frame_url=f"{base}/frames/{{n}}.jpg?{query}" if media.get("frames") else "",
+        poster_url=(f"{base}/poster?at={{t}}&{query}"
+                    if media.get("hasVideo") and media_client.configured() else ""),
     )
 
 
@@ -382,3 +386,22 @@ async def frame_image(file_id: str, frame: str, db: DbSession, e: int = Query(..
     return FileResponse(path, media_type="image/jpeg",
                         headers={"X-Content-Type-Options": "nosniff",
                                  "Cache-Control": "private, max-age=3600"})
+
+
+@router.get("/files/{file_id}/poster")
+async def poster(file_id: str, db: DbSession, at: float = Query(0, ge=0, le=86_400),
+                 e: int = Query(...), s: str = Query(..., max_length=64)):
+    """The picture at `at` seconds, by the media worker (a seek and one frame, under a
+    second): the player shows the very moment it opens at, not the nearest keyframe."""
+    stored = await _signed_file(db, file_id, e, s)
+    if not video_jobs.is_media(stored.mime) or not media_client.configured():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    try:
+        picture = await media_client.frame(stored.storage_key, round(at, 1), width=960)
+    except media_client.MediaError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no_picture") from None
+    if not picture:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no_picture")
+    return Response(content=picture, media_type="image/jpeg",
+                    headers={"X-Content-Type-Options": "nosniff",
+                             "Cache-Control": "private, max-age=3600"})

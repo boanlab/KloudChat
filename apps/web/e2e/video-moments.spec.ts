@@ -35,6 +35,7 @@ function mediaInfo(extra: Record<string, unknown> = {}) {
     ],
     streamUrl: `/api/files/${videoId}/stream?${SIGNED}`,
     frameUrl: `/api/files/${videoId}/frames/{n}.jpg?${SIGNED}`,
+    posterUrl: `/api/files/${videoId}/poster?at={t}&${SIGNED}`,
     ...extra,
   }
 }
@@ -111,6 +112,8 @@ test('an answer\'s time marks open the player at that moment', async ({ page }, 
   await page.route(`**/api/files/${videoId}/media`, (route) => route.fulfill({ json: mediaInfo() }))
   await page.route(`**/api/files/${videoId}/frames/**`, (route) =>
     route.fulfill({ contentType: 'image/jpeg', body: TINY_JPEG }))
+  await page.route(`**/api/files/${videoId}/poster**`, (route) =>
+    route.fulfill({ contentType: 'image/jpeg', body: TINY_JPEG }))
   // the server answers ranges (FileResponse); the player seeks with them
   await page.route(`**/api/files/${videoId}/stream**`, (route) => {
     const range = /bytes=(\d+)-(\d*)/.exec(route.request().headers()['range'] ?? '')
@@ -136,10 +139,62 @@ test('an answer\'s time marks open the player at that moment', async ({ page }, 
   const dialog = page.getByRole('dialog')
   await expect(dialog).toContainText('강의.mp4')
   const video = dialog.getByTestId('media-element')
+  // the poster is the very moment it opens at
+  await expect(video).toHaveAttribute('poster', /poster\?at=100&/)
   await expect.poll(() => video.evaluate((el: HTMLVideoElement) => Math.round(el.currentTime)), { timeout: 15_000 }).toBe(100)
   // the outline marks where the player is, and a click on a stretch plays from there
   await expect(dialog.locator('[data-start="100"]')).toHaveAttribute('aria-current', 'true')
   await dialog.locator('[data-start="700"]').click()
   await expect.poll(() => video.evaluate((el: HTMLVideoElement) => Math.round(el.currentTime)), { timeout: 15_000 }).toBeGreaterThanOrEqual(700)
+  expect(unexpected).toEqual([])
+})
+
+test('a video put straight into the file box goes up in pieces and shows its reading', { tag: '@phone' }, async ({ page }, info) => {
+  const { unexpected } = await composerFixture(page, info)
+  await page.route('**/api/auth/config', (route) => route.fulfill({ json: {
+    brand: { name: 'KloudChat', logo: '' }, enabledKinds: ['chat'], privacy: { externalDataGuard: false },
+    passwordResetEnabled: false, dictationEnabled: false,
+    upload: { maxMb: 1, maxMediaMb: 500, mediaReading: true, maxMediaMinutes: 240 },
+  } }))
+  let size = 0
+  const answers = [
+    videoRow({ sessionId: null, mediaState: 'running', mediaStage: 'frames' }),
+    videoRow({ sessionId: null, mediaState: 'done', mediaDone: 3, mediaTotal: 3, mediaDuration: 750 }),
+  ]
+  let polls = 0
+  await page.route('**/api/uploads**', async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'POST' && url.pathname === '/api/uploads') {
+      size = Number(request.postDataJSON().size)
+      // the file box: outside any conversation or project
+      expect(request.postDataJSON().sessionId).toBeNull()
+      expect(request.postDataJSON().projectId).toBeNull()
+      return route.fulfill({ status: 201, json: { id: 'u2', size, received: 0, pieceBytes: PIECE } })
+    }
+    if (request.method() === 'PUT') {
+      const offset = Number(url.searchParams.get('offset'))
+      await new Promise((resolve) => setTimeout(resolve, 150))
+      return route.fulfill({ json: { id: 'u2', size, received: offset + (request.postDataBuffer()?.length ?? 0), pieceBytes: PIECE } })
+    }
+    if (request.method() === 'POST' && url.pathname === '/api/uploads/u2/finish') {
+      return route.fulfill({ status: 201, json: videoRow({ sessionId: null }) })
+    }
+    return route.fallback()
+  })
+  await page.route(`**/api/files/${videoId}`, (route) => {
+    const row = answers[Math.min(polls, answers.length - 1)]
+    polls += 1
+    return route.fulfill({ json: row })
+  })
+  await page.goto('/files')
+  await page.getByLabel('파일함에 올릴 파일').setInputFiles({
+    name: '강의.mp4', mimeType: 'video/mp4', buffer: Buffer.alloc(PIECE * 12, 7),
+  })
+  await expect(page.getByTestId('upload-progress')).toContainText(/강의\.mp4 올리는 중 \d+%/)
+  const reading = page.getByTestId('file-row').filter({ hasText: '강의.mp4' }).getByTestId('file-reading')
+  await expect(reading).toContainText('영상 읽기 대기 중', { timeout: 15_000 })
+  await expect(reading).toContainText('영상의 장면 고르는 중', { timeout: 15_000 })
+  await expect(reading).toContainText('영상 읽음 · 12:30', { timeout: 15_000 })
   expect(unexpected).toEqual([])
 })

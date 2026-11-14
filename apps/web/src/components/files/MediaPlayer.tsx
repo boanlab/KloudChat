@@ -79,7 +79,10 @@ export function MediaPlayer({ fileId, start, audio = false }: { fileId: string; 
           src={info.streamUrl}
           controls
           preload="metadata"
-          poster={Tag === 'video' && info.frames.length ? frameSrc(info, frameAt(info, start ?? 0) ?? 0, false) : undefined}
+          poster={Tag !== 'video' ? undefined
+            // the very moment it opens at, else the nearest kept frame
+            : start && info.posterUrl ? info.posterUrl.replace('{t}', String(Math.floor(start)))
+              : info.frames.length ? frameSrc(info, frameAt(info, start ?? 0) ?? 0, false) : undefined}
           data-testid="media-element"
           className={Tag === 'video' ? 'max-h-[52vh] w-full rounded-control bg-black' : 'w-full'}
           onLoadedMetadata={(e) => {

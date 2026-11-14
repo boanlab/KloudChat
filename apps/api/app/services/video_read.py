@@ -19,7 +19,9 @@ import httpx
 from app.core import logs
 from app.services import models as model_service
 from app.services import ocr, settings_store, thinking
+from app.services.video_doc import SAME_PICTURE as SAME_HASH
 from app.services.video_doc import Shown, dhash
+from app.services.video_doc import distance as dhash_distance
 
 log = logging.getLogger(__name__)
 
@@ -75,8 +77,48 @@ def picture_hash(jpeg: bytes) -> int:
     from PIL import Image
 
     with Image.open(io.BytesIO(jpeg)) as image:
-        small = image.convert("L").resize((9, 8), Image.Resampling.BILINEAR)
-        return dhash(list(small.getdata()))
+        tiny = image.convert("L").resize((9, 8), Image.Resampling.BILINEAR)
+        return dhash(list(tiny.tobytes()))
+
+
+#: the second check compares edge maps: text and slide shapes are crisp edges, a speaker
+#: moving mostly soft ones
+_EDGE_SIZE = (640, 360)
+_EDGE_LEVEL = 80
+#: two frames whose difference hashes match are still different pictures when more than this
+#: share of the frame's edge pixels moved (an edge in one with none within a pixel in the
+#: other). Measured on three lectures (61 slide changes) and a talking head: a new slide —
+#: one template, other text — moves ≥ 3.2 %; the same slide 0.07 % (p90 of the template
+#: deck); a speaker over six seconds 0.34 % (p90), 0.77 % (second largest of 99).
+SAME_PIXELS = 0.015
+
+
+def small(jpeg: bytes):
+    """The frame's edge map (`PIL.Image`, 0/255), for `changed`."""
+    from PIL import Image, ImageFilter
+
+    with Image.open(io.BytesIO(jpeg)) as image:
+        grey = image.convert("L").resize(_EDGE_SIZE, Image.Resampling.BILINEAR)
+    return grey.filter(ImageFilter.FIND_EDGES).point(lambda v: 255 if v > _EDGE_LEVEL else 0)
+
+
+def changed(a, b) -> float:
+    """Share of the frame whose edges moved: edge pixels in either map with no edge within a
+    pixel in the other."""
+    from PIL import ImageChops, ImageFilter
+
+    near_a, near_b = a.filter(ImageFilter.MaxFilter(3)), b.filter(ImageFilter.MaxFilter(3))
+    moved = (ImageChops.subtract(a, near_b).histogram()[255]
+             + ImageChops.subtract(b, near_a).histogram()[255])
+    return moved / (_EDGE_SIZE[0] * _EDGE_SIZE[1])
+
+
+def same_picture(hash_a: int, small_a, hash_b: int, small_b) -> bool:
+    """The same picture: hashes close (cheap) and, to be sure, few edges moved — so template
+    slides with different text stay apart while a speaker's gestures do not count."""
+    if dhash_distance(hash_a, hash_b) > SAME_HASH:
+        return False
+    return changed(small_a, small_b) <= SAME_PIXELS
 
 
 def thumbnail(jpeg: bytes, width: int = 320) -> bytes:
@@ -158,5 +200,5 @@ async def read(entry: dict, picture: bytes, t: float, api_key: str) -> Reading:
     )
 
 
-__all__ = ["PROMPT", "Reading", "VisionUnavailable", "model", "parse", "picture_hash", "read",
-           "thumbnail"]
+__all__ = ["PROMPT", "Reading", "SAME_PIXELS", "VisionUnavailable", "changed", "model", "parse",
+           "picture_hash", "read", "same_picture", "small", "thumbnail"]

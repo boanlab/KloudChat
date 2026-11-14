@@ -1342,6 +1342,8 @@ export interface MediaInfo {
   streamUrl: string
   /** A keyframe: replace `{n}` with the number, `{n}s` for the thumbnail. */
   frameUrl: string
+  /** The picture at any moment: replace `{t}` with seconds; empty without the media worker. */
+  posterUrl: string
 }
 
 /** `GET /media/estimate`: what reading a video this long takes. */

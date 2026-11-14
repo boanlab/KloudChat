@@ -23,11 +23,13 @@ import server  # noqa: E402
 
 
 def _clip(path: str) -> None:
-    """Three 10 s scenes (navy, a white box on green, maroon stripes) and a 440 Hz tone."""
+    """Three 10 s scenes with plenty of edges, as slides have (colour bars, a fine grid, a
+    coarse grid with a box), and a 440 Hz tone."""
     scenes = [
-        "color=c=navy:s=320x180:d=10",
-        "color=c=darkgreen:s=320x180:d=10,drawbox=x=40:y=40:w=120:h=80:color=white:t=fill",
-        "color=c=maroon:s=320x180:d=10,drawgrid=w=40:h=40:t=6:c=white",
+        "smptebars=s=320x180:d=10",
+        "color=c=darkgreen:s=320x180:d=10,drawgrid=w=16:h=16:t=2:c=white",
+        "color=c=maroon:s=320x180:d=10,drawgrid=w=48:h=30:t=3:c=white,"
+        "drawbox=x=40:y=40:w=120:h=80:color=yellow:t=fill",
     ]
     args = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
     for scene in scenes:
@@ -79,6 +81,26 @@ class WorkerTest(unittest.TestCase):
         self.assertEqual(times[0], 0.0)
         self.assertAlmostEqual(times[1], 10, delta=1.5)
         self.assertAlmostEqual(times[2], 20, delta=1.5)
+
+    def test_a_tall_video_with_frequent_keyframes_is_read_at_its_keyframes(self):
+        path = os.path.join(self.root, "me", "tall.mp4")
+        _clip(path.replace(".mp4", ".webm"))
+        subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i",
+                        path.replace(".mp4", ".webm"), "-vf", "scale=1600:900", "-c:v",
+                        "libx264", "-preset", "ultrafast", "-g", "25", "-r", "10", path],
+                       check=True)
+        status, body = self.post("/scenes", {"key": "me/tall.mp4", "max_gap": 60})
+        found = json.loads(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(found["mode"], "keyframes")
+        times = [f["t"] for f in found["frames"]]
+        self.assertEqual(len(times), 3, times)
+        # a change is seen at the first keyframe after it (every 2.5 s here)
+        self.assertTrue(10 <= times[1] <= 13 and 20 <= times[2] <= 23, times)
+
+    def test_a_short_or_sparse_keyed_video_is_decoded(self):
+        status, body = self.post("/scenes", {"key": "me/clip.webm"})
+        self.assertEqual((status, json.loads(body)["mode"]), (200, "decode"))
 
     def test_audio_is_a_16k_mono_flac_piece(self):
         status, body = self.post("/audio", {"key": "me/clip.webm", "start": 5, "duration": 10})

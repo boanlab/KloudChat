@@ -84,8 +84,18 @@ export function useFileBox(enabled = true, origin: FileOrigin = 'upload', query 
     setTotal((n) => Math.max(0, n - gone.length))
   }
 
+  /** A file uploaded here, on top; counted under its origin. */
+  const addRow = (row: FileRow) => {
+    setRows((held) => [row, ...held.filter((h) => h.id !== row.id)])
+    setCounts((c) => ({ ...c, [originOf(row)]: c[originOf(row)] + 1 }))
+    setTotal((n) => n + 1)
+  }
+
+  /** A fresher copy of a row (its scan or video was read meanwhile). */
+  const updateRow = (row: FileRow) => setRows((held) => held.map((h) => (h.id === row.id ? row : h)))
+
   const fresh = heldFor === `${origin}|${q}`
-  return { rows: fresh ? rows : [], loading: loading || (!fresh && !failed), counts, total, hasMore: fresh && next !== null, loadingMore, failed, moreFailed, load, loadMore, removeRows }
+  return { rows: fresh ? rows : [], loading: loading || (!fresh && !failed), counts, total, hasMore: fresh && next !== null, loadingMore, failed, moreFailed, load, loadMore, removeRows, addRow, updateRow }
 }
 
 export const originOf = (row: FileRow): FileOrigin => (row.origin === 'generated' ? 'generated' : 'upload')

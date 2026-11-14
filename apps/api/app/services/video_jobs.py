@@ -273,15 +273,7 @@ async def _frames(job: _Job) -> None:
 
     times = [float(c.get("t") or 0.0) for c in candidates]
     pictures = await asyncio.gather(*(fetch(t) for t in times))
-    kept: list[tuple[float, int, bytes]] = []
-    for t, picture in zip(times, pictures, strict=True):
-        if not picture:
-            continue
-        digest = await asyncio.to_thread(video_read.picture_hash, picture)
-        if kept and video_doc.distance(digest, kept[-1][1]) <= video_doc.SAME_PICTURE:
-            # the same picture as the last kept one (a cursor moved, the speaker gestured)
-            continue
-        kept.append((t, digest, picture))
+    kept = await asyncio.to_thread(distinct, list(zip(times, pictures, strict=True)))
     times = video_doc.thin([t for t, _, _ in kept], cap)
     wanted = set(times)
     kept = [frame for frame in kept if frame[0] in wanted]
@@ -295,6 +287,24 @@ async def _frames(job: _Job) -> None:
     job.media["frames"] = frames
     job.timings["frames"] = round(time.monotonic() - started, 2)
     await job.save()
+
+
+def distinct(pictures: list[tuple[float, bytes]]) -> list[tuple[float, int, bytes]]:
+    """`(time, hash, jpeg)` of the pictures that differ from the last kept one: a cursor
+    moving or the speaker gesturing is the same picture; a template slide with new text is
+    not (`video_read.same_picture`)."""
+    kept: list[tuple[float, int, bytes]] = []
+    last = None
+    for t, picture in pictures:
+        if not picture:
+            continue
+        digest = video_read.picture_hash(picture)
+        grey = video_read.small(picture)
+        if last is not None and video_read.same_picture(digest, grey, *last):
+            continue
+        kept.append((t, digest, picture))
+        last = (digest, grey)
+    return kept
 
 
 def _write(key: str, data: bytes) -> None:
@@ -364,22 +374,29 @@ async def _vision(job: _Job, frames: list[dict], have: dict[int, dict]) -> None:
         return
     gate = asyncio.Semaphore(max(1, settings.video_vision_parallel))
     # a picture shown again (back to an earlier slide) is read once
-    readings: dict[str, asyncio.Future] = {}
+    readings: list[tuple[int, object, asyncio.Future]] = []
+
+    folder = file_service.frames_dir(job.key)
+
+    def grey_of(n: int):
+        return video_read.small(file_service.read_blob(f"{folder}/{n}.jpg"))
+
+    greys = await asyncio.to_thread(lambda: {f["n"]: grey_of(f["n"]) for f in todo})
 
     async def one(frame: dict) -> None:
-        digest = frame["hash"]
-        shared = next((f for h, f in readings.items()
-                       if video_doc.distance(int(h, 16), int(digest, 16))
-                       <= video_doc.SAME_PICTURE), None)
+        digest = int(frame["hash"], 16)
+        grey = greys[frame["n"]]
+        shared = next((future for h, g, future in readings
+                       if video_read.same_picture(digest, grey, h, g)), None)
         spent_in = spent_out = 0
         if shared is not None:
             shown = (await shared).shown
         else:
             future: asyncio.Future = asyncio.get_running_loop().create_future()
-            readings[digest] = future
+            readings.append((digest, grey, future))
             try:
                 async with gate:
-                    key_of = f"{file_service.frames_dir(job.key)}/{frame['n']}.jpg"
+                    key_of = f"{folder}/{frame['n']}.jpg"
                     picture = await asyncio.to_thread(file_service.read_blob, key_of)
                     reading = await video_read.read(entry, picture, frame["t"], key)
             except BaseException as exc:

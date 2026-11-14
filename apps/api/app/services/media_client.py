@@ -56,11 +56,10 @@ async def audio(key: str, start: float, duration: float) -> bytes:
     return (await _post("/audio", {"key": key, "start": start, "duration": duration})).content
 
 
-async def scenes(key: str, *, max_frames: int, min_gap: float = 4.0, max_gap: float = 90.0,
-                 threshold: float = 0.12) -> list[dict]:
-    """Candidate frame times `{t, score}` where the picture changes (first frame included)."""
-    body = {"key": key, "max_frames": max_frames, "min_gap": min_gap, "max_gap": max_gap,
-            "threshold": threshold}
+async def scenes(key: str, *, max_frames: int, max_gap: float = 90.0) -> list[dict]:
+    """Candidate frame times `{t, score}` where the picture changes (first frame included);
+    how a change is measured is the worker's (edge maps, tuned there)."""
+    body = {"key": key, "max_frames": max_frames, "max_gap": max_gap}
     return list((await _post("/scenes", body)).json().get("frames") or [])
 
 

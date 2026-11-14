@@ -2199,6 +2199,8 @@ const EN: Record<string, string> = {
   '영상이 너무 깁니다. {n}분 이하로 나눠 올려 주세요.': 'The video is too long. Split it into parts of {n} minutes or less.',
   '크레딧이 모자라 이 영상을 읽을 수 없습니다.': 'Not enough credits to read this video.',
   '파일을 열지 못했습니다.': 'Could not open the file.',
+  '파일함에 올릴 파일': 'Files to put in the file box',
+  '파일 올리기': 'Upload files',
   'OCR로 읽음': 'Read with OCR',
   '앞 {n}쪽까지': 'first {n} pages',
   '확인 필요 {n}쪽': '{n} pages to check',

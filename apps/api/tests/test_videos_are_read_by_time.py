@@ -13,7 +13,7 @@ import pytest
 import sqlalchemy as sa
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.ext.compiler import compiles
@@ -147,6 +147,46 @@ def test_near_duplicate_frames_hash_close_and_different_slides_far():
     assert video_doc.distance(a, b) > video_doc.SAME_PICTURE
 
 
+def _template_slide(lines: list[str], speaker_x: int | None = None) -> bytes:
+    """A slide of one template (title bar, bullets) — and optionally a speaker inset."""
+    image = Image.new("RGB", (1280, 720), "white")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((0, 0, 1280, 110), fill="navy")
+    draw.rectangle((0, 660, 1280, 720), fill="navy")
+    font = ImageFont.load_default(size=34)
+    for i, line in enumerate(lines):
+        draw.text((80, 170 + i * 70), "■ " + line, fill="black", font=font)
+    if speaker_x is not None:
+        draw.ellipse((speaker_x, 420, speaker_x + 160, 640), fill=(205, 170, 140))
+    out = io.BytesIO()
+    image.save(out, "JPEG", quality=80)
+    return out.getvalue()
+
+
+def test_template_slides_with_different_text_are_different_pictures():
+    first = ["Drug-resistant TB is a serious threat", "Among 10,528 U.S. TB cases in 2011",
+             "124 cases of MDR TB = 1.2% of TB cases", "6 cases of XDR TB = 4.8% of MDR",
+             "Treatment takes up to two years"]
+    second = ["Compared to drug-susceptible TB, treatment", "Less effective, more toxic",
+              "Lower cure rates (48-54%)", "Loss to follow-up 14-23%",
+              "10-100 times more costly ($200 and up)"]
+    a, b, again = _template_slide(first), _template_slide(second), _template_slide(first)
+    ha, hb, h2 = (video_read.picture_hash(x) for x in (a, b, again))
+    ga, gb, g2 = (video_read.small(x) for x in (a, b, again))
+    # the difference hashes alone call them the same …
+    assert video_doc.distance(ha, hb) <= video_doc.SAME_PICTURE
+    # … the edges do not
+    assert not video_read.same_picture(ha, ga, hb, gb)
+    assert video_read.same_picture(ha, ga, h2, g2)
+
+
+def test_a_speaker_moving_is_still_the_same_picture():
+    left = _template_slide(["Summary", "Diagnostics and new drugs"], speaker_x=900)
+    moved = _template_slide(["Summary", "Diagnostics and new drugs"], speaker_x=915)
+    assert video_read.same_picture(video_read.picture_hash(left), video_read.small(left),
+                                   video_read.picture_hash(moved), video_read.small(moved))
+
+
 def test_frames_are_capped_by_length_and_thinned_evenly():
     assert video_doc.frame_cap(600, 4.0, 120) == 40
     assert video_doc.frame_cap(3 * 3600, 4.0, 120) == 120
@@ -172,18 +212,27 @@ def _media_server():
     return module
 
 
-def test_the_worker_keeps_strong_changes_fills_long_gaps_and_caps_the_count():
+def test_the_worker_keeps_settled_changes_fills_long_gaps_and_caps_the_count():
     server = _media_server()
-    picked = server.pick([(1.0, 0.9), (10.0, 0.5), (11.0, 0.9), (50.0, 0.4)], 400.0, min_gap=4,
+    picked = server.pick([(1.0, 0.9), (10.0, 0.5), (11.0, 0.9), (50.0, 0.4)], 400.0, min_gap=2,
                          max_gap=90, max_frames=100)
     times = [p["t"] for p in picked]
     # the first frame is always there (a change a second later is the same scene);
-    # 10 s and 11 s are one change, the stronger kept
+    # 10 s and 11 s are one change, the later (settled) one kept
     assert times[:3] == [0.0, 11.0, 50.0]
     # 50 → 399 has no change: fillers keep every gap under 90 s
     assert all(b - a <= 90 for a, b in zip(times, times[1:], strict=False))
-    assert len(server.pick([(float(t), 0.5) for t in range(5, 3000, 5)], 3000.0, min_gap=4,
-                           max_gap=90, max_frames=20)) == 20
+    capped = server.pick([(float(t), 0.5 + t / 10000) for t in range(5, 3000, 5)], 3000.0,
+                         min_gap=2, max_gap=90, max_frames=20)
+    assert len(capped) == 20
+
+
+def test_the_worker_counts_changed_edges_against_the_last_kept_frame():
+    server = _media_server()
+    blank, slide, other = bytes(100), bytes([255] * 50 + [0] * 50), bytes([0] * 50 + [255] * 50)
+    assert server.changed(blank, blank) == 0 and server.changed(blank, slide) == 0.5
+    frames = [(0.0, blank), (1.0, blank), (2.0, slide), (3.0, slide), (4.0, other)]
+    assert server.detect(frames, 0.04) == [(2.0, 0.5), (4.0, 1.0)]
 
 
 def test_the_worker_refuses_keys_outside_its_root(tmp_path, monkeypatch):
@@ -607,6 +656,12 @@ async def test_the_player_streams_with_seeking_and_signed_thumbnails(client, db,
     expired = media_router.signed_query(stored, now=time.time() - 2 * media_router.URL_TTL_SEC)
     assert (await client.get(f"/files/{stored.id}/stream?{expired}")).status_code == 404
     assert (await client.get(thumb.replace("1s.jpg", "..%2F..%2Fx.jpg"))).status_code == 404
+    # the poster: the picture at the very moment, by the worker
+    poster = info["posterUrl"].removeprefix(settings.api_prefix).replace("{t}", "700")
+    shot = await client.get(poster)
+    assert shot.status_code == 200 and shot.headers["content-type"] == "image/jpeg"
+    assert worker.frame_calls[-1] == 700.0
+    assert (await client.get(poster.replace("s=", "s=0"))).status_code == 404
 
 
 async def test_a_failed_video_can_be_read_again(client, db, worker):
