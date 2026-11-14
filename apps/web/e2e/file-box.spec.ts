@@ -141,3 +141,55 @@ test('파일함 on a phone keeps the name readable and every control a 24px targ
   expect(small).toEqual([])
   expect(unexpected).toEqual([])
 })
+
+const sized = [
+  file('s1', 'b_중간.txt', { size: 5_000, createdAt: '2026-10-16T01:00:00.000Z' }),
+  file('s2', 'a_작은.txt', { size: 10, createdAt: '2026-10-16T02:00:00.000Z' }),
+  file('s3', 'c_큰.txt', { size: 900_000, createdAt: '2026-10-16T00:00:00.000Z' }),
+]
+
+test('파일함 sorts on its column headings, on the server, and keeps the order in the address', async ({ page }, info) => {
+  const { unexpected } = await composerFixture(page, info, { files: sized })
+  const asked: string[] = []
+  page.on('request', (r) => new URL(r.url()).pathname === '/api/files/page' && asked.push(new URL(r.url()).search))
+  await page.goto('/files')
+  const rows = page.getByTestId('file-row')
+  const heading = (name: string) => page.getByRole('columnheader', { name })
+  await expect(rows).toHaveCount(3)
+  await expect(heading('올린 때')).toHaveAttribute('aria-sort', 'descending')
+  await heading('크기').getByRole('button').click()
+  await expect(page).toHaveURL(/sort=size&dir=desc/)
+  await expect(heading('크기')).toHaveAttribute('aria-sort', 'descending')
+  await expect(rows.first()).toContainText('c_큰.txt')
+  // descending is the server's default direction, so only the column is asked for
+  expect(asked.some((q) => q.includes('sort=size') && !q.includes('dir='))).toBe(true)
+  await heading('크기').getByRole('button').click()
+  await expect(heading('크기')).toHaveAttribute('aria-sort', 'ascending')
+  await expect(rows.first()).toContainText('a_작은.txt')
+  await heading('이름').getByRole('button').press('Enter')
+  await expect(page).toHaveURL(/sort=name&dir=asc/)
+  await expect(rows.first()).toContainText('a_작은.txt')
+  await page.reload()
+  await expect(heading('이름')).toHaveAttribute('aria-sort', 'ascending')
+  await expect(rows.last()).toContainText('c_큰.txt')
+  // another tab starts from its own default order
+  await page.getByRole('tab', { name: /대화에서 만든 파일/ }).click()
+  await expect(page).not.toHaveURL(/sort=/)
+  expect(unexpected).toEqual([])
+})
+
+test('파일함 on a phone sorts with a column and a direction instead of headings @phone', async ({ page }, info) => {
+  const { unexpected } = await composerFixture(page, info, { files: sized })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/files')
+  const rows = page.getByTestId('file-row')
+  await expect(rows).toHaveCount(3)
+  await expect(page.getByRole('columnheader', { name: '크기' })).toBeHidden()
+  await page.getByLabel('정렬 기준').selectOption('size')
+  await expect(page).toHaveURL(/sort=size&dir=desc/)
+  await expect(rows.first()).toContainText('c_큰.txt')
+  await page.getByRole('button', { name: '내림차순 정렬됨, 오름차순으로 바꾸기' }).click()
+  await expect(page).toHaveURL(/sort=size&dir=asc/)
+  await expect(rows.first()).toContainText('a_작은.txt')
+  expect(unexpected).toEqual([])
+})

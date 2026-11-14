@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
 import test_publishing
 from sqlmodel import select
 from test_publishing import _publish
@@ -62,17 +63,19 @@ async def test_the_file_box_pages_with_counts_and_leaves_agents_knowledge_out(wo
     # the file box: agents' knowledge out
     boxed, pages = await _walk(world.client, "/files/page", box="true", limit=50)
     assert "rules" not in {f["id"] for f in boxed} and len(boxed) == 11
-    assert pages[0]["total"] == 11 and pages[0]["counts"] == {"upload": 8, "generated": 3}
+    assert pages[0]["total"] == 11
+    assert pages[0]["counts"] == {"upload": 8, "generated": 3, "working": 0}
 
     made, pages = await _walk(world.client, "/files/page", box="true", origin="generated",
                               limit=2)
     assert [f["id"] for f in made] == [f"g{n:031d}" for n in (2, 1, 0)]
-    assert pages[0]["total"] == 3 and pages[0]["counts"] == {"upload": 8, "generated": 3}
+    assert pages[0]["total"] == 3
+    assert pages[0]["counts"] == {"upload": 8, "generated": 3, "working": 0}
 
     # name search, case and spacing aside; counts follow the search, origin aside
     found, pages = await _walk(world.client, "/files/page", box="true", q="  회의록 ",
                                origin="generated")
-    assert found == [] and pages[0]["counts"] == {"upload": 7, "generated": 0}
+    assert found == [] and pages[0]["counts"] == {"upload": 7, "generated": 0, "working": 0}
     literal = (await world.client.get("/files/page", params={"q": "100%_"})).json()
     assert literal["total"] == 0
     in_session = (await world.client.get("/files/page", params={"session_id": "s-1"})).json()
@@ -82,6 +85,30 @@ async def test_the_file_box_pages_with_counts_and_leaves_agents_knowledge_out(wo
                 {"origin": "stolen"}):
         response = await world.client.get("/files/page", params=bad)
         assert response.status_code == 422, (bad, response.text)
+
+
+@pytest.mark.parametrize("sort", ["created", "name", "size"])
+@pytest.mark.parametrize("direction", ["asc", "desc"])
+async def test_the_file_box_sorts_on_each_column_both_ways(world, sort, direction):
+    start = utcnow() - timedelta(days=1)
+    async with world.local() as db:
+        for n in range(23):
+            # sizes and names repeat, so ties are broken by id
+            db.add(StoredFile(id=f"z{n:031d}", user_id="owner", name=f"자료 {n % 7}.txt",
+                              size=100 * (n % 5), created_at=start + timedelta(minutes=n % 9)))
+        await db.commit()
+    world.as_("owner")
+    items, pages = await _walk(world.client, "/files/page", box="true", sort=sort,
+                               dir=direction, limit=4)
+    assert len({f["id"] for f in items}) == len(items) == pages[0]["total"]
+    field = {"created": "createdAt", "name": "name", "size": "size"}[sort]
+    keys = [(f[field], f["id"]) for f in items]
+    assert keys == sorted(keys, reverse=direction == "desc")
+    # a cursor belongs to its column and direction
+    other = "size" if sort != "size" else "name"
+    wrong = await world.client.get("/files/page", params={
+        "box": "true", "sort": other, "dir": direction, "cursor": pages[0]["next"]})
+    assert wrong.status_code == 422
 
 
 async def test_the_sidebar_takes_every_pin_and_a_limit_of_the_rest(world):

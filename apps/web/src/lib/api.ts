@@ -1561,21 +1561,26 @@ function queryOf(params: Record<string, string | number | boolean | undefined | 
 }
 
 export const filesApi = {
-  /** One file-box page: `box` leaves agents' knowledge out; `counts` per origin ignore `origin`. */
+  /** One file-box page: `box` leaves agents' knowledge out; `counts` per origin ignore `origin`;
+   *  the whole box also counts its 「작업 문서」 (`working`). */
   page: (params: {
     box?: boolean
     origin?: 'upload' | 'generated'
     q?: string
     projectId?: string
+    sort?: FileSort
+    dir?: SortDir
     cursor?: string | null
     limit?: number
   }) =>
-    call<CursorPage<FileRow> & { counts: { upload: number; generated: number } }>(
+    call<CursorPage<FileRow> & { counts: { upload: number; generated: number; working?: number } }>(
       `/files/page${queryOf({
         box: params.box ? 'true' : undefined,
         origin: params.origin,
         q: params.q?.trim(),
         project_id: params.projectId,
+        sort: params.sort && params.sort !== 'created' ? params.sort : undefined,
+        dir: params.dir && params.dir !== 'desc' ? params.dir : undefined,
         cursor: params.cursor,
         limit: params.limit,
       })}`,
@@ -1818,6 +1823,52 @@ export const artifactsApi = {
 
 /** Office documents edited beside a chat; each is also its file route (`/artifacts/{id}/hwp`). */
 export type OfficeKind = 'hwp' | 'docx' | 'pptx'
+
+/** What the file box's 「작업 문서」 tab lists: HWP, Word, PowerPoint files and web reports, web slides. */
+export type WorkingKind = OfficeKind | 'report' | 'deck'
+export type WorkingSort = 'updated' | 'title' | 'kind' | 'version'
+export type FileSort = 'created' | 'name' | 'size'
+export type SortDir = 'asc' | 'desc'
+
+/** One document in 「작업 문서」, however many versions it has (`version` counts them). */
+export interface WorkingDocRow {
+  id: string
+  kind: WorkingKind
+  title: string
+  version: number
+  /** Null when it has no conversation, or its conversation is gone. */
+  sessionId: string | null
+  sessionTitle: string | null
+  projectId: string | null
+  projectName: string | null
+  projectEmoji: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export const workingDocsApi = {
+  /** A page of 「작업 문서」; `counts` per kind over the search, the kind filter aside. A cursor
+   *  belongs to its `sort`. */
+  page: (params: { kind?: WorkingKind | null; q?: string; sort?: WorkingSort; dir?: SortDir; cursor?: string | null; limit?: number }) =>
+    call<CursorPage<WorkingDocRow> & { counts: Partial<Record<WorkingKind, number>> }>(
+      `/artifacts/working${queryOf({
+        kind: params.kind ?? undefined,
+        q: params.q?.trim(),
+        sort: params.sort && params.sort !== 'updated' ? params.sort : undefined,
+        dir: params.dir && params.dir !== 'desc' ? params.dir : undefined,
+        cursor: params.cursor,
+        limit: params.limit,
+      })}`,
+    ),
+  /** Its current version as a file: an office document as it is kept, a web report as
+   *  Markdown, web slides as PowerPoint. */
+  download: (row: Pick<WorkingDocRow, 'id' | 'kind' | 'title'>) =>
+    row.kind === 'report'
+      ? downloadArtifact(row.id, 'md', row.title)
+      : row.kind === 'deck'
+        ? downloadArtifact(row.id, 'pptx', row.title)
+        : download(`/artifacts/${row.id}/${row.kind}`, `${row.title || 'document'}.${row.kind === 'hwp' ? 'hwpx' : row.kind}`),
+}
 
 /** The editable format each kind is saved in. */
 export const OFFICE_MIME: Record<OfficeKind, string> = {

@@ -3549,7 +3549,8 @@ async def delete_session(
     await db.exec(delete(Message).where(Message.session_id == session.id))
     # Job rows: no cascade
     await db.exec(delete(Job).where(Job.session_id == session.id))
-    counts["artifacts"] = await _delete_artifacts_of(db, [session.id])
+    kept: set[str] = set()
+    counts["artifacts"] = await _delete_artifacts_of(db, [session.id], kept)
     gone = await delete_session_files(db, [session.id]) if files else 0
     await forget_session_files(db, [session.id])
     if session.index_key:
@@ -3560,6 +3561,7 @@ async def delete_session(
         note=_files_note(counts["files"], gone),
     ))
     await db.commit()
+    office_doc.drop_files(kept)
 
 
 #: conversation uploads stay in the file box; only their search entries go
@@ -3590,11 +3592,18 @@ async def _conversation_counts(db: DbSession, session_ids: list[str]) -> dict[st
     return {"sessions": len(session_ids), "messages": int(messages), "files": int(files)}
 
 
-async def _delete_artifacts_of(db: DbSession, session_ids: list[str]) -> int:
-    """Deletes these conversations' artifacts (versions first); returns the count."""
+async def _delete_artifacts_of(
+    db: DbSession, session_ids: list[str], files: set[str] | None = None
+) -> int:
+    """Deletes these conversations' artifacts (versions first); returns the count. `files`
+    collects the office documents' version files, for the caller to drop after its commit."""
     made = (
         await db.exec(select(Artifact.id).where(col(Artifact.session_id).in_(session_ids)))
     ).all()
+    if made and files is not None:
+        office = (await db.exec(select(Artifact).where(
+            col(Artifact.id).in_(made), col(Artifact.kind).in_(office_doc.FILE_KINDS)))).all()
+        files |= await office_doc.kept_files(db, list(office))
     if made:
         await db.exec(delete(ArtifactVersion).where(col(ArtifactVersion.artifact_id).in_(made)))
         await db.exec(delete(Artifact).where(col(Artifact.id).in_(made)))
@@ -4236,7 +4245,8 @@ async def delete_sessions(
     # Job rows: no cascade
     await db.exec(delete(Job).where(col(Job.session_id).in_(ids)))
 
-    artifacts_deleted = await _delete_artifacts_of(db, ids)
+    kept: set[str] = set()
+    artifacts_deleted = await _delete_artifacts_of(db, ids, kept)
     counts["artifacts"] = artifacts_deleted
     gone = await delete_session_files(db, ids) if payload.files else 0
     await forget_session_files(db, ids)
@@ -4250,6 +4260,7 @@ async def delete_sessions(
         everything=payload.all, note=_files_note(counts["files"], gone),
     ))
     await db.commit()
+    office_doc.drop_files(kept)
     return {"deleted": len(ids), "artifactsDeleted": artifacts_deleted, "filesDeleted": gone}
 
 

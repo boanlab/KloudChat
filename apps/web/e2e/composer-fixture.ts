@@ -250,6 +250,16 @@ export async function composerFixture(
       const named = box.filter((row) => !row.agentId && (!q || String(row.name).toLowerCase().includes(q)))
       const originOf = (row: Record<string, unknown>) => (row.origin === 'generated' ? 'generated' : 'upload')
       const all = named.filter((row) => !origin || originOf(row) === origin)
+      // a column and its direction, ties by id; asked for none, the box's own order (newest first)
+      const sort = url.searchParams.get('sort') ?? 'created'
+      const down = (url.searchParams.get('dir') ?? 'desc') === 'desc'
+      const value = (row: Record<string, unknown>) =>
+        sort === 'name' ? String(row.name) : sort === 'size' ? Number(row.size) : String(row.createdAt)
+      if (url.searchParams.has('sort') || url.searchParams.has('dir')) all.sort((a, b) => {
+        const [x, y] = [value(a), value(b)]
+        const by = x < y ? -1 : x > y ? 1 : String(a.id).localeCompare(String(b.id))
+        return down ? -by : by
+      })
       const items = all.slice(start, start + limit)
       return json({
         items, total: all.length, next: start + limit < all.length ? String(start + limit) : null,

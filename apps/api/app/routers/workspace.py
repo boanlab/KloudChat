@@ -24,7 +24,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import FileResponse, HTMLResponse
-from sqlalchemy import and_, func, or_, tuple_
+from sqlalchemy import and_, func, literal, or_, tuple_
 from sqlmodel import col, delete, select, update
 
 from app.core.config import settings
@@ -89,6 +89,8 @@ from app.schemas.workspace import (
     SlideRewrite,
     StoreSkillOut,
     ToolCatalogOut,
+    WorkingDocOut,
+    WorkingDocPage,
 )
 from app.services import (
     artifact_versions,
@@ -553,11 +555,15 @@ async def page_files(
     q: str | None = Query(None, max_length=200),
     project_id: str | None = None,
     session_id: str | None = None,
+    sort: Literal["created", "name", "size"] = "created",
+    dir: Direction = "desc",
     cursor: str | None = paging.Cursor,
     limit: int = paging.Limit,
 ):
-    """`/files` a page at a time, newest first; `box` leaves agents' knowledge out (the file
-    box), `q` matches the name. `total` counts the whole filter, `counts` each origin."""
+    """`/files` a page at a time, newest first unless `sort` (a column) and `dir` say
+    otherwise, ties broken by id; `box` leaves agents' knowledge out (the file
+    box), `q` matches the name. `total` counts the whole filter, `counts` each origin, and in
+    the whole box also `working`, the 「작업 문서」 tab's documents whose title matches."""
     copies = select(Agent.id).where(col(Agent.snapshot_of).is_not(None),
                                     Agent.owner_id == user.id)
     conds = [
@@ -576,18 +582,24 @@ async def page_files(
     )).all())
     counts = {"upload": int(by_origin.get("upload", 0)),
               "generated": int(by_origin.get("generated", 0))}
+    if box and not project_id and not session_id:
+        # the 「작업 문서」 tab's badge, over the same search
+        counts["working"] = int((await db.exec(
+            select(func.count()).select_from(Artifact).where(*_working_conds(user.id, q))
+        )).one())
     if origin:
         conds.append(StoredFile.origin == origin)
     total = int((await db.exec(select(func.count()).select_from(StoredFile).where(*conds))).one())
-    if cursor:
-        at, last_id = paging.decode(cursor, 2)
-        conds.append(tuple_(col(StoredFile.created_at), col(StoredFile.id))
-                     < tuple_(paging.when(at), last_id))
+    column, how = _FILE_SORT[sort]
+    tag = f"{sort}.{dir}"
+    order, past = _keyset(col(column), col(StoredFile.id), how, dir, tag, cursor)
+    if past is not None:
+        conds.append(past)
     rows = list((await db.exec(
-        select(StoredFile).where(and_(*conds))
-        .order_by(col(StoredFile.created_at).desc(), col(StoredFile.id).desc()).limit(limit + 1)
+        select(StoredFile).where(and_(*conds)).order_by(*order).limit(limit + 1)
     )).all())
-    rows, after = paging.after(rows, limit, lambda f: (paging.stamp(f.created_at), f.id))
+    rows, after = paging.after(
+        rows, limit, lambda f: _cursor_of(how, tag, getattr(f, column.key), f.id))
     return FileListPage(items=[FileOut.of(f) for f in rows], total=total, next=after,
                         counts=counts)
 
@@ -979,6 +991,160 @@ async def artifact_counts(user: CurrentUser, db: DbSession, q: str | None = None
     rows = (await db.exec(query)).all()
     counts = {str(kind): int(total) for kind, total in rows}
     return {"counts": counts, "total": sum(counts.values())}
+
+
+#: what the file box's 「작업 문서」 tab lists: documents edited as a whole, in an editor or
+#: by chat — HWP, Word and PowerPoint files, web reports and web slides
+WORKING_KINDS = (
+    ArtifactKind.hwp, ArtifactKind.docx, ArtifactKind.pptx, ArtifactKind.report, ArtifactKind.deck,
+)
+
+
+def _working_conds(user_id: str, q: str | None) -> list:
+    conds = [Artifact.user_id == user_id,
+             col(Artifact.kind).in_([kind.value for kind in WORKING_KINDS])]
+    if q and q.strip():
+        conds.append(col(Artifact.title).ilike(f"%{_like(q.strip()[:80])}%", escape="\\"))
+    return conds
+
+
+def _text_part(text: str) -> str:
+    """Text inside a cursor: never empty, never the separator."""
+    return "t" + base64.urlsafe_b64encode(text.encode()).decode()
+
+
+def _bad_cursor() -> HTTPException:
+    return HTTPException(status_code=422, detail="bad_cursor")
+
+
+def _text_of(part: str) -> str:
+    try:
+        return base64.urlsafe_b64decode(part[1:].encode()).decode()
+    except (ValueError, UnicodeDecodeError):
+        raise _bad_cursor() from None
+
+
+def _int_of(part: str) -> int:
+    try:
+        return int(part)
+    except ValueError:
+        raise _bad_cursor() from None
+
+
+#: how a sorted column's value rides in a cursor: (into the cursor, back out of it)
+_CURSOR_VALUE: dict[str, tuple[Any, Any]] = {
+    "time": (paging.stamp, paging.when),
+    "text": (_text_part, _text_of),
+    "int": (str, _int_of),
+    "kind": (lambda kind: str(getattr(kind, "value", kind)), ArtifactKind),
+}
+
+Direction = Literal["asc", "desc"]
+
+
+def _keyset(column, id_column, how: str, direction: str, tag: str, cursor: str | None):
+    """A page sorted on `column`, ties broken by id, both in `direction`: its ORDER BY and,
+    after a cursor, the condition past its last row. A cursor belongs to one sort (`tag`)."""
+    up = direction == "asc"
+    order = (column.asc(), id_column.asc()) if up else (column.desc(), id_column.desc())
+    if not cursor:
+        return order, None
+    got, last, last_id = paging.decode(cursor, 3)
+    if got != tag:
+        raise _bad_cursor()
+    try:
+        value = _CURSOR_VALUE[how][1](last)
+    except ValueError:
+        raise _bad_cursor() from None
+    key = tuple_(column, id_column)
+    # an enum compares as its own type (its declared order on Postgres)
+    at = tuple_(literal(value, type_=column.type) if how == "kind" else value, last_id)
+    return order, (key > at if up else key < at)
+
+
+def _cursor_of(how: str, tag: str, value: Any, row_id: str) -> tuple[str, str, str]:
+    return tag, _CURSOR_VALUE[how][0](value), row_id
+
+
+#: the file box's sortable columns
+_FILE_SORT = {
+    "created": (StoredFile.created_at, "time"),
+    "name": (StoredFile.name, "text"),
+    "size": (StoredFile.size, "int"),
+}
+
+#: 「작업 문서」's sortable columns: the column and how its value rides in a cursor
+_WORKING_SORT = {
+    "updated": (Artifact.updated_at, "time"),
+    "title": (Artifact.title, "text"),
+    "kind": (Artifact.kind, "kind"),
+    "version": (Artifact.version, "int"),
+}
+
+
+@router.get("/artifacts/working", response_model=WorkingDocPage)
+async def page_working_documents(
+    user: CurrentUser,
+    db: DbSession,
+    kind: str | None = Query(None, max_length=60),
+    q: str | None = Query(None, max_length=200),
+    sort: Literal["updated", "title", "kind", "version"] = "updated",
+    dir: Direction = "desc",
+    cursor: str | None = paging.Cursor,
+    limit: int = paging.Limit,
+):
+    """The person's working documents a page at a time: one row per document (its versions
+    counted, not listed), newest edit first by default. `kind` is one kind or a comma list,
+    `q` matches the title; `sort` a column and `dir` its direction, ties broken by id.
+    `total` counts the filter, `counts` each kind over the search. A cursor belongs to its
+    sort and direction."""
+    conds = _working_conds(user.id, q)
+    by_kind = dict((await db.exec(
+        select(Artifact.kind, func.count()).where(*conds).group_by(col(Artifact.kind))
+    )).all())
+    counts = {member.value: int(by_kind.get(member, 0)) for member in WORKING_KINDS}
+    if kind:
+        wanted = {k.strip() for k in kind.split(",")} & {m.value for m in WORKING_KINDS}
+        if not wanted:
+            return WorkingDocPage(items=[], total=0, next=None, counts=counts)
+        conds.append(col(Artifact.kind).in_(sorted(wanted)))
+    total = int((await db.exec(select(func.count()).select_from(Artifact).where(*conds))).one())
+    column, how = _WORKING_SORT[sort]
+    tag = f"{sort}.{dir}"
+    order, past = _keyset(col(column), col(Artifact.id), how, dir, tag, cursor)
+    if past is not None:
+        conds.append(past)
+    rows = list((await db.exec(
+        select(Artifact).where(and_(*conds)).order_by(*order).limit(limit + 1)
+    )).all())
+    rows, after = paging.after(
+        rows, limit, lambda a: _cursor_of(how, tag, getattr(a, column.key), a.id))
+    # where each belongs, in two reads for the page; someone else's or a deleted one is none
+    session_ids = {a.session_id for a in rows if a.session_id}
+    project_ids = {a.project_id for a in rows if a.project_id}
+    sessions = dict((await db.exec(
+        select(ChatSession.id, ChatSession.title)
+        .where(col(ChatSession.id).in_(session_ids), ChatSession.user_id == user.id)
+    )).all()) if session_ids else {}
+    projects = {
+        pid: (name, emoji) for pid, name, emoji in (await db.exec(
+            select(Project.id, Project.name, Project.emoji)
+            .where(col(Project.id).in_(project_ids), Project.user_id == user.id)
+        )).all()
+    } if project_ids else {}
+    items = []
+    for a in rows:
+        in_session = a.session_id if a.session_id in sessions else None
+        project = projects.get(a.project_id or "")
+        items.append(WorkingDocOut(
+            id=a.id, kind=a.kind, title=a.title, version=a.version,
+            session_id=in_session, session_title=sessions.get(in_session) if in_session else None,
+            project_id=a.project_id if project else None,
+            project_name=project[0] if project else None,
+            project_emoji=project[1] if project else None,
+            created_at=a.created_at, updated_at=a.updated_at,
+        ))
+    return WorkingDocPage(items=items, total=total, next=after, counts=counts)
 
 
 @router.post("/artifacts", response_model=ArtifactOut, status_code=status.HTTP_201_CREATED)
@@ -1989,11 +2155,13 @@ async def restore_artifact(
 async def delete_artifact(artifact_id: str, user: CurrentUser, db: DbSession,
                           request: Request = None):  # type: ignore[assignment]
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
+    blobs = await office_doc.kept_files(db, [artifact])
     await db.exec(delete(ArtifactVersion).where(ArtifactVersion.artifact_id == artifact.id))
     await db.delete(artifact)
     db.add(audit.deletion(user, request, action="artifact.delete", ids=[artifact.id],
                           counts={"artifacts": 1}, extra={"kind": str(artifact.kind)}))
     await db.commit()
+    office_doc.drop_files(blobs)
 
 
 @router.post("/artifacts/delete")
@@ -2004,11 +2172,13 @@ async def delete_artifacts(payload: BulkDelete, user: CurrentUser, db: DbSession
     if not rows:
         return {"deleted": 0}
     ids = [row.id for row in rows]
+    blobs = await office_doc.kept_files(db, list(rows))
     await db.exec(delete(ArtifactVersion).where(col(ArtifactVersion.artifact_id).in_(ids)))
     await db.exec(delete(Artifact).where(col(Artifact.id).in_(ids)))
     db.add(audit.deletion(user, request, action="artifact.bulk_delete", ids=ids,
                           counts={"artifacts": len(ids)}))
     await db.commit()
+    office_doc.drop_files(blobs)
     return {"deleted": len(ids)}
 
 

@@ -251,6 +251,30 @@ async def save(
     return artifact
 
 
+#: the kinds that keep a file per version (`storage_key`)
+FILE_KINDS = (ArtifactKind.hwp, ArtifactKind.docx, ArtifactKind.pptx)
+
+
+async def kept_files(db: AsyncSession, rows: list[Artifact]) -> set[str]:
+    """The files these artifacts keep, one per office version; read before their rows are
+    deleted, removed with `drop_files` after the commit. A restored version shares its key
+    with the version it came from, so the keys are a set."""
+    office = [a.id for a in rows if a.kind in FILE_KINDS]
+    if not office:
+        return set()
+    keys = {a.storage_key for a in rows if a.id in office and a.storage_key}
+    keys |= {key for key in (await db.exec(
+        select(ArtifactVersion.storage_key).where(col(ArtifactVersion.artifact_id).in_(office))
+    )).all() if key}
+    return keys
+
+
+def drop_files(keys: set[str]) -> None:
+    """After the commit only: a failed delete leaves rows that still find their files."""
+    for key in keys:
+        files.delete_blob(key)
+
+
 def download_name(title: str, fmt: str) -> str:
     stem = re.sub(r"[\\/:*?\"<>|\x00-\x1f]+", " ", title or "").strip()[:80] or "document"
     return f"{stem}.{fmt}"
