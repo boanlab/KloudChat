@@ -12,7 +12,7 @@ import {
 import { useState } from 'react'
 import { Badge, Dropdown, useMenuClose } from '@/components/ui'
 import { cn, formatTokens } from '@/lib/utils'
-import { effectiveModelId, useStore } from '@/store/useStore'
+import { effectiveModelId, startingRoutingMode, useStore } from '@/store/useStore'
 import type { ModelInfo, RoutingMode, SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
 import { isSuperMode, superLaneTitle } from '@/lib/superAgent'
@@ -149,6 +149,7 @@ export function ModelPicker({
     litellmAvailable,
     autoRouting,
     superAgent,
+    user,
   } = useStore()
   const session = sessionId ? sessions.find((s) => s.id === sessionId) : undefined
   const usable = models.filter(
@@ -165,9 +166,12 @@ export function ModelPicker({
   // A picture or av surface without the admin's default: none chosen, said so (never the first or cheapest).
   const noDefault = !current && (kind === 'image' || kind === 'av')
   const routedSurface = kind === 'chat' || kind === 'report' || kind === 'slides'
-  const superLane = routedSurface && isSuperMode(session?.routingMode)
-    ? session?.routingMode
+  // Outside a conversation (the home screen), the mode a new one would start in.
+  const startingMode = !session && !sessionId && !field && routedSurface
+    ? startingRoutingMode({ superAgent, user }, kind)
     : undefined
+  const laneMode = session?.routingMode ?? startingMode
+  const superLane = routedSurface && isSuperMode(laneMode) ? laneMode : undefined
   const autoLane = superLane ?? (kind === 'chat' && session?.routingMode !== 'manual'
     ? session?.routingMode
     : undefined)

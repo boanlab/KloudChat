@@ -1,7 +1,7 @@
 """Super Agent: picker entries that pick model and effort per turn.
 
-- `governance.super_agent_enabled`: the entries offered (on where either Auto lane was on;
-  an installation that kept Auto off keeps Super Agent off until the admin turns it on).
+- `governance.super_agent_enabled`: the entries offered; on for every installation (owner
+  decision 2026-11-14: Super Agent is the default), the admin can turn it off.
 - `governance.super_agent_rules`: the admin's changes to the built-in class table
   (`super_agent.DEFAULT_RULES`). Old lists an admin changed carry over (the first economy
   model answers simple turns, the first quality model hard ones); lists still at the old
@@ -11,7 +11,7 @@
 Downgrade drops both columns and moves Super Agent conversations back to `auto`.
 
 Revision ID: 0083
-Revises: 0081
+Revises: 0082
 Create Date: 2026-11-13
 """
 
@@ -26,7 +26,7 @@ from sqlalchemy.dialects import postgresql
 from alembic import op
 
 revision: str = "0083"
-down_revision: str | None = "0081"
+down_revision: str | None = "0082"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -73,22 +73,19 @@ def upgrade() -> None:
     governance = sa.table(
         "governance",
         sa.column("id", sa.String),
-        sa.column("adaptive_routing_enabled", sa.Boolean),
-        sa.column("adaptive_quality_enabled", sa.Boolean),
         sa.column("adaptive_economy_model_ids", sa.JSON),
         sa.column("adaptive_quality_model_ids", sa.JSON),
         sa.column("super_agent_enabled", sa.Boolean),
         sa.column("super_agent_rules", json_type),
     )
     rows = bind.execute(sa.select(
-        governance.c.id, governance.c.adaptive_routing_enabled,
-        governance.c.adaptive_quality_enabled, governance.c.adaptive_economy_model_ids,
+        governance.c.id, governance.c.adaptive_economy_model_ids,
         governance.c.adaptive_quality_model_ids,
     )).all()
-    for row_id, routing_on, quality_on, economy, quality in rows:
+    for row_id, economy, quality in rows:
         bind.execute(
             governance.update().where(governance.c.id == row_id).values(
-                super_agent_enabled=bool(routing_on or quality_on),
+                super_agent_enabled=True,
                 super_agent_rules=carried_rules(economy, quality),
             )
         )

@@ -177,11 +177,9 @@ async def test_a_hard_question_thinks_and_its_rescue_is_the_escalation_row(monke
     out = await _turn(monkeypatch, "우리 DB를 MySQL에서 PostgreSQL로 옮길지 판단 기준과 위험을 "
                       "정리해 줘")
     call = out["calls"][0]
-    assert call["model"] == FLASH["id"]
-    assert call["reasoning"] == {
-        FLASH["id"]: {"chat_template_kwargs": {"enable_thinking": True}},
-        DEEPSEEK["id"]: {"reasoning": {"effort": "high"}},
-    }
+    # hard turns: DeepSeek V4.1 Flash with reasoning high (owner decision 2026-11-14)
+    assert call["model"] == DEEPSEEK["id"]
+    assert call["reasoning"] == {DEEPSEEK["id"]: {"reasoning": {"effort": "high"}}}
     assert out["route"]["effort"] == "high" and out["route"]["taskClass"] == "reasoning"
 
 

@@ -71,31 +71,31 @@ DEFAULT_RULES: dict[str, dict[str, str]] = {
         "strictModel": "strict-local/qwen3.8-flash",
         "effort": "none",
     },
-    # flash with thinking on matched DeepSeek V4.1 Flash with reasoning on these classes
-    # (8.3-8.5 of 10) at no credits; without thinking either scored 2-6
+    # hard turns go to DeepSeek V4.1 Flash with reasoning high (owner decision 2026-11-14):
+    # thinking flash matched it on the evaluation (8.3-8.5 of 10) but left answers empty 3
+    # times in 14, and DeepSeek searches and cites best (8.7 vs flash 6.3)
     "calc": {
-        "model": "local/qwen3.8-flash",
+        "model": "deepseek/deepseek-v4.1-flash",
         "strictModel": "strict-local/qwen3.8-flash",
         "effort": "high",
     },
     "code": {
-        "model": "local/qwen3.8-flash",
+        "model": "deepseek/deepseek-v4.1-flash",
         "strictModel": "strict-local/qwen3.8-flash",
         "effort": "high",
     },
-    # searching and citing: a strong tool user, no reasoning (8.7 vs flash 6.3)
     "current": {
         "model": "deepseek/deepseek-v4.1-flash",
         "strictModel": "strict-local/qwen3.8-flash",
-        "effort": "none",
+        "effort": "high",
     },
     "long": {
-        "model": "local/qwen3.8-flash",
+        "model": "deepseek/deepseek-v4.1-flash",
         "strictModel": "strict-local/qwen3.8-flash",
         "effort": "high",
     },
     "reasoning": {
-        "model": "local/qwen3.8-flash",
+        "model": "deepseek/deepseek-v4.1-flash",
         "strictModel": "strict-local/qwen3.8-flash",
         "effort": "high",
     },

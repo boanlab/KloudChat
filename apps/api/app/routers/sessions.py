@@ -1186,6 +1186,21 @@ async def _require_auto_quality_model(user: User, model_id: str | None) -> None:
         )
 
 
+async def _project_super_mode(user: User) -> RoutingMode:
+    """A new project conversation on Super Agent: project material is internal, so where the
+    admin keeps internal material strict-local it starts on `super_strict` (when that entry
+    has models this person may use); otherwise on `super`."""
+    policy = await governance.current()
+    if not policy.internal_data_strict_local:
+        return RoutingMode.super
+    catalogue = await model_service.list_models()
+    allowed = set(user.allowed_models or [])
+    rules = super_agent.normalise_rules(policy.super_agent_rules)
+    if super_agent.estimate(rules, catalogue["models"], strict=True, allowed=allowed):
+        return RoutingMode.super_strict
+    return RoutingMode.super
+
+
 async def _require_super_agent() -> None:
     """Super Agent entries need the admin's switch."""
     if not (await governance.current()).super_agent_enabled:
@@ -2852,8 +2867,11 @@ async def create_session(payload: SessionCreate, user: CurrentUser, db: DbSessio
         )
     if payload.routing_mode in _AUTO_MODES:
         await _require_auto_quality_model(user, payload.model)
-    if payload.routing_mode in _SUPER_MODES:
+    routing_mode = payload.routing_mode
+    if routing_mode in _SUPER_MODES:
         await _require_super_agent()
+        if routing_mode == RoutingMode.super and payload.project_id:
+            routing_mode = await _project_super_mode(user)
     session = ChatSession(
         **({"id": payload.id} if payload.id else {}),
         user_id=user.id,
@@ -2861,7 +2879,7 @@ async def create_session(payload: SessionCreate, user: CurrentUser, db: DbSessio
         project_id=payload.project_id,
         agent_id=payload.agent_id,
         model=payload.model or "",
-        routing_mode=payload.routing_mode,
+        routing_mode=routing_mode,
         render_template_id=(await _agent_template_loaded(db, user, agent, payload.kind))
         or await _project_render_template(db, payload.project_id, payload.kind),
     )

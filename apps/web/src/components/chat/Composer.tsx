@@ -979,6 +979,7 @@ export function Composer({
     jobs,
     uploadFile,
     newSession,
+    clearModelPick,
     setSessionSkills,
     setSessionRoutingMode,
     skillStore,
@@ -2309,6 +2310,8 @@ export function Composer({
         try {
           let id = sessionId ?? reusableSessionId
           if (!id) {
+            // Super Agent picked on the home screen: new conversations start on it again
+            if (mode === 'super') clearModelPick(kind)
             id = await newSession(kind, { projectId, routingMode: mode })
             carriedComposer = heldComposer(id)
             setReusableSessionId(id)

@@ -320,7 +320,7 @@ def test_migration_carries_the_auto_lists_and_moves_auto_sessions() -> None:
     from alembic.operations import Operations
 
     migration = _migration()
-    assert (migration.revision, migration.down_revision) == ("0083", "0081")
+    assert (migration.revision, migration.down_revision) == ("0083", "0082")
     assert migration.carried_rules('["local/cheap"]', ["deepseek/x", "z/y"]) == {
         "simple": {"model": "local/cheap"}, "reasoning": {"model": "deepseek/x"}}
     # lists still at the old defaults leave the evaluated table alone
@@ -335,7 +335,7 @@ def test_migration_carries_the_auto_lists_and_moves_auto_sessions() -> None:
             "adaptive_quality_enabled BOOLEAN, adaptive_economy_model_ids JSON, "
             "adaptive_quality_model_ids JSON)"))
         conn.execute(sa_core.text(
-            "INSERT INTO governance VALUES ('default', 0, 1, '[]', '[\"deepseek/x\"]')"))
+            "INSERT INTO governance VALUES ('default', 0, 0, '[]', '[\"deepseek/x\"]')"))
         conn.execute(sa_core.text("CREATE TABLE sessions (id VARCHAR, routing_mode VARCHAR)"))
         conn.execute(sa_core.text(
             "INSERT INTO sessions VALUES ('a','auto'),('b','auto_quality'),('c','manual')"))
@@ -406,3 +406,42 @@ async def test_the_writer_call_carries_the_routed_effort(monkeypatch) -> None:
         agent.TURN_REASONING.set(None)
     assert sent[0]["reasoning"] == {"effort": "high"}
     assert sent[1].get("reasoning") != {"effort": "high"}
+
+
+def test_hard_classes_go_to_deepseek_with_reasoning_high() -> None:
+    # owner decision 2026-11-14: hard turns on DeepSeek V4.1 Flash @high; strict column unchanged
+    for name in ("calc", "code", "current", "long", "reasoning", "escalation"):
+        rule = sa.DEFAULT_RULES[name]
+        assert (rule["model"], rule["effort"]) == ("deepseek/deepseek-v4.1-flash", "high"), name
+        assert rule["strictModel"] == "strict-local/qwen3.8-flash", name
+    for name in ("simple", "chat", "transform"):
+        assert sa.DEFAULT_RULES[name]["model"] == "local/qwen3.8-flash"
+    assert sa.DEFAULT_RULES["document"]["strictModel"] == "strict-local/qwen3.8-27b"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("strict_rule", "allowed", "expected"),
+    [
+        (True, [], "super_strict"),
+        # nothing strict-local this person may use: stays on `super`
+        (True, ["deepseek/deepseek-v4.1-flash"], "super"),
+        (False, [], "super"),
+    ],
+)
+async def test_a_new_project_conversation_on_super_agent_starts_strict_when_required(
+    monkeypatch, strict_rule: bool, allowed: list[str], expected: str
+) -> None:
+    from app.routers import sessions as sessions_router
+
+    user = User(email="p@example.test", password_hash="h", name="P", allowed_models=allowed)
+
+    async def catalogue():
+        return {"models": CATALOGUE, "litellmAvailable": True}
+
+    async def policy():
+        return Governance(super_agent_enabled=True, internal_data_strict_local=strict_rule)
+
+    monkeypatch.setattr(sessions_router.model_service, "list_models", catalogue)
+    monkeypatch.setattr(sessions_router.governance, "current", policy)
+    assert (await sessions_router._project_super_mode(user)).value == expected

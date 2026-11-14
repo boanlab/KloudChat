@@ -1,7 +1,31 @@
-import type { RoutingMode, SuperAgentClass, SuperAgentRoute } from '@/types'
+import type { ModelCatalogue } from '@/lib/api'
+import type { RoutingMode, SessionKind, SuperAgentClass, SuperAgentRoute } from '@/types'
 
 export function isSuperMode(mode: RoutingMode | undefined): mode is 'super' | 'super_strict' {
   return mode === 'super' || mode === 'super_strict'
+}
+
+/**
+ * The mode a new conversation starts in: Super Agent on the chat, report and slides surfaces
+ * when the admin offers it, unless the conversation belongs to an agent (its model rules) or the
+ * person picked a model for that surface on the home screen (that pick is kept). Existing
+ * conversations keep their own mode; the server moves a project conversation that must stay
+ * strict-local to `super_strict`.
+ */
+export function startingMode({
+  kind,
+  agentId,
+  superAgent,
+  homePick,
+}: {
+  kind: SessionKind
+  agentId?: string | null
+  superAgent: Pick<NonNullable<ModelCatalogue['superAgent']>, 'enabled' | 'default'>
+  homePick?: string | null
+}): RoutingMode {
+  if (kind !== 'chat' && kind !== 'report' && kind !== 'slides') return 'manual'
+  if (agentId || homePick) return 'manual'
+  return superAgent.enabled && superAgent.default.available ? 'super' : 'manual'
 }
 
 /** 「Super Agent」 or 「Super Agent (strict-local)」: product names, not translated. */

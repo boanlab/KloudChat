@@ -1,4 +1,5 @@
 import type { OpenArtifact, UploadProgress, WebSearchSetting } from '@/lib/api'
+import { startingMode } from '@/lib/superAgent'
 import { forgetStoredDraft, purgeStoredDrafts } from '@/lib/drafts'
 import { findUnsent, forgetUnsent, keepUnsent, purgeUnsent, unsentId } from '@/lib/unsentSessions'
 import { create } from 'zustand'
@@ -377,6 +378,8 @@ interface State {
   running: Record<string, () => void>
   modelByKind: Record<SessionKind, string>
   setModel: (kind: SessionKind, id: string) => void
+  /** Forgets the home-screen pick for a surface: its new conversations start on Super Agent. */
+  clearModelPick: (kind: SessionKind) => void
   /** One remembered model per av mode; `modelByKind.av` mirrors the current mode's. */
   avModelByMode: Record<AvMode, string>
   /** Changes one conversation's model; the surface default is left alone. */
@@ -996,6 +999,20 @@ export function effectiveModelId(
   return agent?.model || modelByKind[kind]
 }
 
+/** The mode a new conversation starts in (`startingMode`), from this store's state. */
+export function startingRoutingMode(
+  s: Pick<State, 'superAgent' | 'user'>,
+  kind: SessionKind,
+  agentId?: string | null,
+): Session['routingMode'] {
+  return startingMode({
+    kind,
+    agentId,
+    superAgent: s.superAgent,
+    homePick: s.user?.preferences.modelByKind?.[kind],
+  })
+}
+
 /** The model a media turn is sent with, honouring the conversation's own pick. */
 function pickedModel(
   s: Pick<State, 'sessions' | 'agents' | 'modelByKind'>,
@@ -1538,6 +1555,19 @@ export const useStore = create<State>((set, get) => ({
         ...(s.user ? { user: { ...s.user, preferences: { ...s.user.preferences, ...kept } } } : {}),
       }
     }),
+  clearModelPick: (kind) =>
+    set((s) => {
+      const picks = { ...readRememberedModels(s.user?.preferences.modelByKind) }
+      if (!(kind in picks)) return {}
+      delete picks[kind]
+      try {
+        localStorage.setItem(MODEL_STORAGE_KEY, JSON.stringify(picks))
+      } catch {
+        // storage unavailable: the account keeps it
+      }
+      if (s.user) rememberOnAccount({ modelByKind: picks })
+      return s.user ? { user: { ...s.user, preferences: { ...s.user.preferences, modelByKind: picks } } } : {}
+    }),
   setSessionModel: async (sessionId, modelId) => {
     if (holdUnsent(set, get, sessionId, { model: modelId, routingMode: 'manual' })) return
     const previous = get().sessions.find((session) => session.id === sessionId)
@@ -1729,7 +1759,7 @@ export const useStore = create<State>((set, get) => ({
 
   newSession: async (
     kind,
-    { projectId = null, agentId = null, routingMode = 'manual' } = {},
+    { projectId = null, agentId = null, routingMode } = {},
   ) => {
     // the panel closes for the new conversation: its document's unsaved edits are asked about first
     if (get().openArtifactId && officeDirty() && !(await leaveOffice())) throw new LeaveCancelled()
@@ -1741,7 +1771,8 @@ export const useStore = create<State>((set, get) => ({
       id: unsentId(), kind, title: tr('새 작업'), projectId, agentId, pipelineId: null,
       // A session model outranks the agent's, so an agent that pins one gets none here.
       model: agent?.model ? '' : (state.modelByKind[kind] ?? ''),
-      routingMode, createdAt: now, updatedAt: now, pinned: false, messages: [], preview: null,
+      routingMode: routingMode ?? startingRoutingMode(state, kind, agentId),
+      createdAt: now, updatedAt: now, pinned: false, messages: [], preview: null,
       messageCount: 0, made: null, artifactId: null, pending: null, skillIds: [],
       renderTemplateId: startingTemplate(state, kind, agent, projectId), unsent: true,
     }
