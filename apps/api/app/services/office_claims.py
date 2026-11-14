@@ -12,7 +12,8 @@ from typing import Any
 #: a sentence claiming the document changed: 「작성했습니다」, 「표로 바꿨습니다」, 「채웠습니다」
 _CLAIMS = re.compile(
     r"(?:작성|수정|변경|추가|삭제|반영|저장|정리|교체|이동|복제|적용)(?:을|를)?\s{0,2}(?:했|하였|완료했)"
-    r"|(?:고쳤|바꿨|바꾸었|넣었|채웠|만들었|옮겼|지웠|뺐|붙였|늘렸|줄였|나눴|합쳤|띄웠)"
+    r"|(?:고쳤|바꿨|바꾸었|넣었|채웠|만들었|옮겼|지웠|뺐|붙였|늘렸|줄였|나눴|합쳤|띄웠|다듬었|손봤)"
+    r"|바뀐\s{0,2}곳"
     r"|\b(?:updated|changed|added|filled|wrote|written|replaced|moved|inserted|removed|saved)\b",
     re.I,
 )

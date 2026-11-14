@@ -26,3 +26,11 @@ def test_a_true_reply_or_a_plain_answer_gets_nothing():
     idle = ToolContext(user_id="u", session_id="s")
     assert office_claims.note("회의는 3시에 시작합니다.", idle, {"docx"}) == ""
     assert office_claims.note("문서를 고쳤습니다.", idle, set()) == ""
+
+
+def test_a_polish_claimed_on_a_web_report_with_nothing_saved_is_corrected():
+    # seen on eval: only the report was read, and the reply said it was polished
+    ctx = ToolContext(user_id="u", session_id="s", sandbox={"_report": {"id": "r", "version": 4}})
+    said = office_claims.note(
+        "2장 첫 문장을 더 짧게 다듬었습니다.\n\n- **바뀐 곳**: 「가」 → 「나」", ctx, {"report"})
+    assert "저장되지 않았습니다" in said and "v4 그대로" in said
