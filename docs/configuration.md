@@ -225,6 +225,8 @@ shown instead of silently retrying the premium model.
 | `KCHAT_MEDIA_JOBS` | `MEDIA_JOBS` (media) | `2` | ffmpeg runs at once in the worker. |
 | `KCHAT_MEDIA_THREADS` | `MEDIA_THREADS` (media) | `2` | Threads per ffmpeg run. |
 | `KCHAT_MEDIA_MAX_SECONDS` | `MEDIA_MAX_SECONDS` (media) | `14400` | The worker's own ceiling on a video's length. |
+| — | `MEDIA_SCAN_PARALLEL` (media) | `4` | Decoders side by side when looking for changes. |
+| — | `MEDIA_KEYFRAME_MIN_HEIGHT` / `MEDIA_KEYFRAME_MAX_GAP` (media) | `900` / `6` | A picture at least this tall whose keyframes come at least every this many seconds is read at its keyframes only (about a third of a full decode at 1080p); a slide shown for less than the gap may be missed. |
 | `KCHAT_MEDIA_CPUS` / `KCHAT_MEDIA_MEMORY` | — (compose) | `4` / `2g` | The worker container's CPU and memory caps. |
 
 Which vision model reads frames is the OCR one (System › Features › Text from scans): only a

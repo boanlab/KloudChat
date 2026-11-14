@@ -2233,9 +2233,17 @@ for a day are removed by the job loop.
 **The media worker** (`apps/media`, the `media` service). ffmpeg is LGPL/GPL, so it is
 never linked or bundled into the app: it runs as Debian's unmodified package in a container
 of its own, behind a standard-library HTTP API — `/probe` (ffprobe), `/audio` (a 16 kHz mono
-FLAC piece), `/scenes` (scene-change times from a 1 fps, 320 px pass with
-`select='gt(scene,0.12)'`, a minimum gap of 4 s, a frame at least every 90 s, a cap), `/frame`
-(one JPEG). It reads uploads through a read-only mount, so a request names a storage key and
+FLAC piece), `/scenes` (the times the picture changes, below), `/frame` (one JPEG), `/poster`'s
+source.
+
+*Finding changes.* The worker compares edge maps — ffmpeg's `edgedetect` at 320×180, averaged
+to 80×45 — because text and slide shapes are crisp edges while a speaker's motion is mostly
+soft ones: a frame is a change when more than 4 % of the cells moved past a step against the
+last kept frame, and the frame kept is the first after the change settles (a transition, a
+build). How the frames are read depends on the file: a picture at least 900 px tall whose
+keyframes come at least every 6 s (`MEDIA_KEYFRAME_*`) is read at its keyframes only, one
+seek each, `MEDIA_SCAN_PARALLEL` side by side; anything else is decoded at 1 fps in that many
+segments side by side. A stretch over 90 s without a change still gets a frame. It reads uploads through a read-only mount, so a request names a storage key and
 never carries the video; it holds no secrets, joins only the internal `media` network, runs
 ffmpeg at low priority with `MEDIA_JOBS` runs at once, and compose caps it at `KCHAT_MEDIA_CPUS`
 and `KCHAT_MEDIA_MEMORY`.
@@ -2245,9 +2253,10 @@ a ten-minute lease another replica takes over — and taken through:
 
 1. *probe* — duration and streams; a file with neither, or longer than `VIDEO_MAX_MINUTES`,
    fails at once with the reason;
-2. *frames* — the worker's candidate times (twice the cap), each frame fetched once; one whose
-   64-bit difference hash is within 6 bits of the last kept frame is the same picture (a
-   cursor moved, the speaker gestured) and dropped; the rest thinned evenly to
+2. *frames* — the worker's candidate times (twice the cap), each frame fetched once; one that
+   is the same picture as the last kept frame is dropped (`video_read.same_picture`: a 64-bit
+   difference hash within 6 bits *and* at most 1.5 % of a 640×360 edge map moved — the hash
+   alone calls slides of one template with different text the same); the rest thinned evenly to
    `VIDEO_FRAMES_PER_MINUTE` × minutes (at most `VIDEO_MAX_FRAMES`); each kept frame and a
    320 px thumbnail are stored beside the video (`<key>.frames/`, removed with it);
 3. *reading* — speech and pictures side by side. Speech: ten-minute pieces overlapping by 5 s
@@ -2268,6 +2277,14 @@ taken over after a restart resumes where it stopped, and a failure is retried th
 (`media.transcribe`), pictures as tokens (`media.vision`) — a priced vision model is charged
 at its full rate, no cache discount, and is checked against the owner's credits before the
 first frame.
+
+Measured on 20-minute windows of three public-domain lectures with 61 slide changes marked by
+hand (a slide webinar, a CDC Grand Rounds deck where every slide shares one template, a Zoom
+lecture with a speaker inset): slides missed went from 3, 5 and 9 with the first version
+(ffmpeg's scene score and the hash alone) to 1, 0 and 0 — the one missed was on screen for
+three seconds. The 1080p scene pass took 14.6 s instead of 48.8 s (keyframes; 24 of 25
+slides, the full decode 25 of 25 in 24.5 s), and a 1080p talking head now gives two frames in
+ten minutes, read in 6 s.
 
 **The time-coded document** becomes the file's text, so search, project context, the index
 and per-file digests read it like any document:
