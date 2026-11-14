@@ -142,6 +142,8 @@ export interface PendingQuestion {
 export type ReportOutput = 'web' | 'hwp' | 'docx'
 /** What a deck is made as: the deck screen's own, or a PowerPoint file beside a chat. */
 export type SlidesOutput = 'deck' | 'pptx'
+/** A file sent as a turn's `outputFormat`: a report's, or PowerPoint for a deck (web slides send none). */
+export type TurnOutput = ReportOutput | 'pptx'
 
 export interface PendingPlan {
   /** `clarify` holds a question, `outline` the plan, `figures` the offer to draw the planned pictures. */

@@ -39,6 +39,8 @@ import { useMarkUnsaved } from '@/lib/unsaved'
 import { useT } from '@/lib/useT'
 import { isListed } from '@/lib/listed'
 import { KNOWLEDGE_ACCEPT, knowledgeRefusal } from '@/lib/knowledgeFiles'
+import { RelTime } from '@/components/ui/RelTime'
+import { TemplateMiniature } from '@/components/chat/DesignGallery'
 
 type Tab = 'sessions' | 'knowledge' | 'skills' | 'memory'
 
@@ -474,7 +476,7 @@ export function ProjectDetailPage() {
           <div>
             <p className="text-base font-medium">{t('테마')}</p>
             <p className="text-sm text-muted">
-              {t('말투는 대화·보고서·슬라이드에, 색과 서체는 슬라이드와 보고서 표지에, 스타일은 이미지에 적용됩니다. 오디오·동영상에는 적용되지 않습니다.')}
+              {t('말투·색·서체는 모든 보고서 형식(웹 보고서·한글·Word)과 모든 슬라이드 형식(웹 슬라이드·PowerPoint)에 적용되고, 말투는 대화에도 적용됩니다. 이미지에는 스타일이 적용되고, 오디오·동영상에는 적용되지 않습니다.')}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -501,6 +503,24 @@ export function ProjectDetailPage() {
               ))}
             </select>
           </div>
+          {selectedDesign && (
+            // A small specimen: the accent, ink and muted colours on the theme's typeface.
+            <div
+              className="flex items-center gap-3 rounded-control border border-line bg-white px-3 py-2"
+              data-testid="theme-specimen"
+              style={{ fontFamily: selectedDesign.tokens.font === 'serif' ? 'var(--font-serif, serif)' : undefined }}
+            >
+              <span className="h-8 w-1 shrink-0 rounded-full" style={{ background: selectedDesign.tokens.accent }} aria-hidden />
+              <div className="min-w-0">
+                <p className="truncate text-base font-semibold" style={{ color: selectedDesign.tokens.ink }}>
+                  {t(selectedDesign.name)}
+                </p>
+                <p className="truncate text-xs" style={{ color: selectedDesign.tokens.muted }}>
+                  {selectedDesign.tokens.font === 'serif' ? t('명조 계열 서체') : t('고딕 계열 서체')}
+                </p>
+              </div>
+            </div>
+          )}
           {selectedDesign?.description && (
             <p className="text-sm text-faint">{selectedDesign.description}</p>
           )}
@@ -511,13 +531,16 @@ export function ProjectDetailPage() {
             <div>
               <p className="text-base font-medium">{t('기본 템플릿')}</p>
               <p className="text-sm text-muted">
-                {t('이 프로젝트에서 새로 시작하는 작업이 어떤 템플릿으로 나올지 정합니다. 대화마다 다시 고를 수 있습니다.')}
+                {t('이 프로젝트에서 새로 시작하는 보고서(웹 보고서·한글·Word)와 슬라이드(웹 슬라이드·PowerPoint)가 어떤 템플릿으로 나올지 정합니다. 어느 형식으로 내보내도 같은 템플릿을 따르며, 대화마다 다시 고를 수 있습니다.')}
               </p>
             </div>
-            {formatSurfaces.map((kind) => (
-              <div key={kind} className="flex items-center gap-2">
-                <span className="w-16 shrink-0 text-base text-muted">
-                  {t(kindMeta[kind].label)}
+            {formatSurfaces.map((kind) => {
+              const chosen = formats.find((row) => row.id === project.renderTemplates[kind])
+              return (
+              <div key={kind} className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="shrink-0 text-base text-muted">
+                  {kind === 'report' ? t('보고서 (웹·한글·Word)') : kind === 'slides' ? t('슬라이드 (웹·PowerPoint)') : t(kindMeta[kind].label)}
                 </span>
                 <select
                   aria-label={t('{kind} 템플릿').replace('{kind}', t(kindMeta[kind].label))}
@@ -543,7 +566,10 @@ export function ProjectDetailPage() {
                     ))}
                 </select>
               </div>
-            ))}
+              {chosen && <TemplateMiniature row={chosen} english={english} />}
+              </div>
+              )
+            })}
           </Card>
         )}
         </aside>
@@ -631,7 +657,7 @@ export function ProjectDetailPage() {
                           </p>
                         </div>
                         <span className="shrink-0 text-xs text-faint">
-                          {relativeTime(c.updatedAt)}
+                          <RelTime iso={c.updatedAt} />
                         </span>
                         <Button
                           variant="ghost"
@@ -713,7 +739,7 @@ export function ProjectDetailPage() {
                         {f.name}
                       </button>
                       <span className="block text-xs text-faint">
-                        {f.sourceUrl ? t('웹페이지 스냅샷') : f.size} · {t('{n} 토큰').replace('{n}', formatTokens(f.tokens))} · {relativeTime(f.addedAt)}
+                        {f.sourceUrl ? t('웹페이지 스냅샷') : f.size} · {t('{n} 토큰').replace('{n}', formatTokens(f.tokens))} · <RelTime iso={f.addedAt} />
                       </span>
                       {f.error && (
                         <span className="block text-xs text-warn">

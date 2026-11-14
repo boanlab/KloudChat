@@ -2,6 +2,7 @@ import { BarChart3, Download, Share2, Table2 } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { Badge, Button, Dropdown, MenuItem, MenuLabel } from '@/components/ui'
 import { ShareButton } from '@/components/share/ShareButton'
+import { DataTable } from '@/components/ui/DataTable'
 import { cn } from '@/lib/utils'
 import type { ChartArtifact } from '@/types'
 import {
@@ -518,30 +519,26 @@ export function ChartPanel({
             )}
         </div>
         <div className={cn(tab === 'table' ? '' : 'hidden')}>
-          <div className="overflow-x-auto rounded-card border border-line">
-            <table className="w-full border-collapse text-base">
-              <thead className="bg-elevated">
-                <tr>
-                  {chart.table.columns.map((c) => (
-                    <th key={c} className="border-b border-line px-3 py-2 text-left font-semibold">
-                      {c}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {chart.table.rows.map((row, i) => (
-                  <tr key={i} className="border-b border-line last:border-0">
-                    {row.map((cell, j) => (
-                      <td key={j} className={cn('px-3 py-2', j > 0 && 'tabular-nums')}>
-                        {typeof cell === 'number' ? cell.toLocaleString() : cell}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable<{ cells: (string | number)[]; i: number }>
+            id="chart.data"
+            rows={chart.table.rows.map((cells, i) => ({ cells, i }))}
+            rowKey={(r) => String(r.i)}
+            label={chart.title || t('데이터')}
+            tableClassName="border-collapse text-base"
+            headClassName="bg-elevated"
+            maxHeight="60vh"
+            columns={chart.table.columns.map((c, j) => ({
+              key: String(j),
+              label: c,
+              // Numbers by value; text naturally ("2월" before "10월").
+              value: (r) => r.cells[j],
+              className: j > 0 ? 'tabular-nums' : undefined,
+              cell: (r) => {
+                const cell = r.cells[j]
+                return typeof cell === 'number' ? cell.toLocaleString() : cell
+              },
+            }))}
+          />
         </div>
       </div>
     </div>

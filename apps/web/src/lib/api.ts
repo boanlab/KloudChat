@@ -33,7 +33,7 @@ import type {
   PrivacyAction,
   PrivacyRouting,
   ReportArtifact,
-  ReportOutput,
+  TurnOutput,
   Session,
   SessionKind,
   SessionMade,
@@ -391,6 +391,33 @@ async function call<T>(path: string, init: RequestInit & { timeoutMs?: number } 
 
 const body = (v: unknown) => ({ method: 'POST', body: JSON.stringify(v) })
 
+/** Saves a file the server streams (CSV exports), named as the server names it. */
+async function download(path: string, fallback: string): Promise<void> {
+  const res = await send(`${BASE_URL}${path}`)
+  if (!res.ok) {
+    const detail = await readDetail(res)
+    if (res.status === 401) throw new UnauthorizedError(detail)
+    throw new ApiError(res.status, detail, retryAfter(res))
+  }
+  let name = fallback
+  const encoded = res.headers.get('Content-Disposition')?.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
+  if (encoded) {
+    try {
+      name = decodeURIComponent(encoded).replace(/[\\/:*?"<>|]+/g, '_') || fallback
+    } catch {
+      // A malformed name keeps the fallback.
+    }
+  }
+  const url = URL.createObjectURL(await res.blob())
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = name
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
 /* ── auth: argon2id, short-lived JWT, rotating refresh cookie; signup pending until approved ── */
 
 export interface AuthSession {
@@ -729,6 +756,12 @@ export const adminApi = {
     if (query.q.trim()) params.set('q', query.q.trim())
     return call<UserPage>(`/admin/users/page?${params}`)
   },
+  /** The list as CSV under the same tab, search and order (every page); the export is audited. */
+  usersCsv: (query: Pick<UserListQuery, 'status' | 'q' | 'sort' | 'order'>) => {
+    const params = new URLSearchParams({ status: query.status, sort: query.sort, order: query.order })
+    if (query.q.trim()) params.set('q', query.q.trim())
+    return download(`/admin/users/export.csv?${params}`, 'kloudchat-users.csv')
+  },
   /** Approval and allowance together: an active account without credits reads as a bug. */
   approve: (id: string, monthlyCredits?: number) =>
     call<User>(`/admin/users/${id}/approve`, body({ monthlyCredits: monthlyCredits ?? null })),
@@ -899,6 +932,9 @@ export interface AuditQuery {
   /** ISO instants; `until` is exclusive. */
   since?: string
   until?: string
+  /** Server-side column order; newest first when absent. */
+  sort?: 'at' | 'action' | 'target' | 'ip'
+  order?: 'asc' | 'desc'
 }
 
 export interface GovernancePolicy {
@@ -1076,7 +1112,11 @@ export const usageApi = {
       method: 'PUT',
       body: JSON.stringify(patch),
     }),
-  report: (days = 7) => call<UsageReport>(`/admin/usage?days=${days}`),
+  /** The last `days` days, or the service-zone calendar days `range.start`..`range.end`. */
+  report: (days = 7, range?: { start: string; end: string }) =>
+    call<UsageReport>(
+      range ? `/admin/usage?start=${range.start}&end=${range.end}` : `/admin/usage?days=${days}`,
+    ),
   /** Disk the uploads and generated media take, per account, and what is left. */
   storage: () => call<StorageReport>('/admin/storage'),
   /** Removes every deleted account's files now, without waiting for the fill mark. */
@@ -1091,6 +1131,14 @@ export const usageApi = {
       if (value !== undefined && value !== '') params.set(key, String(value))
     }
     return call<AuditPage>(`/admin/audit?${params}`)
+  },
+  /** The filtered trail as CSV in the same order (every page); the export is itself recorded. */
+  auditCsv: (query: Omit<AuditQuery, 'page' | 'size'>) => {
+    const params = new URLSearchParams()
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== undefined && value !== '') params.set(key, String(value))
+    }
+    return download(`/admin/audit/export.csv?${params}`, 'kloudchat-audit.csv')
   },
 }
 
@@ -1160,9 +1208,9 @@ export const sessionsApi = {
   agentDraftDecided: (sessionId: string) =>
     call<AgentDraftDecided>(`/sessions/${sessionId}/agent-draft/decided`, { timeoutMs: 0 }),
   /** A report or slides session continuing this chat with its agent; the files carry the conversation. */
-  handoff: (sessionId: string, kind: 'report' | 'slides') =>
-    call<{ session: SessionRow; attachments: FileRow[] }>(
-      `/sessions/${sessionId}/handoff`, body({ kind }),
+  handoff: (sessionId: string, kind: 'report' | 'slides', outputFormat?: TurnOutput) =>
+    call<{ session: SessionRow; attachments: FileRow[]; outputFormat?: TurnOutput | null }>(
+      `/sessions/${sessionId}/handoff`, body(outputFormat ? { kind, outputFormat } : { kind }),
     ),
   forkBeforeMessage: (sessionId: string, messageId: string) =>
     call<{ session: SessionRow; attachments: FileRow[]; attachmentIdMap: Record<string, string> }>(
@@ -1523,6 +1571,8 @@ export const artifactsApi = {
     projectId?: string | null
     fileId?: string
     title?: string
+    /** A slides template for a blank PowerPoint deck; the project's default when left out. */
+    templateId?: string
   }) => call<ArtifactRow>(`/artifacts/${kind}`, body(payload)),
   /** A document with no conversation joins `sessionId` (a new chat) to be edited beside it. */
   attachDocument: (kind: OfficeKind, id: string, sessionId: string) =>
@@ -2329,14 +2379,16 @@ export async function* streamSession(
     renderTemplateId?: string
     privacyAction?: PrivacyAction
     privacyDecisionToken?: string
+    /** With `route_strict_local`: the safe model picked on the privacy card. */
+    privacyModelId?: string
     /** Write the outline waiting on this session instead of planning another. */
     approve?: boolean
     /** Outline as edited on the card; titles and order theirs, layouts the planner's. */
     plan?: Record<string, unknown>
     /** The figure card's answer — the second of the two questions. */
     includeFigures?: boolean
-    /** A report's file picked on the screen; wins over a file the request names. */
-    outputFormat?: ReportOutput
+    /** A report's file, or PowerPoint for a deck, picked on the screen; wins over the request. */
+    outputFormat?: TurnOutput
     /** Answers to a stopped turn's questions, keyed by question id. */
     answers?: Record<string, string>
     /** The failed question to run again in place, by message id; the server reuses that row. */

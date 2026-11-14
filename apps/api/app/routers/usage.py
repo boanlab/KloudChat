@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import shutil
 from datetime import UTC, datetime, time, timedelta
+from datetime import date as date_cls
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
@@ -17,7 +19,14 @@ from app.models.chat import ChatSession, Message, Role
 from app.models.governance import Governance
 from app.models.user import ApiKey, AuditEvent, CreditLedger, User, UserStatus, utcnow
 from app.schemas.admin import GovernanceIn
-from app.services import adaptive_routing, api_key_usage, geoip, governance, settings_store
+from app.services import (
+    adaptive_routing,
+    api_key_usage,
+    csv_export,
+    geoip,
+    governance,
+    settings_store,
+)
 from app.services import audit as audit_service
 from app.services import credits as credits_service
 from app.services import files as file_service
@@ -105,8 +114,10 @@ _SPEND_SURFACE = case(
 )
 
 
-def _events(since: datetime, user_id: str | None = None):
-    """Turns ∪ ledger spend as (day, model, kind, user_id, credits, requests, units, searches)."""
+def _events(since: datetime, user_id: str | None = None, until: datetime | None = None):
+    """Turns ∪ ledger spend as (day, model, kind, user_id, credits, requests, units, searches).
+
+    `until` is exclusive; None runs to now."""
     turns = (
         select(
             _local_day(col(Message.created_at)).label("day"),
@@ -155,6 +166,9 @@ def _events(since: datetime, user_id: str | None = None):
             CreditLedger.created_at >= since,
         )
     )
+    if until is not None:
+        turns = turns.where(Message.created_at < until)
+        spend = spend.where(CreditLedger.created_at < until)
     if user_id is not None:
         turns = turns.where(ChatSession.user_id == user_id)
         spend = spend.where(CreditLedger.user_id == user_id)
@@ -178,10 +192,38 @@ def _kind(kind) -> str:
     return getattr(kind, "value", kind)
 
 
+def _window(start: date_cls, end: date_cls) -> tuple[datetime, datetime, int]:
+    """Service-zone calendar days `start`..`end` inclusive, as UTC bounds (end exclusive)."""
+    if end < start:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="range_reversed"
+        )
+    days = (end - start).days + 1
+    if days > 366:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="range_too_long"
+        )
+    since = datetime.combine(start, time(), tzinfo=_zone()).astimezone(UTC)
+    until = datetime.combine(end + timedelta(days=1), time(), tzinfo=_zone()).astimezone(UTC)
+    return since, until, days
+
+
 @router.get("/usage")
-async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=90)):
-    since = _since(days)
-    events = _events(since)
+async def usage(
+    admin: AdminUser,
+    db: DbSession,
+    days: int = Query(7, ge=1, le=90),
+    start: date_cls | None = None,
+    end: date_cls | None = None,
+):
+    """The last `days` days, or the calendar days `start`..`end` (service zone, inclusive)."""
+    until: datetime | None = None
+    if start is not None or end is not None:
+        today = datetime.now(_zone()).date()
+        since, until, days = _window(start or end or today, end or today)
+    else:
+        since = _since(days)
+    events = _events(since, until=until)
     credits = func.coalesce(func.sum(events.c.credits), 0)
     requests = func.coalesce(func.sum(events.c.requests), 0)
     units = func.coalesce(func.sum(events.c.units), 0)
@@ -271,6 +313,7 @@ async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=9
     return {
         "days": days,
         "since": since,
+        "until": until,
         "totals": {
             "credits": int(spent),
             "requests": int(request_count),
@@ -514,21 +557,21 @@ async def my_usage(user: CurrentUser, db: DbSession, days: int = Query(30, ge=1,
     }
 
 
-@router.get("/audit")
-async def audit_log(
-    admin: AdminUser,
+AuditSort = Literal["at", "action", "target", "ip"]
+
+
+async def _audit_conditions(
     db: DbSession,
-    page: int = Query(1, ge=1),
-    size: int = Query(50, ge=1, le=200),
-    severity: str | None = None,
-    action: str | None = Query(None, max_length=2000),
-    account: str | None = Query(None, max_length=200),
-    q: str | None = Query(None, max_length=200),
-    q_actions: str | None = Query(None, alias="qActions", max_length=2000),
-    since: datetime | None = None,
-    until: datetime | None = None,
-):
-    """Audit events, newest first, paged; `action` comma list (`x.*` prefix), `until` exclusive."""
+    *,
+    severity: str | None,
+    action: str | None,
+    account: str | None,
+    q: str | None,
+    q_actions: str | None,
+    since: datetime | None,
+    until: datetime | None,
+) -> list:
+    """The filters the audit screen sends, as SQL conditions (list and export share them)."""
     conds = []
     if severity:
         conds.append(AuditEvent.severity == severity)
@@ -569,13 +612,66 @@ async def audit_log(
         conds.append(col(AuditEvent.at) >= since)
     if until:
         conds.append(col(AuditEvent.at) < until)
+    return conds
 
+
+def _audit_order(sort: AuditSort, order: Literal["asc", "desc"]) -> list:
+    """The column, then time and id, so a page never shifts; empty values last."""
+    desc = order == "desc"
+    column = {
+        "at": col(AuditEvent.at),
+        "action": col(AuditEvent.action),
+        "target": col(AuditEvent.target),
+        "ip": col(AuditEvent.ip),
+    }[sort]
+    if sort == "at":
+        if desc:
+            return [column.desc(), col(AuditEvent.id).desc()]
+        return [column.asc(), col(AuditEvent.id).asc()]
+    empty = case((column.is_(None), 1), (column == "", 1), else_=0)
+    return [
+        empty,
+        column.desc() if desc else column.asc(),
+        col(AuditEvent.at).desc(),
+        col(AuditEvent.id).desc(),
+    ]
+
+
+@router.get("/audit")
+async def audit_log(
+    admin: AdminUser,
+    db: DbSession,
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=200),
+    severity: str | None = None,
+    action: str | None = Query(None, max_length=2000),
+    account: str | None = Query(None, max_length=200),
+    q: str | None = Query(None, max_length=200),
+    q_actions: str | None = Query(None, alias="qActions", max_length=2000),
+    since: datetime | None = None,
+    until: datetime | None = None,
+    sort: AuditSort = "at",
+    order: Literal["asc", "desc"] = "desc",
+):
+    """Audit events, newest first unless sorted, paged.
+
+    `action` is a comma list (`x.*` takes a prefix); `until` is exclusive."""
+    conds = await _audit_conditions(
+        db,
+        severity=severity,
+        action=action,
+        account=account,
+        q=q,
+        q_actions=q_actions,
+        since=since,
+        until=until,
+    )
     total = (await db.exec(select(func.count()).select_from(AuditEvent).where(*conds))).one()
     rows = (
         await db.exec(
             select(AuditEvent)
             .where(*conds)
-            .order_by(col(AuditEvent.at).desc(), col(AuditEvent.id).desc())
+            .order_by(*_audit_order(sort, order))
             .offset((page - 1) * size)
             .limit(size)
         )
@@ -613,6 +709,95 @@ async def audit_log(
     }
 
 
+@router.get("/audit/export.csv")
+async def export_audit_log(
+    admin: AdminUser,
+    db: DbSession,
+    request: Request,
+    severity: str | None = None,
+    action: str | None = Query(None, max_length=2000),
+    account: str | None = Query(None, max_length=200),
+    q: str | None = Query(None, max_length=200),
+    q_actions: str | None = Query(None, alias="qActions", max_length=2000),
+    since: datetime | None = None,
+    until: datetime | None = None,
+    sort: AuditSort = "at",
+    order: Literal["asc", "desc"] = "desc",
+):
+    """The filtered trail as CSV, in the screen's order (at most `csv_export.MAX_ROWS` rows).
+
+    The export itself is recorded, with the filters it used."""
+    conds = await _audit_conditions(
+        db,
+        severity=severity,
+        action=action,
+        account=account,
+        q=q,
+        q_actions=q_actions,
+        since=since,
+        until=until,
+    )
+    rows = (
+        await db.exec(
+            select(AuditEvent)
+            .where(*conds)
+            .order_by(*_audit_order(sort, order))
+            .limit(csv_export.MAX_ROWS)
+        )
+    ).all()
+    actor_ids = {r.actor_id for r in rows if r.actor_id}
+    actors: dict[str, str] = {}
+    if actor_ids:
+        actors = {
+            u.id: u.email
+            for u in (await db.exec(select(User).where(col(User.id).in_(actor_ids)))).all()
+        }
+    filters = {
+        key: value
+        for key, value in {
+            "severity": severity,
+            "action": action,
+            "account": account,
+            "q": q,
+            "since": since.isoformat() if since else None,
+            "until": until.isoformat() if until else None,
+            "sort": sort,
+            "order": order,
+        }.items()
+        if value
+    }
+    db.add(
+        AuditEvent(
+            actor_id=admin.id,
+            action="audit.export",
+            target="감사 로그",
+            detail=f"{len(rows)} rows",
+            event_metadata={"rows": len(rows), "filters": filters},
+            ip=client_ip(request),
+            user_agent=request.headers.get("User-Agent", "")[:400],
+        )
+    )
+    await db.commit()
+    return csv_export.response(
+        f"kloudchat-audit-{csv_export.stamp()}.csv",
+        ["at", "actor", "action", "target", "detail", "severity", "ip", "region", "user_agent"],
+        (
+            [
+                r.at,
+                actors.get(r.actor_id or "", r.actor_id or "system"),
+                r.action,
+                r.target,
+                r.detail,
+                r.severity,
+                r.ip,
+                geoip.lookup(r.ip),
+                r.user_agent,
+            ]
+            for r in rows
+        ),
+    )
+
+
 def _like(text: str) -> str:
     """LIKE wildcards escaped."""
     return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
@@ -637,14 +822,18 @@ async def get_governance(admin: AdminUser, db: DbSession):
     policy = await db.get(Governance, "default")
     policy = policy or Governance()
     catalogue = await model_service.list_models()
-    configured_safe_ids = set(policy.privacy_safe_model_ids or [])
-    ordered_safe_ids = [
+    # the admin's priority order; models no longer strict-local in the catalogue drop out
+    strict_ids = {
         model["id"]
         for model in catalogue["models"]
-        if model["id"] in configured_safe_ids
-        and model.get("dataBoundary") == "self_hosted"
+        if model.get("dataBoundary") == "self_hosted"
         and model.get("strictLocal") is True
         and "chat" in model.get("kinds", [])
+    }
+    ordered_safe_ids = [
+        model_id
+        for model_id in dict.fromkeys(policy.privacy_safe_model_ids or [])
+        if model_id in strict_ids
     ]
     return {
         "piiMasking": policy.pii_masking,
@@ -688,14 +877,14 @@ async def put_governance(payload: GovernanceIn, request: Request, admin: AdminUs
                 )
     if "privacy_safe_model_ids" in patch:
         catalogue = await model_service.list_models()
-        strict_order = [
+        strict_ids = {
             model["id"]
             for model in catalogue["models"]
             if model.get("dataBoundary") == "self_hosted"
             and model.get("strictLocal") is True
             and "chat" in model.get("kinds", [])
-        ]
-        strict_ids = set(strict_order)
+        }
+        # the list is a priority order: kept as sent, duplicates dropped
         requested = list(dict.fromkeys(patch["privacy_safe_model_ids"] or []))
         invalid = [model_id for model_id in requested if model_id not in strict_ids]
         if invalid:
@@ -703,10 +892,7 @@ async def put_governance(payload: GovernanceIn, request: Request, admin: AdminUs
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="privacy_safe_models_must_be_strict_local",
             )
-        requested_set = set(requested)
-        patch["privacy_safe_model_ids"] = [
-            model_id for model_id in strict_order if model_id in requested_set
-        ]
+        patch["privacy_safe_model_ids"] = requested
     if {
         "adaptive_routing_enabled",
         "adaptive_classifier_model_id",

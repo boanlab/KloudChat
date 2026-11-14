@@ -1,4 +1,5 @@
 /** Writes the brand name and logo to the tab title and favicon. */
+import { setBrandTitle } from './pageTitle'
 
 /** The instance name a fresh install ships with; its shipped favicon is kept. */
 const DEFAULT_NAME = 'kloudchat'
@@ -21,7 +22,7 @@ function initialFavicon(initial: string): string {
 
 export function applyBrand(brand: { name: string; logo: string }) {
   const name = brand.name.trim()
-  if (name) document.title = name
+  if (name) setBrandTitle(name)
 
   const icon = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
   if (!icon) return

@@ -1437,6 +1437,19 @@ def _strict_twin(model: dict, catalogue: list[dict], allowed: set[str]) -> dict 
     return twin if not allowed or twin_id in allowed else None
 
 
+def _safe_models(policy: Governance, catalogue: list[dict], allowed: set[str]) -> list[dict]:
+    """Privacy-safe strict-local chat models in the admin's priority order (governance screen)."""
+    by_id = {m.get("id"): m for m in catalogue}
+    return [
+        by_id[model_id]
+        for model_id in dict.fromkeys(policy.privacy_safe_model_ids or [])
+        if model_id in by_id
+        and _strict_model(by_id[model_id])
+        and "chat" in by_id[model_id].get("kinds", [])
+        and (not allowed or model_id in allowed)
+    ]
+
+
 def _planned_web_search(history: list[Message]) -> bool | str:
     """Web-search setting of the latest question that recorded one; off if none."""
     for message in reversed(history):
@@ -1476,11 +1489,7 @@ async def _document_route(
         and not _strict_model(model)
         and _internal_data_present(session, blocks, attachments, history)
     ):
-        safe = [
-            m for m in catalogue
-            if m.get("id") in set(policy.privacy_safe_model_ids or []) and _strict_model(m)
-            and (not allowed or m.get("id") in allowed)
-        ]
+        safe = _safe_models(policy, catalogue, allowed)
         twin = _strict_twin(model, catalogue, allowed) or (safe[0] if safe else None)
         if twin is None:
             return JSONResponse(
@@ -1596,6 +1605,7 @@ async def _resolve_privacy(
     decision_token: str | None,
     internal_data: bool = False,
     force_strict_local: bool = False,
+    chosen_model_id: str | None = None,
 ) -> _PrivacyResolution | JSONResponse:
     """One egress decision before persistence, billing or upstream; unknown = external."""
     rows = (
@@ -1607,18 +1617,8 @@ async def _resolve_privacy(
     digest = governance.envelope_digest(sources)
 
     allowed_models = set(user.allowed_models or [])
-    safe: list[dict] = []
-    safe_ids = set(policy.privacy_safe_model_ids or [])
-    # priority = catalogue order (admin screen order)
-    for model in catalogue:
-        model_id = model.get("id")
-        if (
-            model_id in safe_ids
-            and _strict_model(model)
-            and "chat" in model.get("kinds", [])
-            and (not allowed_models or model_id in allowed_models)
-        ):
-            safe.append(model)
+    # priority = the admin's order on the governance screen
+    safe = _safe_models(policy, catalogue, allowed_models)
 
     action = "none"
     effective = requested
@@ -1681,7 +1681,8 @@ async def _resolve_privacy(
 
         if chosen == "route_strict_local":
             action = chosen
-            effective = [safe[0]]
+            # the model picked on the privacy card, else the first in priority order
+            effective = [next((m for m in safe if m["id"] == chosen_model_id), safe[0])]
         elif chosen == "mask_external":
             action = chosen
             mask_outbound = True
@@ -5146,6 +5147,7 @@ async def _send_message(
             sources=privacy_sources,
             explicit_action=payload.privacy_action,
             decision_token=payload.privacy_decision_token,
+            chosen_model_id=payload.privacy_model_id,
             internal_data=published is not None or _internal_data_present(
                 session, workspace.blocks, payload.attachments, history
             ),

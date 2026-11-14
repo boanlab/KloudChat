@@ -73,6 +73,8 @@ import type {
   ProjectFile,
   PendingPlan,
   ReportOutput,
+  SlidesOutput,
+  TurnOutput,
   Session,
   Preferences,
   PrivacyAction,
@@ -241,12 +243,13 @@ type SendOptions = {
   renderTemplateId?: string
   privacyAction?: PrivacyAction
   privacyDecisionToken?: string
+  privacyModelId?: string
   /** Write the pending outline instead of planning again (이대로 생성). */
   approve?: boolean
   /** The figure card's answer; absent means it was not asked. */
   includeFigures?: boolean
-  /** A report's file picked on the screen (`ReportOutput`). */
-  outputFormat?: ReportOutput
+  /** A report's file, or PowerPoint for a deck, picked on the screen. */
+  outputFormat?: TurnOutput
   /** The outline as edited on the proposal card. */
   plan?: Record<string, unknown>
   /** Answers to a stopped turn's questions, keyed by question id. */
@@ -287,7 +290,7 @@ interface State {
   /** Seconds left on a sign-in lockout (`Retry-After`), when the server said. */
   authRetryAfter: number | null
   /** Set when the session ended by idle timeout rather than 로그아웃. */
-  signedOutReason: 'idle' | null
+  signedOutReason: 'idle' | 'expired' | null
   /** Minutes of inactivity allowed; 0 is off. */
   idleTimeoutMinutes: number
   /** Whether a speech-to-text backend is configured. */
@@ -380,7 +383,9 @@ interface State {
     fromSessionId: string,
     kind: 'report' | 'slides',
     text: string,
-    opts?: Pick<SendOptions, 'webSearch' | 'onSession' | 'activatedSkillIds'> & { attachments?: FileRow[] },
+    opts?: Pick<SendOptions, 'webSearch' | 'onSession' | 'activatedSkillIds' | 'outputFormat'> & {
+      attachments?: FileRow[]
+    },
   ) => Promise<string>
   forkBeforeMessage: (sessionId: string, messageId: string) => Promise<{
     sessionId: string; attachments: FileRow[]; attachmentIdMap: Record<string, string>
@@ -466,7 +471,7 @@ interface State {
   // ── governance (admin) ────────────────────────────────────────────────
   /** Null until fetched. */
   usage: UsageReport | null
-  loadUsage: (days?: number) => Promise<void>
+  loadUsage: (days?: number, range?: { start: string; end: string }) => Promise<void>
   /** Null until fetched. */
   apiKeys: ApiKeyRow[] | null
   loadApiKeys: () => Promise<void>
@@ -516,6 +521,10 @@ interface State {
   /** Rendering template picked in the gallery, waiting for the turn that will use it. */
   pendingTemplate: DesignTemplateRow | null
   setPendingTemplate: (template: DesignTemplateRow | null) => void
+  /** The 형식 picked for a report or deck not yet sent (home screen or an empty session);
+   *  null lets the request decide. One place, so a remount or a refused send keeps it. */
+  outputPick: { report: ReportOutput | null; slides: SlidesOutput | null }
+  setOutputPick: (surface: 'report' | 'slides', value: ReportOutput | SlidesOutput | null) => void
   /** An empty logo draws the default mark. */
   brand: { name: string; logo: string }
   /** Re-reads `/auth/config` so an admin's saved change shows without a reload. */
@@ -989,12 +998,13 @@ function rememberSignedOut(out: boolean) {
 }
 
 /** The refresh cookie was refused: signed out here, unsent work kept for the same person. */
-function endSession(set: Set) {
+function endSession(set: Set, expired = false) {
   cancelRefresh()
   disarmIdleWatch()
   setAccessToken(null)
   rememberSignedOut(true)
-  set({ authenticated: false, user: null, authLoading: false })
+  // A session that ended under a signed-in tab says why on the sign-in screen.
+  set({ authenticated: false, user: null, authLoading: false, ...(expired ? { signedOutReason: 'expired' as const } : {}) })
 }
 
 /** First half of signing out: half-typed questions must not outlive the account on a shared PC. */
@@ -1021,6 +1031,7 @@ function clearAccount(set: Set, reason?: 'idle') {
     authError: null,
     signedOutReason: reason ?? null,
     // Never leave one account's work on screen for the next.
+    outputPick: { report: null, slides: null },
     sessions: [],
     users: [],
     usersPage: null,
@@ -1127,7 +1138,7 @@ export const useStore = create<State>((set, get) => ({
         // network or a 5xx says nothing about the cookie: a signed-in tab keeps its session,
         // and either way the refresh is tried again.
         if (refusedRefresh(err)) {
-          endSession(set)
+          endSession(set, get().authenticated)
         } else if (get().authenticated) {
           retryRefreshLater(() => void get().bootstrap())
         } else {
@@ -1358,8 +1369,8 @@ export const useStore = create<State>((set, get) => ({
     (Date.now() - workspaceLoadedAt < WORKSPACE_FRESH_MS ? Promise.resolve() : get().loadWorkspace()),
 
   usage: null,
-  loadUsage: async (days = 7) => {
-    const report = await usageApi.report(days).catch(() => null)
+  loadUsage: async (days = 7, range) => {
+    const report = await usageApi.report(days, range).catch(() => null)
     if (report) set({ usage: report })
   },
   apiKeys: null,
@@ -1385,7 +1396,11 @@ export const useStore = create<State>((set, get) => ({
   setGovernance: async (patch) => {
     // Optimistic; the reload below is what the screen trusts.
     set((s) => (s.governance ? { governance: { ...s.governance, ...patch } } : s))
-    const result = await usageApi.setGovernance(patch).catch(() => null)
+    const result = await usageApi.setGovernance(patch).catch((err) => {
+      // The reload puts the saved policy back on screen; say the change did not hold.
+      get().setToast({ text: errorMessage(err, tr('정책을 저장하지 못했습니다. 화면은 저장된 값으로 돌아갑니다.')) })
+      return null
+    })
     await get().loadGovernance()
     return result?.clearedMessages ?? 0
   },
@@ -1760,7 +1775,7 @@ export const useStore = create<State>((set, get) => ({
   handOff: async (fromSessionId, kind, text, opts = {}) => {
     const owner = get().user?.id
     const epoch = get().accountEpoch
-    const result = await sessionsApi.handoff(fromSessionId, kind)
+    const result = await sessionsApi.handoff(fromSessionId, kind, opts.outputFormat)
     if (!owner || owner !== get().user?.id || epoch !== get().accountEpoch || !get().authenticated) {
       throw new Error('account_changed')
     }
@@ -1781,6 +1796,8 @@ export const useStore = create<State>((set, get) => ({
       attachments: files.map((file) => file.id),
       attachmentNames: files.map((file) => file.name),
       activatedSkillIds: opts.activatedSkillIds,
+      // The file asked for on the hand-off, as the server settled it; the first turn carries it.
+      outputFormat: result.outputFormat ?? opts.outputFormat,
       onSession: opts.onSession,
     })
   },
@@ -1801,9 +1818,14 @@ export const useStore = create<State>((set, get) => ({
     const owner = get().user?.id
     const epoch = get().accountEpoch
     const ownsAccount = () => owner === get().user?.id && epoch === get().accountEpoch
-    // A retry resends the original turn's options, not just its sentence.
+    // A retry resends the original turn's options, not just its sentence. The file it was asked
+    // as is not taken from here: the server keeps it on the turn (`turnOptions.outputFormat`)
+    // and reuses it when the retry names none, so it survives a reload.
     const again = opts.retryOf ? sentWith.get(opts.retryOf) : undefined
-    if (again) opts = { ...again, ...opts }
+    if (again) {
+      const { outputFormat: _kept, ...rest } = again
+      opts = { ...rest, ...opts }
+    }
     const fresh = sessionId ? null : await get().newSession(kind, { projectId: opts.projectId ?? null })
     let id: string
     try {
@@ -1941,6 +1963,8 @@ export const useStore = create<State>((set, get) => ({
             answers: opts.answers,
             webSearch: opts.webSearch,
             includeFigures: opts.includeFigures,
+            // PowerPoint picked: the server makes the file this turn fills.
+            outputFormat: opts.outputFormat,
             attachments: opts.attachments,
             plan: opts.plan,
             renderTemplateId: opts.renderTemplateId,
@@ -1973,6 +1997,7 @@ export const useStore = create<State>((set, get) => ({
         activatedSkillIds: opts.activatedSkillIds,
         privacyAction: opts.privacyAction,
         privacyDecisionToken: opts.privacyDecisionToken,
+        privacyModelId: opts.privacyModelId,
         onAccepted: acceptSession,
       })
       return id
@@ -2372,6 +2397,8 @@ export const useStore = create<State>((set, get) => ({
   setToast: (toast) => set({ toast }),
   pendingTemplate: null,
   setPendingTemplate: (pendingTemplate) => set({ pendingTemplate }),
+  outputPick: { report: null, slides: null },
+  setOutputPick: (surface, value) => set((s) => ({ outputPick: { ...s.outputPick, [surface]: value } })),
   brand: { name: 'KloudChat', logo: '' },
   refreshConfig: async () => {
     const c = await authConfig.get().catch(() => null)
@@ -3645,6 +3672,7 @@ async function streamTurn(
     activatedSkillIds?: string[]
     privacyAction?: PrivacyAction
     privacyDecisionToken?: string
+    privacyModelId?: string
     retryOf?: string
     /** Answers to the agent's question card; `{}` goes on with what was given. */
     answers?: Record<string, string>
@@ -3736,6 +3764,7 @@ async function streamTurn(
         activatedSkillIds: opts.activatedSkillIds,
         privacyAction: opts.privacyAction,
         privacyDecisionToken: opts.privacyDecisionToken,
+        privacyModelId: opts.privacyModelId,
         retryOf: opts.retryOf,
         answers: opts.answers,
         openArtifact: openTarget(get),
@@ -3998,8 +4027,8 @@ async function streamReport(
     answers?: Record<string, string>
     webSearch?: WebSearchSetting
     includeFigures?: boolean
-    /** A report's file picked on the screen; kept on the waiting card. */
-    outputFormat?: ReportOutput
+    /** The file picked on the screen; kept on the waiting card. */
+    outputFormat?: TurnOutput
     plan?: Record<string, unknown>
     /** Resent with the approval: the server assembles context fresh per request. */
     attachments?: string[]
@@ -4114,7 +4143,7 @@ async function streamReport(
             attachments: gate.attachments ?? p?.attachments ?? [],
             answers: p?.answers ?? {},
             plan: e.plan,
-            output: gate.outputFormat ?? p?.output,
+            output: (gate.outputFormat === 'pptx' ? undefined : gate.outputFormat) ?? p?.output,
           }))
           break
         case 'needs':
@@ -4125,7 +4154,7 @@ async function streamReport(
             attachments: gate.attachments ?? p?.attachments ?? [],
             answers: p?.answers ?? {},
             questions: e.questions,
-            output: gate.outputFormat ?? p?.output,
+            output: (gate.outputFormat === 'pptx' ? undefined : gate.outputFormat) ?? p?.output,
           }))
           break
         case 'skills_applied':
@@ -4309,6 +4338,8 @@ async function streamDeck(
     attachments?: string[]
     renderTemplateId?: string
     /** 「이 단계부터 다시」: streams the rerun instead of a turn, into the document already open. */
+    /** `pptx`: a PowerPoint file the server makes for this turn; web slides send none. */
+    outputFormat?: TurnOutput
     rerun?: { runId: string; fromStage: string; label: string; answers?: Record<string, string> }
   } = {},
 ) {
@@ -4392,6 +4423,7 @@ async function streamDeck(
         answers: gate.answers,
         webSearch: gate.webSearch,
         includeFigures: gate.includeFigures,
+        ...(gate.outputFormat ? { outputFormat: gate.outputFormat } : {}),
         attachments: gate.attachments,
         plan: gate.plan,
         openArtifact: opened,
@@ -4844,7 +4876,7 @@ export function renewSession(): Promise<boolean> {
       scheduleRefresh(session.expiresIn, () => void renewSession())
       return true
     } catch (err) {
-      if (refusedRefresh(err)) endSession(set)
+      if (refusedRefresh(err)) endSession(set, true)
       else retryRefreshLater(() => void renewSession())
       return false
     } finally {

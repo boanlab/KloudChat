@@ -25,7 +25,7 @@ KloudChat is an AI assistant your organization runs on its own servers. It answe
 | Grouping files and instructions for repeated use | Sidebar → **Projects** | [Projects](personal/projects.md) |
 | Delegating to an assistant with a defined role | **+** → Agents in the composer | [Agents and skills](chat/agents.md) |
 | Opening an agent to others as a chatbot | Agent page → **Publish as a chatbot** | [Publishing a chatbot](chat/bots.md) |
-| Getting an artifact in a set template | **+** → **Pick a template** in the composer | [Templates and themes](chat/starters.md) |
+| Getting an artifact in a set template | The **Template** chip above the prompt box | [Templates and themes](chat/starters.md) |
 | Storing information you have to repeat often | Account menu → **Settings** → **Memory** | [Memory](personal/memory.md) |
 | Calling models from external tools and code | Account menu → **API access** | [API and coding tool integration](api.md) |
 | Checking usage and tidying up conversations | Account menu → **Usage**, **Conversation history** | [Usage and conversation history](personal/usage-history.md) |

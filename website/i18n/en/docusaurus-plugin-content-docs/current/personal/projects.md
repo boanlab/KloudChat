@@ -10,7 +10,7 @@ A project is a workspace that binds materials, instructions, and conversations t
 
 ## Creating
 
-Go to the sidebar → **Projects** → New project, then enter a name, a description, and **project instructions**. After creation, the detail screen lets you set the icon, the theme, and the **default template** for each screen (reports, slide decks).
+Go to the sidebar → **Projects** → New project, then enter a name, a description, and **project instructions**. After creation, the detail screen lets you set the icon, the theme, and the **default template** for each screen. The default template rows are **Report (web · HWP · Word)** and **Slides (web · PowerPoint)**, each with a thumbnail preview. The theme (tone, colors, fonts) applies to every report and slides format, the image gets the style, and audio and video get nothing.
 
 ## Tabs
 

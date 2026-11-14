@@ -24,14 +24,14 @@ export const kindMeta: Record<
     label: '보고서',
     icon: FileText,
     color: '#0e8a5f',
-    tagline: '개요를 잡고 절 단위로 써서 문서로 내보냅니다',
+    tagline: '웹 보고서·한글·Word로 씁니다. 형식과 템플릿을 고르고 주제를 적으세요',
     panelLabel: '보고서 열기',
   },
   slides: {
     label: '슬라이드',
     icon: Presentation,
     color: '#b4780a',
-    tagline: '발표 시간에 맞춰 장수를 정하고 노트를 붙입니다',
+    tagline: '웹 슬라이드·PowerPoint로 만듭니다. 형식과 템플릿을 고르고 주제를 적으세요',
     panelLabel: '덱 열기',
   },
   image: {

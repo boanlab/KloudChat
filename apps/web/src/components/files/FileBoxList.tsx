@@ -3,10 +3,10 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Input, Tabs } from '@/components/ui'
 import type { FileRow } from '@/lib/api'
-import { relativeTime } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
 import { fileSize, type FileOrigin } from './fileBox'
+import { RelTime } from '@/components/ui/RelTime'
 
 /** The file's kind at a glance: picture, table, document, other. */
 function FileGlyph({ row }: { row: FileRow }) {
@@ -111,7 +111,7 @@ export function FileLine({
         )}
         <p className="flex min-w-0 flex-wrap items-center gap-x-2 text-xs text-faint">
           <span>{fileSize(row.size)}</span>
-          <span>{relativeTime(row.createdAt)}</span>
+          <RelTime iso={row.createdAt} />
           <FilePlace row={row} />
         </p>
       </div>

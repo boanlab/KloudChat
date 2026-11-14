@@ -1,9 +1,10 @@
 import { Loader2, RotateCcw, TriangleAlert, X } from 'lucide-react'
 import { Button } from '@/components/ui'
-import { cn, relativeTime } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { Job } from '@/types'
 import { useT } from '@/lib/useT'
+import { RelTime } from '@/components/ui/RelTime'
 
 /** Running media job: progress, failure, retry; finished renders nothing (the turn shows the clip). */
 export function JobCard({ job }: { job: Job }) {
@@ -54,7 +55,7 @@ export function JobCard({ job }: { job: Job }) {
             </p>
             {job.error && <p className="mt-0.5 text-base text-muted">{t(job.error)}</p>}
             <p className="mt-1.5 text-xs text-faint">
-              {t('크레딧이 차감되지 않았습니다')} · {relativeTime(job.createdAt)}
+              {t('크레딧이 차감되지 않았습니다')} · <RelTime iso={job.createdAt} />
             </p>
           </div>
           <Button size="sm" onClick={() => void retryJob(job)}>

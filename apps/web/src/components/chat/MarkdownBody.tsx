@@ -16,6 +16,7 @@ import { StepList } from '@/components/report/StepList'
 import { diagramKey } from '@/lib/diagramKey'
 import { cn } from '@/lib/utils'
 import { copyText } from '@/lib/clipboard'
+import { MarkdownTable, MarkdownTh } from './MarkdownTable'
 import { useT } from '@/lib/useT'
 import { rehypePlaceholders } from '@/lib/placeholders'
 
@@ -359,17 +360,12 @@ export function MarkdownBody({
           ),
           hr: () => <hr className="my-4 border-line" />,
           // `min-w` makes the wrapper scroll instead of squeezing columns to one glyph per line.
-          table: ({ children }) => (
-            <div className="my-3 overflow-x-auto rounded-card border border-line">
-              <table className="w-full min-w-[30rem] border-collapse text-base">
-                {children}
-              </table>
-            </div>
-          ),
+          // Headings sort the rows (MarkdownTable); `tbody`/`tr` pass their nodes along for it.
+          table: ({ node, children }) => <MarkdownTable node={node as never}>{children}</MarkdownTable>,
           thead: ({ children }) => <thead className="bg-elevated">{children}</thead>,
-          th: ({ children }) => (
-            <th className="border-b border-line px-3 py-2 text-left font-semibold break-keep">{children}</th>
-          ),
+          tbody: ({ children }) => <tbody>{children}</tbody>,
+          tr: ({ children }) => <tr>{children}</tr>,
+          th: ({ node, children }) => <MarkdownTh node={node as never}>{children}</MarkdownTh>,
           // The wrapper draws the outer border, so the last row has none.
           td: ({ children }) => (
             <td className="border-b border-line px-3 py-2 align-top break-keep [tr:last-child>&]:border-0">

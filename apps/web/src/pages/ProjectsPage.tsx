@@ -9,22 +9,44 @@ import {
   EmptyState,
   Field,
   Input,
-  LoadingState,
   Modal,
   PageHeader,
   ReloadNotice,
   RequiredNote,
+  Select,
   Textarea,
 } from '@/components/ui'
 import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
 import { ListSearch, NoMatch } from '@/components/ui/ListSearch'
 import { ShowMore, usePaged } from '@/components/ui/ShowMore'
-import { matchesQuery, relativeTime } from '@/lib/utils'
+import { matchesQuery } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { NAME_LIMIT } from '@/lib/limits'
 import { useT } from '@/lib/useT'
 import { errorMessage } from '@/lib/api'
 import { missingMessage } from '@/lib/formCheck'
+import { RelTime } from '@/components/ui/RelTime'
+import { sortRows } from '@/lib/tableSort'
+import { currentLocale } from '@/lib/i18n'
+import { ListSkeleton } from '@/components/ui/Skeleton'
+
+type ProjectOrder = 'updated' | 'name' | 'chats'
+const ORDER_KEY = 'kloudchat.sort.projects'
+function readOrder(): ProjectOrder {
+  try {
+    const v = window.localStorage.getItem(ORDER_KEY)
+    return v === 'name' || v === 'chats' ? v : 'updated'
+  } catch {
+    return 'updated'
+  }
+}
+function writeOrder(v: ProjectOrder) {
+  try {
+    window.localStorage.setItem(ORDER_KEY, v)
+  } catch {
+    // Blocked storage: the order holds for this visit.
+  }
+}
 
 export function ProjectsPage() {
   const t = useT()
@@ -32,7 +54,13 @@ export function ProjectsPage() {
   const { projects, createProject, deleteMany, loadWorkspace, ensureWorkspace, workspaceLoading, workspaceFailed } =
     useStore()
   const [query, setQuery] = useState('')
-  const found = projects.filter((p) => matchesQuery(query, p.name, p.description))
+  const [order, setOrder] = useState<ProjectOrder>(() => readOrder())
+  const found = sortRows(
+    projects.filter((p) => matchesQuery(query, p.name, p.description)),
+    (p) => (order === 'name' ? p.name : order === 'chats' ? p.sessionIds.length : p.updatedAt),
+    order === 'name' ? 'asc' : 'desc',
+    currentLocale(),
+  )
   const pick = useBulkSelect(found)
   const { visible, hidden, more } = usePaged(found, [query])
 
@@ -89,7 +117,7 @@ export function ProjectsPage() {
         {workspaceFailed && <ReloadNotice onRetry={() => void loadWorkspace()} />}
 
         {workspaceLoading && projects.length === 0 ? (
-          <LoadingState />
+          <ListSkeleton variant="cards" rows={4} />
         ) : projects.length === 0 ? (
           <EmptyState
             icon={<Boxes size={18} />}
@@ -104,7 +132,23 @@ export function ProjectsPage() {
           />
         ) : (
           <>
-          <ListSearch value={query} onChange={setQuery} label={t('프로젝트 검색')} className="mb-3" />
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <ListSearch value={query} onChange={setQuery} label={t('프로젝트 검색')} />
+            <Select
+              value={order}
+              onChange={(e) => {
+                const next = e.target.value as ProjectOrder
+                setOrder(next)
+                writeOrder(next)
+              }}
+              aria-label={t('정렬')}
+              className="w-auto"
+            >
+              <option value="updated">{t('최근 수정순')}</option>
+              <option value="name">{t('이름순')}</option>
+              <option value="chats">{t('대화 많은 순')}</option>
+            </Select>
+          </div>
           <BulkBar
             count={pick.count}
             allPicked={pick.allPicked}
@@ -146,7 +190,7 @@ export function ProjectsPage() {
                         <FileText size={11} />
                         {p.files.length}
                       </span>
-                      <span>{relativeTime(p.updatedAt)}</span>
+                      <RelTime iso={p.updatedAt} />
                     </div>
                   </div>
                 </div>

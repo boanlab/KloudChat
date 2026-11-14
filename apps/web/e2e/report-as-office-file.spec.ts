@@ -210,13 +210,14 @@ test('the report screen\'s pick goes with the request and wins over its words', 
   await expect(page.locator('[data-hwp-panel]')).toBeVisible({ timeout: 30_000 })
 })
 
-test('PowerPoint on the slides screen is a chat that writes into a blank deck', async ({ page }) => {
+test('PowerPoint on the slides screen is the slides turn asked for as a pptx file', async ({ page }) => {
   const state = await fixture(page, 'hwp', '/new/slides')
   await expect(page.getByRole('button', { name: /^형식/ })).toContainText('웹 슬라이드')
   await page.getByRole('button', { name: /^형식/ }).click()
   await page.getByRole('menuitemcheckbox', { name: 'PowerPoint', exact: true }).click()
   await ask(page, 'AI 도입 효과를 발표할 자료 만들어 줘')
-  await expect.poll(() => state.created.map((body) => body.kind)).toEqual(['chat'])
-  await expect.poll(() => state.documents.length).toBe(1)
-  await expect.poll(() => state.sent.map((body) => body.content)).toEqual(['AI 도입 효과를 발표할 자료 만들어 줘'])
+  // One slides session; the server makes the blank file that turn fills (no client-side chat + file).
+  await expect.poll(() => state.created.map((body) => body.kind)).toEqual(['slides'])
+  await expect.poll(() => state.sent.map((body) => body.outputFormat)).toEqual(['pptx'])
+  expect(state.documents.length).toBe(0)
 })

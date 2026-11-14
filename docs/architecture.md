@@ -94,7 +94,11 @@ attached to this one route rather than to the default dependency
 issue, each with the client's address and browser. Two screens read it: an
 account's own **Access log** (`GET /auth/me/access`, the account's rows only) and
 the administrator's audit trail (`GET /admin/audit`, everything, a page at a time
-with action, account, period and text filters). A change event keeps
+with action, account, period and text filters, sorted on the server by time, action,
+target or address). `GET /admin/audit/export.csv` and `GET /admin/users/export.csv`
+stream the same filtered, ordered rows as CSV (`services/csv_export.py`: UTF-8 BOM,
+service-zone times, formula-looking cells kept as text, at most 50,000 rows); each export
+is itself recorded (`audit.export`, `user.export`) with the filters it used. A change event keeps
 `metadata.changes = {field: [old, new]}` from `services/audit.py:diff`, secrets masked
 and long values clipped; `audit.ACTIONS` lists every code, and the screen labels each one.
 

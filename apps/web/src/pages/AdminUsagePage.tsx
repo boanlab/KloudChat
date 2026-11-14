@@ -3,11 +3,15 @@ import { useEffect, useState } from 'react'
 import { type StorageReport, usageApi } from '@/lib/api'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
-import { Button, Card, PageHeader } from '@/components/ui'
+import { Button, Card, Input, PageHeader } from '@/components/ui'
+import { DataTable } from '@/components/ui/DataTable'
+import { ListSearch, NoMatch } from '@/components/ui/ListSearch'
+import { downloadCsv } from '@/lib/csv'
+import { matchesQuery, serviceDate, shiftDate } from '@/lib/utils'
 import { kindMeta } from '@/lib/kinds'
 import { useStore } from '@/store/useStore'
 import type { SessionKind } from '@/types'
-import { useT } from '@/lib/useT'
+import { useT, useTIn } from '@/lib/useT'
 
 function Bars({
   rows,
@@ -56,15 +60,40 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
 
 const RANGES = [7, 30, 90] as const
 
+type UsageRow = {
+  id: string
+  name: string
+  email: string
+  credits: number
+  share: number | null
+  requests: number
+  searches: number
+  bytes: number | null
+  files: number | null
+  /** Holds files but used nothing in the period. */
+  idle: boolean
+}
+
 export function AdminUsagePage() {
   const t = useT()
+  const tPeriod = useTIn('period')
   const { usage, loadUsage } = useStore()
   const [days, setDays] = useState<number>(7)
+  // 직접 지정: calendar days in the service zone, both ends included.
+  const [custom, setCustom] = useState(false)
+  const today = serviceDate(new Date())
+  const [from, setFrom] = useState(() => shiftDate(today, -29))
+  const [to, setTo] = useState(today)
+  const range = custom && from && to && from <= to ? { start: from, end: to } : undefined
   const [storage, setStorage] = useState<StorageReport | null>(null)
+  const [userQuery, setUserQuery] = useState('')
 
   useEffect(() => {
-    void loadUsage(days)
-  }, [loadUsage, days])
+    if (custom && !range) return
+    void loadUsage(days, range)
+    // `range` is rebuilt every render; its two dates are what matter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadUsage, days, custom, range?.start, range?.end])
   useEffect(() => {
     void usageApi.storage().then(setStorage).catch(() => setStorage(null))
   }, [])
@@ -106,25 +135,63 @@ export function AdminUsagePage() {
   }))
   const maxDaily = Math.max(...daily.map((d) => d.value), 1)
 
+  // Everyone who used credits, then those who only hold files.
+  const perUser: UsageRow[] = usage
+    ? [
+        ...usage.topUsers.map((u) => {
+          const disk = storageOf.get(u.id)
+          return {
+            id: u.id,
+            name: u.name,
+            email: u.email,
+            credits: u.credits,
+            share: u.allowance > 0 ? (u.credits / u.allowance) * 100 : null,
+            requests: u.requests,
+            searches: u.searches,
+            bytes: disk ? disk.bytes : null,
+            files: disk ? disk.files : null,
+            idle: false,
+          }
+        }),
+        ...(storage?.byUser ?? [])
+          .filter((d) => !usage.topUsers.some((u) => u.id === d.id))
+          .map((d) => ({
+            id: d.id,
+            name: d.name,
+            email: d.email,
+            credits: 0,
+            share: null,
+            requests: 0,
+            searches: 0,
+            bytes: d.bytes,
+            files: d.files,
+            idle: true,
+          })),
+      ]
+    : []
+
   const exportCsv = () => {
     if (!usage) return
-    const rows = [
+    downloadCsv(range ? `kloudchat-usage-${range.start}_${range.end}.csv` : `kloudchat-usage-${days}d.csv`, [
       [t('날짜'), t('크레딧'), t('요청'), t('웹 검색')],
-      ...usage.daily.map((d) => [d.date, String(d.credits), String(d.requests), String(d.searches)]),
+      ...usage.daily.map((d) => [d.date, d.credits, d.requests, d.searches]),
       [],
       [t('모델'), t('크레딧'), t('요청'), t('사용자')],
-      ...usage.byModel.map((m) => [m.model, String(m.credits), String(m.requests), String(m.users)]),
-      ...(usage.totals.otherCredits > 0
-        ? [[t('기타'), String(usage.totals.otherCredits), '', '']]
-        : []),
-    ]
-    const csv = rows.map((r) => r.join(',')).join('\n')
-    const url = URL.createObjectURL(new Blob([`﻿${csv}`], { type: 'text/csv' }))
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `kloudchat-usage-${days}d.csv`
-    a.click()
-    URL.revokeObjectURL(url)
+      ...usage.byModel.map((m) => [m.model, m.credits, m.requests, m.users]),
+      ...(usage.totals.otherCredits > 0 ? [[t('기타'), usage.totals.otherCredits, '', '']] : []),
+      [],
+      [t('사용자'), t('이메일'), t('크레딧'), t('한도 대비'), t('요청'), t('웹 검색'), t('저장 용량'), t('파일')],
+      ...perUser.map((r) => [
+        r.name,
+        r.email,
+        r.credits,
+        r.share === null ? '' : `${r.share.toFixed(1)}%`,
+        r.requests,
+        r.searches,
+        r.bytes ?? '',
+        r.files ?? '',
+      ]),
+    ])
   }
 
   return (
@@ -140,9 +207,13 @@ export function AdminUsagePage() {
                 {RANGES.map((r) => (
                   <button
                     key={r}
-                    onClick={() => setDays(r)}
+                    onClick={() => {
+                      setCustom(false)
+                      setDays(r)
+                    }}
+                    aria-pressed={!custom && days === r}
                     className={
-                      days === r
+                      !custom && days === r
                         ? 'min-w-11 rounded-control bg-elevated px-3 py-2 text-sm font-medium'
                         : 'min-w-11 rounded-control px-3 py-2 text-sm text-muted hover:text-fg'
                     }
@@ -150,6 +221,17 @@ export function AdminUsagePage() {
                     {t('{n}일').replace('{n}', String(r))}
                   </button>
                 ))}
+                <button
+                  onClick={() => setCustom(true)}
+                  aria-pressed={custom}
+                  className={
+                    custom
+                      ? 'min-w-11 rounded-control bg-elevated px-3 py-2 text-sm font-medium'
+                      : 'min-w-11 rounded-control px-3 py-2 text-sm text-muted hover:text-fg'
+                  }
+                >
+                  {tPeriod('직접 지정')}
+                </button>
               </div>
               <Button onClick={exportCsv} disabled={!usage}>
                 <Download size={15} />
@@ -158,6 +240,30 @@ export function AdminUsagePage() {
             </div>
           }
         />
+
+        {custom && (
+          <div className="mb-4 flex flex-wrap items-center gap-2" data-testid="usage-range">
+            <Input
+              type="date"
+              value={from}
+              max={to || today}
+              onChange={(e) => setFrom(e.target.value)}
+              aria-label={t('시작일')}
+              className="w-auto"
+            />
+            <span className="text-faint">–</span>
+            <Input
+              type="date"
+              value={to}
+              min={from || undefined}
+              max={today}
+              onChange={(e) => setTo(e.target.value)}
+              aria-label={t('종료일')}
+              className="w-auto"
+            />
+            {!range && <span className="text-sm text-danger">{t('시작일이 종료일보다 늦습니다')}</span>}
+          </div>
+        )}
 
         {!usage ? (
           <Card className="p-10 text-center text-base text-muted">{t('집계를 불러오는 중입니다…')}</Card>
@@ -332,61 +438,55 @@ export function AdminUsagePage() {
             </div>
 
             <Card className="mt-4 p-4">
-              <p className="mb-3 text-base font-medium">{t('사용자별')}</p>
-              <div className="overflow-x-auto">
-                <table className="w-full text-base">
-                  <thead className="text-xs text-faint">
-                    <tr className="text-left">
-                      <th className="py-1 pr-3 font-medium">{t('사용자')}</th>
-                      <th className="py-1 pr-3 text-right font-medium">{t('크레딧')}</th>
-                      <th className="py-1 pr-3 text-right font-medium">{t('한도 대비')}</th>
-                      <th className="py-1 pr-3 text-right font-medium">{t('요청')}</th>
-                      <th className="py-1 pr-3 text-right font-medium">{t('웹 검색')}</th>
-                      <th className="py-1 pr-3 text-right font-medium">{t('저장 용량')}</th>
-                      <th className="py-1 text-right font-medium">{t('파일')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {usage.topUsers.map((u) => {
-                      const disk = storageOf.get(u.id)
-                      return (
-                        <tr key={u.id} className="border-t border-line">
-                          <td className="min-w-0 max-w-48 truncate py-1.5 pr-3">
-                            {u.name}
-                            <span className="ml-1 text-xs text-faint">{u.email}</span>
-                          </td>
-                          <td className="py-1.5 pr-3 text-right tabular-nums">{u.credits.toLocaleString()}</td>
-                          <td className="py-1.5 pr-3 text-right text-xs text-faint tabular-nums">
-                            {u.allowance > 0
-                              ? `${((u.credits / u.allowance) * 100).toFixed(1)}%`
-                              : t('한도 없음')}
-                          </td>
-                          <td className="py-1.5 pr-3 text-right tabular-nums">{u.requests.toLocaleString()}</td>
-                          <td className="py-1.5 pr-3 text-right tabular-nums">{u.searches.toLocaleString()}</td>
-                          <td className="py-1.5 pr-3 text-right tabular-nums">{disk ? bytes(disk.bytes) : '–'}</td>
-                          <td className="py-1.5 text-right tabular-nums text-muted">{disk ? disk.files : '–'}</td>
-                        </tr>
-                      )
-                    })}
-                    {(storage?.byUser ?? [])
-                      .filter((d) => !usage.topUsers.some((u) => u.id === d.id))
-                      .map((d) => (
-                        <tr key={d.id} className="border-t border-line text-muted">
-                          <td className="min-w-0 max-w-48 truncate py-1.5 pr-3">
-                            {d.name}
-                            <span className="ml-1 text-xs text-faint">{d.email}</span>
-                          </td>
-                          <td className="py-1.5 pr-3 text-right tabular-nums">0</td>
-                          <td className="py-1.5 pr-3 text-right text-xs text-faint">–</td>
-                          <td className="py-1.5 pr-3 text-right tabular-nums">0</td>
-                          <td className="py-1.5 pr-3 text-right tabular-nums">0</td>
-                          <td className="py-1.5 pr-3 text-right tabular-nums">{bytes(d.bytes)}</td>
-                          <td className="py-1.5 text-right tabular-nums">{d.files}</td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-base font-medium">
+                  {t('사용자별')}{' '}
+                  <span className="text-sm font-normal text-faint tabular-nums">
+                    {t('{n}명').replace('{n}', perUser.length.toLocaleString())}
+                  </span>
+                </p>
+                <ListSearch value={userQuery} onChange={setUserQuery} label={t('사용자 검색')} className="w-56" />
               </div>
+              <DataTable
+                id="admin.usage.users"
+                rows={perUser.filter((r) => matchesQuery(userQuery, r.name, r.email))}
+                rowKey={(r) => r.id}
+                label={t('사용자별')}
+                initialSort={{ key: 'credits', dir: 'desc' }}
+                maxHeight="32rem"
+                className="rounded-none border-0"
+                headClassName="bg-panel text-xs text-faint"
+                cellClassName="py-1.5 pr-3"
+                rowClassName={(r) => (r.idle ? 'text-muted' : undefined)}
+                empty={<NoMatch />}
+                columns={[
+                  {
+                    key: 'name',
+                    label: t('사용자'),
+                    value: (r) => r.name,
+                    className: 'max-w-48 min-w-0 truncate',
+                    cell: (r) => (
+                      <>
+                        {r.name}
+                        <span className="ml-1 text-xs text-faint">{r.email}</span>
+                      </>
+                    ),
+                  },
+                  { key: 'credits', label: t('크레딧'), align: 'right', value: (r) => r.credits, cell: (r) => r.credits.toLocaleString() },
+                  {
+                    key: 'share',
+                    label: t('한도 대비'),
+                    align: 'right',
+                    value: (r) => r.share,
+                    className: 'text-xs text-faint',
+                    cell: (r) => (r.share === null ? (r.idle ? '–' : t('한도 없음')) : `${r.share.toFixed(1)}%`),
+                  },
+                  { key: 'requests', label: t('요청'), align: 'right', value: (r) => r.requests, cell: (r) => r.requests.toLocaleString() },
+                  { key: 'searches', label: t('웹 검색'), align: 'right', value: (r) => r.searches, cell: (r) => r.searches.toLocaleString() },
+                  { key: 'bytes', label: t('저장 용량'), align: 'right', value: (r) => r.bytes, cell: (r) => (r.bytes === null ? '–' : bytes(r.bytes)) },
+                  { key: 'files', label: t('파일'), align: 'right', value: (r) => r.files, className: 'text-muted', cell: (r) => r.files ?? '–' },
+                ]}
+              />
             </Card>
           </>
         )}

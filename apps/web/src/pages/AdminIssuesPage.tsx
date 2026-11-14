@@ -21,6 +21,7 @@ import { kindMeta } from '@/lib/kinds'
 import { useT } from '@/lib/useT'
 import { formatDateTime, serviceMidnight, shiftDate } from '@/lib/utils'
 import type { SessionKind } from '@/types'
+import { ListSkeleton } from '@/components/ui/Skeleton'
 
 const STATUSES: IssueStatus[] = ['received', 'checking', 'resolved', 'on_hold']
 const PAGE_SIZE = 30
@@ -127,7 +128,7 @@ function IssueList() {
         </div>
         {failed && <ReloadNotice onRetry={load} />}
         {!data && !failed ? (
-          <LoadingState />
+          <ListSkeleton />
         ) : data && data.items.length === 0 ? (
           <EmptyState icon={<Flag size={18} />} title={t('조건에 맞는 신고가 없습니다')} />
         ) : (

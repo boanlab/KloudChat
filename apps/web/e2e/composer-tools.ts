@@ -13,12 +13,12 @@ export async function setWebSearch(page: Page, mode: '자동' | '항상' | '끔'
 }
 
 /**
- * Opens the 템플릿 gallery: the empty conversation's own 「템플릿 고르기」 button when it is
- * on screen, else 「+」 › 템플릿 고르기.
+ * Opens the 템플릿 gallery: the 「템플릿」 chip beside 형식 when a report or deck has nothing
+ * sent yet, else 「+」 › 템플릿 고르기.
  */
 export async function openTemplates(page: Page) {
-  const direct = page.getByRole('button', { name: '템플릿 고르기' }).first()
-  if (await direct.isVisible().catch(() => false)) return direct.click()
+  const chip = page.getByTestId('template-chip')
+  if (await chip.isVisible().catch(() => false)) return chip.click()
   await openTool(page, '템플릿 고르기')
 }
 

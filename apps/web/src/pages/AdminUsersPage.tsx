@@ -1,8 +1,6 @@
 import {
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
   Check,
+  Download,
   SlidersHorizontal,
   KeyRound,
   UserPen,
@@ -33,12 +31,15 @@ import {
   Tabs,
 } from '@/components/ui'
 import { adminApi, ApiError, errorMessage, type AdminKeys } from '@/lib/api'
-import { cn, formatDate, relativeTime } from '@/lib/utils'
+import { cn, formatCompact, formatDate, relativeTime } from '@/lib/utils'
 import { Pager } from '@/components/ui/Pager'
+import { SortHeader } from '@/components/ui/DataTable'
+import { CopyButton } from '@/components/ui/CopyButton'
 import { useStore } from '@/store/useStore'
 import type { User, UserSort, UserStatus } from '@/types'
 import { useT } from '@/lib/useT'
 import { USER_STATUS_LABEL } from '@/lib/userStatus'
+import { RelTime } from '@/components/ui/RelTime'
 
 const statusTone = {
   active: 'success',
@@ -102,45 +103,6 @@ function useListParams() {
       { replace },
     )
   return { tab, sort, order, page, q, update }
-}
-
-/** A column heading that sorts: the button names the column, the cell carries `aria-sort`. */
-function SortHeader({
-  column,
-  label,
-  sort,
-  order,
-  onSort,
-}: {
-  column: UserSort
-  label: string
-  sort: UserSort
-  order: 'asc' | 'desc'
-  onSort: (column: UserSort) => void
-}) {
-  const t = useT()
-  const active = sort === column
-  const Arrow = !active ? ArrowUpDown : order === 'asc' ? ArrowUp : ArrowDown
-  return (
-    <th
-      scope="col"
-      aria-sort={active ? (order === 'asc' ? 'ascending' : 'descending') : 'none'}
-      className="px-4 py-1.5 text-left font-semibold"
-    >
-      <button
-        type="button"
-        onClick={() => onSort(column)}
-        title={t('{column} 기준으로 정렬').replace('{column}', label)}
-        className={cn(
-          '-mx-1.5 inline-flex items-center gap-1 rounded-control whitespace-nowrap px-1.5 py-1 tracking-wide uppercase transition-colors hover:bg-line/40 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent',
-          active && 'text-fg',
-        )}
-      >
-        {label}
-        <Arrow size={12} aria-hidden className={active ? undefined : 'opacity-50'} />
-      </button>
-    </th>
-  )
 }
 
 function CreditBar({ user }: { user: User }) {
@@ -266,6 +228,46 @@ export function AdminUsersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [answered, usersPage, page, pages])
 
+  const [exporting, setExporting] = useState(false)
+  // Rows ticked on this page; a pending sign-up queue is approved or rejected in one go.
+  const [ticked, setTicked] = useState<Set<string>>(new Set())
+  const [bulk, setBulk] = useState<'approve' | 'reject' | null>(null)
+  const [bulkDone, setBulkDone] = useState<string | null>(null)
+  useEffect(() => setTicked(new Set()), [filter, q, sort, order, page])
+  const tickedRows = users.filter((u) => ticked.has(u.id))
+  const tickedPending = tickedRows.filter((u) => u.status === 'pending')
+  const allTicked = users.length > 0 && users.every((u) => ticked.has(u.id))
+  const tick = (id: string) =>
+    setTicked((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  const runBulk = async (kind: 'approve' | 'reject') => {
+    const rows = tickedPending
+    setBulk(null)
+    let done = 0
+    for (const u of rows) {
+      await run(u.id, () => (kind === 'approve' ? approveUser(u.id, PLANS[0].credits) : rejectUser(u.id)))
+      done += 1
+    }
+    setTicked(new Set())
+    setBulkDone(
+      (kind === 'approve' ? t('{n}명을 승인했습니다.') : t('{n}명의 가입을 반려했습니다.')).replace('{n}', String(done)),
+    )
+  }
+  const exportCsv = async () => {
+    setExporting(true)
+    try {
+      await adminApi.usersCsv({ status: filter, q, sort, order })
+    } catch (err) {
+      setToast({ text: errorMessage(err, t('CSV를 내보내지 못했습니다. 잠시 후 다시 시도하세요.')) })
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const onSort = (column: UserSort) =>
     update(
       column === sort
@@ -327,13 +329,16 @@ export function AdminUsersPage() {
             { label: t('승인 대기'), value: summary ? summary.pending.toLocaleString() : '—' },
             {
               label: t('이번 달 사용 / 배정'),
-              value: `${(totalUsed / 1_000_000).toFixed(1)}M / ${(totalGranted / 1_000_000).toFixed(1)}M`,
+              value: summary ? `${formatCompact(totalUsed)} / ${formatCompact(totalGranted)}` : '—',
+              exact: `${totalUsed.toLocaleString()} / ${totalGranted.toLocaleString()}`,
             },
             { label: t('다음 리필'), value: resetDate ? formatDate(resetDate) : '—' },
-          ].map((s) => (
+          ].map((s: { label: string; value: string; exact?: string }) => (
             <Card key={s.label} className="px-4 py-3">
               <p className="text-xs tracking-wide text-faint uppercase">{s.label}</p>
-              <p className="mt-1 text-lg font-semibold tabular-nums sm:text-xl">{s.value}</p>
+              <p className="mt-1 text-lg font-semibold tabular-nums sm:text-xl" title={s.exact}>
+                {s.value}
+              </p>
             </Card>
           ))}
         </div>
@@ -350,24 +355,107 @@ export function AdminUsersPage() {
               { id: 'suspended', label: t('정지') },
             ]}
           />
-          <div className="relative">
-            <Search size={14} className="absolute top-1/2 left-2.5 -translate-y-1/2 text-faint" />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={t('이름 또는 이메일')}
-              aria-label={t('사용자 검색')}
-              className="h-8 w-56 pl-8 text-base"
-            />
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <Search size={14} className="absolute top-1/2 left-2.5 -translate-y-1/2 text-faint" />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={t('이름 또는 이메일')}
+                aria-label={t('사용자 검색')}
+                className="h-8 w-56 pl-8 text-base"
+              />
+            </div>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={exporting || !usersPage || usersPage.total === 0}
+              title={
+                !usersPage || usersPage.total === 0
+                  ? t('내보낼 사용자가 없습니다')
+                  : t('지금 탭·검색·정렬로 모든 쪽을 CSV로 받습니다. 내보낸 일은 감사 로그에 남습니다.')
+              }
+              onClick={() => void exportCsv()}
+            >
+              {exporting ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+              {t('CSV 내보내기')}
+            </Button>
           </div>
         </div>
 
+        {bulkDone && (
+          <p role="status" className="mb-3 rounded-control border border-line bg-elevated px-3 py-2 text-base text-muted">
+            {bulkDone}
+          </p>
+        )}
+        {ticked.size > 0 && (
+          <div
+            className="mb-3 flex flex-wrap items-center gap-2 rounded-card border border-accent/30 bg-accent/5 px-3 py-2"
+            data-testid="users-bulk"
+          >
+            <span className="text-base font-medium">{t('{n}명 선택').replace('{n}', String(tickedRows.length))}</span>
+            <span className="text-sm text-faint">
+              {t('승인 대기 {n}명').replace('{n}', String(tickedPending.length))}
+            </span>
+            <div className="ml-auto flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="primary"
+                disabled={tickedPending.length === 0 || busy.length > 0}
+                title={tickedPending.length === 0 ? t('고른 계정 중 승인 대기인 계정이 없습니다') : undefined}
+                onClick={() => setBulk('approve')}
+              >
+                <Check size={13} />
+                {t('선택 승인')}
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                disabled={tickedPending.length === 0 || busy.length > 0}
+                title={tickedPending.length === 0 ? t('고른 계정 중 승인 대기인 계정이 없습니다') : undefined}
+                onClick={() => setBulk('reject')}
+              >
+                <X size={13} />
+                {t('선택 반려')}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setTicked(new Set())}>
+                {t('선택 해제')}
+              </Button>
+            </div>
+          </div>
+        )}
+        <ConfirmDialog
+          open={bulk !== null}
+          onClose={() => setBulk(null)}
+          onConfirm={() => bulk && void runBulk(bulk)}
+          title={
+            bulk === 'approve'
+              ? t('{n}명을 승인할까요?').replace('{n}', String(tickedPending.length))
+              : t('{n}명의 가입을 반려할까요?').replace('{n}', String(tickedPending.length))
+          }
+          description={
+            bulk === 'approve'
+              ? t('기본 플랜 크레딧으로 승인하고 각 계정의 게이트웨이 키를 만듭니다. 승인 대기가 아닌 계정은 건너뜁니다.')
+              : t('반려한 계정은 정지 상태가 되어 로그인할 수 없습니다. 승인 대기가 아닌 계정은 건너뜁니다.')
+          }
+          confirmLabel={bulk === 'approve' ? t('승인') : t('반려')}
+        />
         <Card className="overflow-hidden">
           {/* Scroll box inside the card: card keeps `overflow-hidden` for rounded corners. */}
           <div className="overflow-x-auto">
-            <table className="w-full text-base">
+            <table className="w-full text-base" aria-busy={usersLoading || undefined}>
             <thead className="bg-elevated text-xs tracking-wide text-faint uppercase">
               <tr>
+                <th scope="col" className="w-10 pl-3">
+                  <input
+                    type="checkbox"
+                    className="size-4 cursor-pointer accent-[var(--accent)]"
+                    aria-label={t('이 페이지 전체 선택')}
+                    checked={allTicked}
+                    disabled={users.length === 0}
+                    onChange={() => setTicked(allTicked ? new Set() : new Set(users.map((u) => u.id)))}
+                  />
+                </th>
                 {(
                   [
                     ['name', t('사용자')],
@@ -376,13 +464,16 @@ export function AdminUsersPage() {
                     ['last_active', t('마지막 활동')],
                   ] as const
                 ).map(([column, label]) => (
+                  // Server-sorted pages: a heading flips between the two directions.
                   <SortHeader
                     key={column}
-                    column={column}
+                    columnKey={column}
                     label={label}
-                    sort={sort}
-                    order={order}
-                    onSort={onSort}
+                    sort={{ key: sort, dir: order }}
+                    onSort={(key) => onSort(key as UserSort)}
+                    first={FIRST_ORDER[column]}
+                    className="px-4 py-1.5 font-semibold"
+                    buttonClassName="tracking-wide uppercase"
                   />
                 ))}
                 <th scope="col" className="px-4 py-2.5 text-right font-semibold">
@@ -391,9 +482,20 @@ export function AdminUsersPage() {
               </tr>
             </thead>
             <tbody>
-              {visible.length === 0 && (
+              {visible.length === 0 && usersLoading &&
+                // The table's shape while the first page loads.
+                Array.from({ length: 5 }, (_, i) => (
+                  <tr key={`skeleton-${i}`} className="border-t border-line" aria-hidden data-testid="users-skeleton">
+                    {[2.5, 40, 16, 36, 20, 24].map((w, j) => (
+                      <td key={j} className="px-4 py-3.5">
+                        <div className="h-3.5 rounded bg-line/60 motion-safe:animate-pulse" style={{ width: j === 0 ? '1rem' : `${w * 2}%` }} />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              {visible.length === 0 && !usersLoading && (
                 <tr className="border-t border-line">
-                  <td colSpan={5} className="px-4 py-10 text-center text-base text-faint">
+                  <td colSpan={6} className="px-4 py-10 text-center text-base text-faint">
                     {usersLoading ? (
                       <Loader2 size={16} className="mx-auto animate-spin" />
                     ) : !usersPage ? (
@@ -405,7 +507,16 @@ export function AdminUsersPage() {
                 </tr>
               )}
               {visible.map((u) => (
-                <tr key={u.id} className="border-t border-line">
+                <tr key={u.id} className={cn('border-t border-line', ticked.has(u.id) && 'bg-accent/5')}>
+                  <td className="w-10 pl-3">
+                    <input
+                      type="checkbox"
+                      className="size-4 cursor-pointer accent-[var(--accent)]"
+                      aria-label={t('{name} 선택').replace('{name}', u.name)}
+                      checked={ticked.has(u.id)}
+                      onChange={() => tick(u.id)}
+                    />
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2.5">
                       <span
@@ -424,7 +535,10 @@ export function AdminUsersPage() {
                             </Badge>
                           )}
                         </p>
-                        <p className="truncate text-xs text-faint">{u.email}</p>
+                        <p className="flex min-w-0 items-center gap-0.5 text-xs text-faint">
+                          <span className="truncate">{u.email}</span>
+                          <CopyButton text={u.email} label={t('이메일')} className="size-5" />
+                        </p>
                         {/* No key: turns fall back to the master key, unattributed. */}
                         <p className="mt-0.5 flex items-center gap-1 text-2xs text-faint">
                           <KeyRound size={9} />
@@ -455,7 +569,7 @@ export function AdminUsersPage() {
                     <CreditBar user={u} />
                   </td>
                   <td className="px-4 py-3 text-xs text-muted">
-                    {relativeTime(u.lastActiveAt)}
+                    <RelTime iso={u.lastActiveAt} />
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-1.5">

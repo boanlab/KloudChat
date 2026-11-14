@@ -171,7 +171,7 @@ export function ModelPicker({
     )
   }
   const modelLabel = unresolvedAgentModel
-    ? t('Agent 기본 모델')
+    ? t('에이전트 기본 모델')
     : noDefault
       ? t('기본 모델 없음 · 모델 고르기')
       : active.label
@@ -352,7 +352,7 @@ function ModelMenu({
                 </span>
                 <span className="mt-0.5 block text-sm text-muted">{lane.blurb}</span>
                 <span className="mt-1 block truncate text-xs text-faint">
-                  {lane.mode === 'auto_quality' ? t('현재 모델') : t('품질 모델')}: {unresolvedAgentModel ? t('Agent 기본 모델') : active.label}
+                  {lane.mode === 'auto_quality' ? t('현재 모델') : t('품질 모델')}: {unresolvedAgentModel ? t('에이전트 기본 모델') : active.label}
                 </span>
               </span>
             </button>

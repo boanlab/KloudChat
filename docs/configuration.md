@@ -546,7 +546,9 @@ available:
   default (`INTERNAL_DATA_STRICT_LOCAL_DEFAULT`). A chat, report or deck turn
   that carries the organisation's own material — an attachment, a project's
   files or instructions, a memory — runs on the strict-local twin of the chosen
-  model (`local/x` → `strict-local/x`), else the first strict-local safe model,
+  model (`local/x` → `strict-local/x`), else the first strict-local safe model
+  in the order the admin set on the governance screen (the list is a priority
+  list, kept as saved),
   else it is refused with `internal_data_requires_strict_local`. This is decided
   before any Auto lane, and a strict-local writer is never moved outward.
   Pictures, charts, figures and document edits (fact-check, review, section,

@@ -8,10 +8,9 @@ import { ProposalCard } from '@/components/chat/ProposalCard'
 import { waitingCardMessageId } from '@/lib/stages'
 import { MessageItem } from '@/components/chat/MessageItem'
 import { ShareButton } from '@/components/share/ShareButton'
-import { DesignGallery } from '@/components/chat/DesignGallery'
 import { TopBar } from '@/components/layout/TopBar'
 import { JobCard } from '@/components/media/JobCard'
-import { Badge, Button, LoadingState } from '@/components/ui'
+import { Badge, Button, Dropdown, LoadingState, MenuItem, MenuLabel } from '@/components/ui'
 import { agentKinds, kindMeta } from '@/lib/kinds'
 import { directionParticle } from '@/lib/formCheck'
 import { templateText } from '@/lib/api'
@@ -19,8 +18,9 @@ import { currentLang } from '@/lib/i18n'
 import { startFailure } from '@/lib/failures'
 import { LeaveCancelled } from '@/lib/officeGuard'
 import { useStore } from '@/store/useStore'
-import type { Agent, SessionKind } from '@/types'
+import type { Agent, SessionKind, TurnOutput } from '@/types'
 import { useT } from '@/lib/useT'
+import { StartExamples, StartHeading } from '@/components/chat/EmptyStart'
 
 /** Automatic transcript retries before asking the reader. */
 const LOAD_RETRIES = 3
@@ -242,27 +242,45 @@ function HandOffButtons({ agent, sessionId }: { agent: Agent; sessionId: string 
           template && template.surface === k
             ? templateText(template, currentLang() === 'en').name
             : t(kindMeta[k].label)
+        const formats: { value: TurnOutput | undefined; label: string }[] =
+          k === 'report'
+            ? [{ value: undefined, label: '웹 보고서' }, { value: 'hwp', label: '한글' }, { value: 'docx', label: 'Word' }]
+            : [{ value: undefined, label: '웹 슬라이드' }, { value: 'pptx', label: 'PowerPoint' }]
+        const start = (outputFormat: TurnOutput | undefined) => {
+          setBusy(true)
+          void handOff(
+            sessionId,
+            k,
+            t('지금까지 나눈 대화로 {name} 초안을 만들어 주세요.').replace('{name}', name),
+            { onSession: (id) => navigate(`/s/${id}`), outputFormat },
+          )
+            .catch((err: unknown) => setNotice(startFailure(err, t)))
+            .finally(() => setBusy(false))
+        }
         return (
-          <Button
+          // The file is picked with the hand-off: a web document, or an HWP, Word or PowerPoint file.
+          <Dropdown
             key={k}
-            size="sm"
-            disabled={busy || streaming}
-            title={t('이 대화를 자료로 같은 에이전트가 {name}을 씁니다').replace('{name}', name)}
-            onClick={() => {
-              setBusy(true)
-              void handOff(
-                sessionId,
-                k,
-                t('지금까지 나눈 대화로 {name} 초안을 만들어 주세요.').replace('{name}', name),
-                { onSession: (id) => navigate(`/s/${id}`) },
-              )
-                .catch((err: unknown) => setNotice(startFailure(err, t)))
-                .finally(() => setBusy(false))
-            }}
+            align="right"
+            label={t('{name} 만들기').replace('{name}', name)}
+            trigger={() => (
+              <Button
+                size="sm"
+                disabled={busy || streaming}
+                title={t('이 대화를 자료로 같은 에이전트가 {name}을 씁니다').replace('{name}', name)}
+              >
+                <Icon size={14} />
+                {t('{name} 만들기').replace('{name}', name)}
+              </Button>
+            )}
           >
-            <Icon size={14} />
-            {t('{name} 만들기').replace('{name}', name)}
-          </Button>
+            <MenuLabel>{t('형식')}</MenuLabel>
+            {formats.map((f) => (
+              <MenuItem key={f.label} onClick={() => start(f.value)}>
+                {t(f.label)}
+              </MenuItem>
+            ))}
+          </Dropdown>
         )
       })}
     </>
@@ -292,20 +310,22 @@ function Intro({
         >
           {agent ? <Bot size={20} /> : <Icon size={20} />}
         </div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          {agent
-            ? agent.name
-            : kind === 'chat'
-              ? t('안녕하세요, {name}님').replace('{name}', user?.name ?? '')
-              : t(meta.label)}
-        </h1>
-        <p className="mt-1.5 text-base text-muted">
-          {agent
-            ? agent.description || t('이 에이전트로 대화를 시작합니다.')
-            : kind === 'chat'
-              ? t('무엇을 도와드릴까요?')
-              : t(meta.tagline)}
-        </p>
+        <StartHeading
+          title={
+            agent
+              ? agent.name
+              : kind === 'chat'
+                ? t('안녕하세요, {name}님').replace('{name}', user?.name ?? '')
+                : t(meta.label)
+          }
+          subtitle={
+            agent
+              ? agent.description || t('이 에이전트로 대화를 시작합니다.')
+              : kind === 'chat'
+                ? t('무엇을 도와드릴까요?')
+                : t(meta.tagline)
+          }
+        />
         {agent?.process?.mode === 'custom' && agent.process.chain.length > 0 && (
           <p className="mt-2 text-sm text-muted" data-testid="chain-start-note">
             {t('보내면 파이프라인 {n}단계가 차례로 돕니다: {chain}. 단계마다 한 일은 에이전트의 실행 기록에 남습니다.')
@@ -321,9 +341,9 @@ function Intro({
       </div>
       {agent && <AgentGuide agent={agent} sessionId={sessionId ?? null} kind={kind} />}
       <StartingFrom sessionId={sessionId} kind={kind} withoutAgent={Boolean(agent)} />
-      <div className="mt-4 flex flex-wrap justify-center gap-2">
-        <DesignGallery kind={kind} sessionId={sessionId ?? null} />
-      </div>
+      {/* The same examples as the home screen, unless an agent brings its own starters. */}
+      {/* Not on a phone: the prompt box and its notices keep the room there. */}
+      {!agent && <StartExamples kind={kind} className="mt-2 max-sm:hidden" />}
     </div>
   )
 }
@@ -629,7 +649,15 @@ export function SessionPage() {
             {sessionArtifact && !openArtifactId && (
               <Button size="sm" onClick={() => openArtifact(sessionArtifact.id)}>
                 <PanelRight size={14} />
-                {t(meta.panelLabel)}
+                {t(
+                  sessionArtifact.kind === 'hwp'
+                    ? '한글 문서 열기'
+                    : sessionArtifact.kind === 'docx'
+                      ? 'Word 문서 열기'
+                      : sessionArtifact.kind === 'pptx'
+                        ? 'PowerPoint 열기'
+                        : meta.panelLabel,
+                )}
               </Button>
             )}
           </>

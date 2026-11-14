@@ -1,11 +1,178 @@
-import { ShieldCheck, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { ArrowDown, ArrowUp, GripVertical, ShieldCheck, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import { Badge, Button, Card, Input, PageHeader, Switch, Tabs } from '@/components/ui'
 import { AuditLog } from '@/pages/AuditLog'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
+import { cn } from '@/lib/utils'
+import type { ModelInfo } from '@/types'
+
+/**
+ * strict-local safe models as a priority list: checked models in the order used, moved with
+ * the arrow buttons or by dragging; unchecked ones below. Ids the admin's own catalogue does
+ * not show (another account's models) keep their place at the end.
+ */
+function SafeModelPriority({
+  models,
+  selected,
+  onChange,
+}: {
+  models: ModelInfo[]
+  selected: string[]
+  onChange: (ids: string[]) => void
+}) {
+  const t = useT()
+  const byId = new Map(models.map((m) => [m.id, m]))
+  const ordered = selected.filter((id) => byId.has(id))
+  const hidden = selected.filter((id) => !byId.has(id))
+  const rest = models.filter((m) => !selected.includes(m.id))
+  const [dragged, setDragged] = useState<string | null>(null)
+  const [over, setOver] = useState<string | null>(null)
+  const [said, setSaid] = useState('')
+  const listRef = useRef<HTMLOListElement>(null)
+
+  const save = (ids: string[]) => onChange([...ids, ...hidden])
+  const move = (id: string, to: number, focus = false) => {
+    const from = ordered.indexOf(id)
+    if (from < 0 || to < 0 || to >= ordered.length || from === to) return
+    const next = [...ordered]
+    next.splice(from, 1)
+    next.splice(to, 0, id)
+    save(next)
+    setSaid(
+      t('{name} · {n}번째')
+        .replace('{name}', byId.get(id)?.label ?? id)
+        .replace('{n}', String(to + 1)),
+    )
+    // The button pressed may have moved away under the pointer; keep the keyboard on the row.
+    if (focus) {
+      window.requestAnimationFrame(() =>
+        listRef.current
+          ?.querySelector<HTMLButtonElement>(`[data-model="${CSS.escape(id)}"] [data-move="${to > from ? 'down' : 'up'}"]:not(:disabled)`)
+          ?.focus(),
+      )
+    }
+  }
+
+  return (
+    <div className="border-t border-line pt-3">
+      <p className="text-base font-medium">{t('strict-local 안전 모델')}</p>
+      <p className="text-sm text-muted">
+        {t('내부 자료 때문에 strict-local로 옮길 때는 사용자가 고른 모델의 strict-local 판을 먼저 쓰고, 그것이 없으면 이 목록의 첫 번째 모델을 씁니다. 개인정보 확인 창에서는 체크된 모델 중 하나를 사용자가 고를 수 있으며, 처음에는 첫 번째 모델이 골라져 있습니다.')}
+      </p>
+      <p className="mt-0.5 text-xs text-faint">
+        {t('프록시가 self-hosted이며 외부 대체 모델이 없다고 명시한 모델만 선택할 수 있습니다. 화살표나 손잡이를 끌어서 순서를 바꿉니다.')}
+      </p>
+      <p className="sr-only" role="status" aria-live="polite">
+        {said}
+      </p>
+      {ordered.length > 0 && (
+        <ol ref={listRef} className="mt-2 space-y-1.5" aria-label={t('우선순위')} data-testid="safe-model-order">
+          {ordered.map((id, i) => {
+            const model = byId.get(id)!
+            return (
+              <li
+                key={id}
+                data-model={id}
+                className={cn(
+                  'flex items-center gap-2 rounded-control border border-line bg-panel px-2 py-1.5 text-base',
+                  dragged === id && 'opacity-50',
+                  over === id && dragged !== id && 'border-accent',
+                )}
+              >
+                {/* Pointer drag (mouse, pen and touch alike): the row under the finger is where it lands. */}
+                <span
+                  aria-hidden
+                  data-drag-handle
+                  className="-my-1 grid size-8 shrink-0 cursor-grab touch-none place-items-center text-faint active:cursor-grabbing"
+                  onPointerDown={(e) => {
+                    e.preventDefault()
+                    try {
+                      e.currentTarget.setPointerCapture(e.pointerId)
+                    } catch {
+                      // A pointer the browser no longer tracks: the moves still reach the handle.
+                    }
+                    setDragged(id)
+                    setOver(id)
+                  }}
+                  onPointerMove={(e) => {
+                    if (dragged !== id) return
+                    const rows = [...(listRef.current?.querySelectorAll<HTMLElement>('[data-model]') ?? [])]
+                    const hit = rows.find((row) => {
+                      const box = row.getBoundingClientRect()
+                      return e.clientY >= box.top && e.clientY <= box.bottom
+                    })
+                    if (hit?.dataset.model) setOver(hit.dataset.model)
+                  }}
+                  onPointerUp={() => {
+                    if (dragged === id && over && over !== id) move(id, ordered.indexOf(over))
+                    setDragged(null)
+                    setOver(null)
+                  }}
+                  onPointerCancel={() => {
+                    setDragged(null)
+                    setOver(null)
+                  }}
+                >
+                  <GripVertical size={14} />
+                </span>
+                <span className="grid size-5 shrink-0 place-items-center rounded-full bg-elevated text-xs font-semibold tabular-nums">
+                  {i + 1}
+                </span>
+                <label className="flex min-w-0 flex-1 items-center gap-2">
+                  <input type="checkbox" checked onChange={() => save(ordered.filter((x) => x !== id))} />
+                  <span className="min-w-0 flex-1 truncate">{model.label}</span>
+                </label>
+                {model.privacyOnly && <Badge tone="accent">{t('개인정보 전용')}</Badge>}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  data-move="up"
+                  disabled={i === 0}
+                  aria-label={t('{name} 위로').replace('{name}', model.label)}
+                  title={i === 0 ? t('이미 첫 번째입니다') : t('위로')}
+                  onClick={() => move(id, i - 1, true)}
+                >
+                  <ArrowUp size={14} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  data-move="down"
+                  disabled={i === ordered.length - 1}
+                  aria-label={t('{name} 아래로').replace('{name}', model.label)}
+                  title={i === ordered.length - 1 ? t('이미 마지막입니다') : t('아래로')}
+                  onClick={() => move(id, i + 1, true)}
+                >
+                  <ArrowDown size={14} />
+                </Button>
+              </li>
+            )
+          })}
+        </ol>
+      )}
+      <div className="mt-1.5 space-y-1.5">
+        {rest.map((model) => (
+          <label
+            key={model.id}
+            className="flex items-center gap-2 rounded-control border border-dashed border-line px-3 py-2 text-base text-muted"
+          >
+            <input type="checkbox" checked={false} onChange={() => save([...ordered, model.id])} />
+            <span className="min-w-0 flex-1 truncate">{model.label}</span>
+            {model.privacyOnly && <Badge tone="accent">{t('개인정보 전용')}</Badge>}
+          </label>
+        ))}
+        {models.length === 0 && (
+          <p className="rounded-control border border-warn/30 bg-warn/5 px-3 py-2 text-sm text-warn">
+            {t('현재 프록시가 strict-local로 선언한 모델이 없습니다. 사용자는 마스킹 또는 편집만 선택할 수 있습니다.')}
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
 
 export function AdminGovernancePage() {
   const t = useT()
@@ -93,7 +260,7 @@ export function AdminGovernancePage() {
                       <p className="text-base font-medium">{t('내부 자료는 strict-local로만')}</p>
                       <p className="text-base text-muted">
                         {t(
-                          '첨부 파일·프로젝트 파일·메모리가 들어간 턴은 선택한 모델 대신 같은 모델의 strict-local 판으로 답하고, 그 세션은 이후에도 외부 모델로 승격되지 않습니다. 쌍이 없으면 strict-local 안전 모델이 맡고, 그것도 없으면 전송을 거절합니다.',
+                          '첨부 파일·프로젝트 파일·메모리가 들어간 턴은 선택한 모델 대신 같은 모델의 strict-local 판으로 답하고, 그 세션은 이후에도 외부 모델로 승격되지 않습니다. 쌍이 없으면 아래 안전 모델 목록의 첫 번째 모델이 맡고, 목록이 비어 있으면 전송을 거절합니다.',
                         )}
                       </p>
                     </div>
@@ -104,45 +271,11 @@ export function AdminGovernancePage() {
                     />
                   </div>
 
-                  <div className="border-t border-line pt-3">
-                    <p className="text-base font-medium">{t('strict-local 안전 모델')}</p>
-                    <p className="text-sm text-muted">
-                      {t('프록시가 self-hosted이며 외부 대체 모델이 없다고 명시한 모델만 선택할 수 있습니다. 현재 모델 카탈로그의 위→아래 순서로 우선 사용합니다.')}
-                    </p>
-                    <div className="mt-2 space-y-1.5">
-                      {strictModels.map((model) => {
-                        const checked = governance.privacySafeModelIds.includes(model.id)
-                        return (
-                          <label
-                            key={model.id}
-                            className="flex items-center gap-2 rounded-control border border-line px-3 py-2 text-base"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => {
-                                const selected = new Set(governance.privacySafeModelIds)
-                                if (checked) selected.delete(model.id)
-                                else selected.add(model.id)
-                                void apply({
-                                  privacySafeModelIds: strictModels
-                                    .filter((candidate) => selected.has(candidate.id))
-                                    .map((candidate) => candidate.id),
-                                })
-                              }}
-                            />
-                            <span className="min-w-0 flex-1 truncate">{model.label}</span>
-                            {model.privacyOnly && <Badge tone="accent">{t('개인정보 전용')}</Badge>}
-                          </label>
-                        )
-                      })}
-                      {strictModels.length === 0 && (
-                        <p className="rounded-control border border-warn/30 bg-warn/5 px-3 py-2 text-sm text-warn">
-                          {t('현재 프록시가 strict-local로 선언한 모델이 없습니다. 사용자는 마스킹 또는 편집만 선택할 수 있습니다.')}
-                        </p>
-                      )}
-                    </div>
-                  </div>
+                  <SafeModelPriority
+                    models={strictModels}
+                    selected={governance.privacySafeModelIds}
+                    onChange={(ids) => void apply({ privacySafeModelIds: ids })}
+                  />
 
                   <div className="flex items-start gap-3 border-t border-line pt-3">
                     <div className="min-w-0 flex-1">

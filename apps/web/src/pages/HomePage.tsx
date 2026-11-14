@@ -1,60 +1,16 @@
 import { Loader2 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import { Button, Card, EmptyState } from '@/components/ui'
-import { Composer, fillComposer } from '@/components/chat/Composer'
-import { warmStudio } from '@/components/hwp/warmStudio'
-import { artifactsApi, errorMessage, type OfficeKind } from '@/lib/api'
+import { Composer } from '@/components/chat/Composer'
+import { StartExamples, StartHeading } from '@/components/chat/EmptyStart'
 import { kindMeta, kindOrder } from '@/lib/kinds'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { ReportOutput, SessionKind, SlidesOutput } from '@/types'
 import { useT } from '@/lib/useT'
-
-/** Per-surface examples under the greeting; click fills the composer. */
-const EXAMPLES: Record<SessionKind, string[]> = {
-  chat: [
-    '첨부한 문서를 세 줄로 요약해 줘',
-    '다음 주 회의 안건 초안을 같이 잡아 줘',
-    '이 문장을 더 자연스럽게 다듬어 줘',
-    '엑셀 수식이 왜 오류가 나는지 찾아 줘',
-  ],
-  report: [
-    '신규 서비스 도입을 검토하는 보고서를 써 줘',
-    '지난 분기 사업 실적 보고서 — 요약, 성과, 남은 과제',
-    '두 가지 안을 기준별로 비교하는 의사결정 보고서',
-    '첨부한 자료로 연구 과제 중간 보고서 초안을 써 줘',
-  ],
-  // Only what the shown deck template (사내 브리핑) makes.
-  slides: [
-    '다음 주 회의 전에 돌릴 사내 브리핑 5장',
-    '프로젝트 결과 보고 15분 발표',
-    '새 제도 시행을 팀에 알리는 사내 브리핑',
-    '이번 분기 진행 현황과 결정할 것을 정리한 발표',
-  ],
-  image: [
-    '봄 행사 포스터에 쓸 밝은 파스텔 톤 일러스트',
-    '홈페이지 메인 배너용 사무실 풍경 사진',
-    '사용자 → 게이트웨이 → 모델로 이어지는 흐름도',
-    '미니멀한 제품 아이콘 네 개',
-  ],
-  av: [
-    '제품을 소개하는 30초 내레이션',
-    '발표 시작에 틀 잔잔한 배경 음악 30초',
-    '바다 위로 해가 뜨는 6초 영상',
-  ],
-}
-
-/** Also the `/new/:kind` entry. */
-/** A file picked with nothing typed opens blank in its editor beside a chat, as the home
- *  screen's document cards did. */
-const BLANK_START = {
-  hwp: { title: '새 한글 문서', failed: '한글 문서를 열지 못했습니다.' },
-  docx: { title: '새 Word 문서', failed: 'Word 문서를 열지 못했습니다.' },
-  pptx: { title: '새 PowerPoint 문서', failed: 'PowerPoint 문서를 열지 못했습니다.' },
-} as const satisfies Record<OfficeKind, { title: string; failed: string }>
 
 export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
   const t = useT()
@@ -67,41 +23,20 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
     if (initialKind) setKind(initialKind)
   }, [initialKind])
 
-  const newSession = useStore((s) => s.newSession)
-  const ensureSession = useStore((s) => s.ensureSession)
-  const setNotice = useStore((s) => s.setNotice)
-  const [openingDocument, setOpeningDocument] = useState<OfficeKind | null>(null)
-  /** What the opening is doing now, said beside the button. */
-  const [openingStage, setOpeningStage] = useState('')
-  /** Held as well as in state: a second click before the re-render does nothing. */
-  const opening = useRef(false)
-  /** A chat with a blank HWP, Word or PowerPoint document open beside it. */
-  const startDocument = async (kind: OfficeKind) => {
-    if (opening.current) return
-    opening.current = true
-    setOpeningDocument(kind)
-    // the HWP editor's files download meanwhile: the panel's editor finds them in the cache
-    if (kind === 'hwp') void warmStudio()
-    try {
-      setOpeningStage(t('대화를 만드는 중…'))
-      const id = await ensureSession(await newSession('chat'))
-      setOpeningStage(t('빈 문서를 만드는 중…'))
-      const row = await artifactsApi.createDocument(kind, {
-        sessionId: id,
-        title: t(BLANK_START[kind].title),
-      })
-      navigate(`/s/${id}?artifact=${row.id}`)
-    } catch (err) {
-      setNotice(errorMessage(err, t(BLANK_START[kind].failed)))
-    } finally {
-      opening.current = false
-      setOpeningDocument(null)
-      setOpeningStage('')
-    }
-  }
   /** The file picked per surface (null: the request decides). */
-  const [picked, setPicked] = useState<{ report: ReportOutput | null; slides: SlidesOutput | null }>(
-    { report: null, slides: null })
+  const picked = useStore((s) => s.outputPick)
+  const setOutputPick = useStore((s) => s.setOutputPick)
+  // A deep link picks the file: /new/report?format=hwp, /new/slides?format=pptx.
+  const [params] = useSearchParams()
+  const linkedFormat = params.get('format')
+  useEffect(() => {
+    if (!linkedFormat) return
+    if (initialKind === 'report' && ['web', 'hwp', 'docx'].includes(linkedFormat)) {
+      setOutputPick('report', linkedFormat as ReportOutput)
+    } else if (initialKind === 'slides' && ['deck', 'pptx'].includes(linkedFormat)) {
+      setOutputPick('slides', linkedFormat as SlidesOutput)
+    }
+  }, [initialKind, linkedFormat, setOutputPick])
 
   const openArtifact = useStore((s) => s.openArtifact)
   useEffect(() => {
@@ -114,7 +49,6 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
   const active = surfaces.includes(kind) ? kind : (surfaces[0] ?? 'chat')
 
   const running = jobs.filter((j) => j.status === 'running' || j.status === 'queued')
-  const ActiveIcon = kindMeta[active].icon
 
   if (offHere) {
     const meta = kindMeta[initialKind]
@@ -159,32 +93,11 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
       <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col px-4 py-6 sm:px-6 sm:py-8 short:py-2">
         {/* Top-aligned; short content leaves space below, over the dock. A short screen keeps the examples instead. */}
         <div className="mt-[min(8vh,4rem)] mb-5 text-center phone:mt-[min(14vh,7rem)] short:sr-only">
-          <h1 className="text-2xl font-semibold tracking-tight">
-            {t('안녕하세요, {name}님').replace('{name}', user?.name ?? '')}
-          </h1>
-          <p className="mt-1 text-base text-muted">{t('무엇을 만들까요?')}</p>
+          <StartHeading title={t('안녕하세요, {name}님').replace('{name}', user?.name ?? '')} subtitle={t('무엇을 만들까요?')} />
         </div>
 
         {/* Click fills the box, sends nothing. */}
-        <section aria-label={t('예시')} className="mx-auto mb-8 w-full max-w-3xl sm:px-4 short:mb-2">
-          <div className="grid gap-2 sm:grid-cols-2">
-            {EXAMPLES[active].map((example, index) => (
-              <button
-                key={example}
-                type="button"
-                onClick={() => fillComposer(t(example))}
-                // Phone shows three; a fourth pushes the composer's neighbours off screen.
-                className={cn(
-                  'flex min-h-11 items-center gap-2 rounded-card border border-line bg-panel px-3 py-2 text-left text-base text-muted transition-colors hover:bg-elevated hover:text-fg',
-                  index >= 3 && 'phone:hidden',
-                )}
-              >
-                <ActiveIcon size={14} className="shrink-0 text-faint" />
-                <span className="min-w-0 flex-1">{t(example)}</span>
-              </button>
-            ))}
-          </div>
-        </section>
+        <StartExamples kind={active} className="mb-8 sm:px-4 short:mb-2" />
 
         {running.length > 0 && (
           <section className="mb-8">
@@ -263,11 +176,8 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
           autoFocus
           output={active === 'report' || active === 'slides' ? picked[active] : null}
           onPickOutput={active === 'report' || active === 'slides'
-            ? (value) => setPicked((now) => ({ ...now, [active]: value }))
+            ? (value) => setOutputPick(active, value)
             : undefined}
-          onBlankDocument={surfaces.includes('chat') ? (kind) => void startDocument(kind) : undefined}
-          openingDocument={openingDocument}
-          openingStage={openingStage}
         />
       </div>
     </>

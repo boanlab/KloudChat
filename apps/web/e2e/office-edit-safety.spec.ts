@@ -389,7 +389,9 @@ test.describe('sharing, reopening and the artifacts page', () => {
   test('the artifacts page draws an office document, filters by kind, and opens it in the editor', async ({ page }) => {
     desktopOnly(page)
     await fixture(page, 'hwp', { artifactsPage: true })
-    await expect(page.getByRole('tab', { name: /한글/ })).toBeVisible()
+    // An HWP report sits with the reports, 한글 among their formats.
+    await page.getByRole('tab', { name: /보고서/ }).click()
+    await expect(page.getByTestId('artifact-formats').getByRole('button', { name: /한글/ })).toBeVisible()
     await page.getByRole('button', { name: '직원 연수 참석 요청 열기' }).click()
     const dialog = page.getByRole('dialog', { name: '직원 연수 참석 요청' })
     await expect(dialog.locator('[data-hwp-page="1"] svg')).toContainText(`document.hwpx 1쪽 ${hwpx.length}`)

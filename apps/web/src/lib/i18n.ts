@@ -1,8 +1,10 @@
 /** Dictionary keyed on the Korean source string; missing entries render the Korean. */
+import { EN_UI } from './i18nUi'
 
 export type Lang = 'ko' | 'en'
 
 const EN: Record<string, string> = {
+  ...EN_UI,
   '{n}개 찾음 · 제목': '{n} found · title',
   '같은 문서의 Markdown 원문입니다.': 'The same document as Markdown.',
   '절 제목': 'Section heading',
@@ -988,7 +990,7 @@ const EN: Record<string, string> = {
   '이 대화에서 정한 것:': 'Settled in this conversation:',
   // Templates and themes
   '테마': 'Theme',
-  '기본 템플릿': 'Default templates',
+  '기본 템플릿': 'Default template',
   '{kind} 템플릿': '{kind} template',
   '아티팩트가 이 템플릿으로 나옵니다': 'the artifact comes out in this template',
   '이 대화의 말투를 이 테마에 맞춥니다': 'this conversation takes its voice from the theme',
@@ -2399,8 +2401,6 @@ const EN: Record<string, string> = {
   '바다 위로 해가 뜨는 6초 영상': 'A 6-second video of sunrise over the sea',
   '처리 내역 {n}건': '{n} handling notes',
   '처리 내역 접기': 'Hide handling notes',
-  '이 파일을 문서로 열지 못했습니다.': 'Could not open this file as a document.',
-  '문서로 열기': 'Open as a document',
   '{n}번째 그림 내려받기': 'Download image {n}',
   '그림 내려받기': 'Download the image',
   '내려받기': 'Download',
@@ -4907,6 +4907,7 @@ const EN_IN: Record<string, string> = {
   'hub|탐색': 'Explore',
   'hub|개요': 'Overview',
   'colour|직접 고르기': 'Pick a colour',
+  'period|직접 지정': 'Custom range',
 }
 
 export function translateIn(lang: Lang, context: string, text: string): string {

@@ -54,6 +54,7 @@ const MyUsagePage = lazy(() => import('@/pages/MyUsagePage').then((m) => ({ defa
 const ProjectDetailPage = lazy(() => import('@/pages/ProjectDetailPage').then((m) => ({ default: m.ProjectDetailPage })))
 const ProjectsPage = lazy(() => import('@/pages/ProjectsPage').then((m) => ({ default: m.ProjectsPage })))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })))
+const NotFoundPage = lazy(() => import('@/pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })))
 const PublicBotsPage = lazy(() => import('@/pages/PublicBotsPage').then((m) => ({ default: m.PublicBotsPage })))
 const SharedPage = lazy(() => import('@/pages/SharedPage').then((m) => ({ default: m.SharedPage })))
 const BotPage = lazy(() => import('@/pages/BotPage').then((m) => ({ default: m.BotPage })))
@@ -248,10 +249,14 @@ function Authenticated() {
             <Route path="issues/:issueId" element={<AdminIssuesPage />} />
             <Route path="publications" element={<AdminPublicationsPage />} />
             <Route path="publications/:publicationId" element={<AdminPublicationsPage />} />
-            <Route path="*" element={<Navigate to="/admin/users" replace />} />
+            <Route path="*" element={<NotFoundPage />} />
           </Route>
 
-          <Route path="*" element={<Navigate to="/" replace />} />
+          {/* Sign-in, sign-up and mailed-link addresses: signed in, they land at home. */}
+          {['login', 'signup', 'verify', 'reset', 'reset-password'].map((path) => (
+            <Route key={path} path={path} element={<Navigate to="/" replace />} />
+          ))}
+          <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>
     </Suspense>

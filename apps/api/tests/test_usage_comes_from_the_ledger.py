@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 import sqlalchemy as sa
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import StaticPool
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -589,3 +590,22 @@ async def test_a_turn_at_half_past_midnight_seoul_time_counts_on_that_seoul_day(
     assert (yesterday["requests"], yesterday["credits"]) == (1, 70)
     # The UTC calendar day of that instant is the day before, which is not on the chart.
     assert when.astimezone(UTC).date().isoformat() not in by_date
+
+
+async def test_an_admin_range_counts_only_its_own_days(db) -> None:
+    """A start..end range (service-zone days, inclusive) leaves out turns before and after it."""
+    user = await _account(db)
+    chat = await _session_row(db, user, kind="chat", model="local/qwen")
+    for days_ago in (1, 5, 6, 20):
+        await _turn(db, chat, model="local/qwen", when=_at(days_ago))
+    await db.commit()
+    zone = ZoneInfo(settings.timezone)
+    today = datetime.now(zone).date()
+    picked = await usage_router.usage(
+        user, db, days=7, start=today - timedelta(days=7), end=today - timedelta(days=2)
+    )
+    assert picked["days"] == 6
+    assert len(picked["daily"]) == 6
+    assert picked["totals"]["requests"] == 2
+    with pytest.raises(HTTPException):
+        await usage_router.usage(user, db, days=7, start=today, end=today - timedelta(days=1))

@@ -25,6 +25,8 @@ export const ACTION_LABEL: Record<string, string> = {
   'user.delete': '계정 삭제',
   'user.models': '모델 허용 변경',
   'credits.set': '크레딧 변경',
+  'user.export': '사용자 목록 내보내기',
+  'audit.export': '감사 로그 내보내기',
   'key.create': 'API 키 발급',
   'key.revoke': 'API 키 폐기',
   'settings.update': '시스템 설정 변경',

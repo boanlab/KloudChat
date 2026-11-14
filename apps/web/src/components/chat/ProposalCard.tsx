@@ -14,7 +14,7 @@ import { useState } from 'react'
 import { Badge, Button } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
-import type { PendingPlan, SessionKind } from '@/types'
+import type { PendingPlan, ReportOutput, SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
 import { layoutLabel } from '@/components/slides/patterns'
 
@@ -41,6 +41,9 @@ export function ProposalCard({
   const visualStyle = pending.plan?.visualStyle ?? 'editorial'
   const density = pickedDensity ?? pending.plan?.density ?? 'speaker'
   const setDensity = setPickedDensity
+  // A report's file, as offered with the outline; changed here, it goes with the approval.
+  const [pickedOutput, setPickedOutput] = useState<ReportOutput | null>(null)
+  const output: ReportOutput = pickedOutput ?? pending.output ?? 'web'
 
   const run = (
     opts: {
@@ -52,7 +55,11 @@ export function ProposalCard({
     label: string,
   ) =>
     // The approval is a second request; the server needs the attachments again.
-    void send(sessionId, kind, label, { ...opts, attachments: pending.attachments })
+    void send(sessionId, kind, label, {
+      ...opts,
+      attachments: pending.attachments,
+      ...(kind === 'report' && opts.approve && pickedOutput ? { outputFormat: pickedOutput } : {}),
+    })
 
   if (pending.stage === 'figures') {
     // Asked before writing: prose written for figures refers to them.
@@ -335,6 +342,20 @@ export function ProposalCard({
           <CircleCheck size={13} />
           {dirty ? t('고친 대로 생성') : t('이대로 생성')}
         </Button>
+        {kind === 'report' && (
+          <label className="flex items-center gap-1.5 text-sm">
+            <span className="text-faint">{t('형식')}</span>
+            <select
+              value={output}
+              onChange={(e) => setPickedOutput(e.target.value as ReportOutput)}
+              className="h-8 rounded-control border border-line bg-panel px-2 text-sm focus:border-accent focus:outline-none"
+            >
+              <option value="web">{t('웹 보고서')}</option>
+              <option value="hwp">{t('한글')}</option>
+              <option value="docx">Word</option>
+            </select>
+          </label>
+        )}
         <span className="text-sm text-muted">
           {t('제목을 직접 고치거나, 크게 바꿀 것이 있으면 아래 입력창에 적어 주세요.')}
         </span>

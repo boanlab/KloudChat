@@ -4,7 +4,9 @@ title: Artifact editor
 
 # Artifact editor
 
-You can edit reports and slides directly in the right-hand panel. The features are grouped by the tabs in the ribbon at the top.
+You can edit web reports and web slides directly in the right-hand panel. The features are grouped by the tabs in the ribbon at the top.
+
+HWP, Word and PowerPoint artifacts open in their own editors instead of this one. See [HWP documents](hwp), [Word documents](docx) and [PowerPoint documents](pptx).
 
 ## Report panel
 

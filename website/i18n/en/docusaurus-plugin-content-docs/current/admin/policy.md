@@ -12,7 +12,7 @@ This screen sets the level of personal data protection, the audit record, and au
 |---|---|
 | Personal data masking | Always masks national ID numbers, card numbers, phone numbers, and email addresses in every request, and stores them masked. The original cannot be sent |
 | Personal data protection for external models | In Chat, asks the user to choose when personal data is detected for a model that may switch to an external provider |
-| strict-local safe model | The model that "Switch to a safe local model" sends to. Only chat models the gateway declares as strict-local are candidates. **If you leave it empty**, users see a notice that there is no safe model |
+| strict-local safe model | A priority list, ordered with the arrow buttons or by dragging. When internal material moves a turn to strict-local, the chosen model's strict-local version is used first, else the first model of this list. On the privacy card, "Switch to a safe local model" lets the person pick any checked model (the first is preselected). Only chat models the gateway declares as strict-local are candidates. **If you leave it empty**, users see a notice that there is no safe model |
 | Internal material stays strict-local | A request carrying attachments, project files or memory is answered by the strict-local twin of the same model, and the conversation never moves to an external model afterwards. Without a twin, the safe model answers. Without that, the request is refused |
 | Allow sending the original outside | Whether users may ignore the warning and send. Not possible while the masking policy is on |
 | Intent-based filter + topics to block | Refuses the request without using credits and records it in the audit log |
@@ -25,7 +25,7 @@ In an environment where every model runs on organization servers, **Personal dat
 
 ## Audit log
 
-Time, account, action, target, and access location. The log covers sign-ins, failures, approvals, suspensions, permission changes, setting changes, key issuance, discards, password resets, token reuse detection, and more. Search by account, action, or IP. It cannot be edited or deleted from the screen.
+Time, account, action, target, and access location. The log covers sign-ins, failures, approvals, suspensions, permission changes, setting changes, key issuance, discards, password resets, token reuse detection, and more. Search by account, action, or IP. The Time, Action, Target and Access location headings sort the log on the server. **Export CSV** downloads every page under the current filters and order (up to 50,000 rows), and the export itself is recorded in the audit log. It cannot be edited or deleted from the screen.
 
 ## Auto routing
 

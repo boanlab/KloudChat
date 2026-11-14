@@ -5,11 +5,12 @@ import { FilePreview } from '@/components/files/FilePreview'
 import { useFileBox, type FileOrigin } from '@/components/files/fileBox'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
-import { Button, Card, ConfirmDialog, EmptyState, LoadingState, PageHeader, ReloadNotice } from '@/components/ui'
+import { Button, Card, ConfirmDialog, EmptyState, PageHeader, ReloadNotice } from '@/components/ui'
 import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
 import { LoadMore } from '@/components/ui/ShowMore'
 import { downloadFile, errorMessage, filesApi, type FileRow } from '@/lib/api'
 import { useT } from '@/lib/useT'
+import { ListSkeleton } from '@/components/ui/Skeleton'
 
 /** 파일함: every file of the account, those the person gave apart from those made in conversations. */
 export function FilesPage() {
@@ -52,7 +53,7 @@ export function FilesPage() {
         {error && <p className="pt-3 text-base text-danger">{error}</p>}
         <div className="pt-4">
           {box.loading ? (
-            <LoadingState />
+            <ListSkeleton />
           ) : shown.length === 0 ? (
             <EmptyState
               icon={<FolderOpen size={18} />}
