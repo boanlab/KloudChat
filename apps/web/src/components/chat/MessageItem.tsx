@@ -46,6 +46,7 @@ import { PinNoteButton } from '@/components/shelf/PinNoteButton'
 import { useT } from '@/lib/useT'
 import { tokenTotals } from '@/lib/usage'
 import { superRouteLabel } from '@/lib/superAgent'
+import { reasoningLine } from '@/lib/reasoning'
 
 function costRouteDecisionLabel(
   route: CostRouting,
@@ -379,6 +380,10 @@ function MessageItemInner({
   const routing = message.routing && ('action' in message.routing || 'searchConsent' in message.routing)
     ? message.routing as PrivacyRouting
     : null
+  // The reasoning chip and the level the writer was sent (「깊게 · high」), on the usage line.
+  const turnReasoning = message.routing && 'reasoning' in message.routing
+    ? message.routing.reasoning
+    : undefined
   const lengthCheck = message.routing && 'lengthCheck' in message.routing
     ? message.routing.lengthCheck
     : undefined
@@ -954,7 +959,10 @@ function MessageItemInner({
                       models.find((m) => m.id === routing.calculationModel)?.label ??
                       routing.calculationModel
                     }`
-                  : ''}{' '}
+                  : ''}
+                {turnReasoning && !freshness && !toolAnswer && (
+                  <span data-testid="usage-reasoning">{` · ${reasoningLine(turnReasoning, t)}`}</span>
+                )}{' '}
                 ·{' '}
                 {message.usage.estimated ? '≈ ' : ''}
                 {formatTokens(tokenTotals(message.usage).input)} in ·{' '}

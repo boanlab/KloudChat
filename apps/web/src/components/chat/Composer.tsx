@@ -43,13 +43,16 @@ import { useNavigate } from 'react-router-dom'
 import { agentStartKind, distinctAgents, kindMeta } from '@/lib/kinds'
 import { Badge, Button, Dropdown, MenuItem, MenuLabel, MenuSeparator, Modal, Select } from '@/components/ui'
 import { cn } from '@/lib/utils'
-import { ChatSendRecoveryError, FIGURE_STYLES, composerKey, effectiveModelId, useStore } from '@/store/useStore'
+import { ChatSendRecoveryError, FIGURE_STYLES, composerKey, effectiveModelId, startingRoutingMode, useStore } from '@/store/useStore'
+import { isSuperMode } from '@/lib/superAgent'
+import { offersReasoning, reasoningSteerable } from '@/lib/reasoning'
 import type {
   ModelInfo, PrivacyAction, ReportOutput, SessionKind, Skill, SlidesOutput, WebSearchMode,
 } from '@/types'
 import { servedAspect, servedAspects } from '@/lib/aspects'
 import { ContextGauge } from './ContextGauge'
 import { ModelPicker } from './ModelPicker'
+import { ReasoningChip } from './ReasoningChip'
 import { SharedBotItems } from './SharedBotItems'
 import { useFileDrop, usePasteFiles } from '@/lib/useFileDrop'
 import { useT } from '@/lib/useT'
@@ -982,6 +985,10 @@ export function Composer({
     clearModelPick,
     setSessionSkills,
     setSessionRoutingMode,
+    setSessionReasoning,
+    reasoningPick,
+    setReasoningPick,
+    superAgent,
     skillStore,
     skillStoreLoaded,
     loadSkillStore,
@@ -2330,6 +2337,22 @@ export function Composer({
     />
     </fieldset>
   )
+  // The reasoning chip: the conversation's, else the home screen's pick for the next one.
+  const laneMode = session?.routingMode ?? (offersReasoning(kind)
+    ? startingRoutingMode({ superAgent, user }, kind, null)
+    : undefined)
+  const reasoningChip = offersReasoning(kind) && !isMedia ? (
+    <ReasoningChip
+      value={session ? session.reasoningMode ?? 'auto' : reasoningPick[kind] ?? 'auto'}
+      onChange={(mode) => {
+        if (session) void setSessionReasoning(session.id, mode)
+        else setReasoningPick(kind, mode)
+      }}
+      lane={isSuperMode(laneMode) ? 'super' : 'manual'}
+      steerable={reasoningSteerable(laneMode, model)}
+      disabled={!!editing}
+    />
+  ) : null
   const contextGauge = (
     <ContextGauge
       sessionId={sessionId ?? reusableSessionId}
@@ -2789,6 +2812,7 @@ export function Composer({
             {micButton}
             <div className="ml-auto flex min-w-0 items-center gap-1">
               {contextGauge}
+              {reasoningChip}
               {modelPicker}
               {sendButton}
             </div>
@@ -2796,7 +2820,7 @@ export function Composer({
         )}
       </div>
       {/* The phone's line has no room for the model; it sits just under the box. */}
-      {phone && modelPicker && <div className="mt-1 flex items-center justify-end gap-1">{contextGauge}{modelPicker}</div>}
+      {phone && modelPicker && <div className="mt-1 flex items-center justify-end gap-1">{contextGauge}{reasoningChip}{modelPicker}</div>}
       {mediaError && (
         <p
           role="status"

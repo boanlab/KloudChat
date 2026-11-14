@@ -29,6 +29,16 @@ def of(info: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
+def controllable(model_id: str, reasoning: dict[str, Any] | None) -> bool:
+    """Whether this model's reasoning can be steered per turn (the composer's 빠르게/깊게):
+    an external model with effort levels, or a self-hosted one with a thinking switch."""
+    from app.services import thinking
+
+    if model_id.startswith(("local/", "strict-local/")):
+        return "deepseek" in model_id or thinking.thinks_by_default(model_id)
+    return bool(reasoning and [e for e in reasoning.get("efforts") or [] if e != "none"])
+
+
 def least(reasoning: dict[str, Any]) -> str:
     """The lowest effort above none the model takes."""
     above = [e for e in reasoning["efforts"] if e != "none"]

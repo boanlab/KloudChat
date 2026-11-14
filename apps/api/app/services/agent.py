@@ -9,7 +9,6 @@ import logging
 import re
 import time
 from collections.abc import AsyncIterator, Callable
-from contextvars import ContextVar
 from copy import deepcopy
 from typing import Any, Literal, TypedDict
 from zoneinfo import ZoneInfo
@@ -40,12 +39,8 @@ from app.services.tools.base import SearchEvidence, Tool, ToolContext, ToolResul
 
 log = logging.getLogger(__name__)
 
-#: Reasoning fields by model for this turn's writer and rescue writer
-#: (`super_agent.reasoning_fields`), set for the turn's task; calls of those models use them
-#: instead of the deployment setting.
-TURN_REASONING: ContextVar[dict[str, dict[str, Any]] | None] = ContextVar(
-    "turn_reasoning", default=None
-)
+#: this turn's reasoning fields by model (`thinking.TURN_REASONING`)
+TURN_REASONING = thinking.TURN_REASONING
 
 
 class ToolResultAnswerEvent(TypedDict):

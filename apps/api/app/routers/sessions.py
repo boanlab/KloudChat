@@ -151,6 +151,7 @@ from app.services import (
     starter,
     stop_signal,
     super_agent,
+    thinking,
     user_templates,
 )
 from app.services import agent as agent_service
@@ -170,6 +171,7 @@ from app.services import (
     outline as outline_rules,
 )
 from app.services import page as page_service
+from app.services import reasoning as reasoning_service
 from app.services import report as report_service
 from app.services import research as research_service
 from app.services.context import (
@@ -1416,6 +1418,41 @@ async def _resolve_cost_routing(
     )
 
 
+def _stored_reasoning(mode: str | None) -> str | None:
+    """The reasoning chip as the conversation keeps it: None for `auto`."""
+    return mode if mode in (super_agent.FAST, super_agent.DEEP) else None
+
+
+def _turn_reasoning_fields(
+    mode: str,
+    model: dict,
+    super_route: dict[str, Any] | None,
+    rescue: dict | None = None,
+    rescue_effort: str = "default",
+) -> tuple[dict[str, dict[str, Any]] | None, dict[str, Any]]:
+    """`(fields by model, note)`: the writer's reasoning fields for `thinking.TURN_REASONING`
+    (None leaves the deployment's) and what the answer's line says (`routing.reasoning`).
+    Super Agent's effort comes from its route (the chip already steered it); a model picked by
+    hand takes the chip's effort where its reasoning can be steered. Either way, a 빠르게 or
+    깊게 the writer cannot act on is marked `unsupported` rather than shown as a level."""
+    if super_route is not None:
+        fields = _super_reasoning(model, str(super_route.get("effort") or "default"), rescue,
+                                  rescue_effort)
+    else:
+        effort = super_agent.manual_effort(mode, model)
+        wanted = super_agent.reasoning_fields(str(model["id"]), effort, model)
+        fields = {str(model["id"]): wanted} if wanted else None
+    note: dict[str, Any] = {
+        "mode": mode,
+        "effort": super_agent.applied_effort((fields or {}).get(str(model["id"]))),
+    }
+    if mode != super_agent.AUTO and not reasoning_service.controllable(
+            str(model["id"]), model.get("reasoning")):
+        # the chip asked for something this model cannot do: the line says so, not a level
+        note["unsupported"] = True
+    return fields, note
+
+
 def _super_history(history: list[Message]) -> tuple[tuple[str, str, dict | None], ...]:
     """History as the Super Agent router reads it; a failed answer reads as empty."""
     return tuple(
@@ -1455,6 +1492,9 @@ def _super_rescue(
     )
     if chosen is None or chosen["id"] == writer["id"] or _widens_boundary(chosen, writer):
         return None, "default"
+    if route.get("reasoningMode") == super_agent.FAST:
+        # 빠르게: the rescue writes without reasoning too
+        return chosen, "none"
     return chosen, rules[super_agent.ESCALATION_CLASS]["effort"]
 
 
@@ -1482,12 +1522,14 @@ async def _super_route(
     attachments: list[str] | None,
     tool_bound: bool,
     pictures: bool = False,
+    reasoning_mode: str = super_agent.AUTO,
 ) -> tuple[dict, dict[str, Any], str]:
     """Super Agent turn: `(model, route note, effort)`.
 
     Rules first; the short-payload classifier only when they cannot tell (and never with
     personal data in the turn). `super_strict`, internal material and personal data pick from
-    the strict-local column, so privacy routing has nothing left to move."""
+    the strict-local column, so privacy routing has nothing left to move. The reasoning chip
+    (`reasoning_mode`) steers the row and effort (`super_agent.steer`)."""
     mode = str(getattr(session.routing_mode, "value", session.routing_mode))
     rules = super_agent.normalise_rules(policy.super_agent_rules)
     allowed = set(user.allowed_models or [])
@@ -1514,7 +1556,8 @@ async def _super_route(
     strict = mode == super_agent.SUPER_STRICT or bool(personal) or internal
     classified: super_agent.Classified | None = None
     classifier_id: str | None = None
-    if decision.ambiguous and not personal:
+    # 깊게 goes to the escalation row whatever the class: nothing for the classifier to decide
+    if decision.ambiguous and not personal and reasoning_mode != super_agent.DEEP:
         classifier_id = str(policy.adaptive_classifier_model_id or "") or rules["simple"][
             "strictModel"]
         classifier = model_service.find(catalogue, classifier_id)
@@ -1536,31 +1579,41 @@ async def _super_route(
                     confidence=classified.confidence, signals=decision.signals,
                 )
     needs_tools = decision.task_class not in ("simple", "transform", "document") or tool_bound
+    row_class, effort = super_agent.steer(rules, decision, reasoning_mode)
     chosen: dict | None = None
     how = "rule"
     sticky_id = (
         _first_document_model(history) if decision.task_class == "document"
         else str((super_agent._previous_route(turn.history) or {}).get("selectedModel") or "")
         if decision.source == "sticky" else None
-    )
+    ) if row_class == decision.task_class else None
+    checks = dict(kind=kind.value, strict=strict, allowed=allowed,
+                  context_bytes=turn.context_bytes, needs_tools=needs_tools,
+                  needs_vision=pictures)
+    if row_class != decision.task_class and reasoning_mode == super_agent.DEEP:
+        # the escalation row's own model, inside the turn's boundary; where it cannot answer
+        # this turn (not served, not this surface's), the class's own pick at effort high
+        rule = rules[super_agent.ESCALATION_CLASS]
+        candidate = model_service.find(catalogue, rule["strictModel" if strict else "model"])
+        if super_agent.usable_for(candidate, **checks):
+            chosen, how = candidate, "rule"
+        else:
+            row_class = decision.task_class
     if sticky_id:
         # a document's revisions, and a short follow-up, stay on the same model
         candidate = model_service.find(catalogue, sticky_id)
-        if super_agent.usable_for(
-            candidate, kind=kind.value, strict=strict, allowed=allowed,
-            context_bytes=turn.context_bytes, needs_tools=needs_tools, needs_vision=pictures,
-        ):
+        if super_agent.usable_for(candidate, **checks):
             chosen, how = candidate, "sticky"
     if chosen is None:
         chosen, how = super_agent.pick(
-            rules, decision.task_class, catalogue, kind=kind.value, strict=strict,
+            rules, row_class, catalogue, kind=kind.value, strict=strict,
             allowed=allowed, context_bytes=turn.context_bytes, needs_tools=needs_tools,
             needs_vision=pictures, default=default,
         )
     if chosen is None and strict and mode != super_agent.SUPER_STRICT:
         # no strict-local model here: privacy routing decides on the ordinary pick
         chosen, how = super_agent.pick(
-            rules, decision.task_class, catalogue, kind=kind.value, strict=False,
+            rules, row_class, catalogue, kind=kind.value, strict=False,
             allowed=allowed, context_bytes=turn.context_bytes, needs_tools=needs_tools,
             needs_vision=pictures, default=default,
         )
@@ -1578,12 +1631,16 @@ async def _super_route(
         and web_search is not True
         else "full"
     )
-    effort = super_agent.effort_for(rules, decision)
     route = super_agent.route_metadata(
         mode=mode, decision=decision, selected=chosen, effort=effort, how=how,
         classified=classified, classifier_model=classifier_id if classified else None,
         tools=tools,
     )
+    if reasoning_mode != super_agent.AUTO:
+        route["reasoningMode"] = reasoning_mode
+        if row_class != decision.task_class:
+            # the row the chip moved the turn to (the class stays what the request is)
+            route["row"] = row_class
     if strict and mode != super_agent.SUPER_STRICT:
         route["strictReason"] = "personal_data" if personal else "internal_data"
     return chosen, route, effort
@@ -1728,6 +1785,7 @@ async def _document_super_route(
     attachments: list[str] | None,
     history: list[Message],
     request: str,
+    reasoning_mode: str = super_agent.AUTO,
 ) -> tuple[dict, bool, dict[str, Any] | None] | JSONResponse:
     """Super Agent's document writer: the table's document model, kept for the whole revision
     chain; strict-local for the strict entry, internal material or personal data."""
@@ -1735,7 +1793,7 @@ async def _document_super_route(
     chosen, route, _effort = await _super_route(
         db=db, user=user, session=session, policy=policy, catalogue=usable, default=model,
         history=history, content=request, kind=session.kind, web_search=False,
-        attachments=attachments, tool_bound=False,
+        attachments=attachments, tool_bound=False, reasoning_mode=reasoning_mode,
     )
     strict = _strict_model(chosen)
     if (
@@ -1785,6 +1843,7 @@ async def _document_route(
     attachments: list[str] | None,
     history: list[Message],
     request: str,
+    reasoning_mode: str = super_agent.AUTO,
 ) -> tuple[dict, bool, dict[str, Any] | None] | JSONResponse:
     """Report/deck writer, strict-local flag, route note; internal → strict-local twin."""
     allowed = set(user.allowed_models or [])
@@ -1792,7 +1851,7 @@ async def _document_route(
         return await _document_super_route(
             db=db, user=user, session=session, policy=policy, catalogue=catalogue,
             model=model, blocks=blocks, attachments=attachments, history=history,
-            request=request,
+            request=request, reasoning_mode=reasoning_mode,
         )
     if (
         policy.internal_data_strict_local
@@ -2903,6 +2962,7 @@ async def create_session(payload: SessionCreate, user: CurrentUser, db: DbSessio
         agent_id=payload.agent_id,
         model=payload.model or "",
         routing_mode=routing_mode,
+        reasoning_mode=_stored_reasoning(payload.reasoning_mode),
         render_template_id=(await _agent_template_loaded(db, user, agent, payload.kind))
         or await _project_render_template(db, payload.project_id, payload.kind),
     )
@@ -3008,7 +3068,8 @@ async def fork_message(session_id: str, message_id: str, user: CurrentUser, db: 
         user_id=user.id, kind=SessionKind.chat,
         title=f"{source.title[:190]} (편집)" if source.title else "",
         project_id=source.project_id, agent_id=source.agent_id, model=source.model,
-        routing_mode=source.routing_mode, render_template_id=source.render_template_id,
+        routing_mode=source.routing_mode, reasoning_mode=source.reasoning_mode,
+        render_template_id=source.render_template_id,
     )
     copied_files: dict[str, StoredFile] = {}
     copied_artifacts: dict[str, Artifact] = {}
@@ -3458,9 +3519,13 @@ async def patch_session(session_id: str, payload: SessionPatch, user: CurrentUse
         changes["title_set_by_user"] = bool(changes["title"])
     else:
         changes.pop("title", None)
+    if "reasoning_mode" in changes:
+        changes["reasoning_mode"] = _stored_reasoning(changes["reasoning_mode"])
     for field, value in changes.items():
         setattr(session, field, value)
-    session.updated_at = utcnow()
+    if set(changes) != {"reasoning_mode"}:
+        # the reasoning chip alone does not move the conversation up the list
+        session.updated_at = utcnow()
     db.add(session)
     await db.commit()
     await db.refresh(session)
@@ -4899,6 +4964,10 @@ async def _send_message(
                     turn_options.get("outputFormat")
                     if turn_options.get("outputFormat") in ("web", "hwp", "docx", "pptx")
                     else None),
+                # the reasoning chip the question was asked under
+                "reasoning": turn_options.get("reasoning")
+                if turn_options.get("reasoning") in super_agent.REASONING_MODES
+                else payload.reasoning,
             }
         )
 
@@ -4999,6 +5068,15 @@ async def _send_message(
         and session.routing_mode in _AUTO_MODES
         and payload.model is None
     )
+    #: the composer's reasoning chip: this turn's, else the conversation's (a visitor's turn is
+    #: always `auto`)
+    reasoning_mode = (
+        super_agent.AUTO if published is not None
+        else payload.reasoning or session.reasoning_mode or super_agent.AUTO
+    )
+    if published is None and payload.reasoning is not None:
+        # kept on the conversation like its model: the next turn and a reload start from it
+        session.reasoning_mode = _stored_reasoning(payload.reasoning)
     #: Super Agent picks this turn's model (`_super_route`); a turn-level model pick wins
     super_turn = bool(
         kind is SessionKind.chat
@@ -5111,11 +5189,10 @@ async def _send_message(
                 status_code=status.HTTP_409_CONFLICT, detail="search_consent_stale"
             )
 
-    #: the Super Agent route note and the writer's reasoning effort for this turn
+    #: the Super Agent route note for this turn (its effort is `super_route["effort"]`)
     super_route: dict[str, Any] | None = None
-    super_effort = "default"
     if super_turn:
-        model, super_route, super_effort = await _super_route(
+        model, super_route, _effort = await _super_route(
             db=db,
             user=user,
             session=session,
@@ -5128,6 +5205,7 @@ async def _send_message(
             web_search=payload.web_search,
             attachments=payload.attachments,
             tool_bound=bool(payload.activated_skill_ids or session.agent_id),
+            reasoning_mode=reasoning_mode,
         )
         requested_model = model
 
@@ -5678,6 +5756,8 @@ async def _send_message(
         "activatedSkillIds": active_skill_ids,
         # the file picked on the screen: a retry after a reload makes the same file
         **({"outputFormat": payload.output_format} if payload.output_format else {}),
+        # the chip as sent: a retry or regeneration runs under it again
+        **({"reasoning": payload.reasoning} if payload.reasoning and published is None else {}),
     }
     # stored for retry replay; defaults store nothing
     if any(turn_options.values()):
@@ -5695,7 +5775,7 @@ async def _send_message(
         decided = await _document_route(
             db=db, user=user, session=session, policy=policy, catalogue=catalogue_models,
             model=model, blocks=workspace.blocks, attachments=payload.attachments,
-            history=history, request=content,
+            history=history, request=content, reasoning_mode=reasoning_mode,
         )
         if isinstance(decided, JSONResponse):
             return decided
@@ -5853,6 +5933,31 @@ async def _send_message(
             tool_definitions = []
             messages = envelope(wire_history, economy=True)
             routed_down = True
+
+    super_rescue, rescue_effort = (
+        _super_rescue(super_route, policy=policy, user=user, catalogue=catalogue_models,
+                      writer=model, strict_local=strict_local)
+        if super_route is not None else (None, "default")
+    )
+    #: the writer's reasoning fields and the answer line's note (the chip, the route's effort)
+    turn_reasoning, reasoning_note = _turn_reasoning_fields(
+        reasoning_mode, model,
+        super_route if super_route is not None
+        else (document_routing or {}).get("superAgent") if kind is not SessionKind.chat
+        else None,
+        super_rescue, rescue_effort,
+    )
+    if reasoning_note != {"mode": super_agent.AUTO, "effort": "default"}:
+        # 자동 with nothing sent is the behaviour before the chip: no note to show
+        if privacy_resolution is not None:
+            privacy_resolution.routing = {**privacy_resolution.routing,
+                                          "reasoning": reasoning_note}
+        else:
+            document_routing = {**(document_routing or {}), "reasoning": reasoning_note}
+    if kind is not SessionKind.chat:
+        # the document writers' calls read it (`thinking.writer_switch`); the chat turn sets
+        # it in the task that runs the answer (`_run_turn`)
+        thinking.TURN_REASONING.set(turn_reasoning)
 
     if not has_headroom(user, model):
         raise HTTPException(
@@ -6520,16 +6625,10 @@ async def _send_message(
             return answer_plan.attach(current, outline)
     else:
         plan_messages = None
-    super_rescue, rescue_effort = (
-        _super_rescue(super_route, policy=policy, user=user, catalogue=catalogue_models,
-                      writer=model, strict_local=strict_local)
-        if super_route is not None else (None, "default")
-    )
     return StreamingResponse(
         _survive_disconnect(
             _run_turn(
-                reasoning=_super_reasoning(model, super_effort, super_rescue, rescue_effort)
-                if super_route else None,
+                reasoning=turn_reasoning,
                 user_id=user.id,
                 api_key=api_key,
                 # visitor's words never remembered on the owner's account

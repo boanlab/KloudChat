@@ -32,6 +32,7 @@ import type {
   Preferences,
   PrivacyAction,
   PrivacyRouting,
+  ReasoningMode,
   ReportArtifact,
   TurnOutput,
   SearchConsentAnswer,
@@ -1218,6 +1219,7 @@ export interface SessionRow {
   pipelineId?: string | null
   model: string
   routingMode: Session['routingMode']
+  reasoningMode?: ReasoningMode | null
   artifactId: string | null
   /** A generation waiting to be answered or approved, or null. */
   pending: PendingPlan | null
@@ -1336,6 +1338,7 @@ export const sessionsApi = {
     agentId?: string | null
     model?: string | null
     routingMode?: Session['routingMode']
+    reasoningMode?: ReasoningMode | null
   }) => call<SessionRow>('/sessions', body(payload)),
   update: (
     id: string,
@@ -1346,6 +1349,8 @@ export const sessionsApi = {
       projectId?: string | null
       /** The conversation's standing skills; `[]` switches them all off. */
       skillIds?: string[]
+      /** The composer's reasoning chip; `auto` clears it. */
+      reasoningMode?: ReasoningMode
     },
   ) =>
     call<SessionRow>(`/sessions/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
@@ -2594,6 +2599,8 @@ export async function* streamSession(
     openArtifact?: OpenArtifact
     /** The person's answer to the search card on the answer `retryOf` reruns. */
     searchConsent?: SearchConsentAnswer
+    /** The composer's reasoning chip; a retry runs under the one its question was sent with. */
+    reasoning?: ReasoningMode
   },
   signal?: AbortSignal,
 ): AsyncGenerator<StreamEvent> {

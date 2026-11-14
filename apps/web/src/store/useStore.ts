@@ -83,6 +83,7 @@ import type {
   PrivacyAction,
   PrivacyRouting,
   DeckArtifact,
+  ReasoningMode,
   ReportArtifact,
   ReportSection,
   SessionKind,
@@ -553,6 +554,12 @@ interface State {
    *  null lets the request decide. One place, so a remount or a refused send keeps it. */
   outputPick: { report: ReportOutput | null; slides: SlidesOutput | null }
   setOutputPick: (surface: 'report' | 'slides', value: ReportOutput | SlidesOutput | null) => void
+  /** The reasoning chip picked before a conversation exists (the home screen), by surface; the
+   *  conversation the next send makes takes it, and keeps it from there (`reasoningMode`). */
+  reasoningPick: Partial<Record<SessionKind, ReasoningMode>>
+  setReasoningPick: (kind: SessionKind, mode: ReasoningMode) => void
+  /** A conversation's reasoning chip; kept on the server like its skills. */
+  setSessionReasoning: (id: string, mode: ReasoningMode) => Promise<void>
   /** An empty logo draws the default mark. */
   brand: { name: string; logo: string }
   /** Re-reads `/auth/config` so an admin's saved change shows without a reload. */
@@ -999,6 +1006,11 @@ export function effectiveModelId(
   return agent?.model || modelByKind[kind]
 }
 
+/** The reasoning chip a turn of this conversation is sent with. */
+function turnReasoning(get: Get, sessionId: string): ReasoningMode {
+  return get().sessions.find((c) => c.id === sessionId)?.reasoningMode ?? 'auto'
+}
+
 /** The mode a new conversation starts in (`startingMode`), from this store's state. */
 export function startingRoutingMode(
   s: Pick<State, 'superAgent' | 'user'>,
@@ -1076,6 +1088,7 @@ function clearAccount(set: Set, reason?: 'idle') {
     signedOutReason: reason ?? null,
     // Never leave one account's work on screen for the next.
     outputPick: { report: null, slides: null },
+    reasoningPick: {},
     sessions: [],
     users: [],
     usersPage: null,
@@ -1772,12 +1785,16 @@ export const useStore = create<State>((set, get) => ({
       // A session model outranks the agent's, so an agent that pins one gets none here.
       model: agent?.model ? '' : (state.modelByKind[kind] ?? ''),
       routingMode: routingMode ?? startingRoutingMode(state, kind, agentId),
+      // the home screen's chip goes with the conversation it starts
+      reasoningMode: state.reasoningPick[kind] && state.reasoningPick[kind] !== 'auto'
+        ? state.reasoningPick[kind] : null,
       createdAt: now, updatedAt: now, pinned: false, messages: [], preview: null,
       messageCount: 0, made: null, artifactId: null, pending: null, skillIds: [],
       renderTemplateId: startingTemplate(state, kind, agent, projectId), unsent: true,
     }
     keepUnsent(state.user?.id, session)
     set((s) => ({
+      reasoningPick: { ...s.reasoningPick, [kind]: undefined },
       sessions: [session, ...s.sessions],
       activeSessionId: session.id,
       openArtifactId: null,
@@ -1796,6 +1813,7 @@ export const useStore = create<State>((set, get) => ({
       let made = await sessionsApi.create({
         id, kind: row.kind, projectId: row.projectId, agentId: row.agentId,
         model: row.model || null, routingMode: row.routingMode,
+        reasoningMode: row.reasoningMode ?? null,
       })
       const patch = unsentPatches.get(id)
       if (patch && Object.keys(patch).length) made = await sessionsApi.update(made.id, patch)
@@ -2492,6 +2510,14 @@ export const useStore = create<State>((set, get) => ({
   setPendingTemplate: (pendingTemplate) => set({ pendingTemplate }),
   outputPick: { report: null, slides: null },
   setOutputPick: (surface, value) => set((s) => ({ outputPick: { ...s.outputPick, [surface]: value } })),
+  reasoningPick: {},
+  setReasoningPick: (kind, mode) => set((s) => ({ reasoningPick: { ...s.reasoningPick, [kind]: mode } })),
+  setSessionReasoning: async (id, mode) => {
+    const reasoningMode = mode === 'auto' ? null : mode
+    if (holdUnsent(set, get, id, { reasoningMode })) return
+    set((s) => ({ sessions: s.sessions.map((c) => (c.id === id ? { ...c, reasoningMode } : c)) }))
+    await sessionsApi.update(id, { reasoningMode: mode }).catch(() => get().loadSessions())
+  },
   brand: { name: 'KloudChat', logo: '' },
   refreshConfig: async () => {
     const c = await authConfig.get().catch(() => null)
@@ -3499,6 +3525,7 @@ function toSession(raw: SessionRow, keepMessages?: Message[]): Session {
     pipelineId: raw.pipelineId ?? null,
     model: raw.model,
     routingMode: raw.routingMode ?? 'manual',
+    reasoningMode: raw.reasoningMode ?? null,
     artifactId: raw.artifactId,
     pending: raw.pending ?? null,
     renderTemplateId: raw.renderTemplateId ?? null,
@@ -3880,6 +3907,7 @@ async function streamTurn(
         answers: opts.answers,
         openArtifact: openTarget(get),
         searchConsent: opts.searchConsent,
+        reasoning: turnReasoning(get, sessionId),
       },
       controller.signal,
     )) {
@@ -4252,6 +4280,7 @@ async function streamReport(
         openArtifact: opened,
         retryOf: gate.retryOf,
         searchConsent: gate.searchConsent,
+        reasoning: turnReasoning(get, sessionId),
       },
       controller.signal,
     )) {
@@ -4562,6 +4591,7 @@ async function streamDeck(
         openArtifact: opened,
         retryOf: gate.retryOf,
         searchConsent: gate.searchConsent,
+        reasoning: turnReasoning(get, sessionId),
       },
       controller.signal,
     )) {

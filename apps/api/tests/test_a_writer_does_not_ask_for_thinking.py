@@ -1,4 +1,6 @@
-"""No-thinking requests (`thinking.switch`) on every writer call, not on chat."""
+"""No-thinking requests (`thinking.switch`) on every writer call, not on chat. Report and deck
+writers ask through `thinking.writer_switch`, which is `switch` unless the turn's reasoning
+chip asked for reasoning on that model."""
 
 from __future__ import annotations
 
@@ -17,7 +19,16 @@ from app.services import deck, page, report
 )
 def test_the_writers_ask_for_no_thinking(writer) -> None:
     source = inspect.getsource(writer)
-    assert "thinking.switch(model)" in source
+    assert "thinking.switch(model)" in source or "thinking.writer_switch(model)" in source
+
+
+def test_a_writer_switch_without_the_chip_is_no_thinking() -> None:
+    from app.services import thinking
+
+    assert thinking.TURN_REASONING.get() is None
+    for model in ("deepseek/x", "local/qwen3.8-flash", "strict-local/qwen3.8-27b"):
+        assert thinking.writer_switch(model) == thinking.switch(model)
+        assert thinking.writer_room(model, 900) == thinking.room(model, 900)
 
 
 def test_the_re_ask_asks_for_no_thinking_either() -> None:
@@ -28,7 +39,9 @@ def test_the_re_ask_asks_for_no_thinking_either() -> None:
     for writer in (deck._complete_once, report._complete, page._complete_once):
         source = inspect.getsource(writer)
         # Once for the first call and once for the re-ask.
-        assert source.count("thinking.switch(model)") >= 2, writer.__module__
+        asks = (source.count("thinking.switch(model)")
+                + source.count("thinking.writer_switch(model)"))
+        assert asks >= 2, writer.__module__
         assert "REASONING_CAP" not in source, writer.__module__
 
 

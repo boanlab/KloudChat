@@ -1264,9 +1264,9 @@ async def _complete(
                     json={
                         "model": model,
                         "messages": messages,
-                        "max_tokens": thinking.room(model, max_tokens),
+                        "max_tokens": thinking.writer_room(model, max_tokens),
                         # thinking off where allowed (`thinking.switch`)
-                        **thinking.switch(model),
+                        **thinking.writer_switch(model),
                     },
                 )
             except httpx.TimeoutException:
@@ -1291,8 +1291,8 @@ async def _complete(
                     "/v1/chat/completions",
                     json={
                         "model": model, "messages": messages,
-                        "max_tokens": thinking.room(model, max_tokens),
-                        **thinking.switch(model),
+                        "max_tokens": thinking.writer_room(model, max_tokens),
+                        **thinking.writer_switch(model),
                     },
                 )
             if response.status_code != 429 or attempt == len(_BACKOFF):
@@ -1306,7 +1306,7 @@ async def _complete(
 
     # reasoning model may exhaust the ceiling thinking; asked twice, the second time with
     # what the first re-ask thought on top
-    asked = thinking.room(model, max_tokens)
+    asked = thinking.writer_room(model, max_tokens)
     for _ in range(2):
         bigger = min(thinking.starved(payload, asked), _MOST_TOKENS)
         if bigger <= asked:
@@ -1324,7 +1324,7 @@ async def _complete(
                     "model": model,
                     "messages": messages,
                     "max_tokens": bigger,
-                    **thinking.switch(model),
+                    **thinking.writer_switch(model),
                 },
             )
             if again.status_code >= 400:
@@ -1355,7 +1355,7 @@ async def _complete(
             again = await client.post(
                 "/v1/chat/completions",
                 json={"model": model, "messages": messages, "max_tokens": roomier,
-                      **thinking.switch(model)},
+                      **thinking.writer_switch(model)},
             )
         if again.status_code == 200:
             first = payload.get("usage") or {}
@@ -1364,6 +1364,9 @@ async def _complete(
             payload["usage"] = usage_fields.merged_raw(first, spent)
 
     text = (payload["choices"][0]["message"]["content"] or "").strip()
+    if thinking.turn_fields(model):
+        # reasoning on for this turn: a template that inlines its thinking keeps it out
+        text = thinking.THINK_BLOCK.sub("", text).strip()
     raw = payload.get("usage") or {}
     return text, usage_fields.spent(raw)
 

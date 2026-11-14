@@ -306,6 +306,9 @@ def _shape(entry: dict[str, Any]) -> dict[str, Any] | None:
         ),
         # Effort levels the model takes; None where it takes none (`/llm/v1/models` shows it).
         "reasoning": reasoning.of(info) if modality == "chat" else None,
+        # Whether the composer's 빠르게/깊게 can change this model's reasoning
+        "reasoningControl": modality == "chat" and reasoning.controllable(
+            model_id, reasoning.of(info)),
         "adapter": None,
         "description": override.get("description", ""),
     }
