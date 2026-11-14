@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { withAccountPicks } from './modelPicks'
 import { startingMode } from './superAgent'
 
 const usable = { available: true, reason: null, estimate: null }
@@ -32,5 +33,16 @@ describe('startingMode', () => {
   })
   it('takes the start as usable until the catalogue answers', () => {
     expect(startingMode({ kind: 'chat', superAgent: { default: unusable, strict: unusable, pending: true } })).toBe('super')
+  })
+})
+
+describe('withAccountPicks', () => {
+  it('shows the account pick that is served for the surface, not the browser default', () => {
+    const current = { chat: 'local/flash', report: 'local/27b', slides: 'local/27b', image: '', av: '' }
+    const models = [{ id: 'local/flash', kinds: ['chat'] }, { id: 'local/27b', kinds: ['chat', 'report'] }] as const
+    const next = withAccountPicks(current, models.map((m) => ({ ...m, kinds: [...m.kinds] })) as never, { chat: 'local/27b', slides: 'gone/model' })
+    expect(next.chat).toBe('local/27b')
+    expect(next.slides).toBe('local/27b')
+    expect(withAccountPicks(current, [], undefined)).toBe(current)
   })
 })

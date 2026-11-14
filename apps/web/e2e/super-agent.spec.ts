@@ -179,3 +179,12 @@ test('개인 기본 모델도 고르지 않으면 Super Agent이고, 고른 모�
   await page.getByRole('menuitemradio', { name: /^Super Agent/ }).click()
   await expect(chat).toHaveAttribute('aria-label', '챗: Super Agent')
 })
+
+test('개인 기본 모델은 계정에 저장한 선택을 보여 준다 @phone', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('kchat-models', JSON.stringify({ chat: 'local/flash' })))
+  await mockApp(page, 'manual', undefined, { chat: 'external/deep', report: 'local/flash' })
+  await page.goto('/settings/preferences')
+  await expect(page.getByRole('button', { name: /^챗: / })).toHaveAttribute('aria-label', '챗: Mock · Deep')
+  await expect(page.getByRole('button', { name: /^보고서: / })).toHaveAttribute('aria-label', '보고서: Mock · Flash')
+  await expect(page.getByRole('button', { name: /^슬라이드: / })).toHaveAttribute('aria-label', '슬라이드: Super Agent')
+})

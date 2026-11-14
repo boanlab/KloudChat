@@ -1,5 +1,6 @@
 import type { OpenArtifact, UploadProgress, WebSearchSetting } from '@/lib/api'
 import { startingMode } from '@/lib/superAgent'
+import { withAccountPicks } from '@/lib/modelPicks'
 import { forgetStoredDraft, purgeStoredDrafts } from '@/lib/drafts'
 import { findUnsent, forgetUnsent, keepUnsent, purgeUnsent, unsentId } from '@/lib/unsentSessions'
 import { create } from 'zustand'
@@ -3139,6 +3140,13 @@ export const useStore = create<State>((set, get) => ({
     applyUserChange(set, get, adminApi.resetPassword(id, password)),
   replaceLitellmKey: (id, key) => applyUserChange(set, get, adminApi.replaceLitellmKey(id, key)),
 }))
+
+useStore.subscribe((s, prev) => {
+  const picks = s.user?.preferences.modelByKind
+  if (picks === prev.user?.preferences.modelByKind && s.models === prev.models) return
+  const next = withAccountPicks(s.modelByKind, s.models, picks)
+  if (next !== s.modelByKind) useStore.setState({ modelByKind: next })
+})
 
 /**
  * Admin mutations return the updated row; a self-edit also updates `user`. A change that can
