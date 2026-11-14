@@ -1021,6 +1021,9 @@ def _file_report(
         "아래는 시스템이 기록한 사실이다. 파일이 도착했는지 추측하지 말고 "
         "이 목록만 근거로 답하라. 목록에 있는 파일은 모두 시스템에 도착했으므로 "
         "받지 못했다고 말해서는 안 된다.",
+        "These are processing records for you, not material: never copy character counts or "
+        "what was or was not passed on (예: 「전체 8,904자 중 1,165자만 전달됨」) into a "
+        "document. Mention a gap only when the person asks about the files.",
     ]
     for file, from_earlier in rows:
         # Earlier uploads labelled for "the PDF I sent before".
