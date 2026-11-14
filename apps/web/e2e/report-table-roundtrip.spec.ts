@@ -157,11 +157,14 @@ test('a table offers no merged cells: Markdown has none', async ({ page }, testI
 })
 
 test('restoring the original title survives save and reload', async ({ page }, testInfo) => {
+  // a title typed and typed back before saving is no edit (nothing to save); saved in between,
+  // the restore is one
   const state = await fixture(page, testInfo)
   await enterEditor(page)
   const line = page.locator('h1[contenteditable="true"]').first()
   await line.fill('Changed text')
   await line.press('Enter')
+  await save(page)
   await line.fill('Table roundtrip')
   await line.press('Enter')
   await expect(line).toHaveText('Table roundtrip')
@@ -169,7 +172,7 @@ test('restoring the original title survives save and reload', async ({ page }, t
   await page.reload()
   await enterEditor(page)
   await expect(line).toHaveText('Table roundtrip')
-  expect(state.writes).toHaveLength(1)
+  expect(state.writes).toHaveLength(2)
   expect(state.unexpected).toEqual([])
 })
 

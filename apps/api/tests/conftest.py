@@ -72,7 +72,9 @@ def _growth(script: str, n: int, *, hang_sec: float = 300.0) -> float:
         "        spent = _clock.process_time() - started\n"
         "        best = spent if best is None else min(best, spent)\n"
         "    return max(best, 1e-4)\n"
-        f"print(_cost({4 * n}) / _cost({n}))\n"
+        # the least of three ratios: a busy runner only ever adds time, so a spike inflates one
+        # ratio, never all three; a quadratic scan's least ratio is still about 16
+        f"print(min(_cost({4 * n}) / _cost({n}) for _ in range(3)))\n"
     )
     done = subprocess.run(
         [sys.executable, "-c", wrapped], check=True, capture_output=True, text=True,
