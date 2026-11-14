@@ -57,6 +57,7 @@ import type { GraphStep, GraphVerdict, PipelineEdge } from '@/types/pipelineGrap
 import { objectParticle, topicParticle } from './formCheck'
 import { currentLang, currentLocale, translate } from './i18n'
 import { setServiceTimeZone } from './serviceTime'
+import { mediaDuration } from './mediaDuration'
 import { isMediaFile, maxMediaMb, mediaReading, overMediaLimit, overUploadLimit, tooLargeMessage } from './uploadLimit'
 import type { ContextQuery, ContextUsage } from './contextGauge'
 import type { Located, Note, ShelfListing, SourceGuide, StudioEstimate, StudioItem, StudioRequest } from './shelf'
@@ -1531,27 +1532,10 @@ export const mediaApi = {
 
 export { isMediaFile }
 
-/** Length of a local video/audio file as the browser reads it, or undefined. */
+/** Length of a local video/audio file from its container header (`mediaDuration`), or
+ *  undefined: the server probes it after upload. */
 export function mediaSeconds(file: File): Promise<number | undefined> {
-  return new Promise((resolve) => {
-    const el = document.createElement(file.type.startsWith('audio/') ? 'audio' : 'video')
-    const done = (value: number | undefined) => {
-      if (el.src) URL.revokeObjectURL(el.src)
-      resolve(value)
-    }
-    const timer = setTimeout(() => done(undefined), 5000)
-    el.preload = 'metadata'
-    el.onloadedmetadata = () => {
-      clearTimeout(timer)
-      done(Number.isFinite(el.duration) ? el.duration : undefined)
-    }
-    el.onerror = () => {
-      clearTimeout(timer)
-      done(undefined)
-    }
-    // an object URL of the person's own file, made right here
-    el.src = URL.createObjectURL(file)
-  })
+  return mediaDuration(file)
 }
 
 /** One keyset page: `next` is the cursor for the following page, null on the last. */
