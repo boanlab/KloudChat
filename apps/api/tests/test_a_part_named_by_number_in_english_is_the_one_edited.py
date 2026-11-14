@@ -5,8 +5,6 @@ place (「아래 표와 같습니다」) goes with it."""
 
 from __future__ import annotations
 
-import time
-
 import pytest
 
 from app.services import revise, slide_patterns
@@ -15,7 +13,7 @@ SLIDES = ["Title", "Cost", "Latency", "Operational cost and latency benchmarks",
 ASK = "Change slide 4 so it shows the three routing rules as a numbered list."
 
 
-def test_a_slide_named_in_english_is_read():
+def test_a_slide_named_in_english_is_read(linear_scan):
     assert revise.named_slides(ASK) == {4}
     assert revise.named_slides("Tighten slides 2-3.") == {2, 3}
     assert revise.named_slides("Rewrite the 4th slide") == {4}
@@ -23,9 +21,11 @@ def test_a_slide_named_in_english_is_read():
     assert revise.named_slides("4장을 표로 바꿔줘") == {4}
     # each slide reads its own clause
     assert revise.slide_clause("Make slide 2 a table. Shorten slide 5.", 4) == "Shorten slide 5."
-    started = time.monotonic()
-    revise.named_slides("slide" + " " * 50000 + "x")
-    assert time.monotonic() - started < 0.5
+    def run(n):
+        revise.named_slides("slide" + " " * n + "x")
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
 
 
 def test_the_named_slide_is_the_target_whatever_the_planner_picked():

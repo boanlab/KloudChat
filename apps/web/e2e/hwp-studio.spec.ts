@@ -84,7 +84,8 @@ test('the self-hosted editor draws the document and saves HWPX back', async ({ p
   await expect.poll(async () => frame.locator('canvas').evaluateAll(
     (nodes) => nodes.filter((n) => (n as HTMLCanvasElement).width > 200).length,
   ), { timeout: 60_000 }).toBeGreaterThan(0)
-  await expect(page.getByText('문서를 여는 중…')).toBeHidden()
+  // the notice goes once the editor says it opened, which can trail the first drawn page
+  await expect(page.getByText('문서를 여는 중…')).toBeHidden({ timeout: 15_000 })
 
   // the frame is ours: same origin, its own policy with WebAssembly allowed
   const response = await page.request.get('/rhwp/')

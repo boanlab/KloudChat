@@ -4,8 +4,6 @@ about the result's own page, and a result cited for its own work, keep their num
 
 from __future__ import annotations
 
-import time
-
 from app.services import citations
 
 _PAPER = ("## paper.pdf\nRetrieval for Korean public-sector QA. Corpus: 8,400 documents. "
@@ -56,7 +54,9 @@ def test_two_or_three_sentences_are_left_to_the_per_sentence_check():
     assert _cites(few) == [2, 2]
 
 
-def test_the_stand_in_check_finishes_on_a_long_blank_input():
-    started = time.perf_counter()
-    _cites(" " * 50_000 + "[2]" + " " * 50_000 + "[2]")
-    assert time.perf_counter() - started < 0.5
+def test_the_stand_in_check_finishes_on_a_long_blank_input(linear_scan):
+    def run(n):
+        _cites(" " * n + "[2]" + " " * n + "[2]")
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)

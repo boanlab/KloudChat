@@ -6,7 +6,6 @@ sync」 is the meeting day (the next meeting's 「Oct 26 (Mon)」 is not), a min
 from __future__ import annotations
 
 import datetime as dt
-import time
 
 from app.services import report_checks, stated_days, weekdays
 
@@ -43,7 +42,9 @@ def test_an_english_weekday_backs_a_korean_one():
     assert stated_days.untraced("다음 회의는 월요일 오후 3시 Room 4B에서 열립니다.", memo) == []
 
 
-def test_reading_english_days_finishes_on_a_long_run_of_spaces():
-    started = time.perf_counter()
-    weekdays.english_days("Oct" + " " * 50_000 + "19 (" + " " * 50_000 + "Mon")
-    assert time.perf_counter() - started < 0.5
+def test_reading_english_days_finishes_on_a_long_run_of_spaces(linear_scan):
+    def run(n):
+        weekdays.english_days("Oct" + " " * n + "19 (" + " " * n + "Mon")
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)

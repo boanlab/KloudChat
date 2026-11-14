@@ -5,8 +5,6 @@ out by its category."""
 
 from __future__ import annotations
 
-import time
-
 import pytest
 
 from app.pipeline import revise_stages
@@ -29,12 +27,14 @@ def test_splitting_one_slides_steps_is_that_slides_edit(words):
     assert revise.joins_items(words)
 
 
-def test_a_slide_split_into_slides_is_still_a_new_structure():
+def test_a_slide_split_into_slides_is_still_a_new_structure(linear_scan):
     assert revise.asks_restructure("6장을 두 장으로 나눠줘")
     assert revise.asks_restructure("5장과 6장 단계를 합쳐줘")
-    started = time.monotonic()
-    revise.asks_restructure("나눠" + " " * 50000 + "단계")
-    assert time.monotonic() - started < 0.5
+    def run(n):
+        revise.asks_restructure("나눠" + " " * n + "단계")
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
 
 
 @pytest.mark.asyncio
@@ -82,7 +82,7 @@ KD2_NEW = [
 ]
 
 
-def test_a_cut_deck_keeps_a_cell_under_its_rows_unit_and_names_a_charts_value_left_out():
+def test_a_cut_deck_keeps_a_cell_under_its_rows_unit_and_names_a_charts_value_left_out(linear_scan):
     plotted = deck.charted_only(KD2_OLD, KD2_NEW)
     lost = [f for f in deck.lost_across(KD2_OLD, KD2_NEW, plotted) if f not in plotted]
     assert lost == ["기타 10억"]
@@ -92,6 +92,8 @@ def test_a_cut_deck_keeps_a_cell_under_its_rows_unit_and_names_a_charts_value_le
     plotted = deck.charted_only(KD2_OLD, bare)
     assert [f for f in deck.lost_across(KD2_OLD, bare, plotted) if f not in plotted] == [
         "신규 거래처 3곳"]
-    started = time.monotonic()
-    deck.lost_across([{"rows": [["a", "b"], ["x(" + " " * 50000, "4"]]}], [])
-    assert time.monotonic() - started < 0.5
+    def run(n):
+        deck.lost_across([{"rows": [["a", "b"], ["x(" + " " * n, "4"]]}], [])
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)

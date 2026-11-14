@@ -3,8 +3,6 @@ is listed once; a bare fence whose first line names the block (「steps: …」)
 
 from __future__ import annotations
 
-import time
-
 from app.services import citations, report
 
 FULL = ("Design and Performance Evaluation of LLM-Based RAG Pipelines for Chatbot Services "
@@ -37,8 +35,10 @@ def test_a_block_named_under_a_bare_fence_becomes_that_block():
     assert report.unglue_blocks(code) == code
 
 
-def test_long_runs_of_spaces_finish_quickly():
-    began = time.perf_counter()
-    report.unglue_blocks("```" + " " * 50_000 + "\n" + " " * 50_000 + "steps")
-    citations.same_works([{**PAGE, "title": "a" * 40 + " " * 50_000 + "...."}, DOI])
-    assert time.perf_counter() - began < 0.5
+def test_long_runs_of_spaces_finish_quickly(linear_scan):
+    def run(n):
+        report.unglue_blocks("```" + " " * n + "\n" + " " * n + "steps")
+        citations.same_works([{**PAGE, "title": "a" * 40 + " " * n + "...."}, DOI])
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)

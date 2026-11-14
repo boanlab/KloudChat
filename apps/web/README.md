@@ -93,13 +93,16 @@ points `API_BASE_URL` at an unused port and answers the API with `page.route`
 fixtures (`e2e/*-fixture.ts`, `e2e/shell-mocks.ts`, `e2e/fixtures/`). Its projects
 are `<surface>/<viewport>` (`customize/desktop`, `customize/phone`, …); each
 surface lists its spec files and the viewports it is checked at. CI splits the
-projects over four jobs with `--shard` (`.github/workflows/ci.yml`):
+projects over five jobs with `E2E_SHARD=k/5` (`.github/workflows/ci.yml`): longest
+project first, each to the job with the least time so far, by the times in
+`e2e/shard-weights.json` (Playwright's `--shard` splits by test count). Refresh the
+weights from a CI run with `.github/ci/e2e-weights.py` when the jobs drift apart:
 
 ```bash
 npm run test:e2e:ci                                                   # the whole suite
 npx playwright test -c playwright.ci.config.ts e2e/publishing.spec.ts # one file, all its viewports
 npx playwright test -c playwright.ci.config.ts --project='customize/*' # one surface
-npx playwright test -c playwright.ci.config.ts --shard=2/4            # what CI job 2 runs
+E2E_SHARD=2/5 npx playwright test -c playwright.ci.config.ts          # what CI job 2 runs
 E2E_PREBUILT=1 npx playwright test -c playwright.ci.config.ts         # serve the dist/ you already built
 ```
 

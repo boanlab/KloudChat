@@ -6,7 +6,6 @@ open outline card, and figures and tables are read as shown (「Cost/1k」, a ta
 
 from __future__ import annotations
 
-import time
 from types import SimpleNamespace
 
 import pytest
@@ -242,19 +241,21 @@ def test_a_figure_after_a_slash_is_read_and_a_table_twice_is_found():
                                   [rows])
 
 
-def test_the_new_patterns_take_linear_time_on_long_blank_input():
-    spaces = " " * 50000
-    started = time.monotonic()
-    revise.without_counts("8" + spaces + "slides")
-    revise.added_facts("", "10" + spaces + "월 16일" + spaces + "목요일", "")
-    revise.without_added_dates("목요일", "10월 16일" + spaces + "목요일")
-    revise.fold_table_pointers("가나다." + spaces + "표" + spaces + "같습니다.", 0)
-    deck.items_asked("두" + spaces + "개로 나눠")
-    deck.items_asked("하나로" + spaces + "x")
-    revise.joins_items("항목 하나로" + spaces + "x")
-    deck.joined_items({"bullets": ["a" + spaces + "· b"]}, 3)
-    deck.figures_in("Cost" + spaces + "/" + spaces + "1k")
-    assert time.monotonic() - started < 0.5
+def test_the_new_patterns_take_linear_time_on_long_blank_input(linear_scan):
+    def run(n):
+        spaces = " " * n
+        revise.without_counts("8" + spaces + "slides")
+        revise.added_facts("", "10" + spaces + "월 16일" + spaces + "목요일", "")
+        revise.without_added_dates("목요일", "10월 16일" + spaces + "목요일")
+        revise.fold_table_pointers("가나다." + spaces + "표" + spaces + "같습니다.", 0)
+        deck.items_asked("두" + spaces + "개로 나눠")
+        deck.items_asked("하나로" + spaces + "x")
+        revise.joins_items("항목 하나로" + spaces + "x")
+        deck.joined_items({"bullets": ["a" + spaces + "· b"]}, 3)
+        deck.figures_in("Cost" + spaces + "/" + spaces + "1k")
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
 
 
 #: the request a deck was first made from, with its own count (reverify-t kd1, kd2)
@@ -313,9 +314,11 @@ def test_the_points_beside_a_chart_join_into_one_and_the_chart_stays():
         "bullets"] == [" · ".join(CHART_SLIDE["bullets"][:3])]
 
 
-def test_the_note_count_pattern_takes_linear_time_on_long_blank_input():
-    spaces = " " * 50000
-    started = time.monotonic()
-    revise.note_without_totals("총" + spaces + "8" + spaces + "장")
-    revise.note_without_totals("1" + spaces + "-" + spaces + "2" + spaces + "장")
-    assert time.monotonic() - started < 0.5
+def test_the_note_count_pattern_takes_linear_time_on_long_blank_input(linear_scan):
+    def run(n):
+        spaces = " " * n
+        revise.note_without_totals("총" + spaces + "8" + spaces + "장")
+        revise.note_without_totals("1" + spaces + "-" + spaces + "2" + spaces + "장")
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)

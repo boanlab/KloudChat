@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import time
 
 from app.services import report_checks, stated_meeting
 
@@ -41,9 +40,11 @@ def test_a_decision_the_memo_states_is_no_unowned_task():
     assert stated_meeting.unowned_task(made, MEMO)
 
 
-def test_fifty_thousand_spaces_finish_quickly():
-    gap = " " * 50_000
-    started = time.perf_counter()
-    report_checks.meeting_date(f"10/20{gap}주간회의{gap}10/23(금){gap}까지", "", TODAY)
-    stated_meeting.unowned_task(f"축소하기로{gap}정했습니다.", MEMO)
-    assert time.perf_counter() - started < 0.5
+def test_fifty_thousand_spaces_finish_quickly(linear_scan):
+    def run(n):
+        gap = " " * n
+        report_checks.meeting_date(f"10/20{gap}주간회의{gap}10/23(금){gap}까지", "", TODAY)
+        stated_meeting.unowned_task(f"축소하기로{gap}정했습니다.", MEMO)
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)

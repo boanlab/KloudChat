@@ -4,7 +4,6 @@ a count of whole things is not written with a fraction no source states (round-1
 from __future__ import annotations
 
 import json
-import time
 
 import pytest
 
@@ -191,11 +190,14 @@ def test_a_count_of_whole_things_with_a_fraction_no_source_states_is_marked():
         "잔여 14.8건을 처리한다.", MEMO, [], {}, [])
 
 
-def test_the_week_and_fraction_checks_finish_on_a_long_run_of_spaces():
-    spaces = " " * 50_000
-    started = time.perf_counter()
-    stated_days.untraced(f"이번 주{spaces}목요일{spaces}", MEMO, spaces)
-    stated_days.week_of(f"10월{spaces}3주차{spaces}", MEMO)
-    stated_days.findings([{"heading": spaces, "content": f"| 화요일 |{spaces}|"}], MEMO + spaces)
-    report._without_fractional_counts(f"1.5{spaces}건{spaces}당", [spaces])
-    assert time.perf_counter() - started < 0.5
+def test_the_week_and_fraction_checks_finish_on_a_long_run_of_spaces(linear_scan):
+    def run(n):
+        spaces = " " * n
+        stated_days.untraced(f"이번 주{spaces}목요일{spaces}", MEMO, spaces)
+        stated_days.week_of(f"10월{spaces}3주차{spaces}", MEMO)
+        stated_days.findings(
+            [{"heading": spaces, "content": f"| 화요일 |{spaces}|"}], MEMO + spaces)
+        report._without_fractional_counts(f"1.5{spaces}건{spaces}당", [spaces])
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)

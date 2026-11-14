@@ -951,8 +951,13 @@ test('the owner asks for the API channel and makes a key shown once', async ({ p
   await expect(channels.getByTestId('channel-embed').getByRole('switch')).toBeDisabled()
   await expect(page.getByTestId('publication-admin-reads')).toContainText('관리자가 열람함')
   await expect(page.getByTestId('publication-admin-reads')).toContainText('신고 확인')
-  await channels.getByTestId('channel-api').getByRole('switch').click()
-  await expect(channels.getByTestId('channels-save')).toHaveText(/승인 요청/)
+  // The card is drawn again when the publication's reads land, which can drop a click made
+  // before them: switch it on until it stays on and the button asks for approval.
+  const apiSwitch = channels.getByTestId('channel-api').getByRole('switch')
+  await expect(async () => {
+    if ((await apiSwitch.getAttribute('aria-checked')) !== 'true') await apiSwitch.click()
+    await expect(channels.getByTestId('channels-save')).toHaveText(/승인 요청/, { timeout: 1_000 })
+  }).toPass({ timeout: 15_000 })
   await shot(page, 'channels-ask', viewport(testInfo))
   await channels.getByTestId('channels-save').click()
   await expect(page.getByTestId('publication-review')).toContainText('채널 요청을 관리자가 확인하고 있습니다')

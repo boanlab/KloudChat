@@ -7,8 +7,6 @@ limit the memo only asks about is not written as one the team reviewed."""
 
 from __future__ import annotations
 
-import time
-
 import pytest
 
 from app.pipeline import check_stages, revise_stages
@@ -150,11 +148,13 @@ def test_a_report_edit_marks_a_new_percentage_and_keeps_the_ones_it_had():
     assert marked == "수도권 비중은 55.5%, 목표 대비 103%, 이익률은 9%(확인 필요)다."
 
 
-def test_percentages_are_read_in_linear_time():
-    started = time.monotonic()
-    basis = value_guard.percent_basis([" " * 50000 + "1%", "1" + " " * 50000 + "page"])
-    value_guard.mark_unbacked_percents(" " * 50000 + "5 percent" + " " * 50000, basis)
-    assert time.monotonic() - started < 0.5
+def test_percentages_are_read_in_linear_time(linear_scan):
+    def run(n):
+        basis = value_guard.percent_basis([" " * n + "1%", "1" + " " * n + "page"])
+        value_guard.mark_unbacked_percents(" " * n + "5 percent" + " " * n, basis)
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
 
 
 MEMO = (

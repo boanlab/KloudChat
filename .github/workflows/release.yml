@@ -8,6 +8,11 @@ name: Release
 #
 # On a push, only the images whose sources changed are rebuilt (`changes`).
 #
+# Nothing is published without a green CI run of the same commit. A push to main does not
+# run the checks a second time: `gate` waits for the CI run that push started (ci.yml) and
+# publishes only if it passed. A manual run, or a tag on a commit CI never ran on, runs
+# the checks here first (`verify`).
+#
 # Repository secrets (Settings → Secrets and variables → Actions):
 #
 #   DOCKERHUB_USERNAME  Docker Hub account; doubles as the image namespace
@@ -103,20 +108,80 @@ jobs:
             { echo "matrix={\"include\":[$entries]}"; echo 'any=true'; } >> "$GITHUB_OUTPUT"
           fi
 
-  # The same lint, typecheck, tests and builds CI runs — on this commit, before any
-  # image moves `:latest`. A failing check leaves the registry as it was.
-  verify:
+  # The CI run of this commit, when there is one: a push to main always starts one, and a tag
+  # usually points at a commit main already ran. `ci=passed` when that run succeeded (the job
+  # fails when it did not), `ci=verify` when there is none, or for a manual run.
+  gate:
     name: Verify · CI on this commit
     needs: changes
     if: needs.changes.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    outputs:
+      ci: ${{ steps.wait.outputs.ci }}
+    steps:
+      - name: Wait for the CI run of this commit
+        id: wait
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            echo "manual run: running the checks here"; echo "ci=verify" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          latest() {
+            gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$SHA&event=push&per_page=20" \
+              -q '.workflow_runs | sort_by(.run_number) | last | if . == null then "" else "\(.id) \(.status) \(.conclusion)" end'
+          }
+          # The push starts both workflows at once; give CI's run a few minutes to be listed.
+          for _ in $(seq 1 20); do
+            run=$(latest)
+            [ -n "$run" ] && break
+            sleep 15
+          done
+          if [ -z "$run" ]; then
+            case "$REF" in
+              refs/tags/*) echo "no CI run for $SHA: running the checks here"
+                           echo "ci=verify" >> "$GITHUB_OUTPUT"; exit 0 ;;
+              *) echo "::error::no CI run for $SHA on a push to main"; exit 1 ;;
+            esac
+          fi
+          # At most an hour; a CI run is about six minutes.
+          for _ in $(seq 1 120); do
+            read -r id status conclusion <<< "$run"
+            if [ "$status" = completed ]; then
+              echo "CI run $id: $conclusion (https://github.com/$REPO/actions/runs/$id)"
+              if [ "$conclusion" = success ]; then echo "ci=passed" >> "$GITHUB_OUTPUT"; exit 0; fi
+              echo "::error::CI did not pass on $SHA; nothing is published. Re-run this job after a green re-run of CI."
+              exit 1
+            fi
+            sleep 30
+            run=$(latest)
+          done
+          echo "::error::CI on $SHA did not finish within an hour"; exit 1
+
+  # The same lint, typecheck, tests and builds CI runs, when no CI run vouches for this commit.
+  verify:
+    name: Verify · CI here
+    needs: [changes, gate]
+    if: needs.changes.outputs.any == 'true' && needs.gate.outputs.ci == 'verify'
     uses: ./.github/workflows/ci.yml
     permissions:
       contents: read
 
+  # Only after a passed gate: CI's own run passed, or the checks run here did.
   publish:
     name: Image · publish ${{ matrix.name }}
-    needs: [changes, verify]
-    if: needs.changes.outputs.any == 'true'
+    needs: [changes, gate, verify]
+    if: >-
+      !cancelled() && needs.changes.outputs.any == 'true' && needs.gate.result == 'success' &&
+      (needs.gate.outputs.ci == 'passed' ||
+       (needs.gate.outputs.ci == 'verify' && needs.verify.result == 'success'))
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

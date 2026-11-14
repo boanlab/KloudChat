@@ -6,7 +6,6 @@ read whole on both sides (「3분기」, not 「3분」)."""
 from __future__ import annotations
 
 import json
-import time
 
 import pytest
 
@@ -78,7 +77,7 @@ def test_points_that_share_no_fields_are_not_forced_into_a_table():
     assert deck.reshaped(GAP, "table", unnamed=True) is None
 
 
-def test_figures_are_read_whole_on_both_sides():
+def test_figures_are_read_whole_on_both_sides(linear_scan):
     assert deck.lost_figures(TREND, DRIFTED, "4장을 번호 목록으로 바꿔줘") == [
         "3분기", "4분기", "114억", "140억"]
     assert [said for *_, said in deck.figures_in("4분기에는 128억원, 10/16(목), 3개월간")] == [
@@ -86,9 +85,11 @@ def test_figures_are_read_whole_on_both_sides():
     numbered = {"layout": "numbered", "items": [
         ["27B local model", "82% of frontier"], ["Above 20 pages", "64% vs 91%"]]}
     assert deck.lost_figures(GAP, numbered, "") == ["27 point"]
-    started = time.monotonic()
-    deck.figures_in("1" + " " * 50000 + "가")
-    assert time.monotonic() - started < 0.5
+    def run(n):
+        deck.figures_in("1" + " " * n + "가")
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
 
 
 def _bundle(typed: str, slides: list[dict]):
@@ -151,11 +152,13 @@ async def test_a_shape_that_does_not_come_leaves_the_slide_and_says_so(monkeypat
     assert said.startswith("Nothing was changed: slide 2 as a table could not be made")
 
 
-def test_long_input_is_read_in_linear_time():
-    started = time.monotonic()
-    deck.form_only("3장을 표로" + " " * 50000 + "바꿔줘")
-    deck.reshaped({"layout": "bullets", "bullets": ["a" + " " * 50000 + ": 1 vs 2"] * 2}, "table")
-    assert time.monotonic() - started < 0.5
+def test_long_input_is_read_in_linear_time(linear_scan):
+    def run(n):
+        deck.form_only("3장을 표로" + " " * n + "바꿔줘")
+        deck.reshaped({"layout": "bullets", "bullets": ["a" + " " * n + ": 1 vs 2"] * 2}, "table")
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
 
 
 CLOSING = {"id": "z", "layout": "closing", "title": "핵심 내용 및 결의 사항",
@@ -176,15 +179,17 @@ def test_the_item_count_an_ask_names_is_read(words, count):
     assert deck.items_asked(words) == count
 
 
-def test_items_merged_into_one_keep_their_facts():
+def test_items_merged_into_one_keep_their_facts(linear_scan):
     emptied = {**CLOSING, "body": "감사합니다"}
     emptied.pop("bullets")
     joined = deck.merged_points(CLOSING, emptied, 1)
     assert len(joined["bullets"]) == 1 and deck.lost_figures(CLOSING, joined) == []
     assert deck.merged_points(CLOSING, CLOSING, 1) is None
-    started = time.monotonic()
-    deck.items_asked("두" + " " * 50000 + "개로 줄여")
-    assert time.monotonic() - started < 0.5
+    def run(n):
+        deck.items_asked("두" + " " * n + "개로 줄여")
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
 
 
 @pytest.mark.asyncio
@@ -266,7 +271,7 @@ EN_LEFT = {"id": "l", "layout": "bullets", "title": "Benchmark",
            "bullets": ["27B: 64% vs 91% above 20 pages"]}
 
 
-def test_an_english_shrink_is_said_in_english_with_whole_values_and_the_table_named():
+def test_an_english_shrink_is_said_in_english_with_whole_values_and_the_table_named(linear_scan):
     from app.routers import sessions
 
     assert deck.lost_across([EN_TABLE], [EN_LEFT]) == ["1k docs", "$4", "$38", "9s", "14s"]
@@ -274,9 +279,11 @@ def test_an_english_shrink_is_said_in_english_with_whole_values_and_the_table_na
         "Made a 1-slide deck. No slide shows these any more: 1k docs, $4, $38, 9s, 14s; the "
         "table on 'Performance and Cost Comparison'. Ask again to put them back if they belong "
         "there.")
-    started = time.monotonic()
-    deck._whole_figure(("1", "k", "1k"), ["1k" + " " * 50000 + "docs"], True)
-    assert time.monotonic() - started < 0.5
+    def run(n):
+        deck._whole_figure(("1", "k", "1k"), ["1k" + " " * n + "docs"], True)
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
 
 
 def test_a_timeline_put_back_takes_no_slide_whose_figures_it_would_drop():
@@ -307,7 +314,7 @@ EN_RESULTS = {"id": "r", "layout": "table", "title": "Benchmark Results",
                        ["Long-Context Quality", "64%", "91%"], ["Avg Latency", "9s", "14s"]]}
 
 
-def test_an_english_shrink_names_each_lost_value_with_what_it_counts():
+def test_an_english_shrink_names_each_lost_value_with_what_it_counts(linear_scan):
     from app.routers import sessions
 
     assert deck.lost_across([EN_AGENDA, EN_METHOD, EN_GAP], [EN_RESULTS]) == [
@@ -320,14 +327,16 @@ def test_an_english_shrink_names_each_lost_value_with_what_it_counts():
     assert "3 reviewers" not in deck.lost_across([EN_METHOD], [kept])
     assert deck.lost_across([{"layout": "bullets", "title": "Plan", "bullets": ["See slide 3"]}],
                             [EN_RESULTS]) == []
-    started = time.monotonic()
-    deck.lost_across([{"layout": "bullets", "title": "Plan",
-                       "bullets": ["3" + " " * 50000 + "x", "3 a" + " " * 50000]}], [EN_RESULTS])
-    deck._counted_noun("3" + " a" * 25000, 1)
-    assert time.monotonic() - started < 0.5
+    def run(n):
+        deck.lost_across([{"layout": "bullets", "title": "Plan",
+                           "bullets": ["3" + " " * n + "x", "3 a" + " " * n]}], [EN_RESULTS])
+        deck._counted_noun("3" + " a" * (n // 2), 1)
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
 
 
-def test_an_amount_written_in_two_parts_is_one_figure_lost_or_kept_whole():
+def test_an_amount_written_in_two_parts_is_one_figure_lost_or_kept_whole(linear_scan):
     """audit-g H4 A: 「연간 발급 4만 8천 건」 gone from the cut deck was said lost as
     「4만, 8천」."""
     old = [{"layout": "bullets", "title": "핵심 운영 지표",
@@ -339,9 +348,11 @@ def test_an_amount_written_in_two_parts_is_one_figure_lost_or_kept_whole():
     assert deck.lost_across(old, [*new, {"layout": "bullets", "title": "발급",
                                          "bullets": ["48,000건 발급"]}]) == []
     assert deck.figures_in("38억 5천만 원") == [("3850000000", "원", "38억 5천만 원")]
-    started = time.monotonic()
-    deck.figures_in("4만" + " " * 50000 + "8천")
-    assert time.monotonic() - started < 0.5
+    def run(n):
+        deck.figures_in("4만" + " " * n + "8천")
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
 
 
 def test_a_restated_figure_goes_beside_the_figure_it_belongs_to_not_onto_an_unrelated_slide():
@@ -393,7 +404,7 @@ BUDGET = {"id": "b", "layout": "statement", "title": "1.5억 원 예산",
 COVER = {"id": "c", "layout": "title", "title": "2026년 3분기 사업 실적 및 4분기 계획"}
 
 
-def test_a_shrink_that_lost_the_deck_s_ask_puts_it_back_on_the_slide_with_its_figure():
+def test_a_shrink_that_lost_the_deck_s_ask_puts_it_back_on_the_slide_with_its_figure(linear_scan):
     out = revise.keep_ask([dict(COVER), dict(TREND), dict(BUDGET)], [COVER, TREND, ASK_SLIDE],
                           mentioned="슬라이드를 6장으로 줄여줘")
     assert out[2]["title"] == ASK_SLIDE["title"] and out[2]["body"] == BUDGET["body"]
@@ -408,10 +419,12 @@ def test_a_shrink_that_lost_the_deck_s_ask_puts_it_back_on_the_slide_with_its_fi
         COVER, asked]
     assert revise.keep_ask([dict(COVER), dict(BUDGET)], [COVER, ASK_SLIDE],
                            mentioned="승인 요청 장은 빼줘")[1] == BUDGET
-    started = time.monotonic()
-    revise._DECK_ASK.search("요청" + " " * 50000 + "x")
-    revise._ORDER_ASK.search("맨" + " " * 50000 + "x")
-    assert time.monotonic() - started < 0.5
+    def run(n):
+        revise._DECK_ASK.search("요청" + " " * n + "x")
+        revise._ORDER_ASK.search("맨" + " " * n + "x")
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
 
 
 #: reverify-w kd1: the shrink put the Q3 summary after the Q4 plan
@@ -468,7 +481,7 @@ EN_NEW = [
 ]
 
 
-def test_a_shrink_keeps_the_old_deck_s_marks_and_its_wording_of_a_figure_pair():
+def test_a_shrink_keeps_the_old_deck_s_marks_and_its_wording_of_a_figure_pair(linear_scan):
     out = revise.carry_marks(json.loads(json.dumps(EN_NEW)), EN_OLD)
     assert out[0]["rows"][1] == ["Drafting score", "82%", "95% (needs checking)"]
     assert out[0]["rows"][2] == EN_NEW[0]["rows"][2]
@@ -494,22 +507,26 @@ def test_a_shrink_keeps_the_old_deck_s_marks_and_its_wording_of_a_figure_pair():
     cut = [{"id": "o", "layout": "bullets", "title": "과제",
             "bullets": ["65세 이상 이용률 12%로 낮음"]}]
     assert revise.keep_phrasing(json.loads(json.dumps(cut)), old_point) == cut
-    started = time.monotonic()
-    revise._MARKED_FIGURE.search("1" + " " * 50000 + "(x")
-    revise.carry_marks([{"bullets": ["95%" + " " * 50000]}], EN_OLD)
-    assert time.monotonic() - started < 0.5
+    def run(n):
+        revise._MARKED_FIGURE.search("1" + " " * n + "(x")
+        revise.carry_marks([{"bullets": ["95%" + " " * n]}], EN_OLD)
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
 
 
-def test_a_dangling_unit_is_cut_and_a_guard_blank_stays_in_sight():
+def test_a_dangling_unit_is_cut_and_a_guard_blank_stays_in_sight(linear_scan):
     slide = {"id": "b", "layout": "bullets", "title": "분기별 매출 및 이익률 추이",
              "bullets": ["매출 실적: 128억원/%", "이익률 실적: [수치]", "이익률 7.5%"]}
     assert deck.settle_blanks([slide]) == 1
     assert slide["bullets"] == ["매출 실적: 128억원", "이익률 실적: [수치]", "이익률 7.5%"]
     kept = {"id": "k", "layout": "bullets", "title": "x", "bullets": ["3%/년 성장"]}
     assert deck.settle_blanks([kept]) == 0
-    started = time.monotonic()
-    deck._DANGLING_UNIT.sub("", "1" + " " * 50000 + "/")
-    assert time.monotonic() - started < 0.5
+    def run(n):
+        deck._DANGLING_UNIT.sub("", "1" + " " * n + "/")
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
 
 
 def test_a_restored_ask_names_what_is_asked_when_the_ask_title_has_no_figure():

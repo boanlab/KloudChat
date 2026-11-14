@@ -7,8 +7,6 @@ audit (H1, H2, H3, T1, tc, tc2 and the clean answers)."""
 
 from __future__ import annotations
 
-import time
-
 from app.services import meeting_memo, report_checks, stated_days, stated_policy
 
 T1 = ("- 금: 영업 CRM 데이터 정리 중 중복 거래처 37건 발견, 병합 작업 60% 진행.\n"
@@ -80,11 +78,13 @@ def test_a_row_whose_task_a_memo_person_was_given_stays():
     assert report_checks.unassigned_rows([_sec("결정 사항", decided)], H1) == []
 
 
-def test_the_narrowed_checks_finish_on_a_long_run_of_spaces():
-    gap = " " * 50_000
-    started = time.perf_counter()
-    meeting_memo.read(f"({gap}) 협력사{gap}미팅: 납기")
-    stated_days.untraced(f"병합은{gap}진행되었고, 완료는{gap}수요일입니다.", T1)
-    meeting_memo.settle_copies([_sec("a", f"간편결제는{gap}재논의.")], "간편결제 재논의",
-                               strong=False)
-    assert time.perf_counter() - started < 0.5
+def test_the_narrowed_checks_finish_on_a_long_run_of_spaces(linear_scan):
+    def run(n):
+        gap = " " * n
+        meeting_memo.read(f"({gap}) 협력사{gap}미팅: 납기")
+        stated_days.untraced(f"병합은{gap}진행되었고, 완료는{gap}수요일입니다.", T1)
+        meeting_memo.settle_copies([_sec("a", f"간편결제는{gap}재논의.")], "간편결제 재논의",
+                                   strong=False)
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)

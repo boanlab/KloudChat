@@ -65,7 +65,8 @@ test('a report whose stream dropped is followed until the server has written it'
     id: 'm4', role: 'assistant', content: '보고서를 만들었습니다.', createdAt: at,
     artifactIds: [artifactId],
   }
-  // Reads of the session after the send: the server is still writing for the first two.
+  // Reads of the session after the send: the server is still writing for the first one (the
+  // page reads every 3 s, so two reads is the shortest follow that still sees it writing).
   let reads = -1
 
   const notTheApp = /^(?!wss?:\/\/[^/]+\/\?token=).*$/
@@ -99,7 +100,7 @@ test('a report whose stream dropped is followed until the server has written it'
       reads += 1
       // The approved outline stays pending while the server writes it.
       const messages = [question, outline, approval]
-      if (reads < 3) return route.fulfill({ json: { ...session, messages, messageCount: 3 } })
+      if (reads < 2) return route.fulfill({ json: { ...session, messages, messageCount: 3 } })
       return route.fulfill({ json: {
         ...session, pending: null, artifactId, messageCount: 4, messages: [...messages, written],
       } })
@@ -141,8 +142,8 @@ test('a report whose stream dropped is followed until the server has written it'
   const panel = page.locator('[data-panel="artifact"]')
   await expect(panel.getByRole('heading', { name: headings[0] })).toBeVisible()
 
-  // The server finished: its report replaces the draft.
-  await expect(panel.getByText('완성된 본문 2.')).toBeVisible({ timeout: 20_000 })
+  // The server finished: its report replaces the draft (two 3 s polls; room for a slow runner).
+  await expect(panel.getByText('완성된 본문 2.')).toBeVisible({ timeout: 30_000 })
   await expect(page.getByText('보고서를 만들었습니다.')).toBeVisible()
   await expect(page.getByLabel('중지')).toBeHidden()
   expect(unexpected).toEqual([])

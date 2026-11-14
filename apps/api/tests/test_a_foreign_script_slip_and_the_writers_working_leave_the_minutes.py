@@ -6,8 +6,6 @@ already marks, and no action row the memo gives no one. Shapes from the round 16
 
 from __future__ import annotations
 
-import time
-
 from app.services import hangul, meeting_memo, report, report_checks, weekdays
 
 MEMO = (
@@ -120,15 +118,18 @@ def test_an_action_row_under_a_number_column_the_memo_gives_no_one_goes_with_its
     assert "| 2 | 설문 도구 비교표 준비 | 최다은 | 2026-10-21 | - |" in out
 
 
-def test_the_new_patterns_take_linear_time_on_long_input():
-    spaces = " " * 50_000
-    started = time.monotonic()
-    hangul.drop_foreign_runs(spaces + "ب" + spaces + "가" * 10)
-    hangul.drop_foreign_runs("가" * 100 + "ب " * 25_000)
-    meeting_memo.restated_checks(
-        [_sec("a", "| a | 미정 |\n|---|---|\n| 장소 | 미정 |\n확인 필요:" + spaces)]
-    )
-    weekdays.flag_once(
-        [_sec("a", "2026-10-21(화, 확인 필요: 달력상 수요일)," + spaces + "확인 필요:" + spaces)]
-    )
-    assert time.monotonic() - started < 0.5
+def test_the_new_patterns_take_linear_time_on_long_input(linear_scan):
+    def run(n):
+        spaces = " " * n
+        hangul.drop_foreign_runs(spaces + "ب" + spaces + "가" * 10)
+        hangul.drop_foreign_runs("가" * 100 + "ب " * (n // 2))
+        meeting_memo.restated_checks(
+            [_sec("a", "| a | 미정 |\n|---|---|\n| 장소 | 미정 |\n확인 필요:" + spaces)]
+        )
+        weekdays.flag_once(
+            [_sec("a", "2026-10-21(화, 확인 필요: 달력상 수요일)," + spaces + "확인 필요:"
+                  + spaces)]
+        )
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)

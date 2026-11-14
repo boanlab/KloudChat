@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-import time
 
 from test_minutes_say_only_what_the_memo_says import TUTOR
 
@@ -47,7 +46,9 @@ def test_a_value_the_material_changes_is_no_conflict():
     assert len(key_figures.parse_all(_listed("단가", "2만원", "2.5만원"), mails)[1]) == 1
 
 
-def test_the_change_reading_finishes_on_a_long_run_of_spaces():
-    started = time.perf_counter()
-    key_figures.changes("420만원" + " " * 50_000 + "→" + " " * 50_000 + "355만원")
-    assert time.perf_counter() - started < 0.5
+def test_the_change_reading_finishes_on_a_long_run_of_spaces(linear_scan):
+    def run(n):
+        key_figures.changes("420만원" + " " * n + "→" + " " * n + "355만원")
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)

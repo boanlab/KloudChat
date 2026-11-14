@@ -6,7 +6,6 @@ question while a card is open leaves the card, and a table's rows are not joined
 
 from __future__ import annotations
 
-import time
 from types import SimpleNamespace
 
 import pytest
@@ -35,13 +34,15 @@ BOXED = (SECOND + "\n\n```callout\n단가 승인 지연 시 협상 교착\n결�
          "\n\n![그림 1. 단가 협상 범위](data:image/png;base64,AAAA)\n\n그림 1. 단가 협상 범위")
 
 
-def test_a_line_to_the_person_is_taken_out():
+def test_a_line_to_the_person_is_taken_out(linear_scan):
     assert revise.without_preamble(DRIFTED).startswith("본 주에는")
     assert revise.without_preamble(SHORT) == SHORT
-    started = time.monotonic()
-    revise.without_preamble("다음은" + " " * 50000 + "요청")
-    revise.drift_faults("위" + " " * 50000, "위" + " " * 50000 + "표", [])
-    assert time.monotonic() - started < 0.5
+    def run(n):
+        revise.without_preamble("다음은" + " " * n + "요청")
+        revise.drift_faults("위" + " " * n, "위" + " " * n + "표", [])
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
 
 
 def test_a_rewrite_that_reads_as_another_section_is_found():
@@ -186,7 +187,7 @@ async def test_a_tables_rows_are_not_joined_and_that_is_said(monkeypatch, ask, s
     assert said.startswith(said_as)
 
 
-def test_a_figure_written_without_its_comma_is_still_shown():
+def test_a_figure_written_without_its_comma_is_still_shown(linear_scan):
     # 「Per 1,000 docs」 cut to 「Cost per 1000」 on another slide (reverify-x EN deck)
     old = [{"layout": "bullets", "title": "Cost", "bullets": ["Per 1,000 docs", "$4 vs $38"]}]
     new = [{"layout": "table", "title": "Core", "rows": [["Criteria", "Local", "Cloud"],
@@ -195,9 +196,11 @@ def test_a_figure_written_without_its_comma_is_still_shown():
     assert deck.lost_across(old, [{"layout": "bullets",
                                    "bullets": ["Cost per 1k: $4 / $38"]}]) == []
     assert deck.lost_across(old, [{"layout": "bullets", "bullets": ["$4 vs $38"]}]) == ["1,000"]
-    started = time.monotonic()
-    deck.amounts_in("1" * 50000 + " " * 50000)
-    assert time.monotonic() - started < 0.5
+    def run(n):
+        deck.amounts_in("1" * n + " " * n)
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
 
 
 #: a figure and the caveat the next sentence puts on it (reverify-x T1)
@@ -205,7 +208,7 @@ HEDGED = ("대성유통은 5% 인하를 요구했으며, 경쟁사 A사가 동�
           "파악됩니다. 다만 해당 경쟁사 단가는 확정된 사실이 아닙니다.")
 
 
-def test_a_shortening_that_drops_a_figures_caveat_names_it():
+def test_a_shortening_that_drops_a_figures_caveat_names_it(linear_scan):
     # the caveat kept beside its figure: nothing lost
     assert revise.lost_facts(HEDGED, "대성유통은 5% 인하를 요구했고, A사의 4% 낮은 단가는 확정되지 "
                              "않았습니다.") == []
@@ -224,6 +227,8 @@ def test_a_shortening_that_drops_a_figures_caveat_names_it():
     # a hedge that follows a sentence with nothing of its own to point back at is no caveat
     assert revise.lost_facts("A사가 4%를 제시했습니다. 물류팀 확인이 필요합니다.",
                              "A사가 4%를 제시했습니다.") == []
-    started = time.monotonic()
-    revise.lost_facts("확정" + " " * 50000 + "아님", "확정" + " " * 50000)
-    assert time.monotonic() - started < 0.5
+    def run(n):
+        revise.lost_facts("확정" + " " * n + "아님", "확정" + " " * n)
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)

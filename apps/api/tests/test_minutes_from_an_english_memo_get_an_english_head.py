@@ -4,7 +4,6 @@ and the checks that find a head field by its name read the English labels as the
 from __future__ import annotations
 
 import datetime as dt
-import time
 from pathlib import Path
 
 from app.services import doc_formats, meeting_memo, placeholders, report_checks
@@ -114,13 +113,15 @@ def test_the_web_draws_the_english_head_as_the_exports_do():
     assert doc_formats.blank("Location") == "[Location]" and doc_formats.blank("장소") == "[장소]"
 
 
-def test_the_english_memo_patterns_finish_on_a_long_run_of_spaces():
-    text = "Next meeting" + " " * 50_000 + "x"
-    start = time.monotonic()
-    doc_formats._NEXT_MEETING.search(text)
-    doc_formats.head_values(doc_formats.BY_ID["minutes"], "Location:" + " " * 50_000)
-    placeholders.is_blank("[" + "A" + "a" * 50_000)
-    assert time.monotonic() - start < 0.5
+def test_the_english_memo_patterns_finish_on_a_long_run_of_spaces(linear_scan):
+    def run(n):
+        text = "Next meeting" + " " * n + "x"
+        doc_formats._NEXT_MEETING.search(text)
+        doc_formats.head_values(doc_formats.BY_ID["minutes"], "Location:" + " " * n)
+        placeholders.is_blank("[" + "A" + "a" * n)
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
 
 
 async def _head_stage(monkeypatch, memo: str, body: str) -> dict:
@@ -196,14 +197,14 @@ def test_an_english_memo_gives_its_meeting_name_and_keeps_the_next_meetings_room
     assert filled["Location"] == "[Location]"
 
 
-def test_english_memo_patterns_stay_linear_on_long_spaces():
-    import time
-
+def test_english_memo_patterns_stay_linear_on_long_spaces(linear_scan):
     from app.services import meeting_memo
 
-    started = time.monotonic()
-    meeting_memo.read("Oct" + " " * 50_000 + "19 sync Room" + " " * 50_000 + "4B 3" + " " * 50_000)
-    assert time.monotonic() - started < 0.5
+    def run(n):
+        meeting_memo.read("Oct" + " " * n + "19 sync Room" + " " * n + "4B 3" + " " * n)
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
 
 
 def test_a_due_day_an_english_memo_gives_stays_in_the_table():

@@ -4,8 +4,6 @@ round 17 checks (audit-x2 H2: GLM and 27B wrote an English memo's minutes in Kor
 
 from __future__ import annotations
 
-import time
-
 from app.pipeline import save_stages
 from app.services import output_language
 
@@ -50,7 +48,9 @@ def test_a_fresh_english_deck_is_answered_in_english():
     assert sessions._restructured_said([], slides, english=True).startswith("Made a 2-slide")
 
 
-def test_the_asked_language_reads_linearly_on_long_spaces():
-    started = time.monotonic()
-    output_language.asked(" " * 50_000 + "a." + " " * 50_000 + "b")
-    assert time.monotonic() - started < 0.5
+def test_the_asked_language_reads_linearly_on_long_spaces(linear_scan):
+    def run(n):
+        output_language.asked(" " * n + "a." + " " * n + "b")
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)

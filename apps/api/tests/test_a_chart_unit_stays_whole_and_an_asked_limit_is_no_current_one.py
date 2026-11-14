@@ -3,8 +3,6 @@ the current one."""
 
 from __future__ import annotations
 
-import time
-
 from app.services import deck, stated_policy
 
 #: the weekly memo: the 4% is a request for approval, no limit
@@ -29,13 +27,15 @@ def test_a_limit_stated_beside_an_ask_in_another_clause_is_found():
                                   MEMO) == ["허용 범위"]
 
 
-def test_a_clause_split_over_many_spaces_finishes_at_once():
-    spaces = " " * 50_000
-    start = time.perf_counter()
-    stated_policy.untraced(f"허용 한도{spaces},{spaces}할지{spaces}", MEMO)
-    deck._clean_chart({"unit": f"$ per{spaces}docs{spaces}", "categories": ["a", "b"],
-                       "series": [{"name": "x", "values": [1, 2]}]})
-    assert time.perf_counter() - start < 0.5
+def test_a_clause_split_over_many_spaces_finishes_at_once(linear_scan):
+    def run(n):
+        spaces = " " * n
+        stated_policy.untraced(f"허용 한도{spaces},{spaces}할지{spaces}", MEMO)
+        deck._clean_chart({"unit": f"$ per{spaces}docs{spaces}", "categories": ["a", "b"],
+                           "series": [{"name": "x", "values": [1, 2]}]})
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
 
 
 def test_a_chart_unit_is_kept_whole_or_to_its_first_word():

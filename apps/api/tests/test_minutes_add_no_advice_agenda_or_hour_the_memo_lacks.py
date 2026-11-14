@@ -4,8 +4,6 @@ never gives. Shapes from the round 15 re-verify (tc, tc2, fpm)."""
 
 from __future__ import annotations
 
-import time
-
 import pytest
 from test_agent_skills_reach_every_surface import _member, _shipped, db  # noqa: F401
 from test_minutes_say_only_what_the_memo_says import SALES, TUTOR
@@ -126,13 +124,15 @@ def test_a_next_meeting_agenda_the_memo_never_sets_is_found_in_a_table_and_anywh
                                        next_part=True)
 
 
-def test_the_new_minutes_checks_finish_on_a_long_run_of_spaces():
-    spaces = " " * 50_000
-    started = time.perf_counter()
-    for text in (f"오전{spaces}10시", f"것이{spaces}좋습니다", f"미제출{spaces}시",
-                 f"확인{spaces}필요", f"필요가{spaces}있", f"지{spaces}않으면", f"다음과{spaces}같",
-                 f"**표{spaces}2."):
-        stated_meeting.untraced(text, SALES, next_part=True, rows=[])
-        stated_meeting.settle(text, text, [text], strong=False, material=SALES)
-        stated_meeting.findings([{"heading": "다음 회의", "content": text}], SALES)
-    assert time.perf_counter() - started < 0.5
+def test_the_new_minutes_checks_finish_on_a_long_run_of_spaces(linear_scan):
+    def run(n):
+        spaces = " " * n
+        for text in (f"오전{spaces}10시", f"것이{spaces}좋습니다", f"미제출{spaces}시",
+                     f"확인{spaces}필요", f"필요가{spaces}있", f"지{spaces}않으면",
+                     f"다음과{spaces}같", f"**표{spaces}2."):
+            stated_meeting.untraced(text, SALES, next_part=True, rows=[])
+            stated_meeting.settle(text, text, [text], strong=False, material=SALES)
+            stated_meeting.findings([{"heading": "다음 회의", "content": text}], SALES)
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)

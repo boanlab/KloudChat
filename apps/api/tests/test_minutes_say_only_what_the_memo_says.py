@@ -5,8 +5,6 @@ its own value."""
 
 from __future__ import annotations
 
-import time
-
 from app.services import (
     doc_formats,
     hangul,
@@ -95,15 +93,17 @@ def test_an_open_question_the_memo_never_raises_is_found_and_its_own_is_not():
         assert not stated_meeting.untraced(own, TUTOR)
 
 
-def test_the_meeting_checks_finish_on_a_long_run_of_spaces():
-    text = "회의는 약 2" + " " * 50_000 + "분"
-    started = time.perf_counter()
-    stated_meeting.untraced(text, SALES)
-    placeholders.drop_beside_values("2026-10-14(수)" + " " * 50_000 + "[회의 일자]")
-    richtext.unquote_tables(">" + " " * 50_000 + "|")
-    report_checks.minutes_head_place(
-        [{"heading": "개요", "content": "- 장소:" + " " * 50_000}], {"fields": [["장소", ""]]})
-    assert time.perf_counter() - started < 0.5
+def test_the_meeting_checks_finish_on_a_long_run_of_spaces(linear_scan):
+    def run(n):
+        text = "회의는 약 2" + " " * n + "분"
+        stated_meeting.untraced(text, SALES)
+        placeholders.drop_beside_values("2026-10-14(수)" + " " * n + "[회의 일자]")
+        richtext.unquote_tables(">" + " " * n + "|")
+        report_checks.minutes_head_place(
+            [{"heading": "개요", "content": "- 장소:" + " " * n}], {"fields": [["장소", ""]]})
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
 
 
 ACTIONS = ("**표 3. 액션 아이템**\n\n| 할 일 | 담당 | 기한 | 비고 |\n|---|---|---|---|\n"

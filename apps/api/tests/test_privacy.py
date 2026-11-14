@@ -172,32 +172,38 @@ def test_legacy_email_scan_preserves_broad_unicode_and_boundary_rules(value: str
     assert "[이메일]" in masked
 
 
-def test_legacy_email_scan_resists_punctuation_repetition() -> None:
-    text = "a." * 50_000
-    started = time.monotonic()
+def test_legacy_email_scan_resists_punctuation_repetition(linear_scan) -> None:
+    def run(n):
+        governance.mask_legacy("a." * n)
 
+    # up to the 50,000 repeats this always read
+    linear_scan(run, 12_500)
+    text = "a." * 50_000
     assert governance.mask_legacy(text) == (text, 0)
-    assert time.monotonic() - started < 2.0
 
 
 def test_legacy_email_scan_resumes_after_an_adjacent_match() -> None:
     assert governance.mask_legacy("a@b.co+@d.ef") == ("[이메일][이메일]", 2)
 
 
-def test_detector_handles_long_clean_input_in_linear_time() -> None:
+def test_detector_handles_long_clean_input_in_linear_time(linear_scan) -> None:
+    def run(n):
+        governance.mask(("ordinary project notes and order 1234-5678. " * n).strip())
+
+    # up to the 10,000 repeats this always read
+    linear_scan(run, 2_500)
     text = ("ordinary project notes and order 1234-5678. " * 10_000).strip()
-    started = time.monotonic()
-
     assert governance.mask(text) == (text, 0)
-    assert time.monotonic() - started < 2.0
 
 
-def test_detector_email_scan_resists_percent_repetition() -> None:
+def test_detector_email_scan_resists_percent_repetition(linear_scan) -> None:
+    def run(n):
+        governance.mask("%" * n)
+
+    # up to the 250,000 percent signs this always read
+    linear_scan(run, 62_500)
     text = "%" * 250_000
-    started = time.monotonic()
-
     assert governance.mask(text) == (text, 0)
-    assert time.monotonic() - started < 2.0
 
 
 @pytest.mark.parametrize(
@@ -222,16 +228,18 @@ def test_detector_email_scan_preserves_boundaries(text: str, expected: str | Non
         assert masked == text
 
 
-def test_detector_masks_finding_heavy_input_with_one_pass_render() -> None:
-    text = " ".join(f"person{index}@example.com" for index in range(5_000))
-    started = time.monotonic()
+def test_detector_masks_finding_heavy_input_with_one_pass_render(linear_scan) -> None:
+    def run(n):
+        governance.mask(" ".join(f"person{index}@example.com" for index in range(n)))
 
+    # up to the 5,000 addresses this always read
+    linear_scan(run, 1_250)
+    text = " ".join(f"person{index}@example.com" for index in range(5_000))
     masked, count = governance.mask(text)
 
     assert count == 5_000
     assert "@example.com" not in masked
     assert masked.count("[이메일]") == 5_000
-    assert time.monotonic() - started < 2.0
 
 
 @pytest.mark.parametrize(

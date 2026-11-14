@@ -5,8 +5,6 @@ English."""
 
 from __future__ import annotations
 
-import time
-
 import pytest
 
 from app.pipeline import revise_stages, save_stages
@@ -55,14 +53,16 @@ def test_a_slide_still_drawn_as_a_table_is_said_as_not_a_numbered_list():
     assert deck.unmet_asks(NUMBERED, "4장을 목록으로 바꿔줘") == []
 
 
-def test_the_figures_a_rewrite_left_out_are_found():
+def test_the_figures_a_rewrite_left_out_are_found(linear_scan):
     assert deck.lost_figures(SLIDES[3], STILL_TABLE, ASK) == ["64%", "91%"]
     assert deck.lost_figures(SLIDES[3], NUMBERED, ASK) == []
     # an ask that may take figures away
     assert deck.lost_figures(SLIDES[3], STILL_TABLE, "Shorten slide 4") == []
-    started = time.monotonic()
-    deck.lost_figures({"bullets": ["1" * 3 + " " * 50000 + "x"]}, {}, "")
-    assert time.monotonic() - started < 0.5
+    def run(n):
+        deck.lost_figures({"bullets": ["1" * 3 + " " * n + "x"]}, {}, "")
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
 
 
 def _bundle(typed: str):
