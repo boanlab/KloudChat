@@ -2101,33 +2101,13 @@ async def restore_artifact(
 async def delete_artifact(artifact_id: str, user: CurrentUser, db: DbSession,
                           request: Request = None):  # type: ignore[assignment]
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
-    blobs = await _artifact_blobs(db, [artifact])
+    blobs = await office_doc.kept_files(db, [artifact])
     await db.exec(delete(ArtifactVersion).where(ArtifactVersion.artifact_id == artifact.id))
     await db.delete(artifact)
     db.add(audit.deletion(user, request, action="artifact.delete", ids=[artifact.id],
                           counts={"artifacts": 1}, extra={"kind": str(artifact.kind)}))
     await db.commit()
-    _drop_blobs(blobs)
-
-
-async def _artifact_blobs(db: DbSession, rows: list[Artifact]) -> set[str]:
-    """The files an office document keeps, one per version (`office_doc`); a restored
-    version shares its key with the version it came from, so the keys are a set."""
-    office = [a.id for a in rows if a.kind in (ArtifactKind.hwp, ArtifactKind.docx,
-                                                 ArtifactKind.pptx)]
-    if not office:
-        return set()
-    keys = {a.storage_key for a in rows if a.id in office and a.storage_key}
-    keys |= {key for key in (await db.exec(
-        select(ArtifactVersion.storage_key).where(col(ArtifactVersion.artifact_id).in_(office))
-    )).all() if key}
-    return keys
-
-
-def _drop_blobs(keys: set[str]) -> None:
-    """After the commit: a failed delete leaves rows that still find their files."""
-    for key in keys:
-        file_service.delete_blob(key)
+    office_doc.drop_files(blobs)
 
 
 @router.post("/artifacts/delete")
@@ -2138,13 +2118,13 @@ async def delete_artifacts(payload: BulkDelete, user: CurrentUser, db: DbSession
     if not rows:
         return {"deleted": 0}
     ids = [row.id for row in rows]
-    blobs = await _artifact_blobs(db, list(rows))
+    blobs = await office_doc.kept_files(db, list(rows))
     await db.exec(delete(ArtifactVersion).where(col(ArtifactVersion.artifact_id).in_(ids)))
     await db.exec(delete(Artifact).where(col(Artifact.id).in_(ids)))
     db.add(audit.deletion(user, request, action="artifact.bulk_delete", ids=ids,
                           counts={"artifacts": len(ids)}))
     await db.commit()
-    _drop_blobs(blobs)
+    office_doc.drop_files(blobs)
     return {"deleted": len(ids)}
 
 

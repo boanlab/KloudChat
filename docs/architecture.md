@@ -3213,8 +3213,10 @@ deleted one left out). The rows are the artifacts themselves, not copies: they o
 editor they have in chat (`/s/{session}?artifact={id}`; an office document with no
 conversation joins a new chat, a web document with none opens on `/artifacts?open={id}`),
 download in their own format (the office file, Markdown, `.pptx`), and rename and delete
-through `PATCH`/`DELETE /artifacts/{id}`; deleting an office document also removes the file
-it keeps per version, after the commit. Uploaded office files stay in 올린 파일 as files; a
+through `PATCH`/`DELETE /artifacts/{id}`; deleting an office document, or the conversation
+that holds it (singly or in bulk), also removes the file it keeps per version, after the
+commit (`office_doc.kept_files`, `drop_files`); deleting an account with its files takes them
+with its directory, and one deleted with `purgeFiles=false` leaves them to the storage sweep. Uploaded office files stay in 올린 파일 as files; a
 copy opened from one for editing is the working document. Deleting
 the project drops the collection; `POST /projects/{id}/knowledge/reindex`
 backfills files uploaded before the index existed. The lexical shelf the tool

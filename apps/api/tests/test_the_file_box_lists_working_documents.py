@@ -61,7 +61,8 @@ async def stack(tmp_path, monkeypatch):
 
     start = utcnow() - timedelta(days=10)
     async with local() as db:
-        db.add_all([ME, User(id="other", email="o@example.test", name="남", password_hash="x")])
+        db.add_all([User(id="me", email="me@example.test", name="나", password_hash="x"),
+                    User(id="other", email="o@example.test", name="남", password_hash="x")])
         db.add(Project(id="p1", user_id="me", name="연수 준비", emoji="📚"))
         db.add(Project(id="p2", user_id="other", name="남의 프로젝트"))
         db.add(ChatSession(id="s1", user_id="me", title="공문 쓰기", project_id="p1"))
