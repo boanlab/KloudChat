@@ -678,6 +678,64 @@ notes on every slide") is a whole-deck
 pass whatever the planner picked (`revise.notes_everywhere`), and a notes-only
 rewrite (`revise.notes_only`) changes nothing on the slide but its notes.
 
+### Editing a web report: one Markdown document
+
+The web report is Markdown only. Precise formatting (fonts, colours, sizes, line
+spacing, alignment, merged cells) is what a report written as an HWP or Word file
+is for (`services/report_office.py`, edited in those editors); the web report keeps
+one Markdown document that both the person and the agent's chat edits change, so an
+edit by one never loses formatting the other cannot see.
+
+Storage stays `sections[]`, every one `format: "markdown"`. The editor
+(`components/report/DocumentEditor.tsx`, schema `reportSchema.ts`) is one
+Tiptap/ProseMirror document over the whole report: each section is a `##` heading
+(a level-2 section a `###`) that carries the section id as a node attribute, then
+its body, whose own headings sit one level below (`lib/reportDoc.ts` shifts them on
+the way in and out). Only what Markdown can write back exists in the schema:
+headings, bold, italic, strikethrough, inline code, links, bullet/numbered/task
+lists, quotes, GFM tables (a header row, no merges), pictures, code blocks, the
+drawn fences (mermaid, chart, kpi, steps, cards, callout; shown drawn, edited as
+text), rules, page breaks (`<!-- pagebreak -->`), and `[n]` citations and `[빈칸]`
+blanks as plain text. Selecting, deleting and merging across a section boundary
+works because it is one document; typing a new `##` heading starts a section.
+The edit view does not guess where pages break: the only page marks there are the
+person's own breaks, drawn as a labelled 「쪽 나누기」 line. Exact pages and page
+counts are the page view's (Paged.js) and the exported files'.
+
+On save the document is serialised (`blocksToMarkdown`, minimal escaping so `[1]`
+and `[담당자]` stay as typed) and split at its section headings (`docToSections`).
+A section keeps its id, and with it its diagrams and other fields, wherever it moved;
+a heading split or pasted twice gets a new id (`SectionIds` keeps them unique); a
+deleted heading's body joins the section above. A section whose text the editor did
+not change keeps its stored Markdown byte for byte; one whose text changed loses its
+fact-check (its verdicts point at sentences that are gone; 검토 runs it again). The
+server drops it too when a PATCH changes a section's text. 「Markdown 원문」 shows the
+same document as Markdown text (`# 제목` first); reading it back matches sections by
+heading, then by place, so inserting or moving a section shifts no other id. One
+undo history covers the whole document; find and replace runs in document order
+from the caret, across marks, through headings and the title, and a replace-all is
+one undo step.
+
+The server stores nothing else: `PATCH`, create and restore convert an HTML section
+(an older client, an HTML-era version, a template's block, an imported `.hwpx`)
+through `design_templates.sanitise` and `richtext.to_markdown` (`markdown_section`),
+dropping its styling and the rows a merge covered. Migration `0082` did the same to
+every stored report with an HTML section, keeping the data before it as a version
+(「Markdown 전환 전」). The exporters read Markdown only (bold, italic and
+strikethrough as runs; quotes, rules and task boxes as text).
+
+The panel follows the shared document-panel chrome (`components/document/DocumentChrome.tsx`,
+also the office panels'): title · vN · 「저장 안 됨」 · 저장 (Ctrl+S) · 내려받기 · 공유 ·
+더보기 · expand · close; hand edits stay in the browser until 저장, which is
+conditional on the version the editor started from (a lost race shows 「내 편집
+내려받기」 / 「최신 판 불러오기」); the report registers with `lib/officeGuard.ts`, so a
+chat turn, closing, another artifact or a reload asks 저장 / 버리기 / 취소 first;
+the editor is locked while the agent works and reloads on its version (a version
+that arrives under unsaved edits waits behind the notice). A phone reads only. The
+report's ribbon is the Word editor's: 홈 · 삽입 · 레이아웃 · 검토 · 보기 with group
+captions and tall labelled buttons (`ArtifactRibbon look="word"`; the deck keeps its
+compact ribbon).
+
 ### Templates
 
 A template is a document or deck structure the model writes into; a theme
@@ -1794,7 +1852,7 @@ every version and a restore keeps it, so no migration is needed.
 first, and the preview offers the newest whose chat still exists
 (「이어서 편집」) before 「새 사본으로 편집」 makes another. On a phone the
 preview, like the editors, only reads. The `.hwpx` 「문서로 열기」 in a chat
-(`POST /files/{id}/open-as-document`, an HTML report session) is unchanged.
+(`POST /files/{id}/open-as-document`) opens a web report, stored as Markdown.
 
 ### Unsaved office edits, phones, sharing
 
@@ -2756,7 +2814,7 @@ apps/web/src/
                 layout · ui
   store/        useStore.ts — a single zustand store
   lib/          api.ts (the backend seam) · kinds.ts · i18n.ts · useT.ts ·
-                reportMarkdown.ts · mermaid.ts · shortcuts.ts
+                reportDoc.ts · mermaid.ts · shortcuts.ts
 ```
 
 **The store has an epoch guard.** Every action that writes to the workspace

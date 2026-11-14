@@ -1,9 +1,5 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
-import { writeFile } from 'node:fs/promises'
 import style from './fixtures/report-table-style.json' with { type: 'json' }
-import expectedMerged from './fixtures/report-table-merged.json' with { type: 'json' }
-import expectedSplit from './fixtures/report-table-split.json' with { type: 'json' }
-import expectedFullWidth from './fixtures/report-table-full-width-merged.json' with { type: 'json' }
 import { shellRead } from './shell-mocks'
 
 test.use({ serviceWorkers: 'block' })
@@ -11,7 +7,8 @@ test.use({ serviceWorkers: 'block' })
 const sessionId = '11111111111111111111111111111111'
 const artifactId = '22222222222222222222222222222222'
 const at = '2026-09-12T00:00:00.000Z'
-const original = '<table><tbody><tr><th><p>Item</p></th><th><p>Value</p></th><th><p>Owner</p></th></tr><tr><td><p>Alpha</p></td><td><p>10</p></td><td><p>A</p></td></tr><tr><td><p>Beta</p></td><td><p>20</p></td><td><p>B</p></td></tr></tbody></table>'
+// A GFM table: the web report is Markdown, so a table has a header row and no merged cells.
+const original = '| Item | Value | Owner |\n| --- | --- | --- |\n| Alpha | 10 | A |\n| Beta | 20 | B |'
 
 async function fixture(page: Page, testInfo: TestInfo) {
   const origin = new URL(String(testInfo.project.use.baseURL)).origin
@@ -22,7 +19,7 @@ async function fixture(page: Page, testInfo: TestInfo) {
     id: artifactId, title: 'Table roundtrip', kind: 'report', version: 1, partial: false,
     sessionId, projectId: null, createdAt: at, updatedAt: at,
     data: { kind: 'report', title: 'Table roundtrip', sources: [],
-      sections: [{ id: 'table-section', heading: 'Comparison', content: original, format: 'html', status: 'done' }] },
+      sections: [{ id: 'table-section', heading: 'Comparison', content: original, level: 1, status: 'done' }] },
   }
   const session = { id: sessionId, title: artifact.title, kind: 'report', model: 'fixture/base', routingMode: 'manual',
     projectId: null, agentId: null, artifactId, pinned: false, messages: [], messageCount: 0,
@@ -75,12 +72,6 @@ async function fixture(page: Page, testInfo: TestInfo) {
   return { unexpected, writes, stored: () => structuredClone(artifact) }
 }
 
-/** Report data with tiptap's default `colspan="1" rowspan="1"` dropped: older tiptap writes them, 3.31 does not, and both mean one cell. */
-function spans(data: unknown): unknown {
-  return JSON.parse(JSON.stringify(data, (key, value) =>
-    key === 'content' && typeof value === 'string' ? value.replace(/\s(?:colspan|rowspan)="1"/g, '') : value))
-}
-
 async function enterEditor(page: Page) {
   // 「편집」 in the panel header opens the page editor and the editing tabs.
   await page.locator('[data-panel="artifact"] header').getByRole('button', { name: '편집', exact: true }).click()
@@ -90,179 +81,126 @@ async function enterEditor(page: Page) {
 async function save(page: Page) {
   const button = page.getByRole('button', { name: '저장', exact: true })
   await button.click()
-  await expect(button).toBeHidden()
+  await expect(button).toBeDisabled()
 }
 
-async function captureReport(testInfo: TestInfo, name: string, data: unknown) {
-  const path = testInfo.outputPath(name)
-  await writeFile(path, JSON.stringify(data, null, 2))
-  await testInfo.attach(name, { path, contentType: 'application/json' })
-}
+const tableOf = (state: { stored: () => { data: { sections: { content: string }[] } } }) =>
+  state.stored().data.sections[0].content
 
-async function captureScreenshot(page: Page, testInfo: TestInfo, name: string) {
-  const path = testInfo.outputPath(name)
-  await page.screenshot({ path })
-  await testInfo.attach(name, { path, contentType: 'image/png' })
-}
-
-for (const width of [1440, 390]) {
-  test(`restoring the original header row saves the visible table at ${width}px`, async ({ page }, testInfo) => {
-    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
-    const state = await fixture(page, testInfo)
-    await enterEditor(page)
-    const editor = page.locator('.ProseMirror').first()
-    await expect(editor.locator('th')).toHaveCount(3)
-    await editor.locator('th').first().click()
-    const header = page.getByRole('button', { name: '첫 행을 머리글로 전환', exact: true })
-    await header.click()
-    await expect(editor.locator('th')).toHaveCount(0)
-    await header.click()
-    await expect(editor.locator('th')).toHaveCount(3)
-    await save(page)
-    await page.reload()
-    await enterEditor(page)
-    await expect(page.locator('.ProseMirror').first().locator('th')).toHaveCount(3)
-    await page.locator('.ProseMirror').first().locator('th').first().click()
-    await captureScreenshot(page, testInfo, `restored-header-${width}.png`)
-    expect(state.writes).toHaveLength(1)
-    expect(state.unexpected).toEqual([])
-  })
-}
+test('a row added in the editor is saved as a Markdown table row', async ({ page }, testInfo) => {
+  const state = await fixture(page, testInfo)
+  await enterEditor(page)
+  const editor = page.locator('.ProseMirror').first()
+  await expect(editor.locator('th')).toHaveCount(3)
+  await editor.locator('td').filter({ hasText: 'Beta' }).click()
+  await page.getByRole('tab', { name: '삽입' }).click()
+  await page.getByRole('button', { name: '아래에 행 추가', exact: true }).click()
+  await expect(editor.locator('tr')).toHaveCount(4)
+  await editor.locator('tr').nth(3).locator('td').first().click()
+  await page.keyboard.type('Gamma')
+  await save(page)
+  expect(tableOf(state)).toBe(`${original}\n| Gamma |  |  |`)
+  await page.reload()
+  await enterEditor(page)
+  await expect(page.locator('.ProseMirror').first().locator('tr')).toHaveCount(4)
+  expect(state.writes).toHaveLength(1)
+  expect(state.unexpected).toEqual([])
+})
 
 test('opening and focusing a table does not offer a phantom save', async ({ page }, testInfo) => {
   const state = await fixture(page, testInfo)
   await enterEditor(page)
   await page.locator('.ProseMirror').first().locator('th').first().click()
-  await expect(page.getByRole('button', { name: '저장', exact: true })).toBeHidden()
-  await page.reload()
-  await enterEditor(page)
-  await expect(page.getByRole('button', { name: '저장', exact: true })).toBeHidden()
+  await expect(page.getByRole('button', { name: '저장', exact: true })).toBeDisabled()
   expect(state.writes).toEqual([])
   expect(state.unexpected).toEqual([])
 })
 
 for (const redo of [false, true]) {
-  test(`header undo${redo ? ' and redo' : ''} survives save and reload`, async ({ page }, testInfo) => {
+  test(`row undo${redo ? ' and redo' : ''} survives save and reload`, async ({ page }, testInfo) => {
     const state = await fixture(page, testInfo)
     await enterEditor(page)
     const editor = page.locator('.ProseMirror').first()
-    await editor.locator('th').first().click()
-    await page.getByRole('button', { name: '첫 행을 머리글로 전환', exact: true }).click()
-    await expect(editor.locator('th')).toHaveCount(0)
+    await editor.locator('td').filter({ hasText: 'Alpha' }).click()
+    await page.getByRole('tab', { name: '삽입' }).click()
+    await page.getByRole('button', { name: '현재 행 삭제', exact: true }).click()
+    await expect(editor.locator('tr')).toHaveCount(2)
+    await page.getByRole('tab', { name: '홈' }).click()
     await page.getByRole('button', { name: '실행 취소', exact: true }).click()
-    await expect(editor.locator('th')).toHaveCount(3)
+    await expect(editor.locator('tr')).toHaveCount(3)
     if (redo) {
       await page.getByRole('button', { name: '다시 실행', exact: true }).click()
-      await expect(editor.locator('th')).toHaveCount(0)
+      await expect(editor.locator('tr')).toHaveCount(2)
+      await save(page)
+      expect(tableOf(state)).toBe('| Item | Value | Owner |\n| --- | --- | --- |\n| Beta | 20 | B |')
+    } else {
+      // Back where it started: nothing to save.
+      await expect(page.getByRole('button', { name: '저장', exact: true })).toBeDisabled()
     }
-    await save(page)
     await page.reload()
     await enterEditor(page)
-    await expect(editor.locator('th')).toHaveCount(redo ? 0 : 3)
-    expect(state.writes).toHaveLength(1)
+    await expect(page.locator('.ProseMirror').first().locator('tr')).toHaveCount(redo ? 2 : 3)
+    expect(state.writes).toHaveLength(redo ? 1 : 0)
     expect(state.unexpected).toEqual([])
   })
 }
 
-for (const width of [1440, 390]) {
-  test(`merged and split cells retain their text and spans at ${width}px`, async ({ page }, testInfo) => {
-    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
-    const state = await fixture(page, testInfo)
-    await enterEditor(page)
-    const editor = page.locator('.ProseMirror').first()
-    const rows = editor.locator('tr')
-    // Shift-click is ProseMirror's native rectangular cell selection, not injected editor state.
-    await rows.nth(1).locator('td').nth(0).click()
-    await rows.nth(2).locator('td').nth(1).click({ modifiers: ['Shift'] })
-    await expect(editor.locator('.selectedCell')).toHaveCount(4)
-    await page.getByRole('button', { name: '선택한 셀 병합', exact: true }).click()
-    const merged = editor.locator('td[colspan="2"][rowspan="2"]')
-    await expect(merged).toHaveCount(1)
-    await expect(merged.locator('p')).toHaveText(['Alpha', '10', 'Beta', '20'])
-    await save(page)
-    const storedMerged = state.stored()
-    expect(spans(storedMerged.data)).toEqual(spans(expectedMerged))
-    await captureReport(testInfo, 'merged-report.json', storedMerged.data)
-    await page.reload()
-    await enterEditor(page)
-    await expect(merged).toHaveCount(1)
-    await expect(merged.locator('p')).toHaveText(['Alpha', '10', 'Beta', '20'])
-    await merged.click()
-    await captureScreenshot(page, testInfo, `merged-${width}.png`)
-    await page.getByRole('button', { name: '셀 나누기', exact: true }).click()
-    await expect(merged).toHaveCount(0)
-    await expect(editor.locator('td')).toHaveCount(6)
-    await expect(rows.nth(1).locator('td').first().locator('p')).toHaveText(['Alpha', '10', 'Beta', '20'])
-    await save(page)
-    expect(spans(state.stored().data)).toEqual(spans(expectedSplit))
-    await captureReport(testInfo, 'split-report.json', state.stored().data)
-    await page.reload()
-    await enterEditor(page)
-    await expect(editor.locator('td')).toHaveCount(6)
-    await expect(rows.nth(1).locator('td').first().locator('p')).toHaveText(['Alpha', '10', 'Beta', '20'])
-    await expect(rows.nth(1).locator('td').nth(2)).toHaveText('A')
-    await expect(rows.nth(2).locator('td').nth(2)).toHaveText('B')
-    await rows.nth(1).locator('td').first().click()
-    await captureScreenshot(page, testInfo, `split-${width}.png`)
-    expect(state.writes).toHaveLength(2)
-    expect(state.unexpected).toEqual([])
-  })
-}
-
-test('a full-width vertical merge keeps the covered final row on reload', async ({ page }, testInfo) => {
+test('a table offers no merged cells: Markdown has none', async ({ page }, testInfo) => {
   const state = await fixture(page, testInfo)
   await enterEditor(page)
-  const editor = page.locator('.ProseMirror').first()
-  await editor.locator('tr').nth(1).locator('td').first().click()
-  await editor.locator('tr').nth(2).locator('td').last().click({ modifiers: ['Shift'] })
-  await expect(editor.locator('.selectedCell')).toHaveCount(6)
-  await page.getByRole('button', { name: '선택한 셀 병합', exact: true }).click()
-  await expect(editor.locator('td[colspan="3"][rowspan="2"]')).toHaveCount(1)
-  await save(page)
-  expect(spans(state.stored().data)).toEqual(spans(expectedFullWidth))
-  await captureReport(testInfo, 'full-width-merged-report.json', state.stored().data)
-  await page.reload()
-  await enterEditor(page)
-  await expect(editor.locator('td[colspan="3"][rowspan="2"]')).toHaveCount(1)
-  await expect(editor.locator('tr')).toHaveCount(3)
+  await page.locator('.ProseMirror').first().locator('td').first().click()
+  await page.getByRole('tab', { name: '삽입' }).click()
+  await expect(page.getByRole('button', { name: '아래에 행 추가', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '선택한 셀 병합' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '셀 나누기' })).toHaveCount(0)
   expect(state.unexpected).toEqual([])
 })
 
-for (const field of ['title', 'heading'] as const) {
-  test(`restoring the original ${field} survives save and reload`, async ({ page }, testInfo) => {
-    const state = await fixture(page, testInfo)
-    await enterEditor(page)
-    const line = page.locator(`${field === 'title' ? 'h1' : 'h2'}[contenteditable="true"]`).first()
-    const initial = field === 'title' ? 'Table roundtrip' : 'Comparison'
-    await line.fill('Changed text')
-    await line.press('Enter')
-    await line.fill(initial)
-    await line.press('Enter')
-    await expect(line).toHaveText(initial)
-    await save(page)
-    await page.reload()
-    await enterEditor(page)
-    await expect(line).toHaveText(initial)
-    expect(state.writes).toHaveLength(1)
-    expect(state.unexpected).toEqual([])
-  })
+test('restoring the original title survives save and reload', async ({ page }, testInfo) => {
+  const state = await fixture(page, testInfo)
+  await enterEditor(page)
+  const line = page.locator('h1[contenteditable="true"]').first()
+  await line.fill('Changed text')
+  await line.press('Enter')
+  await line.fill('Table roundtrip')
+  await line.press('Enter')
+  await expect(line).toHaveText('Table roundtrip')
+  await save(page)
+  await page.reload()
+  await enterEditor(page)
+  await expect(line).toHaveText('Table roundtrip')
+  expect(state.writes).toHaveLength(1)
+  expect(state.unexpected).toEqual([])
+})
 
-  test(`empty or cancelled ${field} edits do not overwrite the accepted value`, async ({ page }, testInfo) => {
-    const state = await fixture(page, testInfo)
-    await enterEditor(page)
-    const line = page.locator(`${field === 'title' ? 'h1' : 'h2'}[contenteditable="true"]`).first()
-    await line.fill('Accepted text')
-    await line.press('Enter')
-    await line.fill('Cancelled text')
-    await line.press('Escape')
-    await expect(line).toHaveText('Accepted text')
-    await line.fill('   ')
-    await line.press('Enter')
-    await save(page)
-    await page.reload()
-    await enterEditor(page)
-    await expect(line).toHaveText('Accepted text')
-    expect(state.writes).toHaveLength(1)
-    expect(state.unexpected).toEqual([])
-  })
-}
+test('empty or cancelled title edits do not overwrite the accepted value', async ({ page }, testInfo) => {
+  const state = await fixture(page, testInfo)
+  await enterEditor(page)
+  const line = page.locator('h1[contenteditable="true"]').first()
+  await line.fill('Accepted text')
+  await line.press('Enter')
+  await line.fill('Cancelled text')
+  await line.press('Escape')
+  await expect(line).toHaveText('Accepted text')
+  await line.fill('   ')
+  await line.press('Enter')
+  await save(page)
+  await page.reload()
+  await enterEditor(page)
+  await expect(line).toHaveText('Accepted text')
+  expect(state.writes).toHaveLength(1)
+  expect(state.unexpected).toEqual([])
+})
+
+test('a section heading renamed in the editor is saved with its id', async ({ page }, testInfo) => {
+  const state = await fixture(page, testInfo)
+  await enterEditor(page)
+  const heading = page.locator('.ProseMirror').first().getByRole('heading', { name: 'Comparison' })
+  await heading.click()
+  await page.keyboard.press('End')
+  await page.keyboard.type(' table')
+  await save(page)
+  const saved = state.stored().data.sections[0] as { id: string; heading: string; content: string }
+  expect([saved.id, saved.heading, saved.content]).toEqual(['table-section', 'Comparison table', original])
+  expect(state.unexpected).toEqual([])
+})

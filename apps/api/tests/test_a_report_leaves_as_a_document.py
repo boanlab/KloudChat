@@ -189,13 +189,13 @@ def test_pdf_page_total_is_the_actual_final_count():
         assert f"{number} / {len(pages)}" in (page.extract_text() or "")
 
 
-def test_a_manual_page_break_survives_html_and_all_three_document_formats():
+def test_a_manual_page_break_survives_markdown_and_all_three_document_formats():
     html = (
         '<p>첫 쪽의 마지막 문단</p>'
         '<div data-page-break="true" class="page-break"></div>'
         '<p>둘째 쪽의 첫 문단</p>'
     )
-    clean = design_templates.sanitise(html, editable_styles=True)
+    clean = design_templates.sanitise(html)
     assert 'data-page-break="true"' in clean
     markdown = richtext.to_markdown(clean)
     assert "<!-- pagebreak -->" in markdown
@@ -272,7 +272,29 @@ def test_hwpx_page_furniture_is_editable_and_uses_a_live_page_number():
     assert "사업 검토 자료" in body
     assert '<hp:footer id="10002" applyPageType="BOTH">' in body
     assert "기획조정실" in body
+    # 「현재 / 전체」: a live page number and a live page count, not the page twice
+    assert '<hp:autoNum num="1" numType="PAGE">' in body
+    assert '<hp:autoNum num="1" numType="TOTAL_PAGE">' in body
+    assert "<hp:pageNum" not in body
+
+
+def test_hwpx_current_page_alone_uses_the_page_number_control():
+    body = zipfile.ZipFile(io.BytesIO(report_export.to_hwpx(
+        "제출 보고서", SECTIONS, page_settings={"pageNumbers": "page"},
+    ))).read("Contents/section0.xml").decode()
     assert '<hp:pageNum pos="BOTTOM_RIGHT" formatType="DIGIT"' in body
+    assert "TOTAL_PAGE" not in body
+
+
+def test_a_header_cleared_on_purpose_stays_empty():
+    cleared = zipfile.ZipFile(io.BytesIO(report_export.to_hwpx(
+        "제출 보고서", SECTIONS, page_settings={"header": "", "pageNumbers": "none"},
+    ))).read("Contents/section0.xml").decode()
+    assert "<hp:header " not in cleared
+    default = zipfile.ZipFile(io.BytesIO(report_export.to_hwpx(
+        "제출 보고서", SECTIONS, page_settings={"pageNumbers": "none"},
+    ))).read("Contents/section0.xml").decode()
+    assert '<hp:header id="10001"' in default
 
 
 def test_every_border_the_cells_point_at_is_defined():

@@ -49,9 +49,10 @@ def numbering_css(numbering: str) -> str:
         f"{off}\n"
         ".fmt :is(h1, h2, h3, h4, h5, h6)[data-num]::before { content: attr(data-num) !important; "
         "margin-right: 0.45em; }\n"
-        ".fmt :is(.tb-counted, .ProseMirror) :is(h2, h3, h4, h5, h6):not(.callout *, .cards *) "
-        "{ counter-increment: tbb; }\n"
-        ".fmt :is(.tb-counted, .ProseMirror) :is(h2, h3, h4, h5, h6):not(.callout *, .cards *)"
+        ".fmt :is(.tb-counted, .ProseMirror) :is(h2, h3, h4, h5, h6)"
+        ":not(.callout *, .cards *, [data-section-id]) { counter-increment: tbb; }\n"
+        ".fmt :is(.tb-counted, .ProseMirror) :is(h2, h3, h4, h5, h6)"
+        ":not(.callout *, .cards *, [data-section-id])"
         f"::before {{ content: {_CONTENT_NUMBER[numbering]} !important; margin-right: 0.45em; }}"
     )
 

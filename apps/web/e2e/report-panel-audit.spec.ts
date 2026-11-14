@@ -81,7 +81,7 @@ async function fixture(page: Page, testInfo: TestInfo, options: Options = {}) {
 const panel = (page: Page) => page.locator('[data-panel="artifact"]')
 const tab = (page: Page, name: string) => panel(page).getByRole('tab', { name, exact: true })
 /** The editing tabs; reading has none. */
-const TABS = ['글자', '삽입', '테마', '검토']
+const TABS = ['홈', '삽입', '레이아웃', '검토', '보기']
 const editToggle = (page: Page) => panel(page).locator('header').getByRole('button', { name: '편집', exact: true })
 async function editMode(page: Page, on = true) {
   const pressed = (await editToggle(page).getAttribute('aria-pressed')) === 'true'
@@ -197,7 +197,7 @@ test('flows: views round-trip and every panel belongs to its tab', async ({ page
   await shot('back-to-web-2')
 
   await editMode(page)
-  await tab(page, '테마').click()
+  await tab(page, '레이아웃').click()
   await homeButton(page, '페이지 설정').click()
   await page.waitForTimeout(500)
   await homeButton(page, '웹뷰').click()
@@ -207,23 +207,23 @@ test('flows: views round-trip and every panel belongs to its tab', async ({ page
   // A panel opened from a tab closes when another tab is chosen.
   const settingsField = panel(page).getByText('머리말', { exact: true })
   await editMode(page)
-  await tab(page, '테마').click()
+  await tab(page, '레이아웃').click()
   await homeButton(page, '페이지 설정').click()
-  for (const other of ['글자', '삽입', '검토']) {
+  for (const other of ['홈', '삽입', '검토', '보기']) {
     await tab(page, other).click()
     await page.waitForTimeout(300)
     await check(`page settings hidden on ${other}`, async () => !(await settingsField.isVisible()))
   }
-  await tab(page, '테마').click()
+  await tab(page, '레이아웃').click()
   await page.waitForTimeout(300)
-  await check('page settings closed when coming back to 테마', async () => !(await settingsField.isVisible()))
+  await check('page settings closed when coming back to 레이아웃', async () => !(await settingsField.isVisible()))
 
   await tab(page, '검토').click()
   await panel(page).locator('header').getByRole('button', { name: /출처 \d/ }).click()
   await page.waitForTimeout(400)
   const sourcesPane = panel(page).getByRole('heading', { name: '참고문헌' })
   await check('sources pane opens from 검토', async () => sourcesPane.isVisible())
-  for (const other of ['글자', '삽입', '테마']) {
+  for (const other of ['홈', '삽입', '레이아웃', '보기']) {
     await tab(page, '검토').click()
     if (!(await sourcesPane.isVisible())) await panel(page).locator('header').getByRole('button', { name: /출처 \d/ }).click()
     await tab(page, other).click()
@@ -263,7 +263,7 @@ test('flows: views round-trip and every panel belongs to its tab', async ({ page
   await check('table of contents closed on 편집', async () => !(await toc.isVisible()))
   await shot('toc-after-edit')
   // Menus close when their tab is left.
-  await tab(page, '테마').click()
+  await tab(page, '레이아웃').click()
   await panel(page).locator('header').getByRole('button', { name: /강조색/ }).click()
   await tab(page, '검토').click()
   await page.waitForTimeout(300)
@@ -306,7 +306,7 @@ test('errors: every failure says so in place, aligned, and can be left', async (
   })
   // Save failure: change the accent while writes fail.
   await editMode(page)
-  await tab(page, '테마').click()
+  await tab(page, '레이아웃').click()
   await panel(page).locator('header').getByRole('button', { name: /강조색/ }).click()
   await page.locator('[role="menu"]:visible').getByText('파랑', { exact: true }).click()
   const saveError = panel(page).locator('[role="alert"] p').first()
@@ -436,11 +436,10 @@ test.describe('phone width', () => {
     const state = await fixture(page, testInfo)
     const { failures, check } = checker()
     const shots = testInfo.outputPath('phone')
-    for (const name of ['읽기', ...TABS]) {
-      if (name !== '읽기') {
-        await editMode(page)
-        await tab(page, name).click()
-      }
+    // A phone reads the report (as every document panel); the agent edits it.
+    await expect(page.getByTestId('report-read-only')).toBeVisible()
+    await expect(editToggle(page)).toHaveCount(0)
+    for (const name of ['읽기']) {
       await page.waitForTimeout(500)
       await page.screenshot({ path: `${shots}/${name}.png` })
       await check(`${name}: the ribbon takes under a fifth of the screen`, async () => {

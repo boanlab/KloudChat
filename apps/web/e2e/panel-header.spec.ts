@@ -52,7 +52,13 @@ test('report: reading shows no ribbon and downloads from the header', { tag: '@p
   await expect(panel(page).getByRole('tablist')).toHaveCount(0)
   await fitsOneRow(page)
   await shot(page, 'report-reading', viewport(testInfo))
-  await keepsWords(page, ['내려받기', '편집'])
+  if (viewport(testInfo) === 'phone') {
+    // A phone reads the report, as it reads every document; the agent edits it.
+    await expect(page.getByTestId('report-read-only')).toBeVisible()
+    await expect(header(page).getByRole('button', { name: '편집', exact: true })).toHaveCount(0)
+  } else {
+    await keepsWords(page, ['내려받기', '편집'])
+  }
 
   const download = header(page).getByRole('button', { name: '내려받기' })
   await expect(download).toBeInViewport()
@@ -85,14 +91,14 @@ test('report: ⋯ holds the views it folded, the contents, versions and reuse', 
   await expect(page.getByRole('dialog', { name: '버전 기록' })).toBeVisible()
 })
 
-test('report: 편집 opens the editing tabs; 테마 holds the look, 강조색, 템플릿 and the page', async ({ page }, testInfo) => {
+test('report: 편집 opens the editing tabs; 레이아웃 holds the look, 강조색, 템플릿 and the page', async ({ page }, testInfo) => {
   await resultsFixture(page, testInfo)
   await open(page, reportSession)
   await header(page).getByRole('button', { name: '편집', exact: true }).click()
-  expect(await tabs(page)).toEqual(['글자', '삽입', '테마', '검토'])
-  await expect(panel(page).getByRole('tab', { name: '글자' })).toHaveAttribute('aria-selected', 'true')
+  expect(await tabs(page)).toEqual(['홈', '삽입', '레이아웃', '검토', '보기'])
+  await expect(panel(page).getByRole('tab', { name: '홈' })).toHaveAttribute('aria-selected', 'true')
   await shot(page, 'report-editing', viewport(testInfo))
-  await panel(page).getByRole('tab', { name: '테마' }).click()
+  await panel(page).getByRole('tab', { name: '레이아웃' }).click()
   await expect(header(page).getByRole('button', { name: '문서 테마 고르기' })).toBeVisible()
   await expect(header(page).getByRole('button', { name: '강조색 고르기' })).toBeVisible()
   await expect(header(page).getByRole('button', { name: '페이지 설정' })).toBeVisible()

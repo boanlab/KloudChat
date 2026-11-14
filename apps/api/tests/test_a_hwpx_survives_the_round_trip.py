@@ -1,4 +1,7 @@
-"""A .hwpx keeps its structure (title, headings, tables, lists) across import/export round trips."""
+"""A .hwpx keeps its structure (title, headings, tables, lists) across import/export round trips.
+
+An imported document is stored as Markdown like every web report: merged cells are flattened
+(their text kept) on the way in; after that, trips change nothing."""
 
 from __future__ import annotations
 
@@ -85,12 +88,19 @@ def _trip(title: str, parts: list[hwpx_import.Section]) -> hwpx_import.Document:
         }
         for index, part in enumerate(parts)
     ]
-    return hwpx_import.read(report_export.to_hwpx(title, richtext.normalise(sections)))
+    # stored as the web report stores it: Markdown
+    stored = [richtext.markdown_section(section) for section in sections]
+    return hwpx_import.read(report_export.to_hwpx(title, richtext.normalise(stored)))
+
+
+def _opened() -> tuple[str, list[hwpx_import.Section]]:
+    document = hwpx_import.read(_DOCUMENT)
+    return document.title, document.sections
 
 
 def test_three_trips_change_nothing() -> None:
-    """Three round trips leave the document shape unchanged."""
-    first = hwpx_import.read(_DOCUMENT)
+    """After the first trip (merges flattened) more trips leave the document shape unchanged."""
+    first = _trip(*_opened())
     before = hwpx_import.shape(first.sections)
 
     document = first
@@ -124,18 +134,17 @@ def test_a_korean_date_keeps_its_apostrophe() -> None:
     assert any("`26년" in item for item in items)
 
 
-def test_a_merged_cell_is_still_merged_on_the_other_side() -> None:
-    """Column/row spans and in-cell line breaks survive the round trip."""
-    opened = hwpx_import.read(_DOCUMENT)
-    trip = _trip(opened.title, opened.sections)
+def test_a_merged_cell_keeps_its_text_but_not_its_span() -> None:
+    """Markdown tables hold no merges: spans are flattened; text and in-cell breaks stay."""
+    trip = _trip(*_opened())
 
     tables = hwpx_import.shape(trip.sections)["tables"]
     merged = next(t for t in tables if any(c[0].startswith("1. 단과대학") for r in t for c in r))
-    assert merged[0][0] == ("1. 단과대학별 AI-PD", 3, 1)
-    assert merged[1][0] == ("죽전", 1, 2)
-    # The row under a vertical merge holds three cells, not four.
-    assert [c[0] for c in merged[2]] == ["공과대학", "2명", "-"]
-    assert merged[1][3][0] == "1학기 위촉\n2학기 재위촉"
+    assert merged[0][0] == ("1. 단과대학별 AI-PD", 1, 1)
+    assert all(cell[1:] == (1, 1) for row in merged for cell in row)
+    texts = [c[0] for row in merged for c in row]
+    for text in ("죽전", "SW융합대학", "공과대학", "2명", "1학기 위촉\n2학기 재위촉"):
+        assert text in texts
 
 
 def test_two_tables_written_back_to_back_stay_two() -> None:

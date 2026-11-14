@@ -84,20 +84,6 @@ _ALLOWED_ATTRIBUTES = {
     "th": {"colspan", "rowspan"},
 }
 
-#: User-editable declarations; no layout properties (seed owns layout).
-_EDITABLE_STYLE = {
-    "font-size",
-    "font-family",
-    "font-weight",
-    "font-style",
-    "text-align",
-    "text-decoration",
-    "color",
-    "background-color",
-    "line-height",
-}
-#: No parentheses in value: blocks `url(`, `expression(`, `calc(`. Security invariant.
-_DECLARATION = re.compile(r"^\s*([a-z-]{2,20})\s*:\s*([A-Za-z0-9 ,.%#'\"_-]{1,120})\s*$")
 #: `<code>` contents escaped before tag rules; closing tag required.
 _CODE = re.compile(r"(<code\b[^>]*>)(.*?)</code\s*>", re.S | re.I)
 _BARE_AMP = re.compile(r"&(?!#?\w{1,32};)")
@@ -581,37 +567,13 @@ def _without_layout_preamble(fragment: str, layouts: Sequence[str]) -> str:
         return text
 
 
-def _editable_style(raw: str) -> str:
-    """`style=` reduced to allowed declarations; empty when none qualify."""
-    kept = []
-    for part in raw.split(";"):
-        if not part.strip():
-            continue
-        # picked colours `rgb(r, g, b)` → hex
-        colour = re.fullmatch(
-            r"\s*(color|background-color)\s*:\s*rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)\s*",
-            part,
-            re.I,
-        )
-        if colour:
-            channels = [int(colour.group(index)) for index in (2, 3, 4)]
-            if any(channel > 255 for channel in channels):
-                continue
-            hexed = "".join(f"{channel:02x}" for channel in channels)
-            part = f"{colour.group(1).lower()}: #{hexed}"
-        found = _DECLARATION.match(part)
-        if found and found.group(1).lower() in _EDITABLE_STYLE:
-            kept.append(f"{found.group(1).lower()}: {found.group(2).strip()}")
-    return "; ".join(kept)
-
-
-def sanitise(fragment: str, layouts: Sequence[str] = (), *, editable_styles: bool = False) -> str:
+def sanitise(fragment: str, layouts: Sequence[str] = ()) -> str:
     """Authored HTML reduced to what the seed styles (nh3, allow lists); safe outside sandbox."""
     text = _CODE.sub(_quoted_code, _without_layout_preamble(_unwrapped(fragment), layouts))
 
     def attribute(element: str, name: str, value: str) -> str | None:
         if name == "style":
-            return (_editable_style(value) if editable_styles else "") or None
+            return None
         if name == "src":
             # no `href`; `src` only for embedded pictures
             return value if pictures.is_embedded(value) else None

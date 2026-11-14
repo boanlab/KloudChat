@@ -98,11 +98,12 @@ for (const [head, block] of Object.entries(blocks)) {
       await expect(input).toHaveValue(value)
       if (!value) await expect(input).toHaveAttribute('placeholder', `[${label}]`)
     }
-    const first = page.locator('.report-page-shell section').first().locator('h2').first()
+    // One editor over the report: section headings carry their ids.
+    const first = page.locator('.report-page-shell .ProseMirror h2[data-section-id]').first()
     const expected = { decimal: '1.', roman: 'I.', official: '1.', korean: '1.', none: null }[block.numbering]
     if (expected) await expect(first).toHaveAttribute('data-num', expected)
     else await expect(first).not.toHaveAttribute('data-num', /./)
-    const sub = page.locator('.report-page-shell .ProseMirror').locator('h2, h3, h4').first()
+    const sub = page.locator('.report-page-shell .ProseMirror').locator(':is(h2, h3, h4):not([data-section-id])').first()
     const before = await sub.evaluate((node) => getComputedStyle(node, '::before').content)
     const want = { decimal: 'counter(tba)', roman: 'upper-alpha', official: 'hangul', korean: 'hangul', none: 'none' }[block.numbering]
     expect(before.startsWith(want) || before.includes(want)).toBeTruthy()
@@ -117,7 +118,7 @@ test('a head field is edited in place and saved with the document', async ({ pag
   await page.getByRole('textbox', { name: '참조', exact: true }).fill('학생처장')
   const button = page.getByRole('button', { name: '저장', exact: true })
   await button.click()
-  await expect(button).toBeHidden()
+  await expect(button).toBeDisabled()
   expect(state.writes).toHaveLength(1)
   const saved = state.writes[0].data.titleBlock as { fields: [string, string][] }
   expect(saved.fields).toContainEqual(['참조', '학생처장'])
