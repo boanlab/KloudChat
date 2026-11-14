@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC
 from typing import Literal
 
 import httpx
@@ -52,6 +53,7 @@ from app.schemas.admin import (
     SmtpTestRequest,
     SystemSettingsIn,
     UpdateUserRequest,
+    UserOverview,
     UserPage,
     UserSummary,
     UserTabCounts,
@@ -72,7 +74,7 @@ from app.services import files as file_service
 from app.services import litellm as litellm_service
 from app.services import mail as mail_service
 from app.services import models as model_service
-from app.services.credits import grant_initial_allowance, set_allowance
+from app.services.credits import grant_initial_allowance, next_cycle_reset, set_allowance
 from app.services.litellm import provision_user
 
 log = logging.getLogger(__name__)
@@ -691,7 +693,6 @@ async def list_users_page(
                 func.count(),
                 func.coalesce(func.sum(col(User.monthly_credits)), 0),
                 func.coalesce(func.sum(col(User.credits_used)), 0),
-                func.min(col(User.cycle_resets_at)),
             )
         )
     ).one()
@@ -705,7 +706,9 @@ async def list_users_page(
         pending=pending,
         credits_granted=int(whole[1]),
         credits_used=int(whole[2]),
-        next_reset=whole[3],
+        # Every cycle turns on the 1st in the service zone; the earliest stored date may be a
+        # cycle not yet rolled over (an idle or suspended account), already in the past.
+        next_reset=next_cycle_reset(),
     )
     return UserPage(
         items=[UserOut.of(u) for u in rows],
@@ -714,6 +717,35 @@ async def list_users_page(
         limit=limit,
         counts=counts,
         summary=summary,
+    )
+
+
+@router.get("/users/{user_id}/overview", response_model=UserOverview)
+async def user_overview(user_id: str, admin: AdminUser, db: DbSession) -> UserOverview:
+    """One account for the detail view: its row, and how much it holds."""
+    user = await _load(db, user_id)
+
+    async def count(model) -> int:
+        return int(
+            (
+                await db.exec(
+                    select(func.count()).select_from(model).where(col(model.user_id) == user.id)
+                )
+            ).one()
+        )
+
+    now = utcnow()
+    stored = user.cycle_resets_at
+    if stored is not None and stored.tzinfo is None:
+        stored = stored.replace(tzinfo=UTC)
+    return UserOverview(
+        user=UserOut.of(user),
+        sessions=await count(ChatSession),
+        projects=await count(Project),
+        files=await count(StoredFile),
+        artifacts=await count(Artifact),
+        # a cycle not yet rolled over (no use since the 1st) refills at the next turn
+        next_reset=stored if stored is not None and stored > now else next_cycle_reset(now),
     )
 
 

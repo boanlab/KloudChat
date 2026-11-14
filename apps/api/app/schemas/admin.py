@@ -180,6 +180,18 @@ class UserSummary(Wire):
     next_reset: datetime | None = None
 
 
+class UserOverview(Wire):
+    """One account in the admin detail view: the row's fields plus what it holds."""
+
+    user: UserOut
+    sessions: int = 0
+    projects: int = 0
+    files: int = 0
+    artifacts: int = 0
+    #: when this account's credits refill (its own cycle, else the service's next 1st)
+    next_reset: datetime | None = None
+
+
 class UserPage(Wire):
     """One page of the 사용자 list; `total` counts the rows the tab and search select."""
 

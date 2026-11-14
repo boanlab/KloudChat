@@ -1,8 +1,10 @@
 {
  "admin-models/desktop": 11.9,
  "admin-models/phone": 3.5,
- "admin-users/desktop": 17.5,
- "admin-users/phone": 2.5,
+ "admin-screens/desktop": 8.0,
+ "admin-screens/phone": 8.0,
+ "admin-users/desktop": 27.5,
+ "admin-users/phone": 10.5,
  "agents/desktop": 44.3,
  "artifact-source/default": 7.4,
  "audit-log/desktop": 3.6,

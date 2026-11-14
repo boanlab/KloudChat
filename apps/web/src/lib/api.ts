@@ -826,6 +826,8 @@ export const adminApi = {
   catalogue: () => call<{ id: string; label: string; kinds: string[] }[]>('/admin/models'),
   /** Every key an account holds: KloudChat's own (preview only) and the ones the person issued. */
   userKeys: (id: string) => call<AdminKeys>(`/admin/users/${id}/keys`),
+  /** One account with what it holds, for the detail view. */
+  userOverview: (id: string) => call<UserOverview>(`/admin/users/${id}/overview`),
   revokeUserKey: (id: string, keyId: string) =>
     call<void>(`/admin/users/${id}/keys/${keyId}`, { method: 'DELETE' }),
   /** Binds a LiteLLM key the administrator already holds as the account's KloudChat key. */
@@ -949,6 +951,17 @@ interface AuditPage {
   total: number
   page: number
   size: number
+}
+
+/** 관리자 › 사용자 detail: the account and how much it holds. */
+export interface UserOverview {
+  user: User
+  sessions: number
+  projects: number
+  files: number
+  artifacts: number
+  /** Its own cycle while ahead, else the service's next 1st. */
+  nextReset: string | null
 }
 
 export interface AuditQuery {

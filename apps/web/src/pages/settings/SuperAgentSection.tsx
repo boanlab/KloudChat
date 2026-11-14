@@ -154,7 +154,9 @@ export function SuperAgentSection() {
                     </Select>
                   </td>
                   <td className="py-2">
+                    {/* As wide as its longest label: a shared column width cut 「추론 높게」. */}
                     <Select
+                      className="min-w-[10.5em]"
                       aria-label={t('{class} · 추론 강도').replace('{class}', label)}
                       value={rule.effort}
                       onChange={(event) =>

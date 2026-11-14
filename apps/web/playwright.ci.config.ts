@@ -169,6 +169,8 @@ const groups: Record<string, Group> = {
   ux: { files: ['ux-keyboard-forms.spec.ts'], projects: { desktop, phone: pixel } },
   'admin-models': { files: ['admin-models.spec.ts'], projects: { desktop, phone: touchPhone } },
   'admin-users': { files: ['admin-users-paging.spec.ts'], projects: { desktop, phone: touchPhone } },
+  // a missing publication, the routing table's effort column
+  'admin-screens': { files: ['admin-screens.spec.ts'], projects: { desktop, phone: touchPhone } },
   // sortable tables, CSV exports, strict-local priority, 404, tab titles, expired sign-in
   'ui-polish': { files: ['ui-polish.spec.ts'], projects: { desktop, phone: touchPhone } },
   'share-and-index': {

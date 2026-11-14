@@ -65,7 +65,7 @@ async function fixture(page: Page, info: TestInfo) {
   const unexpected: string[] = []
   const asked: URLSearchParams[] = []
   const roles: string[] = []
-  const state = { lastAdmin: false }
+  const state = { lastAdmin: false, delay: 0 }
   page.on('pageerror', (error) => unexpected.push(`pageerror: ${error.message}`))
   await page.context().routeWebSocket('**/*', (socket) => socket.close())
   await page.context().route('**/*', async (route) => {
@@ -83,6 +83,7 @@ async function fixture(page: Page, info: TestInfo) {
     if (method === 'GET' && path === '/admin/users/page') {
       const p = url.searchParams
       asked.push(p)
+      if (state.delay) await new Promise((done) => setTimeout(done, state.delay))
       const q = (p.get('q') ?? '').toLowerCase()
       const status = p.get('status') ?? 'all'
       const searched = rows.filter((r) => !q || r.name.toLowerCase().includes(q) || r.email.includes(q))
@@ -117,6 +118,25 @@ async function fixture(page: Page, info: TestInfo) {
       row.role = next
       return json(row)
     }
+    const overview = /^\/admin\/users\/([^/]+)\/overview$/.exec(path)
+    if (method === 'GET' && overview) {
+      const row = rows.find((r) => r.id === overview[1])
+      if (!row) return json({ detail: 'user_not_found' }, 404)
+      return json({ user: row, sessions: 42, projects: 3, files: 17, artifacts: 9, nextReset: '2026-11-30T15:00:00.000Z' })
+    }
+    if (method === 'GET' && path === '/admin/audit') {
+      const account = url.searchParams.get('account') ?? ''
+      const row = rows.find((r) => r.email === account)
+      return json({
+        items: row ? [
+          { id: 'a1', at: '2026-11-14T03:00:00.000Z', actor: admin.email, action: 'credits.set', target: row.email,
+            detail: '', ip: '10.0.0.1', region: '', userAgent: '', severity: 'info', metadata: null },
+          { id: 'a2', at: '2026-11-13T09:00:00.000Z', actor: row.email, action: 'login', target: row.email,
+            detail: 'success', ip: '10.0.0.2', region: '', userAgent: '', severity: 'info', metadata: null },
+        ] : [],
+        total: row ? 2 : 0, page: 1, size: Number(url.searchParams.get('size') ?? 50),
+      })
+    }
     if (method === 'GET' && path === '/admin/models') return json([])
     if (method === 'GET' && path === '/admin/settings') return json({ credits: { perUsd: 100000, budgetHeadroom: 0.2 } })
     if (method === 'GET' && (path === '/admin/skills' || path === '/admin/user-pipelines')) return json([])
@@ -144,6 +164,11 @@ const firstNames = (page: Page, n = 3) =>
     n,
   )
 const range = (page: Page) => page.getByTestId('users-range')
+/** A row's less common action: its 「…」 menu, then the item. */
+async function menuAction(page: Page, name: string, item: string) {
+  await page.getByRole('button', { name: `${name} 관리 메뉴` }).first().click()
+  return page.getByRole('menuitem', { name: `${name} ${item}` })
+}
 
 test('each column heading sorts the list both ways, by mouse and by keyboard', async ({ page }, info) => {
   const { rows, unexpected, asked } = await fixture(page, info)
@@ -290,29 +315,130 @@ test('admin is granted and revoked after a confirmation; a last-admin refusal is
   await expect(range(page)).toHaveText('1–1 / 총 1명', { timeout: 15_000 })
   // One's own row cannot be demoted from here.
   await page.goto(`/admin/users?q=${admin.email}`)
-  await expect(page.getByRole('button', { name: `${admin.name} 관리자 해제` })).toBeDisabled()
+  await expect(await menuAction(page, admin.name, '관리자 해제')).toBeDisabled()
+  await page.keyboard.press('Escape')
 
   await page.goto(`/admin/users?q=${target.email}`)
-  await page.getByRole('button', { name: `${target.name} 관리자로 지정` }).click()
+  await (await menuAction(page, target.name, '관리자로 지정')).click()
   const grant = page.getByRole('dialog', { name: `${target.name}님을 관리자로 지정할까요?` })
   await grant.getByRole('button', { name: '취소' }).click()
   expect(roles).toEqual([])
-  await page.getByRole('button', { name: `${target.name} 관리자로 지정` }).click()
+  await (await menuAction(page, target.name, '관리자로 지정')).click()
   await grant.getByRole('button', { name: '관리자로 지정' }).click()
   await expect(table(page).getByText('관리자', { exact: true })).toBeVisible()
   expect(roles).toEqual([`${target.id}=admin`])
 
   // Revoking while another admin was demoted meanwhile: the server refuses, the reason shows.
   state.lastAdmin = true
-  await page.getByRole('button', { name: `${target.name} 관리자 해제` }).click()
+  await (await menuAction(page, target.name, '관리자 해제')).click()
   await page.getByRole('dialog').getByRole('button', { name: '관리자 해제' }).click()
   await expect(page.getByRole('alert')).toContainText('마지막 관리자는 해제할 수 없습니다')
   expect(roles).toEqual([`${target.id}=admin`, `${target.id}=user`])
   await expect(table(page).getByText('관리자', { exact: true })).toBeVisible()
 
   state.lastAdmin = false
-  await page.getByRole('button', { name: `${target.name} 관리자 해제` }).click()
+  await (await menuAction(page, target.name, '관리자 해제')).click()
   await page.getByRole('dialog').getByRole('button', { name: '관리자 해제' }).click()
   await expect(table(page).getByText('관리자', { exact: true })).toHaveCount(0)
   expect(unexpected).toEqual([])
+})
+
+const shots = process.env.SCREEN_SHOTS
+async function shot(page: Page, name: string) {
+  if (!shots) return
+  await page.screenshot({ path: `${shots}/admin/${name}-${page.viewportSize()?.width ?? 1440}.png` })
+}
+
+test('switching tabs keeps the cards and the rows until the next tab answers', { tag: '@phone' }, async ({ page }, info) => {
+  const { state, unexpected } = await fixture(page, info)
+  await page.goto('/admin/users')
+  await expect(range(page)).toHaveText('1–50 / 총 120명', { timeout: 15_000 })
+  const cards = page.getByText('전체 사용자').locator('..')
+  await expect(cards).toContainText('120')
+  state.delay = 1500
+  await page.getByRole('tab', { name: /^활성/ }).click()
+  // while the next tab loads: the instance figures and the previous rows stay
+  await expect(cards).toContainText('120')
+  await expect(page.getByText('다음 리필').locator('..')).not.toContainText('—')
+  await expect(page.getByTestId('users-skeleton')).toHaveCount(0)
+  const phone = (page.viewportSize()?.width ?? 1440) < 640
+  await expect(phone ? page.locator('[data-user-card]') : table(page).locator('tbody tr')).toHaveCount(50)
+  await shot(page, 'users-tab-loading')
+  await expect(range(page)).toContainText('/ 총', { timeout: 15_000 })
+  expect(unexpected).toEqual([])
+})
+
+test('a row keeps 크레딧 in view and labels every other action in its menu', async ({ page }, info) => {
+  const { rows, unexpected } = await fixture(page, info)
+  const target = rows.find((r) => r.status === 'active' && r.role === 'user')!
+  await page.goto(`/admin/users?q=${target.email}`)
+  await expect(range(page)).toHaveText('1–1 / 총 1명', { timeout: 15_000 })
+  const row = table(page).locator('tbody tr').first()
+  // a 크레딧 button and one 「…」, no bare icons
+  await expect(row.getByRole('button')).toHaveCount(4) // name, copy, 크레딧, 「…」
+  await row.getByRole('button', { name: `${target.name} 관리 메뉴` }).click()
+  const menu = page.getByRole('menu')
+  for (const item of ['상세 보기', '정보 수정', '모델 제한', '키 관리', '관리자로 지정', '정지', '계정 삭제']) {
+    await expect(menu.getByRole('menuitem').filter({ hasText: new RegExp(`^${item}$`) })).toBeVisible()
+  }
+  await page.waitForTimeout(300) // the menu fades in
+  await shot(page, 'users-row-menu')
+  expect(unexpected).toEqual([])
+})
+
+test('a name opens the account in detail: credits, holdings, recent trail and its actions', async ({ page }, info) => {
+  const { rows, unexpected } = await fixture(page, info)
+  const target = rows.find((r) => r.status === 'active' && r.role === 'user' && r.creditsUsed > 0)!
+  await page.goto(`/admin/users?q=${target.email}`)
+  await expect(range(page)).toHaveText('1–1 / 총 1명', { timeout: 15_000 })
+  await table(page).getByRole('button', { name: target.name, exact: true }).click()
+  const detail = page.getByRole('dialog', { name: target.name })
+  await expect(detail.getByTestId('user-detail')).toBeVisible()
+  expect(new URL(page.url()).searchParams.get('user')).toBe(target.id)
+  const facts = detail.getByTestId('user-facts')
+  await expect(facts).toContainText('대화42')
+  await expect(facts).toContainText('파일17')
+  await expect(facts).toContainText('2026년 12월 1일')
+  await expect(detail).toContainText(`${target.creditsUsed.toLocaleString()} / 500,000`)
+  const trail = detail.getByTestId('user-trail')
+  await expect(trail.getByRole('listitem')).toHaveCount(2)
+  await expect(trail).toContainText('크레딧 변경')
+  await expect(detail.getByRole('link', { name: '감사 로그에서 모두 보기' }))
+    .toHaveAttribute('href', `/admin/governance?tab=log&account=${encodeURIComponent(target.email)}`)
+  await expect(detail.getByRole('button', { name: '크레딧' })).toBeVisible()
+  await shot(page, 'user-detail')
+  // the address reopens it
+  await page.reload()
+  await expect(page.getByRole('dialog', { name: target.name }).getByTestId('user-facts')).toContainText('대화42', { timeout: 15_000 })
+  await page.getByRole('dialog', { name: target.name }).getByRole('button', { name: '닫기' }).first().click()
+  expect(new URL(page.url()).searchParams.get('user')).toBeNull()
+  expect(unexpected).toEqual([])
+})
+
+test('on a phone each account is a card whose actions are in reach', { tag: '@phone' }, async ({ page }, info) => {
+  const { rows, unexpected } = await fixture(page, info)
+  const target = rows.find((r) => r.status === 'active' && r.role === 'user')!
+  for (const width of [390, 360]) {
+    await page.setViewportSize({ width, height: 844 })
+    await page.goto(`/admin/users?q=${target.email}`)
+    await expect(range(page)).toHaveText('1–1 / 총 1명', { timeout: 15_000 })
+    await expect(page.getByRole('table')).toBeHidden()
+    const card = page.locator(`[data-user-card="${target.id}"]`)
+    await card.scrollIntoViewIfNeeded()
+    for (const control of [card.getByRole('button', { name: '크레딧' }), card.getByRole('button', { name: `${target.name} 관리 메뉴` })]) {
+      const box = (await control.boundingBox())!
+      expect(box.x).toBeGreaterThanOrEqual(0)
+      expect(box.x + box.width).toBeLessThanOrEqual(width)
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+    await shot(page, 'users-cards')
+    await card.getByRole('button', { name: `${target.name} 관리 메뉴` }).click()
+    const item = page.getByRole('menuitem', { name: `${target.name} 키 관리` })
+    await expect(item).toBeVisible()
+    await page.waitForTimeout(300)
+    await shot(page, 'users-card-menu')
+    await item.click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+  }
+  expect(unexpected.filter((u) => !u.includes('/keys'))).toEqual([])
 })

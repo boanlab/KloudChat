@@ -83,7 +83,8 @@ test.describe('페르소나 커버리지', () => {
       await page.goto('/admin/users')
       await page.getByPlaceholder('이름 또는 이메일').fill(pending)
       const row = page.locator('tr', { hasText: pending })
-      await row.getByRole('button', { name: '계정 삭제' }).click({ timeout: 10_000 }).catch(() => {})
+      await row.getByRole('button', { name: /관리 메뉴$/ }).click({ timeout: 10_000 }).catch(() => {})
+      await page.getByRole('menuitem', { name: /계정 삭제$/ }).click({ timeout: 5_000 }).catch(() => {})
       await page
         .getByRole('dialog')
         .getByRole('button', { name: '삭제', exact: true })

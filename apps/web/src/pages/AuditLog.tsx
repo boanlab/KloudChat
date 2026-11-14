@@ -74,13 +74,17 @@ function useSettled<T>(value: T, ms = 300): T {
   return settled
 }
 
-export function AuditLog({ onTotal }: { onTotal?: (total: number) => void }) {
+export function AuditLog({ onTotal, account: initialAccount = '' }: {
+  onTotal?: (total: number) => void
+  /** The account filter to open with. */
+  account?: string
+}) {
   const t = useT()
   const tPeriod = useTIn('period')
   const models = useStore((s) => s.models)
   const [catalogue, setCatalogue] = useState<{ id: string; label: string }[]>([])
   const [query, setQuery] = useState('')
-  const [account, setAccount] = useState('')
+  const [account, setAccount] = useState(initialAccount)
   const [group, setGroup] = useState('')
   const [period, setPeriod] = useState<Period>('all')
   const [from, setFrom] = useState('')
