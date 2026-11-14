@@ -128,6 +128,7 @@ from app.services import (
     index_cleanup,
     lint,
     message_links,
+    model_health,
     model_tier,
     office_claims,
     office_doc,
@@ -1429,6 +1430,7 @@ def _turn_reasoning_fields(
     super_route: dict[str, Any] | None,
     rescue: dict | None = None,
     rescue_effort: str = "default",
+    fallback: dict | None = None,
 ) -> tuple[dict[str, dict[str, Any]] | None, dict[str, Any]]:
     """`(fields by model, note)`: the writer's reasoning fields for `thinking.TURN_REASONING`
     (None leaves the deployment's) and what the answer's line says (`routing.reasoning`).
@@ -1437,7 +1439,7 @@ def _turn_reasoning_fields(
     깊게 the writer cannot act on is marked `unsupported` rather than shown as a level."""
     if super_route is not None:
         fields = _super_reasoning(model, str(super_route.get("effort") or "default"), rescue,
-                                  rescue_effort)
+                                  rescue_effort, fallback)
     else:
         effort = super_agent.manual_effort(mode, model)
         wanted = super_agent.reasoning_fields(str(model["id"]), effort, model)
@@ -1466,11 +1468,13 @@ def _super_history(history: list[Message]) -> tuple[tuple[str, str, dict | None]
 
 
 def _super_reasoning(
-    model: dict, effort: str, rescue: dict | None, rescue_effort: str
+    model: dict, effort: str, rescue: dict | None, rescue_effort: str,
+    fallback: dict | None = None,
 ) -> dict[str, dict[str, Any]] | None:
-    """Effort fields by model for `agent.TURN_REASONING`; None leaves the deployment's."""
+    """Effort fields by model for `agent.TURN_REASONING`; None leaves the deployment's. The
+    writer's fallback (`_super_fallback`) carries on at the writer's effort."""
     fields: dict[str, dict[str, Any]] = {}
-    for row, level in ((rescue, rescue_effort), (model, effort)):
+    for row, level in ((fallback, effort), (rescue, rescue_effort), (model, effort)):
         if row is not None and (wanted := super_agent.reasoning_fields(
                 str(row["id"]), level, row)):
             fields[str(row["id"])] = wanted
@@ -1489,6 +1493,7 @@ def _super_rescue(
         _allowed_models(user, catalogue, kind=SessionKind.chat.value), kind="chat",
         strict=strict_local or route.get("mode") == super_agent.SUPER_STRICT,
         allowed=set(user.allowed_models or []), needs_tools=True,
+        skip=model_health.unhealthy(),
     )
     if chosen is None or chosen["id"] == writer["id"] or _widens_boundary(chosen, writer):
         return None, "default"
@@ -1496,6 +1501,45 @@ def _super_rescue(
         # 빠르게: the rescue writes without reasoning too
         return chosen, "none"
     return chosen, rules[super_agent.ESCALATION_CLASS]["effort"]
+
+
+def _super_fallback(
+    route: dict[str, Any] | None, *, user: User, catalogue: list[dict], writer: dict,
+    strict_local: bool, needs_tools: bool,
+) -> dict | None:
+    """Who carries a strict-local Super Agent turn on, in the same turn, when its writer fails
+    (refused, unreachable, a broken stream, nothing shown within its patience): the first
+    strict fallback (Qwen3.8 Flash) when the writer is another model; never one that may leave."""
+    if route is None or not strict_local:
+        return None
+    return super_agent.strict_fallback(
+        _allowed_models(user, catalogue, kind=SessionKind.chat.value), writer, kind="chat",
+        allowed=set(user.allowed_models or []), needs_tools=needs_tools,
+        skip=model_health.unhealthy(),
+    )
+
+
+async def _material_present(
+    db: AsyncSession, user: User, session: ChatSession, attachments: list[str] | None
+) -> bool:
+    """Whether a turn works over internal material: a file attached to it (not a picture), or
+    what `search_knowledge` searches in this conversation (`_knowledge_shelf`): files with
+    text attached earlier, the project's knowledge sources still switched on, the agent's own
+    files."""
+    if attachments:
+        found = (
+            await db.exec(
+                select(StoredFile.id).where(
+                    StoredFile.user_id == user.id,
+                    col(StoredFile.id).in_(list(attachments)),
+                    or_(StoredFile.text != "", ~col(StoredFile.mime).startswith("image/")),
+                ).limit(1)
+            )
+        ).first()
+        if found is not None:
+            return True
+    shelf, _ = await _knowledge_shelf(db, user, session, None)
+    return bool(shelf)
 
 
 def _first_document_model(history: list[Message]) -> str | None:
@@ -1554,6 +1598,14 @@ async def _super_route(
         session, None, attachments, history
     )
     strict = mode == super_agent.SUPER_STRICT or bool(personal) or internal
+    #: a column where the material row names a model: whether this turn works over files
+    material = bool(
+        kind is SessionKind.chat
+        and rules[super_agent.MATERIAL_CLASS]["strictModel" if strict else "model"]
+        and await _material_present(db, user, session, attachments)
+    )
+    #: writers that failed lately (`model_health`): passed over, so no one waits on them
+    skip = model_health.unhealthy()
     classified: super_agent.Classified | None = None
     classifier_id: str | None = None
     # 깊게 goes to the escalation row whatever the class: nothing for the classifier to decide
@@ -1578,8 +1630,10 @@ async def _super_route(
                     classified.task_class, "classifier", "classified",
                     confidence=classified.confidence, signals=decision.signals,
                 )
-    needs_tools = decision.task_class not in ("simple", "transform", "document") or tool_bound
-    row_class, effort = super_agent.steer(rules, decision, reasoning_mode)
+    row_class, effort = super_agent.steer(rules, decision, reasoning_mode, material=material,
+                                          strict=strict)
+    needs_tools = (decision.task_class not in ("simple", "transform", "document") or tool_bound
+                   or row_class == super_agent.MATERIAL_CLASS)
     chosen: dict | None = None
     how = "rule"
     sticky_id = (
@@ -1595,20 +1649,21 @@ async def _super_route(
         # this turn (not served, not this surface's), the class's own pick at effort high
         rule = rules[super_agent.ESCALATION_CLASS]
         candidate = model_service.find(catalogue, rule["strictModel" if strict else "model"])
-        if super_agent.usable_for(candidate, **checks):
+        if candidate is not None and candidate["id"] not in skip and super_agent.usable_for(
+                candidate, **checks):
             chosen, how = candidate, "rule"
         else:
             row_class = decision.task_class
     if sticky_id:
         # a document's revisions, and a short follow-up, stay on the same model
         candidate = model_service.find(catalogue, sticky_id)
-        if super_agent.usable_for(candidate, **checks):
+        if sticky_id not in skip and super_agent.usable_for(candidate, **checks):
             chosen, how = candidate, "sticky"
     if chosen is None:
         chosen, how = super_agent.pick(
             rules, row_class, catalogue, kind=kind.value, strict=strict,
             allowed=allowed, context_bytes=turn.context_bytes, needs_tools=needs_tools,
-            needs_vision=pictures, default=default,
+            needs_vision=pictures, default=default, skip=skip,
         )
     if chosen is None and strict and mode != super_agent.SUPER_STRICT:
         # no strict-local model here: privacy routing decides on the ordinary pick
@@ -1638,9 +1693,14 @@ async def _super_route(
     )
     if reasoning_mode != super_agent.AUTO:
         route["reasoningMode"] = reasoning_mode
-        if row_class != decision.task_class:
-            # the row the chip moved the turn to (the class stays what the request is)
-            route["row"] = row_class
+    if row_class != decision.task_class:
+        # the row the chip or the material moved the turn to (the class stays what the
+        # request is)
+        route["row"] = row_class
+    wanted = (rules.get(row_class) or {}).get("strictModel" if strict else "model")
+    if wanted and wanted in skip and chosen["id"] != wanted:
+        # the row's model failed lately: the pick went past it rather than wait on it
+        route["skipped"] = wanted
     if strict and mode != super_agent.SUPER_STRICT:
         route["strictReason"] = "personal_data" if personal else "internal_data"
     return chosen, route, effort
@@ -5939,13 +5999,19 @@ async def _send_message(
                       writer=model, strict_local=strict_local)
         if super_route is not None else (None, "default")
     )
+    #: who carries the turn on when its strict-local writer fails mid-turn
+    writer_fallback = (
+        _super_fallback(super_route, user=user, catalogue=catalogue_models, writer=model,
+                        strict_local=strict_local, needs_tools=bool(tools))
+        if kind is SessionKind.chat else None
+    )
     #: the writer's reasoning fields and the answer line's note (the chip, the route's effort)
     turn_reasoning, reasoning_note = _turn_reasoning_fields(
         reasoning_mode, model,
         super_route if super_route is not None
         else (document_routing or {}).get("superAgent") if kind is not SessionKind.chat
         else None,
-        super_rescue, rescue_effort,
+        super_rescue, rescue_effort, writer_fallback,
     )
     if reasoning_note != {"mode": super_agent.AUTO, "effort": "default"}:
         # 자동 with nothing sent is the behaviour before the chip: no note to show
@@ -6725,6 +6791,8 @@ async def _send_message(
                 rescue=super_rescue or await _rescue_model(
                     user=user, catalogue=catalogue_models, writer=model,
                     strict_local=strict_local, outline=outline_model),
+                # a strict-local writer that fails mid-turn: Qwen3.8 Flash carries it on
+                writer_fallback=writer_fallback,
                 calculation_expression=(
                     calculation_policy.direct_calculation_expression(content)
                     if calculation_required and preflight_tool == "calculate" else None
@@ -7223,6 +7291,8 @@ async def _answer_turn(
     calculation_handoff: dict | None = None,
     #: model that writes an empty or announced-only answer once more (`agent.run_turn`)
     rescue: dict | None = None,
+    #: strict-local model that carries the turn on when the writer fails (`agent.run_turn`)
+    writer_fallback: dict | None = None,
     calculation_expression: str | None = None,
     #: server's own first call (`agent.run_turn`)
     preset_call: tuple[str, dict[str, Any]] | None = None,
@@ -7285,6 +7355,8 @@ async def _answer_turn(
     actual_model = model["id"]
     #: the asked model failed over and LiteLLM's fallback answered (`fallback_watch.record`)
     fallback: dict | None = None
+    #: the writer that failed mid-turn before `writer_fallback` carried the turn on
+    failed_writer: dict | None = None
     server_abstention = False
     tool_result_answer = False
     length_check: dict | None = None
@@ -7398,6 +7470,8 @@ async def _answer_turn(
                     if calculation_handoff is not None else {}
                 ),
                 **({"rescue_model": rescue["id"]} if rescue is not None else {}),
+                **({"fallback_model": writer_fallback["id"]}
+                   if writer_fallback is not None else {}),
                 **(
                     {"calculation_expression": calculation_expression}
                     if calculation_expression is not None else {}
@@ -7463,6 +7537,18 @@ async def _answer_turn(
                     routing = {**(routing or {}), "costRouting": cost_routing}
                     # don't leak the agent loop's partial provider-route shape
                     yield chat_service.sse({"type": "model_route", **cost_routing})
+                continue
+            elif event["type"] == "writer_fallback" and writer_fallback is not None:
+                # the strict-local writer failed: the fallback writes the rest; tokens either
+                # spent stay on its own ledger line (`model:<id>:` counters)
+                failed_writer, model = model, writer_fallback
+                actual_model = model["id"]
+                route = (routing or {}).get("superAgent")
+                if isinstance(route, dict):
+                    routing = {**routing, "superAgent": {
+                        **route, "fallbackModel": model["id"],
+                        "fallbackReason": str(event.get("reason") or "failed")}}
+                yield chat_service.sse({"type": "privacy_route", **(routing or {})})
                 continue
             elif event["type"] == "fallback_route":
                 try:
@@ -7637,7 +7723,7 @@ async def _answer_turn(
     # calculation hand-off and a rewrite by the rescue model: each model's price, own ledger
     # line (one line when they are the same model, its tokens counted once)
     partners = [(row, "chat.calculation" if row is calculation_handoff else "chat.completion")
-                for row in (calculation_handoff, rescue) if row is not None]
+                for row in (calculation_handoff, rescue, failed_writer) if row is not None]
     partners = [p for k, p in enumerate(partners)
                 if all(p[0]["id"] != q[0]["id"] for q in partners[:k])]
     partner_credits: list[tuple[dict, str, int]] = []

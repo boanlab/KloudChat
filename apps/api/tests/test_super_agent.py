@@ -409,11 +409,14 @@ async def test_the_writer_call_carries_the_routed_effort(monkeypatch) -> None:
 
 
 def test_hard_classes_go_to_deepseek_with_reasoning_high() -> None:
-    # owner decision 2026-11-14: hard turns on DeepSeek V4.1 Flash @high; strict column unchanged
+    # owner decision 2026-11-14: hard turns on DeepSeek V4.1 Flash @high; the strict column
+    # keeps flash for the hard classes, and the escalation row's strict pick is self-hosted
+    # DeepSeek V4 Flash (second decision of 2026-11-14)
     for name in ("calc", "code", "current", "long", "reasoning", "escalation"):
         rule = sa.DEFAULT_RULES[name]
         assert (rule["model"], rule["effort"]) == ("deepseek/deepseek-v4.1-flash", "high"), name
-        assert rule["strictModel"] == "strict-local/qwen3.8-flash", name
+        assert rule["strictModel"] == ("strict-local/deepseek-v4-flash" if name == "escalation"
+                                       else "strict-local/qwen3.8-flash"), name
     for name in ("simple", "chat", "transform"):
         assert sa.DEFAULT_RULES[name]["model"] == "local/qwen3.8-flash"
     assert sa.DEFAULT_RULES["document"]["strictModel"] == "strict-local/qwen3.8-27b"

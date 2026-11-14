@@ -506,6 +506,7 @@ export interface SuperAgentOffer {
 
 /** One row of the admin's Super Agent table. */
 export interface SuperAgentRule {
+  /** '' on an override row (`material`): the turn keeps its class's row in that column. */
   model: string
   strictModel: string
   effort: 'default' | 'none' | 'low' | 'high'

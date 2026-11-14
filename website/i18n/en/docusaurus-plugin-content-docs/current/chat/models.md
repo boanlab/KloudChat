@@ -36,6 +36,8 @@ When the administrator turns it on, two entries appear at the top of the list. T
 
 Each entry shows the usual credits for one answer. Every answer shows "This answer: model · task type" and the reason in its processing row. Saying "again" or "more detail" answers once more with a stronger setup; short follow-ups in the same conversation and revisions of the same document stay on the same model.
 
+In conversations answered by in-house models, questions about attached files, project knowledge or an agent's files, and answers after "again" or "that's wrong", are written by a larger in-house model that reads material well (DeepSeek V4 Flash). It thinks at length before it writes, so the first words usually take about a minute; meanwhile the processing row shows "Thinking it through". If it does not respond or shows nothing for 4 minutes, the in-house default model carries the same answer on, and the processing row says so. Nothing leaves the organisation either way.
+
 ## The reasoning chip
 
 The **Reasoning** chip to the left of the model name sets how much the model thinks before it answers. It is available in Chat, Reports, and Slides.

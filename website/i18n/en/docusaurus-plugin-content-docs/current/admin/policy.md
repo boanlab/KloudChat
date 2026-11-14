@@ -32,6 +32,7 @@ Time, account, action, target, and access location. The log covers sign-ins, fai
 - **Switch** — whether the model picker shows the two Super Agent entries.
 - **Classifier model** — a free strict-local model that gets only the requests the rules cannot sort, briefly.
 - **Table by task type** — for each task type, the Super Agent model, the strict-local model and the reasoning effort. The "after a retry request or empty answer" row handles requests to redo and empty answers. **Reset table to defaults** restores the evaluated default table.
+- **"Work on internal material" row** — sends questions over attached files, project knowledge or an agent's files (except simple questions, reports and retries) to this row's model. A column set to **Keep the task type's model** follows the original row. By default only the strict-local column names a model, DeepSeek V4 Flash. When a strict-local model other than Qwen3.8 Flash fails or shows nothing for 4 minutes, Qwen3.8 Flash carries the same answer on, and the failed model is left out for a while (1 minute when busy, 5 minutes otherwise).
 - **Structuring stage model** — The model that sets the outline for a report or slide deck. If you leave it empty, it is the same as the writing model.
 
 The default model per screen is not an administrator setting. It sits under **each user's Settings → Preferences**. Administrators only restrict the allowed models per user.

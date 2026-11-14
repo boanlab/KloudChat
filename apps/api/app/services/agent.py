@@ -23,6 +23,7 @@ from app.services import (
     current_evidence,
     fallback_watch,
     internal_words,
+    model_health,
     model_tier,
     output_language,
     query_terms,
@@ -116,6 +117,8 @@ class _Accumulator:
         self.reasoning_chars = 0
         #: proxy response headers naming a fallback (`fallback_watch`)
         self.fallback_headers: dict[str, str] = {}
+        #: the reasoning itself, kept only where it is passed back (`_passes_reasoning`)
+        self.reasoning: list[str] | None = None
 
     def add_chunk(self, chunk: dict[str, Any]) -> str | None:
         """Newly emitted visible text, if any."""
@@ -148,6 +151,8 @@ class _Accumulator:
             thought = delta.get("reasoning_content") or delta.get("reasoning")
             if isinstance(thought, str):
                 self.reasoning_chars += len(thought)
+                if self.reasoning is not None:
+                    self.reasoning.append(thought)
             piece = delta.get("content")
             if piece:
                 self.content.append(piece)
@@ -166,7 +171,18 @@ class _Accumulator:
                 }
                 for i, c in sorted(self.calls.items())
             ]
+            if self.reasoning:
+                # the next tool step reads what this one worked out
+                message["reasoning_content"] = "".join(self.reasoning)
         return message
+
+
+def _passes_reasoning(model: str) -> bool:
+    """Whether a tool step's reasoning goes back with its call: self-hosted DeepSeek V4, whose
+    template reads it within a tool loop. Without it the model worked figures out again at
+    every step. 2026-11-14, Sonnet-judged: 「다시」 turns 7.7 vs 6.6 with ~20% fewer output
+    tokens and first text at 85 s vs 143 s (p50); turns over attached documents 8.2 vs 7.6."""
+    return model.startswith(("local/", "strict-local/")) and "deepseek" in model
 
 
 class _Refusal:
@@ -196,6 +212,9 @@ async def _stream_once(
     """Yields `('delta', text)`, then `('done', _Accumulator)`. `capped_reasoning`: least
     reasoning (thinking off for a self-hosted model) and an output cap, for a write after a
     stream that spent its whole budget thinking."""
+    if not _passes_reasoning(model) and any("reasoning_content" in m for m in messages):
+        # another model (a fallback, a hand-off) does not read the first one's thinking
+        messages = [{k: v for k, v in m.items() if k != "reasoning_content"} for m in messages]
     payload: dict[str, Any] = {
         "model": model,
         "messages": messages,
@@ -240,6 +259,8 @@ async def _stream_once(
         payload["disable_fallbacks"] = True
 
     acc = _Accumulator()
+    if _passes_reasoning(model):
+        acc.reasoning = []
     try:
         async with await _client(api_key, redact_logging=redact_logging) as client:
             for attempt in range(len(_RETRY_AFTER) + 1):
@@ -392,8 +413,41 @@ def _starved(hop: Any) -> bool:
 
 
 #: seconds the other model may take on a rewrite before the turn's own model is not tried
-#: after it (a stalled stream already cost the person minutes)
-_RESCUE_PATIENCE = 60.0
+#: after it (a stalled stream already cost the person minutes); above `_FALLBACK_PATIENCE`, so
+#: a rescuer that thinks long (DeepSeek V4 Flash: first text ~50 s, up to ~180 s on a hard
+#: prompt) and then fails still leaves the turn's own model a try
+_RESCUE_PATIENCE = 300.0
+#: seconds a writer with a fallback (`run_turn(fallback_model=…)`) may take on one call before
+#: it shows answer text or finishes the call (a tool call); then the fallback carries the turn
+#: on. DeepSeek V4 Flash took at most 180 s on one call in the 2026-11-14 evaluation; a stalled
+#: stream ran 20 minutes.
+_FALLBACK_PATIENCE = 240.0
+
+
+async def _first_within(
+    stream: AsyncIterator[tuple[str, Any]], seconds: float | None
+) -> AsyncIterator[tuple[str, Any]]:
+    """`stream`'s events; `TimeoutError` when the first takes longer than `seconds` (None: no
+    limit). Only the wait for the first event is timed, so the deadline never spans a yield."""
+    iterator = stream.__aiter__()
+    try:
+        try:
+            first = (await asyncio.wait_for(anext(iterator), seconds) if seconds is not None
+                     else await anext(iterator))
+        except StopAsyncIteration:
+            return
+        yield first
+        async for event in iterator:
+            yield event
+    finally:
+        await iterator.aclose()
+
+
+def _fallback_reason(exc: BaseException) -> str:
+    """`timeout` | `busy` (the gateway's concurrency gate) | `error`."""
+    if isinstance(exc, TimeoutError):
+        return "timeout"
+    return "busy" if model_health.busy_refusal(str(exc)) else "error"
 #: a rewrite this short, from this much gathered material, that stops mid-sentence is cut
 _THIN_CHARS = 200
 _THIN_RESULTS = 2000
@@ -1731,6 +1785,11 @@ async def run_turn(
     #: cut short or only announced (the same model asked again tends to stall too); billed as
     #: `model:<id>:*Tokens`.
     rescue_model: str | None = None,
+    #: Strict-local model that carries the turn on, in the same turn, when `model` fails: the
+    #: gateway refuses it, the server is unreachable, the stream breaks, or a call shows nothing
+    #: within `_FALLBACK_PATIENCE`. Announced as a `writer_fallback` event; the tokens `model`
+    #: spent until then move to `model:<id>:*Tokens`.
+    fallback_model: str | None = None,
     #: A turned-on skill searches deep (`process.deep_search`): twice the searches, as a
     #: document's research does.
     deep_search: bool = False,
@@ -1918,6 +1977,8 @@ async def run_turn(
     loop_penalty: float | None = None
     #: A dropped stream (connection closed mid-answer) is asked once more.
     transport_retried = False
+    #: the long-thinking note of a writer with a fallback: shown, then closed
+    thinking_shown = thinking_done = False
     #: Successful code-run outputs; refused-code flag.
     code_outputs: list[str] = []
     code_refused = False
@@ -2009,6 +2070,7 @@ async def run_turn(
             stream_kwargs["force_tool"] = force_tool
             post_preflight_force_sent = True
         running_preset = hop < len(preset_calls) and not closing
+        watched = False
         if running_preset:
             # Trusted presets: no model argument guessing.
             name, arguments = preset_calls[hop]
@@ -2018,15 +2080,32 @@ async def run_turn(
                 post_preflight_force_sent = True
         else:
             model_attempted = True
+            #: a writer with a fallback is timed until it shows something
+            watched = bool(fallback_model) and hop_model == model and fallback_model != model
+            if watched and not thinking_shown:
+                thinking_shown = True
+                yield {"type": "step", "category": "thinking", "id": "writer-thinking",
+                       "label": "깊이 생각하는 중", "status": "running",
+                       "detail": _note(
+                           f"{model} 모델은 답을 쓰기 전에 오래 생각합니다(보통 1~2분). "
+                           f"{int(_FALLBACK_PATIENCE)}초 안에 아무것도 나오지 않으면 "
+                           f"{fallback_model} 모델이 이어 씁니다",
+                           f"{model} thinks at length before it writes (usually 1-2 minutes). "
+                           f"If nothing comes within {int(_FALLBACK_PATIENCE)} seconds, "
+                           f"{fallback_model} carries on", reply_korean)}
             try:
-                async for kind, value in _stream_once(
+                async for kind, value in _first_within(_stream_once(
                     hop_model,
                     conversation,
                     hop_tools,
                     ctx.user_id,
                     ctx.api_key,
                     **stream_kwargs,
-                ):
+                ), _FALLBACK_PATIENCE if watched else None):
+                    if thinking_shown and not thinking_done:
+                        thinking_done = True
+                        yield {"type": "step", "category": "thinking", "id": "writer-thinking",
+                               "label": "깊이 생각하는 중", "status": "done"}
                     if kind == "delta":
                         if not hop_text and answer_text and _GLUED.search(answer_text[-1]) \
                                 and value[:1].strip():
@@ -2038,7 +2117,44 @@ async def run_turn(
                             yield {"type": "delta", "text": value}
                     else:
                         acc = value
-            except ChatStreamError as exc:
+            except (ChatStreamError, TimeoutError) as exc:
+                if watched:
+                    # The writer failed (refused, unreachable, broken, or silent too long): the
+                    # fallback carries the turn on from here, never a model outside it; the
+                    # writer is left out of picks for a while (`model_health`).
+                    reason = _fallback_reason(exc)
+                    skipped_for = model_health.mark_failed(model, str(exc))
+                    log.warning("%s failed (%s: %s); %s carries the turn on, %s skipped %ds",
+                                model, reason, type(exc).__name__, fallback_model, model,
+                                skipped_for)
+                    if hop_text and not preflight_tool and not freshness_request:
+                        del answer_text[len(answer_text) - len(hop_text) :]
+                        yield {"type": "retract", "text": "".join(hop_text)}
+                    for key in ("inputTokens", "outputTokens"):
+                        counter = f"model:{model}:{key}"
+                        usage[counter] = usage.get(counter, 0) + usage[key]
+                        usage[key] = 0
+                    usage_fields.add_cached(usage, usage, f"model:{model}:{usage_fields.CACHED}")
+                    usage.pop(usage_fields.CACHED, None)
+                    failed_writer, model = model, str(fallback_model)
+                    fallback_model = None
+                    yield {"type": "writer_fallback", "from": failed_writer, "to": model,
+                           "reason": reason}
+                    yield {"type": "step", "category": "thinking", "id": "writer-thinking",
+                           "label": "다른 모델로 이어 쓰기", "status": "done",
+                           "detail": _note(
+                               f"{failed_writer} 모델이 " + {
+                                   "timeout": f"{int(_FALLBACK_PATIENCE)}초 동안 답을 내지 않아",
+                                   "busy": "지금 요청이 밀려 받지 않아",
+                               }.get(reason, "응답하지 못해") + f" {model} 모델이 이어 씁니다",
+                               f"{failed_writer} " + {
+                                   "timeout": f"showed nothing for "
+                                              f"{int(_FALLBACK_PATIENCE)} seconds",
+                                   "busy": "was busy and refused the request",
+                               }.get(reason, "failed") + f", so {model} carries on",
+                               reply_korean)}
+                    thinking_done = True
+                    continue
                 if hop_model == model:
                     # a gateway saying the model server is down counts as a drop too
                     if transport_retried or not str(exc).startswith(
@@ -2057,6 +2173,8 @@ async def run_turn(
                 # Hand-off failure → note, not error.
                 log.info("calculation hand-off to %s failed: %s", hop_model, exc)
                 acc = _Accumulator()
+            if watched:
+                model_health.mark_ok(hop_model)
         assert acc is not None
         last_hop = acc
         if not running_preset:
@@ -2858,15 +2976,18 @@ async def run_turn(
         retry: _Accumulator | None = None
         written: list[str] = []
         try:
-            async for kind, value in _stream_once(
+            async for kind, value in _first_within(_stream_once(
                 writer, prompt, [], ctx.user_id, ctx.api_key, **retry_kwargs,
-            ):
+            ), _FALLBACK_PATIENCE if writer != model else None):
                 if kind == "delta":
                     written.append(value)
                 else:
                     retry = value
-        except ChatStreamError as exc:
-            log.warning("tool-free write by %s failed: %s", writer, exc)
+        except (ChatStreamError, TimeoutError) as exc:
+            log.warning("tool-free write by %s failed: %s", writer, type(exc).__name__)
+            if writer != model:
+                # the rescuer is left out of picks for a while; the turn's own model goes next
+                model_health.mark_failed(writer, str(exc))
         if retry is not None and writer == model:
             usage["inputTokens"] += retry.usage["inputTokens"]
             usage["outputTokens"] += retry.usage["outputTokens"]
@@ -2890,6 +3011,9 @@ async def run_turn(
     #: (the same model asked again tends to stall too), then the turn's own
     #: model unless the other one took long
     rescuers = [model]
+    if rescue_model and not model_health.healthy(rescue_model):
+        # it failed lately (perhaps as this turn's writer): not waited on again
+        rescue_model = None
     if rescue_model and rescue_model != model and _self_hosted(rescue_model):
         rescuers = [rescue_model, model]
     elif rescue_model and rescue_model != model and not _self_hosted(model):

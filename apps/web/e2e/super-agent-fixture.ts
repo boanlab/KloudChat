@@ -43,6 +43,7 @@ const defaultRules = {
   long: { model: 'external/deep', strictModel: 'strict-local/flash', effort: 'high' },
   reasoning: { model: 'external/deep', strictModel: 'strict-local/flash', effort: 'high' },
   document: { model: 'local/flash', strictModel: 'strict-local/flash', effort: 'default' },
+  material: { model: '', strictModel: 'strict-local/flash', effort: 'high' },
   escalation: { model: 'external/deep', strictModel: 'strict-local/flash', effort: 'high' },
 }
 

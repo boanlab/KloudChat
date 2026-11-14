@@ -2917,16 +2917,59 @@ V4.1 Flash at high effort by the owner's decision of 2026-11-14:
 | simple, chat, transform | Qwen3.8 Flash | strict Flash | none | Flash matched every larger model (8.5/8.2 of 10) |
 | calc, code, long, reasoning, current | DeepSeek V4.1 Flash | strict Flash (no search for current) | high | hard turns: thinking Flash matched (8.3–8.5) but sometimes left nothing; DeepSeek searches and cites best (8.7 vs Flash 6.3) |
 | document | Qwen3.8 27B | strict 27B | default | 6.0 free vs GLM-5.3 6.7 at ~800 credits |
-| escalation | DeepSeek V4.1 Flash | strict Flash | high | never empty; 9/10 where thinking Flash left nothing |
+| material (a row, not a class) | — (the class's own row) | strict DeepSeek V4 Flash | high | strict turns over files: 8.6 vs thinking Flash 6.9; 100–136k characters 8.8 vs 7.7 |
+| escalation | DeepSeek V4.1 Flash | strict DeepSeek V4 Flash | high | never empty; 9/10 where thinking Flash left nothing; strict 「틀렸어, 다시」 6.7 vs Flash 6.2 |
+
+The strict `material` and `escalation` picks come from the owner's decision of 2026-11-14,
+after a strict-column comparison (26 scenarios, 3 runs each, the app's envelope and tools,
+judged blind by Sonnet): self-hosted DeepSeek V4 Flash with thinking on did not beat thinking
+Flash on reasoning, calculation, code, long pasted text or current facts (6.7 vs 6.9 overall,
+2–5× slower), so those rows stay on Flash; it was clearly better on Korean questions over
+attached documents with the knowledge-search tool and on very long material, and slightly
+better as the 「다시」 writer.
 
 **Escalation, de-escalation, stickiness.** 「다시」, 「더 자세히」, 「틀렸어」 and the like, or an
 empty or failed previous answer, move the turn to the `escalation` row; that row's model also
 rewrites, inside the same turn, an answer the class's model left empty or cut (the rescue
-writer, with its own effort). A thanks or 「ok」 after a hard turn comes down to `simple`. A
+writer, with its own effort). A rescuer gets `_FALLBACK_PATIENCE` (240 s) to show text; if it
+fails or stays silent, the turn's own model still writes (`_RESCUE_PATIENCE`, 300 s, sits
+above it). A thanks or 「ok」 after a hard turn comes down to `simple`. A
 short follow-up with no markers of its own keeps the previous turn's class and model (one
 voice per thread, and the provider's prefix cache stays warm), and every revision of a report
 or deck keeps the model that wrote its first version (`_first_document_model`). The pick is
 the turn's: `sessions.model` is not overwritten.
+
+**Internal material.** A chat turn works over internal material when a file that is not a
+picture is attached to it, or when `search_knowledge` has something to search in the
+conversation (`_material_present`, the same set as `_knowledge_shelf`): files with text
+attached earlier, the project's knowledge sources still switched on, the agent's own files.
+Pasted text alone is not material here (it is the `long` class's business). Such a turn moves
+to the `material` row (`route.row`), in a column where that row names a model, except a thanks
+(`simple`), a document and a retry (`escalation`), which keep their rows; the class stays what
+the request is. With the defaults only strict turns move (the `super` column is empty: an
+override row's empty column keeps the class's row, and the admin may fill or empty either
+column). 빠르게 still sends the turn to the `chat` row, 깊게 to `escalation`.
+
+**Failure inside a strict turn.** DeepSeek V4 Flash is served across both GB10 nodes
+(tensor-parallel 2), so either node down takes it away, and the gateway refuses strict aliases
+outright (503 `strict_local_unavailable`) while vLLM has requests waiting. A strict Super Agent
+turn whose writer is not Qwen3.8 Flash therefore carries a same-turn fallback
+(`_super_fallback`, `agent.run_turn(fallback_model=…)`): when the writer's call is refused,
+cannot connect, breaks mid-stream, or shows neither answer text nor a finished call within
+`_FALLBACK_PATIENCE` (240 s; DeepSeek took at most 180 s on one call in the evaluation, a
+stalled stream 20 minutes), the shown part is taken back and Flash continues the same
+conversation, tool results included, at the writer's effort; nothing is answered outside
+strict-local. The switch is a `writer_fallback` event: the answer's route note gains
+`fallbackModel`/`fallbackReason`, the answer row records Flash, and the tokens the failed
+writer spent bill on its own ledger line. The failed model is marked in `model_health` (60 s
+after a busy refusal, 300 s otherwise, per process) and left out of Super Agent picks, rescuers
+and the 깊게 route meanwhile, so the next turns go to Flash at once (`route.skipped` says so).
+Within a tool loop the self-hosted DeepSeek writer gets its own reasoning back on each tool
+call (`reasoning_content`, `agent._passes_reasoning`; no other model is sent it): on
+「다시」 turns it no longer re-derives figures at every step (judged 7.7 vs 6.6, ~20% fewer
+output tokens, first text p50 85 s vs 143 s). DeepSeek's first visible text takes ~50 s on material turns (Flash ~6 s): the step list shows a
+running 「깊이 생각하는 중」 row naming the writer, the wait and the fallback until the first text
+or tool call, next to the turn's elapsed clock.
 
 **Boundaries.** `super_strict` picks only `self_hosted` strict-local models; with none usable
 the turn is refused (503 `strict_local_unavailable`), never answered outside, and titles,
