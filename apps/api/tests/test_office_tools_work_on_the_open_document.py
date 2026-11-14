@@ -169,3 +169,19 @@ def test_a_blank_document_is_written_first_unless_a_search_was_asked_for():
     # a question about a blank chat document is no write
     chat = ChatSession(id=SESSION, user_id=USER, kind=SessionKind.chat)
     assert first(blank, tools, "이 문서는 몇 장이야?", chat) is None
+
+
+def test_an_untitled_deck_takes_its_covers_title():
+    from types import SimpleNamespace
+
+    from app.services import pptx_doc, pptx_edit
+    from app.services.tools import office
+
+    kit = SimpleNamespace(prefix="pptx", edit=pptx_edit)
+    deck = pptx_doc.deck("2026년 사이버 보안 위협 전망", "정보보호팀",
+                         [{"title": "요약", "bullets": ["가"]}])
+    named = office._named_by_cover(kit, SimpleNamespace(title="PowerPoint 문서"), deck)
+    assert named == "2026년 사이버 보안 위협 전망"
+    assert office._named_by_cover(kit, SimpleNamespace(title="임원 브리핑"), deck) is None
+    hwp = SimpleNamespace(prefix="hwp", edit=pptx_edit)
+    assert office._named_by_cover(hwp, SimpleNamespace(title="한글 문서"), deck) is None

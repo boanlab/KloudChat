@@ -96,7 +96,8 @@ export function ContextGauge({
   // Asked again when the conversation grows (a turn ends), the model or the attachments change.
   const messageCount = session?.messages.length ?? 0
   const attachmentsKey = attachmentIds.join(',')
-  const enabled = kind === 'chat'
+  // the writing surfaces: a report's and a deck's turns read the same context as a chat's
+  const enabled = kind === 'chat' || kind === 'report' || kind === 'slides'
   const started = !!session
   // the question the server counts with is the one typed when it is asked; later keystrokes
   // are counted here (`withDraft`)
@@ -111,7 +112,7 @@ export function ContextGauge({
       sessionsApi
         .contextUsage({
           sessionId,
-          kind: 'chat',
+          kind: kind === 'report' || kind === 'slides' ? kind : 'chat',
           projectId: started ? undefined : projectId ?? null,
           model: modelId || null,
           draft: draftRef.current,
@@ -124,7 +125,7 @@ export function ContextGauge({
       live = false
       window.clearTimeout(timer)
     }
-  }, [enabled, sessionId, started, projectId, modelId, attachmentsKey, messageCount, streaming])
+  }, [enabled, kind, sessionId, started, projectId, modelId, attachmentsKey, messageCount, streaming])
 
   const shown = open || hover
   const measure = useCallback(() => {

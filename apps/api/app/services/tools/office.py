@@ -22,6 +22,24 @@ log = logging.getLogger(__name__)
 FORMATS = ("official", "plain", "internal_draft", "result_report", "event_plan", "minutes")
 
 
+#: what a blank document started from the screen is called until it says what it is
+_UNTITLED = frozenset({"PowerPoint 문서", "새 PowerPoint 문서", "한글 문서", "새 한글 문서",
+                       "Word 문서", "새 Word 문서", ""})
+
+
+def _named_by_cover(kit: Any, artifact: Any, data: bytes) -> str | None:
+    """A deck still called 「PowerPoint 문서」 takes its cover's title once one is written, so
+    the panel and the list name it (the paragraph kinds keep theirs: a head table comes first)."""
+    if kit.prefix != "pptx" or (artifact.title or "").strip() not in _UNTITLED:
+        return None
+    try:
+        first = next((line.strip() for line in kit.edit.plain_text(data).splitlines()
+                      if line.strip()), "")
+    except Exception:  # noqa: BLE001 — a name is a nicety; the edit is saved regardless
+        return None
+    return first[:120] or None
+
+
 @dataclass(frozen=True)
 class Toolset:
     #: tool name prefix and `ToolContext` field: `hwp`, `docx`
@@ -273,6 +291,8 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool, Tool]:
                 saved = await kit.doc.save(
                     db, artifact, result.data, expected=artifact.version,
                     summary=summary or "에이전트 편집",
+                    **({"title": named} if (named := _named_by_cover(kit, artifact, result.data))
+                       else {}),
                 )
             except kit.doc.Conflict:
                 return ToolResult(

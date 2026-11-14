@@ -1917,8 +1917,9 @@ export function ReportPanel({
                   >
                     {webNumbers[sectionIndex].label && `${webNumbers[sectionIndex].label} `}{s.heading}
                   </h2>
-                  {!editMode && (
-                    // Opens rightward; the button sits at the column's left edge.
+                  {!editMode && !readOnly && (
+                    // Opens rightward; the button sits at the column's left edge. A phone reads
+                    // only: section changes are asked of the agent there.
                     <Dropdown
                       align="left"
                       trigger={() => (

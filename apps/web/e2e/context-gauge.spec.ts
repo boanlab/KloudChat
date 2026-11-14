@@ -140,3 +140,15 @@ test('phone: the ring alone, the breakdown on a tap', { tag: '@phone' }, async (
   await expect(popover(page)).toHaveCount(0)
   expect(unexpected).toEqual([])
 })
+
+test('the report and slides composers show the gauge too', async ({ page }, info) => {
+  test.skip(phoneProject(), 'desktop layout')
+  const { unexpected } = await composerFixture(page, info)
+  const asked = await gaugeServer(page, () => 0)
+  for (const surface of ['report', 'slides'] as const) {
+    await page.goto(`/new/${surface}`)
+    await expect(gauge(page)).toBeVisible()
+    await expect.poll(() => (asked.at(-1) as { kind?: string } | undefined)?.kind).toBe(surface)
+  }
+  expect(unexpected).toEqual([])
+})

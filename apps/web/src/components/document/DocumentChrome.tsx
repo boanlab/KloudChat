@@ -101,14 +101,17 @@ export function DocumentHeader({
   const t = useT()
   const [request, setRequest] = useState<{ nonce: number; version?: number } | null>(null)
   const [sharing, setSharing] = useState(false)
+  // a read-only header at phone width (no 저장, icons only) fits one row
+  const oneRow = Boolean(compact && !showSave)
   useEffect(() => {
     if (historyRequest) setRequest(historyRequest)
   }, [historyRequest])
   return (
-    <header className={cn('relative z-40 flex flex-wrap items-center gap-1.5 border-b border-line bg-panel px-4 py-2.5 max-sm:px-2', className)}>
+    <header className={cn('relative z-40 flex items-center gap-1.5 border-b border-line bg-panel px-4 py-2.5 max-sm:px-2', oneRow ? 'flex-nowrap max-sm:gap-1' : 'flex-wrap', className)}>
       {icon}
-      {/* keeps room to be read: the actions wrap to a second row first */}
-      <p className="min-w-20 flex-1 basis-20 truncate text-base font-medium" title={title}>{title}</p>
+      {/* keeps room to be read: the actions wrap to a second row first; at phone width they
+          stay on one row (icons only) and the title gives way */}
+      <p className={cn('flex-1 truncate text-base font-medium', oneRow ? 'min-w-0' : 'min-w-20 basis-20')} title={title}>{title}</p>
       <Badge>v{version}</Badge>
       {/* at phone width the line under the header says so */}
       {dirty && !compact && <span className="shrink-0 text-xs text-warn">{t('저장 안 됨')}</span>}

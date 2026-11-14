@@ -376,7 +376,8 @@ async def test_compound_interest_past_the_exact_budget_is_approximated_and_flagg
     exact = json.loads((await calculate({"expression": "2**31"})).content)
     assert exact["exact"] == "2147483648" and "approximate" not in exact
     tenth = json.loads((await calculate({"expression": "(1+0.1)**30"})).content)
-    assert "approximate" not in tenth and tenth["exact"].endswith("/1000000000000000000000000000000")
+    assert "approximate" not in tenth
+    assert tenth["exact"].endswith("/" + "1" + "0" * 30)
 
 
 @pytest.mark.asyncio
