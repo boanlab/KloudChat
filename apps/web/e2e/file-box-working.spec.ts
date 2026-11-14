@@ -50,14 +50,18 @@ async function fixture(page: Page, info: TestInfo) {
       const q = (url.searchParams.get('q') ?? '').toLowerCase()
       const kind = url.searchParams.get('kind')
       const sort = url.searchParams.get('sort') ?? 'updated'
+      const down = (url.searchParams.get('dir') ?? 'desc') === 'desc'
       const limit = Number(url.searchParams.get('limit') ?? 50)
       const start = Number(url.searchParams.get('cursor') ?? 0)
       const named = docs.filter((row) => !q || row.title.toLowerCase().includes(q))
       const all = named.filter((row) => !kind || row.kind === kind)
-      all.sort((a, b) =>
-        sort === 'title' ? a.title.localeCompare(b.title)
-          : sort === 'oldest' ? a.updatedAt.localeCompare(b.updatedAt)
-            : b.updatedAt.localeCompare(a.updatedAt))
+      const value = (row: Doc) =>
+        sort === 'title' ? row.title : sort === 'kind' ? row.kind : sort === 'version' ? row.version : row.updatedAt
+      all.sort((a, b) => {
+        const [x, y] = [value(a), value(b)]
+        const by = x < y ? -1 : x > y ? 1 : a.id.localeCompare(b.id)
+        return down ? -by : by
+      })
       const counts = Object.fromEntries(['hwp', 'docx', 'pptx', 'report', 'deck']
         .map((k) => [k, named.filter((row) => row.kind === k).length]))
       return route.fulfill({ json: {
@@ -139,9 +143,27 @@ test('작업 문서 lists each document once, newest edit first, and filters, so
   await expect(page.getByText('찾는 문서가 없습니다')).toBeVisible()
   await page.getByLabel('파일 검색').fill('')
 
-  await page.getByLabel('정렬').selectOption('title')
+  // the column headings sort the whole list on the server, and the address keeps it
+  const heading = (name: string) => page.getByRole('columnheader', { name })
+  await expect(heading('마지막 수정')).toHaveAttribute('aria-sort', 'descending')
+  await heading('제목').getByRole('button').click()
+  await expect(page).toHaveURL(/sort=title&dir=asc/)
+  await expect(heading('제목')).toHaveAttribute('aria-sort', 'ascending')
+  await expect(heading('마지막 수정')).toHaveAttribute('aria-sort', 'none')
   await expect(rows(page).first()).toContainText('2027 사업 계획')
-  expect(asked).toContain('?sort=title&limit=50')
+  expect(asked).toContain('?sort=title&dir=asc&limit=50')
+  // the same heading again turns it round; the keyboard works it too
+  await heading('제목').getByRole('button').focus()
+  await page.keyboard.press('Enter')
+  await expect(heading('제목')).toHaveAttribute('aria-sort', 'descending')
+  await expect(rows(page).first()).toContainText('직원 연수 공문')
+  await heading('판 수').getByRole('button').click()
+  await expect(page).toHaveURL(/sort=version&dir=desc/)
+  await expect(rows(page).first()).toContainText('2027 사업 계획')
+  await page.reload()
+  await expect(heading('판 수')).toHaveAttribute('aria-sort', 'descending')
+  await expect(rows(page).first()).toContainText('2027 사업 계획')
+  await expect(page.getByTestId('phone-sort')).toBeHidden()
   expect(unexpected).toEqual([])
 })
 
@@ -207,6 +229,13 @@ test('on a phone 작업 문서 keeps each title whole and its controls under it 
   expect(openBox!.y).toBeGreaterThan(titleBox!.y)
   const width = page.viewportSize()!.width
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
-  await expect(page.getByLabel('정렬')).toBeVisible()
+  // no heading row on a phone: the column and the direction instead
+  await expect(page.getByRole('columnheader', { name: '제목' })).toBeHidden()
+  await page.getByLabel('정렬 기준').selectOption('title')
+  await expect(page).toHaveURL(/sort=title&dir=asc/)
+  await expect(rows(page).first()).toContainText('2027 사업 계획')
+  await page.getByRole('button', { name: '오름차순 정렬됨, 내림차순으로 바꾸기' }).click()
+  await expect(page).toHaveURL(/sort=title&dir=desc/)
+  await expect(rows(page).first()).toContainText('직원 연수 공문')
   expect(unexpected).toEqual([])
 })

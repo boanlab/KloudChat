@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { workingDocsApi, type WorkingDocRow, type WorkingKind, type WorkingSort } from '@/lib/api'
+import { workingDocsApi, type SortDir, type WorkingDocRow, type WorkingKind, type WorkingSort } from '@/lib/api'
 import { FILE_PAGE } from './fileBox'
 
 /** The kinds 「작업 문서」 lists, in the order its format chips show them. */
@@ -17,7 +17,7 @@ type Counts = Partial<Record<WorkingKind, number>>
  * The account's working documents, a page at a time: one row per document, filtered by kind,
  * searched by title and sorted on the server, so every filter reaches every document.
  */
-export function useWorkingDocs(enabled: boolean, kind: WorkingKind | null, query: string, sort: WorkingSort) {
+export function useWorkingDocs(enabled: boolean, kind: WorkingKind | null, query: string, sort: WorkingSort, dir: SortDir) {
   const [rows, setRows] = useState<WorkingDocRow[]>([])
   const [counts, setCounts] = useState<Counts | null>(null)
   const [total, setTotal] = useState(0)
@@ -30,7 +30,7 @@ export function useWorkingDocs(enabled: boolean, kind: WorkingKind | null, query
   const [heldFor, setHeldFor] = useState<string | null>(null)
   const asked = useRef(0)
   const q = query.trim()
-  const key = `${kind ?? ''}|${q}|${sort}`
+  const key = `${kind ?? ''}|${q}|${sort}|${dir}`
 
   const load = useCallback(async () => {
     const ticket = ++asked.current
@@ -38,19 +38,19 @@ export function useWorkingDocs(enabled: boolean, kind: WorkingKind | null, query
     setFailed(false)
     setMoreFailed(false)
     try {
-      const page = await workingDocsApi.page({ kind, q, sort, limit: FILE_PAGE })
+      const page = await workingDocsApi.page({ kind, q, sort, dir, limit: FILE_PAGE })
       if (ticket !== asked.current) return
       setRows(page.items)
       setCounts(page.counts)
       setTotal(page.total)
       setNext(page.next)
-      setHeldFor(`${kind ?? ''}|${q}|${sort}`)
+      setHeldFor(`${kind ?? ''}|${q}|${sort}|${dir}`)
     } catch {
       if (ticket === asked.current) setFailed(true)
     } finally {
       if (ticket === asked.current) setLoading(false)
     }
-  }, [kind, q, sort])
+  }, [kind, q, sort, dir])
 
   const loadMore = useCallback(async () => {
     if (!next || loadingMore) return
@@ -58,7 +58,7 @@ export function useWorkingDocs(enabled: boolean, kind: WorkingKind | null, query
     setLoadingMore(true)
     setMoreFailed(false)
     try {
-      const page = await workingDocsApi.page({ kind, q, sort, cursor: next, limit: FILE_PAGE })
+      const page = await workingDocsApi.page({ kind, q, sort, dir, cursor: next, limit: FILE_PAGE })
       if (ticket !== asked.current) return
       setRows((held) => [...held, ...page.items.filter((row) => !held.some((h) => h.id === row.id))])
       setCounts(page.counts)
@@ -69,7 +69,7 @@ export function useWorkingDocs(enabled: boolean, kind: WorkingKind | null, query
     } finally {
       setLoadingMore(false)
     }
-  }, [next, loadingMore, kind, q, sort])
+  }, [next, loadingMore, kind, q, sort, dir])
 
   useEffect(() => {
     if (!enabled) return

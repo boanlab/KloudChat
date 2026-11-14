@@ -37,7 +37,7 @@ The Reports and Slides screens do not carry over attachments from earlier reques
 - **Made in conversations**: files made during a conversation, such as code-run outputs (CSV and the like), images and charts
 - **Working documents**: the HWP, Word and PowerPoint documents and the web reports and web slides you made in conversations or edited in an editor
 
-Each row shows the size, when it came, and which conversation or project it belongs to. Find files by name, download them, and delete one or a selection. Deleting a project file takes it out of the project too.
+Each row shows the size, when it came, and which conversation or project it belongs to. Click a column heading (Name, Size, Uploaded) to sort by it, and click it again to reverse the order. On a phone, use the sort field and the arrow button above the list. The order you pick stays in the address, so a reload keeps it. Find files by name, download them, and delete one or a selection. Deleting a project file takes it out of the project too.
 
 To use the same material again in a new chat, report or deck, pick it under **+** → **Choose from Files** in the input box. Nothing is uploaded again, so there is no wait.
 
@@ -46,7 +46,7 @@ To use the same material again in a new chat, report or deck, pick it under **+*
 The **Working documents** tab is where you find the documents you were working on again. Each document is one row, however many versions it has, and the one you edited last comes first.
 
 - Each row shows the format (HWP document, Word document, PowerPoint document, web report, web slides), the number of versions (v3 and so on), when it was last edited, and the project and conversation it belongs to.
-- Show one format with the format chips, find documents by title, and sort them **Recently edited**, **Least recently edited** or **By title**.
+- Show one format with the format chips and find documents by title. Click a column heading (**Title**, **Format**, **Versions**, **Last edited**) to sort by it, and click it again to reverse the order. On a phone, use the sort field and the arrow button.
 - Click the title or **Open in its editor** to open the same editor as from the chat, beside the document's conversation. An HWP, Word or PowerPoint document with no conversation opens beside a new chat and joins it. A web report or web slides with no conversation opens in the editing panel of the **Artifacts** screen.
 - **Go to the conversation** takes you to the conversation that made it.
 - **Download** saves the current version in its own format: HWP, Word and PowerPoint documents as the file itself, a web report as Markdown (.md), web slides as PowerPoint (.pptx). For other formats, use Download (export) on the document's screen.

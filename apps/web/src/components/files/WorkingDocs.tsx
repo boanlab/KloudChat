@@ -1,12 +1,13 @@
 import { Download, FilePenLine, FileStack, FileText, Loader2, MessageSquare, Pencil, Presentation, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Badge, Button, Card, ConfirmDialog, EmptyState, Input, Modal, ReloadNotice, Select } from '@/components/ui'
+import { Badge, Button, Card, ConfirmDialog, EmptyState, Input, Modal, ReloadNotice } from '@/components/ui'
 import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
 import { RelTime } from '@/components/ui/RelTime'
 import { LoadMore } from '@/components/ui/ShowMore'
 import { ListSkeleton } from '@/components/ui/Skeleton'
 import { artifactsApi, errorMessage, workingDocsApi, type WorkingDocRow, type WorkingKind, type WorkingSort } from '@/lib/api'
+import { ColumnHeader, PhoneSort, useUrlSort, type SortField } from './ListSort'
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -19,6 +20,17 @@ const KIND_LABEL: Record<WorkingKind, string> = {
   report: '웹 보고서',
   deck: '웹 슬라이드',
 }
+
+/** 「작업 문서」's sortable columns; the newest edit first by default. */
+const SORT_FIELDS: SortField<WorkingSort>[] = [
+  { id: 'title', label: '제목', first: 'asc' },
+  { id: 'kind', label: '형식', first: 'asc' },
+  { id: 'version', label: '판 수', first: 'desc' },
+  { id: 'updated', label: '마지막 수정', first: 'desc' },
+]
+
+/** The grid on a wide screen: pick, title, format, versions, last edit, controls. */
+const GRID = 'sm:grid sm:grid-cols-[1.75rem_minmax(0,1fr)_8.5rem_4rem_8rem_11.5rem] sm:items-center sm:gap-x-3'
 
 function KindGlyph({ kind }: { kind: WorkingKind }) {
   const Icon = kind === 'pptx' || kind === 'deck' ? Presentation : FileText
@@ -78,8 +90,8 @@ export function WorkingDocs({ query, onCount }: { query: string; onCount: (n: nu
   const t = useT()
   const navigate = useNavigate()
   const [kind, setKind] = useState<WorkingKind | null>(null)
-  const [sort, setSort] = useState<WorkingSort>('updated')
-  const docs = useWorkingDocs(true, kind, query, sort)
+  const sort = useUrlSort(SORT_FIELDS, { field: 'updated', dir: 'desc' })
+  const docs = useWorkingDocs(true, kind, query, sort.field, sort.dir)
   const pick = useBulkSelect(docs.rows)
   const openInEditor = useOpenInEditor()
   const [opening, setOpening] = useState<string | null>(null)
@@ -148,8 +160,8 @@ export function WorkingDocs({ query, onCount }: { query: string; onCount: (n: nu
   return (
     <div data-testid="working-docs">
       {/* A phone puts the order under the format chips, so the chips keep the row's width. */}
-      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-        <div className="flex min-w-0 flex-wrap gap-1.5 sm:flex-1" role="group" aria-label={t('형식')}>
+      <div className="mt-3 flex flex-col gap-2">
+        <div className="flex min-w-0 flex-wrap gap-1.5" role="group" aria-label={t('형식')}>
           {[{ kind: null, label: '모든 형식' }, ...WORKING_KINDS].map((row) => (
             <button
               key={row.kind ?? 'all'}
@@ -173,19 +185,7 @@ export function WorkingDocs({ query, onCount }: { query: string; onCount: (n: nu
             </button>
           ))}
         </div>
-        <Select
-          value={sort}
-          onChange={(e) => {
-            setSort(e.target.value as WorkingSort)
-            pick.clear()
-          }}
-          aria-label={t('정렬')}
-          className="sm:w-auto"
-        >
-          <option value="updated">{t('최근 수정순')}</option>
-          <option value="oldest">{t('오래된 수정순')}</option>
-          <option value="title">{t('제목순')}</option>
-        </Select>
+        <PhoneSort fields={SORT_FIELDS} sort={sort} onSort={sort.set} />
       </div>
       {docs.failed && <ReloadNotice onRetry={() => void docs.load()} />}
       {error && <p role="alert" className="pt-3 text-base text-danger">{error}</p>}
@@ -216,20 +216,31 @@ export function WorkingDocs({ query, onCount }: { query: string; onCount: (n: nu
                 pick.clear()
               }}
             />
-            <Card className="px-3 py-1">
+            <Card role="table" aria-label={t('작업 문서')} className="px-3 py-1">
+              <div role="row" className={cn('hidden border-b border-line px-1 py-1.5 text-xs text-muted', GRID)}>
+                <div role="columnheader"><span className="sr-only">{t('선택')}</span></div>
+                {SORT_FIELDS.map((field) => (
+                  <ColumnHeader key={field.id} field={field} sort={sort} onSort={sort.click} align={field.id === 'version' ? 'right' : 'left'} />
+                ))}
+                <div role="columnheader"><span className="sr-only">{t('동작')}</span></div>
+              </div>
               {shown.map((row) => (
                 // A phone moves the controls under the title, so the title keeps the row's width.
                 <div
                   key={row.id}
                   data-testid="working-doc-row"
                   data-kind={row.kind}
-                  className="flex flex-wrap items-center gap-x-2 border-b border-line px-1 py-2 last:border-b-0 sm:flex-nowrap"
+                  role="row"
+                  className={cn('flex flex-wrap items-center gap-x-2 border-b border-line px-1 py-2 last:border-b-0 sm:flex-nowrap', GRID)}
                 >
-                  <PickBox
-                    checked={pick.picked.has(row.id)}
-                    onChange={() => pick.toggle(row.id)}
-                    label={t('{name} 선택').replace('{name}', row.title)}
-                  />
+                  <div role="cell" className="flex items-center">
+                    <PickBox
+                      checked={pick.picked.has(row.id)}
+                      onChange={() => pick.toggle(row.id)}
+                      label={t('{name} 선택').replace('{name}', row.title)}
+                    />
+                  </div>
+                  <div role="cell" className="flex min-w-0 flex-1 items-center gap-2">
                   <KindGlyph kind={row.kind} />
                   <div className="min-w-0 flex-1">
                     <button
@@ -242,13 +253,20 @@ export function WorkingDocs({ query, onCount }: { query: string; onCount: (n: nu
                       {row.title || t('제목 없는 문서')}
                     </button>
                     <p className="flex min-w-0 flex-wrap items-center gap-x-2 text-xs text-faint">
-                      <Badge>{t(KIND_LABEL[row.kind])}</Badge>
-                      <span title={t('버전 {n}개').replace('{n}', String(row.version))}>v{row.version}</span>
-                      <RelTime iso={row.updatedAt} />
+                      {/* a wide screen has these in their own columns */}
+                      <span className="sm:hidden"><Badge>{t(KIND_LABEL[row.kind])}</Badge></span>
+                      <span className="sm:hidden" title={t('버전 {n}개').replace('{n}', String(row.version))}>v{row.version}</span>
+                      <span className="sm:hidden"><RelTime iso={row.updatedAt} /></span>
                       <DocPlace row={row} />
                     </p>
                   </div>
-                  <div className="flex shrink-0 items-center max-sm:-mt-1 max-sm:basis-full max-sm:justify-end">
+                  </div>
+                  <div role="cell" className="max-sm:hidden"><Badge>{t(KIND_LABEL[row.kind])}</Badge></div>
+                  <div role="cell" className="text-right text-sm tabular-nums text-muted max-sm:hidden" title={t('버전 {n}개').replace('{n}', String(row.version))}>
+                    v{row.version}
+                  </div>
+                  <div role="cell" className="text-sm text-muted max-sm:hidden"><RelTime iso={row.updatedAt} /></div>
+                  <div role="cell" className="flex shrink-0 items-center justify-end max-sm:-mt-1 max-sm:basis-full">
                     <Button
                       variant="ghost"
                       size="icon"

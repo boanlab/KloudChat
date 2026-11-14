@@ -3202,12 +3202,14 @@ a project's or an agent's excepted (`delete_session_files`). Each file records h
 (`files.origin`: `upload`, or `generated` for a code run's output, an image, a chart, a
 figure, audio, video, an export); the file box (`/files` in the web app) lists the two
 apart, a page at a time (`GET /files/page?box=true`: agents' knowledge left out, `origin`,
-a name search `q`, a keyset `cursor`, with `total` and per-origin `counts`, plus `working`
-in the whole box), and a composer's 「파일함에서 고르기」 attaches one again by id. A third tab,
+a name search `q`, `sort` `created`/`name`/`size` with `dir`, a keyset `cursor` tied to
+the sort and direction (ties broken by id), with `total` and per-origin `counts`, plus
+`working` in the whole box), and a composer's 「파일함에서 고르기」 attaches one again by id. A third tab,
 「작업 문서」 (`/files?tab=working`), lists the documents worked on as a whole — the HWP, Word
 and PowerPoint artifacts and the web reports and web slides — one row per artifact, its
 version count being its `version` (`GET /artifacts/working`: `kind` one kind or a comma list,
-a title search `q`, `sort` `updated`/`oldest`/`title`, a keyset `cursor` tied to its sort, with
+a title search `q`, `sort` `updated`/`title`/`kind`/`version` with `dir` `asc`/`desc`, a
+keyset `cursor` tied to the sort and direction, with
 `total`, per-kind `counts` and each row's conversation and project names, someone else's or a
 deleted one left out). The rows are the artifacts themselves, not copies: they open in the
 editor they have in chat (`/s/{session}?artifact={id}`; an office document with no
@@ -3217,7 +3219,10 @@ through `PATCH`/`DELETE /artifacts/{id}`; deleting an office document, or the co
 that holds it (singly or in bulk), also removes the file it keeps per version, after the
 commit (`office_doc.kept_files`, `drop_files`); deleting an account with its files takes them
 with its directory, and one deleted with `purgeFiles=false` leaves them to the storage sweep. Uploaded office files stay in 올린 파일 as files; a
-copy opened from one for editing is the working document. Deleting
+copy opened from one for editing is the working document. Every file-box tab sorts on the server by clicking its
+column headings (`components/files/ListSort.tsx`: `SortHeader` cells over a grid list, the
+sorted one carrying `aria-sort`), the order kept in the address (`?sort=…&dir=…`); a phone,
+which has no heading row, picks the column and the direction instead (`PhoneSort`). Deleting
 the project drops the collection; `POST /projects/{id}/knowledge/reindex`
 backfills files uploaded before the index existed. The lexical shelf the tool
 also reads includes the project's files, so a passage the budget could not

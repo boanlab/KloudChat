@@ -142,18 +142,27 @@ async def test_each_row_says_its_versions_and_where_it_belongs(stack):
     assert one["projectId"] is None and one["version"] == 2
 
 
-async def test_other_orders_page_through_everything(stack):
+@pytest.mark.parametrize("sort", ["updated", "title", "kind", "version"])
+@pytest.mark.parametrize("direction", ["asc", "desc"])
+async def test_every_column_pages_through_everything_both_ways(stack, sort, direction):
     client, _ = stack
-    by_title = await _walk(client, sort="title")
-    assert [row["title"] for row in by_title] == sorted(row["title"] for row in by_title)
-    assert len(by_title) == 130
-    oldest = await _walk(client, sort="oldest")
-    assert [row["title"] for row in oldest[:2]] == ["문서 000", "문서 001"]
-    assert len({row["id"] for row in oldest}) == 130
-    # a cursor belongs to its order
+    items = await _walk(client, sort=sort, dir=direction)
+    assert len(items) == 130 and len({row["id"] for row in items}) == 130
+    field = {"updated": "updatedAt", "title": "title", "kind": "kind", "version": "version"}[sort]
+    # the column in order, ties broken by id in the same direction
+    keys = [(row[field], row["id"]) for row in items]
+    assert keys == sorted(keys, reverse=direction == "desc")
+
+
+async def test_a_cursor_belongs_to_its_column_and_direction(stack):
+    client, _ = stack
     cursor = (await client.get("/artifacts/working", params={"limit": 5})).json()["next"]
-    wrong = await client.get("/artifacts/working", params={"sort": "title", "cursor": cursor})
-    assert wrong.status_code == 422
+    for params in ({"sort": "title"}, {"dir": "asc"}, {"sort": "updated", "dir": "asc"}):
+        wrong = await client.get("/artifacts/working", params={**params, "cursor": cursor})
+        assert wrong.status_code == 422
+    assert (await client.get("/artifacts/working", params={"sort": "size"})).status_code == 422
+    oldest = await _walk(client, sort="updated", dir="asc")
+    assert [row["title"] for row in oldest[:2]] == ["문서 000", "문서 001"]
 
 
 async def test_kind_and_title_filters(stack):

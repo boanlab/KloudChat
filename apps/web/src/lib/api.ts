@@ -1568,6 +1568,8 @@ export const filesApi = {
     origin?: 'upload' | 'generated'
     q?: string
     projectId?: string
+    sort?: FileSort
+    dir?: SortDir
     cursor?: string | null
     limit?: number
   }) =>
@@ -1577,6 +1579,8 @@ export const filesApi = {
         origin: params.origin,
         q: params.q?.trim(),
         project_id: params.projectId,
+        sort: params.sort && params.sort !== 'created' ? params.sort : undefined,
+        dir: params.dir && params.dir !== 'desc' ? params.dir : undefined,
         cursor: params.cursor,
         limit: params.limit,
       })}`,
@@ -1822,7 +1826,9 @@ export type OfficeKind = 'hwp' | 'docx' | 'pptx'
 
 /** What the file box's 「작업 문서」 tab lists: HWP, Word, PowerPoint files and web reports, web slides. */
 export type WorkingKind = OfficeKind | 'report' | 'deck'
-export type WorkingSort = 'updated' | 'oldest' | 'title'
+export type WorkingSort = 'updated' | 'title' | 'kind' | 'version'
+export type FileSort = 'created' | 'name' | 'size'
+export type SortDir = 'asc' | 'desc'
 
 /** One document in 「작업 문서」, however many versions it has (`version` counts them). */
 export interface WorkingDocRow {
@@ -1843,12 +1849,13 @@ export interface WorkingDocRow {
 export const workingDocsApi = {
   /** A page of 「작업 문서」; `counts` per kind over the search, the kind filter aside. A cursor
    *  belongs to its `sort`. */
-  page: (params: { kind?: WorkingKind | null; q?: string; sort?: WorkingSort; cursor?: string | null; limit?: number }) =>
+  page: (params: { kind?: WorkingKind | null; q?: string; sort?: WorkingSort; dir?: SortDir; cursor?: string | null; limit?: number }) =>
     call<CursorPage<WorkingDocRow> & { counts: Partial<Record<WorkingKind, number>> }>(
       `/artifacts/working${queryOf({
         kind: params.kind ?? undefined,
         q: params.q?.trim(),
         sort: params.sort && params.sort !== 'updated' ? params.sort : undefined,
+        dir: params.dir && params.dir !== 'desc' ? params.dir : undefined,
         cursor: params.cursor,
         limit: params.limit,
       })}`,

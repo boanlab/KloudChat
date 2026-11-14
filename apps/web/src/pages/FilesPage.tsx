@@ -1,7 +1,8 @@
 import { Download, Eye, FolderOpen, Trash2, Upload } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { FileBoxFilter, FileLine } from '@/components/files/FileBoxList'
+import { FILE_SORT_FIELDS, FileBoxFilter, FileColumns, FileLine } from '@/components/files/FileBoxList'
+import { PhoneSort, useUrlSort } from '@/components/files/ListSort'
 import { FilePreview } from '@/components/files/FilePreview'
 import { useFileBox, type FileBoxTab } from '@/components/files/fileBox'
 import { WorkingDocs } from '@/components/files/WorkingDocs'
@@ -26,8 +27,10 @@ export function FilesPage() {
   const origin = tab === 'working' ? 'upload' : tab
   const working = tab === 'working'
   const [query, setQuery] = useState('')
+  // column sorting, kept in the address; the server sorts every file, not the page held
+  const sort = useUrlSort(FILE_SORT_FIELDS, { field: 'created', dir: 'desc' })
   // The server pages, filters by origin and searches names over every file of the account.
-  const box = useFileBox(true, origin, query)
+  const box = useFileBox(true, origin, query, sort.field, sort.dir)
   // the 「작업 문서」 badge: the files page counts it, the tab's own list once it has answered
   const [workingSeen, setWorkingSeen] = useState<{ q: string; n: number } | null>(null)
   const noteWorking = useCallback((n: number) => setWorkingSeen({ q: query.trim(), n }), [query])
@@ -195,10 +198,18 @@ export function FilesPage() {
                   pick.clear()
                 }}
               />
-              <Card className="px-3 py-1">
+              <PhoneSort
+                className="mb-2"
+                fields={FILE_SORT_FIELDS.map((f) => (f.id === 'created' && origin === 'generated' ? { ...f, label: '만든 때' } : f))}
+                sort={sort}
+                onSort={sort.set}
+              />
+              <Card role="table" aria-label={origin === 'upload' ? t('올린 파일') : t('대화에서 만든 파일')} className="px-3 py-1">
+                <FileColumns sort={sort} onSort={sort.click} made={origin === 'generated'} />
                 {shown.map((row) => (
                   <FileLine
                     key={row.id}
+                    columns
                     row={row}
                     onOpen={() => setPreviewing(row)}
                     lead={
