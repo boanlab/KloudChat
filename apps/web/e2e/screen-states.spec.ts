@@ -56,7 +56,7 @@ const TEMPLATES = [
   formFormat: '', hasPreview: true, slideCount: 0,
 }))
 
-type Options = { empty?: boolean; files?: boolean }
+type Options = { empty?: boolean; files?: boolean; longModel?: boolean }
 
 function message(id: string, role: 'user' | 'assistant', content: string, extra: Record<string, unknown> = {}) {
   return { id, role, content, steps: null, attachments: null, variants: null, superseded: null, usage: null,
@@ -102,7 +102,8 @@ async function fixture(page: Page, info: TestInfo, options: Options = {}) {
       sections: [{ id: 's1', heading: '클라우드 컴퓨팅 강의 노트 마인드맵', content: `\`\`\`mermaid\n${MINDMAP}\n\`\`\`` }] },
   }]
   const models = [
-    { id: 'fixture/base', label: 'Qwen3.8 27b', name: 'Fixture', vendor: 'Fixture', provider: 'fixture',
+    { id: 'fixture/base', label: 'Qwen3.8 27b',
+      name: options.longModel ? 'Qwen3.8 27b Instruct Research Edition' : 'Fixture', vendor: 'Fixture', provider: 'fixture',
       kinds: ['chat', 'report', 'slides'], modality: 'chat', dataBoundary: 'external', creditCost: 1, inputCreditCost: 1,
       supportsTools: true, contextWindow: 64000 },
     { id: 'fixture/flash', label: 'Qwen3.8 Flash', name: 'Flash', vendor: 'Fixture', provider: 'fixture',
@@ -426,4 +427,26 @@ test('@phone a large mind map reads as a tree in the document panel too', async 
   expect(size).toBeGreaterThanOrEqual(12)
   await map.scrollIntoViewIfNeeded()
   await shot(page, 'mindmap-document')
+})
+
+test('@phone the chips under a new report\'s composer stay inside the page gutter', async ({ page }, info) => {
+  await fixture(page, info, { longModel: true })
+  for (const phone of [390, 360]) {
+    await page.setViewportSize({ width: phone, height: 844 })
+    await page.goto(`/projects/${projectId}`)
+    await page.getByRole('button', { name: '새로 시작' }).click()
+    await page.getByRole('menuitem', { name: '보고서' }).click()
+    const row = page.getByTestId('composer-phone-row')
+    await expect(row).toBeVisible({ timeout: 15_000 })
+    const edges = await row.evaluate((node) => {
+      const kids = [...node.querySelectorAll('button')].map((b) => b.getBoundingClientRect()).filter((r) => r.width > 0)
+      return { left: Math.min(...kids.map((r) => r.left)), right: Math.max(...kids.map((r) => r.right)) }
+    })
+    expect(edges.left).toBeGreaterThanOrEqual(15)
+    expect(edges.right).toBeLessThanOrEqual(phone - 15)
+    await fitsTheScreen(page)
+    await row.scrollIntoViewIfNeeded()
+    await page.waitForTimeout(400)
+    await shot(page, 'composer-chips')
+  }
 })

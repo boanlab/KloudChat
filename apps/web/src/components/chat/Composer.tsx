@@ -2820,7 +2820,14 @@ export function Composer({
         )}
       </div>
       {/* The phone's line has no room for the model; it sits just under the box. */}
-      {phone && modelPicker && <div className="mt-1 flex items-center justify-end gap-1">{contextGauge}{reasoningChip}{modelPicker}</div>}
+      {/* Wraps rather than overflowing: right-aligned content wider than the row ran past the left gutter. */}
+      {phone && modelPicker && (
+        <div className="mt-1 flex min-w-0 flex-wrap items-center justify-end gap-1" data-testid="composer-phone-row">
+          {contextGauge}
+          {reasoningChip}
+          <span className="flex min-w-0 max-w-full [&>fieldset>div]:max-w-full [&>fieldset>div]:min-w-0 [&>fieldset>div]:shrink [&_button]:max-w-full">{modelPicker}</span>
+        </div>
+      )}
       {mediaError && (
         <p
           role="status"
