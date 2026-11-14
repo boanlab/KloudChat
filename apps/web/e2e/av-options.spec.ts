@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { signIn } from './helpers'
+import { composerFixture } from './composer-fixture'
 
 /** Switching 종류 changes the av model; the 해상도/소리 chips follow the model's priced combinations. */
 
@@ -33,20 +33,10 @@ const soundOnlyVideo = {
   creditPerSecond: { '720p:sound': 300, '1080p:sound': 500 },
 }
 
-test('종류를 영상으로 바꾸면 그 모델이 만들 수 있는 조합으로 맞춰진다', async ({ page }) => {
-  // Force the av surface on.
-  await page.route('**/api/auth/config', async (route) => {
-    const config = await (await route.fetch()).json()
-    await route.fulfill({
-      json: {
-        ...config,
-        enabledKinds: [...new Set([...(config.enabledKinds ?? ['chat']), 'av'])],
-      },
-    })
-  })
+test('종류를 영상으로 바꾸면 그 모델이 만들 수 있는 조합으로 맞춰진다', async ({ page }, testInfo) => {
   await page.route('**/api/models', async (route) => {
     if (route.request().method() !== 'GET') {
-      await route.continue()
+      await route.fallback()
       return
     }
     await route.fulfill({
@@ -56,11 +46,13 @@ test('종류를 영상으로 바꾸면 그 모델이 만들 수 있는 조합으
         models: [speech, soundOnlyVideo],
         litellmAvailable: true,
         defaultChatModel: '',
+        // as the server sends it: the surface default is the video default
+        defaultModelByKind: { av: soundOnlyVideo.id },
         defaultAvModelByMode: { audio: speech.id, video: soundOnlyVideo.id },
       }),
     })
   })
-  await signIn(page)
+  await composerFixture(page, testInfo)
   await page.goto('/new/av')
 
   // 영상 on arrival: the admin's video default, so mode and model are paired.

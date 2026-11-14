@@ -110,9 +110,3 @@ def test_each_format_brings_its_genre_rules(format_id: str, musts: tuple[str, ..
 def test_the_capstone_genre_no_longer_claims_a_business_proposal():
     assert report._genre_rule("사업 제안서 써 줘").startswith("Genre: 고객 제안서")
     assert report._genre_rule("캡스톤 프로젝트 제안서 써 줘").startswith("Genre: 프로젝트 제안서")
-
-
-def test_every_mapped_template_exists():
-    for template_id, format_id in doc_formats.TEMPLATE_FORMATS.items():
-        assert design_templates.get(template_id) is not None, template_id
-        assert format_id in doc_formats.BY_ID

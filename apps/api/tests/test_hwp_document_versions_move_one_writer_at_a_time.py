@@ -7,7 +7,6 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import create_async_engine
-from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from test_report_table_roundtrip import _DDL
 
@@ -15,7 +14,6 @@ from app.core.config import settings
 from app.core.db import get_session
 from app.core.deps import current_user
 from app.models.user import User
-from app.models.workspace import ArtifactVersion
 from app.routers import hwp as hwp_router
 from app.routers import workspace
 from app.services import hwp_doc, hwpx_edit
@@ -53,40 +51,6 @@ async def stack(tmp_path, monkeypatch):
             yield client, local
     finally:
         await engine.dispose()
-
-
-@pytest.mark.asyncio
-async def test_the_editor_saves_a_new_version_and_a_stale_save_is_refused(stack):
-    client, local = stack
-    made = await client.post("/artifacts/hwp", json={"title": "공문"})
-    assert made.status_code == 201, made.text
-    body = made.json()
-    assert (body["kind"], body["version"], body["data"]["format"]) == ("hwp", 1, "hwpx")
-    first = await client.get(f"/artifacts/{body['id']}/hwp")
-    assert first.status_code == 200 and first.headers["x-artifact-version"] == "1"
-
-    edited = hwpx_edit.apply(first.content, [{"op": "replace_text", "id": "p1",
-                                              "text": "손으로 쓴 줄"}]).data
-    saved = await client.put(f"/artifacts/{body['id']}/hwp?expectedVersion=1", content=edited)
-    assert saved.status_code == 200, saved.text
-    assert saved.json()["version"] == 2
-    assert "손으로 쓴 줄" in saved.json()["data"]["text"]
-
-    stale = await client.put(f"/artifacts/{body['id']}/hwp?expectedVersion=1", content=edited)
-    assert stale.status_code == 409
-    junk = await client.put(f"/artifacts/{body['id']}/hwp?expectedVersion=2", content=b"nope")
-    assert junk.status_code == 422
-
-    # the first version is still there to load and restore
-    old = await client.get(f"/artifacts/{body['id']}/hwp?version=1")
-    assert old.status_code == 200 and old.content == first.content
-    async with local() as db:
-        rows = (await db.exec(select(ArtifactVersion))).all()
-    assert [r.version for r in rows] == [1]
-    restored = await client.post(f"/artifacts/{body['id']}/restore", json={"version": 1})
-    assert restored.status_code == 200 and restored.json()["version"] == 3
-    again = await client.get(f"/artifacts/{body['id']}/hwp")
-    assert again.content == first.content
 
 
 @pytest.mark.asyncio

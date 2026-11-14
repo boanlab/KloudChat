@@ -32,7 +32,9 @@ async function handoffFixture(page: Page) {
         user: { id: 'fixture-user', name: '복원 검증', email: 'fixture@example.test',
           role: 'user', status: 'active', monthlyCredits: 1000, creditsUsed: 0,
           avatarColor: '#168267', allowedModels: [], createdAt: at,
-          preferences: { autoMemory: false, showUsage: false, streamResponses: true } } } })
+          preferences: { autoMemory: false, showUsage: false, streamResponses: true,
+            // a chosen chat model: a new conversation otherwise starts on Super Agent
+            modelByKind: { chat: 'fixture/base' } } } } })
     }
     if (path === '/auth/config') {
       return route.fulfill({ json: { brand: { name: 'KloudChat', logo: '' },
@@ -81,13 +83,14 @@ async function handoffFixture(page: Page) {
       return route.fulfill({ json: [] })
     }
     if (method !== 'GET') writes.push({ path, body: request.postDataJSON() ?? {} })
+    if (path === '/auth/me' && method === 'PATCH') return route.fulfill({ json: {} })
     return route.abort('blockedbyclient')
   })
   return writes
 }
 
 async function openSavedSession(page: Page, name: string) {
-  const button = page.getByRole('button', { name, exact: true })
+  const button = page.getByRole('link', { name, exact: true })
   const close = page.locator('button[aria-label="사이드바 닫기"]')
   const narrow = await close.count() > 0
   if (narrow && await close.getAttribute('aria-hidden') === 'true') {
@@ -120,11 +123,17 @@ for (const mode of ['super', 'super_strict'] as const) {
       await page.getByRole('button', { name: /Fixture base/ }).click()
       await page.getByRole('menuitemradio', {
         name: mode === 'super' ? /^Super Agent 사용 가능/ : /Super Agent \(strict-local\)/ }).click()
-      await expect(page).toHaveURL(`/s/${id}`)
+      // the client names the new conversation
+      await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}$/)
+      const held = page.url()
       await expect(page.getByLabel('프롬프트 입력')).toHaveValue('전환 후에도 보존할 초안')
       await expect(page.getByRole('button', { name: 'draft.txt 제거' })).toBeVisible()
       await expect(page.getByText(`웹 검색: ${search}`, { exact: true })).toBeVisible()
-      expect(writes).toEqual([{ path: '/sessions', body: expect.objectContaining({ routingMode: mode }) }])
+      // The conversation is held in the browser until its first send; Super Agent picked on the
+      // home screen also clears the chosen chat model, so new conversations start on it again.
+      expect(writes).toEqual(mode === 'super'
+        ? [{ path: '/auth/me', body: { preferences: { modelByKind: {} } } }]
+        : [])
       // Repeated renders must not consume or reset the restored state again.
       await page.getByLabel('프롬프트 입력').fill('전환 후 다시 수정한 초안')
       await expect(page.getByRole('button', { name: 'draft.txt 제거' })).toBeVisible()
@@ -140,7 +149,9 @@ for (const mode of ['super', 'super_strict'] as const) {
       await expect(page).toHaveURL(`/s/${otherId}`)
       await expect(page.getByRole('button', { name: 'draft.txt 제거' })).toHaveCount(0)
       await expect(page.getByText(/^웹 검색: /)).toHaveCount(0)
-      await openSavedSession(page, '복원 검증')
+      // the unsent conversation is not in the list yet: back is how one returns to it
+      await page.goBack()
+      await expect(page).toHaveURL(held)
       await expect(page.getByLabel('프롬프트 입력')).toHaveValue('전환 후 다시 수정한 초안')
       await expect(page.getByRole('button', { name: 'draft.txt 제거' })).toHaveCount(0)
       await expect(page.getByText(/^웹 검색: /)).toHaveCount(0)

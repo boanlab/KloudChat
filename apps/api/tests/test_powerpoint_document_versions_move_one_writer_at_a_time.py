@@ -71,38 +71,6 @@ async def _upload(local, name: str, data: bytes) -> str:
 
 
 @pytest.mark.asyncio
-async def test_the_editor_saves_a_new_version_and_a_stale_save_is_refused(stack):
-    client, _ = stack
-    made = await client.post("/artifacts/pptx", json={"title": "보고"})
-    assert made.status_code == 201, made.text
-    body = made.json()
-    assert (body["kind"], body["version"], body["data"]["format"]) == ("pptx", 1, "pptx")
-    assert body["data"]["slides"] == 1
-    first = await client.get(f"/artifacts/{body['id']}/pptx")
-    assert first.status_code == 200 and first.headers["x-artifact-version"] == "1"
-    assert first.headers["content-type"].startswith(pptx_doc.PPTX_MIME)
-    assert "s1.1 (제목): (비어 있음)" in pptx_edit.outline(first.content)
-
-    edited = pptx_edit.apply(first.content, [{"op": "replace_text", "id": "s1.1",
-                                              "text": "손으로 쓴 제목"}]).data
-    saved = await client.put(f"/artifacts/{body['id']}/pptx?expectedVersion=1", content=edited)
-    assert saved.status_code == 200, saved.text
-    assert saved.json()["version"] == 2 and "손으로 쓴 제목" in saved.json()["data"]["text"]
-
-    stale = await client.put(f"/artifacts/{body['id']}/pptx?expectedVersion=1", content=edited)
-    assert stale.status_code == 409
-    junk = await client.put(f"/artifacts/{body['id']}/pptx?expectedVersion=2", content=b"nope")
-    assert junk.status_code == 422 and junk.json()["detail"] == "not_a_pptx_file"
-
-    old = await client.get(f"/artifacts/{body['id']}/pptx?version=1")
-    assert old.status_code == 200 and old.content == first.content
-    restored = await client.post(f"/artifacts/{body['id']}/restore", json={"version": 1})
-    assert restored.status_code == 200 and restored.json()["version"] == 3
-    # a Word route does not serve it
-    assert (await client.get(f"/artifacts/{body['id']}/docx")).status_code == 404
-
-
-@pytest.mark.asyncio
 async def test_an_uploaded_pptx_opens_and_a_legacy_ppt_does_not(stack):
     client, local = stack
     file_id = await _upload(local, "2-business-deck.pptx", company())

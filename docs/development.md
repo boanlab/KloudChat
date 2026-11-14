@@ -61,7 +61,7 @@ Checks:
 
 ```bash
 npm run lint         # oxlint
-npm run test:config  # node --test for the Vite config
+npm run test:config  # the Vite config; every e2e spec in one CI surface or live
 npm run build        # tsc -b && vite build
 ```
 
@@ -164,7 +164,12 @@ time (`E2E_SHARD`, `e2e/shard-weights.json`). It builds the
 app once, serves it with `vite preview` on port 5390 and stubs the API with
 route handlers, so no stack or account is needed. Projects are
 `<surface>/<viewport>`; [apps/web/README.md](../apps/web/README.md) has the
-details and the one config that stays out of CI.
+details and the one config that stays out of CI. Every spec is either in exactly one
+surface of `playwright.ci.config.ts` or listed in `e2e/live-specs.ts` (the specs that
+sign in to a running stack, below); the config refuses to load otherwise, and
+`npm run test:config` runs that check in the web job. A new project's time goes into
+`e2e/shard-weights.json` (a rough local figure until `.github/ci/e2e-weights.py`
+measures it on CI).
 
 ### API integration
 

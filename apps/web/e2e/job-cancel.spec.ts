@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
-import { signIn, surfaceOn } from './helpers'
+import { surfaceOn } from './helpers'
+import { composerFixture } from './composer-fixture'
 
 /** 취소 on a clip job reaches the server, and a failed cancel leaves the card running. Job stubbed. */
 
@@ -31,8 +32,20 @@ function sessionIdOf(page: Page) {
   return new URL(page.url()).pathname.split('/').pop() ?? ''
 }
 
+const veo = {
+  id: 'fixture/veo-lite', label: 'Veo 3.1 Lite', name: 'Veo 3.1 Lite', vendor: 'Google', provider: 'fixture',
+  dataBoundary: 'external', strictLocal: false, privacyOnly: false, modality: 'video', kinds: ['av'],
+  creditCost: 0, inputCreditCost: 0, creditPerSecond: { '720p:silent': 3000, '720p:sound': 4000 },
+  supportsTools: false, description: '',
+}
+
 /** Puts a stubbed running clip on screen. Returns false when the av surface is off. */
 async function startStubbedJob(page: Page): Promise<boolean> {
+  // A priced video model, the admin's default: an unpriced shape is refused in the composer.
+  await page.route('**/api/models', (route) => route.fulfill({ json: {
+    models: [veo], litellmAvailable: true, defaultChatModel: '',
+    defaultModelByKind: { av: veo.id }, defaultAvModelByMode: { video: veo.id },
+  } }))
   await page.route('**/api/sessions/*/jobs', async (route) => {
     const parts = new URL(route.request().url()).pathname.split('/')
     const row = jobRow(parts[parts.length - 2])
@@ -42,12 +55,10 @@ async function startStubbedJob(page: Page): Promise<boolean> {
 
   if (!(await surfaceOn(page, 'av'))) return false
   await page.getByRole('button', { name: /^해상도/ }).click()
-  await page.getByRole('menuitem', { name: '720p' }).click()
+  await page.getByRole('menuitemcheckbox', { name: '720p' }).click()
   await page.keyboard.press('Escape')
 
-  // A named model: an unpriced (model × resolution × sound × length) is refused in the composer.
-  await page.getByRole('button', { name: /Veo/ }).first().click()
-  await page.getByRole('button', { name: /Veo 3\.1 Lite/ }).first().click()
+  await expect(page.getByRole('button', { name: /Veo 3\.1 Lite/ })).toBeVisible()
   await expect(page.getByText(/예상 [\d,]+ 크레딧/).first()).toBeVisible({ timeout: 15_000 })
 
   await page.getByLabel('프롬프트 입력').fill('취소 확인용')
@@ -57,9 +68,9 @@ async function startStubbedJob(page: Page): Promise<boolean> {
   return true
 }
 
-test('취소는 서버까지 간다', async ({ page }) => {
+test('취소는 서버까지 간다', async ({ page }, testInfo) => {
   test.setTimeout(120_000)
-  await signIn(page)
+  await composerFixture(page, testInfo)
   test.skip(!(await startStubbedJob(page)), 'av 표면이 꺼져 있습니다')
 
   await page.route(`**/api/jobs/${JOB_ID}/cancel`, async (route) => {
@@ -82,9 +93,9 @@ test('취소는 서버까지 간다', async ({ page }) => {
   await expect(page.getByText('취소됨').first()).toBeVisible({ timeout: 15_000 })
 })
 
-test('취소가 실패하면 카드는 되던 대로 돌아간다', async ({ page }) => {
+test('취소가 실패하면 카드는 되던 대로 돌아간다', async ({ page }, testInfo) => {
   test.setTimeout(120_000)
-  await signIn(page)
+  await composerFixture(page, testInfo)
   test.skip(!(await startStubbedJob(page)), 'av 표면이 꺼져 있습니다')
 
   await page.route(`**/api/jobs/${JOB_ID}/cancel`, async (route) => {

@@ -677,23 +677,19 @@ test('스킬 설명만 편집해도 기존 절차 본문을 PATCH에 보존한�
   const target = catalogue.at(-1)!
   const changedDescription = '설명만 바꾼 값'
 
+  // The skill's page carries its settings form.
+  const settings = page.getByRole('region', { name: '설정' })
+  const procedure = settings.getByRole('textbox', { name: '절차', exact: true })
   await page.goto('/skills')
   await page.getByText(target.name, { exact: true }).first().click()
-  await page.getByRole('dialog', { name: target.name }).getByRole('button', { name: '편집' }).click()
-
-  const edit = page.getByRole('dialog', { name: '스킬 편집' })
-  const procedure = edit.getByRole('textbox', {
-    name: '절차 모델이 그대로 따를 단계입니다.',
-    exact: true,
-  })
   await expect(procedure).toHaveValue(target.body)
-  await edit.getByRole('textbox', { name: '설명', exact: true }).fill(changedDescription)
+  await settings.getByRole('textbox', { name: '설명', exact: true }).fill(changedDescription)
   await Promise.all([
     page.waitForResponse(
       (response) =>
         response.request().method() === 'PATCH' && response.url().endsWith(`/api/skills/${target.id}`),
     ),
-    edit.getByRole('button', { name: '저장', exact: true }).click(),
+    settings.getByRole('button', { name: '저장', exact: true }).click(),
   ])
 
   expect(mocked.lastPatch()).toMatchObject({
@@ -702,13 +698,6 @@ test('스킬 설명만 편집해도 기존 절차 본문을 PATCH에 보존한�
   })
 
   await page.reload()
-  await page.getByText(target.name, { exact: true }).first().click()
-  await page.getByRole('dialog', { name: target.name }).getByRole('button', { name: '편집' }).click()
-  await expect(
-    page.getByRole('dialog', { name: '스킬 편집' }).getByRole('textbox', {
-      name: '절차 모델이 그대로 따를 단계입니다.',
-      exact: true,
-    }),
-  ).toHaveValue(target.body)
+  await expect(procedure).toHaveValue(target.body)
   expect(mocked.rows().find((row) => row.id === target.id)?.body).toBe(target.body)
 })

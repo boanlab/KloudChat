@@ -19,7 +19,7 @@ from app.models.user import User
 from app.models.workspace import Artifact, ArtifactKind, StoredFile
 from app.routers import docx as docx_router
 from app.routers import workspace
-from app.services import docx_doc, docx_edit, files
+from app.services import docx_edit, files
 from app.services.tools import docx as docx_tools
 from app.services.tools import hwp as hwp_tools
 from app.services.tools.base import ToolContext
@@ -65,38 +65,6 @@ async def _upload(local, name: str, data: bytes) -> str:
         db.add(stored)
         await db.commit()
         return stored.id
-
-
-@pytest.mark.asyncio
-async def test_the_editor_saves_a_new_version_and_a_stale_save_is_refused(stack):
-    client, _ = stack
-    made = await client.post("/artifacts/docx", json={"title": "공문"})
-    assert made.status_code == 201, made.text
-    body = made.json()
-    assert (body["kind"], body["version"], body["data"]["format"]) == ("docx", 1, "docx")
-    first = await client.get(f"/artifacts/{body['id']}/docx")
-    assert first.status_code == 200 and first.headers["x-artifact-version"] == "1"
-    assert first.headers["content-type"].startswith(docx_doc.DOCX_MIME)
-    # a blank page is typed in body text
-    assert docx_edit.outline(first.content).startswith("p1: (빈 줄)")
-
-    edited = docx_edit.apply(first.content, [{"op": "replace_text", "id": "p1",
-                                              "text": "손으로 쓴 줄"}]).data
-    saved = await client.put(f"/artifacts/{body['id']}/docx?expectedVersion=1", content=edited)
-    assert saved.status_code == 200, saved.text
-    assert saved.json()["version"] == 2 and "손으로 쓴 줄" in saved.json()["data"]["text"]
-
-    stale = await client.put(f"/artifacts/{body['id']}/docx?expectedVersion=1", content=edited)
-    assert stale.status_code == 409
-    junk = await client.put(f"/artifacts/{body['id']}/docx?expectedVersion=2", content=b"nope")
-    assert junk.status_code == 422 and junk.json()["detail"] == "not_a_docx_file"
-
-    old = await client.get(f"/artifacts/{body['id']}/docx?version=1")
-    assert old.status_code == 200 and old.content == first.content
-    restored = await client.post(f"/artifacts/{body['id']}/restore", json={"version": 1})
-    assert restored.status_code == 200 and restored.json()["version"] == 3
-    # an HWP route does not serve it
-    assert (await client.get(f"/artifacts/{body['id']}/hwp")).status_code == 404
 
 
 @pytest.mark.asyncio

@@ -9,7 +9,7 @@
     "lint": "oxlint",
     "test:unit": "vitest run src",
     "preview": "vite preview",
-    "test:config": "node --test tests/vite-config.test.mjs",
+    "test:config": "node --test tests/vite-config.test.mjs && playwright test -c playwright.ci.config.ts --list > /dev/null",
     "test:e2e": "playwright test",
     "test:e2e:ci": "playwright test --config playwright.ci.config.ts",
     "test:personas": "playwright test e2e/personas.spec.ts --reporter=list",

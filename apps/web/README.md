@@ -12,7 +12,7 @@ lucide-react · react-markdown.
 npm ci
 npm run dev        # Vite on :5173, proxying /api to API_BASE_URL
 npm run lint       # oxlint
-npm run test:config  # node --test for the Vite config
+npm run test:config  # the Vite config; every e2e spec in one CI surface or live
 npm run build      # tsc -b && vite build
 ```
 
@@ -106,16 +106,18 @@ E2E_SHARD=2/5 npx playwright test -c playwright.ci.config.ts          # what CI 
 E2E_PREBUILT=1 npx playwright test -c playwright.ci.config.ts         # serve the dist/ you already built
 ```
 
-A new fixture spec goes into a surface in `playwright.ci.config.ts`, or CI never
-runs it. A test is checked once, at desktop width; one about the phone
+Every spec has one home: a surface in `playwright.ci.config.ts`, or the list of
+live-stack specs in `e2e/live-specs.ts`. The CI config refuses to load when a spec is
+in neither, in two surfaces, or in both (`npm run test:config` checks it), so a new
+fixture spec cannot be left out of CI by accident. A test is checked once, at desktop width; one about the phone
 (layout, the drawer, touch, widths) also carries `{ tag: '@phone' }`, and the
 `phone`/`mobile` projects run only those. The report is in `playwright-report/` (`npx playwright show-report`).
 
 Exception: `playwright.chat-errors.config.ts` signs in to a running app and fakes
 only the turn's stream, so it stays out of CI.
 
-**The default config** (`playwright.config.ts`) runs the remaining specs against a
-running stack at `http://localhost:5173` with a seeded account
+**The default config** (`playwright.config.ts`) runs the live specs
+(`e2e/live-specs.ts`) against a running stack at `http://localhost:5173` with a seeded account
 (`bash scripts/e2e-seed.sh` from the repository root):
 
 ```bash
@@ -128,6 +130,8 @@ and several pick "the most recent X". Some specs spend real credits (roughly
 `--grep-invert` while iterating.
 
 `tests/vite-config.test.mjs` (`npm run test:config`) checks that the Vite config
-resolves source aliases in workspace paths with spaces and non-ASCII characters.
+resolves source aliases in workspace paths with spaces and non-ASCII characters; the
+same script loads `playwright.ci.config.ts` (`--list`), which fails when a spec has no
+home or two.
 
 See [docs/development.md](../../docs/development.md) for the rest.

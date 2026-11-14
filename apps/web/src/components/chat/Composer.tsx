@@ -29,7 +29,7 @@ import { DesignGalleryModal, offersTemplates } from '@/components/chat/DesignGal
 import { FileBoxPicker } from '@/components/files/FileBoxPicker'
 import { warmStudio } from '@/components/hwp/warmStudio'
 import { errorCode, errorMessage, PrivacyDecisionError, templateText } from '@/lib/api'
-import { refusalSentence, startFailure, withRetryWait } from '@/lib/failures'
+import { refusedBeforeWrite, refusalSentence, startFailure, withRetryWait } from '@/lib/failures'
 import {
   agentDocumentNames, agentHandoffSurface, handoffSurface, NAMES_DOCX, NAMES_HWP, NAMES_PPTX,
   officeReportRequest, reportFileKind,
@@ -1347,7 +1347,7 @@ export function Composer({
       setReusableSessionId((current) => current ?? attemptedSessionId)
       if (editScope) throw error
       // Gateway timeout is not a refusal: the turn may be running. Draft not handed back (a resend would ask twice); reload shows it.
-      if (error instanceof ApiError && [502, 503, 504].includes(error.status) && attemptedSessionId) {
+      if (error instanceof ApiError && [502, 503, 504].includes(error.status) && !refusedBeforeWrite(error) && attemptedSessionId) {
         setComposerRestore({
           sessionId: attemptedSessionId,
           value: '',

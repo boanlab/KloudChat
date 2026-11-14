@@ -1,8 +1,9 @@
 import { expect, test, type Page } from '@playwright/test'
-import { openSidebar, pickToolModel, signIn } from './helpers'
+import { composerFixture } from './composer-fixture'
 
-/** Rating, 원본 작업 열기, the web search switch and agent import do what they look like they do.
- *  Stubbed: each is a claim about a request that was or was not made. */
+/** Rating and 원본 작업 열기 do what they look like they do. Stubbed: each is a claim about a
+ *  request that was or was not made. (Web search per conversation: composer-handoff.spec.ts;
+ *  a store agent's install: customize-forms.spec.ts.) */
 
 const NOW = '2026-08-20T00:00:00Z'
 
@@ -56,7 +57,7 @@ const answer = (rating: 'up' | 'down' | null) => ({
 async function stubGet(page: Page, pattern: string | RegExp, payload: unknown) {
   await page.route(pattern, async (route) => {
     if (route.request().method() !== 'GET') {
-      await route.continue()
+      await route.fallback()
       return
     }
     await route.fulfill({
@@ -69,14 +70,14 @@ async function stubGet(page: Page, pattern: string | RegExp, payload: unknown) {
 
 // ── 1. 좋아요 / 싫어요 ──────────────────────────────────────────────────
 
-test('싫어요는 서버에 남고, 다시 열었을 때 눌린 채로 보인다', async ({ page }) => {
-  await signIn(page)
+test('싫어요는 서버에 남고, 다시 열었을 때 눌린 채로 보인다', async ({ page }, testInfo) => {
+  await composerFixture(page, testInfo)
 
   let stored: 'up' | 'down' | null = null
   await stubGet(page, /\/api\/sessions(\?|$)/, [session()])
   await page.route('**/api/sessions/session-1', async (route) => {
     if (route.request().method() !== 'GET') {
-      await route.continue()
+      await route.fallback()
       return
     }
     await route.fulfill({
@@ -133,8 +134,8 @@ test('싫어요는 서버에 남고, 다시 열었을 때 눌린 채로 보인�
 
 // ── 2. 원본 작업 열기 ───────────────────────────────────────────────────
 
-test('원본 작업 열기는 눌린 아티팩트를 연다, 그 대화의 최신 아티팩트가 아니라', async ({ page }) => {
-  await signIn(page)
+test('원본 작업 열기는 눌린 아티팩트를 연다, 그 대화의 최신 아티팩트가 아니라', async ({ page }, testInfo) => {
+  await composerFixture(page, testInfo)
 
   await stubGet(page, /\/api\/sessions(\?|$)/, [session()])
   await stubGet(page, '**/api/sessions/session-1', session({ messages: [answer(null)] }))
@@ -166,117 +167,4 @@ test('원본 작업 열기는 눌린 아티팩트를 연다, 그 대화의 최�
 
   // The id is spent on arrival, or it would reopen the panel after a deliberate close.
   await expect(page).not.toHaveURL(/artifact=/)
-})
-
-// ── 3. 웹 검색 ─────────────────────────────────────────────────────────
-
-test('웹 검색은 켠 대화에만 남고 다음 대화로 따라오지 않는다', async ({ page }) => {
-  await signIn(page)
-
-  await stubGet(page, /\/api\/sessions(\?|$)/, [session()])
-  await stubGet(page, '**/api/sessions/session-1', session({ messages: [answer(null)] }))
-
-  await page.goto('/new/chat')
-  // The strict-local default has no web tool, so the toggle is disabled until a model is chosen.
-  await pickToolModel(page)
-
-  const search = page.getByRole('button', { name: '웹 검색' })
-  await search.click()
-  await expect(search).toHaveAttribute('aria-pressed', 'true')
-
-  // From the sidebar, not `goto`: a full navigation remounts the composer regardless.
-  await openSidebar(page)
-  await page.getByRole('button', { name: '보안 점검 보고서' }).first().click()
-  await expect(page).toHaveURL(/\/s\/session-1/)
-  await expect(page.getByRole('button', { name: '웹 검색' })).toHaveAttribute(
-    'aria-pressed',
-    'false',
-  )
-})
-
-// ── 4. 에이전트 가져오기 ────────────────────────────────────────────────
-
-test('공유된 에이전트를 가져오면 서버가 사본을 만들고 함께 오지 않은 것을 밝힌다', async ({ page }) => {
-  await signIn(page)
-  // Mine vs. store is decided by the real account id.
-  const myId = await page.evaluate(async () => {
-    const login = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: 'e2e-personas@example.com',
-        password: 'personas-playwright-pass',
-      }),
-    })
-    const { accessToken } = (await login.json()) as { accessToken: string }
-    const r = await fetch('/api/auth/me', { headers: { Authorization: 'Bearer ' + accessToken } })
-    return ((await r.json()) as { id: string }).id
-  })
-
-  const shared = {
-    ownerId: 'someone-else',
-    ownerName: '김보안',
-    id: 'agent-shared',
-    name: '보고서 검토자',
-    slug: 'report-reviewer',
-    description: '보고서를 규정에 맞게 검토합니다',
-    model: 'external/one',
-    systemPrompt: '너는 검토자다',
-    tools: null,
-    // Rows in the other account; the install route rewrites this list against copies.
-    skillIds: ['skill-theirs'],
-    kinds: ['chat'],
-    temperature: 0.7,
-    color: '#5b53e8',
-    enabled: true,
-    visibility: 'org',
-    installs: 3,
-    catalogKey: null,
-    originId: null,
-    official: false,
-    installed: false,
-    runs: 12,
-    hasKnowledge: false,
-    updatedAt: NOW,
-  }
-  const copy = {
-    ...shared,
-    id: 'agent-mine',
-    ownerId: myId,
-    ownerName: '나',
-    visibility: 'private',
-    installs: 0,
-    originId: 'agent-shared',
-    skillIds: ['skill-mine'],
-    description: `${shared.description} · 지식 문서는 원본 소유자의 것이라 함께 오지 않습니다. 직접 올려 주세요.`,
-  }
-
-  let installed = false
-  await page.route('**/api/agents', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(
-        installed ? [{ ...shared, installed: true }, copy] : [shared],
-      ),
-    })
-  })
-  // The copy is made server-side.
-  await page.route('**/api/agents/agent-shared/install', async (route) => {
-    installed = true
-    await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify(copy) })
-  })
-
-  await page.goto('/agents')
-  // Shared agents stand in the store tab.
-  await page.getByRole('tab', { name: /워크스페이스 스토어/ }).click()
-  await page.getByRole('button', { name: '가져오기' }).click()
-
-  await expect.poll(() => installed).toBe(true)
-  await expect(page.getByRole('button', { name: '가져옴' })).toBeVisible()
-  // Said on the copy itself, not in a toast; the copy stands on the 내 에이전트 tab.
-  await page.getByRole('tab', { name: /내 에이전트/ }).click()
-  await expect(
-    page.getByText('지식 문서는 원본 소유자의 것이라 함께 오지 않습니다. 직접 올려 주세요.'),
-  ).toBeVisible()
 })

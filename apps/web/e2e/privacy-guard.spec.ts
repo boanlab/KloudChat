@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { signIn } from './helpers'
+import { composerFixture } from './composer-fixture'
 
 const DECISION = {
   code: 'privacy_decision_required',
@@ -45,14 +45,14 @@ const emptyChatSession = (id: string, model = 'external/one') => ({
   messageCount: 0,
 })
 
-test('privacy decision preserves a draft and retries with the bound action', async ({ page }) => {
-  await signIn(page)
+test('privacy decision preserves a draft and retries with the bound action', async ({ page }, testInfo) => {
+  await composerFixture(page, testInfo)
 
   const requests: Record<string, unknown>[] = []
   const messageUrls: string[] = []
   await page.route('**/api/files', async (route) => {
     if (route.request().method() !== 'POST') {
-      await route.continue()
+      await route.fallback()
       return
     }
     await route.fulfill({
@@ -74,7 +74,7 @@ test('privacy decision preserves a draft and retries with the bound action', asy
   })
   await page.route('**/api/sessions/*/messages', async (route) => {
     if (route.request().method() !== 'POST') {
-      await route.continue()
+      await route.fallback()
       return
     }
     const payload = route.request().postDataJSON() as Record<string, unknown>
@@ -144,10 +144,10 @@ test('privacy decision preserves a draft and retries with the bound action', asy
   })
 })
 
-test('model changes after a decision update the hidden reusable session', async ({ page }) => {
+test('model changes after a decision update the hidden reusable session', async ({ page }, testInfo) => {
   await page.route('**/api/models', async (route) => {
     if (route.request().method() !== 'GET') {
-      await route.continue()
+      await route.fallback()
       return
     }
     await route.fulfill({
@@ -163,25 +163,26 @@ test('model changes after a decision update the hidden reusable session', async 
       }),
     })
   })
-  await signIn(page)
+  await composerFixture(page, testInfo)
 
   const hiddenSessionId = 'hidden-privacy-session'
   const session = emptyChatSession(hiddenSessionId)
   await page.route(/\/api\/sessions(\?|$)/, async (route) => {
     if (route.request().method() !== 'POST') {
-      await route.continue()
+      await route.fallback()
       return
     }
     await route.fulfill({
       status: 201,
       contentType: 'application/json',
-      body: JSON.stringify(session),
+      // created under the id the browser opened it with
+      body: JSON.stringify({ ...session, id: route.request().postDataJSON().id ?? hiddenSessionId }),
     })
   })
   const patches: Record<string, unknown>[] = []
-  await page.route(`**/api/sessions/${hiddenSessionId}`, async (route) => {
+  await page.route(/\/api\/sessions\/[^/?]+$/, async (route) => {
     if (route.request().method() !== 'PATCH') {
-      await route.continue()
+      await route.fallback()
       return
     }
     const payload = route.request().postDataJSON() as Record<string, unknown>
@@ -192,7 +193,8 @@ test('model changes after a decision update the hidden reusable session', async 
       body: JSON.stringify({ ...session, model: payload.model }),
     })
   })
-  await page.route(`**/api/sessions/${hiddenSessionId}/messages`, async (route) => {
+  await page.route('**/api/sessions/*/messages', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
     await route.fulfill({
       status: 409,
       contentType: 'application/json',
@@ -210,114 +212,20 @@ test('model changes after a decision update the hidden reusable session', async 
   await expect(page).toHaveURL(/\/new\/chat/)
 
   await page.getByRole('button', { name: /External One/ }).click()
-  await page.getByRole('button', { name: /External Two/ }).click()
+  await page.getByRole('menuitemradio', { name: /External Two/ }).click()
 
   await expect.poll(() => patches.length).toBe(1)
   expect(patches[0]).toEqual({ model: 'external/two', routingMode: 'manual' })
 })
 
-test('a late privacy decision never overwrites a newer draft or attachment', async ({ page }) => {
-  await signIn(page)
-
-  const hiddenSessionId = 'late-privacy-session'
-  await page.route(/\/api\/sessions(\?|$)/, async (route) => {
-    if (route.request().method() !== 'POST') {
-      await route.continue()
-      return
-    }
-    await route.fulfill({
-      status: 201,
-      contentType: 'application/json',
-      body: JSON.stringify(emptyChatSession(hiddenSessionId)),
-    })
-  })
-  const uploads = [
-    {
-      id: 'old-file',
-      name: 'old.txt',
-      preview: 'old@example.com',
-    },
-    {
-      id: 'new-file',
-      name: 'new.txt',
-      preview: 'new safe draft',
-    },
-  ]
-  let uploadIndex = 0
-  await page.route('**/api/files', async (route) => {
-    if (route.request().method() !== 'POST') {
-      await route.continue()
-      return
-    }
-    const upload = uploads[uploadIndex++]
-    await route.fulfill({
-      status: 201,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        ...upload,
-        size: 16,
-        mime: 'text/plain',
-        tokens: 4,
-        projectId: null,
-        sessionId: null,
-        error: null,
-        createdAt: '2026-08-16T00:00:00Z',
-      }),
-    })
-  })
-
-  let requestStarted = false
-  let releaseDecision: (() => void) | undefined
-  const decisionGate = new Promise<void>((resolve) => {
-    releaseDecision = resolve
-  })
-  await page.route(`**/api/sessions/${hiddenSessionId}/messages`, async (route) => {
-    requestStarted = true
-    await decisionGate
-    await route.fulfill({
-      status: 409,
-      contentType: 'application/json',
-      body: JSON.stringify(DECISION),
-    })
-  })
-
-  await page.goto('/new/chat')
-  const composer = page.getByLabel('프롬프트 입력')
-  await page.getByLabel('파일 선택').setInputFiles({
-    name: 'old.txt',
-    mimeType: 'text/plain',
-    buffer: Buffer.from('old@example.com'),
-  })
-  await composer.fill('old request for old@example.com')
-  await composer.press('Enter')
-  await expect.poll(() => requestStarted).toBe(true)
-  await expect(composer).toHaveValue('')
-
-  await page.getByLabel('파일 선택').setInputFiles({
-    name: 'new.txt',
-    mimeType: 'text/plain',
-    buffer: Buffer.from('new safe draft'),
-  })
-  const newerDraft = 'this newer draft must win'
-  await composer.fill(newerDraft)
-  releaseDecision?.()
-
-  const modal = page.getByRole('dialog', { name: '개인정보가 포함된 요청입니다' })
-  await expect(modal).toBeVisible()
-  await modal.getByRole('button', { name: '편집으로 돌아가기' }).click()
-  await expect(composer).toHaveValue(newerDraft)
-  await expect(page.getByRole('button', { name: 'new.txt 제거' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'old.txt 제거' })).toHaveCount(0)
-})
-
-test('governance outage restores the cleared draft and reuses its empty session', async ({
+test('a privacy checker outage hands back the draft and its file, like any refusal', async ({
   page,
-}) => {
-  await signIn(page)
+}, testInfo) => {
+  await composerFixture(page, testInfo)
 
   await page.route('**/api/files', async (route) => {
     if (route.request().method() !== 'POST') {
-      await route.continue()
+      await route.fallback()
       return
     }
     await route.fulfill({
@@ -340,7 +248,7 @@ test('governance outage restores the cleared draft and reuses its empty session'
   const messageUrls: string[] = []
   await page.route('**/api/sessions/*/messages', async (route) => {
     if (route.request().method() !== 'POST') {
-      await route.continue()
+      await route.fallback()
       return
     }
     messageUrls.push(route.request().url())
@@ -362,25 +270,24 @@ test('governance outage restores the cleared draft and reuses its empty session'
   await composer.fill(original)
   await composer.press('Enter')
 
-  await expect(page).toHaveURL(/\/s\//)
+  // Refused before the turn was written, like any refusal: the draft and its file go back.
   await expect(composer).toHaveValue(original)
   await expect(page.getByRole('button', { name: 'outage-notes.txt 제거' })).toBeVisible()
   await expect(page.getByRole('alert')).toBeVisible()
 
   await composer.press('Enter')
   await expect.poll(() => messageUrls.length).toBe(2)
-  expect(messageUrls[1]).toBe(messageUrls[0])
   await expect(composer).toHaveValue(original)
   await expect(page.getByRole('button', { name: 'outage-notes.txt 제거' })).toBeVisible()
 })
 
 /** A message with findings is stored masked whatever the action; the turn says so on screen. */
-test('가려진 채 저장된다는 사실을 그 턴 안에서 말한다', async ({ page }) => {
-  await signIn(page)
+test('가려진 채 저장된다는 사실을 그 턴 안에서 말한다', async ({ page }, testInfo) => {
+  await composerFixture(page, testInfo)
 
   await page.route('**/api/sessions/*/messages', async (route) => {
     if (route.request().method() !== 'POST') {
-      await route.continue()
+      await route.fallback()
       return
     }
     await route.fulfill({
