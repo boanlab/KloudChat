@@ -20,6 +20,7 @@ from app.routers import (
     branding,
     client_errors,
     connectors,
+    context_usage,
     docx,
     hwp,
     issues,
@@ -195,6 +196,7 @@ app.include_router(llm.router)
 app.include_router(admin.router, prefix=settings.api_prefix)
 app.include_router(models.router, prefix=settings.api_prefix)
 app.include_router(sessions.router, prefix=settings.api_prefix)
+app.include_router(context_usage.router, prefix=settings.api_prefix)
 app.include_router(search.router, prefix=settings.api_prefix)
 app.include_router(runs.router, prefix=settings.api_prefix)
 app.include_router(pipelines.router, prefix=settings.api_prefix)
