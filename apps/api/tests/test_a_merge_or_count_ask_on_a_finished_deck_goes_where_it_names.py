@@ -104,6 +104,8 @@ def test_a_label_line_describing_the_table_is_a_leak():
     assert "상표" not in kept and "| CRM | 진행 중 |" in kept
     assert "구분: 매출" in internal_words.strip_work_notes("구분: 매출이 늘었다.", request="",
                                                           document=True)
-    started = time.monotonic()
+    # CPU time, not wall time: a busy runner made the 0.5 s wall bound flake. A linear scan of
+    # 50,000 spaces takes milliseconds; the backtracking this guards against took seconds.
+    started = time.process_time()
     internal_words.strip_work_notes("상표:" + " " * 50000 + "표", request="", document=True)
-    assert time.monotonic() - started < 0.5
+    assert time.process_time() - started < 0.5

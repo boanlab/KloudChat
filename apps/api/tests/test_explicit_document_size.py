@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import io
 import json
-import subprocess
-import sys
 
 import httpx
 import pytest
@@ -55,9 +53,10 @@ def test_only_section_counts_set_a_report_outline_size(prompt, expected):
     assert report.requested_sections(prompt) == expected
 
 
-def test_count_scan_handles_long_spacing_and_many_candidates():
+def test_count_scan_handles_long_spacing_and_many_candidates(cpu_seconds):
     script = """
 from app.services.outline import requested_count
+# measure
 padding = " \\t\\n\\u3000" * 50_000
 assert requested_count("4장," * 20_000, ("장",), maximum=30) == 4
 spaced = "표지" + padding + "포함" + padding + "4" + padding + "장"
@@ -65,7 +64,8 @@ assert requested_count(spaced, ("장",), maximum=30) == 4
 assert requested_count("4장" + padding + "이상", ("장",), maximum=30) is None
 assert requested_count("4" + padding + "대", ("장",), maximum=30) is None
 """
-    subprocess.run([sys.executable, "-c", script], check=True, capture_output=True, timeout=5)
+    # linear scans take milliseconds; the backtracking this guards against took minutes
+    assert cpu_seconds(script) < 2.0
 
 
 @pytest.mark.parametrize(

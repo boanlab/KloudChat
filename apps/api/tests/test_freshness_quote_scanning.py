@@ -1,7 +1,5 @@
 """Quoted source exemptions preserve complete requests and bounded scan work."""
 
-import subprocess
-import sys
 
 import pytest
 
@@ -54,15 +52,17 @@ def test_quote_pairing_newlines_negation_and_prefix_whitespace_are_preserved(pro
     assert without_quoted_transform_sources(prompt) == expected
 
 
-def test_long_unmatched_quote_inputs_finish_without_dropping_the_suffix():
+def test_long_unmatched_quote_inputs_finish_without_dropping_the_suffix(cpu_seconds):
     # A subprocess bounds a slow scan without hanging the test runner.
     script = """
 from app.services import context
 from app.services.freshness import fresh_fact_required, without_quoted_transform_sources
+# measure
 for opening in ('“', '‘', '「'):
     text = opening * 190000 + ' Do not search. Who is the current president?'
     assert without_quoted_transform_sources(text) == text
     assert fresh_fact_required(text)
     assert context.declines_web_search(text)
 """
-    subprocess.run([sys.executable, "-c", script], check=True, capture_output=True, timeout=5)
+    # linear scans take well under a second; quadratic pairing of 190,000 quotes took minutes
+    assert cpu_seconds(script) < 2.0

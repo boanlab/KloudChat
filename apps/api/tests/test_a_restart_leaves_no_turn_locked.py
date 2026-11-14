@@ -145,10 +145,24 @@ async def test_the_drain_counts_from_the_stop_signal(local, monkeypatch):
     # the signal came 100 s ago (uvicorn waited on open connections): 20 s of 120 are left
     since = sessions_router.time.monotonic() - 119.8
     monkeypatch.setitem(sessions_router._SHUTDOWN, "since", since)
-    started = sessions_router.time.monotonic()
-    await sessions_router.drain_turns(120.0, settle_sec=0.1)
+    # what the drain waits for, read from its own waits, not from a wall clock a busy runner
+    # stretches: what is left of 120 s after the signal (0.2 s, or nothing when it is gone),
+    # then the 0.1 s settle and the 5 s for cancelled turns; never 120 s from now, never unbounded
+    waits: list[float | None] = []
+    real_wait = sessions_router.asyncio.wait
+
+    async def wait(tasks, *, timeout=None, **kwargs):
+        waits.append(timeout)
+        return await real_wait(tasks, timeout=timeout, **kwargs)
+
+    monkeypatch.setattr(sessions_router.asyncio, "wait", wait)
+    try:
+        await sessions_router.drain_turns(120.0, settle_sec=0.1)
+    finally:
+        monkeypatch.setattr(sessions_router.asyncio, "wait", real_wait)
     await turn
-    assert sessions_router.time.monotonic() - started < 2.0
+    assert waits and all(w is not None and w <= 5.0 for w in waits), waits
+    assert waits[0] <= 0.2, waits
 
 
 def test_a_stop_during_shutdown_is_stored_as_interrupted(monkeypatch):
