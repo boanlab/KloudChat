@@ -597,3 +597,23 @@ export function sectionOutline(doc: JSONContent): { id: string; heading: string;
 export function reportToMarkdown(title: string, sections: ReportSection[]): string {
   return docToMarkdown(title, sectionsToDoc(sections))
 }
+
+/**
+ * Whether the editor's sections say the same as the stored ones once both are read the way
+ * the editor writes them (`canonicalBody`): a load, a view toggled there and back, a drawn
+ * block re-rendered or a table normalised by the editor is no edit to save.
+ */
+export function sameSectionsAsStored(edited: ReportSection[], stored: ReportSection[]): boolean {
+  return edited.length === stored.length && edited.every((row, at) => {
+    const was = stored[at]
+    return row.id === was.id && row.heading.trim() === was.heading.trim()
+      && (row.level ?? 1) === (was.level ?? 1)
+      && (row.content === was.content || canonicalBody(row) === canonicalBody(was))
+  })
+}
+
+/** A value the editor reports back, kept only when it differs from the stored one. */
+export function changedFrom<T>(next: T | undefined, stored: T | undefined | null): T | null | undefined {
+  if (next === undefined) return undefined
+  return JSON.stringify(next ?? null) === JSON.stringify(stored ?? null) ? null : next
+}

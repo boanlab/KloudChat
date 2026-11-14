@@ -48,7 +48,7 @@ import { guardEdits, leaveOffice, type AskReason } from '@/lib/officeGuard'
 import { useMarkUnsaved } from '@/lib/unsaved'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 import { mediaFailure } from '@/lib/failures'
-import { reportToMarkdown } from '@/lib/reportDoc'
+import { changedFrom, reportToMarkdown, sameSectionsAsStored } from '@/lib/reportDoc'
 import { cn, formatTokens } from '@/lib/utils'
 import type { LintFinding, ReportArtifact, ReportSection, ReportTitleBlock, Source } from '@/types'
 import { copyText } from '@/lib/clipboard'
@@ -1872,12 +1872,19 @@ export function ReportPanel({
                 onSourceMode={setSourceMode}
                 settingsSlot={editMode && ribbon === 'layout' ? settingsSlot : null}
                 onDirty={(sections, title, pageSettings, reviewComments, titleBlock) => {
-                  // Back to what is stored (an undo, a view toggled there and back): nothing to save.
-                  setPageEdits(sameSections(sections, report.sections) ? null : sections)
-                  if (title !== undefined) setPageTitle(title)
-                  if (pageSettings !== undefined) setPageSettingsEdits(pageSettings)
-                  if (reviewComments !== undefined) setReviewCommentEdits(reviewComments)
-                  if (titleBlock !== undefined) setTitleBlockEdits(titleBlock)
+                  // Back to what is stored (an undo, a view toggled there and back, the editor
+                  // re-reading a drawn block or a table): nothing to save. Each part counts only
+                  // when it differs from the stored document the editor shows.
+                  const base = held ?? report
+                  setPageEdits(sameSections(sections, base.sections) || sameSectionsAsStored(sections, base.sections) ? null : sections)
+                  const retitled = changedFrom(title?.trim(), base.title.trim())
+                  if (retitled !== undefined) setPageTitle(retitled)
+                  const settings = changedFrom(pageSettings, base.pageSettings)
+                  if (settings !== undefined) setPageSettingsEdits(settings)
+                  const comments = changedFrom(reviewComments, base.reviewComments ?? [])
+                  if (comments !== undefined) setReviewCommentEdits(comments)
+                  const block = changedFrom(titleBlock, base.titleBlock)
+                  if (block !== undefined) setTitleBlockEdits(block)
                 }}
               />
               {agentWorking && <DocumentLock testId="report-agent-lock" />}

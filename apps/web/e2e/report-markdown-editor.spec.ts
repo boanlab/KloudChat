@@ -368,3 +368,36 @@ test('the edit view guesses no page boundaries; only a page break the person put
   await expect(panel(page).getByText(/쪽 즈음/)).toHaveCount(0)
   expect(state.unexpected).toEqual([])
 })
+
+test('drawn blocks, a hand save and agent versions leave nothing unsaved: no question before the next turn', async ({ page }, testInfo) => {
+  const drawn = [
+    { ...sections[0], content: '흐름은 아래와 같다.\n\n```\n[설계] --> [훈련] --> [분석]\n   ^                    |\n   +--------------------+\n```\n\n| 구분 | 내용 |\n| --- | --- |\n| 일시 | 분기 첫째 주 수요일 14:00 |' },
+    { ...sections[1], content: '```mermaid\nflowchart LR\n  A[설계] --> B[훈련]\n```\n\n| 기준 | 값 |\n| --- | --- |\n| 비용 | 3억 |' },
+    sections[2],
+  ]
+  const state = await fixture(page, testInfo, {
+    sections: drawn,
+    titleBlock: { format: 'report', numbering: 'none', fields: [{ label: '작성일', value: '2026. 11. 20.' }] },
+  })
+  await enterEditor(page)
+  // loading the drawn blocks and tables is no edit
+  await page.waitForTimeout(1500)
+  await expect(page.getByText('저장 안 됨')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '저장', exact: true })).toBeDisabled()
+  // a hand edit, saved
+  await editor(page).getByText('담당:').click()
+  await page.keyboard.press('End')
+  await page.keyboard.type(' (변경 가능)')
+  await save(page)
+  // two agent turns in a row: neither asks about unsaved edits
+  for (const ask of ['분석 절 비용을 2억으로 고쳐 줘', '분석 절 비용을 2억으로 다시 확인해 줘']) {
+    await page.getByLabel('프롬프트 입력').fill(ask)
+    await page.getByLabel('프롬프트 입력').press('Enter')
+    await expect(editor(page).getByText('2억')).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByRole('dialog', { name: '저장하지 않은 편집이 있습니다' })).toHaveCount(0)
+    await expect(page.getByText('저장 안 됨')).toHaveCount(0)
+  }
+  expect(state.writes).toHaveLength(1)
+  expect(state.stored().data.sections[2].content).toContain('(변경 가능)')
+  expect(state.unexpected).toEqual([])
+})
