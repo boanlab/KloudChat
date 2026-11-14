@@ -171,6 +171,7 @@ const EN: Record<string, string> = {
   '안내를 불러오지 못했습니다.': 'Could not load the guide.',
   '메모로 저장하지 못했습니다.': 'Could not save it as a note.',
   '원문 열기': 'Open the original',
+  '문서로 열기': 'Open as a document',
   // Unsaved changes, admin system status
   '이 화면을 떠나면 바꾼 내용이 사라집니다.': 'Leaving this screen drops the changes made here.',
   '설정을 불러오지 못했습니다. 잠시 후 다시 시도하세요.': 'Could not load the settings. Try again shortly.',
