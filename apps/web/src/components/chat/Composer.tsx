@@ -85,7 +85,7 @@ const placeholders: Record<SessionKind, string> = {
 // Mirrors `imagegen.STYLE_CHOICES`. The first group is drawn by the picture model; the
 // second is drawn as shapes or a chart (exact, editable text), not by the picture model.
 const STYLE_GROUPS: { label?: string; options: string[] }[] = [
-  { label: '그림', options: ['자동', '사진', '일러스트', '인포그래픽', '수채화'] },
+  { label: '이미지', options: ['자동', '사진', '일러스트', '인포그래픽', '수채화'] },
   { label: '정확한 도식', options: ['구조도', '흐름도', '개념도', '차트'] },
   { options: ['없음'] },
 ]
@@ -989,6 +989,7 @@ export function Composer({
     reasoningPick,
     setReasoningPick,
     superAgent,
+    defaultRouting,
     skillStore,
     skillStoreLoaded,
     loadSkillStore,
@@ -2317,8 +2318,8 @@ export function Composer({
         try {
           let id = sessionId ?? reusableSessionId
           if (!id) {
-            // Super Agent picked on the home screen: new conversations start on it again
-            if (mode === 'super') clearModelPick(kind)
+            // Super Agent picked on the home screen: new conversations start on the default again
+            if (isSuperMode(mode)) clearModelPick(kind)
             id = await newSession(kind, { projectId, routingMode: mode })
             carriedComposer = heldComposer(id)
             setReusableSessionId(id)
@@ -2329,7 +2330,7 @@ export function Composer({
         } catch (error) {
           setChatError(
             refusalSentence(errorCode(error), t) ??
-              errorMessage(error, t('Super Agent를 켜지 못했습니다. 잠시 후 다시 시도하세요.')),
+              errorMessage(error, t('Super Agent로 바꾸지 못했습니다. 잠시 후 다시 시도하세요.')),
           )
         }
       }}
@@ -2339,7 +2340,7 @@ export function Composer({
   )
   // The reasoning chip: the conversation's, else the home screen's pick for the next one.
   const laneMode = session?.routingMode ?? (offersReasoning(kind)
-    ? startingRoutingMode({ superAgent, user }, kind, null)
+    ? startingRoutingMode({ superAgent, user, defaultRouting, agents }, kind, null)
     : undefined)
   const reasoningChip = offersReasoning(kind) && !isMedia ? (
     <ReasoningChip
@@ -2717,7 +2718,7 @@ export function Composer({
                 ? t('이 모델은 이 조합을 만들지 않습니다')
                 : kind === 'image' && FIGURE_STYLES[imageOptions.style]
                   // A figure is drawn by the text model, not priced as a picture.
-                  ? t('도식은 글 모델이 씁니다 · 그림 요금이 아닙니다')
+                  ? t('도식은 글 모델이 씁니다 · 이미지 요금이 아닙니다')
                   : t('예상 {n} 크레딧').replace('{n}', estimate.toLocaleString())}
             </span>
           </div>
@@ -2880,7 +2881,7 @@ export function Composer({
         {busy && isMedia
             ? t('생성 중입니다 — 완료되면 위 카드가 결과로 바뀝니다')
             : kind === 'image'
-              ? t('Enter로 생성 · 만든 그림은 아티팩트에 쌓입니다')
+              ? t('Enter로 생성 · 만든 이미지는 아티팩트에 쌓입니다')
               : kind === 'av' && avOptions.mode === 'audio'
                 ? t('Enter로 생성 · 음성과 음악은 아티팩트에 쌓입니다')
                 : kind === 'av'

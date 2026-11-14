@@ -156,11 +156,14 @@ function queueSessionPersistence(sessionId: string, persist: () => Promise<void>
 
 const noop = () => {}
 
-/** Before the catalogue answers (or from an older server): no Super Agent entry. */
+/** An entry an older server does not offer. */
+const NO_SUPER_OFFER = { available: false, reason: 'no_models' as const, estimate: null }
+
+/** Before the catalogue answers: entries not known yet. */
 const NO_SUPER_AGENT: NonNullable<ModelCatalogue['superAgent']> = {
-  enabled: false,
-  default: { available: false, reason: 'disabled', estimate: null },
-  strict: { available: false, reason: 'disabled', estimate: null },
+  default: { available: false, reason: null, estimate: null },
+  strict: { available: false, reason: null, estimate: null },
+  pending: true,
 }
 
 /** Marks a session as having a turn in flight, with the abort for that turn. */
@@ -366,8 +369,10 @@ interface State {
   /** Strict-local picture model the server uses when the person picked none. */
   strictImageDefault: string
   autoRouting: ModelCatalogue['autoRouting']
-  /** Super Agent entries; both unavailable until the catalogue says otherwise. */
+  /** Super Agent entries; `pending` until the catalogue answers. */
   superAgent: NonNullable<ModelCatalogue['superAgent']>
+  /** How a new chat, report or slides conversation starts (설정 › 시스템 › 모델). */
+  defaultRouting: NonNullable<ModelCatalogue['defaultRoutingByKind']>
   loadModels: () => Promise<void>
 
   // ── session / generation ──────────────────────────────────────────────
@@ -1010,15 +1015,18 @@ function turnReasoning(get: Get, sessionId: string): ReasoningMode {
 
 /** The mode a new conversation starts in (`startingMode`), from this store's state. */
 export function startingRoutingMode(
-  s: Pick<State, 'superAgent' | 'user'>,
+  s: Pick<State, 'superAgent' | 'user' | 'defaultRouting' | 'agents'>,
   kind: SessionKind,
   agentId?: string | null,
 ): Session['routingMode'] {
+  const agent = agentId ? s.agents.find((a) => a.id === agentId) : undefined
   return startingMode({
     kind,
-    agentId,
+    // an agent not loaded yet is taken to fix its model: the server decides
+    agentModel: agentId ? (agent ? agent.model : 'unknown') : null,
     superAgent: s.superAgent,
     homePick: s.user?.preferences.modelByKind?.[kind],
+    defaultRouting: s.defaultRouting,
   })
 }
 
@@ -1351,6 +1359,7 @@ export const useStore = create<State>((set, get) => ({
   litellmAvailable: true,
   strictImageDefault: '',
   superAgent: NO_SUPER_AGENT,
+  defaultRouting: {},
   autoRouting: {
     enabled: false,
     available: false,
@@ -1478,6 +1487,7 @@ export const useStore = create<State>((set, get) => ({
         strictImageDefault,
         autoRouting,
         superAgent,
+        defaultRoutingByKind,
       } = await modelsApi.list()
       set((s) => ({
         models: live,
@@ -1488,7 +1498,11 @@ export const useStore = create<State>((set, get) => ({
         ),
         litellmAvailable,
         strictImageDefault: strictImageDefault ?? '',
-        superAgent: superAgent ?? NO_SUPER_AGENT,
+        // an older server without the entries: none to offer
+        superAgent: superAgent
+          ? { default: superAgent.default, strict: superAgent.strict }
+          : { default: NO_SUPER_OFFER, strict: NO_SUPER_OFFER },
+        defaultRouting: defaultRoutingByKind ?? {},
         autoRouting: autoRouting ?? {
           enabled: false,
           available: false,

@@ -338,13 +338,15 @@ const EN: Record<string, string> = {
   '원본': 'Original',
   '내가 수정함': 'Edited by me',
   // System › models; monthly credits for new accounts
-  '대화 기본 모델': 'Default chat model',
+  '챗 기본 모델': 'Default chat model',
   '보고서 기본 모델': 'Default report model',
-  '발표 자료 기본 모델': 'Default slides model',
-  '그림 기본 모델': 'Default image model',
+  '슬라이드 기본 모델': 'Default slides model',
+  '이미지 기본 모델': 'Default image model',
   '오디오 기본 모델': 'Default audio model',
   '동영상 기본 모델': 'Default video model',
-  '대화 기본 모델을 따름': 'Follow the default chat model',
+  '챗 기본 모델을 따름': 'Follow the default chat model',
+  '챗·보고서·슬라이드는 Super Agent가 기본이며, 질문마다 라우팅 표의 모델을 고릅니다. 모델을 고르면 새 대화가 그 모델로 시작합니다.':
+    'Chat, reports and slides default to Super Agent, which picks a model from the routing table for each question. Pick a model to start new conversations on it instead.',
   '제공되는 오디오 모델 없음': 'No audio model served',
   '제공되는 동영상 모델 없음': 'No video model served',
   '오디오 기본 모델은 비워 둘 수 없습니다.': 'The default audio model cannot be left empty.',
@@ -358,8 +360,8 @@ const EN: Record<string, string> = {
   '코드 작성 대체 모델': 'Fallback code-writing model',
   '앞의 모델이 실패하면 한 번 더 씁니다.': 'Gets one more try when the model above fails.',
   '대체 모델 없음': 'No fallback',
-  '대화 기본 모델은 비워 둘 수 없습니다.': 'The default chat model cannot be left empty.',
-  '그림 기본 모델은 비워 둘 수 없습니다.': 'The default image model cannot be left empty.',
+  '챗 기본 모델은 비워 둘 수 없습니다.': 'The default chat model cannot be left empty.',
+  '이미지 기본 모델은 비워 둘 수 없습니다.': 'The default image model cannot be left empty.',
   '모델을 고르세요': 'Choose a model',
   '보조 작업에는 이 인스턴스가 직접 운영하는 모델만 고를 수 있습니다.': 'Side work can only use models this instance runs itself.',
   '이 작업에 쓸 수 없는 모델입니다. 목록에서 다시 고르세요.': 'That model cannot do this job. Choose again from the list.',
@@ -1157,7 +1159,7 @@ const EN: Record<string, string> = {
   '이 대화의 말투를 이 테마에 맞춥니다': 'this conversation takes its voice from the theme',
   '보고서의 말투와 색, 서체를 이 테마에 맞춥니다': 'the report takes its voice, colour and type from the theme',
   '슬라이드의 말투와 색, 서체를 이 테마에 맞춥니다': 'the slides take their voice, colour and type from the theme',
-  '그림의 색과 스타일을 이 테마에 맞춥니다': 'pictures take their colour and style from the theme',
+  '이미지의 색과 스타일을 이 테마에 맞춥니다': 'images take their colour and style from the theme',
   '조건에 맞는 템플릿이 없습니다.': 'No template matches.',
   '템플릿': 'Template',
   '조건에 맞는 테마가 없습니다.': 'No theme matches.',
@@ -1575,9 +1577,9 @@ const EN: Record<string, string> = {
   '접두사가 프로토콜을 고른다': 'the prefix picks the protocol',
 
   // ── Super Agent ──────────────────────────────────────────────────
-  'Super Agent를 켜지 못했습니다. 잠시 후 다시 시도하세요.': 'Couldn\'t turn on Super Agent. Try again shortly.',
+  'Super Agent로 바꾸지 못했습니다. 잠시 후 다시 시도하세요.': 'Couldn\'t switch to Super Agent. Try again shortly.',
   '이 계정에서 쓸 수 있는 모델이 표에 없습니다.': 'No model in the table is available to this account.',
-  '관리자가 Super Agent를 켜지 않았습니다.': 'Your administrator has not turned on Super Agent.',
+  '모델 목록을 불러오는 중입니다.': 'Loading the model list.',
   '답 하나에 보통 무료(내부 모델)': 'Usually free per answer (in-house models)',
   '답 하나에 보통 {min}~{max} 크레딧': 'Usually {min}–{max} credits per answer',
   '질문마다 알맞은 모델과 추론 강도를 골라 비용과 품질을 함께 맞춥니다.': 'Picks the right model and reasoning effort for each question, balancing cost and quality.',
@@ -1594,7 +1596,6 @@ const EN: Record<string, string> = {
   '도구 없이': 'without tools',
   '질문마다 작업 종류에 맞는 모델과 추론 강도를 골라 비용과 품질을 함께 맞춥니다.': 'Picks the model and reasoning effort that fit each request, balancing cost and quality.',
   '질문마다 작업 종류를 먼저 규칙으로 가리고, 애매할 때만 분류 모델에 짧게 물어 아래 표의 모델과 추론 강도로 답합니다. 개인정보나 내부 자료가 있으면 strict-local 열의 모델을 씁니다.': 'Each request is sorted into a task type by rules first; only unclear ones are put briefly to the classifier model. The answer then uses the model and reasoning effort in the table below. With personal data or internal material, the strict-local column is used.',
-  '모델 선택기에 Super Agent 보이기': 'Show Super Agent in the model picker',
   '규칙으로 가리지 못한 질문만 보냅니다. 질문 한 개만 짧게 보내며, 외부 전환이 없는 무료 strict-local 모델만 쓸 수 있습니다.': 'Only requests the rules cannot sort are sent, one short question at a time. Only free strict-local models with no external fallback can be used.',
   '표의 「간단한 질문」 strict-local 모델': 'The table’s strict-local model for simple questions',
   '작업 종류별 모델': 'Model by task type',
@@ -1641,7 +1642,6 @@ const EN: Record<string, string> = {
   '표에 이 서버가 제공하지 않거나 이 작업에 쓸 수 없는 모델이 있습니다.': 'The table names a model this server does not serve or that cannot do that task.',
   'strict-local 열에는 strict-local 모델만 넣을 수 있습니다.': 'Only strict-local models can go in the strict-local column.',
   '분류 모델은 무료 strict-local 모델이어야 합니다.': 'The classifier must be a free strict-local model.',
-  '관리자가 Super Agent를 켜지 않았습니다. 모델을 직접 고르세요.': 'Your administrator has not turned on Super Agent. Pick a model yourself.',
   '지금 쓸 수 있는 strict-local 모델이 없어 Super Agent (strict-local)이 답하지 못했습니다. 잠시 후 다시 시도하세요.': 'No strict-local model is available right now, so Super Agent (strict-local) could not answer. Try again shortly.',
 
   // ── Auto cost routing ──────────────────────────────────────────────
@@ -2168,7 +2168,7 @@ const EN: Record<string, string> = {
   '보고서 주제와 넣고 싶은 절을 적으세요': 'Give the report topic and the sections you want',
   '발표 주제와 시간을 적으세요': 'Give the talk topic and length',
   'Enter 전송, Shift+Enter 줄바꿈': 'Enter to send, Shift+Enter for a new line',
-  'Enter로 생성 · 만든 그림은 아티팩트에 쌓입니다': 'Enter to generate — images are kept as artifacts',
+  'Enter로 생성 · 만든 이미지는 아티팩트에 쌓입니다': 'Enter to generate — images are kept as artifacts',
   'Enter로 생성 · 음성과 음악은 아티팩트에 쌓입니다': 'Enter to generate — audio is kept as artifacts',
   'Enter로 생성 · 구성을 잡은 뒤 한 장씩 채웁니다': 'Enter to generate — the outline comes first, then each slide',
   'Enter로 생성 · 영상은 몇 분 걸리고 진행은 카드에 표시됩니다': 'Enter to generate — video takes minutes and progress shows on the card',
@@ -2381,7 +2381,7 @@ const EN: Record<string, string> = {
   '{n}장 편집': 'Edit slide {n}',
   '{n}초': '{n}s',
   '{n}회': '{n} calls',
-  '올린 파일과 만든 그림·클립도 디스크에서 지웁니다': 'Also delete uploads and generated pictures and clips from disk',
+  '올린 파일과 만든 이미지·클립도 디스크에서 지웁니다': 'Also delete uploads and generated images and clips from disk',
   '끄면 파일은 남고, 디스크가 차면 저장소 정리가 오래된 것부터 지웁니다.': 'Off keeps the files; the storage sweep removes them, oldest first, once the disk is full.',
   '고아 파일 정리': 'Sweep orphaned files',
   '정리가 끝날 때까지 기다려 주세요': 'Wait for the sweep to finish',
@@ -2392,7 +2392,7 @@ const EN: Record<string, string> = {
   '{files}개, {size}를 지웠습니다.': 'Removed {files} files, {size}.',
   '정리하지 못했습니다.': 'Could not sweep.',
   '저장 공간': 'Storage',
-  '올린 파일과 만든 그림·클립': 'Uploads and generated pictures and clips',
+  '올린 파일과 만든 이미지·클립': 'Uploads and generated images and clips',
   '{n}개': '{n} files',
   '디스크 {used} 사용 · {free} 남음 · 전체 {total}': 'Disk {used} used · {free} free · {total} total',
   '저장 공간 정보를 불러오지 못했습니다.': 'Could not load storage information.',
@@ -2654,8 +2654,8 @@ const EN: Record<string, string> = {
   '바다 위로 해가 뜨는 6초 영상': 'A 6-second video of sunrise over the sea',
   '처리 내역 {n}건': '{n} handling notes',
   '처리 내역 접기': 'Hide handling notes',
-  '{n}번째 그림 내려받기': 'Download image {n}',
-  '그림 내려받기': 'Download the image',
+  '{n}번째 이미지 내려받기': 'Download image {n}',
+  '이미지 내려받기': 'Download the image',
   '내려받기': 'Download',
   '버전 기록을 불러오지 못했습니다.': 'Could not load the version history.',
   '이전 내용을 불러오지 못했습니다.': 'Could not load the earlier version.',
@@ -3159,8 +3159,8 @@ const EN: Record<string, string> = {
     'No sources were used.',
   '웹 검색을 켜고 다시 쓰면 찾은 자료가 여기 출처로 붙습니다. 검색 없이 쓴 글에는 붙일 출처가 없습니다.':
     'Turn web search on and write it again, and what it finds is cited here. Writing with search off leaves nothing to cite.',
-  '크레딧은 모델을 쓸 때마다 줄어듭니다. 글은 조금, 그림과 영상은 많이 듭니다. 다 쓰면 다음 달까지 새 요청을 보낼 수 없고, 만든 것은 그대로 남습니다. 눌러서 무엇에 얼마나 썼는지 봅니다.':
-    'Credits go down each time a model runs. Writing costs a little; pictures and clips cost a lot. At zero you cannot send new requests until next month, and everything you have made stays. Click to see where they went.',
+  '크레딧은 모델을 쓸 때마다 줄어듭니다. 글은 조금, 이미지와 영상은 많이 듭니다. 다 쓰면 다음 달까지 새 요청을 보낼 수 없고, 만든 것은 그대로 남습니다. 눌러서 무엇에 얼마나 썼는지 봅니다.':
+    'Credits go down each time a model runs. Writing costs a little; images and clips cost a lot. At zero you cannot send new requests until next month, and everything you have made stays. Click to see where they went.',
   '{n}개 절': '{n} sections',
   '항목 추가': 'Add an item',
   '처음 제안으로': 'Back to the proposal',
@@ -3447,9 +3447,9 @@ const EN: Record<string, string> = {
     'The model stopped responding, so the request was cancelled. Try another model.',
   '이 모델은 지금 이 화면에서 쓸 수 없습니다. 모델을 바꿔 다시 시도하세요.':
     'That model cannot be used on this surface right now. Pick another and try again.',
-  'strict-local 그림 모델': 'strict-local picture model',
-  '내부 자료가 있는 대화나 문서의 그림을 strict-local로 그려야 할 때, 고른 그림 모델이 외부 모델이면 이 모델로 그립니다.':
-    'When a picture in a conversation or document with internal material must stay strict-local and the picked picture model is external, this model draws it.',
+  'strict-local 이미지 모델': 'strict-local image model',
+  '내부 자료가 있는 대화나 문서의 그림을 strict-local로 그려야 할 때, 고른 이미지 모델이 외부 모델이면 이 모델로 그립니다.':
+    'When a picture in a conversation or document with internal material must stay strict-local and the picked image model is external, this model draws it.',
   '이 계정에 허용되지 않은 모델입니다. 모델을 바꿔 다시 시도하세요.':
     'This account may not use that model. Pick another and try again.',
   '지금 사용할 수 있는 모델이 없습니다. 관리자에게 문의하세요.':
@@ -3624,7 +3624,7 @@ const EN: Record<string, string> = {
   '현재 키 {preview} — 바꾸려면 새 키를 입력': 'Current key {preview} — enter a new one to change it',
   '기본 모델 ({name})': 'Default model ({name})',
   '기본 모델 없음 · 모델 고르기': 'No default model · choose one',
-  '그림 기본 모델이 정해지지 않았습니다. 모델을 직접 고르거나, 관리자가 설정 › 모델에서 그림 기본 모델을 고르면 쓸 수 있습니다.':
+  '이미지 기본 모델이 정해지지 않았습니다. 모델을 직접 고르거나, 관리자가 설정 › 모델에서 이미지 기본 모델을 고르면 쓸 수 있습니다.':
     'No default image model is set. Choose a model yourself, or an administrator can set one under Settings › Models.',
   '오디오 기본 모델이 정해지지 않았습니다. 모델을 직접 고르거나, 관리자가 설정 › 모델에서 오디오 기본 모델을 고르면 쓸 수 있습니다.':
     'No default audio model is set. Choose a model yourself, or an administrator can set one under Settings › Models.',
@@ -4115,7 +4115,7 @@ const EN: Record<string, string> = {
   '이 도식은 그릴 수 없습니다. 단계를 줄여 다시 시도해 주세요.': 'This figure cannot be drawn. Try again with fewer steps.',
   '지금은 도식을 그릴 수 없습니다. 잠시 뒤 다시 시도해 주세요.': 'Figures cannot be drawn right now. Try again in a moment.',
   '「{name}」로 그립니다. 고쳐 쓰거나 지우고 직접 적어도 됩니다 — 만들기를 눌러야 크레딧이 듭니다.': 'Drawn as a {name}. Rewrite it or clear it and write your own — credits are used only when you press Make.',
-  '도식은 글 모델이 씁니다 · 그림 요금이 아닙니다': 'A figure is written by the text model — not priced as a picture',
+  '도식은 글 모델이 씁니다 · 이미지 요금이 아닙니다': 'A figure is written by the text model — not priced as an image',
   '도식 소스(mermaid) 복사': 'Copy the figure source (mermaid)',
   '보고서의 mermaid 블록에 붙여 넣거나 직접 고칠 수 있습니다': 'Paste it into a report\'s mermaid block, or edit it by hand',
   '소스 복사': 'Copy source',

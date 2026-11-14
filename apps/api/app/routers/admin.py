@@ -232,6 +232,13 @@ _MODEL_ROLE_FIELDS: tuple[tuple[str, str, str, bool], ...] = (
     ("model_code_fallback", settings_store.MODEL_CODE_FALLBACK, "helper", True),
 )
 
+#: fields whose value may also be a Super Agent start (`settings_store.ROUTING_CHAT`)
+_ROUTED_ROLE_FIELDS: dict[str, str] = {
+    "model_chat": "chat",
+    "model_report": "report",
+    "model_slides": "slides",
+}
+
 #: required only while the catalogue offers one: an instance without them has nothing to pick
 _REQUIRED_WHEN_OFFERED = frozenset({"model_audio", "model_video"})
 
@@ -283,9 +290,10 @@ async def _model_role_settings() -> dict:
     """모델 section: in-force choice and options per job."""
     roles = await settings_store.model_roles()
     return {
-        "chat": roles.chat,
-        "report": roles.report,
-        "slides": roles.slides,
+        # chat, report and slides: `super`, `super_strict`, a model id, or "" (follow chat)
+        "chat": roles.surface_default("chat"),
+        "report": roles.surface_default("report"),
+        "slides": roles.surface_default("slides"),
         "image": roles.image,
         "audio": roles.audio,
         "video": roles.video,
@@ -311,9 +319,9 @@ async def _check_model_roles(payload: SystemSettingsIn) -> None:
         in_force = settings_store.model_roles_from(stored)
         choices = _model_choices(await model_service.list_models())
         current = {
-            settings_store.MODEL_CHAT: in_force.chat,
-            settings_store.MODEL_REPORT: in_force.report,
-            settings_store.MODEL_SLIDES: in_force.slides,
+            settings_store.MODEL_CHAT: in_force.surface_default("chat"),
+            settings_store.MODEL_REPORT: in_force.surface_default("report"),
+            settings_store.MODEL_SLIDES: in_force.surface_default("slides"),
             settings_store.MODEL_IMAGE: in_force.image,
             settings_store.MODEL_AUDIO: in_force.audio,
             settings_store.MODEL_VIDEO: in_force.video,
@@ -327,6 +335,8 @@ async def _check_model_roles(payload: SystemSettingsIn) -> None:
                     raise HTTPException(status_code=422, detail=f"{field}_required")
                 continue
             if value == current[key]:
+                continue
+            if field in _ROUTED_ROLE_FIELDS and value in settings_store.SUPER_START_MODES:
                 continue
             if value not in {model["id"] for model in choices[role]}:
                 raise HTTPException(status_code=422, detail=f"{field}_invalid")
@@ -461,7 +471,11 @@ async def put_settings(
         ("ocr_mode", settings_store.OCR_MODE),
         ("ocr_vision_model", settings_store.OCR_VISION_MODEL),
         ("ocr_max_pages", settings_store.OCR_MAX_PAGES),
-        *((field, key) for field, key, _role, _optional in _MODEL_ROLE_FIELDS),
+        *(
+            (field, key)
+            for field, key, _role, _optional in _MODEL_ROLE_FIELDS
+            if field not in _ROUTED_ROLE_FIELDS
+        ),
         ("thinking_self_hosted", settings_store.THINKING_SELF_HOSTED),
         ("thinking_external", settings_store.THINKING_EXTERNAL),
         ("default_monthly_credits", settings_store.CREDITS_DEFAULT_MONTHLY),
@@ -482,6 +496,24 @@ async def put_settings(
             await settings_store.put(db, key, value.strip(), admin.id)
             before[field] = before_stored.get(key, "")
             after[field] = value.strip()
+
+    # chat, report, slides: a Super Agent start keeps the stored model as the fallback;
+    # a model (or "" to follow chat) fixes the start to that model
+    in_force_before = settings_store.model_roles_from(before_stored)
+    for field, kind in _ROUTED_ROLE_FIELDS.items():
+        value = getattr(payload, field)
+        if value is None:
+            continue
+        value = value.strip()
+        model_key = dict((f, k) for f, k, _r, _o in _MODEL_ROLE_FIELDS)[field]
+        if value in settings_store.SUPER_START_MODES:
+            start = value
+        else:
+            start = "" if value == "" and kind != "chat" else "manual"
+            await settings_store.put(db, model_key, value, admin.id)
+        await settings_store.put(db, settings_store.ROUTING_KEYS[kind], start, admin.id)
+        before[field] = in_force_before.surface_default(kind)
+        after[field] = value
 
     # moved fields only; screens save whole sections
     changes = audit_service.diff(before, after)

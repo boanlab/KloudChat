@@ -27,7 +27,7 @@ When a **May switch to an external provider** model fails to answer and the gate
 
 ## Super Agent
 
-When the administrator turns it on, two entries appear at the top of the list. They apply to the conversation, not to a model.
+Two entries are always at the top of the list. They apply to the conversation, not to a model, and new chat, report and slides conversations start on Super Agent (unless the administrator set another default, you picked a model on the home screen, or the conversation's agent has its own model). When the table has no model your account may use, the entry is not shown and new conversations start on the default model.
 
 | Entry | What it does |
 |---|---|
@@ -55,7 +55,7 @@ The **Reasoning** chip to the left of the model name sets how much the model thi
 
 ## Scope of a model selection
 
-- **Selecting on the home screen** saves the model to your account as the **default model** for that screen, such as Chat, Reports, or Slides. It applies when you sign in from another device, and you can also change it in Settings → Preferences.
+- **Selecting on the home screen** saves the model to your account as the **default model** for that screen, such as Chat, Reports, or Slides. It applies when you sign in from another device, and you can also change it in Settings → Preferences. Picking Super Agent on the home screen again clears the saved model, and new conversations start on Super Agent again.
 - **Selecting during a conversation** applies to that conversation only.
 - An agent conversation uses the model set on the agent. An agent with no model of its own (**Default model**) follows that screen's default model.
 - When the administrator limits which models an account may use, only the allowed models appear.

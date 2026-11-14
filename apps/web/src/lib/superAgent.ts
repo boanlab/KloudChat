@@ -6,26 +6,36 @@ export function isSuperMode(mode: RoutingMode | undefined): mode is 'super' | 's
 }
 
 /**
- * The mode a new conversation starts in: Super Agent on the chat, report and slides surfaces
- * when the admin offers it, unless the conversation belongs to an agent (its model rules) or the
- * person picked a model for that surface on the home screen (that pick is kept). Existing
- * conversations keep their own mode; the server moves a project conversation that must stay
- * strict-local to `super_strict`.
+ * The mode a new conversation starts in (the server's `start_mode.starting_mode`): on chat,
+ * report and slides, the admin's start for the surface (`defaultRouting`, Super Agent unless a
+ * model was fixed there), unless the conversation's agent has its own model or the person
+ * picked a model for that surface on the home screen (that pick is kept). A `super` start whose
+ * entry has nothing this person may use falls to Super Agent (strict-local), then to the
+ * surface's model; a `super_strict` start never widens to `super`. Before the catalogue answers
+ * (`pending`) the start is taken as usable. Existing conversations keep their own mode; the
+ * server moves a project conversation that must stay strict-local to `super_strict`.
  */
 export function startingMode({
   kind,
-  agentId,
+  agentModel,
   superAgent,
   homePick,
+  defaultRouting,
 }: {
   kind: SessionKind
-  agentId?: string | null
-  superAgent: Pick<NonNullable<ModelCatalogue['superAgent']>, 'enabled' | 'default'>
+  /** The conversation's agent's own model, if it fixes one. */
+  agentModel?: string | null
+  superAgent: Pick<NonNullable<ModelCatalogue['superAgent']>, 'default' | 'strict' | 'pending'>
   homePick?: string | null
+  defaultRouting?: ModelCatalogue['defaultRoutingByKind']
 }): RoutingMode {
   if (kind !== 'chat' && kind !== 'report' && kind !== 'slides') return 'manual'
-  if (agentId || homePick) return 'manual'
-  return superAgent.enabled && superAgent.default.available ? 'super' : 'manual'
+  if (agentModel || homePick) return 'manual'
+  const start = defaultRouting?.[kind] ?? 'super'
+  if (start === 'manual') return 'manual'
+  if (superAgent.pending) return start
+  if (start === 'super' && superAgent.default.available) return 'super'
+  return superAgent.strict.available ? 'super_strict' : 'manual'
 }
 
 /** 「Super Agent」 or 「Super Agent (strict-local)」: product names, not translated. */

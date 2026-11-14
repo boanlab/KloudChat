@@ -53,7 +53,7 @@ authorizes raw, masked or strict-local egress.
 | Deployment | `PERF_*` | Performance monitoring: mounts, targets and thresholds of this host. |
 | Product, seeded once | `DEFAULT_CHAT_MODEL`, `DEFAULT_REPORT_MODEL`, `DEFAULT_SLIDES_MODEL`, `DEFAULT_IMAGE_MODEL`, `DEFAULT_AUDIO_MODEL`, `DEFAULT_VIDEO_MODEL`, `TITLE_MODEL`, `CODE_MODEL`, `CODE_FALLBACK_MODEL`, `SELF_HOSTED_CHAT_THINKING`, `EXTERNAL_CHAT_THINKING` | **System › Model** (`models.*`, `thinking.*` in `system_settings`). The environment seeds a fresh install once. |
 | Product, seeded once | `DEFAULT_MONTHLY_CREDITS` | **System › Signup** (`credits.default_monthly`). Seeded once the same way. |
-| Product, environment as fallback | `ADAPTIVE_ROUTING_DEFAULT`, `ADAPTIVE_CLASSIFIER_MODEL_DEFAULT`, `ADAPTIVE_ECONOMY_MODELS_DEFAULT`, `ADAPTIVE_QUALITY_DEFAULT`, `ADAPTIVE_QUALITY_MODELS_DEFAULT`, `SUPER_AGENT_DEFAULT`, `OUTLINE_MODEL_DEFAULT`, `INTERNAL_DATA_STRICT_LOCAL_DEFAULT` | **System › Routing** and **Security · audit** (`governance` row). The environment only fills the row when it is first created. |
+| Product, environment as fallback | `ADAPTIVE_ROUTING_DEFAULT`, `ADAPTIVE_CLASSIFIER_MODEL_DEFAULT`, `ADAPTIVE_ECONOMY_MODELS_DEFAULT`, `ADAPTIVE_QUALITY_DEFAULT`, `ADAPTIVE_QUALITY_MODELS_DEFAULT`, `OUTLINE_MODEL_DEFAULT`, `INTERNAL_DATA_STRICT_LOCAL_DEFAULT` | **System › Routing** and **Security · audit** (`governance` row). The environment only fills the row when it is first created. |
 | Product, environment as fallback | `BRAND_NAME`, `SIGNUP_MODE`, `SMTP_HOST` … `SMTP_FROM` | **System › Branding / Signup / Mail**. A stored value wins; with none stored the environment applies. |
 | Product, admin screen only | enabled surfaces, OCR on/off, reading mode, vision model, page limit, contact address, signup domains and verification, logo, governance policies | No environment variable. |
 
@@ -158,8 +158,13 @@ it when nobody is mid-turn):
 
 ### Super Agent and the earlier Auto lanes
 
-**System › Routing** holds the Super Agent switch (`super_agent_enabled`, on for a fresh
-installation through `SUPER_AGENT_DEFAULT`), its classifier (`adaptive_classifier_model_id`,
+Super Agent has no switch: the model picker always lists **Super Agent** and **Super Agent
+(strict-local)** first on chat, report and slides, and a new conversation there starts on
+the surface's default from **System › Model** (Super Agent unless the administrator chose
+otherwise; see [Model](#model)). Migration 0089 dropped the earlier `super_agent_enabled`
+column. An entry whose class table has no model an account may use is shown as unavailable
+only while a conversation is on it, and a new conversation then starts on the surface's
+model. **System › Routing** holds its classifier (`adaptive_classifier_model_id`,
 a live zero-cost strict-local model) and the class table (`super_agent_rules`, the admin's
 changes to `super_agent.DEFAULT_RULES`; see docs/architecture.md, "Super Agent"). A `super`
 pick must be a chat model the gateway serves; a `super_strict` pick must be strict-local.
@@ -456,7 +461,20 @@ programs and its fallback, and whether self-hosted and external models think
 before answering. Chat and image must be chosen (`422 model_chat_required`,
 `422 model_image_required`), and audio and video too while the catalogue serves
 one (`422 model_audio_required`, `422 model_video_required`); report and slides
-left empty follow the chat default. Price never picks a default. An agent saved
+left empty follow the chat default. Price never picks a default.
+
+Chat, report and slides also offer **Super Agent** and **Super Agent (strict-local)**,
+listed first; Super Agent is the default for all three on a fresh installation
+(`system_settings` `routing.chat`, `routing.report`, `routing.slides`: `super`,
+`super_strict`, `manual`, or empty for report and slides to follow chat; unset means
+`super`). A new conversation starts in that mode unless the person picked a model for that
+surface on the home screen or its agent has its own model; a project conversation where
+internal material stays strict-local starts on `super_strict`. With a Super Agent entry
+chosen, the model last chosen for the surface stays stored as the fallback a turn uses when
+the class table has nothing usable. Migration 0089 moved the three surfaces to Super Agent
+unless an administrator had saved a model other than the shipped default
+(`local/qwen3.8-flash` for chat, `local/qwen3.8-27b` for report and slides); existing
+conversations keep their own mode. An agent saved
 with no model follows its surface's default. The
 side-work models read the conversation, so only self-hosted chat models can be
 chosen (`422 model_title_invalid` and the like otherwise); a strict-local turn
@@ -465,7 +483,7 @@ selectable as it is, marked unavailable, and is not swapped silently.
 
 ### Routing
 
-Super Agent's switch, classifier and class table — see
+Super Agent's classifier and class table — see
 [Super Agent and the earlier Auto lanes](#super-agent-and-the-earlier-auto-lanes) — and the
 outline model, which plans
 a document before the surface's own model writes it.
@@ -477,8 +495,8 @@ better on Korean institutional requests:
 
 | Work | Model | Set by |
 | --- | --- | --- |
-| Chat answers | `local/qwen3.8-flash` | the person's choice; else **System › Model › Default chat model** |
-| Report and deck prose | `local/qwen3.8-27b` | the person's choice; else **System › Model › Default report / slides model** |
+| Chat answers | Super Agent's class table (Flash for everyday turns, DeepSeek V4.1 Flash for hard ones) | the person's choice; else **System › Model › Default chat model** (Super Agent by default; a fixed model there answers instead) |
+| Report and deck prose | `local/qwen3.8-27b` (Super Agent's `document` row) | the person's choice; else **System › Model › Default report / slides model** (Super Agent by default) |
 | Writing an empty or announced-only chat answer once more | the other self-hosted model (27B for Flash, Flash for 27B) | follows the chat, report and slides roles |
 | Outline, research plan, figure proposals | `local/qwen3.8-flash` | **System › Routing › Model that plans** (`outline_model_id`) |
 | Judging: key figures, cost and score readings, checks, repairs, title block | the outline model, else the writer | follows the outline model |

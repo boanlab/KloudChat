@@ -61,7 +61,13 @@ export async function mockApp(
   initial: RoutingMode = 'manual',
   route?: SuperAgentRoute,
   modelByKind?: Record<string, string>,
-  options: { reasoning?: TurnReasoning; showUsage?: boolean; catalogue?: ReturnType<typeof model>[] } = {},
+  options: {
+    reasoning?: TurnReasoning
+    showUsage?: boolean
+    catalogue?: ReturnType<typeof model>[]
+    /** The catalogue's `defaultRoutingByKind` (설정 › 시스템 › 모델); absent: Super Agent. */
+    defaultRouting?: Record<string, 'super' | 'super_strict' | 'manual'>
+  } = {},
 ) {
   await page.route('**/api/**', (r) => r.abort('blockedbyclient'))
   const state: State = { sessions: [], turns: [], creates: [], patches: [], governancePuts: [], failGovernance: false }
@@ -79,7 +85,6 @@ export async function mockApp(
     adaptiveEconomyModelIds: [],
     adaptiveQualityEnabled: false,
     adaptiveQualityModelIds: [],
-    superAgentEnabled: true,
     superAgentRules: defaultRules,
     superAgentDefaultRules: defaultRules,
     internalDataStrictLocal: true,
@@ -122,8 +127,8 @@ export async function mockApp(
           economyModelIds: ['local/flash'], qualityAvailable: true, qualityReason: null,
           qualityModelIds: ['external/deep'],
         },
+        ...(options.defaultRouting ? { defaultRoutingByKind: options.defaultRouting } : {}),
         superAgent: {
-          enabled: true,
           default: { available: true, reason: null, estimate: { min: 0, max: 440, models: [] } },
           strict: { available: true, reason: null, estimate: { min: 0, max: 0, models: [] } },
         },

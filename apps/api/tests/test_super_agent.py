@@ -284,7 +284,7 @@ async def test_picker_offers_both_entries_with_a_credit_range(monkeypatch) -> No
         return {"models": CATALOGUE, "litellmAvailable": True}
 
     async def policy():
-        return Governance(super_agent_enabled=True)
+        return Governance()
 
     monkeypatch.setattr(models_router.model_service, "list_models", catalogue)
     monkeypatch.setattr(models_router.governance, "current", policy)
@@ -293,12 +293,14 @@ async def test_picker_offers_both_entries_with_a_credit_range(monkeypatch) -> No
     assert offer["strict"]["estimate"]["max"] == 0
     assert offer["default"]["estimate"]["max"] > 0
 
-    async def off():
-        return Governance(super_agent_enabled=False)
-
-    monkeypatch.setattr(models_router.governance, "current", off)
-    offer = (await models_router.list_models(user))["superAgent"]
-    assert offer["default"] == {**offer["default"], "available": False, "reason": "disabled"}
+    # no switch: the entries are always there; an account whose allowed models leave the
+    # table nothing says why instead
+    assert "enabled" not in offer
+    lonely = User(email="q@example.test", password_hash="h", name="Q",
+                  allowed_models=["no/such-model"])
+    offer = (await models_router.list_models(lonely))["superAgent"]
+    assert offer["default"] == {"available": False, "reason": "no_models", "estimate": None}
+    assert offer["strict"]["available"] is False
 
 
 def _migration():
@@ -440,7 +442,7 @@ async def test_a_new_project_conversation_on_super_agent_starts_strict_when_requ
         return {"models": CATALOGUE, "litellmAvailable": True}
 
     async def policy():
-        return Governance(super_agent_enabled=True, internal_data_strict_local=strict_rule)
+        return Governance(internal_data_strict_local=strict_rule)
 
     monkeypatch.setattr(sessions_router.model_service, "list_models", catalogue)
     monkeypatch.setattr(sessions_router.governance, "current", policy)

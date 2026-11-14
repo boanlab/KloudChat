@@ -46,7 +46,7 @@ async function handoffFixture(page: Page) {
         litellmAvailable: true, autoRouting: { enabled: true, available: true,
           economyModelIds: ['fixture/economy'], qualityEnabled: true,
           qualityAvailable: true, qualityModelIds: ['fixture/quality'] },
-        superAgent: { enabled: true,
+        superAgent: {
           default: { available: true, reason: null, estimate: { min: 0, max: 10, models: [] } },
           strict: { available: true, reason: null, estimate: { min: 0, max: 0, models: [] } } } } })
     }
@@ -129,11 +129,10 @@ for (const mode of ['super', 'super_strict'] as const) {
       await expect(page.getByLabel('프롬프트 입력')).toHaveValue('전환 후에도 보존할 초안')
       await expect(page.getByRole('button', { name: 'draft.txt 제거' })).toBeVisible()
       await expect(page.getByText(`웹 검색: ${search}`, { exact: true })).toBeVisible()
-      // The conversation is held in the browser until its first send; Super Agent picked on the
-      // home screen also clears the chosen chat model, so new conversations start on it again.
-      expect(writes).toEqual(mode === 'super'
-        ? [{ path: '/auth/me', body: { preferences: { modelByKind: {} } } }]
-        : [])
+      // The conversation is held in the browser until its first send; either Super Agent entry
+      // picked on the home screen also clears the chosen chat model, so new conversations start
+      // on the installation's default (Super Agent) again.
+      expect(writes).toEqual([{ path: '/auth/me', body: { preferences: { modelByKind: {} } } }])
       // Repeated renders must not consume or reset the restored state again.
       await page.getByLabel('프롬프트 입력').fill('전환 후 다시 수정한 초안')
       await expect(page.getByRole('button', { name: 'draft.txt 제거' })).toBeVisible()

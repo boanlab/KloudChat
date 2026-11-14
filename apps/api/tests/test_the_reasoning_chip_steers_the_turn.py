@@ -148,7 +148,7 @@ async def _route(text: str, *, mode: str, routing: RoutingMode = RoutingMode.sup
     session = ChatSession(user_id=user.id, kind=kind, routing_mode=routing)
     catalogue = catalogue or CATALOGUE
     model, route, effort = await sessions_router._super_route(
-        db=None, user=user, session=session, policy=Governance(super_agent_enabled=True),
+        db=None, user=user, session=session, policy=Governance(),
         catalogue=catalogue, default=catalogue[0], history=[], content=text, kind=kind,
         web_search=False, attachments=None, tool_bound=False, reasoning_mode=mode,
     )
@@ -226,7 +226,7 @@ async def test_a_deep_revision_keeps_the_documents_first_writer() -> None:
                                   "taskClass": "document"}}
 
     model, route, effort = await sessions_router._super_route(
-        db=None, user=user, session=session, policy=Governance(super_agent_enabled=True),
+        db=None, user=user, session=session, policy=Governance(),
         catalogue=CATALOGUE, default=CATALOGUE[0], history=[Asked(), Wrote()],
         content="2절을 더 깊게 분석해 줘", kind=SessionKind.report, web_search=False,
         attachments=None, tool_bound=False, reasoning_mode=sa.DEEP,

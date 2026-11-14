@@ -2887,6 +2887,20 @@ replace the two Auto lanes in the picker; conversations on an Auto lane were mov
 by migration 0083. The Auto code below stays for comparison and for sessions set through the
 API.
 
+**Always there, and the default.** There is no switch (migration 0089 dropped
+`governance.super_agent_enabled`): the picker lists both entries first on chat, report and
+slides, each with its credit range, or as unavailable while a conversation is on an entry
+whose table has no model the account may use. A new conversation the caller sends without a
+`routing_mode` starts as `services/start_mode.py` decides: a model fixed by the caller, the
+conversation's agent or the person's home-screen pick keeps it `manual`; otherwise the
+surface's start from 설정 › 시스템 › 모델 (`system_settings` `routing.chat`, `routing.report`,
+`routing.slides`; unset is `super`), with `super` moved to `super_strict` in a project where
+internal material stays strict-local, and to `manual` when neither entry has a usable model
+(a `super_strict` start never widens to `super`). The web client applies the same rule before
+the first send (`lib/superAgent.ts` `startingMode`, from the catalogue's
+`defaultRoutingByKind`), and a chat handed off to a report or deck starts the same way.
+Existing conversations keep their stored mode.
+
 **Task class first, by rules.** Each turn is sorted into `simple`, `chat`, `transform`
 (translate, summarise, proofread), `calc`, `code`, `current` (facts that change; search
 switched on), `long` (large pasted material or conversation), `reasoning` or `document`

@@ -13,12 +13,12 @@ Set the image options below the input box.
 | Chip | Choices |
 |---|---|
 | Ratio | 16:9 · 9:16 · 4:3 · 1:1 (only the ones the model supports) |
-| Style | **Picture**: Auto · photo · illustration · infographic · watercolor<br/>**Exact figure**: structure diagram · flow diagram · concept diagram · chart<br/>Prompt as written |
+| Style | **Image**: Auto · photo · illustration · infographic · watercolor<br/>**Exact figure**: structure diagram · flow diagram · concept diagram · chart<br/>Prompt as written |
 | Text | Auto · Korean · English · none |
 
-One picture is made at a time. The **Picture** group is drawn by the picture model; the **Exact figure** group is drawn as shapes or a chart without it, so its text is exact. **Prompt as written** sends the text to the picture model unchanged.
+One picture is made at a time. The **Image** group is drawn by the image model; the **Exact figure** group is drawn as shapes or a chart without it, so its text is exact. **Prompt as written** sends the text to the image model unchanged.
 
-Pick the picture model from the model name at the right of the composer. The list comes from the models registered in the model gateway; the default setup's external picture models are Seedream 5.0 Flash, Recraft V4.1, Grok Imagine Image 2.0, GPT-5.4 Image 2 and Gemini 3 Pro Image. When the administrator connects a self-hosted picture model, strict-local picture models appear as well. Pictures in a project conversation, a conversation with attachments, or a strict-local conversation are drawn by strict-local models only. [Privacy](../privacy)
+Pick the image model from the model name at the right of the composer. The list comes from the models registered in the model gateway; the default setup's external image models are Seedream 5.0 Flash, Recraft V4.1, Grok Imagine Image 2.0, GPT-5.4 Image 2 and Gemini 3 Pro Image. When the administrator connects a self-hosted image model, strict-local image models appear as well. Pictures in a project conversation, a conversation with attachments, or a strict-local conversation are drawn by strict-local models only. [Privacy](../privacy)
 
 The result card provides enlarged view, download, **Generate again**, **Fix the prompt**, and **View the prompt sent** (the final sentence that was actually sent). A chart is drawn as code by the text model. You can use **View the drawing code** and **Redraw with this code**. If you choose a model that does not support ratio settings, a message tells you that the image is generated as a square.
 

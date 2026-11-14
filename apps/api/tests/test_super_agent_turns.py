@@ -278,12 +278,11 @@ class _SessionWriteDb:
 
 
 @pytest.mark.asyncio
-async def test_super_modes_need_the_switch_and_a_routed_surface(monkeypatch) -> None:
+async def test_super_modes_are_always_offered_on_routed_surfaces(monkeypatch) -> None:
     user = User(email="p@example.test", password_hash="h", name="P")
-    switch = {"on": False}
 
     async def current(*_args, **_kwargs):
-        return Governance(super_agent_enabled=switch["on"])
+        return Governance()
 
     async def enabled_kinds():
         return {"chat", "image"}
@@ -295,11 +294,9 @@ async def test_super_modes_need_the_switch_and_a_routed_surface(monkeypatch) -> 
     monkeypatch.setattr(sessions_router.settings_store, "enabled_kinds", enabled_kinds)
     monkeypatch.setattr(sessions_router, "_validate_session_links", links)
     db = _SessionWriteDb()
-    with pytest.raises(Exception) as caught:
-        await sessions_router.create_session(
-            SessionCreate(kind=SessionKind.chat, routing_mode=RoutingMode.super), user, db)
-    assert getattr(caught.value, "detail", None) == "super_agent_disabled"
-    switch["on"] = True
+    created = await sessions_router.create_session(
+        SessionCreate(kind=SessionKind.chat, routing_mode=RoutingMode.super), user, db)
+    assert created.routing_mode is RoutingMode.super
     with pytest.raises(Exception) as caught:
         await sessions_router.create_session(
             SessionCreate(kind=SessionKind.image, routing_mode=RoutingMode.super_strict),
@@ -315,8 +312,6 @@ async def test_super_modes_need_the_switch_and_a_routed_surface(monkeypatch) -> 
         return session
 
     monkeypatch.setattr(sessions_router, "_owned", owned)
-    switch["on"] = False
-    with pytest.raises(Exception) as caught:
-        await sessions_router.patch_session(
-            session.id, SessionPatch(routing_mode=RoutingMode.super), user, db)
-    assert getattr(caught.value, "detail", None) == "super_agent_disabled"
+    patched = await sessions_router.patch_session(
+        session.id, SessionPatch(routing_mode=RoutingMode.super), user, db)
+    assert patched.routing_mode is RoutingMode.super
