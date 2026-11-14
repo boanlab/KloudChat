@@ -4,6 +4,7 @@ do under each choice, what the answer's line is told, and how the conversation k
 from __future__ import annotations
 
 import pytest
+from test_privacy import _NoWriteDb
 
 from app.models.chat import ChatSession, RoutingMode, SessionKind
 from app.models.governance import Governance
@@ -148,7 +149,9 @@ async def _route(text: str, *, mode: str, routing: RoutingMode = RoutingMode.sup
     session = ChatSession(user_id=user.id, kind=kind, routing_mode=routing)
     catalogue = catalogue or CATALOGUE
     model, route, effort = await sessions_router._super_route(
-        db=None, user=user, session=session, policy=Governance(super_agent_enabled=True),
+        # no files in the conversation: no internal-material row
+        db=_NoWriteDb(), user=user, session=session,
+        policy=Governance(super_agent_enabled=True),
         catalogue=catalogue, default=catalogue[0], history=[], content=text, kind=kind,
         web_search=False, attachments=None, tool_bound=False, reasoning_mode=mode,
     )

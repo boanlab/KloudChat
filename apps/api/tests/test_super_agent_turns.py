@@ -67,7 +67,7 @@ class _Db(_NoWriteDb):
 
 async def _turn(monkeypatch, text: str, *, mode: str = "super", history: list | None = None,
                 policy: Governance | None = None, project: str | None = None,
-                classify: str | None = None, web_search=False) -> dict:
+                classify: str | None = None, web_search=False, answer_stub=None) -> dict:
     def no_network(*_args, **_kwargs):
         pytest.fail("unexpected network access")
 
@@ -101,7 +101,8 @@ async def _turn(monkeypatch, text: str, *, mode: str = "super", history: list | 
     async def answer(model_id, messages, tools, _context, **kwargs):
         calls.append({"model": model_id, "tools": [t.name for t in tools],
                       "reasoning": sessions_router.agent_service.TURN_REASONING.get(),
-                      **{k: kwargs.get(k) for k in ("disable_fallbacks",)}})
+                      **{k: kwargs.get(k) for k in ("disable_fallbacks", "fallback_model",
+                                                    "rescue_model")}})
         yield {"type": "model_route", "routedModel": model_id, "actualModel": model_id}
         yield {"type": "delta", "text": "답입니다."}
         yield {"type": "usage", "inputTokens": 10, "outputTokens": 5}
@@ -137,7 +138,7 @@ async def _turn(monkeypatch, text: str, *, mode: str = "super", history: list | 
     monkeypatch.setattr(sessions_router.litellm_service, "credentials_for", credentials)
     monkeypatch.setattr(sessions_router, "has_headroom", lambda *_args: True)
     monkeypatch.setattr(sessions_router, "build_tools", tools)
-    monkeypatch.setattr(sessions_router.agent_service, "run_turn", answer)
+    monkeypatch.setattr(sessions_router.agent_service, "run_turn", answer_stub or answer)
     monkeypatch.setattr(sessions_router, "_enrichment_model", writer)
     monkeypatch.setattr(sessions_router.chat_service, "generate_title", title)
     monkeypatch.setattr(sessions_router, "_store_artifacts", nothing)

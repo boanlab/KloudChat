@@ -43,6 +43,9 @@ CLASSES: tuple[str, ...] = (
     "long",
     "reasoning",
     "document",
+    #: not a request's class: the row a turn over internal material (`material_turn`) moves
+    #: to, in a column where the row names a model
+    "material",
     #: not a request's class: where a turn goes after 「다시」, 「더 자세히」 or a failed answer,
     #: and who rewrites an answer the class's model left empty
     "escalation",
@@ -115,14 +118,28 @@ DEFAULT_RULES: dict[str, dict[str, str]] = {
         "strictModel": "strict-local/qwen3.8-27b",
         "effort": "default",
     },
+    # strict turns over attached, project or agent files: self-hosted DeepSeek V4 Flash with
+    # thinking on answered them 8.6 of 10 against thinking flash's 6.9 (8.8 vs 7.7 on 100-136k
+    # characters), slower (first answer text ~50 s vs ~6 s). `model` empty: a `super` turn
+    # keeps its class's row (owner decision 2026-11-14)
+    "material": {
+        "model": "",
+        "strictModel": "strict-local/deepseek-v4-flash",
+        "effort": "high",
+    },
     # a thinking flash answer came back empty 3 times in 14; DeepSeek with reasoning on
-    # never did (9 of 10 on those prompts)
+    # never did (9 of 10 on those prompts); strict: self-hosted DeepSeek V4 Flash, 6.7 vs
+    # flash's 6.2 on 「틀렸어, 다시」 turns (owner decision 2026-11-14)
     "escalation": {
         "model": "deepseek/deepseek-v4.1-flash",
-        "strictModel": "strict-local/qwen3.8-flash",
+        "strictModel": "strict-local/deepseek-v4-flash",
         "effort": "high",
     },
 }
+
+#: Rows that move a turn rather than name a class's own model: an empty column leaves the
+#: turn on its class's row.
+OVERRIDE_ROWS = frozenset({"material"})
 
 #: Next picks when a rule's model is not served here (other installations, allowlists).
 _FALLBACKS: tuple[str, ...] = (
@@ -136,6 +153,10 @@ _STRICT_FALLBACKS: tuple[str, ...] = (
 
 #: Row an escalation ("다시", "더 자세히", an empty or cut answer) moves to.
 ESCALATION_CLASS = "escalation"
+#: Row a turn over internal material moves to (`steer`).
+MATERIAL_CLASS = "material"
+#: Classes the material row leaves alone: a thanks, a document, a retry.
+_MATERIAL_KEEPS = frozenset({"simple", "document", ESCALATION_CLASS})
 
 #: Typical turn for the picker's credit estimate: the chat envelope (system prompt and tool
 #: definitions) is about 10k tokens; an answer about 1k.
@@ -162,7 +183,7 @@ def normalise_rules(raw: Any) -> dict[str, dict[str, str]]:
             continue
         for key in ("model", "strictModel"):
             value = rule.get(key)
-            if isinstance(value, str) and value.strip():
+            if isinstance(value, str) and (value.strip() or name in OVERRIDE_ROWS):
                 rules[name][key] = value.strip()[:200]
         effort = rule.get("effort")
         if effort in EFFORTS:
@@ -504,9 +525,11 @@ def pick(
     needs_tools: bool = False,
     needs_vision: bool = False,
     default: dict[str, Any] | None = None,
+    skip: frozenset[str] = frozenset(),
 ) -> tuple[dict[str, Any] | None, str]:
-    """`(model, how)`: the class's rule model, else a fallback, else the surface default."""
-    by_id = {str(m.get("id")): m for m in catalogue}
+    """`(model, how)`: the class's rule model, else a fallback, else the surface default.
+    `skip`: models that failed lately (`model_health`), passed over like unserved ones."""
+    by_id = {str(m.get("id")): m for m in catalogue if str(m.get("id")) not in skip}
     rule = rules.get(task_class) or rules["chat"]
     wanted = rule["strictModel"] if strict else rule["model"]
     checks = dict(kind=kind, strict=strict, allowed=allowed, context_bytes=context_bytes,
@@ -516,12 +539,36 @@ def pick(
     for model_id in _STRICT_FALLBACKS if strict else _FALLBACKS:
         if usable_for(by_id.get(model_id), **checks):
             return by_id[model_id], "fallback"
-    if default is not None and usable_for(default, **checks):
+    if default is not None and str(default.get("id")) not in skip and usable_for(
+            default, **checks):
         return default, "default"
     # last resort: any usable model, largest window first (a long turn must fit)
-    pool = [m for m in catalogue if usable_for(m, **checks)]
+    pool = [m for m in by_id.values() if usable_for(m, **checks)]
     pool.sort(key=lambda m: -(m.get("contextWindow") or 0))
     return (pool[0], "any") if pool else (None, "none")
+
+
+def strict_fallback(
+    catalogue: list[dict[str, Any]],
+    writer: dict[str, Any],
+    *,
+    kind: str,
+    allowed: set[str],
+    needs_tools: bool = False,
+    skip: frozenset[str] = frozenset(),
+) -> dict[str, Any] | None:
+    """The strict-local model that carries a turn on when `writer` fails mid-turn: the first
+    usable `_STRICT_FALLBACKS` model ahead of the writer in that list (Qwen3.8 Flash for
+    DeepSeek V4 Flash); None when the writer is that model already."""
+    by_id = {str(m.get("id")): m for m in catalogue}
+    for model_id in _STRICT_FALLBACKS:
+        if model_id == writer.get("id"):
+            return None
+        if model_id not in skip and usable_for(
+                by_id.get(model_id), kind=kind, strict=True, allowed=allowed, context_bytes=0,
+                needs_tools=needs_tools, needs_vision=False):
+            return by_id[model_id]
+    return None
 
 
 def effort_for(rules: dict[str, dict[str, str]], decision: Decision) -> str:
@@ -529,23 +576,29 @@ def effort_for(rules: dict[str, dict[str, str]], decision: Decision) -> str:
     return rule.get("effort", "default")
 
 
-def steer(rules: dict[str, dict[str, str]], decision: Decision, mode: str) -> tuple[str, str]:
+def steer(rules: dict[str, dict[str, str]], decision: Decision, mode: str, *,
+          material: bool = False, strict: bool = False) -> tuple[str, str]:
     """`(row, effort)` the chip makes of the decided class: the table row whose model answers
-    and the writer's effort. `fast` moves a class whose row reasons to the everyday `chat` row
+    and the writer's effort. A turn over internal material (`material`) moves to the
+    `material` row where that row names a model in the turn's column (`strict`), except a
+    thanks, a document or a retry. `fast` moves a row that reasons to the everyday `chat` row
     (the turn's other needs, tools, vision, a long window, still narrow the pick); `deep` moves
     every chat class to the escalation row at effort high, and keeps a document's own writer
     at its highest effort."""
-    effort = effort_for(rules, decision)
+    row, effort = decision.task_class, effort_for(rules, decision)
+    if (material and row not in _MATERIAL_KEEPS
+            and rules.get(MATERIAL_CLASS, {}).get("strictModel" if strict else "model")):
+        row, effort = MATERIAL_CLASS, rules[MATERIAL_CLASS].get("effort", "default")
     if mode == FAST:
         reasons = effort in ("low", "high")
-        return ("chat" if reasons else decision.task_class), "none"
+        return ("chat" if reasons else row), "none"
     if mode == DEEP:
         if decision.task_class == "document":
             # a report or deck keeps its writer (and its revisions the first one): only its
             # effort goes up, to the highest level that writer takes
             return decision.task_class, HIGHEST
         return ESCALATION_CLASS, "high"
-    return decision.task_class, effort
+    return row, effort
 
 
 def manual_effort(mode: str, model: dict[str, Any] | None) -> str:
@@ -598,7 +651,7 @@ def estimate(
     resolves here."""
     seen: dict[str, int] = {}
     for task_class in CLASSES:
-        if task_class in ("document", "escalation"):
+        if task_class in ("document", MATERIAL_CLASS, ESCALATION_CLASS):
             continue
         model, _ = pick(rules, task_class, catalogue, kind="chat", strict=strict, allowed=allowed)
         if model is not None:
@@ -686,7 +739,9 @@ __all__ = [
     "steer",
     "DEFAULT_RULES",
     "EFFORTS",
+    "MATERIAL_CLASS",
     "MODES",
+    "OVERRIDE_ROWS",
     "ROUTER_VERSION",
     "SUPER",
     "SUPER_STRICT",
@@ -703,6 +758,7 @@ __all__ = [
     "reasoning_fields",
     "route_metadata",
     "stored_rules",
+    "strict_fallback",
     "typical_credits",
     "usable_for",
 ]

@@ -33,6 +33,9 @@ export function superLaneTitle(mode: 'super' | 'super_strict'): string {
   return mode === 'super_strict' ? 'Super Agent (strict-local)' : 'Super Agent'
 }
 
+/** Rows that move a turn rather than name a class's own model: empty keeps the class's row. */
+export const SUPER_OVERRIDE_ROWS: ReadonlySet<SuperAgentClass> = new Set(['material'])
+
 /** What a task class reads as under an answer and in the admin table. */
 export const SUPER_CLASS_LABEL: Record<SuperAgentClass, string> = {
   simple: '간단한 질문',
@@ -44,6 +47,7 @@ export const SUPER_CLASS_LABEL: Record<SuperAgentClass, string> = {
   long: '긴 자료',
   reasoning: '복잡한 추론',
   document: '보고서·슬라이드',
+  material: '내부 자료 작업',
   escalation: '다시 요청·빈 답 뒤',
 }
 
@@ -66,8 +70,9 @@ export function superRouteLabel(
   modelLabel: (id: string) => string,
   t: (s: string) => string,
 ): { label: string; title: string } {
-  const answered = modelLabel(route.boundaryModel ?? route.selectedModel)
+  const answered = modelLabel(route.fallbackModel ?? route.boundaryModel ?? route.selectedModel)
   const why = [t(SUPER_CLASS_LABEL[route.taskClass] ?? route.taskClass)]
+  if (route.row === 'material') why.push(t('내부 자료라 자료에 강한 모델'))
   if (route.source === 'escalated') why.push(t('더 강한 설정으로 다시'))
   else if (route.source === 'sticky') why.push(t('앞 답과 같은 모델'))
   else if (route.source === 'deescalated') why.push(t('짧은 맺음말'))
@@ -75,6 +80,11 @@ export function superRouteLabel(
   else if (route.reasoningMode === 'deep') why.push(t('깊게 고름'))
   if (route.strictReason === 'personal_data') why.push(t('개인정보 감지로 내부 모델'))
   else if (route.strictReason === 'internal_data') why.push(t('내부 자료라 내부 모델'))
+  if (route.fallbackModel) {
+    why.push(t('{model} 모델이 응답하지 않아 이어 씀').replace('{model}', modelLabel(route.selectedModel)))
+  } else if (route.skipped) {
+    why.push(t('{model} 모델은 최근 응답하지 않아 건너뜀').replace('{model}', modelLabel(route.skipped)))
+  }
   const label = `${t('이번 답')}: ${answered} · ${why.join(' · ')}`
   const details = [
     `${superLaneTitle(route.mode)}`,

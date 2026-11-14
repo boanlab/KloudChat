@@ -2,7 +2,12 @@ import { Gauge, RotateCcw, TriangleAlert } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Button, Card, Field, Select, Switch } from '@/components/ui'
 import { errorCode, errorMessage, type SuperAgentRule } from '@/lib/api'
-import { SUPER_CLASSES, SUPER_CLASS_LABEL, SUPER_EFFORT_LABEL } from '@/lib/superAgent'
+import {
+  SUPER_CLASSES,
+  SUPER_CLASS_LABEL,
+  SUPER_EFFORT_LABEL,
+  SUPER_OVERRIDE_ROWS,
+} from '@/lib/superAgent'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
 import { useUnsavedMark } from '@/lib/unsaved'
@@ -62,8 +67,9 @@ export function SuperAgentSection() {
     setRules((current) => ({ ...current, [name]: { ...current[name], ...patch } }))
     touched()
   }
-  const options = (pool: ModelInfo[], current: string) => (
+  const options = (pool: ModelInfo[], current: string, keepsClass = false) => (
     <>
+      {keepsClass && <option value="">{t('작업 종류의 모델 그대로')}</option>}
       {current && !pool.some((model) => model.id === current) && (
         <option value={current}>
           {current} · {t('현재 사용 불가')}
@@ -141,7 +147,7 @@ export function SuperAgentSection() {
                       value={rule.model}
                       onChange={(event) => setRule(name, { model: event.target.value })}
                     >
-                      {options(pool, rule.model)}
+                      {options(pool, rule.model, SUPER_OVERRIDE_ROWS.has(name))}
                     </Select>
                   </td>
                   <td className="py-2 pr-2">
@@ -150,7 +156,7 @@ export function SuperAgentSection() {
                       value={rule.strictModel}
                       onChange={(event) => setRule(name, { strictModel: event.target.value })}
                     >
-                      {options(strictOnly(pool), rule.strictModel)}
+                      {options(strictOnly(pool), rule.strictModel, SUPER_OVERRIDE_ROWS.has(name))}
                     </Select>
                   </td>
                   <td className="py-2">
@@ -173,6 +179,9 @@ export function SuperAgentSection() {
       </div>
       <p className="text-xs text-faint">
         {t('다시 해 달라거나 더 자세히 해 달라는 요청과 비었거나 실패한 답 뒤에는 「다시 요청·빈 답 뒤」 줄의 모델로 올리고, 그 모델이 빈 답을 다시 씁니다. 같은 문서의 수정은 처음 쓴 모델을 유지합니다.')}
+      </p>
+      <p className="text-xs text-faint">
+        {t('첨부·프로젝트·에이전트 파일을 다루는 질문은 「내부 자료 작업」 줄에 모델이 있는 열에서 그 모델로 답합니다(간단한 질문·보고서·다시 요청은 그대로). 그 모델이 실패하거나 오래 아무것도 내지 않으면 같은 답 안에서 strict-local 기본 모델이 이어 씁니다.')}
       </p>
 
       {enabled && classifiers.length === 0 && (
