@@ -20,7 +20,7 @@ write = [
     "writer-notes", "draft", "sections", "figures", "additions", "normalize", "title-block",
     "checks-plan", "minutes-repair", "check:grounding", "format-find", "verify",
     "minutes-reground", "check:grounding-again", "format-amend", "career-periods-tidy",
-    "page-limit", "format-step", "quality", "report-save",
+    "page-limit", "format-step", "coverage", "quality", "report-save",
 ]
 revise = [
     "revise-load", "revise-route", "revise-widen", "revise-rewrite", "consistency",

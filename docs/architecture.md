@@ -3035,8 +3035,40 @@ backfills files uploaded before the index existed. The lexical shelf the tool
 also reads includes the project's files, so a passage the budget could not
 carry whole is still reachable by lookup.
 
-Project knowledge is also injected: it shares the turn's file budget and is
-excerpted around the question once it no longer fits whole (§7).
+Project knowledge is also injected: it shares the turn's file budget and goes whole
+while it fits (§7). Once it does not, the turn still sees **every file**:
+
+- **Per-file digests.** Each project file gets a short digest (`files.digest`: unit label
+  such as 「3강」, title, a 2–4 sentence summary, its outline and key terms, plus the text
+  length it was made from). `services/digest_jobs.py` makes them in the background, claimed
+  like OCR jobs (`digest_state` queued → running → done/failed, three attempts, a stale claim
+  taken over). A file is queued when its text arrives (upload, URL snapshot, finished OCR),
+  lazily when a turn finds it without a current digest, or by the administrator's backfill
+  (`POST /admin/knowledge/digests`, `?project_id=`, `?force=true`). The digest is written
+  only by a strict-local model the catalogue lists as such (`KNOWLEDGE_DIGEST_MODEL`,
+  default the strict-local flash; an outside model configured there is never used), so a
+  file's text never leaves the deployment whatever model the conversation uses. The file
+  text is sent as delimited data the prompt tells the model never to follow. The call is
+  billed as a side call (`knowledge.digest`): a priced model at its full rate, a self-hosted
+  one as a zero-credit ledger row with the tokens. Until a digest exists (or when no
+  strict-local model is served) a code digest stands in: the label from the file name, the
+  first line as title, headings and frequent terms (`file_digest.code_digest`).
+- **The 「자료 목록」.** The knowledge block opens with every file, one entry each, within
+  45% of the knowledge budget: full entries, then one-line entries, then name and label
+  only, and past that as many names as fit with the rest counted.
+- **Passages after the list.** A focused question gets the best eight passages, lexical and
+  — outside strict-local turns, as with `search_knowledge` — merged with the index's hits.
+  A request about each item (`coverage.asks_each`: 「각 강」, 「모든 자료」, 「주차별」,
+  「21개 강의」, "each lecture") gets one passage from every file instead (its best match, or
+  its opening when the ask names no topic), each within an even share of the room, and the
+  file report adds a rule to cover every listed file and name any it cannot.
+- **No silent drop.** For such a request, the report pipeline's `coverage` stage and the
+  chat finish stage `answer-coverage` look for each file in the finished text (its unit
+  label, title, file name or citation number) and end the document or answer with
+  「※ 자료 N건 중 M건은 이 답에서 다루지 못했습니다: …」 when some are missing.
+
+A file that reached the model only as its list entry is a `ContextFile` with `listed`; it
+becomes a numbered source of a document only when the request asks about each item.
 
 Files uploaded into a conversation sit on the same shelf. They are injected
 (§7) *and* searchable: the tool is what finds the passage the injected excerpt

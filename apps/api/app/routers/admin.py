@@ -59,7 +59,15 @@ from app.schemas.admin import (
 from app.schemas.auth import UserOut
 from app.schemas.workspace import ApiKeyOut
 from app.services import audit as audit_service
-from app.services import connector_defaults, csv_export, ocr, settings_store, starter, tools_gateway
+from app.services import (
+    connector_defaults,
+    csv_export,
+    digest_jobs,
+    ocr,
+    settings_store,
+    starter,
+    tools_gateway,
+)
 from app.services import files as file_service
 from app.services import litellm as litellm_service
 from app.services import mail as mail_service
@@ -1070,6 +1078,15 @@ async def catalogue(admin: AdminUser):
         {"id": m["id"], "label": m.get("label") or m["id"], "kinds": list(m.get("kinds") or [])}
         for m in rows
     ]
+
+
+@router.post("/knowledge/digests")
+async def backfill_digests(
+    admin: AdminUser, db: DbSession, project_id: str | None = None, force: bool = False
+) -> dict[str, int]:
+    """Queue digests for project files that lack a current one (`force`: all of them), for
+    every project or one; the background workers make them with the strict-local model."""
+    return await digest_jobs.backfill(db, project_id=project_id, force=force)
 
 
 @router.post("/users/{user_id}/litellm-key", response_model=UserOut)

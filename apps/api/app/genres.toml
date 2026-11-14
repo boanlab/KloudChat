@@ -2,7 +2,8 @@
 # the first that matches given to the outline and the draft.
 #
 # An entry is either a rule of its own (`match`: a pattern on the instruction, `rule`: the
-# text, `unless`: a pattern that keeps it off), or `format = "<doc_formats id>"`: the rule the template bound to that format carries in its
+# text, `unless`: a pattern that keeps it off, `for_format`: the one doc_formats id it is for,
+# kept off a document of another format), or `format = "<doc_formats id>"`: the rule the template bound to that format carries in its
 # `genre.md`, matched on the same words `doc_formats` reads (case-insensitive). A template picked
 # for the document (shipped or a person's) gives its own rule directly and skips this list.
 
@@ -49,6 +50,13 @@ format = "agenda"
 
 [[genres]]
 format = "career_history"
+
+[[genres]]
+id = "syllabus"
+# the 강의계획서 document's genre only: a 회의록 that mentions one stays a 회의록
+for_format = "syllabus"
+match = '(?:강의|수업|교과목|교과|과목|학기)\s{0,3}(?:운영\s{0,3})?계획서|강의\s{0,3}계획(?:안)?(?!서)|syllabus|실라버스|교수\s{0,3}요목'
+rule = '''Genre: 강의계획서 (a course syllabus). Sections in this order: 교과목 개요, 학습 목표, 주차별 강의 계획, 평가 방법, 교재와 참고 자료, 수업 운영 안내. The 주차별 강의 계획 is one table — columns 주차(강) | 주제 | 주요 내용 | 비고 — with one row per lecture or week the material gives, in its order, none merged or left out; when the material is a set of lecture files, each file is one row named by its own unit (「3강」) and title. Learning objectives end in 「~할 수 있다」. Grading ratios, office hours, rooms, dates and textbook names only as the material gives them; otherwise a bracket blank such as 「[평가 비율]」. Register: 「~다」 throughout.'''
 
 [[genres]]
 id = "lesson-plan"

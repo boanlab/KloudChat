@@ -237,6 +237,21 @@ class _PrivacyResolution:
         )
 
 
+def _project_source(item: ContextFile) -> dict[str, Any]:
+    """A project file as a document's source; `listed`, `label` and `title` let the writer
+    tell a file it only saw in the 「자료 목록」 and name it in an each-item check."""
+    return {
+        "id": item.id,
+        "name": item.name,
+        "state": item.state,
+        "sourceUrl": item.source_url,
+        "locations": list(item.locations),
+        **({"listed": True} if item.listed else {}),
+        **({"label": item.label} if item.label else {}),
+        **({"title": item.title} if item.title else {}),
+    }
+
+
 def _strict_model(model: dict) -> bool:
     return model.get("dataBoundary") == "self_hosted" and model.get("strictLocal") is True
 
@@ -5290,6 +5305,8 @@ async def _send_message(
             question=_asked_about(content, history),
             how_to=how_to,
             kind=kind,
+            # the index joins passage picking outside strict-local turns, as `search_knowledge`
+            vector=not requested_is_strict,
             # report/deck writers: no chat tool loop
             available_tool_names=(
                 {tool.name for tool in requested_tools}
@@ -5546,6 +5563,7 @@ async def _send_message(
                 available_tool_names={tool.name for tool in tools},
                 how_to=how_to,
                 kind=kind,
+                vector=not _strict_model(model),
             )
         except WorkspaceContextError as exc:
             _raise_workspace_error(exc)
@@ -5971,14 +5989,7 @@ async def _send_message(
                     context_steps=context_steps,
                     outline_model=outline_model,
                     project_sources=[
-                        {
-                            "id": item.id,
-                            "name": item.name,
-                            "state": item.state,
-                            "sourceUrl": item.source_url,
-                            "locations": list(item.locations),
-                        }
-                        for item in workspace.knowledge
+                        _project_source(item) for item in workspace.knowledge
                     ],
                     # no network on strict-local
                     web_search=effective_web_search and not strict_local,
@@ -6199,14 +6210,7 @@ async def _send_message(
                     context_steps=context_steps,
                     outline_model=outline_model,
                     project_sources=[
-                        {
-                            "id": item.id,
-                            "name": item.name,
-                            "state": item.state,
-                            "sourceUrl": item.source_url,
-                            "locations": list(item.locations),
-                        }
-                        for item in workspace.knowledge
+                        _project_source(item) for item in workspace.knowledge
                     ] + [
                         # attached files are sources with their own number, like project files
                         {"id": item.id, "name": item.name, "state": item.state, "attached": True}
@@ -6539,6 +6543,7 @@ async def _send_message(
                     tuple(check_skills.of_stage(check_keys, "post", specs)), advice),
                 advice=advice or "",
                 urgent=urgent.kind if urgent else "",
+                project_sources=[_project_source(item) for item in workspace.knowledge],
                 skill_keys=_skill_keys(workspace.applied_skills, specs),
                 skill_specs=specs,
                 own_scripts=own_scripts,
@@ -7109,6 +7114,9 @@ async def _answer_turn(
     urgent: str = "",
     #: strict-local turn's web search: the card it may raise, or the decision it carries out
     consent: search_consent.TurnConsent | None = None,
+    #: project files of the turn (`_project_source`): an each-item answer names those it
+    #: left out (`answer-coverage`)
+    project_sources: list[dict] | None = None,
 ) -> AsyncIterator[str]:
     """Drives one assistant turn to completion; own DB session (request one closes)."""
     text_parts: list[str] = []
@@ -7380,7 +7388,7 @@ async def _answer_turn(
             evidence=list(ctx.searched),
             kept_steps=steps, usage=usage, skill_keys=skill_keys, check_options=check_options,
             skill_specs=skill_specs, traced=carries_material, advice=advice,
-            urgent=urgent,
+            urgent=urgent, project_sources=project_sources,
         )
         pipe = pipeline_registry.for_chat(agent_key)
         runner = PipelineRunner(pipe.stages("finish"), name=f"{pipe.name}.finish")

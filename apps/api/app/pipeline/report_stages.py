@@ -24,11 +24,13 @@ from app.services import (
     calc,
     check_skills,
     checks,
+    coverage,
     date_rules,
     design,
     design_templates,
     diagrams,
     doc_formats,
+    doc_title,
     fact_check,
     figures,
     grounding,
@@ -267,10 +269,14 @@ class Assemble(Base):
         project_selected = 0
         project_excluded = 0
         project_reference_lines: list[str] = []
+        # a file seen only in the 「자료 목록」 is a source when the request asks about each one
+        each = coverage.asks_each(req.text)
         for item in req.project_sources or []:
             attached = bool(item.get("attached"))
             if item.get("state") not in ("included", "truncated"):
                 project_excluded += not attached
+                continue
+            if item.get("listed") and not each:
                 continue
             ordinal = len(findings.sources) + 1
             title = str(item.get("name") or "프로젝트 자료")[:200]
@@ -536,6 +542,9 @@ class Outline(Base):
             yield _usage(bundle)
             raise Stop("outline too short")
 
+        if doc_title.echoes_request(title, request):
+            # the request sentence (or nothing) is no cover title: named once more, then by code
+            title = await _named_title(bundle, title)
         yield {
             "type": "step",
             "id": "outline",
@@ -588,6 +597,43 @@ class Outline(Base):
         raise Stop("proposal offered")
 
 
+_TITLE_PROMPT = """Write the cover title of the document this request asks for: a short noun
+phrase (at most 30 characters) naming its subject and kind, taken from the request and the
+material. Never copy the request sentence and never end with a request (「…만들어줘」).
+Answer with the title only.
+예: 「각 강의 한줄 요약을 담은 강의계획서 만들어줘」 with lecture notes on distributed systems →
+분산 시스템 강의계획서
+
+Request: {request}"""
+
+
+def _fallback_title(bundle: Bundle) -> str:
+    """The document noun the request names, else the format's name."""
+    fmt = bundle.spec.format
+    return doc_title.from_request(bundle.request.text) or (fmt.label if fmt is not None else "")
+
+
+async def _named_title(bundle: Bundle, title: str) -> str:
+    """A cover title for an outline whose title echoed the request: the planner asked once
+    for the name alone, then the code's fallback."""
+    report, req = _report(), bundle.request
+    model = req.outline_model or req.model
+    try:
+        text, spent = await report._complete(
+            model, _messages(bundle, _TITLE_PROMPT.format(
+                request=prompt_request(req.text, 600)), model), req.api_key, 60)
+    except _CAUGHT as exc:
+        log.info("report title retry failed: %s", exc)
+    else:
+        _count(bundle, spent, planner=True)
+        named = next((line.strip(" \t\"'「」『』*#") for line in (text or "").splitlines()
+                      if line.strip()), "")
+        named = re.sub(r"^(?:제목|title)\s*[:：]\s*", "", named, flags=re.I).strip()
+        if named and len(named) <= 60 and not doc_title.echoes_request(named, req.text):
+            return named
+    return _fallback_title(bundle) or title
+
+
 # ── the writing pass ─────────────────────────────────────────────────────
 
 
@@ -622,13 +668,16 @@ class ApprovedPlan(Base):
     """Takes the approved 목차; emits title and planning sources."""
 
     name = "approved-plan"
-    reads = ("request", "material.sources")
+    reads = ("request", "material.sources", "spec.format")
     writes = ("plan.title", "plan.headings", "plan.frame", "plan.unverified", "plan.figures")
 
     async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
         report, approved = _report(), bundle.request.approved_plan or {}
         plan = bundle.plan
         plan.title = str(approved.get("title") or "")
+        if doc_title.echoes_request(plan.title, bundle.request.text):
+            # an older plan carrying the request as its title: the code's name for it
+            plan.title = _fallback_title(bundle) or plan.title
         plan.headings = [h for h in map(report._heading_of, approved.get("sections") or []) if h]
         plan.frame = bool(approved.get("frame"))
         plan.unverified = bool(approved.get("unverified"))
@@ -2535,11 +2584,65 @@ class Quality(Base):
         yield _usage(bundle)
 
 
+def coverage_items(req, sources: list[dict]) -> list[coverage.Item]:
+    """The project files an each-item request is about, with their citation numbers."""
+    ordinals = {str(src.get("id") or ""): int(src.get("ordinal") or 0) for src in sources or []}
+    return [
+        coverage.Item(str(item.get("name") or ""), str(item.get("label") or ""),
+                      str(item.get("title") or ""), ordinals.get(str(item.get("id") or ""), 0))
+        for item in req.project_sources or []
+        if not item.get("attached") and item.get("state") in ("included", "truncated")
+    ]
+
+
+class Coverage(Base):
+    """An each-item request (「각 강을 요약」) answered for fewer files than the project holds
+    says which it left out, at the end of the document — never a silent drop."""
+
+    name = "coverage"
+    reads = ("request", "material.sources", "document.sections")
+    writes = ("document.sections",)
+
+    def skip(self, bundle: Bundle) -> str:
+        if not coverage.asks_each(bundle.request.text):
+            return "not an each-item request"
+        if len(coverage_items(bundle.request, bundle.material.sources)) < 2:
+            return "fewer than two project files"
+        return ""
+
+    async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
+        report = _report()
+        items = coverage_items(bundle.request, bundle.material.sources)
+        sections = list(bundle.document.sections)
+        whole = "\n".join(f"{s.get('heading') or ''}\n{s.get('content') or ''}" for s in sections)
+        left = coverage.missing(items, whole)
+        if not left:
+            yield {"type": "step", "id": "coverage", "label": f"자료 {len(items)}건 모두 다룸",
+                   "status": "done"}
+            return
+        # the note closes the body, before the references
+        at = next((i for i in range(len(sections) - 1, -1, -1)
+                   if not report._REFERENCE_HEADING.search(str(sections[i].get("heading") or ""))),
+                  None)
+        if at is None:
+            return
+        section = sections[at]
+        content = str(section.get("content") or "").rstrip()
+        section = {**section, "content": f"{content}\n\n{coverage.note(left, len(items))}"}
+        sections[at] = section
+        bundle.document.sections = sections
+        yield {"type": "step", "id": "coverage",
+               "label": f"자료 {len(items)}건 중 {len(left)}건 빠짐",
+               "status": "done", "detail": ", ".join(item.shown for item in left)}
+        yield {"type": "section", "sectionId": section.get("id"),
+               "heading": section.get("heading"), "content": section["content"], "done": True}
+
+
 for _stage in (
     Research(), Assemble(), Outline(), ApprovedPlan(), Calc(), Announce(), Settle(), Prepass(),
     WriterNotes(), Draft(), Sections(), Figures(), Additions(), Normalize(), TitleBlock(),
     ChecksPlan(), MinutesRepair(), FormatFind(), Verify(), MinutesReground(), FormatAmend(),
-    CareerPeriods(), PageLimit(), FormatStep(), Quality(),
+    CareerPeriods(), PageLimit(), FormatStep(), Coverage(), Quality(),
 ):
     registry.register(_stage)
 

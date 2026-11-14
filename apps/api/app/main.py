@@ -46,6 +46,7 @@ from app.services import (
     api_key_usage,
     bootstrap,
     connector_defaults,
+    digest_jobs,
     index_cleanup,
     litellm,
     ocr_jobs,
@@ -134,6 +135,8 @@ async def lifespan(app: FastAPI):
     # published bots: retention, pausing unaffordable bots
     bots = asyncio.create_task(publishing.watch())
     reader = asyncio.create_task(ocr_jobs.watch())
+    # per-file digests of project material, by a strict-local model
+    digester = asyncio.create_task(digest_jobs.watch())
     # index deletes that failed, until they land
     unindexer = asyncio.create_task(index_cleanup.watch())
     key_usage = asyncio.create_task(api_key_usage.watch())
@@ -155,6 +158,7 @@ async def lifespan(app: FastAPI):
     sweeper.cancel()
     bots.cancel()
     reader.cancel()
+    digester.cancel()
     unindexer.cancel()
     key_usage.cancel()
     if stop_listener is not None:
