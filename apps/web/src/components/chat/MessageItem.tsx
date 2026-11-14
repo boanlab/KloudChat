@@ -303,16 +303,16 @@ function MessageItemInner({
   const projectFiles = useStore((s) => s.projects.find((p) => p.id === sessionProject)?.files)
   /** Videos this conversation has (its attachments, its project's files): an answer's time marks open them. */
   const videos = useMemo<VideoRef[]>(() => {
-    const found = new Map<string, string>()
+    const found = new Map<string, VideoRef>()
     for (const m of sessionMessages ?? []) {
       for (const a of m.attachments ?? []) {
-        if (a.id && /^(video|audio)\//.test(a.type)) found.set(a.id, a.name)
+        if (a.id && /^(video|audio)\//.test(a.type)) found.set(a.id, { id: a.id, name: a.name })
       }
     }
     for (const f of projectFiles ?? []) {
-      if (f.mediaState === 'done') found.set(f.id, f.name)
+      if (f.mediaState === 'done') found.set(f.id, { id: f.id, name: f.name, seconds: f.mediaDuration || undefined })
     }
-    return [...found].map(([id, name]) => ({ id, name }))
+    return [...found.values()]
   }, [sessionMessages, projectFiles])
   /** The copy opened in this chat earlier, reopened from the attachment: a new one only on request. */
   const [reopened, setReopened] = useState<{ kind: OfficeKind; id: string } | null>(null)

@@ -91,30 +91,40 @@ export const VIDEO_LINK = /^\/files\?open=([A-Za-z0-9-]{1,64})(?:&t=(\d{1,6}))?$
 
 export const videoHref = (fileId: string, seconds: number) => `/files?open=${fileId}&t=${Math.floor(seconds)}`
 
-/** A video the answer may point into: its id and file name. */
+/** A video the answer may point into: its id, file name and, when known, its length in seconds. */
 export interface VideoRef {
   id: string
   name: string
+  seconds?: number
 }
 
-// 「[12:30]」, 「[00:12:30]」, 「[1:02:03]」 written as text (not already a link or a citation).
-const STAMP = /(?<!\[)\[((?:\d{1,2}:)?\d{1,2}:[0-5]\d)\](?![(\]])/g
+// 「[12:30]」, 「[00:12:30]」, 「[1:02:03]」 written as text (not already a link or a citation),
+// or a bare 「00:12:30」 — the video document's own hh:mm:ss form, which models also write
+// unbracketed in a table's time column or a range (「00:00:10 ~ 00:02:35」). A bare mm:ss is left
+// alone (a clock time reads the same), as is a time inside a date-time or a longer number.
+const STAMP =
+  /(?<!\[)\[((?:\d{1,2}:)?\d{1,2}:[0-5]\d)\](?![(\]])|(?<![\d:.\[\-/]|\d[-./]\d{1,2}[ T]|\d{4}[ T])(\d{1,2}:[0-5]\d:[0-5]\d)(?![\d:]|\]\()/g
 
 /**
  * Time marks the model wrote as text, turned into links to the video they belong to: the one
  * named just before the mark, else the one the answer already links to, else the only video
- * the conversation has. Code is left alone; a mark with no clear video stays text.
+ * the conversation has. Code and links are left alone; a mark with no clear video, or past
+ * the end of a video whose length is known, stays text.
  */
-export function linkTimestamps(text: string, videos: VideoRef[]): string {
-  if (!text.includes(':]') && !/\d:\d\d\]/.test(text)) return text
+export function linkTimestamps(text: string, given: VideoRef[]): string {
+  if (!/\d:[0-5]\d/.test(text)) return text
+  // The same file uploaded again (attached in several of the project's chats) is one video:
+  // its copies would otherwise leave every mark without a clear one. The first copy wins.
+  const videos = given.filter((v, i) => given.findIndex((o) => o.name === v.name) === i)
   const linked = [...new Set([...text.matchAll(/\/files\?open=([A-Za-z0-9-]{1,64})/g)].map((m) => m[1]))]
   const fallback = linked.length === 1 ? linked[0] : videos.length === 1 ? videos[0].id : null
   return text
-    .split(/(```[\s\S]*?```|`[^`\n]*`)/g)
+    .split(/(```[\s\S]*?```|`[^`\n]*`|\[[^\]\n]*\]\([^)\n]*\))/g)
     .map((part, i) =>
       i % 2 === 1
         ? part
-        : part.replace(STAMP, (whole, stamp: string, at: number) => {
+        : part.replace(STAMP, (whole, marked: string | undefined, bare: string | undefined, at: number) => {
+            const stamp = marked ?? bare ?? ''
             const seconds = secondsOf(stamp)
             if (seconds === null) return whole
             const before = part.slice(Math.max(0, at - 120), at)
@@ -122,7 +132,9 @@ export function linkTimestamps(text: string, videos: VideoRef[]): string {
               .filter((v) => before.includes(v.name))
               .sort((a, b) => before.lastIndexOf(b.name) - before.lastIndexOf(a.name))[0]
             const id = named?.id ?? fallback
-            return id ? `[${stamp}](${videoHref(id, seconds)})` : whole
+            const length = videos.find((v) => v.id === id)?.seconds
+            if (!id || (length && seconds > length + 1)) return whole
+            return `[${stamp}](${videoHref(id, seconds)})`
           }),
     )
     .join('')

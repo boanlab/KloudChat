@@ -67,7 +67,8 @@ export function mediaFailure(err: unknown, fallback: string, t: T): string {
 
 /** A refused request, by its code. `undefined` when there is no code at all. */
 export function refusalSentence(code: string, t: T): string | undefined {
-  if (!code) return undefined
+  // `http_5xx` is no refusal: the server failed, and the caller's fallback says so.
+  if (!code || /^http_5\d\d$/.test(code)) return undefined
   const known = REFUSALS[code]
   if (known) return t(known)
   if (code.startsWith('skill_tools_unavailable:')) {

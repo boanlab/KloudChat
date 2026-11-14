@@ -2247,7 +2247,10 @@ _FILE_NOTE = {
     "unreadable": "{name} 읽지 못함",
     "picture_unseen": "{name} 그림 · 이 모델은 보지 못함",
     "reading": "{name} 글자 읽는 중",
+    "watching": "{name} 영상 읽는 중",
 }
+#: A state without its own line (a newer `ContextFile` state) still names the file.
+_FILE_NOTE_OTHER = "{name}"
 
 _NAMES_SHOWN = 6
 
@@ -2268,10 +2271,13 @@ def _file_context_step(step_id: str, subject: str, files: tuple[ContextFile, ...
     short = [file for file in files if file.state not in whole]
     cut = sum(1 for file in short if file.state == "truncated")
     reading = sum(1 for file in short if file.state == "reading")
-    dropped = len(short) - cut - reading
+    watching = sum(1 for file in short if file.state == "watching")
+    dropped = len(short) - cut - reading - watching
     fates = [f"{cut}개 잘림"] if cut else []
     if reading:
         fates.append(f"{reading}개 글자 읽는 중")
+    if watching:
+        fates.append(f"{watching}개 영상 읽는 중")
     if dropped:
         fates.append(f"{dropped}개 빠짐")
     label = (
@@ -2279,7 +2285,10 @@ def _file_context_step(step_id: str, subject: str, files: tuple[ContextFile, ...
         if fates
         else f"{subject} {len(files)}개 반영"
     )
-    notes = [_FILE_NOTE[file.state].format(name=file.name, kept=file.kept_chars) for file in short]
+    notes = [
+        _FILE_NOTE.get(file.state, _FILE_NOTE_OTHER).format(name=file.name, kept=file.kept_chars)
+        for file in short
+    ]
     detail = _named(notes or [file.name for file in files], "개")
     return {
         "id": step_id,

@@ -149,6 +149,32 @@ test('an answer\'s time marks open the player at that moment', async ({ page }, 
   expect(unexpected).toEqual([])
 })
 
+test('bare hh:mm:ss marks in a table and a range open the player too', async ({ page }, info) => {
+  // walk 11-14: the model wrote the video's own form without brackets, in a table's time column
+  // and as a range, and no chip was drawn
+  const reply = [
+    '보상 회로를 설명합니다 [[1]](/files?open=' + videoId + '&t=750).',
+    '',
+    '| 시간 | 내용 |',
+    '|---|---|',
+    '| 00:00:10 | 도입 |',
+    '',
+    '**00:00:10 ~ 00:02:35**: 강의 개요',
+  ].join('\n')
+  const { unexpected } = await composerFixture(page, info, { reply })
+  await page.route(`**/api/files/${videoId}/media`, (route) => route.fulfill({ json: mediaInfo() }))
+  await page.route(`**/api/files/${videoId}/frames/**`, (route) =>
+    route.fulfill({ contentType: 'image/jpeg', body: TINY_JPEG }))
+  await page.goto(`/s/${chatId}`)
+  const chips = page.getByTestId('time-chip')
+  await expect(chips.first()).toBeVisible()
+  // the cited passage, the table cell and both ends of the range
+  await expect(chips).toHaveCount(4)
+  await expect(chips.nth(1)).toContainText('0:10')
+  await expect(chips.nth(3)).toContainText('2:35')
+  expect(unexpected).toEqual([])
+})
+
 test('a video put straight into the file box goes up in pieces and shows its reading', { tag: '@phone' }, async ({ page }, info) => {
   const { unexpected } = await composerFixture(page, info)
   await page.route('**/api/auth/config', (route) => route.fulfill({ json: {

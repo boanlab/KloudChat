@@ -98,6 +98,39 @@ async def test_a_file_nothing_could_be_read_out_of_is_reported_where_it_was_atta
     assert step["detail"] == "보고서.pdf 읽지 못함"
 
 
+async def test_a_video_still_being_read_gets_its_line_and_the_turn_goes_on():
+    """A video whose media job is running is `watching`: named on the step, told to the model."""
+    video = StoredFile(
+        id="file-lecture10.webm", user_id="user-1", name="lecture10.webm", text="",
+        mime="video/webm", media_state="running", media_done=2, media_total=5,
+    )
+    context = await _assembled_with([video, _file("메모.txt", "읽힌다")])
+
+    assert [(f.name, f.state) for f in context.attachments] == [
+        ("lecture10.webm", "watching"),
+        ("메모.txt", "included"),
+    ]
+    step = _one(_context_steps(context), "context-attachments")
+    assert step["label"] == "첨부 2개 중 1개 영상 읽는 중"
+    assert step["detail"] == "lecture10.webm 영상 읽는 중"
+    prompt = "\n".join(block.text for block in context.blocks)
+    assert "영상의 말과 화면을 옮기는 중 (2/5)" in prompt
+
+
+def test_every_file_state_has_a_step_line():
+    """A state the context can produce never breaks the turn's step (it 500ed on `watching`)."""
+    from app.routers.sessions import _FILE_NOTE, _file_context_step
+    from app.services.workspace_context import ContextFile
+
+    shown = {"included", "picture"}
+    for state in ("truncated", "omitted", "unreadable", "picture_unseen", "reading", "watching"):
+        assert state in _FILE_NOTE, state
+    for state in (*shown, *_FILE_NOTE, "a_state_added_later"):
+        files = (ContextFile("a.bin", state, 0, 0),)
+        step = _file_context_step("context-attachments", "첨부", files)
+        assert step is not None and "a.bin" in step["detail"]
+
+
 # ── earlier turns' attachments ─────────────────────────────────────────
 
 

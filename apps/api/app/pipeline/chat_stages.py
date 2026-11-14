@@ -371,8 +371,10 @@ class Coverage(Base):
     writes = ("document.answer",)
 
     def _items(self, bundle: Bundle) -> list[coverage.Item]:
-        return [coverage.Item.of(item) for item in bundle.request.project_sources or []
-                if item.get("state") in ("included", "truncated")]
+        req = bundle.request
+        return coverage.asked_of(coverage.distinct(
+            [coverage.Item.of(item) for item in req.project_sources or []
+             if item.get("state") in ("included", "truncated")]), req.first_message or req.text)
 
     def skip(self, bundle: Bundle) -> str:
         req = bundle.request

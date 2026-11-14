@@ -605,7 +605,7 @@ export interface Step {
   memories?: string[]
   files?: {
     name: string
-    state: 'included' | 'truncated' | 'omitted' | 'unreadable' | 'picture' | 'picture_unseen' | 'reading'
+    state: 'included' | 'truncated' | 'omitted' | 'unreadable' | 'picture' | 'picture_unseen' | 'reading' | 'watching'
     keptChars: number
     totalChars: number
   }[]

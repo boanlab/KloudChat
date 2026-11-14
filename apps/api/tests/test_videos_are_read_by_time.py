@@ -719,3 +719,18 @@ def test_wire_names_are_what_the_web_reads():
     out = media_router.MediaOut(stream_url="u", frame_url="f", has_video=True)
     wire = json.loads(out.model_dump_json(by_alias=True))
     assert {"streamUrl", "frameUrl", "hasVideo", "segments"} <= set(wire)
+
+
+def test_a_video_in_the_material_asks_for_bracketed_marks_in_tables_and_ranges():
+    """The web turns only a bracketed mark (or a bare hh:mm:ss) into a chip; a table's time
+    column and a range are where models dropped the brackets (walk 11-14)."""
+    from app.services import workspace_context
+
+    video = StoredFile(user_id="u", name="lecture10.webm", mime="video/webm", size=1,
+                       storage_key="k", text="[00:00:10]\n(말) 안녕하세요", media_state="done")
+    block, used = workspace_context._knowledge_block([video], header="# 프로젝트 지식")
+    assert "e.g. 「… [00:12:30]」" in block
+    assert "「[00:00:10]~[00:02:35]」" in block and "table's time column" in block
+    assert used[0].state == "included"
+    video.media_state = None
+    assert "[00:12:30]" not in workspace_context._knowledge_block([video], header="#")[0]
