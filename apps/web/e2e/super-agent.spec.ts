@@ -51,7 +51,12 @@ type State = {
   failGovernance: boolean
 }
 
-async function mockApp(page: Page, initial: RoutingMode = 'manual', route?: SuperAgentRoute) {
+async function mockApp(
+  page: Page,
+  initial: RoutingMode = 'manual',
+  route?: SuperAgentRoute,
+  modelByKind?: Record<string, string>,
+) {
   await page.route('**/api/**', (r) => r.abort('blockedbyclient'))
   const state: State = { sessions: [], creates: [], patches: [], governancePuts: [], failGovernance: false }
   let governance: Record<string, unknown> = {
@@ -83,7 +88,10 @@ async function mockApp(page: Page, initial: RoutingMode = 'manual', route?: Supe
           id: 'user-1', email: 's@example.com', name: 'Super', role: 'admin', status: 'active',
           monthlyCredits: 10_000, creditsUsed: 0, cycleResetsAt: null, avatarColor: '#64748b',
           litellmKeyPreview: null, litellmKeyIssuedAt: null,
-          preferences: { streamResponses: true, autoMemory: false, showUsage: false, privacyDefaultAction: 'ask' },
+          preferences: {
+            streamResponses: true, autoMemory: false, showUsage: false, privacyDefaultAction: 'ask',
+            ...(modelByKind ? { modelByKind } : {}),
+          },
           allowedModels: [], createdAt: now, lastActiveAt: now,
         },
       },
@@ -230,8 +238,20 @@ test('모델 선택기는 Auto 두 항목 대신 Super Agent 두 항목을 보�
   await expect(page.getByRole('button', { name: 'Super Agent (strict-local)' })).toBeVisible()
 })
 
-test('새 대화에서 Super Agent를 고르면 그 모드로 한 번만 만든다', async ({ page }) => {
+test('새 대화는 Super Agent로 시작하고 그 모드로 한 번만 만든다', async ({ page }) => {
   const state = await mockApp(page)
+  await page.goto('/new/chat')
+  // no model picked on the home screen: a new conversation starts on Super Agent
+  await expect(page.getByRole('button', { name: 'Super Agent', exact: true })).toBeVisible()
+  await setWebSearch(page, '끔')
+  await page.getByLabel('프롬프트 입력').fill('안녕')
+  await page.getByLabel('프롬프트 입력').press('Enter')
+  await expect.poll(() => state.creates.length).toBe(1)
+  expect(state.creates[0]).toMatchObject({ kind: 'chat', routingMode: 'super' })
+})
+
+test('홈에서 고른 모델은 새 대화에서도 지키고, Super Agent를 고르면 그 모드로 만든다', async ({ page }) => {
+  const state = await mockApp(page, 'manual', undefined, { chat: 'local/flash' })
   await page.goto('/new/chat')
   await page.getByRole('button', { name: /Mock · Flash/ }).click()
   await page.getByRole('menuitemradio', { name: /^Super Agent 사용 가능/ }).click()

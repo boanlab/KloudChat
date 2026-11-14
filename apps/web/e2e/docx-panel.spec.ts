@@ -195,7 +195,7 @@ test('a Word chat reopened by its address opens its document beside it', async (
   // closed, it stays closed; the top bar offers it again
   await panel(page).locator('header').getByRole('button', { name: '닫기' }).click()
   await expect(panel(page)).toBeHidden()
-  await page.getByRole('button', { name: '아티팩트 열기' }).click()
+  await page.getByRole('button', { name: 'Word 문서 열기' }).click()
   await expect(line(page, '제목  [연수명] 참석 요청')).toBeVisible({ timeout: 30_000 })
   expect(state.unexpected).toEqual([])
 })
