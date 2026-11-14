@@ -370,6 +370,13 @@ class Outline(Base):
         untrusted = list(req.untrusted)
         yield {"type": "step", "id": "outline", "label": "개요 잡는 중", "status": "running"}
         wanted = report.requested_sections(request)
+        # an each-item request (「20개 전체를 주차별로」) plans for every project file: room for
+        # one section each past the usual ceiling, and a 목차 that reaches them all
+        each = (coverage_items(req, mat.sources)
+                if not wanted and coverage.asks_each(request) else [])
+        each = each if len(each) >= 2 else []
+        most = report.most_sections(len(each))
+        each_rule = report.each_item_rule(len(each), most) if each else ""
 
         async def ask(nudge: str = "") -> tuple[str, dict[str, int]]:
             return await report._complete(
@@ -377,12 +384,12 @@ class Outline(Base):
                 _messages(bundle, report._OUTLINE_PROMPT.format(
                     ask_rule=grounding.ASK_RULE if req.may_ask else grounding.PROCEED_RULE,
                     lo=wanted or report._MIN_SECTIONS,
-                    hi=wanted or report._MAX_SECTIONS,
+                    hi=wanted or most,
                     genre=bundle.spec.genre,
                     request=prompt_request(request, 2000),
-                ) + nudge, req.outline_model or req.model),
+                ) + each_rule + nudge, req.outline_model or req.model),
                 req.api_key,
-                400,
+                report.outline_tokens(most),
             )
 
         try:
@@ -451,7 +458,7 @@ class Outline(Base):
             and mat.web_selected == 0
             and report._from_the_web(request)
         )
-        title, headings = report._parse_outline(text)
+        title, headings = report._parse_outline(text, most)
         # pasted outline: person's sections; then the order the agent's 지시 gives; 개조식
         # keeps its fixed shape
         instructed = report.instructed_sections(
@@ -481,7 +488,7 @@ class Outline(Base):
                 log.warning("report outline size retry failed: %s", exc)
             else:
                 _count(bundle, retry_spent, planner=True)
-                retry_title, retry_headings = report._parse_outline(retry_text)
+                retry_title, retry_headings = report._parse_outline(retry_text, most)
                 if len(retry_headings) == wanted:
                     title, headings = retry_title or title, retry_headings
             if len(headings) != wanted:
@@ -505,7 +512,7 @@ class Outline(Base):
             else:
                 _count(bundle, json_spent, planner=True)
                 if report.outline_is_json(json_text):
-                    json_title, json_headings = report._parse_outline(json_text)
+                    json_title, json_headings = report._parse_outline(json_text, most)
                     json_headings = [
                         report.without_instruction_aside(h, request)
                         for h in report.with_listed_sections(json_headings, request)
@@ -525,13 +532,39 @@ class Outline(Base):
                 log.warning("report outline retry failed: %s", exc)
             else:
                 _count(bundle, again_spent, planner=True)
-                again_title, again_headings = report._parse_outline(again_text)
+                again_title, again_headings = report._parse_outline(again_text, most)
                 again_headings = [
                     report.without_instruction_aside(h, request)
                     for h in report.with_listed_sections(fixed or again_headings, request)
                 ]
                 if len(again_headings) > len(headings):
                     title, headings, text = again_title or title, again_headings, again_text
+        if each and not fixed and len(headings) >= least:
+            # checked by code, not trusted to the rule: files no heading reaches are named
+            # back to the planner once; the 목차 that reaches more of them is kept
+            left = coverage.outline_gaps(each, headings)
+            if left:
+                log.info("report outline reached %d of %d files; asking again",
+                         len(each) - len(left), len(each))
+                try:
+                    more_text, more_spent = await ask(
+                        "\n\nThe previous 목차 left out these files: "
+                        + ", ".join(f"{item.shown} {item.title}".strip() for item in left[:30])
+                        + f". Rebuild it so every one of the {len(each)} files is reached, in at "
+                        f"most {most} sections, without dropping the ones already there."
+                    )
+                except _CAUGHT as exc:
+                    log.warning("report outline coverage retry failed: %s", exc)
+                else:
+                    _count(bundle, more_spent, planner=True)
+                    more_title, more_headings = report._parse_outline(more_text, most)
+                    more_headings = [
+                        report.without_instruction_aside(h, request)
+                        for h in report.with_listed_sections(more_headings, request)
+                    ]
+                    if (len(more_headings) >= least
+                            and len(coverage.outline_gaps(each, more_headings)) < len(left)):
+                        title, headings, text = more_title or title, more_headings, more_text
         if len(headings) < least:
             log.warning("report outline too short (%d): %r", len(headings), text[:1500])
             yield {"type": "step", "id": "outline", "label": "개요 잡는 중", "status": "error"}
@@ -2614,7 +2647,9 @@ class Coverage(Base):
         report = _report()
         items = coverage_items(bundle.request, bundle.material.sources)
         sections = list(bundle.document.sections)
-        whole = "\n".join(f"{s.get('heading') or ''}\n{s.get('content') or ''}" for s in sections)
+        # the body only: a file named in the reference list is cited, not covered
+        whole = "\n".join(f"{s.get('heading') or ''}\n{s.get('content') or ''}" for s in sections
+                          if not report._REFERENCE_HEADING.search(str(s.get("heading") or "")))
         left = coverage.missing(items, whole)
         if not left:
             yield {"type": "step", "id": "coverage", "label": f"자료 {len(items)}건 모두 다룸",

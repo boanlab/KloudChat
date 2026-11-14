@@ -53,6 +53,13 @@ async function app(page: Page, testInfo: TestInfo, backend: Backend = {}) {
       seen.signedIn = true
       return route.fulfill({ json: { accessToken: 'login', expiresIn: 900, user: member } })
     }
+    if (method === 'POST' && path === '/auth/signup') {
+      // `open` signup: the server signs the new account in and sets the refresh cookie.
+      seen.signedIn = true
+      return route.fulfill({ status: 201, json: {
+        user: member, session: { accessToken: 'signup', expiresIn: 900, user: member },
+      } })
+    }
     if (method === 'POST' && path === '/auth/logout') {
       seen.signedIn = false
       return route.fulfill({ status: 204 })
@@ -143,6 +150,33 @@ test('signing out in one tab signs out the other, and signing in brings it back'
   await page.getByRole('button', { name: '로그인', exact: true }).last().click()
   await expect(accountMenu(page)).toBeVisible()
   await expect(accountMenu(other)).toBeVisible()
+})
+
+test('a new account stays signed in across a reload', async ({ page }, testInfo) => {
+  const seen = await app(page, testInfo)
+  // This browser last signed out: the flag that spares the refresh call is set.
+  seen.signedIn = false
+  await page.addInitScript(() => {
+    if (!sessionStorage.getItem('signed-out-once')) {
+      sessionStorage.setItem('signed-out-once', '1')
+      localStorage.setItem('kchat-signed-out', '1')
+    }
+  })
+  await page.goto('/')
+  await expect(signInForm(page)).toBeVisible()
+  expect(seen.refreshes).toBe(0)
+
+  await page.getByRole('button', { name: '회원가입', exact: true }).click()
+  await page.getByLabel('이름').fill(member.name)
+  await page.getByLabel('이메일').fill(member.email)
+  await page.getByLabel('비밀번호').fill('long-enough-password-1!')
+  await page.getByRole('button', { name: /^(가입하기|가입 요청)$/ }).click()
+  await expect(accountMenu(page)).toBeVisible()
+  expect(await page.evaluate(() => localStorage.getItem('kchat-signed-out'))).toBeNull()
+
+  await page.reload()
+  await expect(accountMenu(page)).toBeVisible()
+  expect(seen.refreshes).toBeGreaterThanOrEqual(1)
 })
 
 test('a locked sign-in says how long the lock lasts', async ({ page }, testInfo) => {

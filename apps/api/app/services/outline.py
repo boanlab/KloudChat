@@ -120,7 +120,14 @@ def suffix_words(text: str, end: int) -> str:
 def requested_count(request: str, units: tuple[str, ...], *, maximum: int) -> int | None:
     """Explicit total; not a page ref, range, or body-only count."""
     # counts inside pasted material ignored
-    return _count_in(_instruction_scope(request, units, maximum), units, maximum=maximum)
+    scope = _instruction_scope(request, units, maximum)
+    value, firm = _count_found(scope, units, maximum=maximum)
+    if value is not None and not firm and (span := _range_in(scope, units, maximum=maximum)) \
+            and value < span[0]:
+        # 「10장 안팎 … 마지막에 퀴즈 한 장」: the whole is the range; a smaller count beside
+        # it sizes one part, never the deck (a total below its own stated range is no total)
+        return None
+    return value
 
 
 #: model/product token before a count (「A100 1장」, 「RTX 4090 2장」)
@@ -131,6 +138,13 @@ _PRODUCT = re.compile(
 
 def _count_in(request: str, units: tuple[str, ...], *, maximum: int) -> int | None:
     """Explicit total stated in this text."""
+    return _count_found(request, units, maximum=maximum)[0]
+
+
+def _count_found(request: str, units: tuple[str, ...], *, maximum: int
+                 ) -> tuple[int | None, bool]:
+    """`(total, firm)`: the explicit total stated in this text, firm when said as one
+    (「총 N장」, 「장수는 N장」)."""
     # normalized once to bound work
     request = " ".join(request.split())
     words = "|".join(sorted(_COUNT_WORDS, key=len, reverse=True))
@@ -176,11 +190,11 @@ def _count_in(request: str, units: tuple[str, ...], *, maximum: int) -> int | No
             one_into = True
         found.add(value)
     if authoritative:
-        return authoritative[-1]
+        return authoritative[-1], True
     if len(found) > 1 and 1 in found and one_into:
         # 「한 장으로」 beside another count: merge, not total
         found.discard(1)
-    return next(iter(found)) if len(found) == 1 else None
+    return (next(iter(found)) if len(found) == 1 else None), False
 
 
 #: an outline longer than this is worth a look before writing

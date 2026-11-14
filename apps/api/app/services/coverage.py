@@ -101,6 +101,29 @@ def missing(items: list[Item], text: str) -> list[Item]:
     return [item for item in items if item.name and not reached(item, text, flat)]
 
 
+#: 「1~3강」 「13-16주차」: a heading that groups a range of units
+_RANGE = re.compile(r"(?<![0-9])(\d{1,3})\s{0,2}(?:강|주차|차시|회차|장|단원)?\s{0,2}"
+                    r"[~∼〜\-–]\s{0,2}(\d{1,3})\s{0,2}(강|주차|차시|회차|장|단원)")
+
+
+def _in_range(item: Item, heading: str) -> bool:
+    found = re.fullmatch(r"(\d{1,3})(강|주차|차시|회차|장|단원)", item.label)
+    if not found:
+        return False
+    number, unit = int(found.group(1)), found.group(2)
+    return any(m.group(3) == unit and int(m.group(1)) <= number <= int(m.group(2))
+               for m in _RANGE.finditer(heading))
+
+
+def outline_gaps(items: list[Item], headings: list[str]) -> list[Item]:
+    """Items no 목차 heading reaches — by name, title or label, or inside a heading's range
+    of units (「1~3강 …」 reaches 2강)."""
+    joined = "\n".join(headings)
+    flat = _flat(joined)
+    return [item for item in items if item.name and not reached(item, joined, flat)
+            and not any(_in_range(item, heading) for heading in headings)]
+
+
 def note(left_out: list[Item], total: int) -> str:
     """The line an answer ends with when it reached fewer files than it was asked about."""
     names = ", ".join(item.shown for item in left_out)
@@ -117,4 +140,4 @@ def items_of(files: list) -> list[Item]:
     return out
 
 
-__all__ = ["Item", "asks_each", "items_of", "missing", "note", "reached"]
+__all__ = ["Item", "asks_each", "items_of", "missing", "note", "outline_gaps", "reached"]

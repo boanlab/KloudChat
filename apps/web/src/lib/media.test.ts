@@ -30,6 +30,30 @@ describe('time marks in an answer', () => {
     expect(linkTimestamps('[12:75]', [lecture])).toBe('[12:75]')
   })
 
+  it('links bare hh:mm:ss marks in a table and a range, as the video document writes them', () => {
+    const table = '| 시간 | 주장 |\n|---|---|\n| 00:00:10 | 도입 |'
+    expect(linkTimestamps(table, [lecture])).toContain('| [00:00:10](/files?open=v1&t=10) |')
+    expect(linkTimestamps('**00:00:10 ~ 00:02:35, 약 2분 25초.**', [lecture])).toBe(
+      '**[00:00:10](/files?open=v1&t=10) ~ [00:02:35](/files?open=v1&t=155), 약 2분 25초.**',
+    )
+    expect(linkTimestamps('(00:00:10–00:02:35)', [lecture])).toBe(
+      '([00:00:10](/files?open=v1&t=10)–[00:02:35](/files?open=v1&t=155))',
+    )
+  })
+
+  it('leaves clock times, date-times and marks past the video alone', () => {
+    expect(linkTimestamps('회의는 14:30에 시작합니다', [lecture])).toBe('회의는 14:30에 시작합니다')
+    expect(linkTimestamps('기준 2026-11-14 13:55:02', [lecture])).toBe('기준 2026-11-14 13:55:02')
+    expect(linkTimestamps('기준 2026-11-14T13:55:02Z', [lecture])).toBe('기준 2026-11-14T13:55:02Z')
+    expect(linkTimestamps('버전 1.12:30:00', [lecture])).toBe('버전 1.12:30:00')
+    expect(linkTimestamps('00:00:10', [lecture, demo])).toBe('00:00:10')
+    expect(linkTimestamps('`00:00:10`', [lecture])).toBe('`00:00:10`')
+    expect(linkTimestamps('[00:00:10](/files?open=v1&t=10)', [lecture])).toBe('[00:00:10](/files?open=v1&t=10)')
+    const short = { ...lecture, seconds: 600 }
+    expect(linkTimestamps('13:00:00', [short])).toBe('13:00:00')
+    expect(linkTimestamps('00:09:04', [short])).toBe('[00:09:04](/files?open=v1&t=544)')
+  })
+
   it('reads the app link back', () => {
     expect(VIDEO_LINK.exec('/files?open=v1&t=750')?.slice(1)).toEqual(['v1', '750'])
     expect(VIDEO_LINK.exec('https://evil.test/files?open=v1&t=1')).toBeNull()

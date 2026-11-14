@@ -602,7 +602,8 @@ def file_budget(model: dict | None) -> int:
 VIDEO_NOTE = (
     "\n(A video, written out by time: (말) is what was said, (화면) what was shown. When you "
     "use it, write the time mark of that moment after the claim, e.g. 「… [00:12:30]」; with "
-    "several videos, name the file before the mark.)"
+    "several videos, name the file before the mark. Always keep the square brackets, in a "
+    "table's time column and in a range too: 「| [00:00:10] | … |」, 「[00:00:10]~[00:02:35]」.)"
 )
 
 

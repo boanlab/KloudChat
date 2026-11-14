@@ -12,7 +12,10 @@ import { contextUsage } from './shell-mocks'
 const phoneProject = () => viewport(test.info()) === 'phone'
 const shotPath = (name: string) => `${process.env.SHOT_DIR ?? 'test-results/shots'}/${name}.png`
 
-type Asked = { sessionId?: string | null; model?: string | null; draft?: string; attachments?: string[] }
+type Asked = {
+  sessionId?: string | null; model?: string | null; draft?: string; attachments?: string[]
+  kind?: string; projectId?: string | null; agentId?: string | null
+}
 
 /** Answers the gauge: each turn adds 20k of history; the local model has a 32k window. */
 async function gaugeServer(page: Page, sends: () => number) {
@@ -149,6 +152,33 @@ test('the report and slides composers show the gauge too', async ({ page }, info
     await page.goto(`/new/${surface}`)
     await expect(gauge(page)).toBeVisible()
     await expect.poll(() => (asked.at(-1) as { kind?: string } | undefined)?.kind).toBe(surface)
+  }
+  expect(unexpected).toEqual([])
+})
+
+test('a conversation not sent yet is counted as a new one, not asked for by its id', async ({ page }, info) => {
+  test.skip(phoneProject(), 'desktop layout')
+  const { unexpected } = await composerFixture(page, info)
+  const asked = await gaugeServer(page, () => 0)
+  // A report opened in a project (「새로 시작 → 보고서」) lives in the browser until its first
+  // send; the server has no row for its id, so asking by it answered 404.
+  const heldId = 'd0000000000000000000000000000009'
+  await page.addInitScript((id) => {
+    const row = {
+      id, kind: 'report', title: '새 작업', projectId: 'p-lectures', agentId: null, pipelineId: null,
+      model: '', routingMode: 'manual', reasoningMode: null,
+      createdAt: '2026-10-09T07:00:00.000Z', updatedAt: '2026-10-09T07:00:00.000Z', pinned: false,
+      messages: [], preview: null, messageCount: 0, made: null, artifactId: null, pending: null,
+      skillIds: [], renderTemplateId: null, unsent: true,
+    }
+    sessionStorage.setItem('kchat.unsent.fixture-user', JSON.stringify({ [id]: row }))
+  }, heldId)
+  await page.goto(`/s/${heldId}`)
+  await expect(gauge(page)).toBeVisible()
+  expect(asked.length).toBeGreaterThan(0)
+  for (const body of asked) {
+    expect(body.sessionId ?? null).toBeNull()
+    expect(body).toMatchObject({ kind: 'report', projectId: 'p-lectures' })
   }
   expect(unexpected).toEqual([])
 })

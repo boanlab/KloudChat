@@ -3459,6 +3459,8 @@ const EN: Record<string, string> = {
   '내부 자료나 개인정보가 있는 문서는 웹 검색으로 사실 확인을 할 수 없습니다. 확인할 내용이 외부 검색 엔진으로 나가기 때문입니다.':
     'A document with internal material or personal data cannot be fact-checked on the web: the claims would go to outside search engines.',
   '이번 달 크레딧이 부족합니다.': 'Out of credits for this month.',
+  '서버 오류로 요청을 처리하지 못했습니다. 잠시 후 다시 시도하세요.':
+    'The server failed to handle the request. Try again in a moment.',
   '모델 서버가 응답하지 않습니다. 잠시 후 다시 시도하세요.':
     'The model server is not responding. Try again in a moment.',
   '중단': 'Stop',
@@ -4055,6 +4057,8 @@ const EN: Record<string, string> = {
   '{n}개 빠짐': '{n} left out',
   '{n}개 글자 읽는 중': '{n} still being read',
   '{name} 글자 읽는 중': '{name} — scanned pages still being read',
+  '{n}개 영상 읽는 중': '{n} videos still being read',
+  '{name} 영상 읽는 중': '{name} — video still being read',
   '{name} 그림 · 이 모델은 보지 못함': '{name} — a picture this model cannot see',
   '{name} {kept}자만 반영': '{name} — only {kept} characters used',
   '{name} 분량을 넘겨 제외': '{name} — over budget, left out',

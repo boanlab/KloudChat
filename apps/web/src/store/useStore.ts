@@ -1238,6 +1238,8 @@ export const useStore = create<State>((set, get) => ({
 
   /** Session handed over by a mailed signup-verification link. */
   adoptSession: (session) => {
+    // Signed in now: the next load asks for the refresh cookie the server just set.
+    rememberSignedOut(false)
     setAccessToken(session.accessToken, session.expiresIn)
     set((state) => ({ authenticated: true, user: session.user, authLoading: false, authError: null,
       accountEpoch: state.accountEpoch + 1, messageEdit: null, messageEditBusy: false }))
@@ -1252,7 +1254,9 @@ export const useStore = create<State>((set, get) => ({
     try {
       const { user, session } = await auth.signup(email, password, name)
       if (session) {
-        // `open` signup mode, or the bootstrap admin.
+        // `open` signup mode, or the bootstrap admin. The flag a sign-out left would keep the
+        // next load from asking for the refresh cookie signup just set.
+        rememberSignedOut(false)
         setAccessToken(session.accessToken, session.expiresIn)
         set({ authenticated: true, user: session.user, authLoading: false })
         scheduleRefresh(session.expiresIn, () => void renewSession())
@@ -3241,7 +3245,11 @@ function turnFailure(err: unknown): string {
   const named =
     err instanceof ApiError && err.status < 500 ? refusalSentence(errorCode(err), tr) : undefined
   if (named) return named
-  if (err instanceof ApiError && err.status >= 500) {
+  // A 500 is our server failing, not the model; 502–504 is a gateway in front of the turn.
+  if (err instanceof ApiError && err.status === 500) {
+    return '서버 오류로 요청을 처리하지 못했습니다. 잠시 후 다시 시도하세요.'
+  }
+  if (err instanceof ApiError && err.status > 500) {
     return '모델 서버가 응답하지 않습니다. 잠시 후 다시 시도하세요.'
   }
   return '응답을 받지 못했습니다. 잠시 후 다시 시도하세요.'
@@ -3410,15 +3418,18 @@ function retold(step: Step): Partial<Step> {
     const short = step.files.filter((file) => file.state !== 'included' && file.state !== 'picture')
     const cut = short.filter((file) => file.state === 'truncated').length
     const reading = short.filter((file) => file.state === 'reading').length
-    const dropped = short.length - cut - reading
+    const watching = short.filter((file) => file.state === 'watching').length
+    const dropped = short.length - cut - reading - watching
     const fates = [
       ...(cut ? [tr('{n}개 잘림').replace('{n}', String(cut))] : []),
       ...(reading ? [tr('{n}개 글자 읽는 중').replace('{n}', String(reading))] : []),
+      ...(watching ? [tr('{n}개 영상 읽는 중').replace('{n}', String(watching))] : []),
       ...(dropped ? [tr('{n}개 빠짐').replace('{n}', String(dropped))] : []),
     ]
     const notes: Record<string, string> = {
       omitted: '{name} 분량을 넘겨 제외',
       reading: '{name} 글자 읽는 중',
+      watching: '{name} 영상 읽는 중',
       picture_unseen: '{name} 그림 · 이 모델은 보지 못함',
     }
     const note = (file: NonNullable<Step['files']>[number]) =>
