@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import time
 
 from app.services import date_rules
 
@@ -33,10 +32,12 @@ def test_the_week_runs_monday_to_sunday():
         "이번 주 금요일 며칠?", TODAY)
 
 
-def test_fifty_thousand_spaces_finish_quickly():
-    started = time.perf_counter()
-    date_rules.today_block("다음 주 월요일" + " " * 50_000 + "며칠", TODAY)
-    assert time.perf_counter() - started < 0.5
+def test_fifty_thousand_spaces_finish_quickly(linear_scan):
+    def run(n):
+        date_rules.today_block("다음 주 월요일" + " " * n + "며칠", TODAY)
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
 
 
 def test_a_weekday_of_a_months_nth_week_is_counted():

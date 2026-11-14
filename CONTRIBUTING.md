@@ -210,10 +210,15 @@ are what upstream calls are made with.
   explains why, if that is not obvious.
 - Fill in the pull request template — particularly the verification section.
   "Tested locally" is not a verification.
-- CI must be green: lint, config-path tests, typecheck and build, and the
-  sharded Playwright fixture suite for the web app; `ruff` and `pytest` for the
-  API; `shellcheck` for the scripts; compose validation; and every changed
-  image must build.
+- CI must be green: the `CI ok` check sums up every job the change needs —
+  lint, config-path tests, typecheck and build, and the sharded Playwright
+  fixture suite for the web app; `ruff` and `pytest` for the API; the user-guide
+  build; `shellcheck` for the scripts; compose validation; and every changed
+  image must build. A pull request runs only the jobs its files need (see
+  [CI](docs/development.md#ci)); a push to `main` runs all of them.
+- A test about speed bounds growth, not seconds: `linear_scan(run, n)`
+  (`apps/api/tests/conftest.py`) fails when `run`'s CPU time grows
+  quadratically from `n` to `4n`. A wall-clock bound flakes on a busy runner.
 
 ## Where things live
 

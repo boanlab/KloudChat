@@ -209,8 +209,8 @@ test('phone: one line, tools in a bottom sheet, answers full width, no sideways 
     // The answer starts at the column's edge: no mark beside it.
     const answer = page.getByText('이번 분기 공고는 세 가지로 정리됩니다.')
     await expect(answer).toBeVisible()
-    const box = await answer.boundingBox()
-    expect(box!.x).toBeLessThan(width * 0.12)
+    // Polled: the transcript re-renders as the session settles, and a box read in between is null.
+    await expect.poll(async () => (await answer.boundingBox())?.x ?? Number.POSITIVE_INFINITY).toBeLessThan(width * 0.12)
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0)
 
     await plus.click()

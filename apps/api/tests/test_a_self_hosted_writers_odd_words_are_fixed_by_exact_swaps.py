@@ -6,7 +6,6 @@ writer's text gets no such pass, and a strict-local writer's checker stays stric
 from __future__ import annotations
 
 import json
-import time
 
 import pytest
 
@@ -153,11 +152,13 @@ async def test_an_external_writers_section_is_left_as_written(monkeypatch):
     assert "지수(index)" in body and "코드르" in body
 
 
-def test_the_word_checks_finish_on_a_long_blank_input():
-    started = time.perf_counter()
-    word_fix.candidates(" " * 50_000 + "지수(index)")
-    word_fix.apply(" " * 50_000 + "(" * 5_000, [("지수", "색인")])
-    assert time.perf_counter() - started < 0.5
+def test_the_word_checks_finish_on_a_long_blank_input(linear_scan):
+    def run(n):
+        word_fix.candidates(" " * n + "지수(index)")
+        word_fix.apply(" " * n + "(" * (n // 10), [("지수", "색인")])
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
 
 
 async def _deck(monkeypatch, model: str, checker: str) -> tuple[str, list[str]]:

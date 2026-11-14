@@ -5,8 +5,6 @@ points to. Shapes from the round 16 re-verify (tc, tc2)."""
 
 from __future__ import annotations
 
-import time
-
 from test_minutes_say_only_what_the_memo_says import TUTOR
 
 from app.services import meeting_memo, report_checks, stated_meeting
@@ -61,9 +59,11 @@ def test_an_agreement_pointing_back_is_judged_by_the_sentence_it_points_to():
     assert "11/3~11/14로 확정했습니다." in out[0]["content"]
 
 
-def test_the_checks_finish_on_a_long_run_of_spaces():
-    text = "본문에" + " " * 50_000 + "반영하지 않았습니다."
-    start = time.perf_counter()
-    stated_meeting.self_note(text, TUTOR)
-    meeting_memo.fill_head({"fields": [["장소", " " * 50_000 + "3층 회의실"]]}, TUTOR)
-    assert time.perf_counter() - start < 0.5
+def test_the_checks_finish_on_a_long_run_of_spaces(linear_scan):
+    def run(n):
+        text = "본문에" + " " * n + "반영하지 않았습니다."
+        stated_meeting.self_note(text, TUTOR)
+        meeting_memo.fill_head({"fields": [["장소", " " * n + "3층 회의실"]]}, TUTOR)
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import time
 from pathlib import Path
 
 import pytest
@@ -74,10 +73,11 @@ def test_a_question_about_the_screen_reads_the_text_size_and_agent_pages():
     assert "브라우저 확대" in block and "회의록 작성" in block
 
 
-def test_the_pattern_stays_fast_on_a_long_message():
-    started = time.perf_counter()
-    app_help.about_app("에이전트 " * 5000 + "어" * 5000)
-    assert time.perf_counter() - started < 0.5
+def test_the_pattern_stays_fast_on_a_long_message(linear_scan):
+    def run(n):
+        app_help.about_app("에이전트 " * n + "어" * n)
+
+    linear_scan(run, 1_250)
 
 
 def test_the_persona_question_reads_the_guides_agent_page():

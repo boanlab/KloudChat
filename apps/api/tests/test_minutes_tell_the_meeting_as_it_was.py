@@ -5,7 +5,6 @@ deadline open that its action row dates from the memo."""
 from __future__ import annotations
 
 import datetime as dt
-import time
 
 from test_minutes_say_only_what_the_memo_says import SALES, TUTOR
 
@@ -157,17 +156,19 @@ def test_the_meeting_held_is_told_in_the_past_and_what_comes_next_is_not():
     assert meeting_tense.past("예산 규모입니다.") == "예산 규모입니다."
 
 
-def test_the_new_minutes_checks_finish_on_a_long_run_of_spaces():
-    spaces = " " * 50_000
-    started = time.perf_counter()
-    stated_meeting.untraced(f"자료에{spaces}제시{spaces}않", SALES, next_part=True)
-    stated_meeting.untraced(f"제목{spaces}:", SALES)
-    stated_meeting.untraced(f"가능성이{spaces}높 수{spaces}있을 것", SALES)
-    meeting_tense.past(f"회의가 열립니다{spaces}(확인 필요){spaces}.")
-    report_checks.minutes_open_due(
-        [{"heading": "", "content": f"기한은{spaces}미정입니다.\n\n" + ACTIONS}],
-        [{"date": "2026-10-23", "status": "ok"}])
-    assert time.perf_counter() - started < 0.5
+def test_the_new_minutes_checks_finish_on_a_long_run_of_spaces(linear_scan):
+    def run(n):
+        spaces = " " * n
+        stated_meeting.untraced(f"자료에{spaces}제시{spaces}않", SALES, next_part=True)
+        stated_meeting.untraced(f"제목{spaces}:", SALES)
+        stated_meeting.untraced(f"가능성이{spaces}높 수{spaces}있을 것", SALES)
+        meeting_tense.past(f"회의가 열립니다{spaces}(확인 필요){spaces}.")
+        report_checks.minutes_open_due(
+            [{"heading": "", "content": f"기한은{spaces}미정입니다.\n\n" + ACTIONS}],
+            [{"date": "2026-10-23", "status": "ok"}])
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
 
 
 def test_a_persons_copy_of_the_minutes_template_keeps_its_minutes_steps():

@@ -4,8 +4,6 @@ the round 16 re-verify (reverify-y tc, tc2)."""
 
 from __future__ import annotations
 
-import time
-
 from app.services import meeting_memo
 
 MEMO = ("10/7 기획팀 주간회의. 참석 이민수(팀장), 정하늘, 오세진. 불참 한지우(휴가). "
@@ -84,10 +82,13 @@ def test_a_marker_left_alone_on_its_line_goes():
     assert out[0]["content"] == "장소는 정하지 못했습니다.\n\n견적은 확인 필요합니다."
 
 
-def test_the_paste_checks_finish_fast_on_a_long_run_of_spaces():
-    gap = " " * 50_000
-    start = time.perf_counter()
-    meeting_memo.copied(f"강릉{gap}함.", MEMO)
-    meeting_memo.bare_marks([_sec("끝", f"확인{gap}필요")])
-    meeting_memo.settle_copies([_sec("끝", f"강릉 vs 속초{gap}결정 못 함.")], MEMO, strong=False)
-    assert time.perf_counter() - start < 0.5
+def test_the_paste_checks_finish_fast_on_a_long_run_of_spaces(linear_scan):
+    def run(n):
+        gap = " " * n
+        meeting_memo.copied(f"강릉{gap}함.", MEMO)
+        meeting_memo.bare_marks([_sec("끝", f"확인{gap}필요")])
+        meeting_memo.settle_copies(
+            [_sec("끝", f"강릉 vs 속초{gap}결정 못 함.")], MEMO, strong=False)
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import dataclasses
 import re
-import time
 from html.parser import HTMLParser
 
 import pytest
@@ -860,15 +859,17 @@ def test_a_project_format_the_surface_cannot_use_is_refused_like_the_composers(d
     assert raised.value.status_code == expected
 
 
-def test_an_attribute_stripper_cannot_be_stalled_by_whitespace():
+def test_an_attribute_stripper_cannot_be_stalled_by_whitespace(linear_scan):
     """Attribute stripping stays linear in the whitespace before an attribute."""
+
+    def run(n):
+        dt.sanitise("<p" + " " * n + 'onclick="steal()" style="color:red" href="http://x">hi</p>')
+
+    # up to the 60,000 spaces this always read
+    linear_scan(run, 15_000)
     padded = "<p" + " " * 60_000 + 'onclick="steal()" style="color:red" href="http://x">hi</p>'
-
-    started = time.perf_counter()
     cleaned = dt.sanitise(padded)
-    elapsed = time.perf_counter() - started
 
-    assert elapsed < 1.0, f"{elapsed:.1f}s"
     assert "onclick" not in cleaned
     assert "style=" not in cleaned
     assert "href=" not in cleaned

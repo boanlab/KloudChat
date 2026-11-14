@@ -5,7 +5,6 @@ Korean document is numbered as before."""
 from __future__ import annotations
 
 import re
-import time
 
 from app.pipeline import report_stages
 from app.services import (
@@ -179,23 +178,25 @@ def test_a_korean_document_is_numbered_as_before():
     assert captions.of_sections(out) == captions.KO
 
 
-def test_caption_readers_finish_on_fifty_thousand_spaces():
-    blank = " " * 50_000
-    started = time.perf_counter()
-    for text in (f"Table{blank}1", f"표 1{blank}과 같습니다", f"a{blank}(표 1)",
-                 f"({blank}〔그림〕)", f"x. Table 1:{blank}", f"- Table{blank}"):
-        report._english_references(text)
-        report._DANGLING_BRACKET.sub("", text)
-        report._TRAILING_TABLE_CAPTION.search(text)
-        report._table_title(text)
-        quality_gate._STRAY_CAPTION.search(text)
-        revised_tables.CAPTION.match(text)
-        meeting_memo._POINTER.findall(text)
-    report._renumber_references([{"heading": "A", "content": f"Table{blank}1 Figure{blank}2"}],
-                                captions.EN)
-    revise.numbered_removals(f"remove table 2{blank}and")
-    revise.numbered_removals(f"delete{blank}tables 2,{blank}")
-    revise._drop_references(f"See Table 2{blank}x, as shown in{blank}Table 2", "표 2")
-    table_mend.cite(f"**Table 1**{blank}\n\n| a |\n|---|\n| 1 |", "Table 1")
-    meeting_memo.drop(f"a (Table 1){blank}", "a (Table 1)")
-    assert time.perf_counter() - started < 0.5
+def test_caption_readers_finish_on_fifty_thousand_spaces(linear_scan):
+    def run(n):
+        blank = " " * n
+        for text in (f"Table{blank}1", f"표 1{blank}과 같습니다", f"a{blank}(표 1)",
+                     f"({blank}〔그림〕)", f"x. Table 1:{blank}", f"- Table{blank}"):
+            report._english_references(text)
+            report._DANGLING_BRACKET.sub("", text)
+            report._TRAILING_TABLE_CAPTION.search(text)
+            report._table_title(text)
+            quality_gate._STRAY_CAPTION.search(text)
+            revised_tables.CAPTION.match(text)
+            meeting_memo._POINTER.findall(text)
+        report._renumber_references([{"heading": "A", "content": f"Table{blank}1 Figure{blank}2"}],
+                                    captions.EN)
+        revise.numbered_removals(f"remove table 2{blank}and")
+        revise.numbered_removals(f"delete{blank}tables 2,{blank}")
+        revise._drop_references(f"See Table 2{blank}x, as shown in{blank}Table 2", "표 2")
+        table_mend.cite(f"**Table 1**{blank}\n\n| a |\n|---|\n| 1 |", "Table 1")
+        meeting_memo.drop(f"a (Table 1){blank}", "a (Table 1)")
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)

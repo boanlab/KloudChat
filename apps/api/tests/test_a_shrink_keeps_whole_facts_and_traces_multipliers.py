@@ -6,7 +6,6 @@ edit's caveat loss names only what the hedge qualified."""
 from __future__ import annotations
 
 import datetime as dt
-import time
 
 from app.pipeline.check_stages import ground_slides, trace_slides
 from app.services import check_skills, deck, revise, value_guard
@@ -47,16 +46,18 @@ def test_the_value_guard_reads_a_multiplier_as_a_ratio_not_a_sum() -> None:
     assert value_guard.supported("9.5x", "costs 9.5x more", 6, ev, 0)
 
 
-def test_a_shrink_keeps_a_page_count_a_finding_is_stated_against() -> None:
+def test_a_shrink_keeps_a_page_count_a_finding_is_stated_against(linear_scan) -> None:
     kept = revise.without_counts(TALK)
     assert "8-slide" not in kept
     assert "(64% vs 91% above 20 pages)" in kept
     korean = revise.without_counts(
         "보고서를 10장으로 만들어줘. 계약서가 20쪽 이상이면 지연이 생긴다.")
     assert "10장" not in korean and "20쪽 이상이면" in korean
-    start = time.perf_counter()
-    revise.without_counts("above" + " " * 50_000 + "20 pages")
-    assert time.perf_counter() - start < 0.5
+    def run(n):
+        revise.without_counts("above" + " " * n + "20 pages")
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
 
 
 def test_one_old_items_parts_spread_over_the_columns_go_back_together() -> None:

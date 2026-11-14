@@ -4,8 +4,6 @@ marker form and the app's prose blocks are renumbered with the list."""
 
 from __future__ import annotations
 
-import time
-
 from app.services import citations
 
 VILLAGE = {"ordinal": 1, "title": "Web-Based Village Administration Services Using the "
@@ -104,9 +102,11 @@ def test_every_marker_form_and_the_prose_blocks_follow_the_renumbered_list():
         "```callout\n주의\n- 지연이 늘었다 [4]\n```\n\n```mermaid\ngraph LR\nA[1] --> B\n```")
 
 
-def test_long_runs_of_spaces_finish_quickly():
-    text = "[1" + " " * 50_000 + "x " + "형태소 " + " " * 50_000 + "[1]"
-    began = time.perf_counter()
-    citations.cite_order([_section(text)], [VILLAGE])
-    citations.credit_attachments([_section(text)], SOURCES, TEXTS)
-    assert time.perf_counter() - began < 0.5
+def test_long_runs_of_spaces_finish_quickly(linear_scan):
+    def run(n):
+        text = "[1" + " " * n + "x " + "형태소 " + " " * n + "[1]"
+        citations.cite_order([_section(text)], [VILLAGE])
+        citations.credit_attachments([_section(text)], SOURCES, TEXTS)
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)

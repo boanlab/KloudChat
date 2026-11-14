@@ -94,9 +94,9 @@ def test_a_document_session_is_not_summarised_this_way():
     assert made_from_artifacts([("html", {"language": "html"})]) is None
 
 
-def test_a_long_run_of_spaces_after_a_named_subject_stays_fast():
-    import time
+def test_a_long_run_of_spaces_after_a_named_subject_stays_fast(linear_scan):
+    def run(n):
+        chat_service.provisional_title("주제: a" + " " * n + "b")
 
-    started = time.monotonic()
-    chat_service.provisional_title("주제: a" + " " * 50000 + "b")
-    assert time.monotonic() - started < 0.5
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)

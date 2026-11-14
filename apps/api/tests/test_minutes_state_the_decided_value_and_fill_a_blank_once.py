@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import time
 
 from test_minutes_say_only_what_the_memo_says import TUTOR
 
@@ -100,12 +99,15 @@ def test_the_memos_bare_clock_loses_the_writers_am_before_any_repair():
     assert stated_meeting.bare_clocks(sections, TUTOR.replace("화 10시", "화 오전 10시"))[1] == 0
 
 
-def test_the_new_checks_finish_on_a_long_run_of_spaces():
-    spaces = " " * 50_000
-    start = time.perf_counter()
-    key_figures.changes(f"80만원{spaces}50만원{spaces}으로 줄이자고")
-    meeting_memo.decided_values([_sec("결정", f"간식비를{spaces}80만원으로{spaces}합의")], TUTOR)
-    report.unfence_pictures(f"```\n{spaces}다.\n```")
-    verify.filled_twin(f"회의를{spaces}열었습니다", f"[회의 일자]에{spaces}회의를 열었습니다.")
-    stated_meeting.bare_clocks([_sec("다음", f"오전{spaces}10시")], TUTOR)
-    assert time.perf_counter() - start < 0.5
+def test_the_new_checks_finish_on_a_long_run_of_spaces(linear_scan):
+    def run(n):
+        spaces = " " * n
+        key_figures.changes(f"80만원{spaces}50만원{spaces}으로 줄이자고")
+        meeting_memo.decided_values(
+            [_sec("결정", f"간식비를{spaces}80만원으로{spaces}합의")], TUTOR)
+        report.unfence_pictures(f"```\n{spaces}다.\n```")
+        verify.filled_twin(f"회의를{spaces}열었습니다", f"[회의 일자]에{spaces}회의를 열었습니다.")
+        stated_meeting.bare_clocks([_sec("다음", f"오전{spaces}10시")], TUTOR)
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)

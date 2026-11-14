@@ -5,8 +5,6 @@ screen is told how to ask it, not called a new-document request."""
 
 from __future__ import annotations
 
-import time
-
 import pytest
 from test_an_edit_reply_says_each_ask_done_or_not import CHARTED, WEEKLY
 
@@ -184,7 +182,7 @@ async def test_a_question_on_the_deck_screen_is_answered_not_called_a_new_docume
     assert "새로 쓰려면" in "".join(e.get("text", "") for e in events if e["type"] == "delta")
 
 
-def test_a_question_is_told_from_an_ask():
+def test_a_question_is_told_from_an_ask(linear_scan):
     assert revise.asks_question("지금 슬라이드가 몇 장이야?")
     assert revise.asks_question("이 보고서 결론이 뭐야")
     assert revise.asks_question("발표자는 누구인가요")
@@ -192,9 +190,11 @@ def test_a_question_is_told_from_an_ask():
     assert not revise.asks_question("결론을 더 짧게 해줘")
     assert not revise.asks_question("이 표를 어떻게 바꿔 주실 수 있나요")
     assert not revise.asks_question("다른 회사 소개 자료")
-    started = time.monotonic()
-    revise.asks_question("몇" + " " * 50000 + "x")
-    assert time.monotonic() - started < 0.5
+    def run(n):
+        revise.asks_question("몇" + " " * n + "x")
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
 
 
 @pytest.mark.asyncio

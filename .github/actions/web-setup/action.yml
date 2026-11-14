@@ -1,0 +1,62 @@
+name: Web setup
+description: >-
+  Node 22 with the npm cache keyed on apps/web/package-lock.json, `npm ci` (tried once more
+  on a failed install), and optionally Chromium for Playwright from a cache keyed on the
+  installed Playwright version.
+inputs:
+  browser:
+    description: Install Chromium for Playwright
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v7
+      with:
+        node-version: '22'
+        cache: npm
+        cache-dependency-path: apps/web/package-lock.json
+
+    # `ci`: the lockfile is the contract. An install now and then leaves out a native
+    # optional package (rolldown's binding) or fails on the network; a second clean install
+    # is enough, and the first failure stays in the log.
+    - name: Install
+      shell: bash
+      working-directory: apps/web
+      run: |
+        if ! npm ci --no-audit --no-fund; then
+          echo "::warning::npm ci failed; trying once more from a clean node_modules"
+          rm -rf node_modules
+          npm ci --no-audit --no-fund
+        fi
+        node -e "require('rolldown')" 2>/dev/null || node -e "import('rolldown').then(() => 0)" || {
+          echo "::warning::rolldown's native binding is missing; reinstalling"
+          rm -rf node_modules
+          npm ci --no-audit --no-fund
+        }
+
+    - name: Playwright version
+      if: inputs.browser == 'true'
+      id: pw
+      shell: bash
+      working-directory: apps/web
+      run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+    - name: Browser cache
+      if: inputs.browser == 'true'
+      id: browsers
+      uses: actions/cache@v6
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-chromium-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
+    # The system libraries are not cached; only the browser download is.
+    - name: Install test browser
+      if: inputs.browser == 'true'
+      shell: bash
+      working-directory: apps/web
+      run: |
+        if [ "${{ steps.browsers.outputs.cache-hit }}" = "true" ]; then
+          npx playwright install-deps chromium
+        else
+          npx playwright install --with-deps chromium
+        fi

@@ -5,7 +5,6 @@ what it counts."""
 
 from __future__ import annotations
 
-import time
 from types import SimpleNamespace
 
 import pytest
@@ -27,16 +26,18 @@ SHORT = ("대성유통의 5% 단가 인하 요구가 허용 가능한 4%를 초�
          "내로 확인해야 합니다.")
 
 
-def test_a_caveat_kept_in_another_form_is_not_said_lost():
+def test_a_caveat_kept_in_another_form_is_not_said_lost(linear_scan):
     assert revise.lost_facts(SECTION, SHORT) == ["이번 주"]
     for kept in ("A사의 4% 제시는 확정 전입니다.", "A사의 4% 제시는 미확정입니다.",
                  "A사의 4% 제시는 아직 결정되지 않았습니다.", "A사의 4% 제시는 미정입니다."):
         assert revise.lost_facts("A사의 4% 제시는 확정되지 않았습니다.", kept) == []
     dropped = revise.lost_facts("A사의 4% 제시는 확정되지 않았습니다.", "A사는 4%를 제시했습니다.")
     assert dropped == ["A사 4%의 「확정 아님」 표시"]
-    started = time.monotonic()
-    revise.lost_facts("확정" + " " * 50000 + "전", "미정" + " " * 50000)
-    assert time.monotonic() - started < 0.5
+    def run(n):
+        revise.lost_facts("확정" + " " * n + "전", "미정" + " " * n)
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
 
 
 def test_a_mark_left_off_is_said_in_its_own_clause():

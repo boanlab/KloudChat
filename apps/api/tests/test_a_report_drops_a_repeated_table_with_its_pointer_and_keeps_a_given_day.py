@@ -4,8 +4,6 @@ plan row on the day the memo's next-week line gives (「- 다음 주: 화요일 
 
 from __future__ import annotations
 
-import time
-
 from app.services import report, stated_days
 
 FIRST = ("| 항목 | 값 |\n| --- | --- |\n| 주간 상담 합계 | 6,020건 |\n| 주간 목표 | 6,500건 |\n"
@@ -45,10 +43,12 @@ def test_a_row_on_the_day_the_memo_gives_stands():
     assert stated_days.untraced("| 화요일 | 결제 오류 사후 검토 회의 |", MEMO, "이번 주 실적") != []
 
 
-def test_fifty_thousand_spaces_finish_quickly():
-    gap = " " * 50_000
-    started = time.perf_counter()
-    report.drop_repeated_tables([
-        {"heading": "a", "content": FIRST},
-        {"heading": "b", "content": f"아래{gap}표는{gap}.\n\n{AGAIN}"}])
-    assert time.perf_counter() - started < 0.5
+def test_fifty_thousand_spaces_finish_quickly(linear_scan):
+    def run(n):
+        gap = " " * n
+        report.drop_repeated_tables([
+            {"heading": "a", "content": FIRST},
+            {"heading": "b", "content": f"아래{gap}표는{gap}.\n\n{AGAIN}"}])
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)

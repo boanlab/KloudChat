@@ -1,6 +1,8 @@
 name: CodeQL
 
-# Weekly as well as per push: most new findings come from updated queries.
+# Weekly as well as per push: most new findings come from updated queries. A pull request
+# analyses only the languages its files touch (.github/ci/changes.sh); main and the weekly
+# run analyse both.
 on:
   push:
     branches: [main]
@@ -13,8 +15,34 @@ permissions:
   contents: read
 
 jobs:
+  languages:
+    name: CodeQL · languages
+    runs-on: ubuntu-latest
+    outputs:
+      list: ${{ steps.pick.outputs.codeql }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Decide what to analyse
+        id: pick
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != "pull_request" ] || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            .github/ci/changes.sh --all | grep '^codeql=' | tee -a "$GITHUB_OUTPUT"
+          else
+            git diff --name-only "$BASE" "$HEAD" | .github/ci/changes.sh | grep '^codeql=' | tee -a "$GITHUB_OUTPUT"
+          fi
+
   analyze:
     name: CodeQL · ${{ matrix.language }}
+    needs: languages
+    if: needs.languages.outputs.list != '[]'
     runs-on: ubuntu-latest
     # Job-level permissions replace the workflow-level block, so repeat `contents`.
     permissions:
@@ -24,13 +52,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [javascript-typescript, python]
+        language: ${{ fromJSON(needs.languages.outputs.list) }}
     steps:
       - uses: actions/checkout@v7
 
       - uses: github/codeql-action/init@v4
         with:
-          language: ${{ matrix.language }}
+          languages: ${{ matrix.language }}
           # security-extended: request forgery, path traversal, unsafe deserialization.
           queries: security-extended
 

@@ -4,8 +4,6 @@ writer as that paragraph, instead of being read in Hanja into words Korean does 
 
 from __future__ import annotations
 
-import time
-
 import pytest
 
 from app.pipeline import report_stages
@@ -68,8 +66,10 @@ async def test_the_slipped_paragraph_is_written_again_and_a_bad_answer_is_left(m
     assert out == body
 
 
-def test_the_slip_checks_finish_on_a_long_blank_input():
-    started = time.perf_counter()
-    report.chinese_paragraphs(" " * 50_000 + "数据")
-    report.korean_again(" " * 50_000, " " * 50_000 + "1")
-    assert time.perf_counter() - started < 0.5
+def test_the_slip_checks_finish_on_a_long_blank_input(linear_scan):
+    def run(n):
+        report.chinese_paragraphs(" " * n + "数据")
+        report.korean_again(" " * n, " " * n + "1")
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)

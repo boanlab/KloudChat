@@ -1,5 +1,6 @@
 import { defineConfig, devices, type PlaywrightTestProject } from '@playwright/test'
 import base from './playwright.config'
+import shardWeights from './e2e/shard-weights.json' with { type: 'json' }
 
 /**
  * The fixture suite CI runs: every spec here answers the API with `page.route`
@@ -10,7 +11,8 @@ import base from './playwright.config'
  * Each group below is one surface: its spec files and the viewports it is checked at. A
  * `phone`/`mobile` project runs only tests tagged `@phone`.
  * A project is `<group>/<viewport>`, e.g. `npx playwright test -c playwright.ci.config.ts
- * --project='customize/*'`. CI splits the projects over four jobs with `--shard`.
+ * --project='customize/*'`. CI splits the projects over its e2e jobs with `E2E_SHARD=k/n`
+ * (`shardOf` below), by measured time rather than by count.
  *
  * The live-stack suite (a running app at 5173 and a seeded account) stays in
  * `playwright.config.ts`.
@@ -165,6 +167,46 @@ const groups: Record<string, Group> = {
   'pptx-actions': { files: ['pptx-actions.spec.ts'], projects: { desktop } },
 }
 
+const projects: PlaywrightTestProject[] = Object.entries(groups).flatMap(([group, { files, grep, projects }]) =>
+  Object.entries(projects).map(([viewport, use]) => ({
+    name: `${group}/${viewport}`,
+    testMatch: files,
+    // A phone-width project runs only what is about the phone (`@phone`: layout, drawer,
+    // touch, widths); everything else is checked once, at desktop width.
+    ...(phoneWidths.includes(viewport) ? { grep: /@phone/ } : grep ? { grep } : {}),
+    use,
+  })),
+)
+
+/** Seconds a project took on CI (`.github/ci/e2e-weights.py`); a project not measured yet counts this. */
+const UNMEASURED_SEC = 20
+const weights: Record<string, number> = shardWeights
+
+/**
+ * The projects of shard `k` of `n` (`E2E_SHARD=k/n`): the longest project first, each to the
+ * shard with the least time so far, so the shards finish close together (Playwright's own
+ * `--shard` splits by test count, and one project here takes 20 times another). The split
+ * depends only on the project list and the weights, so every job computes the same one and
+ * each project runs in exactly one shard.
+ */
+function shardOf(all: PlaywrightTestProject[], spec: string | undefined): PlaywrightTestProject[] {
+  if (!spec) return all
+  const [k, n] = spec.split('/').map(Number)
+  if (!Number.isInteger(k) || !Number.isInteger(n) || k < 1 || k > n) {
+    throw new Error(`E2E_SHARD must be k/n with 1 <= k <= n, not ${spec}`)
+  }
+  const cost = (p: PlaywrightTestProject) => weights[p.name!] ?? UNMEASURED_SEC
+  const load = new Array<number>(n).fill(0)
+  const owner = new Map<string, number>()
+  const longestFirst = [...all].sort((a, b) => cost(b) - cost(a) || a.name!.localeCompare(b.name!))
+  for (const project of longestFirst) {
+    const least = load.indexOf(Math.min(...load))
+    owner.set(project.name!, least)
+    load[least] += cost(project)
+  }
+  return all.filter((p) => owner.get(p.name!) === k - 1)
+}
+
 export default defineConfig({
   ...base,
   // Specs within a file share fixtures and run in order; files run one at a time per job.
@@ -185,14 +227,5 @@ export default defineConfig({
     reuseExistingServer: false,
     timeout: 180_000,
   },
-  projects: Object.entries(groups).flatMap(([group, { files, grep, projects }]) =>
-    Object.entries(projects).map(([viewport, use]) => ({
-      name: `${group}/${viewport}`,
-      testMatch: files,
-      // A phone-width project runs only what is about the phone (`@phone`: layout, drawer,
-      // touch, widths); everything else is checked once, at desktop width.
-      ...(phoneWidths.includes(viewport) ? { grep: /@phone/ } : grep ? { grep } : {}),
-      use,
-    })),
-  ),
+  projects: shardOf(projects, process.env.E2E_SHARD),
 })

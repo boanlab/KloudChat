@@ -4,8 +4,6 @@ citations are credited and renumbered with the rest."""
 
 from __future__ import annotations
 
-import time
-
 from app.services import citations, report
 
 ANSWER = '''```json
@@ -52,9 +50,11 @@ def test_its_citations_then_follow_the_renumbered_list():
     assert "[6]" not in out[1]["content"] and out[1]["content"].count("[2]") == 3
 
 
-def test_a_long_unclosed_answer_finishes_quickly():
-    text = "```json\n[" + " " * 50_000 + '"figures":' + " " * 50_000
-    began = time.perf_counter()
-    report.unwrap_json_prose(text)
-    report.unwrap_json_prose("[" + " " * 50_000 + "]")
-    assert time.perf_counter() - began < 0.5
+def test_a_long_unclosed_answer_finishes_quickly(linear_scan):
+    def run(n):
+        text = "```json\n[" + " " * n + '"figures":' + " " * n
+        report.unwrap_json_prose(text)
+        report.unwrap_json_prose("[" + " " * n + "]")
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)

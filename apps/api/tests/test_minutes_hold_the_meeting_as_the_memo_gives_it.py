@@ -4,8 +4,6 @@ fpm)."""
 
 from __future__ import annotations
 
-import time
-
 from test_minutes_say_only_what_the_memo_says import SALES, TUTOR
 
 from app.services import meeting_memo, stated_meeting
@@ -83,12 +81,14 @@ def test_the_memo_s_decisions_are_its_decided_clauses():
     assert meeting_memo.decisions("안건3 설문 도구: 구글폼 vs 네이버폼 논의, 결정 못 함") == []
 
 
-def test_the_memo_checks_finish_on_a_long_run_of_spaces():
-    spaces = " " * 50_000
-    started = time.perf_counter()
-    meeting_memo.read("다음 회의" + spaces + "회의실" + spaces + "장소")
-    meeting_memo.false_absences(
-        [_sec("다음 회의", "장소" + spaces + "자료에" + spaces + "없음")], TUTOR)
-    meeting_memo.decisions("안건: " + spaces + "확정" + spaces)
-    stated_meeting.untraced("알" + spaces + "수 없" + spaces + "해석하는", SALES)
-    assert time.perf_counter() - started < 0.5
+def test_the_memo_checks_finish_on_a_long_run_of_spaces(linear_scan):
+    def run(n):
+        spaces = " " * n
+        meeting_memo.read("다음 회의" + spaces + "회의실" + spaces + "장소")
+        meeting_memo.false_absences(
+            [_sec("다음 회의", "장소" + spaces + "자료에" + spaces + "없음")], TUTOR)
+        meeting_memo.decisions("안건: " + spaces + "확정" + spaces)
+        stated_meeting.untraced("알" + spaces + "수 없" + spaces + "해석하는", SALES)
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)

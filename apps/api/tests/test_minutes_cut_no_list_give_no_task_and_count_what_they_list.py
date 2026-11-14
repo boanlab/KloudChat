@@ -4,8 +4,6 @@ round 16 re-verify (reverify-x tc, tc2)."""
 
 from __future__ import annotations
 
-import time
-
 from test_minutes_say_only_what_the_memo_says import TUTOR
 
 from app.services import meeting_memo, report_checks, stated_meeting
@@ -89,10 +87,12 @@ def test_a_count_says_how_many_the_list_after_it_holds():
     assert meeting_memo.counted([_sec("행동 항목", apart)])[1] == 0
 
 
-def test_the_new_checks_finish_on_a_long_run_of_spaces():
-    gap = " " * 50_000
-    start = time.perf_counter()
-    stated_meeting.unowned_task(f"박민호가{gap}집행합니다.", TUTOR)
-    stated_meeting.consent_cut(f"합의한{gap}업무, 그리고 3건입니다.", f"합의한{gap}업무")
-    meeting_memo.counted([_sec("행동", f"다음{gap}3건입니다.\n\n- a\n- b")])
-    assert time.perf_counter() - start < 0.5
+def test_the_new_checks_finish_on_a_long_run_of_spaces(linear_scan):
+    def run(n):
+        gap = " " * n
+        stated_meeting.unowned_task(f"박민호가{gap}집행합니다.", TUTOR)
+        stated_meeting.consent_cut(f"합의한{gap}업무, 그리고 3건입니다.", f"합의한{gap}업무")
+        meeting_memo.counted([_sec("행동", f"다음{gap}3건입니다.\n\n- a\n- b")])
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)

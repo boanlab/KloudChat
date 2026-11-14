@@ -5,8 +5,6 @@ speaks of mails and next meetings."""
 
 from __future__ import annotations
 
-import time
-
 from test_minutes_say_only_what_the_memo_says import SALES, TUTOR
 
 from app.services import report_checks, stated_meeting
@@ -111,15 +109,17 @@ def test_the_skills_words_on_mails_and_next_meetings_are_no_memo():
     assert out[0]["content"] == "영업1팀 주간회의가 열렸습니다."
 
 
-def test_the_open_point_checks_finish_on_a_long_run_of_spaces():
-    spaces = " " * 50_000
-    started = time.perf_counter()
-    for text in (f"모두{spaces}담당{spaces}지정", f"확정{spaces}대로", f"지정{spaces}않",
-                 f"`{spaces}\n{spaces}\n`", f"-{spaces}제목:", f"오전{spaces}에",
-                 f"달라질{spaces}수{spaces}있"):
-        stated_meeting.untraced(text, SALES, rows=[("1", {"출장비"})])
-        stated_meeting.settle(text, text, [text], strong=False, material=SALES)
-    assert time.perf_counter() - started < 0.5
+def test_the_open_point_checks_finish_on_a_long_run_of_spaces(linear_scan):
+    def run(n):
+        spaces = " " * n
+        for text in (f"모두{spaces}담당{spaces}지정", f"확정{spaces}대로", f"지정{spaces}않",
+                     f"`{spaces}\n{spaces}\n`", f"-{spaces}제목:", f"오전{spaces}에",
+                     f"달라질{spaces}수{spaces}있"):
+            stated_meeting.untraced(text, SALES, rows=[("1", {"출장비"})])
+            stated_meeting.settle(text, text, [text], strong=False, material=SALES)
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
 
 
 def test_an_agent_asking_for_an_announcement_mail_keeps_its_subject_line():

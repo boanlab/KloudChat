@@ -268,9 +268,12 @@ test('report: stage list, evidence, marks, fill, rerun', { tag: '@phone' }, asyn
   await expect(page.getByText('회의록을 만들었습니다.')).toBeVisible({ timeout: 15_000 })
   const timeline = page.getByRole('button', { name: /보고서를 썼습니다/ }).first()
   if (phone) {
-    // The panel covers the transcript on a phone; the transcript is read first.
-    const close = panel(page).getByRole('button', { name: /닫기/ }).first()
-    if (await close.isVisible().catch(() => false)) await close.click()
+    // The panel (opened by `?artifact=`) covers the transcript on a phone; the transcript is
+    // read first. Wait for the panel to open before closing it: a check made before it opens
+    // finds nothing to close, and the panel then covers the timeline.
+    await expect(panel(page)).toBeVisible({ timeout: 15_000 })
+    await panel(page).getByRole('button', { name: /닫기/ }).first().click()
+    await expect(panel(page)).toBeHidden()
   }
   await timeline.click()
   const list = page.getByTestId('stage-list').first()

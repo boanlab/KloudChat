@@ -156,10 +156,11 @@ No services required.
 cd apps/web
 npm run test:e2e:ci                                                    # whole suite
 npx playwright test -c playwright.ci.config.ts e2e/publishing.spec.ts  # one file
-npx playwright test -c playwright.ci.config.ts --shard=1/4             # one CI shard
+E2E_SHARD=1/5 npx playwright test -c playwright.ci.config.ts           # one CI shard
 ```
 
-`playwright.ci.config.ts` is what CI runs, split over four jobs. It builds the
+`playwright.ci.config.ts` is what CI runs, split over five jobs by measured
+time (`E2E_SHARD`, `e2e/shard-weights.json`). It builds the
 app once, serves it with `vite preview` on port 5390 and stubs the API with
 route handlers, so no stack or account is needed. Projects are
 `<surface>/<viewport>`; [apps/web/README.md](../apps/web/README.md) has the
@@ -239,6 +240,45 @@ Three projects are defined — `desktop` (1440×900), `laptop` (1280×800) and
 
 **Watch the test fail before you fix the code.** A spec that passes identically
 before and after a change is guarding nothing.
+
+## CI
+
+`.github/workflows/ci.yml` runs one job per surface, so a red job names what broke:
+web lint/build, the five e2e shards, the HWP editor, the API (`ruff`, `pytest`), the
+user-guide build, `shellcheck`, compose validation and the image builds.
+
+**What a pull request runs.** The `Changes` job feeds the PR's files to
+`.github/ci/changes.sh`, which decides the jobs; `codeql.yml` uses the same script for
+its languages. A push to `main`, a manual run and a release run everything.
+
+| Change | Runs |
+|---|---|
+| `docs/`, root `*.md`, `LICENSE`, `NOTICE` | the API tests that read the docs (`test_documented_defaults.py`) |
+| `website/` | the user-guide build, the API tests that read it (`test_app_help.py`), CodeQL JS |
+| `apps/api/`, `apps/media/`, `mcp/` | the API job, CodeQL Python, that image; no e2e (the e2e suite stubs the API) |
+| `apps/print/` | the print image, CodeQL Python |
+| `apps/web/` | everything web, and the API job (its tests read web sources) |
+| workflows, compose files, the Makefile, anything else | everything |
+
+`shellcheck` and compose validation run on every change. Require only **`CI ok`**
+in branch protection: it is green when every job either passed or was skipped
+because the change did not need it.
+
+**Releases** (`release.yml`) publish images only for a commit whose CI run passed:
+on a push to `main` the `gate` job waits for that push's CI run instead of running
+the checks again. A manual release, or a tag on a commit CI never ran on, runs the
+checks itself first.
+
+**Flaky on CI, green locally?** A test that passes only on its retry is reported as
+flaky. Wait for a state (`expect(...).toBeVisible()`, `expect.poll`,
+`expect(...).toPass()`), not a time; bound a scan's speed with `linear_scan`, not
+seconds.
+
+**Before a PR**, run the same jobs on a clean copy of your commit. Maintainers keep a
+local mirror outside the repo that does this in containers with a runner's CPU
+(`ci-local.sh --changed` for the jobs your diff against `origin/main` needs, by the same
+`changes.sh`; `--full` for all of them); without it, `make check` and the commands above
+cover the same ground.
 
 ## Adding things
 

@@ -1,12 +1,14 @@
 name: CI
 
-# One job per app, so a red job names the surface that broke.
+# One job per app, so a red job names the surface that broke. A pull request runs the jobs its
+# files need (`changes`, mapped by .github/ci/changes.sh); a push to main, a manual run and the
+# release's own verify run everything. `CI ok` sums them up: the one check to require.
 on:
   push:
     branches: [main]
   pull_request:
   workflow_dispatch:
-  # The release workflow runs these same checks before it publishes an image.
+  # A manual release, or a tag on a commit CI never ran on, runs these same checks first.
   workflow_call:
 
 # A new push to a PR cancels the in-flight run; `main` keeps its full history.
@@ -18,8 +20,44 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.pick.outputs.api }}
+      web: ${{ steps.pick.outputs.web }}
+      site: ${{ steps.pick.outputs.site }}
+      images: ${{ steps.pick.outputs.images }}
+      images_any: ${{ steps.pick.outputs.images_any }}
+    steps:
+      # Full history: the diff base is not in a shallow clone.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Decide what to run
+        id: pick
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # Only a pull request is narrowed; main, manual runs and releases run everything.
+          if [ "$EVENT" != "pull_request" ] || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            echo "$EVENT: running everything"
+            .github/ci/changes.sh --all | tee -a "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # HEAD is the PR merged into its base, so this is exactly what the PR changes.
+          git diff --name-only "$BASE" "$HEAD" > "$RUNNER_TEMP/changed"
+          echo "Changed files:"; sed 's/^/  /' "$RUNNER_TEMP/changed"
+          .github/ci/changes.sh < "$RUNNER_TEMP/changed" | tee -a "$GITHUB_OUTPUT"
+
   web:
     name: Web · lint, typecheck, build
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -27,14 +65,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v7
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: apps/web/package-lock.json
-
-      # `ci`: the lockfile is the contract.
-      - run: npm ci --no-audit --no-fund
+      - uses: ./.github/actions/web-setup
 
       - name: Lint
         run: npm run lint
@@ -51,42 +82,39 @@ jobs:
         run: npm run build
 
   # The fixture suite (`apps/web/playwright.ci.config.ts`): one build and one
-  # `vite preview` per job, the projects split over four jobs. Each job builds for
-  # itself: `vite build` is shorter than passing `dist/` between jobs.
+  # `vite preview` per job, the projects split over five jobs by their measured time
+  # (`E2E_SHARD`, apps/web/e2e/shard-weights.json). Each job builds for itself: `vite build`
+  # is shorter than passing `dist/` between jobs.
   web-e2e:
     name: Web · e2e ${{ matrix.shard }}
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        shard: [1/4, 2/4, 3/4, 4/4]
+        shard: [1/5, 2/5, 3/5, 4/5, 5/5]
     defaults:
       run:
         working-directory: apps/web
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v7
+      - uses: ./.github/actions/web-setup
         with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: apps/web/package-lock.json
-
-      - run: npm ci --no-audit --no-fund
+          browser: 'true'
 
       # The type check runs once, in the job above.
       - name: Build
         run: npx vite build
-
-      - name: Install test browser
-        run: npx playwright install --with-deps chromium
 
       # One retry: a test that passes only on retry is reported as flaky (a warning
       # annotation and the HTML report), not hidden.
       - name: Test
         env:
           E2E_PREBUILT: '1'
-        run: npx playwright test --config playwright.ci.config.ts --shard=${{ matrix.shard }}
+          E2E_SHARD: ${{ matrix.shard }}
+        run: npx playwright test --config playwright.ci.config.ts
 
       - name: Upload report and traces
         if: failure()
@@ -101,6 +129,8 @@ jobs:
   # suite skips that spec (no studio in its bundle).
   web-hwp:
     name: Web · HWP editor
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -108,19 +138,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v7
+      - uses: ./.github/actions/web-setup
         with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: apps/web/package-lock.json
-
-      - run: npm ci --no-audit --no-fund
+          browser: 'true'
 
       - name: Build the app and the editor
         run: npx vite build && ./rhwp/build-studio.sh dist/rhwp
-
-      - name: Install test browser
-        run: npx playwright install --with-deps chromium
 
       - name: Test
         env:
@@ -129,6 +152,8 @@ jobs:
 
   api:
     name: API · lint, tests
+    needs: changes
+    if: needs.changes.outputs.api != 'none'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -149,8 +174,17 @@ jobs:
       - name: Lint
         run: ruff check .
 
+      # `docs`: a change to docs/ or website/ only; the tests that read those.
       - name: Test
-        run: pytest -q
+        env:
+          SCOPE: ${{ needs.changes.outputs.api }}
+        run: |
+          if [ "$SCOPE" = docs ]; then
+            mapfile -t reads_docs < <(grep -lE 'parents\[[0-9]\] */ *"(docs|website)"|build_help' tests/*.py)
+            pytest -q "${reads_docs[@]}"
+          else
+            pytest -q
+          fi
 
   scripts:
     name: Scripts · shellcheck
@@ -161,87 +195,16 @@ jobs:
       # The only gate the hand-run integration scripts get. `error` only:
       # they pass unquoted ids and URLs by design.
       - name: shellcheck
-        run: shellcheck --severity=error scripts/*.sh scripts/lib/*.sh
-
-  image-changes:
-    name: Image · detect changes
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.pick.outputs.matrix }}
-      any: ${{ steps.pick.outputs.any }}
-    steps:
-      # Full history: the diff base is not in a shallow clone.
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - name: Decide what to build
-        id: pick
-        env:
-          EVENT: ${{ github.event_name }}
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-          HEAD: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-
-          build_all() {
-            echo "$1"
-            {
-              echo 'matrix={"include":[{"name":"api","context":"apps/api"},{"name":"print","context":"apps/print"},{"name":"web","context":"apps/web"},{"name":"media","context":"apps/media"}]}'
-              echo 'any=true'
-            } >> "$GITHUB_OUTPUT"
-          }
-
-          if [ "$EVENT" = "workflow_dispatch" ]; then
-            build_all "manual run — building all"; exit 0
-          fi
-          # No usable base: first commit, new branch, or force push.
-          if [ -z "${BASE:-}" ] \
-             || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
-             || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
-            build_all "no diff base — building all"; exit 0
-          fi
-
-          changed=$(git diff --name-only "$BASE" "$HEAD")
-          echo "Changed files:"; echo "$changed" | sed 's/^/  /'
-
-          if echo "$changed" | grep -qx '.github/workflows/ci.yml'; then
-            build_all "ci.yml changed — building all"; exit 0
-          fi
-
-          entries=""
-          if echo "$changed" | grep -q '^apps/api/'; then
-            entries='{"name":"api","context":"apps/api"}'
-          fi
-          if echo "$changed" | grep -q '^apps/print/'; then
-            [ -n "$entries" ] && entries="$entries,"
-            entries="$entries{\"name\":\"print\",\"context\":\"apps/print\"}"
-          fi
-          if echo "$changed" | grep -q '^apps/web/'; then
-            [ -n "$entries" ] && entries="$entries,"
-            entries="$entries{\"name\":\"web\",\"context\":\"apps/web\"}"
-          fi
-          if echo "$changed" | grep -q '^apps/media/'; then
-            [ -n "$entries" ] && entries="$entries,"
-            entries="$entries{\"name\":\"media\",\"context\":\"apps/media\"}"
-          fi
-
-          if [ -z "$entries" ]; then
-            echo "No image sources changed — nothing to build."
-            { echo 'matrix={"include":[]}'; echo 'any=false'; } >> "$GITHUB_OUTPUT"
-          else
-            echo "Building: $entries"
-            { echo "matrix={\"include\":[$entries]}"; echo 'any=true'; } >> "$GITHUB_OUTPUT"
-          fi
+        run: shellcheck --severity=error scripts/*.sh scripts/lib/*.sh .github/ci/*.sh
 
   images:
     name: Image · build ${{ matrix.name }}
-    needs: image-changes
-    if: needs.image-changes.outputs.any == 'true'
+    needs: changes
+    if: needs.changes.outputs.images_any == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.image-changes.outputs.matrix) }}
+      matrix: ${{ fromJSON(needs.changes.outputs.images) }}
     steps:
       - uses: actions/checkout@v7
 
@@ -281,3 +244,61 @@ jobs:
           docker compose -f docker-compose.yml -f docker-compose.build.yml config -q
           docker compose -f docker-compose.yml -f docker-compose.build.yml \
                          -f docker-compose.dev.yml config -q
+
+  # The user guide, built as docs.yml builds it for Pages (that workflow publishes on main).
+  site:
+    name: Docs · build site
+    needs: changes
+    if: needs.changes.outputs.site == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - run: npm ci --no-audit --no-fund
+
+      - run: npm run build
+
+  # The one check to require: green when every job either passed or was skipped because the
+  # change did not need it. A job that should have run and did not (or `changes` itself
+  # failing) is red.
+  ci-ok:
+    name: CI ok
+    if: always()
+    needs: [changes, web, web-e2e, web-hwp, api, scripts, images, compose, site]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check every needed job passed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+          needs = json.loads(os.environ["NEEDS"])
+          out = needs["changes"].get("outputs", {})
+          if needs["changes"]["result"] != "success":
+              sys.exit("changes did not run: nothing is known about what this change needs")
+          wanted = {
+              "web": out.get("web") == "true", "web-e2e": out.get("web") == "true",
+              "web-hwp": out.get("web") == "true", "api": out.get("api") != "none",
+              "images": out.get("images_any") == "true", "site": out.get("site") == "true",
+              "scripts": True, "compose": True,
+          }
+          bad = []
+          for job, need in wanted.items():
+              result = needs[job]["result"]
+              ok = result == "success" or (result == "skipped" and not need)
+              print(f"{job:8} {'needed' if need else 'skipped by changes':18} {result}")
+              if not ok:
+                  bad.append(job)
+          if bad:
+              sys.exit(f"not passed: {', '.join(bad)}")
+          PY

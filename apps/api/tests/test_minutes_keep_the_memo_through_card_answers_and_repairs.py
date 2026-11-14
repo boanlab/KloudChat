@@ -6,8 +6,6 @@ missing, and a row written twice goes. Shapes from the round 16 re-verify (tc, t
 
 from __future__ import annotations
 
-import time
-
 from test_minutes_say_only_what_the_memo_says import SALES, TUTOR
 
 from app.pipeline.bundle import Bundle, Material, Request, Spec
@@ -136,10 +134,12 @@ def test_a_row_written_twice_goes_and_the_fuller_one_stays():
     assert meeting_memo.dedupe_rows([_sec("실행 항목", two)])[1] == 0
 
 
-def test_the_new_patterns_finish_on_long_spaces():
-    spaces = " " * 50_000
-    start = time.perf_counter()
-    meeting_memo.of_request(f"메모{spaces}\n\n덧붙인 조건:\n- {spaces}쓴다")
-    meeting_memo.false_dues([_sec("실행 항목", f"기한{spaces}없음")], TUTOR)
-    stated_meeting.untraced(f"기준일{spaces}을 바탕으로 동의{spaces}, 합의{spaces}.", TUTOR)
-    assert time.perf_counter() - start < 0.5
+def test_the_new_patterns_finish_on_long_spaces(linear_scan):
+    def run(n):
+        spaces = " " * n
+        meeting_memo.of_request(f"메모{spaces}\n\n덧붙인 조건:\n- {spaces}쓴다")
+        meeting_memo.false_dues([_sec("실행 항목", f"기한{spaces}없음")], TUTOR)
+        stated_meeting.untraced(f"기준일{spaces}을 바탕으로 동의{spaces}, 합의{spaces}.", TUTOR)
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)

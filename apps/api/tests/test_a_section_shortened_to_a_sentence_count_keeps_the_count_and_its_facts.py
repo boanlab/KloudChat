@@ -4,8 +4,6 @@ in the reply."""
 
 from __future__ import annotations
 
-import time
-
 import pytest
 
 from app.pipeline import revise_stages, save_stages
@@ -33,7 +31,7 @@ def test_the_sentence_count_an_ask_names_is_read(words, asked):
     assert revise.sentences_asked(words) == asked
 
 
-def test_a_shortened_section_is_checked_for_its_count_and_facts():
+def test_a_shortened_section_is_checked_for_its_count_and_facts(linear_scan):
     assert revise.sentence_count(BEFORE) == 3 and revise.sentence_count(ONE) == 1
     # a list row is not a sentence
     assert revise.sentence_count("5.5% 올랐다. 「확정」이다.」\n- 남은 일") == 2
@@ -45,10 +43,12 @@ def test_a_shortened_section_is_checked_for_its_count_and_facts():
     assert faults[0] == ("The section must be exactly 2 sentences of its own content; the last "
                          "version had 1")
     assert "5%, 4%" in faults[1]
-    started = time.monotonic()
-    revise.sentences_asked("두" + " " * 50000 + "문장")
-    revise.lost_facts("A" + " " * 50000, "1" + " " * 50000)
-    assert time.monotonic() - started < 0.5
+    def run(n):
+        revise.sentences_asked("두" + " " * n + "문장")
+        revise.lost_facts("A" + " " * n, "1" + " " * n)
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
 
 
 PARTS = [{"id": "s0", "heading": "개요", "content": "주간 보고입니다.", "format": "markdown"},
@@ -129,16 +129,18 @@ def test_facts_still_in_the_sections_table_are_not_called_dropped():
     assert revise.lost_facts(TABLED, CUT.split("\n\n")[0]) == ["4%", "A사", "목요일"]
 
 
-def test_the_ask_restated_in_the_section_is_taken_out_before_counting():
+def test_the_ask_restated_in_the_section_is_taken_out_before_counting(linear_scan):
     kept = revise.without_ask_echo(ECHOED)
     assert not kept.startswith("2절을") and revise.sentence_count(kept) == 2
     # a section that names another section by number is left alone
     assert revise.without_ask_echo("자세한 일정은 3절에 정리했습니다.") == (
         "자세한 일정은 3절에 정리했습니다.")
-    started = time.monotonic()
-    revise.without_ask_echo("2절 " + " " * 50000 + "문장")
-    revise.added_facts("1" + " " * 50000, "2" + " " * 50000, "")
-    assert time.monotonic() - started < 0.5
+    def run(n):
+        revise.without_ask_echo("2절 " + " " * n + "문장")
+        revise.added_facts("1" + " " * n, "2" + " " * n, "")
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
 
 
 def test_a_figure_or_date_from_nowhere_is_a_fault():
@@ -166,15 +168,17 @@ WITH_TABLE = ("3분기 팀 매출은 41.2억원으로 목표 40억 대비 103%�
               "| 월 | 대성유통 1차 미팅 (5% 인하 요구) |\n\n- 남은 일: CRM 병합")
 
 
-def test_only_prose_sentences_are_counted():
+def test_only_prose_sentences_are_counted(linear_scan):
     assert revise.sentence_count(WITH_TABLE) == 1
     faults = revise.shortening_faults(WITH_TABLE, WITH_TABLE, ASK)
     assert faults[0].endswith("the last version had 1")
-    started = time.monotonic()
-    revise.sentence_count("**" + "a" * 50000)
-    revise.sentence_count("표 1" + " " * 50000)
-    revise.sentence_count("-" + " " * 50000 + "x")
-    assert time.monotonic() - started < 0.5
+    def run(n):
+        revise.sentence_count("**" + "a" * n)
+        revise.sentence_count("표 1" + " " * n)
+        revise.sentence_count("-" + " " * n + "x")
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
 
 
 def test_a_section_written_as_a_list_only_counts_its_top_level_rows():
@@ -187,16 +191,18 @@ def test_a_section_written_as_a_list_only_counts_its_top_level_rows():
     assert revise.count_met(rows, 2)
 
 
-def test_figures_are_real_figures_and_money_is_compared_as_money():
+def test_figures_are_real_figures_and_money_is_compared_as_money(linear_scan):
     said = [s for *_, s in deck.figures_in("표 1의 항목, 2.7억원입니다, 3곳에서, 목표 40억 대비")]
     assert said == ["2.7억", "3곳", "40억"]
     assert revise.lost_facts("전분기 38.5억 원", "전분기 38억 5천만 원보다 늘었다") == []
     assert revise.lost_facts("전분기 38.5억 원", "전분기 3,850,000,000원") == []
     assert revise.lost_facts("전분기 38.5억원보다", "38.5 억 원") == []
     assert revise.lost_facts("전분기 38.5억 원", "전분기 38억 원") == ["38.5억"]
-    started = time.monotonic()
-    deck.amounts_in("1억" + " " * 50000 + "5")
-    assert time.monotonic() - started < 0.5
+    def run(n):
+        deck.amounts_in("1억" + " " * n + "5")
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
 
 
 #: reverify-u t1e 2절: prose, a table and a picture the writer is not shown
@@ -214,7 +220,7 @@ ISSUES_TWO = ("대성유통 단가 인하(5% 요구)에 대해 최대 4% 허용 
               "중복 거래처 37건의 병합 작업은 현재 60% 진행되었습니다.")
 
 
-def test_a_sentence_saying_more_than_its_tables_figures_is_no_echo():
+def test_a_sentence_saying_more_than_its_tables_figures_is_no_echo(linear_scan):
     from app.services import report
 
     body = f"{ISSUES_TWO}\n\n{OPTIONS}"
@@ -222,19 +228,22 @@ def test_a_sentence_saying_more_than_its_tables_figures_is_no_echo():
     # a sentence that only reads the rows back still goes
     echo = f"첫 문장입니다. 5% 인하와 4% 인하 두 안이 있습니다.\n\n{OPTIONS}"
     assert "두 안이" not in report.trim_table_echo(echo)
-    started = time.monotonic()
-    report._says_more("5%, " * 20000)
-    assert time.monotonic() - started < 0.5
+    def run(n):
+        report._says_more("5%, " * n)
+
+    linear_scan(run, 5_000)
 
 
-def test_a_rewrite_keeps_the_parts_pictures_unless_their_removal_is_asked():
+def test_a_rewrite_keeps_the_parts_pictures_unless_their_removal_is_asked(linear_scan):
     kept = revise.keep_pictures(ISSUES, f"{ISSUES_TWO}\n\n{OPTIONS}", ASK)
     assert kept.endswith(PICTURE) and kept.count(PICTURE) == 1
     assert revise.keep_pictures(ISSUES, kept, ASK) == kept
     assert PICTURE not in revise.keep_pictures(ISSUES, ISSUES_TWO, "2절 그림을 빼줘")
-    started = time.monotonic()
-    revise.keep_pictures("![a](b)\n" + " " * 50000, " " * 50000, ASK)
-    assert time.monotonic() - started < 0.5
+    def run(n):
+        revise.keep_pictures("![a](b)\n" + " " * n, " " * n, ASK)
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
 
 
 @pytest.mark.asyncio
@@ -309,7 +318,7 @@ async def test_a_retry_off_the_count_the_first_version_met_does_not_replace_it(m
     assert doc.counted == [] and doc.dropped == ["2절 A사(확정 아님)"]
 
 
-def test_a_count_still_off_is_met_by_joining_or_splitting_clauses():
+def test_a_count_still_off_is_met_by_joining_or_splitting_clauses(linear_scan):
     three = ("진행 중 이슈는 단가 결재입니다. 물류팀 SLA 협의가 필요합니다. CRM 병합은 다음 주에 "
              "마칩니다.")
     assert revise.fit_count(three, 2) == (
@@ -325,13 +334,14 @@ def test_a_count_still_off_is_met_by_joining_or_splitting_clauses():
     assert revise.sentence_count(revise.fit_count(paragraphs, 2)) == 2
     plain = "요청 드립니다. 확인 바랍니다. 끝."
     assert revise.fit_count(plain, 2) == plain
-    started = time.monotonic()
-    revise.fit_count("하며, " * 10000, 2)
-    revise.fit_count("합니다. " * 2000, 1)
-    assert time.monotonic() - started < 0.5
+    def run(n):
+        revise.fit_count("하며, " * n, 2)
+        revise.fit_count("합니다. " * (n // 5), 1)
+
+    linear_scan(run, 2_500)
 
 
-def test_a_day_the_shortening_took_out_is_named_with_the_figures():
+def test_a_day_the_shortening_took_out_is_named_with_the_figures(linear_scan):
     """reverify-v t1: 「병합 완료 목표 일자는 다음 주 수요일」 went with the shortening, unnamed."""
     before = ("CRM 중복 거래처 37건 병합을 60%까지 진행했습니다. 병합 완료 목표 일자는 다음 주 "
               "수요일입니다. 금요일에는 물류팀과 점검합니다.")
@@ -342,10 +352,12 @@ def test_a_day_the_shortening_took_out_is_named_with_the_figures():
     assert revise.lost_facts("차주 화요일 회의", "다음주 화요일 회의") == []
     assert revise.lost_facts("Due next Wednesday.", "Due soon.") == ["next Wednesday"]
     assert revise.lost_facts("Paid per week.", "Paid.") == []
-    started = time.monotonic()
-    revise.lost_facts("다음" + " " * 50000 + "주", "x")
-    revise.lost_facts("next" + " " * 50000 + "week", "x")
-    assert time.monotonic() - started < 0.5
+    def run(n):
+        revise.lost_facts("다음" + " " * n + "주", "x")
+        revise.lost_facts("next" + " " * n + "week", "x")
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
 
 
 #: reverify-w t1: the claims said done, gone from the two-sentence rewrite
@@ -354,13 +366,15 @@ DONE = ("기존 거래처 한솔마트의 재고 클레임 2건은 반품 420만
         "마무리할 예정입니다.")
 
 
-def test_a_thing_said_done_that_the_shortened_section_no_longer_says_is_named():
+def test_a_thing_said_done_that_the_shortened_section_no_longer_says_is_named(linear_scan):
     assert revise.lost_facts(DONE, "한솔마트 클레임 2건(반품 420만원)과 A사 단가를 정리했습니다. "
                              "CRM은 수요일 예정입니다.") == ["이번 주", "처리 완료",
                                                             "A사의 「확정 아님」 표시"]
     # still said done in other words, or not done at all (확정된 값은 아닙니다, 마무리할 예정)
     assert revise.lost_facts(DONE, DONE.replace("처리를 완료했습니다", "처리했습니다")) == []
     assert revise.lost_facts(DONE, DONE.replace("처리를 완료했습니다", "모두 완료됐습니다")) == []
-    started = time.monotonic()
-    revise._lost_done("가나" + " " * 50000 + "완료했", "")
-    assert time.monotonic() - started < 0.5
+    def run(n):
+        revise._lost_done("가나" + " " * n + "완료했", "")
+
+    # up to the 50,000 spaces this always read
+    linear_scan(run, 12_500)
