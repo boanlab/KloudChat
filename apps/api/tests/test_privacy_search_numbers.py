@@ -12,16 +12,19 @@ PAN = "4111111111111111"
 KEY = "sk-syntheticabcdefghijklmnopqrstuvwxyz"
 
 
-def test_year_header_with_many_tabs_has_bounded_masking_time(cpu_seconds):
-    script = (
+def test_year_header_with_many_tabs_has_bounded_masking_time(linear_scan):
+    # growth first, in a child process: a scan that backtracks fails here instead of hanging
+    linear_scan(
         "from app.services import governance\n"
-        "# measure\n"
-        "text = '연도' + '\\t' * 100_000 + 'not-a-year\\n' + " + repr(ARTICLE) + "\n"
-        "assert governance.mask(text, scope='tool') == (text, 0)\n"
-        "assert governance.findings({'tool_output': text}, scope='tool') == []\n"
+        "def run(n):\n"
+        "    text = '연도' + '\\t' * n + 'not-a-year\\n' + " + repr(ARTICLE) + "\n"
+        "    governance.mask(text, scope='tool')\n"
+        "    governance.findings({'tool_output': text}, scope='tool')\n",
+        25_000,
     )
-    # linear masking takes milliseconds; the tab run's backtracking took minutes
-    assert cpu_seconds(script) < 2.0
+    text = "연도" + "\t" * 100_000 + "not-a-year\n" + ARTICLE
+    assert governance.mask(text, scope="tool") == (text, 0)
+    assert governance.findings({"tool_output": text}, scope="tool") == []
 
 
 def _assert_consistent(text, *, scope, expected, count, protected=None, legacy=False):

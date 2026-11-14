@@ -21,6 +21,7 @@ from app.core.db import get_session
 from app.core.deps import current_user
 from app.models.chat import ChatSession, Message, PipelineRun, Role, SessionKind
 from app.models.governance import Governance
+from app.models.shelf import SourceSelection
 from app.models.user import AuditEvent, User
 from app.models.workspace import Agent, Artifact, Project, Skill, StoredFile
 from app.routers import sessions
@@ -320,7 +321,7 @@ async def engine():
                 metadata.create_all,
                 tables=[metadata.tables[m.__tablename__] for m in (
                     User, Agent, ChatSession, Message, StoredFile, PipelineRun, Skill, Artifact,
-                    Project, AuditEvent)],
+                    Project, AuditEvent, SourceSelection)],
             )
         yield engine
     finally:

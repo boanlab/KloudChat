@@ -42,6 +42,8 @@ async def stack(tmp_path, monkeypatch):
         return AsyncSession(engine, expire_on_commit=False)
 
     monkeypatch.setattr(pptx_tools, "SessionLocal", local)
+    # the deck's project look has its own tests; these tables hold no people or projects
+    monkeypatch.delattr(pptx_doc, "project_look")
     app = FastAPI()
     app.include_router(pptx_router.router)
     app.include_router(workspace.router)

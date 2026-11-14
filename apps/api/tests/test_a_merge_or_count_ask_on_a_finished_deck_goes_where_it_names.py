@@ -5,7 +5,6 @@ figures a drawn diagram shows count as shown."""
 
 from __future__ import annotations
 
-import time
 from types import SimpleNamespace
 
 import pytest
@@ -35,17 +34,21 @@ def test_a_merge_of_one_slides_items_targets_that_slide():
     assert deck.items_asked("merge them into a single bullet") == 1
 
 
-def test_an_english_count_ask_reshapes_the_deck():
+def test_an_english_count_ask_reshapes_the_deck(linear_scan):
     plan = revise.count_change(revise.Plan(scope="parts", targets=[]), ["a"] * 6,
                                "Shrink to 3 slides")
     assert plan.scope == "outline" and "3장" in plan.note
     assert revise.count_change(revise.Plan(scope="parts"), ["a"] * 6,
                                "Make slide 3 shorter").scope == "parts"
-    started = time.monotonic()
-    revise.count_change(revise.Plan(scope="parts"), ["a"] * 6, "shrink" + " a" * 25000)
-    revise.asks_restructure("merge " + " " * 50000 + "items")
-    deck.items_asked("into" + " " * 50000 + "one")
-    assert time.monotonic() - started < 0.5
+    # how the scans grow on long runs of spaces, not a wall-clock bound a busy runner breaks
+    linear_scan(
+        "from app.services import deck, revise\n"
+        "def run(n):\n"
+        "    revise.count_change(revise.Plan(scope='parts'), ['a'] * 6, 'shrink' + ' a' * n)\n"
+        "    revise.asks_restructure('merge ' + ' ' * (2 * n) + 'items')\n"
+        "    deck.items_asked('into' + ' ' * (2 * n) + 'one')\n",
+        5_000,
+    )
 
 
 @pytest.mark.asyncio
@@ -98,14 +101,18 @@ def test_a_drawn_diagrams_figures_are_shown():
     assert deck.lost_figures(old[0], new[0]) == []
 
 
-def test_a_label_line_describing_the_table_is_a_leak():
+def test_a_label_line_describing_the_table_is_a_leak(linear_scan):
     text = "| 사업 | 상태 |\n|---|---|\n| CRM | 진행 중 |\n\n상표: 업무 현황을 정리한 표"
     kept = internal_words.strip_work_notes(text, request="", document=True)
     assert "상표" not in kept and "| CRM | 진행 중 |" in kept
     assert "구분: 매출" in internal_words.strip_work_notes("구분: 매출이 늘었다.", request="",
                                                           document=True)
-    # CPU time, not wall time: a busy runner made the 0.5 s wall bound flake. A linear scan of
-    # 50,000 spaces takes milliseconds; the backtracking this guards against took seconds.
-    started = time.process_time()
-    internal_words.strip_work_notes("상표:" + " " * 50000 + "표", request="", document=True)
-    assert time.process_time() - started < 0.5
+    # how the scan grows, not a wall-clock bound a busy runner breaks: a label line followed by
+    # a long run of spaces must cost linear time
+    linear_scan(
+        "from app.services import internal_words\n"
+        "def run(n):\n"
+        "    text = '상표:' + ' ' * n + '표'\n"
+        "    internal_words.strip_work_notes(text, request='', document=True)\n",
+        5_000,
+    )

@@ -56,15 +56,23 @@ def _no_ambient_search(monkeypatch):
     monkeypatch.setattr(settings_store, "tools_config", without_search)
 
 
-def _cpu_seconds(script: str, *, hang_sec: float = 120.0) -> float:
-    """CPU time `script` spends after its imports, run in a child process. Wall time on a busy
-    runner is not the scan's cost (it flaked across CI mirrors); CPU time is, and the child's
-    `hang_sec` timeout still stops a scan that never ends without hanging the runner. The
-    script marks where measuring starts with a line `# measure`."""
-    head, _, body = script.partition("# measure")
+def _growth(script: str, n: int, *, hang_sec: float = 300.0) -> float:
+    """How a scan's CPU time grows when its input grows fourfold: `script` defines `run(n)`;
+    a child process times `run(n)` and `run(4 * n)` (best of two each, CPU time) and this
+    returns the ratio, about 4 for a linear scan and about 16 for a quadratic one. Wall time
+    on a busy runner (and even CPU time across runners) is not the scan's cost, so the bound
+    is on the growth; the child's `hang_sec` timeout still stops a scan that never ends."""
     wrapped = (
-        f"{head}\nimport time as _clock\n_started = _clock.process_time()\n{body}\n"
-        "print(_clock.process_time() - _started)\n"
+        f"{script}\nimport time as _clock\n"
+        "def _cost(size):\n"
+        "    best = None\n"
+        "    for _ in range(2):\n"
+        "        started = _clock.process_time()\n"
+        "        run(size)\n"
+        "        spent = _clock.process_time() - started\n"
+        "        best = spent if best is None else min(best, spent)\n"
+        "    return max(best, 1e-4)\n"
+        f"print(_cost({4 * n}) / _cost({n}))\n"
     )
     done = subprocess.run(
         [sys.executable, "-c", wrapped], check=True, capture_output=True, text=True,
@@ -73,7 +81,17 @@ def _cpu_seconds(script: str, *, hang_sec: float = 120.0) -> float:
     return float(done.stdout.strip().splitlines()[-1])
 
 
+#: below quadratic growth (16) with room for noise above linear (4)
+LINEAR_GROWTH = 8.0
+
+
 @pytest.fixture
-def cpu_seconds():
-    """`cpu_seconds(script)`: CPU seconds the script's measured part took (`_cpu_seconds`)."""
-    return _cpu_seconds
+def linear_scan():
+    """`linear_scan(script, n)`: fails unless the script's `run` grows linearly from n to 4n
+    (`_growth` under `LINEAR_GROWTH`)."""
+
+    def check(script: str, n: int) -> None:
+        ratio = _growth(script, n)
+        assert ratio < LINEAR_GROWTH, f"CPU time grew {ratio:.1f}x for 4x the input"
+
+    return check
