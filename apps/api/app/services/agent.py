@@ -1650,6 +1650,12 @@ def _without_duplicate_paragraphs(text: str, *, minimum: int = 80) -> tuple[str,
     return "".join(pieces), removed
 
 
+def _states_operands(request: str | None) -> bool:
+    """The request carries two or more numbers of its own (원금 3,000만 원, 연 4.2%, 7년):
+    a calculation can go on without a read supplying them."""
+    return len(re.findall(r"\d[\d,.]*", request or "")) >= 2
+
+
 async def _run_tool(tool: Tool, arguments: str, ctx: ToolContext) -> ToolResult:
     try:
         parsed = json.loads(arguments or "{}")
@@ -2582,10 +2588,19 @@ async def run_turn(
             if prerequisite_batch:
                 if result.failed or result.empty or not result.content.strip():
                     result.failed = True
-                    result.final_text = (
-                        "계산에 앞서 필요한 자료를 확인하지 못해 답을 확정할 수 없습니다. "
-                        "확인할 수 있는 수치와 조건을 제공해 주세요."
-                    )
+                    if _states_operands(ctx.request):
+                        # the request gives its own numbers: a read that found nothing (an
+                        # unrelated search) does not end it; the calculator runs on those
+                        result.final_text = None
+                        result.content = (
+                            "No usable operands came from this read. Calculate with the numbers "
+                            "the request itself states, and say which ones, if any, are missing."
+                        )
+                    else:
+                        result.final_text = (
+                            "계산에 앞서 필요한 자료를 확인하지 못해 답을 확정할 수 없습니다. "
+                            "확인할 수 있는 수치와 조건을 제공해 주세요."
+                        )
                 else:
                     # Reads supply operands but can't end a numeric answer.
                     result.final_text = None
