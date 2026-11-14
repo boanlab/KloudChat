@@ -114,6 +114,7 @@ from app.services import (
     printing,
     report_export,
     richtext,
+    search_consent,
     settings_store,
     skill_import,
     skill_packages,
@@ -124,6 +125,7 @@ from app.services import (
 from app.services import deck as deck_service
 from app.services import design as design_service
 from app.services import files as file_service
+from app.services import governance as governance_service
 from app.services import litellm as litellm_service
 from app.services import models as model_service
 from app.services import page as page_service
@@ -452,6 +454,14 @@ async def patch_project(project_id: str, payload: ProjectPatch, user: CurrentUse
         await _validate_design_system_id(db, user, changes["design_system_id"])
     if "render_templates" in changes:
         changes["render_templates"] = _validated_render_templates(changes["render_templates"])
+    if changes.get("strict_local_web_search") is not None:
+        # a project only tightens the admin's setting
+        admin = (await governance_service.current(force=True)).strict_local_web_search
+        if changes["strict_local_web_search"] not in search_consent.project_choices(admin):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="strict_local_web_search_looser_than_admin",
+            )
     for field, value in changes.items():
         setattr(project, field, value)
     project.updated_at = utcnow()

@@ -725,6 +725,8 @@ async def auth_config(db: DbSession):
         "privacy": {
             "externalDataGuard": policy.external_data_guard,
             "allowUserRawExternal": (policy.allow_user_raw_external and not policy.pii_masking),
+            # a project's setting may only be stricter (`search_consent.project_choices`)
+            "strictLocalWebSearch": getattr(policy, "strict_local_web_search", None) or "ask",
         },
         "idleTimeoutMinutes": policy.idle_timeout_minutes,
         "password": {"minLength": PASSWORD_MIN_LENGTH},

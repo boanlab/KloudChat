@@ -1031,16 +1031,22 @@ export function Composer({
   const model = models.find(
     (candidate) => candidate.id === effectiveModelId(session, kind, agents, modelByKind),
   )
-  // A strict-local model gets no network tool; the control follows the turn, not the stored preference.
-  const searchBlocked = Boolean(model?.strictLocal)
-  const effectiveWebSearch = webSearch && !searchBlocked
-  const sentWebSearch: WebSearchSetting = !effectiveWebSearch
+  // A strict-local model gets no network tool: it asks before any query leaves (or sends queries
+  // alone), unless the admin turned that off; the control follows the turn, not the preference.
+  const strictLocalWebSearch = useStore((s) => s.strictLocalWebSearch)
+  const searchBlocked = Boolean(model?.strictLocal) && strictLocalWebSearch === 'off'
+  const searchAsks = Boolean(model?.strictLocal) && !searchBlocked
+  const sendsWebSearch = webSearch && !searchBlocked
+  // a skill's own `web_search` never runs inside the boundary
+  const effectiveWebSearch = sendsWebSearch && !searchAsks
+  const sentWebSearch: WebSearchSetting = !sendsWebSearch
     ? false
     : webSearchMode === 'auto'
       ? 'auto'
       : true
   // 자동 is the default and needs no chip; 항상 and 끔 do, and so does a model that blocks search.
-  const webSearchChip = canWebSearch && (searchBlocked ? webSearch : webSearchMode !== 'auto')
+  const webSearchChip = canWebSearch &&
+    (searchBlocked || searchAsks ? webSearch : webSearchMode !== 'auto')
   const agentSkillAllowlist = sessionAgent?.skillIds
   const agentToolAllowlist = sessionAgent?.tools
   const recommended = new Set(project?.skillIds ?? [])
@@ -1076,7 +1082,7 @@ export function Composer({
       }
     }
     if (skill.requiredTools.includes('web_search') && !effectiveWebSearch) {
-      return searchBlocked
+      return searchBlocked || searchAsks
         ? t('strict-local 모델은 웹 검색 도구를 쓸 수 없습니다.')
         : t('먼저 웹 검색을 켜야 합니다.')
     }
@@ -2383,6 +2389,14 @@ export function Composer({
                 <Badge tone="warn">
                   <Globe size={11} />
                   {t('웹 검색 안 함 · 이 모델은 외부에 연결하지 않습니다')}
+                </Badge>
+              ) : searchAsks ? (
+                // strict-local: the model may ask; only queries would leave, after the card
+                <Badge tone="accent" title={t('검색이 필요하면 밖으로 나갈 검색어를 보여 주고 묻습니다. 자료 내용은 보내지 않습니다.')}>
+                  <Globe size={11} />
+                  {strictLocalWebSearch === 'allow'
+                    ? t('웹 검색: 검색어만 보냄 (strict-local)')
+                    : t('웹 검색: 보내기 전에 묻기 (strict-local)')}
                 </Badge>
               ) : (
                 <Badge tone={webSearchMode === 'on' ? 'accent' : 'neutral'}>

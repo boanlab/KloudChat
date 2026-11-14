@@ -46,6 +46,9 @@ class Project(SQLModel, table=True):
     render_templates: dict | None = Field(default=None, sa_column=_json(nullable=True))
     #: index collection for project knowledge and uploads; unguessable
     index_key: str | None = Field(default=None)
+    #: web search in this project's strict-local turns, stricter than or as the admin's
+    #: (`search_consent`); null follows the admin
+    strict_local_web_search: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
     updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
 

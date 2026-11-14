@@ -66,6 +66,11 @@ class Governance(SQLModel, table=True):
         default_factory=lambda: settings.internal_data_strict_local_default,
         sa_column=Column(Boolean, nullable=False, server_default=text("true")),
     )
+    #: web search in a strict-local turn: `ask` each time (default), `allow` (queries only, no
+    #: card) or `off`; a project may only make it stricter (`search_consent`)
+    strict_local_web_search: str = Field(
+        default="ask", sa_column=Column(String, nullable=False, server_default="ask")
+    )
     #: outline call only; empty: surface model
     outline_model_id: str | None = Field(
         default_factory=lambda: settings.outline_model_default or None,

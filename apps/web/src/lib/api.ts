@@ -34,6 +34,8 @@ import type {
   PrivacyRouting,
   ReportArtifact,
   TurnOutput,
+  SearchConsentAnswer,
+  SearchConsentMode,
   Session,
   SessionKind,
   SessionMade,
@@ -622,7 +624,12 @@ export const authConfig = {
       /** Where 관리자에게 문의 goes. Empty when nobody can be named. */
       contactEmail: string
       enabledKinds: string[]
-      privacy: { externalDataGuard: boolean; allowUserRawExternal: boolean }
+      privacy: {
+        externalDataGuard: boolean
+        allowUserRawExternal: boolean
+        /** The admin's strict-local web-search setting; absent from older servers. */
+        strictLocalWebSearch?: SearchConsentMode
+      }
       /** Idle minutes before sign-out; 0 off. */
       idleTimeoutMinutes: number
       /** What the signup form should say before somebody is refused. */
@@ -942,6 +949,8 @@ export interface GovernancePolicy {
   externalDataGuard: boolean
   /** A turn carrying internal material (attachments, project files, memories) runs strict-local. */
   internalDataStrictLocal: boolean
+  /** Web search in a strict-local turn: ask each time, allow (queries only) or never. */
+  strictLocalWebSearch: SearchConsentMode
   allowUserRawExternal: boolean
   privacySafeModelIds: string[]
   intentFilter: boolean
@@ -1458,6 +1467,8 @@ export interface ProjectRow {
   designSystemId: string | null
   /** Surface → template; sent whole, a missing key means the built-in track. */
   renderTemplates: Record<string, string>
+  /** Web search in this project's strict-local turns; null follows the admin. */
+  strictLocalWebSearch?: SearchConsentMode | null
   files: FileRow[]
   sessionIds: string[]
   createdAt: string
@@ -2357,6 +2368,8 @@ export type StreamEvent =
   | ({ type: 'tool_result_answer' } & ToolResultAnswer)
   /** `messageId` is the stored answer's id — the one every later call must use. */
   | { type: 'done'; credits?: number; messageId?: string }
+  /** A strict-local report or deck stopped at the search card before its research. */
+  | { type: 'search_consent'; messageId: string; content: string; routing: PrivacyRouting }
 
 /** The document open beside the chat when a turn is sent, at the version the person sees. */
 export interface OpenArtifact {
@@ -2395,6 +2408,8 @@ export async function* streamSession(
     retryOf?: string
     /** The document open in the panel: chat edits and the office tools work on it. */
     openArtifact?: OpenArtifact
+    /** The person's answer to the search card on the answer `retryOf` reruns. */
+    searchConsent?: SearchConsentAnswer
   },
   signal?: AbortSignal,
 ): AsyncGenerator<StreamEvent> {

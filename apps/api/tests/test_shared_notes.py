@@ -54,7 +54,8 @@ _DDL = (
         render_templates TEXT,
         created_at DATETIME,
         updated_at DATETIME,
-        index_key TEXT
+        index_key TEXT,
+        strict_local_web_search TEXT
     )
     """,
     """

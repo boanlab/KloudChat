@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import Field, field_validator
 
@@ -331,6 +331,18 @@ class OpenArtifact(Wire):
     version: int | None = Field(default=None, ge=1)
 
 
+class SearchConsentAnswer(Wire):
+    """The person's answer to a strict-local turn's search card (`search_consent`)."""
+
+    #: the paused answer that showed the card
+    message_id: str = Field(max_length=64)
+    decision: Literal["allow", "deny"]
+    #: the queries as edited on the card; None sends the card's own
+    queries: list[Annotated[str, Field(max_length=200)]] | None = Field(default=None, max_length=5)
+    #: 「이 대화에서는 계속 허용」
+    remember: bool = False
+
+
 class SendMessage(Wire):
     content: str = Field(min_length=1, max_length=200_000)
     attachments: list[str] | None = None
@@ -367,6 +379,8 @@ class SendMessage(Wire):
     #: the document open beside the chat: chat edits and the office tools work on it, never
     #: on "the newest of its kind" (checked to be the person's and this conversation's)
     open_artifact: OpenArtifact | None = None
+    #: answer to the search card on the answer `retry_of` reruns (`search_consent`)
+    search_consent: SearchConsentAnswer | None = None
 
 
 class Transcription(Wire):

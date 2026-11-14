@@ -3012,6 +3012,45 @@ const EN: Record<string, string> = {
   'strict-local 모델로 전환': 'Switch to a strict-local model',
   'strict-local 안전 모델': 'Strict-local safe model',
   'strict-local로 보호됨': 'Kept strict-local',
+  '외부 검색 {n}회(허용)': '{n} outside search(es) (allowed)',
+  '외부 검색 안 함': 'No outside search',
+  '검색이 필요하면 밖으로 나갈 검색어를 보여 주고 묻습니다. 자료 내용은 보내지 않습니다.':
+    'When a search is needed, the queries that would leave are shown and you are asked first. No material is sent.',
+  '웹 검색: 검색어만 보냄 (strict-local)': 'Web search: queries only (strict-local)',
+  '웹 검색: 보내기 전에 묻기 (strict-local)': 'Web search: ask before sending (strict-local)',
+  '외부 검색 확인 대기': 'Outside search awaiting your answer',
+  '보낸 검색어': 'Queries sent',
+  '외부 검색 확인': 'Outside search check',
+  '이 질문에 답하려면 외부 검색이 필요합니다. 아래 검색어만 밖으로 나갑니다. 프로젝트 자료 내용은 보내지 않습니다.':
+    'This question needs an outside search. Only the queries below would leave; nothing from the project material is sent.',
+  '자료를 찾으려면 외부 검색이 필요합니다. 아래 검색어만 밖으로 나갑니다. 프로젝트 자료 내용은 보내지 않습니다.':
+    'Finding sources needs an outside search. Only the queries below would leave; nothing from the project material is sent.',
+  '검색어 {n}': 'Query {n}',
+  '검색어 빼기': 'Remove query',
+  '검색어 더하기': 'Add a query',
+  '고친 검색어도 보내기 전에 다시 검사합니다. 개인정보는 가리고, 비밀 값이나 자료 문장은 보내지 않습니다.':
+    'Edited queries are checked again before sending: personal data is masked, and secrets or sentences from the material are not sent.',
+  '보낼 검색어': 'Queries to send',
+  '보내지 않습니다.': 'Not sent.',
+  '비밀 값(주민번호·카드번호·API 키 등)이 들어 있어 보내지 않습니다.':
+    'Not sent: it contains a secret (ID number, card number, API key…).',
+  '자료의 문장을 그대로 담고 있어 보내지 않습니다.': 'Not sent: it copies a sentence from the material.',
+  '관리자가 막은 주제가 들어 있어 보내지 않습니다.': 'Not sent: it contains a topic the administrator blocked.',
+  '이 대화에서는 계속 허용': 'Keep allowing in this conversation',
+  '고친 검색어로 허용': 'Allow the edited queries',
+  '검색어 고치고 허용': 'Edit queries and allow',
+  '이번엔 자료만으로': 'Material only this time',
+  '답을 보내지 못했습니다. 다시 시도해 주세요.': 'Could not send your answer. Please try again.',
+  '답하지 않은 확인 요청입니다. 아무것도 보내지 않았습니다.': 'This request went unanswered. Nothing was sent.',
+  'strict-local 대화의 외부 검색': 'Outside search in strict-local conversations',
+  'strict-local 대화가 외부 정보를 필요로 할 때, 밖으로 나갈 검색어를 보여 주고 묻습니다. 프로젝트 자료 내용은 보내지 않으며, 프로젝트는 이보다 엄격하게만 정할 수 있습니다.':
+    'When a strict-local conversation needs outside information, it shows the search queries that would leave and asks. Project material is never sent; a project can only be stricter than this.',
+  '매번 묻기 (기본)': 'Ask each time (default)',
+  '매번 묻기': 'Ask each time',
+  '항상 허용(검색어만)': 'Always allow (queries only)',
+  '프로젝트 자료가 들어간 대화는 strict-local로 답합니다. 외부 정보가 필요할 때 검색어만 보낼지 정합니다. 관리자 설정보다 엄격하게만 바꿀 수 있습니다.':
+    'Conversations with project material answer strict-local. Choose whether queries alone may go out when outside information is needed. This can only be stricter than the administrator\'s setting.',
+  '관리자 설정 따름 ({mode})': 'Follow the administrator ({mode})',
   '가린 뒤 기존 모델 사용': 'Mask, then use the chosen model',
   '개인정보 전용': 'Privacy only',
   '개인정보가 감지된 요청': 'A request with personal data in it',
@@ -4908,6 +4947,7 @@ const EN_IN: Record<string, string> = {
   'hub|개요': 'Overview',
   'colour|직접 고르기': 'Pick a colour',
   'period|직접 지정': 'Custom range',
+  'searchConsent|허용': 'Allow',
 }
 
 export function translateIn(lang: Lang, context: string, text: string): string {

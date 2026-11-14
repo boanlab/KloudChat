@@ -2644,6 +2644,54 @@ artifact payloads and routing metadata) is deterministically masked with the
 `answer` scope described next, even when the inbound envelope was clean. Title
 generation and automatic memory receive only the masked turn text.
 
+**A strict-local turn asks before it searches** (`services/search_consent.py`). Dropping
+the search silently left the person unaware that a question about other work was answered
+from their own material alone, so a strict-local turn whose web search is on (or 자동) shows
+what would leave and asks. Nothing but short queries ever leaves; the material stays inside.
+
+- *Chat.* The turn is offered a local tool, `request_web_search(queries)` (1–5 short keyword
+  queries, no sentences or figures from the material). A question the server would search
+  anyway (`search_plan`, the current-fact rules) forces that tool instead of `web_search`. In
+  「매번 묻기」 the tool ends the turn: the answer row is the card (`routing.searchConsent`,
+  `status: pending`, the proposed queries) and the transcript keeps it until it is answered,
+  across reloads. The browser answers by rerunning the question (`retry_of`) with
+  `searchConsent: {messageId, decision, queries?, remember?}`. The server checks the card is
+  still pending in the stored transcript (`409 search_consent_stale` otherwise — another tab
+  or replica answered it; the turn claim keeps two answers from running at once), settles the
+  decision against today's policy and vets the queries again (the browser's edit is never
+  trusted), deletes the card row, and runs `request_web_search` as the turn's preset call: the
+  approved queries go to the ordinary `web_search` one by one, and their numbered results are
+  read by the same local model, which cites them as `[n]`. The model's own arguments cannot
+  widen what was approved, and a second call is refused.
+- *Report and slides.* Research runs before the outline and cannot pause mid-pipeline, so the
+  local planner proposes the queries up front (`research.plan`) and the card is stored before
+  the pipeline starts (`_search_card`, SSE `search_consent`). Every strict-local document
+  turn sets `research.ALLOWED`: research sends only the approved queries, once, plans none of
+  its own and follows no product pages; with nothing approved it sends nothing, so an
+  approved outline's later turns cannot search again.
+- *Vetting* (`search_consent.vet`): queries are cut to 100 characters, at most five; personal
+  identifiers are masked with the egress detectors; a query carrying a secret, a 40-character
+  run of the turn's internal material, or an administrator-blocked category is withheld and
+  the card says why. Edited queries pass the same check.
+- *Saying it.* Declined, withheld, turned off, or simply not asked although the question
+  plainly reaches outside the material (`search_consent.needs_outside`, the server's search
+  rules): the answer ends with 「외부 검색 없이 자료만으로 답했습니다.」 (a server note,
+  stripped before the answer is sent back as history).
+- *Settings.* `governance.strict_local_web_search`: `ask` (default), `allow` (queries only,
+  no card) or `off`. A project's `strict_local_web_search` may only tighten it (the PATCH is
+  refused otherwise; at run time the stricter of the two applies). 「이 대화에서는 계속 허용」
+  on the card stores `remember` on the answer; later turns of that conversation then send
+  the model's vetted queries without a card (as `allow` does), unless policy is `off`. The
+  composer says which applies to a strict-local model (「웹 검색: 보내기 전에 묻기
+  (strict-local)」) and sends the person's search setting, so the server can offer the ask.
+- *Record.* The answer's `routing.searchConsent` keeps `status` (`pending`, `allowed`,
+  `auto`, `declined`, `blocked`, `unavailable`, `none`), the queries sent, the withheld ones
+  and why, `decidedBy`, `decidedAt` and `remember`; the same goes to the audit log as
+  `search.consent_*` with the paused card's id. The answer's badge reads from that record —
+  「strict-local로 보호됨 · 외부 검색 2회(허용)」, 「… · 외부 검색 안 함」, 「… · 외부 검색 확인
+  대기」 — and every strict-local action (`internal_strict_local` included) reads as
+  strict-local; a request-side 「외부 전송」 label appears only for `send_raw_external`.
+
 **Masking is scoped by where the text is going.** The detector tells a
 person's details (a mobile number, a personal mailbox, a routable address, an
 ID or card number) from an organisation's (a switchboard or 15xx service

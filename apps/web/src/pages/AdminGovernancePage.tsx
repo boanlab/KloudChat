@@ -2,12 +2,12 @@ import { ArrowDown, ArrowUp, GripVertical, ShieldCheck, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
-import { Badge, Button, Card, Input, PageHeader, Switch, Tabs } from '@/components/ui'
+import { Badge, Button, Card, Input, PageHeader, Select, Switch, Tabs } from '@/components/ui'
 import { AuditLog } from '@/pages/AuditLog'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
-import type { ModelInfo } from '@/types'
+import type { ModelInfo, SearchConsentMode } from '@/types'
 
 /**
  * strict-local safe models as a priority list: checked models in the order used, moved with
@@ -269,6 +269,25 @@ export function AdminGovernancePage() {
                       onChange={(value) => void apply({ internalDataStrictLocal: value })}
                       label={t('내부 자료는 strict-local로만')}
                     />
+                  </div>
+
+                  <div className="flex flex-wrap items-start gap-3 border-t border-line pt-3">
+                    <div className="min-w-0 flex-1 basis-64">
+                      <p className="text-base font-medium">{t('strict-local 대화의 외부 검색')}</p>
+                      <p className="text-sm text-muted">
+                        {t('strict-local 대화가 외부 정보를 필요로 할 때, 밖으로 나갈 검색어를 보여 주고 묻습니다. 프로젝트 자료 내용은 보내지 않으며, 프로젝트는 이보다 엄격하게만 정할 수 있습니다.')}
+                      </p>
+                    </div>
+                    <Select
+                      aria-label={t('strict-local 대화의 외부 검색')}
+                      value={governance.strictLocalWebSearch ?? 'ask'}
+                      onChange={(e) => void apply({ strictLocalWebSearch: e.target.value as SearchConsentMode })}
+                      className="w-full sm:w-56"
+                    >
+                      <option value="ask">{t('매번 묻기 (기본)')}</option>
+                      <option value="allow">{t('항상 허용(검색어만)')}</option>
+                      <option value="off">{t('사용 안 함')}</option>
+                    </Select>
                   </div>
 
                   <SafeModelPriority

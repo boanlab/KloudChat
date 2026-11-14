@@ -86,6 +86,8 @@ const groups: Record<string, Group> = {
   },
   'report-audit': { files: ['report-panel-audit.spec.ts', 'sign-in-landing.spec.ts'], projects: { default: desktop } },
   'search-masking': { files: ['search-masking-origin.spec.ts'], projects: { default: {} } },
+  // a strict-local turn's search card: allow, edit, material only, reload, phone; the badge
+  'search-consent': { files: ['search-consent.spec.ts'], projects: { desktop, phone: touchPhone } },
   'artifact-source': { files: ['artifact-source-download.spec.ts'], projects: { default: desktop } },
   'audit-log': { files: ['audit-log.spec.ts'], projects: { desktop: desktopChrome, phone: desktopChromePhone } },
   security: { files: ['security-paging.spec.ts'], projects: { desktop: desktopChrome, phone: desktopChromePhone } },
