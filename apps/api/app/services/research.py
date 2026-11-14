@@ -366,7 +366,9 @@ async def _planned(
     text = (payload["choices"][0]["message"]["content"] or "").strip()
     if by_entity:
         queries, entities = scholar_queries(text, request)
-        log.info("literature queries %s (entities %s)", queries, entities)
+        log.info("literature queries %s (entities %s)",
+                 [q.replace("\r", " ").replace("\n", " ") for q in queries],
+                 [e.replace("\r", " ").replace("\n", " ") for e in entities])
         return queries or fallback, spent, entities
     if scholarly:
         # Planner cap = literature mode's.

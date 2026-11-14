@@ -228,6 +228,8 @@ function escapeText(text: string, inTable: boolean): string {
     .replace(/\[(?=[^\]\n]*\]\()|\[(?=\^)/g, '\\[')
     .replace(/<(?=[A-Za-z/!?])/g, '\\<')
     .replace(/&(?=#?[A-Za-z0-9]+;)/g, '\\&')
+  // backslashes before a pipe were escaped above (`\` before punctuation): escaping the pipe
+  // now cannot pair with one of the text's own
   if (inTable) out = out.replace(/\|/g, '\\|')
   return out
 }
@@ -268,7 +270,7 @@ function inline(nodes: JSONContent[] | undefined, inTable = false): string {
       const bare = typeof href === 'string' && /^https?:\/\/\S+$/.test(href) && label === escapeText(href, inTable)
       out += bare
         ? String(href)
-        : `[${label}](${linkTarget(String(href ?? ''))}${title ? ` "${String(title).replace(/"/g, '\\"')}"` : ''})`
+        : `[${label}](${linkTarget(String(href ?? ''))}${title ? ` "${String(title).replace(/[\\"]/g, '\\$&')}"` : ''})`
     } else out += DELIMITER[mark.type]
     out += space
   }
@@ -304,7 +306,7 @@ function inline(nodes: JSONContent[] | undefined, inTable = false): string {
       out += inTable ? '<br>' : '\n'
     } else if (node.type === 'image') {
       const { src, alt, title } = node.attrs ?? {}
-      out += `![${String(alt ?? '').replace(/[[\]]/g, '\\$&')}](${linkTarget(String(src ?? ''))}${title ? ` "${String(title).replace(/"/g, '\\"')}"` : ''})`
+      out += `![${String(alt ?? '').replace(/[[\]\\]/g, '\\$&')}](${linkTarget(String(src ?? ''))}${title ? ` "${String(title).replace(/[\\"]/g, '\\$&')}"` : ''})`
     } else if (node.type === 'rawInline') {
       out += String(node.attrs?.source ?? '')
     }

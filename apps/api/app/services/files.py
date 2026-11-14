@@ -25,8 +25,13 @@ _CHARS_PER_TOKEN = 3.0
 
 
 def storage_root() -> Path:
+    """The storage directory, made when it can be: a read or delete where it cannot be made
+    (a process without rights to its parent) still resolves, and finds nothing."""
     root = Path(settings.file_storage_dir)
-    root.mkdir(parents=True, exist_ok=True)
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        log.debug("storage root not created: %s", type(exc).__name__)
     return root
 
 
@@ -99,7 +104,7 @@ def delete_blob(key: str) -> None:
         frames = blob_path(frames_dir(key))
         if frames.is_dir():
             shutil.rmtree(frames, ignore_errors=True)
-    except ValueError:
+    except (OSError, ValueError):
         pass
 
 

@@ -46,6 +46,15 @@ MAX_BODY = 16 * 1024
 TMP = os.environ.get("MEDIA_TMP", tempfile.gettempdir())
 
 log = logging.getLogger("media")
+
+
+def _one_line(value: object) -> str:
+    """A value for a log line: line breaks and control characters out (no forged lines)."""
+    text = str(value)
+    text = text.replace("\r", " ").replace("\n", " ")
+    return "".join(ch if ch.isprintable() else " " for ch in text)[:500]
+
+
 _SLOTS = threading.BoundedSemaphore(JOBS)
 
 
@@ -91,10 +100,11 @@ def run(args: list[str], *, timeout: float = STEP_TIMEOUT, slot: bool = True) ->
             )
         except subprocess.TimeoutExpired:
             raise Refused(504, "timeout") from None
-        log.info("%s %.1fs rc=%d", args[0], time.monotonic() - started, done.returncode)
+        log.info("%s %.1fs rc=%d", _one_line(args[0]), time.monotonic() - started,
+                 done.returncode)
     if done.returncode != 0:
         tail = done.stderr.decode("utf-8", "replace").strip().splitlines()[-3:]
-        log.warning("%s failed: %s", args[0], " | ".join(tail))
+        log.warning("%s failed: %s", _one_line(args[0]), _one_line(" | ".join(tail)))
         raise Refused(422, "unreadable")
     return done.stdout
 

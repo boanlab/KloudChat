@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
+from urllib.parse import urlparse
 
 import pytest
 from fastapi import FastAPI
@@ -141,7 +142,8 @@ async def test_allowed_queries_alone_go_to_the_web_search(monkeypatch) -> None:
     result = await consent.tool().run(
         {"queries": ["연합학습 BN 분리", "문의 person@example.com"]}, ctx)
     assert sent == [{"query": "연합학습 BN 분리"}, {"query": "문의 [이메일]"}]
-    assert "arxiv.org" in result.content and result.search_evidence is not None
+    hosts = {urlparse(word).hostname for word in result.content.split() if "://" in word}
+    assert "arxiv.org" in hosts and result.search_evidence is not None
     assert ctx.tool_calls["web_search"] == 2
     record = consent.record(by="u")
     assert record["status"] == "auto" and record["searches"] == 2

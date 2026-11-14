@@ -56,6 +56,14 @@ async def db():
 
 
 @pytest.fixture(autouse=True)
+def _files_here(monkeypatch, tmp_path):
+    # a project delete removes its files (and a video's keyframes) under the storage root
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "file_storage_dir", str(tmp_path))
+
+
+@pytest.fixture(autouse=True)
 def _no_index(monkeypatch):
     async def forget(**_kw):
         return True
@@ -228,3 +236,14 @@ def test_a_long_id_list_is_capped_and_counted():
     assert event.event_metadata["idsOmitted"] == 1366
     assert event.detail == "대화 1,416개 · 메시지 8,400개 · 아티팩트 980개"
     assert event.severity == "warn"
+
+
+def test_deleting_a_blob_where_the_storage_root_cannot_be_made_only_logs(monkeypatch, tmp_path):
+    from app.core.config import settings
+    from app.services import files
+
+    blocked = tmp_path / "blocked"
+    blocked.write_text("a file, so no directory can be made under it")
+    monkeypatch.setattr(settings, "file_storage_dir", str(blocked / "files"))
+    files.delete_blob("u/f_lecture.webm")
+    assert files.remove_user_files("u") == 0

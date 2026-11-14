@@ -190,3 +190,13 @@ describe('Markdown 원문 view', () => {
     expect(out[1].diagrams).toEqual({ k: 'png' })
   })
 })
+
+describe('link titles and picture names keep backslashes and quotes', () => {
+  it('a title ending in a backslash does not swallow its closing quote', () => {
+    const once = roundTrip('[링크](https://example.com/a "경로 C:\\\\temp\\\\ 와 \\"인용\\"")')
+    expect(roundTrip(once)).toBe(once)
+    expect(once).toContain('https://example.com/a')
+    const picture = roundTrip('![그림 \\[1\\] C:\\\\x](data:image/png;base64,AAAA)')
+    expect(roundTrip(picture)).toBe(picture)
+  })
+})

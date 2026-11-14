@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 
 # Flows under test use fake catalogues without strict-local twins; the rule that keeps
 # internal material strict-local is exercised by its own tests with the switch set.
@@ -18,6 +19,9 @@ os.environ.setdefault("OUTLINE_MODEL_DEFAULT", "")
 os.environ.setdefault("KLOUDCHAT_PIPELINE_STRICT", "1")
 # Stage records off: the recorded streams carry none; tests that read them turn them on.
 os.environ.setdefault("KLOUDCHAT_PIPELINE_STEPS", "0")
+# Uploads go to a scratch directory, never the image's /srv/data (a CI runner is no root);
+# tests that look at files set their own `tmp_path`.
+os.environ.setdefault("FILE_STORAGE_DIR", tempfile.mkdtemp(prefix="kchat-files-"))
 
 import subprocess
 import sys

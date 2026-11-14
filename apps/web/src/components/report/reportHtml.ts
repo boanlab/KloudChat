@@ -109,7 +109,8 @@ export function htmlOf(section: Pick<ReportSection, 'content'>, pictures: Map<st
       out.push('<div data-page-break="true"></div>')
       continue
     }
-    if (!rows.length && /^<!--.*-->$/.test(line)) continue
+    // an HTML comment line, as browsers end one (`-->` or `--!>`)
+    if (!rows.length && /^<!--[\s\S]*?--!?>$/.test(line)) continue
     if (!rows.length && /^(?:(?:-\s*){3,}|(?:\*\s*){3,}|(?:_\s*){3,})$/.test(line)) {
       flush()
       out.push('<hr>')

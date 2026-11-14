@@ -1550,7 +1550,9 @@ export function mediaSeconds(file: File): Promise<number | undefined> {
       clearTimeout(timer)
       done(undefined)
     }
-    el.src = url
+    // an object URL of the person's own file, never a page-supplied string
+    if (url.startsWith('blob:')) el.src = url
+    else done(undefined)
   })
 }
 
