@@ -80,7 +80,9 @@ def _super_agent_offer(policy, catalogue: list[dict], allowed: set[str]) -> dict
     """The picker's two Super Agent entries (always offered): usable or why not, with a
     typical turn's credits (min–max across the class table)."""
     rules = super_agent.normalise_rules(policy.super_agent_rules)
-    offer: dict = {}
+    # a project conversation keeps internal material strict-local: its `super` start is
+    # `super_strict` (`start_mode.usable_super`); the picker shows that before the first send
+    offer: dict = {"projectStrict": bool(policy.internal_data_strict_local)}
     for key, strict in (("default", False), ("strict", True)):
         estimate = super_agent.estimate(rules, catalogue, strict=strict, allowed=allowed)
         offer[key] = {

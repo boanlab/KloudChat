@@ -206,3 +206,30 @@ test('개인 기본 모델은 계정에 저장한 선택을 보여 준다 @phone
   await expect(page.getByRole('button', { name: /^보고서: / })).toHaveAttribute('aria-label', '보고서: Mock · Flash')
   await expect(page.getByRole('button', { name: /^슬라이드: / })).toHaveAttribute('aria-label', '슬라이드: Super Agent')
 })
+
+const project = {
+  id: 'pppppppppppppppppppppppppppppppp', name: '내부 감사 프로젝트', description: '', emoji: '', instructions: '', skillIds: [],
+  designSystemId: null, renderTemplates: {}, strictLocalWebSearch: null, files: [], sessionIds: [],
+  createdAt: now, updatedAt: now,
+}
+
+for (const strict of [true, false]) {
+  test(`프로젝트의 새 보고서는 보내기 전부터 ${strict ? 'Super Agent (strict-local)' : 'Super Agent'}로 보인다 @phone`, async ({ page }) => {
+    const state = await mockApp(page, 'manual', undefined, { report: 'super' }, { projectStrict: strict })
+    await page.route(/\/api\/projects(?:\?.*)?$/, (r) => r.fulfill({ json: [project] }))
+    await page.route(/\/api\/projects\/p+$/, (r) => r.fulfill({ json: project }))
+    await page.goto(`/projects/${project.id}`)
+    await page.getByRole('button', { name: '새로 시작', exact: true }).click()
+    await page.getByRole('menuitem', { name: '보고서' }).click()
+    await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}$/)
+    const title = strict ? 'Super Agent (strict-local)' : 'Super Agent'
+    // before anything is sent: the chip already says where the material goes
+    await expect(page.getByRole('button', { name: title, exact: true })).toBeVisible()
+    expect(state.creates).toHaveLength(0)
+    await setWebSearch(page, '끔')
+    await page.getByLabel('프롬프트 입력').fill('감사 결과 보고')
+    await page.getByLabel('프롬프트 입력').press('Enter')
+    await expect.poll(() => state.creates.length).toBe(1)
+    expect(state.creates[0]).toMatchObject({ kind: 'report', projectId: project.id, routingMode: strict ? 'super_strict' : 'super' })
+  })
+}

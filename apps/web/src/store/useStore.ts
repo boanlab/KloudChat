@@ -1024,6 +1024,7 @@ export function startingRoutingMode(
   s: Pick<State, 'superAgent' | 'user' | 'defaultRouting' | 'agents'>,
   kind: SessionKind,
   agentId?: string | null,
+  projectId?: string | null,
 ): Session['routingMode'] {
   const agent = agentId ? s.agents.find((a) => a.id === agentId) : undefined
   return startingMode({
@@ -1033,6 +1034,7 @@ export function startingRoutingMode(
     superAgent: s.superAgent,
     homePick: s.user?.preferences.modelByKind?.[kind],
     defaultRouting: s.defaultRouting,
+    projectId,
   })
 }
 
@@ -1506,7 +1508,7 @@ export const useStore = create<State>((set, get) => ({
         strictImageDefault: strictImageDefault ?? '',
         // an older server without the entries: none to offer
         superAgent: superAgent
-          ? { default: superAgent.default, strict: superAgent.strict }
+          ? { default: superAgent.default, strict: superAgent.strict, projectStrict: superAgent.projectStrict ?? false }
           : { default: NO_SUPER_OFFER, strict: NO_SUPER_OFFER },
         defaultRouting: defaultRoutingByKind ?? {},
         autoRouting: autoRouting ?? {
@@ -1812,7 +1814,7 @@ export const useStore = create<State>((set, get) => ({
       id: unsentId(), kind, title: tr('새 작업'), projectId, agentId, pipelineId: null,
       // A session model outranks the agent's, so an agent that pins one gets none here.
       model: agent?.model ? '' : (state.modelByKind[kind] ?? ''),
-      routingMode: routingMode ?? startingRoutingMode(state, kind, agentId),
+      routingMode: routingMode ?? startingRoutingMode(state, kind, agentId, projectId),
       // the home screen's chip goes with the conversation it starts
       reasoningMode: state.reasoningPick[kind] && state.reasoningPick[kind] !== 'auto'
         ? state.reasoningPick[kind] : null,

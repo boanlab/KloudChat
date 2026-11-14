@@ -2899,7 +2899,8 @@ surface's start from 설정 › 시스템 › 모델 (`system_settings` `routing
 internal material stays strict-local, and to `manual` when neither entry has a usable model
 (a `super_strict` start never widens to `super`). The web client applies the same rule before
 the first send (`lib/superAgent.ts` `startingMode`, from the catalogue's
-`defaultRoutingByKind`), and a chat handed off to a report or deck starts the same way.
+`defaultRoutingByKind` and `superAgent.projectStrict`, so a project conversation shows
+Super Agent (strict-local) before anything is sent), and a chat handed off to a report or deck starts the same way.
 Existing conversations keep their stored mode.
 
 **Task class first, by rules.** Each turn is sorted into `simple`, `chat`, `transform`

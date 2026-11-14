@@ -69,6 +69,7 @@ export async function mockApp(
     catalogue?: ReturnType<typeof model>[]
     /** The catalogue's `defaultRoutingByKind` (설정 › 시스템 › 모델); absent: Super Agent. */
     defaultRouting?: Record<string, 'super' | 'super_strict' | 'manual'>
+    projectStrict?: boolean
   } = {},
 ) {
   await page.route('**/api/**', (r) => r.abort('blockedbyclient'))
@@ -138,6 +139,8 @@ export async function mockApp(
         },
         ...(options.defaultRouting ? { defaultRoutingByKind: options.defaultRouting } : {}),
         superAgent: {
+          // the default governance: a project keeps internal material strict-local
+          projectStrict: options.projectStrict ?? true,
           default: { available: true, reason: null, estimate: { min: 0, max: 440, models: [] } },
           strict: { available: true, reason: null, estimate: { min: 0, max: 0, models: [] } },
         },

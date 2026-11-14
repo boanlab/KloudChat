@@ -296,6 +296,8 @@ async def test_picker_offers_both_entries_with_a_credit_range(monkeypatch) -> No
     # no switch: the entries are always there; an account whose allowed models leave the
     # table nothing says why instead
     assert "enabled" not in offer
+    # a project's `super` start is strict-local where internal material stays inside
+    assert offer["projectStrict"] is Governance().internal_data_strict_local
     lonely = User(email="q@example.test", password_hash="h", name="Q",
                   allowed_models=["no/such-model"])
     offer = (await models_router.list_models(lonely))["superAgent"]

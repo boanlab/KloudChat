@@ -2312,6 +2312,7 @@ export function Composer({
       key={editing ? 'editing' : 'normal'}
       kind={kind}
       sessionId={sessionId ?? reusableSessionId}
+      projectId={projectId}
       modality={kind === 'av' ? (avOptions.mode === 'video' ? 'video' : 'audio') : undefined}
       onEnableAuto={async (mode) => {
         setChatError(null)
@@ -2340,7 +2341,7 @@ export function Composer({
   )
   // The reasoning chip: the conversation's, else the home screen's pick for the next one.
   const laneMode = session?.routingMode ?? (offersReasoning(kind)
-    ? startingRoutingMode({ superAgent, user, defaultRouting, agents }, kind, null)
+    ? startingRoutingMode({ superAgent, user, defaultRouting, agents }, kind, null, projectId)
     : undefined)
   const reasoningChip = offersReasoning(kind) && !isMedia ? (
     <ReasoningChip

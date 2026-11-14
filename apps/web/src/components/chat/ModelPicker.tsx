@@ -116,6 +116,7 @@ export function ModelPicker({
   variant = 'toolbar',
   label,
   modality,
+  projectId,
   onEnableAuto,
   onBusyChange,
 }: {
@@ -128,6 +129,8 @@ export function ModelPicker({
   label?: string
   /** Narrows `av` models to audio or video. */
   modality?: ModelInfo['modality']
+  /** The project a new conversation would start in (its strict-local rule shows before sending). */
+  projectId?: string | null
   /** Enables Auto routing; on `/new/chat` the composer creates the session first. */
   onEnableAuto?: (mode: RoutingMode) => void | Promise<void>
   /** Reports an in-flight selection so a turn does not race it. */
@@ -170,7 +173,7 @@ export function ModelPicker({
   const routedSurface = kind === 'chat' || kind === 'report' || kind === 'slides'
   // Outside a conversation (the home screen, the personal default), the mode a new one would start in.
   const startingMode = !session && !sessionId && routedSurface
-    ? startingRoutingMode({ superAgent, user, defaultRouting, agents }, kind)
+    ? startingRoutingMode({ superAgent, user, defaultRouting, agents }, kind, null, projectId)
     : undefined
   // The personal default (설정 › 환경설정) offers both Super Agent entries like any model.
   const fieldLanes: RoutingMode[] | undefined = field && !routedSurface ? [] : undefined

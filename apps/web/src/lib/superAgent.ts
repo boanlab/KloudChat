@@ -27,13 +27,16 @@ export function startingMode({
   superAgent,
   homePick,
   defaultRouting,
+  projectId,
 }: {
   kind: SessionKind
   /** The conversation's agent's own model, if it fixes one. */
   agentModel?: string | null
-  superAgent: Pick<NonNullable<ModelCatalogue['superAgent']>, 'default' | 'strict' | 'pending'>
+  superAgent: Pick<NonNullable<ModelCatalogue['superAgent']>, 'default' | 'strict' | 'pending' | 'projectStrict'>
   homePick?: string | null
   defaultRouting?: ModelCatalogue['defaultRoutingByKind']
+  /** The project the conversation starts in: internal material keeps a `super` start strict-local. */
+  projectId?: string | null
 }): RoutingMode {
   if (kind !== 'chat' && kind !== 'report' && kind !== 'slides') return 'manual'
   if (agentModel) return 'manual'
@@ -41,6 +44,10 @@ export function startingMode({
   const start = homePick && isSuperEntry(homePick) ? homePick : defaultRouting?.[kind] ?? 'super'
   if (start === 'manual') return 'manual'
   if (superAgent.pending) return start
+  // the server's rule (`start_mode.usable_super`): a project moves `super` to `super_strict`
+  if (start === 'super' && projectId && superAgent.projectStrict && superAgent.strict.available) {
+    return 'super_strict'
+  }
   if (start === 'super' && superAgent.default.available) return 'super'
   return superAgent.strict.available ? 'super_strict' : 'manual'
 }

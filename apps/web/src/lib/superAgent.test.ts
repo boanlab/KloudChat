@@ -39,6 +39,13 @@ describe('startingMode', () => {
     expect(startingMode({ kind: 'chat', homePick: 'super_strict', superAgent: { default: usable, strict: unusable } })).toBe('manual')
     expect(startingMode({ kind: 'chat', homePick: 'super', superAgent: { default: unusable, strict: usable } })).toBe('super_strict')
   })
+  it('keeps a project start strict-local where the admin keeps internal material inside', () => {
+    const strictOffer = { ...offered, projectStrict: true }
+    expect(startingMode({ kind: 'report', projectId: 'p1', superAgent: strictOffer })).toBe('super_strict')
+    expect(startingMode({ kind: 'report', projectId: 'p1', homePick: 'super', superAgent: strictOffer })).toBe('super_strict')
+    expect(startingMode({ kind: 'report', superAgent: strictOffer })).toBe('super')
+    expect(startingMode({ kind: 'report', projectId: 'p1', superAgent: offered })).toBe('super')
+  })
   it('takes the start as usable until the catalogue answers', () => {
     expect(startingMode({ kind: 'chat', superAgent: { default: unusable, strict: unusable, pending: true } })).toBe('super')
   })

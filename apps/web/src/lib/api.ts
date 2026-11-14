@@ -495,6 +495,8 @@ export interface ModelCatalogue {
   superAgent?: {
     default: SuperAgentOffer
     strict: SuperAgentOffer
+    /** A project conversation starts its `super` start on `super_strict` (internal material). */
+    projectStrict?: boolean
     /** Client-side only: the catalogue has not answered yet. */
     pending?: boolean
   }
