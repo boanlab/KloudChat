@@ -2942,6 +2942,41 @@ tokens and time. The picker shows each entry with a typical answer's credits (10
 1k out) across the table. The route is stored as `routing.superAgent` and audited as
 `routing.super`.
 
+### The reasoning chip
+
+The composer's **추론** chip (자동 / 빠르게 / 깊게; `auto`, `fast`, `deep`) is a per-conversation
+setting (`sessions.reasoning_mode`, NULL for `auto`, migration 0088) sent with every chat,
+report and slides turn (`SendMessage.reasoning`) and stored in the question's `turnOptions`, so
+a retry or regeneration runs under the choice it was asked with. A sent value also becomes the
+conversation's; the composer patches the conversation as soon as a choice is made, and a
+choice made before a conversation exists goes with its creation.
+
+- **Super Agent** (`super_agent.steer`): `auto` is the table as above. `fast` sends a class
+  whose row reasons (`low`/`high`) to the `chat` row and every class to effort `none`, so no
+  turn escalates to a reasoning route; the class's other needs (tools, vision, a long window)
+  still narrow the pick, and the rescue writer also runs without reasoning. `deep` sends every
+  chat class to the `escalation` row's model (strict column under `super_strict`, personal
+  data or internal material) at effort `high`, skipping the classifier and stickiness; when
+  that model cannot answer the turn (not served, not allowed) the class's own pick answers at
+  effort `high`. A report or deck keeps its writer: the `document` row's model for a first
+  version, the first writer for revisions (`_first_document_model`), under every choice; `deep`
+  raises only its effort, to the highest level it takes (`highest`), and `fast` sets `none`.
+- **A model picked by hand** (`super_agent.manual_effort`): `auto` sends nothing (the
+  deployment's thinking switches), `fast` sends effort `none` (the lowest level where reasoning
+  is mandatory), `deep` the highest level the model offers (`reasoning.effort` = its last
+  level; the template switch on for a self-hosted model). A model is steerable when it has
+  effort levels or a self-hosted thinking switch (`reasoning.controllable`, `reasoningControl`
+  in the catalogue); on any other model the chip is shown disabled with the reason, and a chip
+  value sent anyway is recorded as `unsupported` rather than pretended. The same mark goes on a
+  Super Agent turn whose writer cannot be steered (a report on the 27B under 깊게).
+- **Document writers** read the same fields (`thinking.TURN_REASONING`, set in the request for
+  report and deck turns) through `thinking.writer_switch`/`writer_room`; without them they keep
+  turning thinking off as before.
+
+The question and answer carry `routing.reasoning` = `{mode, effort}`, where `effort` is what
+the writer was actually sent (`super_agent.applied_effort`: a level, `on`, `none` or
+`default`); the answer's usage line reads it as 「깊게 · high」.
+
 ### Auto routing (earlier lanes)
 
 Auto is a session mode, not a model alias. `sessions.model` always stores the

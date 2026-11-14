@@ -85,6 +85,8 @@ class ChatSession(SQLModel, table=True):
         default=RoutingMode.manual,
         sa_column=Column(String, nullable=False, default=RoutingMode.manual.value),
     )
+    #: the composer's reasoning chip (`super_agent.REASONING_MODES`); None is `auto`
+    reasoning_mode: str | None = Field(default=None)
     artifact_id: str | None = Field(default=None)
     #: not a FK: catalogue ships in image; unknown id → no template
     render_template_id: str | None = Field(default=None)

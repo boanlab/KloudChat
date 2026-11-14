@@ -49,6 +49,17 @@ CLASSES: tuple[str, ...] = (
 )
 EFFORTS: tuple[str, ...] = ("default", "none", "low", "high")
 
+#: The composer's reasoning chip (`SendMessage.reasoning`), per conversation. `auto` leaves
+#: the table as it is; `fast` keeps the turn off reasoning routes (no reasoning, the lowest level
+#: where it cannot be turned off); `deep` sends it to the escalation row at effort high (Super
+#: Agent) or to the model's highest level (a model picked by hand).
+AUTO = "auto"
+FAST = "fast"
+DEEP = "deep"
+REASONING_MODES: tuple[str, ...] = (AUTO, FAST, DEEP)
+#: Not an admin effort: the highest level the model takes (`deep` on a hand-picked model).
+HIGHEST = "highest"
+
 #: Built-in table, from the 2026-11-13 evaluation (docs/architecture.md, "Super Agent").
 #: `model`: the `super` entry's pick; `strictModel`: the `super_strict` entry's pick (must be
 #: strict-local); `effort`: reasoning effort for the writer call ("default" leaves the
@@ -518,6 +529,57 @@ def effort_for(rules: dict[str, dict[str, str]], decision: Decision) -> str:
     return rule.get("effort", "default")
 
 
+def steer(rules: dict[str, dict[str, str]], decision: Decision, mode: str) -> tuple[str, str]:
+    """`(row, effort)` the chip makes of the decided class: the table row whose model answers
+    and the writer's effort. `fast` moves a class whose row reasons to the everyday `chat` row
+    (the turn's other needs, tools, vision, a long window, still narrow the pick); `deep` moves
+    every chat class to the escalation row at effort high, and keeps a document's own writer
+    at its highest effort."""
+    effort = effort_for(rules, decision)
+    if mode == FAST:
+        reasons = effort in ("low", "high")
+        return ("chat" if reasons else decision.task_class), "none"
+    if mode == DEEP:
+        if decision.task_class == "document":
+            # a report or deck keeps its writer (and its revisions the first one): only its
+            # effort goes up, to the highest level that writer takes
+            return decision.task_class, HIGHEST
+        return ESCALATION_CLASS, "high"
+    return decision.task_class, effort
+
+
+def manual_effort(mode: str, model: dict[str, Any] | None) -> str:
+    """The writer's effort for a model picked by hand: its configured default under `auto`
+    (and on a model whose reasoning cannot be steered), none under `fast`, its highest level
+    under `deep`."""
+    from app.services import reasoning
+
+    if mode not in (FAST, DEEP) or not model or not reasoning.controllable(
+            str(model.get("id") or ""), model.get("reasoning")):
+        return "default"
+    return "none" if mode == FAST else HIGHEST
+
+
+def applied_effort(fields: dict[str, Any] | None) -> str:
+    """What `fields` ask of the model, for the answer's line: a level (`high`, `low`, …),
+    `on` (a self-hosted thinking switch), `none`, or `default` (nothing sent: the
+    deployment's own setting)."""
+    if not fields:
+        return "default"
+    asked = fields.get("reasoning")
+    if isinstance(asked, dict):
+        if asked.get("enabled") is False:
+            return "none"
+        if isinstance(asked.get("effort"), str):
+            return asked["effort"]
+    template = fields.get("chat_template_kwargs")
+    if isinstance(template, dict):
+        switch = template.get("enable_thinking", template.get("thinking"))
+        if isinstance(switch, bool):
+            return "on" if switch else "none"
+    return "default"
+
+
 def typical_credits(model: dict[str, Any]) -> int:
     """Credits of a typical chat turn on `model` (the picker's estimate)."""
     from app.services.credits import charge_for_tokens
@@ -590,7 +652,7 @@ def reasoning_fields(model_id: str, effort: str, model: dict[str, Any] | None = 
     if effort == "default":
         return {}
     self_hosted = model_id.startswith(("local/", "strict-local/"))
-    on = effort in ("low", "high")
+    on = effort in ("low", "high", HIGHEST)
     if self_hosted:
         if "deepseek" in model_id:
             return {"chat_template_kwargs": {"thinking": on}}
@@ -602,6 +664,8 @@ def reasoning_fields(model_id: str, effort: str, model: dict[str, Any] | None = 
             # reasoning cannot be turned off here: its lowest level
             return {"reasoning": {"effort": offered[0]}}
         return thinking.switch(model_id)
+    if effort == HIGHEST:
+        return {"reasoning": {"effort": offered[-1] if offered else "high"}}
     if offered and effort not in offered:
         # nearest offered level at or above the asked one
         order = ["minimal", "low", "medium", "high", "xhigh", "max"]
@@ -611,7 +675,15 @@ def reasoning_fields(model_id: str, effort: str, model: dict[str, Any] | None = 
 
 
 __all__ = [
+    "AUTO",
     "CLASSES",
+    "DEEP",
+    "FAST",
+    "HIGHEST",
+    "REASONING_MODES",
+    "applied_effort",
+    "manual_effort",
+    "steer",
     "DEFAULT_RULES",
     "EFFORTS",
     "MODES",

@@ -23,6 +23,7 @@ _DDL = (
         agent_id TEXT,
         model TEXT DEFAULT '',
         routing_mode TEXT,
+        reasoning_mode TEXT,
         artifact_id TEXT,
         render_template_id TEXT, pipeline_id TEXT,
         index_key TEXT,

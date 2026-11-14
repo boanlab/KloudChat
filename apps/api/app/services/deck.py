@@ -1589,9 +1589,9 @@ async def _complete_once(
                 json={
                     "model": model,
                     "messages": messages,
-                    "max_tokens": thinking.room(model, max_tokens),
+                    "max_tokens": thinking.writer_room(model, max_tokens),
                     # off where allowed; `thinking.switch` learns where not
-                    **thinking.switch(model),
+                    **thinking.writer_switch(model),
                 },
             )
             if thinking.refused(model, response):
@@ -1599,8 +1599,8 @@ async def _complete_once(
                     "/v1/chat/completions",
                     json={
                         "model": model, "messages": messages,
-                        "max_tokens": thinking.room(model, max_tokens),
-                        **thinking.switch(model),
+                        "max_tokens": thinking.writer_room(model, max_tokens),
+                        **thinking.writer_switch(model),
                     },
                 )
             if response.status_code != 429 or attempt == len(_BACKOFF):
@@ -1626,7 +1626,7 @@ async def _complete_once(
                     "model": model,
                     "messages": messages,
                     "max_tokens": bigger,
-                    **thinking.switch(model),
+                    **thinking.writer_switch(model),
                 },
             )
             if again.status_code >= 400:
@@ -1644,6 +1644,9 @@ async def _complete_once(
             payload["usage"] = usage_fields.merged_raw(first, spent)
 
     text = (payload["choices"][0]["message"]["content"] or "").strip()
+    if thinking.turn_fields(model):
+        # reasoning on for this turn: a template that inlines its thinking keeps it out
+        text = thinking.THINK_BLOCK.sub("", text).strip()
     raw = payload.get("usage") or {}
     return text, usage_fields.spent(raw)
 

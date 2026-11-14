@@ -216,6 +216,8 @@ class SessionOut(Wire):
     pipeline_id: str | None = None
     model: str
     routing_mode: RoutingMode
+    #: the composer's reasoning chip; None is `auto`
+    reasoning_mode: str | None = None
     artifact_id: str | None
     render_template_id: str | None = None
     pending: dict | None = None
@@ -280,6 +282,8 @@ class SessionCreate(Wire):
     agent_id: str | None = None
     model: str | None = None
     routing_mode: RoutingMode = RoutingMode.manual
+    #: the reasoning chip picked before the first send
+    reasoning_mode: Literal["auto", "fast", "deep"] | None = None
 
 
 class MessageForkOut(Wire):
@@ -313,6 +317,8 @@ class SessionPatch(Wire):
     render_template_id: str | None = Field(default=None, max_length=60)
     #: `[]` clears
     skill_ids: list[str] | None = Field(default=None, max_length=3)
+    #: the composer's reasoning chip; `auto` clears
+    reasoning_mode: Literal["auto", "fast", "deep"] | None = None
 
     @field_validator("routing_mode", mode="before")
     @classmethod
@@ -381,6 +387,9 @@ class SendMessage(Wire):
     open_artifact: OpenArtifact | None = None
     #: answer to the search card on the answer `retry_of` reruns (`search_consent`)
     search_consent: SearchConsentAnswer | None = None
+    #: the composer's reasoning chip (`super_agent.REASONING_MODES`); kept on the conversation
+    #: and on the turn (a retry runs as asked). None: the conversation's
+    reasoning: Literal["auto", "fast", "deep"] | None = None
 
 
 class Transcription(Wire):

@@ -101,6 +101,9 @@ export interface ModelInfo {
   knowledgeCutoff?: string | null
   supportsVision?: boolean
   supportsTools?: boolean
+  /** Whether the composer's 빠르게/깊게 can change this model's reasoning (effort levels, or a
+   *  self-hosted thinking switch). */
+  reasoningControl?: boolean
   /** Set when the model is not reachable through LiteLLM and uses an adapter. */
   adapter?: string
   description: string
@@ -116,6 +119,21 @@ export type SessionKind = 'chat' | 'report' | 'slides' | 'image' | 'av'
  * comparison (no longer offered).
  */
 export type RoutingMode = 'manual' | 'auto' | 'auto_quality' | 'super' | 'super_strict'
+
+/** The composer's reasoning chip, kept per conversation and sent with each turn: `auto` leaves
+ *  the router (or the model's configured default), `fast` turns reasoning off, `deep` asks for
+ *  the most (server `super_agent.REASONING_MODES`). */
+export type ReasoningMode = 'auto' | 'fast' | 'deep'
+
+/** What a turn's reasoning was (`routing.reasoning`): the chip, and the level the writer was
+ *  sent — a provider level (`high`, `low`, …), `on` for a thinking switch, `none`, or `default`
+ *  (nothing sent: the deployment's own setting). */
+export interface TurnReasoning {
+  mode: ReasoningMode
+  effort: string
+  /** The chip asked for something the model cannot do. */
+  unsupported?: boolean
+}
 
 /** Super Agent's task classes (server `super_agent.CLASSES`). */
 export type SuperAgentClass =
@@ -202,6 +220,8 @@ export interface Session {
   model: string
   /** Under `auto`, `model` is the quality ceiling. */
   routingMode: RoutingMode
+  /** The composer's reasoning chip; absent or null is `auto`. */
+  reasoningMode?: ReasoningMode | null
   createdAt: string
   updatedAt: string
   pinned: boolean
@@ -269,11 +289,16 @@ export interface SuperAgentRoute {
   source: 'rule' | 'classifier' | 'sticky' | 'escalated' | 'deescalated' | 'document'
   reasonCode: string
   selectedModel: string
-  effort: 'default' | 'none' | 'low' | 'high'
+  /** `highest`: the reasoning chip's 깊게 on a report or deck writer. */
+  effort: 'default' | 'none' | 'low' | 'high' | 'highest'
   /** rule | sticky | fallback | default | any */
   pick: string
   tools: 'none' | 'full'
   routerVersion: string
+  /** The reasoning chip that steered this turn (absent: 자동). */
+  reasoningMode?: ReasoningMode
+  /** The table row the chip moved the turn to, when not the class's own. */
+  row?: SuperAgentClass
   /** Privacy routing moved the turn after the pick (strict-local twin, safe model). */
   boundaryModel?: string
   strictReason?: 'personal_data' | 'internal_data'
@@ -324,6 +349,8 @@ export interface PrivacyRouting {
   lengthCheck?: LengthCheck
   /** The model that ran a required calculation the answer model skipped. */
   calculationModel?: string
+  /** The reasoning chip and the level the writer was sent. */
+  reasoning?: TurnReasoning
   /** A strict-local turn's web search: the card waiting on the person, or what was decided and sent. */
   searchConsent?: SearchConsent
 }

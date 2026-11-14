@@ -36,6 +36,23 @@ When the administrator turns it on, two entries appear at the top of the list. T
 
 Each entry shows the usual credits for one answer. Every answer shows "This answer: model · task type" and the reason in its processing row. Saying "again" or "more detail" answers once more with a stronger setup; short follow-ups in the same conversation and revisions of the same document stay on the same model.
 
+## The reasoning chip
+
+The **Reasoning** chip to the left of the model name sets how much the model thinks before it answers. It is available in Chat, Reports, and Slides.
+
+| Choice | Super Agent | A model you picked |
+|---|---|---|
+| **Auto** (default) | Sets the reasoning for each question. Calculation, code, current facts, long material, and complex reasoning go to a strong reasoning model at high effort. | Answers with the model's configured reasoning. |
+| **Fast** | Answers straight away without reasoning. Reports and slides keep their writer and only turn its reasoning off. Calculations and complex questions are not moved to a reasoning model. Other needs still pick the model, such as a model that can read an attached picture. | Turns reasoning off. A model whose reasoning cannot be turned off answers at its lowest level. |
+| **Deep** | A strong reasoning model answers at high effort. In Super Agent (strict-local) and in conversations with internal material, it picks among in-house models. Reports and slides keep their writer and write at its highest effort. | Answers at the highest effort the model offers. |
+
+- The choice stays with the conversation. It is still set when you reopen the conversation or open it on another device, and **Regenerate** answers again with the choice the question was sent with.
+- A choice made on the home screen applies to the next conversation you start on that screen.
+- When the selected model's reasoning cannot be changed, the chip is dimmed and the model answers with **Model default**. Hover over the chip to see why.
+- The usage line under an answer shows the choice and the effort that was actually sent, for example "Deep · high". **Reasoning on** means reasoning was switched on for an in-house model; **Model default** means no effort was sent.
+- In reports and slides the chip never changes the writer. The model that wrote the first version also writes the revisions; when its reasoning cannot be changed, the usage line says "not adjustable on this model".
+- **Deep** answers more slowly and, on an external model, can cost more credits. Reports and slides are written in several calls, so the difference is larger there.
+
 ## Scope of a model selection
 
 - **Selecting on the home screen** saves the model to your account as the **default model** for that screen, such as Chat, Reports, or Slides. It applies when you sign in from another device, and you can also change it in Settings → Preferences.

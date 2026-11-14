@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import re
+from contextvars import ContextVar
+from typing import Any
+
 from app.core.config import settings
 
 #: answer tokens added on top of spent thinking
@@ -34,6 +38,40 @@ def template_switch(model: str) -> dict:
 def template_switch_on(model: str) -> dict:
     """vLLM template field turning Qwen3 thinking on; {} otherwise."""
     return {"chat_template_kwargs": {"enable_thinking": True}} if thinks_by_default(model) else {}
+
+
+#: Reasoning fields by model for this turn's writer and rescue writer
+#: (`super_agent.reasoning_fields`: the Super Agent table or the composer's reasoning chip);
+#: calls of those models use them instead of the deployment setting.
+TURN_REASONING: ContextVar[dict[str, dict[str, Any]] | None] = ContextVar(
+    "turn_reasoning", default=None
+)
+
+
+#: inline thinking some templates leave in the answer when reasoning is on
+THINK_BLOCK = re.compile(r"<think>[\s\S]*?</think>", re.I)
+
+
+def turn_fields(model: str) -> dict[str, Any] | None:
+    """This turn's reasoning fields for `model`, if the turn set any."""
+    return (TURN_REASONING.get() or {}).get(model) or None
+
+
+def writer_switch(model: str) -> dict:
+    """A document writer call's reasoning fields: the turn's when it set them for `model`
+    (the reasoning chip's 깊게), else thinking off where allowed (`switch`)."""
+    fields = turn_fields(model)
+    return dict(fields) if fields else switch(model)
+
+
+def writer_room(model: str, max_tokens: int) -> int:
+    """`room`, plus thinking room when the turn turned this model's reasoning on."""
+    from app.services.super_agent import applied_effort
+
+    asked = room(model, max_tokens)
+    if applied_effort(turn_fields(model)) not in ("default", "none") and model not in _MANDATORY:
+        return asked + THINK_ROOM
+    return asked
 
 
 #: fallback when reasoning can't be disabled: least effort

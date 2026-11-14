@@ -54,6 +54,7 @@ export const SUPER_EFFORT_LABEL: Record<SuperAgentRoute['effort'], string> = {
   none: '추론 끔',
   low: '추론 낮게',
   high: '추론 높게',
+  highest: '추론 최대',
 }
 
 /**
@@ -70,6 +71,8 @@ export function superRouteLabel(
   if (route.source === 'escalated') why.push(t('더 강한 설정으로 다시'))
   else if (route.source === 'sticky') why.push(t('앞 답과 같은 모델'))
   else if (route.source === 'deescalated') why.push(t('짧은 맺음말'))
+  if (route.reasoningMode === 'fast') why.push(t('빠르게 고름'))
+  else if (route.reasoningMode === 'deep') why.push(t('깊게 고름'))
   if (route.strictReason === 'personal_data') why.push(t('개인정보 감지로 내부 모델'))
   else if (route.strictReason === 'internal_data') why.push(t('내부 자료라 내부 모델'))
   const label = `${t('이번 답')}: ${answered} · ${why.join(' · ')}`
