@@ -212,10 +212,10 @@ const sameMark = (a: Mark, b: Mark) =>
   a.type === b.type && (a.type !== 'link' || a.attrs?.href === b.attrs?.href)
 
 function escapeText(text: string, inTable: boolean): string {
-  let out = text
-    // A backslash before punctuation would escape it; one at the end would break the line.
-    .replace(/\\(?=[!-/:-@[-`{-~]|$)/g, '\\\\')
-    .replace(/`/g, '\\`')
+  // Every backslash and backtick (and in a table cell every pipe) escaped in one pass: a
+  // text backslash can never pair with an escape added here. `\\` reads back as one `\`.
+  return text
+    .replace(inTable ? /[\\`|]/g : /[\\`]/g, '\\$&')
     // `*` opens emphasis unless spaced on both sides (「3 * 4」).
     .replace(/\*/g, (_, at: number, all: string) =>
       /\s/.test(all[at - 1] ?? '') && /\s/.test(all[at + 1] ?? '') ? '*' : '\\*')
@@ -228,10 +228,6 @@ function escapeText(text: string, inTable: boolean): string {
     .replace(/\[(?=[^\]\n]*\]\()|\[(?=\^)/g, '\\[')
     .replace(/<(?=[A-Za-z/!?])/g, '\\<')
     .replace(/&(?=#?[A-Za-z0-9]+;)/g, '\\&')
-  // backslashes before a pipe were escaped above (`\` before punctuation): escaping the pipe
-  // now cannot pair with one of the text's own
-  if (inTable) out = out.replace(/\|/g, '\\|')
-  return out
 }
 
 /** A line that Markdown would read as structure is escaped at its start. */

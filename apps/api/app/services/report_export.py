@@ -219,7 +219,7 @@ _THEMATIC = re.compile(r"^\s{0,3}(?:-\s*){3,}$|^\s{0,3}(?:\*\s*){3,}$|^\s{0,3}(?
 #: a quotation line, written as its text
 _QUOTE = re.compile(r"^\s{0,3}>\s?(.*)$")
 #: an HTML comment other than a page break
-_COMMENT = re.compile(r"^\s*<!--.*-->\s*$")
+_COMMENT = re.compile(r"^\s{0,8}<!--[\s\S]{0,2000}?--!?>\s{0,8}$")
 #: a task-list box at the start of an item
 _TASK = re.compile(r"^\[([ xX])\]\s+")
 _PAGE_BREAK = re.compile(r"^\s*<!--\s*pagebreak\s*-->\s*$", re.I)

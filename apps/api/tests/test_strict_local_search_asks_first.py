@@ -142,8 +142,8 @@ async def test_allowed_queries_alone_go_to_the_web_search(monkeypatch) -> None:
     result = await consent.tool().run(
         {"queries": ["연합학습 BN 분리", "문의 person@example.com"]}, ctx)
     assert sent == [{"query": "연합학습 BN 분리"}, {"query": "문의 [이메일]"}]
-    hosts = {urlparse(word).hostname for word in result.content.split() if "://" in word}
-    assert "arxiv.org" in hosts and result.search_evidence is not None
+    first = next(word for word in result.content.split() if word.startswith("https://"))
+    assert urlparse(first).hostname == "arxiv.org" and result.search_evidence is not None
     assert ctx.tool_calls["web_search"] == 2
     record = consent.record(by="u")
     assert record["status"] == "auto" and record["searches"] == 2

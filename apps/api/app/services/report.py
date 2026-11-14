@@ -709,7 +709,7 @@ def gaejo_body(sections: list[dict], fmt: doc_formats.DocFormat | None) -> list[
 
 
 _MONEY = re.compile(
-    r"(?<![\d,.])\d[\d,]{0,15}(?:\.\d{1,3})?\s*(?:억|만|천|백)?\s*원(?!인|리|칙|자)"
+    r"(?<![\d,.])\d[\d,]{0,15}(?:\.\d{1,3})?\s{0,3}(?:억|만|천|백)?\s{0,3}원(?!인|리|칙|자)"
 )
 
 

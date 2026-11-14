@@ -24,7 +24,7 @@ import {
   X,
 } from 'lucide-react'
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { createPortal } from 'react-dom'
+import { createPortal, flushSync } from 'react-dom'
 import {
   usePanelWidth,
   type PanelMode,
@@ -443,29 +443,34 @@ export function SlideView({
               range.setEnd(sel.anchorNode!, sel.anchorOffset)
               return range.toString().length
             })()
-            const focusBullet = (at: number, toEnd: boolean) =>
-              requestAnimationFrame(() => {
-                const next = canvas.current?.querySelector<HTMLElement>(`[data-bullet="${at}"]`)
-                if (!next) return
-                next.focus()
-                const sel = window.getSelection()
-                sel?.selectAllChildren(next)
-                if (toEnd) sel?.collapseToEnd()
-                else sel?.collapseToStart()
-              })
+            // Focus moves before the next key is handled: the bullets are rendered at once
+            // (`flushSync` around the edit), so a fast typist's next letters land in the new
+            // bullet, not in the one just split. A parent that renders later is waited for.
+            const focusBullet = (at: number, toEnd: boolean, tries = 10) => {
+              const next = canvas.current?.querySelector<HTMLElement>(`[data-bullet="${at}"]`)
+              if (!next) {
+                if (tries > 0) requestAnimationFrame(() => focusBullet(at, toEnd, tries - 1))
+                return
+              }
+              next.focus()
+              const sel = window.getSelection()
+              sel?.selectAllChildren(next)
+              if (toEnd) sel?.collapseToEnd()
+              else sel?.collapseToStart()
+            }
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
               splitBullet.current = `bullets.${i}`
               bullets.splice(i, 1, text.slice(0, caret).trimEnd(), text.slice(caret).trimStart())
               const richText = { ...(working.current.richText ?? {}) }
               delete richText[`bullets.${i}`]
-              edit({ bullets, richText: Object.keys(richText).length ? richText : undefined })
+              flushSync(() => edit({ bullets, richText: Object.keys(richText).length ? richText : undefined }))
               focusBullet(i + 1, false)
             } else if (e.key === 'Backspace' && caret === 0 && !text && bullets.length > 1) {
               e.preventDefault()
               splitBullet.current = `bullets.${i}`
               bullets.splice(i, 1)
-              edit({ bullets })
+              flushSync(() => edit({ bullets }))
               focusBullet(Math.max(0, i - 1), true)
             }
           },

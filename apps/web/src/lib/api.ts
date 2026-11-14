@@ -1534,10 +1534,9 @@ export { isMediaFile }
 /** Length of a local video/audio file as the browser reads it, or undefined. */
 export function mediaSeconds(file: File): Promise<number | undefined> {
   return new Promise((resolve) => {
-    const url = URL.createObjectURL(file)
     const el = document.createElement(file.type.startsWith('audio/') ? 'audio' : 'video')
     const done = (value: number | undefined) => {
-      URL.revokeObjectURL(url)
+      if (el.src) URL.revokeObjectURL(el.src)
       resolve(value)
     }
     const timer = setTimeout(() => done(undefined), 5000)
@@ -1550,9 +1549,8 @@ export function mediaSeconds(file: File): Promise<number | undefined> {
       clearTimeout(timer)
       done(undefined)
     }
-    // an object URL of the person's own file, never a page-supplied string
-    if (url.startsWith('blob:')) el.src = url
-    else done(undefined)
+    // an object URL of the person's own file, made right here
+    el.src = URL.createObjectURL(file)
   })
 }
 
