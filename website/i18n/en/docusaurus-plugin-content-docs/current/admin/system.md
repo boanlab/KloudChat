@@ -33,7 +33,7 @@ All of them can be changed on this tab and on the **Routing** and **Features** t
 
 ## Routing
 
-The routing settings are described in [Policy and routing](policy#auto-routing).
+The routing settings are described in [Policy and routing](policy#super-agent).
 
 ## Features
 
@@ -64,7 +64,7 @@ The MCP servers people can install from **Customize** › **Connectors**. **Add 
 
 ## Management items outside the System tab
 
-- The **Usage** screen: charts by period, by model, by screen, and by user, CSV export, and storage space (disk usage, orphan file cleanup, and automatic cleanup from the oldest when it fills up).
+- The **Usage** screen: charts by period (7, 30 or 90 days, or a **Custom range** of dates), by model, by screen, and by user (sortable, searchable), CSV export, and storage space (disk usage, orphan file cleanup, and automatic cleanup from the oldest when it fills up).
 - **Theme**: An administrator can **provide a theme to every user** (shared, read only).
 - **Store**: Agents published by an administrator account carry an **Official** badge; skills carry the name of whoever shared them. Built-in skills start as skills of the first administrator account, shared with everyone. Administrators can edit them or stop sharing them in **Customize** › **Skills** like any other skill, and an edited skill is not overwritten by a newer version (unedited ones, and users' unedited copies, follow newer versions). Built-in skills hidden from the lists (kept only as parts) show to administrators only with **Show hidden** (숨김 포함).
 - **Performance** screen: first-token and full-answer latency and error rate per model, turns in progress, API replica, host and GPU metrics, with items past their thresholds flagged as warning or overload. The first screen is a dashboard with the verdict, key figures and the GPU node and model server tables; clicking a figure or a table row opens the host or model trends, or the detail screen of one node or server. The thresholds are set with the API's `PERF_*` environment variables.

@@ -36,6 +36,10 @@ class RoutingMode(StrEnum):
     auto = "auto"
     #: hard turns up to quality model (same classifier)
     auto_quality = "auto_quality"
+    #: model, effort and tools per turn from the task class (`super_agent`)
+    super = "super"
+    #: as `super`, strict-local self-hosted models only
+    super_strict = "super_strict"
 
 
 class Role(StrEnum):

@@ -1,3 +1,4 @@
+import { leaveOffice, officeDirty } from '@/lib/officeGuard'
 import {
   AudioLines,
   BarChart3,
@@ -45,11 +46,13 @@ import {
   artifactsApi, errorMessage, templateText, type DesignTemplateRow, type OfficeKind,
 } from '@/lib/api'
 import { currentLang } from '@/lib/i18n'
-import { relativeTime } from '@/lib/utils'
 import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
 import { useStore } from '@/store/useStore'
 import type { Artifact, ArtifactKind } from '@/types'
 import { useT } from '@/lib/useT'
+import { RelTime } from '@/components/ui/RelTime'
+import { cn } from '@/lib/utils'
+import { ListSkeleton } from '@/components/ui/Skeleton'
 
 const kindIcon: Record<ArtifactKind, typeof FileText> = {
   report: FileText,
@@ -91,7 +94,20 @@ function templateOf(artifact: Artifact, templates: DesignTemplateRow[]) {
   return id ? templates.find((row) => row.id === id) : undefined
 }
 
-type Filter = ArtifactKind | 'all'
+type Filter = ArtifactKind | 'all' | 'reports' | 'decks'
+
+/** A report is written as a web report, an HWP file or a Word file; a deck as web slides or a PowerPoint file. */
+const FAMILIES = {
+  reports: [
+    { kind: 'report', label: '웹 보고서' },
+    { kind: 'hwp', label: '한글' },
+    { kind: 'docx', label: 'Word' },
+  ],
+  decks: [
+    { kind: 'deck', label: '웹 슬라이드' },
+    { kind: 'pptx', label: 'PowerPoint' },
+  ],
+} as const satisfies Record<string, readonly { kind: ArtifactKind; label: string }[]>
 
 const isOffice = (artifact: Artifact): artifact is Extract<Artifact, { kind: OfficeKind }> =>
   artifact.kind === 'hwp' || artifact.kind === 'docx' || artifact.kind === 'pptx'
@@ -243,17 +259,23 @@ export function ArtifactsPage() {
   } = useStore()
   const english = currentLang() === 'en'
 
-  const [filter, setFilter] = useState<Filter>('all')
+  const [filter, setFilterState] = useState<Filter>('all')
+  // Within a family: one format, or all of them.
+  const [format, setFormat] = useState<ArtifactKind | null>(null)
+  const setFilter = (next: Filter) => {
+    setFilterState(next)
+    setFormat(null)
+  }
   const [query, setQuery] = useState('')
+  const family = filter === 'reports' || filter === 'decks' ? FAMILIES[filter] : null
+  const kindParam =
+    filter === 'all' ? undefined : family ? (format ?? family.map((f) => f.kind).join(',')) : filter
 
   // Server-side filter and search; debounced.
   useEffect(() => {
-    const timer = setTimeout(
-      () => void loadArtifacts({ kind: filter === 'all' ? undefined : filter, q: query }),
-      query ? 300 : 0,
-    )
+    const timer = setTimeout(() => void loadArtifacts({ kind: kindParam, q: query }), query ? 300 : 0)
     return () => clearTimeout(timer)
-  }, [loadArtifacts, filter, query])
+  }, [loadArtifacts, kindParam, query])
   // By id: the panel edits in place.
   const [previewId, setPreviewId] = useState<string | null>(null)
   const [previewMode, setPreviewMode] = useState<PanelMode>('wide')
@@ -281,9 +303,20 @@ export function ArtifactsPage() {
     setPreviewMode('wide')
     setPreviewDirty(false)
   }
-  const requestPreviewClose = () => previewDirty ? setConfirmPreviewClose(true) : closePreview()
+  // a document on the shared unsaved guard (the web slides, office files) asks its own
+  // 저장 / 버리기 / 취소; any other unsaved preview asks here
+  const requestPreviewClose = () => {
+    if (officeDirty()) {
+      void leaveOffice().then((go) => go && closePreview())
+      return
+    }
+    if (previewDirty) setConfirmPreviewClose(true)
+    else closePreview()
+  }
   // Undefined until counts arrive: no number rather than 0.
   const count = (k: ArtifactKind) => (artifactCounts ? (artifactCounts[k] ?? 0) : undefined)
+  const familyCount = (f: 'reports' | 'decks') =>
+    artifactCounts ? FAMILIES[f].reduce((sum, row) => sum + (artifactCounts[row.kind] ?? 0), 0) : undefined
   const total = artifactCounts
     ? Object.values(artifactCounts).reduce((sum, n) => sum + n, 0)
     : undefined
@@ -314,24 +347,46 @@ export function ArtifactsPage() {
             { id: 'all', label: t('전체'), count: total },
             { id: 'code', label: t('코드'), count: count('code') },
             { id: 'html', label: 'HTML', count: count('html') },
-            { id: 'report', label: t('보고서'), count: count('report') },
-            { id: 'deck', label: t('슬라이드'), count: count('deck') },
+            { id: 'reports', label: t('보고서'), count: familyCount('reports') },
+            { id: 'decks', label: t('슬라이드'), count: familyCount('decks') },
             { id: 'chart', label: t('차트'), count: count('chart') },
             { id: 'image', label: t('이미지'), count: count('image') },
             { id: 'audio', label: t('오디오'), count: count('audio') },
             { id: 'video', label: t('동영상'), count: count('video') },
-            { id: 'hwp', label: t('한글'), count: count('hwp') },
-            { id: 'docx', label: 'Word', count: count('docx') },
-            { id: 'pptx', label: 'PowerPoint', count: count('pptx') },
             // Empty kinds hidden, unless open.
           ] as { id: Filter; label: string; count?: number }[]).filter((tab) => tab.id === 'all' || tab.id === filter || tab.count !== 0)}
         />
+
+        {family && (
+          // The family's formats: all, or one (웹 보고서 · 한글 · Word / 웹 슬라이드 · PowerPoint).
+          <div className="mt-3 flex flex-wrap gap-1.5" role="group" aria-label={t('형식')} data-testid="artifact-formats">
+            {[{ kind: null, label: '모든 형식' }, ...family].map((row) => (
+              <button
+                key={row.kind ?? 'all'}
+                type="button"
+                aria-pressed={format === row.kind}
+                onClick={() => setFormat(row.kind)}
+                className={cn(
+                  'h-8 rounded-full border px-3 text-sm transition-colors',
+                  format === row.kind
+                    ? 'border-accent bg-accent-soft text-accent'
+                    : 'border-line text-muted hover:bg-elevated hover:text-fg',
+                )}
+              >
+                {t(row.label)}
+                {row.kind && count(row.kind) !== undefined && (
+                  <span className="ml-1 tabular-nums text-faint">{count(row.kind)}</span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
 
         {artifactsFailed && <ReloadNotice onRetry={() => void loadArtifacts()} />}
 
         <div className="pt-4">
           {artifactsLoading ? (
-            <LoadingState />
+            <ListSkeleton variant="cards" rows={6} />
           ) : artifacts.length === 0 ? (
             <EmptyState
               icon={<Layers size={18} />}
@@ -340,6 +395,13 @@ export function ArtifactsPage() {
                 query
                   ? t('제목의 다른 부분으로 찾아보세요.')
                   : t('챗·보고서·슬라이드·이미지·오디오/동영상에서 만든 아티팩트가 여기에 저장됩니다.')
+              }
+              action={
+                query ? undefined : (
+                  <Button variant="primary" onClick={() => navigate('/')}>
+                    {t('새 대화 시작')}
+                  </Button>
+                )
               }
             />
           ) : (
@@ -417,7 +479,7 @@ export function ArtifactsPage() {
                             {project.emoji} {project.name}
                           </span>
                         )}
-                        <span>{relativeTime(a.updatedAt)}</span>
+                        <RelTime iso={a.updatedAt} />
                       </div>
                       {session && (
                         <Button
@@ -499,7 +561,7 @@ export function ArtifactsPage() {
             {preview.kind === 'report' ? (
               <ReportPanel report={preview} onModeChange={setPreviewMode} onClose={closePreview} onDirtyChange={setPreviewDirty} />
             ) : preview.kind === 'deck' ? (
-              <DeckPanel deck={preview} onModeChange={setPreviewMode} onClose={closePreview} onDirtyChange={setPreviewDirty} />
+              <DeckPanel deck={preview} onModeChange={setPreviewMode} onClose={requestPreviewClose} onDirtyChange={setPreviewDirty} />
             ) : preview.kind === 'chart' ? (
               <ChartPanel chart={preview} onModeChange={setPreviewMode} />
             ) : preview.kind === 'image' ||

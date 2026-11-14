@@ -8,7 +8,7 @@ Open a Word editor beside the conversation and write or edit a Word document (`.
 
 ## Getting started
 
-- On Home, **Word 문서** (Word document) starts a conversation with a blank document open. The conversation is on the left; on the right is the editor with a Word-style ribbon (File, Home, Insert, Layout, References, Review and View tabs). Font, size, bold, colour, alignment, lists and indents are on **Home**; tables are on **Insert**. The ribbon and its menus are in the app's language (Korean or English).
+- On Home or in an empty report conversation, choose **Report → Format → Word** and press **Start blank** to start a conversation with a blank document open. Send a topic to have the Word document written. The conversation is on the left; on the right is the editor with a Word-style ribbon (File, Home, Insert, Layout, References, Review and View tabs). Font, size, bold, colour, alignment, lists and indents are on **Home**; tables are on **Insert**. The ribbon and its menus are in the app's language (Korean or English).
 - The font list on **Home** starts with Korean fonts: Malgun Gothic (맑은 고딕), Nanum Gothic, Nanum Myeongjo, Batang, Dotum, Gulim, Gungsuh, HCR Batang, HCR Dotum and Pretendard. Choosing a Korean font saves it as the text's Korean font, as Word does, so Word and Hancom Office show it too; choosing a Latin font applies to Latin text and keeps the Korean font.
 - A `.docx` file attached in the conversation opens in the editor with **Open in Word editor**.
 - Asking in chat for something "in Word", "as a Word document" or "as a docx file" writes it in this conversation's Word document instead of moving to the report screen.

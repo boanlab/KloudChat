@@ -31,6 +31,7 @@ export const DOC_FORMATS: DocFormatWire[] = /* wire:begin */ [
   {"id": "incident", "label": "장애 보고서", "fields": ["발생 일시", "영향 범위", "심각도", "작성자"], "numbering": "decimal", "head": "header", "abstract": false, "keywords": false, "subtitle": false, "lists": "", "closing": false},
   {"id": "result_report", "label": "결과 보고서", "fields": ["보고일", "보고 부서", "보고자"], "numbering": "korean", "head": "memo", "abstract": false, "keywords": false, "subtitle": false, "lists": "gaejo", "closing": true},
   {"id": "grant", "label": "공모·지원사업 계획서", "fields": ["사업명", "신청 기관", "사업 기간", "작성일"], "numbering": "decimal", "head": "cover", "abstract": false, "keywords": false, "subtitle": false, "lists": "", "closing": false},
+  {"id": "syllabus", "label": "강의계획서", "fields": ["교과목명", "담당교수", "개설 학기", "학점·시간", "강의실", "연락처"], "numbering": "decimal", "head": "header", "abstract": false, "keywords": false, "subtitle": false, "lists": "", "closing": false},
   {"id": "plan", "label": "연구·조사 계획서", "fields": ["과제명", "연구자", "소속", "연구 기간", "지도교수", "작성일"], "numbering": "decimal", "head": "cover", "abstract": false, "keywords": false, "subtitle": false, "lists": "", "closing": false},
   {"id": "event_plan", "label": "추진 계획(안)", "fields": ["작성일", "작성 부서", "작성자"], "numbering": "korean", "head": "memo", "abstract": false, "keywords": false, "subtitle": false, "lists": "gaejo", "closing": true},
   {"id": "gaejo", "label": "개조식 보고서", "fields": ["보고일", "보고자(부서)", "보고 대상"], "numbering": "korean", "head": "memo", "abstract": false, "keywords": false, "subtitle": false, "lists": "gaejo", "closing": true},
@@ -95,10 +96,7 @@ const CONTENT_HEADING_HTML = /<h([2-6])(\s[^>]*)?>/gi
 const CALLOUT_HTML = /(<section\b[^>]{0,200}\b(?:callout|cards)\b[^>]{0,200}>[\s\S]*?<\/section>)/i
 
 /** Content headings the exporters number at level 2. */
-export function contentHeadingCount(section: Pick<ReportSection, 'content' | 'format'>): number {
-  if (section.format === 'html') {
-    return section.content.split(CALLOUT_HTML).filter((_, at) => at % 2 === 0).join('').match(CONTENT_HEADING_HTML)?.length ?? 0
-  }
+export function contentHeadingCount(section: Pick<ReportSection, 'content'>): number {
   const prose = section.content.replace(/^\s*```[\s\S]*?^\s*```\s*$/gm, '')
   return prose.match(/^#{2,6}\s+\S/gm)?.length ?? 0
 }
@@ -113,7 +111,7 @@ export interface SectionNumber {
 
 /** Heading number per section, counting earlier sections; 개조식 붙임 unnumbered (`isAttachment`). */
 export function sectionNumbers(
-  sections: { level?: number; content: string; format?: ReportSection['format']; heading?: string }[],
+  sections: { level?: number; content: string; heading?: string }[],
   numbering: DocNumbering,
   lists?: ReportTitleBlock['lists'],
 ): SectionNumber[] {
@@ -152,14 +150,14 @@ const CONTENT_NUMBER: Record<Exclude<DocNumbering, 'none'>, string> = {
   official: 'counter(tbb, hangul) "."',
 }
 
-/** `.fmt` numbering: template counter off, `data-num` shown, live bodies (`.tb-counted`, `.ProseMirror`) count from `counter-reset`. */
+/** `.fmt` numbering: template counter off, `data-num` shown, live bodies (`.tb-counted`, `.ProseMirror`) count from `counter-reset`; in the editor a section heading (`data-section-id`) carries the reset and is not counted. */
 export function numberingCss(numbering: DocNumbering): string {
   const off = '.fmt h2::before { content: none !important; }'
   if (numbering === 'none') return off
   return `${off}
 .fmt :is(h1, h2, h3, h4, h5, h6)[data-num]::before { content: attr(data-num) !important; margin-right: 0.45em; }
-.fmt :is(.tb-counted, .ProseMirror) :is(h2, h3, h4, h5, h6):not(.callout *, .cards *) { counter-increment: tbb; }
-.fmt :is(.tb-counted, .ProseMirror) :is(h2, h3, h4, h5, h6):not(.callout *, .cards *)::before { content: ${CONTENT_NUMBER[numbering]} !important; margin-right: 0.45em; }`
+.fmt :is(.tb-counted, .ProseMirror) :is(h2, h3, h4, h5, h6):not(.callout *, .cards *, [data-section-id]) { counter-increment: tbb; }
+.fmt :is(.tb-counted, .ProseMirror) :is(h2, h3, h4, h5, h6):not(.callout *, .cards *, [data-section-id])::before { content: ${CONTENT_NUMBER[numbering]} !important; margin-right: 0.45em; }`
 }
 
 /** Title-block look; `currentColor` keeps dark themes and filled covers legible. */
@@ -481,16 +479,8 @@ export function closeMarkdown(text: string): string {
   return lines.join('\n')
 }
 
-/** HTML body ending in 「끝.」, inside its last paragraph or item, or after a table. */
-export function closeHtml(html: string): string {
-  const end = Math.max(html.lastIndexOf('</p>'), html.lastIndexOf('</li>'))
-  if (end < 0 || /<(?:table|figure|img)\b/i.test(html.slice(end))) return `${html}<p>${GAP}끝.</p>`
-  const head = html.slice(0, end).replace(/(?:&nbsp;|\u00a0|\s){1,16}끝\.$/, '')
-  return `${head}${GAP}끝.${html.slice(end)}`
-}
-
 /** Section as its format shows it (개조식 canonical, closing 「끝.」); stored section untouched. */
-export function shapedSection<T extends Pick<ReportSection, 'content' | 'format'> & { heading?: string }>(
+export function shapedSection<T extends Pick<ReportSection, 'content'> & { heading?: string }>(
   section: T,
   block: ReportTitleBlock | null | undefined,
   last: boolean,
@@ -499,12 +489,11 @@ export function shapedSection<T extends Pick<ReportSection, 'content' | 'format'
   let content = section.content
   const attachment = isAttachment(section, block.lists)
   // Empty 붙임 not drawn (`report_export._drawn_sections`).
-  if (attachment && section.format !== 'html' && NO_ATTACHMENT.test(content)) content = ''
-  else if (attachment && section.format !== 'html') content = attachmentBody(content)
-  if (section.format !== 'html' && block.lists === 'gaejo') content = gaejoMarkdown(content)
+  if (attachment && NO_ATTACHMENT.test(content)) content = ''
+  else if (attachment) content = attachmentBody(content)
+  if (block.lists === 'gaejo') content = gaejoMarkdown(content)
   if (block.closing && last) {
-    if (section.format === 'html') content = closeHtml(content)
-    else if (attachment) {
+    if (attachment) {
       // 「끝.」 closes the 붙임 list; a moved full attachment follows.
       const [list, ...rest] = content.split(/\n\s*\n/)
       content = rest.some((part) => /^\s*\|/m.test(part))

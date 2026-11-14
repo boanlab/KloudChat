@@ -1,4 +1,8 @@
-"""Real table save, read and export routes over an in-memory workspace."""
+"""Real table save, read and export routes over an in-memory workspace.
+
+A table an older client saved as HTML is stored as a Markdown table (cell merges have no
+Markdown and are flattened); the exporters' grid matching is still checked with grids read
+from HTML directly."""
 
 from __future__ import annotations
 
@@ -22,6 +26,15 @@ from app.models.user import User
 from app.models.workspace import Artifact, ArtifactKind, ArtifactVersion
 from app.routers import workspace
 from app.services import report_export, richtext
+
+
+def _converted(markup: str) -> dict:
+    """A section with the grids of its HTML, as the exporters accept them."""
+    return {
+        "content": richtext.to_markdown(markup),
+        "format": "markdown",
+        "tables": richtext.grids(markup),
+    }
 
 FIXTURES = Path(__file__).parent / "fixtures/report-table"
 _DDL = (
@@ -79,13 +92,14 @@ async def stored_table(request):
             loaded = await client.get(f"/artifacts/{artifact_id}")
             assert loaded.status_code == 200
             assert loaded.json() == saved.json()
-            html = loaded.json()["data"]["sections"][0]["content"]
-            assert html.count("<tr>") == 3
+            section = loaded.json()["data"]["sections"][0]
+            assert section["format"] == "markdown"
+            rows = [line for line in section["content"].splitlines() if line.startswith("|")]
+            # header, rule, body rows; a row a merge covered whole is gone
+            assert len(rows) == (3 if request.param == "full-width-merged" else 4)
             for text in ("Item", "Value", "Owner", "Alpha", "10", "A", "Beta", "20", "B"):
-                assert f"<p>{text}</p>" in html
+                assert text in section["content"]
             expected_span = {"merged": 2, "full-width-merged": 3}.get(request.param)
-            if expected_span:
-                assert f'colspan="{expected_span}" rowspan="2"' in html
             # A fresh ORM session checks the committed previous version, not an in-memory object.
             async with AsyncSession(engine) as db:
                 history = (await db.exec(select(ArtifactVersion))).all()
@@ -99,19 +113,8 @@ async def stored_table(request):
 
 @pytest.mark.parametrize("stored_table", ["merged", "split", "full-width-merged"], indirect=True)
 @pytest.mark.parametrize("format", ["docx", "hwpx", "pdf"])
-async def test_saved_browser_table_keeps_cells_and_spans_in_exports(
-    stored_table, format, monkeypatch
-):
-    client, artifact_id, colspan = stored_table
-    pdf_tables = []
-    real_pdf_table = report_export._pdf_table
-
-    def observe_pdf_table(*args, **kwargs):
-        table = real_pdf_table(*args, **kwargs)
-        pdf_tables.append(table)
-        return table
-
-    monkeypatch.setattr(report_export, "_pdf_table", observe_pdf_table)
+async def test_saved_browser_table_keeps_its_cells_in_exports(stored_table, format):
+    client, artifact_id, _ = stored_table
     response = await client.get(f"/artifacts/{artifact_id}/export?format={format}")
     assert response.status_code == 200
     if format == "docx":
@@ -119,66 +122,23 @@ async def test_saved_browser_table_keeps_cells_and_spans_in_exports(
             document = ET.fromstring(archive.read("word/document.xml"))
         table = document.find(f".//{W}tbl")
         assert table is not None
-        assert len(table.findall(f"{W}tr")) == 3
-        if colspan:
-            cell = table.findall(f"{W}tr")[1].find(f"{W}tc")
-            assert cell.find(f"{W}tcPr/{W}gridSpan").get(f"{W}val") == str(colspan)
-            assert cell.find(f"{W}tcPr/{W}vMerge").get(f"{W}val") == "restart"
-            assert table.findall(f"{W}tr")[2].find(f"{W}tc/{W}tcPr/{W}vMerge") is not None
-        else:
-            assert table.findall(f".//{W}gridSpan") == []
-            assert table.findall(f".//{W}vMerge") == []
+        # Markdown has no merges: every cell stands alone
+        assert table.findall(f".//{W}gridSpan") == []
         text = "\n".join(node.text or "" for node in table.iter(f"{W}t"))
     elif format == "hwpx":
         with ZipFile(BytesIO(response.content)) as archive:
             document = ET.fromstring(archive.read("Contents/section0.xml"))
         table = document.find(f".//{HP}tbl")
         assert table is not None
-        assert table.get("rowCnt") == "3"
-        assert table.get("colCnt") == "3"
         spans = [node.attrib for node in table.iter(f"{HP}cellSpan")]
-        assert {"colSpan": str(colspan or 1), "rowSpan": "2" if colspan else "1"} in spans
-        if not colspan:
-            assert len(spans) == 9
-            assert all(span == {"colSpan": "1", "rowSpan": "1"} for span in spans)
+        assert all(span == {"colSpan": "1", "rowSpan": "1"} for span in spans)
         text = "\n".join(node.text or "" for node in table.iter(f"{HP}t"))
     else:
         assert response.content.startswith(b"%PDF-")
         reader = PdfReader(BytesIO(response.content))
         text = "\n".join(page.extract_text() for page in reader.pages)
-        assert len(pdf_tables) == 1
-        assert pdf_tables[0]._nrows == 3
-        assert pdf_tables[0]._ncols == 3
-        expected = [("SPAN", (0, 1), (colspan - 1, 2))] if colspan else []
-        assert pdf_tables[0]._spanCmds == expected
-        # Inspect actual PDF drawing operators, not just the source table model.
-        lines = []
-        start = None
-        for page in reader.pages:
-            for operands, operator in page.get_contents().operations:
-                if operator == b"m":
-                    start = tuple(float(value) for value in operands)
-                elif operator == b"l" and start is not None:
-                    lines.append((*start, *(float(value) for value in operands)))
-                    start = tuple(float(value) for value in operands)
-                elif operator in (b"S", b"n"):
-                    start = None
-
-        def drawn(x1, y1, x2, y2):
-            return any(line == pytest.approx((x1, y1, x2, y2), abs=0.001) for line in lines)
-
-        table = pdf_tables[0]
-        columns, rows = table._colpositions, table._rowpositions
-        assert drawn(0, rows[1], columns[3], rows[1])
-        if colspan == 3:
-            assert not any(abs(y1 - rows[2]) < 0.001 and y1 == y2 for _, y1, _, y2 in lines)
-        else:
-            assert drawn(columns[colspan or 0], rows[2], columns[3], rows[2])
-        if colspan:
-            assert drawn(columns[1], rows[1], columns[1], rows[0])
-            assert not drawn(columns[1], rows[3], columns[1], rows[0])
     for expected in ("Item", "Value", "Owner", "Alpha", "10", "A", "Beta", "20", "B"):
-        assert expected in text.splitlines()
+        assert expected in text
 
 
 @pytest.mark.parametrize(
@@ -198,7 +158,7 @@ async def test_saved_browser_table_keeps_cells_and_spans_in_exports(
 def test_structural_empty_rows_match_the_original_html_grid(
     markup, expected_rows, format, monkeypatch
 ):
-    sections = richtext.normalise([{"format": "html", "content": f"<table>{markup}</table>"}])
+    sections = [_converted(f"<table>{markup}</table>")]
     section = sections[0]
     original = section["tables"][0]
     assert len(original.rows) == expected_rows
@@ -258,7 +218,7 @@ def test_unrelated_html_grid_does_not_change_markdown_table_boundaries(position,
     pieces = [markup, "<p>Separate.</p>", paragraphs]
     if position == "after":
         pieces.reverse()
-    section = richtext.normalise([{"format": "html", "content": "".join(pieces)}])[0]
+    section = _converted("".join(pieces))
     actual = report_export._markdown_to_lines(section["content"], section["tables"])
     expected = report_export._markdown_to_lines(section["content"])
     assert actual == expected
@@ -279,7 +239,7 @@ def test_mixed_html_and_markdown_exports_keep_the_original_plain_table_boundarie
         "<table><tr><td>Unrelated</td><td>Grid</td></tr></table><p>Separate.</p>"
         "<p>| A | B |</p><p>|---|---|</p><p>| C | D |</p><p>|  |  |</p><p>| E | F |</p>"
     )
-    section = richtext.normalise([{"format": "html", "content": markup}])[0]
+    section = _converted(markup)
     plain = {key: value for key, value in section.items() if key != "tables"}
     export = getattr(report_export, f"to_{format}")
     actual, expected = export("Mixed tables", [section]), export("Mixed tables", [plain])
@@ -304,7 +264,7 @@ def test_only_the_matched_table_keeps_structural_empty_rows(position, separated)
     pieces = [markup, "<p>Separate.</p>" if separated else "", paragraphs]
     if position == "after":
         pieces.reverse()
-    section = richtext.normalise([{"format": "html", "content": "".join(pieces)}])[0]
+    section = _converted("".join(pieces))
     tables = [
         payload
         for kind, payload, *_ in report_export._markdown_to_lines(
@@ -324,7 +284,7 @@ def test_adjacent_structural_grids_keep_their_own_empty_rows():
         "<table><tr><td rowspan='2' colspan='2'>First</td></tr><tr></tr></table>"
         "<table><tr><td>Second</td><td>Table</td></tr><tr><td></td><td></td></tr></table>"
     )
-    section = richtext.normalise([{"format": "html", "content": markup}])[0]
+    section = _converted(markup)
     tables = [
         payload
         for kind, payload, *_ in report_export._markdown_to_lines(
@@ -336,8 +296,6 @@ def test_adjacent_structural_grids_keep_their_own_empty_rows():
 
 
 def test_an_entirely_empty_html_table_still_emits_no_export_table():
-    sections = richtext.normalise(
-        [{"format": "html", "content": "<table><tr><td></td></tr></table>"}]
-    )
+    sections = [_converted("<table><tr><td></td></tr></table>")]
     assert sections[0]["content"] == ""
     assert report_export._export_grid(sections[0]["tables"][0]).rows == []

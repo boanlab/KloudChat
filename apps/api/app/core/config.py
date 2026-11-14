@@ -109,9 +109,28 @@ class Settings(BaseSettings):
 
     file_storage_dir: str = "/srv/data/files"
     max_upload_mb: int = 200
+    #: One audio/video file's ceiling. Such files come in pieces (`routers/uploads.py`), each
+    #: under `upload_piece_mb`, so nginx's body limit stays at MAX_UPLOAD_MB.
+    max_video_upload_mb: int = 500
+    upload_piece_mb: int = 8
+    #: The media worker (stock ffmpeg in its own container, `apps/media`); empty: audio/video
+    #: is transcribed whole in the upload request as before (Whisper's 25 MB limit), no frames.
+    media_url: str = ""
+    #: Longest audio/video read, minutes; longer ones are refused before any work.
+    video_max_minutes: int = 240
+    #: Keyframes read per minute of video, and per video at most (long videos are sampled).
+    video_frames_per_minute: float = 4.0
+    video_max_frames: int = 120
+    #: Frames read at once by the vision model.
+    video_vision_parallel: int = 4
     # Disk fill ratio triggering removal of deleted accounts' files, oldest first; 0 disables.
     storage_reclaim_at: float = 0.8
     file_context_chars: int = 24_000
+    #: 지식 서가: models per output kind over `services/shelf_models.DEFAULTS` (JSON, e.g.
+    #: {"quiz": {"strictModel": "strict-local/qwen3.8-27b", "effort": "none"}}); empty: defaults
+    knowledge_models: str = ""
+    #: 지식 서가: model calls in flight at once per replica (flash serves production too)
+    knowledge_concurrency: int = 2
     #: Window (tokens) a chat is fitted to when the model's own is not known (most hosted
     #: models): longer conversations are cut and summarised instead of resent whole.
     default_context_window: int = 131_072
@@ -130,6 +149,9 @@ class Settings(BaseSettings):
     ocr_url: str = ""
     #: Fallback vision model for unsure pages; only if listed strict-local with vision.
     ocr_vision_model: str = "strict-local/qwen3.8-flash"
+    #: Writes per-file digests of project material (`file_digest`); only ever a strict-local
+    #: model the catalogue lists as such, so file text stays inside. Empty: code digests only.
+    knowledge_digest_model: str = "strict-local/qwen3.8-flash"
     #: Only audio destination; empty: no transcription, no outside fallback.
     whisper_url: str = ""
     code_interpreter_api_key: str = ""
@@ -166,6 +188,8 @@ class Settings(BaseSettings):
     adaptive_economy_models_default: str = "local/qwen3.8-flash"
     adaptive_quality_default: bool = True
     adaptive_quality_models_default: str = "deepseek/deepseek-v4.1-flash,z-ai/glm-5.3-flash"
+    #: Super Agent picker entries on for a new installation
+    super_agent_default: bool = True
     outline_model_default: str = "local/qwen3.8-flash"
     #: External equivalent via OpenRouter `reasoning`; refusing providers remembered.
     external_chat_thinking: bool = False

@@ -19,7 +19,7 @@ test('a template made from 회의록 in the editor carries every field the shipp
   await page.goto('/customize/templates/new')
   const form = page.getByTestId('template-form')
   await expect(form).toBeVisible({ timeout: 15_000 })
-  await form.getByRole('combobox', { name: '기본 템플릿에서 시작' }).selectOption({ label: '회의록' })
+  await form.getByRole('combobox', { name: '기본 제공 템플릿에서 시작' }).selectOption({ label: '회의록' })
   await expect(form.getByRole('textbox', { name: /머리 항목/ })).toHaveValue(/회의명\n일시\n장소\n참석자\n작성자/)
   await form.getByRole('textbox', { name: '이름', exact: true }).fill('우리 팀 회의록')
   // The document format and the 진행 과정 설정, open to edit.

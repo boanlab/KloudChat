@@ -110,8 +110,25 @@ export interface ModelInfo {
 
 /** `av` covers audio and video: one surface, producing an `audio` or `video` artifact by mode. */
 export type SessionKind = 'chat' | 'report' | 'slides' | 'image' | 'av'
-/** `auto` routes low-complexity turns cheaper; `auto_quality` routes high-complexity turns up. */
-export type RoutingMode = 'manual' | 'auto' | 'auto_quality'
+/**
+ * `super` picks model, reasoning effort and tools per turn from the task class; `super_strict`
+ * does so among strict-local models only. `auto`/`auto_quality` are the earlier lanes, kept for
+ * comparison (no longer offered).
+ */
+export type RoutingMode = 'manual' | 'auto' | 'auto_quality' | 'super' | 'super_strict'
+
+/** Super Agent's task classes (server `super_agent.CLASSES`). */
+export type SuperAgentClass =
+  | 'simple'
+  | 'chat'
+  | 'transform'
+  | 'calc'
+  | 'code'
+  | 'current'
+  | 'long'
+  | 'reasoning'
+  | 'document'
+  | 'escalation'
 
 /** What a session produced, as measurements so the row can be phrased in the reader's language. */
 export interface SessionMade {
@@ -142,6 +159,8 @@ export interface PendingQuestion {
 export type ReportOutput = 'web' | 'hwp' | 'docx'
 /** What a deck is made as: the deck screen's own, or a PowerPoint file beside a chat. */
 export type SlidesOutput = 'deck' | 'pptx'
+/** A file sent as a turn's `outputFormat`: a report's, or PowerPoint for a deck (web slides send none). */
+export type TurnOutput = ReportOutput | 'pptx'
 
 export interface PendingPlan {
   /** `clarify` holds a question, `outline` the plan, `figures` the offer to draw the planned pictures. */
@@ -242,13 +261,37 @@ export interface CostRouting {
   estimatedCreditsSaved?: number
 }
 
+/** Why Super Agent answered this turn with this model (`routing.superAgent`). */
+export interface SuperAgentRoute {
+  mode: 'super' | 'super_strict'
+  taskClass: SuperAgentClass
+  /** How the class was found: rules, the classifier, a follow-up, an escalation. */
+  source: 'rule' | 'classifier' | 'sticky' | 'escalated' | 'deescalated' | 'document'
+  reasonCode: string
+  selectedModel: string
+  effort: 'default' | 'none' | 'low' | 'high'
+  /** rule | sticky | fallback | default | any */
+  pick: string
+  tools: 'none' | 'full'
+  routerVersion: string
+  /** Privacy routing moved the turn after the pick (strict-local twin, safe model). */
+  boundaryModel?: string
+  strictReason?: 'personal_data' | 'internal_data'
+  classifierModel?: string
+  classifierConfidence?: number
+  classifierInputTokens?: number
+  classifierOutputTokens?: number
+  classifierMs?: number
+}
+
 export interface PrivacyRouting {
   requestedModels: string[]
   routedModels: string[]
   effectiveModels: string[]
   actualModels: string[]
   actualModel?: string
-  action: PrivacyAction | 'strict_local' | 'none'
+  /** `internal_strict_local`: internal material moved the turn to a strict-local model. */
+  action: PrivacyAction | 'strict_local' | 'internal_strict_local' | 'none'
   dataBoundary: ModelInfo['dataBoundary'] | 'mixed'
   modelRoutes?: {
     routedModel: string
@@ -260,8 +303,9 @@ export interface PrivacyRouting {
   findingCounts?: { category: string; source: string; count: number }[]
   toolOutputMasked?: number
   toolOutputFindings?: { category: string; source: string; count: number }[]
-  initialAction?: PrivacyAction | 'strict_local' | 'none'
+  initialAction?: PrivacyAction | 'strict_local' | 'internal_strict_local' | 'none'
   costRouting?: CostRouting
+  superAgent?: SuperAgentRoute
   /** The asked model failed over and LiteLLM's fallback answered (`services/fallback_watch`). */
   fallback?: {
     requestedModel: string
@@ -280,6 +324,50 @@ export interface PrivacyRouting {
   lengthCheck?: LengthCheck
   /** The model that ran a required calculation the answer model skipped. */
   calculationModel?: string
+  /** A strict-local turn's web search: the card waiting on the person, or what was decided and sent. */
+  searchConsent?: SearchConsent
+}
+
+/** Web search in a strict-local turn: ask each time, allow (queries only), or never. */
+export type SearchConsentMode = 'ask' | 'allow' | 'off'
+
+/** One proposed query, masked as it would be sent; `blocked` withholds it, `reason` says why. */
+export interface SearchConsentQuery {
+  text: string
+  masked: number
+  blocked?: string
+  reason?: string
+}
+
+/** `routing.searchConsent` (`services/search_consent`). */
+export interface SearchConsent {
+  /**
+   * `pending`: the card waits. `allowed`: the person allowed it. `auto`: policy or 「이 대화에서는
+   * 계속 허용」 let it run. `declined`, `blocked` (every query withheld), `unavailable` (policy off
+   * or no search backend) and `none` (offered, not needed): nothing was sent.
+   */
+  status: 'pending' | 'allowed' | 'auto' | 'declined' | 'blocked' | 'unavailable' | 'none'
+  /** A pending card's proposals; afterwards, the queries that were sent. */
+  queries: (SearchConsentQuery | string)[]
+  searches?: number
+  withheld?: SearchConsentQuery[]
+  scope?: 'chat' | 'document'
+  source?: 'card' | 'policy' | 'conversation'
+  decidedBy?: string
+  decidedAt?: string
+  askedAt?: string
+  remember?: boolean
+  reason?: string
+}
+
+/** The answer to a search card, sent with the rerun of its question. */
+export interface SearchConsentAnswer {
+  messageId: string
+  decision: 'allow' | 'deny'
+  /** As edited on the card; absent sends the card's own. */
+  queries?: string[]
+  /** 「이 대화에서는 계속 허용」 */
+  remember?: boolean
 }
 
 /** A cover letter's 「[제출용 답안 n]」 blocks as the server measured them (text-fit). */
@@ -656,8 +744,8 @@ export interface ReportSection {
   level: 1 | 2
   status: 'pending' | 'streaming' | 'done'
   content: string
-  /** Absent means `markdown`. `html` is a hand-formatted section; the server sanitises it (`services/richtext.py`). */
-  format?: 'markdown' | 'html'
+  /** Always Markdown: the web report is one Markdown document (`lib/reportDoc.ts`); the server converts any HTML it is sent. */
+  format?: 'markdown'
   /** Rendered mermaid diagrams keyed by source hash; the browser renders and posts them, the exporters read them. */
   diagrams?: Record<string, string>
   factCheck?: FactCheck
@@ -821,6 +909,11 @@ export interface Slide {
   factCheck?: FactCheck
   /** Text size as a multiple of the template's; `deck_export` applies the same. */
   textScale?: number
+  /**
+   * Content a layout change could not show, kept rather than dropped: lines of text and a
+   * chart. A later layout change takes it back where the new layout has room for it.
+   */
+  held?: { lines?: string[]; chart?: Slide['chart'] }
   /** Sanitised inline HTML keyed by text slot (`title`, `bullets.0`, `rows.1.2`, …); the plain fields stay canonical. */
   richText?: Record<string, string>
   /** `src` is a `data:` URI so the deck stays one self-contained file. */
@@ -980,6 +1073,8 @@ export interface Project {
   designSystemId: string | null
   /** Surface → rendering template id; a surface with no entry uses the built-in track. */
   renderTemplates: Record<string, string>
+  /** Web search in this project's strict-local turns; null follows the admin. Absent on older servers. */
+  strictLocalWebSearch?: SearchConsentMode | null
   updatedAt: string
 }
 
@@ -999,6 +1094,11 @@ export interface ProjectFile {
   ocrTotal?: number
   ocrDone?: number
   ocrReview?: number
+  mediaState?: 'queued' | 'running' | 'done' | 'failed' | null
+  mediaStage?: string | null
+  mediaDone?: number
+  mediaTotal?: number
+  mediaDuration?: number
 }
 
 /** A skill's server fields (`services/skill_specs.py`): each names shipped scripts only. */

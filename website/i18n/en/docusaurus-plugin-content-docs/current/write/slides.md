@@ -6,6 +6,8 @@ title: Writing slides
 
 On the home screen, select **Slides** and enter the presentation topic and the audience. The procedure is the same as for a report. It runs through clarifying questions, the **structure check**, the **Add pictures?** card, and then writing slide by slide.
 
+Choose **Web slides** or **PowerPoint** with the **Format** chip above the prompt box (the same in a new conversation, one started from a project or an agent, or one reopened from history). When you pick PowerPoint, a **Start blank** button appears, and the turn makes a PowerPoint file and fills it using the slides template you picked and the project theme. You edit the file in the [PowerPoint editor](pptx). The **Template** chip shows the name of the chosen template (or **Default**) and opens the template gallery; press × to start without a template. Opening `/new/slides?format=pptx` preselects the format. What follows describes web slides.
+
 ![A finished slide deck](/img/guide/slides.png)
 
 ## Items in the structure check
@@ -13,7 +15,7 @@ On the home screen, select **Slides** and enter the presentation topic and the a
 - Slide titles and their order
 - **How will this be used?**: presenting with narration, or handing over the material only
 
-The theme is not chosen on the structure card. After writing, choose it in the panel from editorial, minimal, poster, split, dark, steel, warm, pastel, forest, academic, and monochrome.
+The theme of web slides is not chosen on the structure card. After writing, choose it in the panel from editorial, minimal, poster, split, dark, steel, warm, pastel, forest, academic, and monochrome.
 
 ## Setting the number of slides
 

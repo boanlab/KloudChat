@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { E2E_ADMIN, signIn, ribbonTab } from './helpers'
+import { E2E_ADMIN, deckEditor, deckPanel, deckReview, deckThumbs, saveDeck, signIn } from './helpers'
 
 test('잘린 슬라이드를 감지하고 가독성 한계까지 자동 맞춘 뒤 파일로 내보낸다', async ({ page }) => {
   test.setTimeout(90_000)
@@ -26,14 +26,17 @@ test('잘린 슬라이드를 감지하고 가독성 한계까지 자동 맞춘 �
   await page.goto('/artifacts')
   await page.getByRole('tab', { name: /^슬라이드/ }).click()
   await page.locator('button.aspect-video').first().click()
-  await ribbonTab(page, '검토')
-  await expect(page.getByRole('button', { name: '잘림 위험 장으로 이동' })).toBeVisible()
-  await ribbonTab(page, '테마')
-  await ribbonTab(page, '글자')
-  await expect(page.getByRole('button', { name: '잘린 내용 자동 맞춤' })).toBeVisible()
-  await page.getByRole('button', { name: '잘린 내용 자동 맞춤' }).click()
-  await expect(page.getByText('한 장에 넣기 어렵습니다.')).toBeVisible({ timeout: 15_000 })
-  await page.getByRole('button', { name: '저장', exact: true }).click()
+  await deckThumbs(page).first().click()
+  // 검토 names the slides at risk of being cut
+  const review = await deckReview(page)
+  await expect(review.getByRole('button', { name: '잘림 위험 장으로 이동' })).toBeVisible()
+  await review.getByRole('button', { name: '검토 메모 닫기' }).click()
+  // the strip over the slide fits it down to the readable floor
+  const strip = deckEditor(page).getByTestId('deck-overflow')
+  await expect(strip.getByRole('button', { name: '잘린 내용 자동 맞춤' })).toBeVisible()
+  await strip.getByRole('button', { name: '잘린 내용 자동 맞춤' }).click()
+  await expect(strip.getByText('한 장에 넣기 어렵습니다.')).toBeVisible({ timeout: 15_000 })
+  await saveDeck(page)
 
   const result = await page.evaluate(async ([admin, artifactId]) => {
     const login = await fetch('/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: admin.email, password: admin.password }) })
@@ -53,12 +56,11 @@ test('잘린 슬라이드를 감지하고 가독성 한계까지 자동 맞춘 �
   ])
   expect(result.files.every((file) => file.size > 1_000)).toBeTruthy()
 
-  await ribbonTab(page, '글자')
-  await expect(page.getByRole('button', { name: '잘린 내용 자동 맞춤' })).toBeVisible()
-  await page.getByRole('button', { name: '잘린 내용 자동 맞춤' }).click()
-  await expect(page.getByRole('button', { name: '내용을 다음 장으로 나누기' })).toBeVisible()
-  await page.getByRole('button', { name: '내용을 다음 장으로 나누기' }).click()
-  await expect(page.getByText(/\(계속\)/).first()).toBeVisible({ timeout: 20_000 })
+  // at the floor, what is left is to split the slide in two
+  await expect(strip.getByRole('button', { name: '잘린 내용 자동 맞춤' })).toHaveCount(0)
+  await strip.getByRole('button', { name: '이 장을 두 장으로 나누기' }).click()
+  await expect(deckPanel(page).getByText(/\(계속\)/).first()).toBeVisible({ timeout: 20_000 })
+  await saveDeck(page)
 
   const split = await page.evaluate(async ([admin, artifactId]) => {
     const login = await fetch('/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: admin.email, password: admin.password }) })

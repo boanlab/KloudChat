@@ -6,30 +6,75 @@ type RibbonTab<T extends string = string> = {
   label: string
 }
 
-/** Labelled ribbon command group; `wide` takes its own row, others wrap whole. */
+/** Labelled ribbon command group; `wide` takes its own row, others wrap whole. The caption shows under the group in the Word-style ribbon (`look="word"`). */
 export function RibbonGroup({ label, wide, children }: { label: string; wide?: boolean; children: ReactNode }) {
   return (
-    <section aria-label={label} data-wide={wide ? '' : undefined} className={cn('flex items-center px-1.5 first:pl-0 last:pr-0', wide ? 'min-w-0 max-w-full' : 'min-w-max')}>
+    <section aria-label={label} data-ribbon-group="" data-wide={wide ? '' : undefined} className={cn('flex items-center px-1.5 first:pl-0 last:pr-0', wide ? 'min-w-0 max-w-full' : 'min-w-max')}>
       <div className={cn('flex items-center gap-px', wide && 'gap-y-1 sm:flex-wrap', '[&_button]:h-8 [&_button]:min-w-8 [&_button]:flex-row [&_button]:gap-1.5 [&_button]:rounded-sm [&_button]:border-0 [&_button:not([data-variant=primary])]:bg-transparent [&_button]:px-2 [&_button]:py-1 [&_button]:text-xs [&_button]:font-medium [&_button]:leading-none [&_button]:shadow-none [&_button:not([data-variant=primary]):hover]:bg-elevated [&_button[aria-pressed=true]]:bg-accent/10 [&_button[aria-pressed=true]]:text-accent [&_button:not([data-variant=primary]):disabled]:bg-transparent [&_svg]:shrink-0 max-sm:[&_button]:h-10 max-sm:[&_button]:min-w-10')}>
         {children}
       </div>
+      <span aria-hidden data-ribbon-caption="">{label}</span>
     </section>
   )
 }
 
-/** Office-style command surface for reports and decks. */
+/** A ribbon command; `big` stands tall with its label under the icon in the Word-style ribbon. */
+export function RibbonButton({
+  icon,
+  label,
+  big,
+  pressed,
+  disabled,
+  title,
+  onClick,
+}: {
+  icon: ReactNode
+  label: string
+  big?: boolean
+  pressed?: boolean
+  disabled?: boolean
+  title?: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      data-big={big ? '' : undefined}
+      aria-label={label}
+      aria-pressed={pressed}
+      title={title ?? label}
+      disabled={disabled}
+      // mousedown+preventDefault keeps an editor's caret; keyboard arrives as click with `detail` 0.
+      onMouseDown={(event) => {
+        event.preventDefault()
+        if (!disabled) onClick()
+      }}
+      onClick={(event) => {
+        if (event.detail === 0 && !disabled) onClick()
+      }}
+      className="inline-flex items-center justify-center text-muted hover:text-fg disabled:pointer-events-none disabled:opacity-40"
+    >
+      {icon}
+      {big && <span data-ribbon-label="">{label}</span>}
+    </button>
+  )
+}
+
+/** Office-style command surface for reports and decks. `look="word"`: group captions and tall labelled buttons, as in the Word editor's ribbon. */
 export function ArtifactRibbon<T extends string>({
   label,
   tabs,
   active,
   onChange,
   children,
+  look = 'compact',
 }: {
   label: string
   tabs: readonly RibbonTab<T>[]
   active: T
   onChange: (tab: T) => void
   children: ReactNode
+  look?: 'compact' | 'word'
 }) {
   const commands = Children.toArray(children)
   const ribbonId = useId().replaceAll(':', '')
@@ -42,7 +87,7 @@ export function ArtifactRibbon<T extends string>({
   }, [active])
 
   return (
-    <div className="-mx-4 -mb-2 min-w-0 basis-[calc(100%+2rem)] border-t border-line bg-elevated max-sm:-mx-2 max-sm:basis-[calc(100%+1rem)]">
+    <div data-ribbon-look={look} className="-mx-4 -mb-2 min-w-0 basis-[calc(100%+2rem)] border-t border-line bg-elevated max-sm:-mx-2 max-sm:basis-[calc(100%+1rem)]">
       <div
         role="tablist"
         aria-label={label}

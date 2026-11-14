@@ -214,6 +214,14 @@ def with_references(
 _ROW = re.compile(r"^\s*\|(.+)\|\s*$")
 _IMAGE = re.compile(r"^\s*!\[([^\]]*)\]\(([^)]+)\)\s*$")
 _FENCE = re.compile(r"^\s*```\s*([A-Za-z0-9_-]*)\s*$")
+#: a horizontal rule; a document file draws none
+_THEMATIC = re.compile(r"^\s{0,3}(?:-\s*){3,}$|^\s{0,3}(?:\*\s*){3,}$|^\s{0,3}(?:_\s*){3,}$")
+#: a quotation line, written as its text
+_QUOTE = re.compile(r"^\s{0,3}>\s?(.*)$")
+#: an HTML comment other than a page break
+_COMMENT = re.compile(r"^\s{0,8}<!--[\s\S]{0,2000}?--!?>\s{0,8}$")
+#: a task-list box at the start of an item
+_TASK = re.compile(r"^\[([ xX])\]\s+")
 _PAGE_BREAK = re.compile(r"^\s*<!--\s*pagebreak\s*-->\s*$", re.I)
 
 
@@ -413,6 +421,16 @@ def _markdown_to_lines(
     out: list[tuple[str, Any, str, int]] = []
     number = 0
     counts: dict[int, int] = {}
+    #: indents of the open list levels: a child sits under its parent's text,
+    #: two spaces under 「- 」, three under 「1. 」
+    indents: list[int] = []
+
+    def level_at(indent: int) -> int:
+        while indents and indents[-1] > indent:
+            indents.pop()
+        if not indents or indents[-1] < indent:
+            indents.append(indent)
+        return len(indents) - 1
     rows: list[list[str]] = []
     table_source: list[str] = []
     plain_source: list[str] = []
@@ -497,6 +515,13 @@ def _markdown_to_lines(
             if not rows:
                 close_table()
             continue
+        if not rows and (_THEMATIC.match(line) or _COMMENT.match(line)):
+            close_table()
+            continue
+        if quoted := _QUOTE.match(line):
+            line = quoted.group(1).rstrip()
+            if not line:
+                continue
         if _RULE.match(line) and rows and (not spare or "-" in line):
             # HTML grids: empty rows for covered cells; second rule row starts a new table
             if ruled:
@@ -530,20 +555,23 @@ def _markdown_to_lines(
         if heading := re.match(r"^#{2,6}\s+(.*)$", line):
             number = 0
             counts.clear()
+            indents.clear()
             out.append(("heading", heading.group(1).strip(), "", 0))
         elif note := _NOTE.match(line):
             number = 0
             counts.clear()
+            indents.clear()
             out.append(("note", note.group(2).strip(), note.group(1), 0))
         elif bullet := re.match(r"^(\s*)[-*+]\s+(.*)$", line):
             number = 0
             counts.clear()
-            depth = min(len(bullet.group(1)) // 2, levels - 1)
-            out.append(
-                ("bullet", bullet.group(2).strip(), _MARKERS[min(depth, len(_MARKERS) - 1)], depth)
+            depth = min(level_at(len(bullet.group(1))), levels - 1)
+            item = _TASK.sub(
+                lambda box: "☑ " if box.group(1) in "xX" else "☐ ", bullet.group(2).strip()
             )
+            out.append(("bullet", item, _MARKERS[min(depth, len(_MARKERS) - 1)], depth))
         elif numbered := re.match(r"^(\s*)(\d{1,9})[.)]\s+(.*)$", line):
-            depth = min(len(numbered.group(1)) // 2, len(_MARKERS) - 1)
+            depth = min(level_at(len(numbered.group(1))), len(_MARKERS) - 1)
             # per-level counts; `is None` since a list may start at 0
             counts[depth] = (
                 counts[depth] + 1 if counts.get(depth) is not None else int(numbered.group(2))
@@ -555,6 +583,7 @@ def _markdown_to_lines(
         else:
             number = 0
             counts.clear()
+            indents.clear()
             out.append(("body", line.strip(), "", 0))
     close_table()
     if fence:
@@ -615,6 +644,15 @@ _OFFICIAL_ITEM = re.compile(
     rf"^(?:(?P<hangul>[가-하])\.|{_OFFICIAL_PAREN}(?P<paren>\d{{1,2}})\)|(?P<hparen>[가-하])\))\s+(?P<text>.+)$")
 
 
+#: an item marker the writer typed after the one the format gives (「가. 1. 목적」)
+_TYPED_MARKER = re.compile(r"^(?:\d{1,2}[.)]|[가-하][.)]|\(\d{1,2}\)|\([가-하]\))\s{1,4}(?=\S)")
+
+
+def _untyped(text: Any) -> Any:
+    """`text` without a second, typed item marker at its start: one number per item."""
+    return _TYPED_MARKER.sub("", text, count=1) if isinstance(text, str) else text
+
+
 def _official_lines(content: str, grids) -> list[tuple[str, Any, str, int]]:
     """공문 body lines: 1. / 가. / 1) / 가) as hanging items indented by level (규칙 제2조),
     not a Markdown list beside flush-left 가. lines; ※ under the item above."""
@@ -625,14 +663,17 @@ def _official_lines(content: str, grids) -> list[tuple[str, Any, str, int]]:
     for kind, text, marker, depth in _markdown_to_lines(marked, grids):
         if kind == "number":
             level = min(depth, 3)
-            out.append(("gaejo", text, marker, level))
+            out.append(("gaejo", _untyped(text), marker, level))
             continue
         if kind == "body" and (item := _OFFICIAL_ITEM.match(str(text))):
             level = 1 if item.group("hangul") else 2 if item.group("paren") else 3
             mark = (f"{item.group('hangul')}." if item.group("hangul") else
                     f"{item.group('paren')})" if item.group("paren") else f"{item.group('hparen')})")
-            out.append(("gaejo", item.group("text").strip(), mark, level))
+            out.append(("gaejo", _untyped(item.group("text").strip()), mark, level))
             continue
+        if kind == "heading":
+            # the heading's own number comes from the format; one the writer typed goes
+            text = _untyped(str(text))
         if kind == "body" and str(text).startswith("※"):
             out.append(("remark", str(text)[1:].strip(), "※", max(level + 1, 0)))
             continue
@@ -757,45 +798,44 @@ def _section_lines(
 
 
 def _strip_inline(text: str) -> str:
-    """Inline markers stripped; code spans may not open/close on a space."""
+    """Inline markers and Markdown escapes stripped; code spans may not open/close on a space."""
     text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
-    text = re.sub(r"(?<!\w)\*(.+?)\*(?!\w)", r"\1", text)
-    return re.sub(r"`(\S(?:[^`]*\S)?)`", r"\1", text)
+    text = re.sub(r"(?<![\w\\])\*(.+?)(?<!\\)\*(?!\w)", r"\1", text)
+    text = re.sub(r"~~(.+?)~~", r"\1", text)
+    text = re.sub(r"`(\S(?:[^`]*\S)?)`", r"\1", text)
+    return _UNESCAPE.sub(r"\1", text)
 
 
-_BOLD = re.compile(r"\*\*(.+?)\*\*")
+#: a Markdown backslash escape (「\*」, 「\[」), which the editor writes before literal markup
+_UNESCAPE = re.compile(r"\\([!-/:-@\[-`{-~])")
+#: `**bold**`, `*italic*`, `~~strike~~`, one level deep
+_EMPHASIS = re.compile(
+    r"\*\*(?P<bold>.+?)\*\*|~~(?P<strike>.+?)~~|(?<![\w*\\])\*(?P<italic>[^*\s](?:.*?[^*\s])?)\*(?![\w*])"
+)
+_EMPHASIS_STYLE = {
+    "bold": {"font-weight": "bold"},
+    "italic": {"font-style": "italic"},
+    "strike": {"text-decoration": "line-through"},
+}
 
 
 def _emphasis(text: str, finish: Callable[[str], str] = lambda part: part) -> dict | None:
-    """A Markdown line's `**bold**` as runs in `_next_format`'s block shape, or None when it
-    has none; a line with a link keeps the link writer instead."""
-    if "://" in text or not _BOLD.search(text):
+    """A Markdown line's bold, italic and strikethrough as styled runs, or None when it has
+    none; a line with a link keeps the link writer instead."""
+    if "://" in text or not _EMPHASIS.search(text):
         return None
     runs: list[dict] = []
     cursor = 0
-    for found in _BOLD.finditer(text):
+    for found in _EMPHASIS.finditer(text):
         if before := finish(_strip_inline(text[cursor:found.start()])):
             runs.append({"text": before, "style": {}})
-        runs.append({"text": finish(_strip_inline(found.group(1))),
-                     "style": {"font-weight": "bold"}})
+        kind = found.lastgroup or "bold"
+        runs.append({"text": finish(_strip_inline(found.group(kind))),
+                     "style": dict(_EMPHASIS_STYLE[kind])})
         cursor = found.end()
     if rest := finish(_strip_inline(text[cursor:])):
         runs.append({"text": rest, "style": {}})
     return {"runs": runs}
-
-
-def _format_key(text: str) -> str:
-    return re.sub(r"\s+", " ", _strip_inline(str(text))).strip()
-
-
-def _next_format(blocks: list[dict], text: str, cursor: int) -> tuple[dict | None, int]:
-    """Next editable-HTML block for a prose line, in document order."""
-    wanted = _format_key(text)
-    for index in range(cursor, len(blocks)):
-        block = blocks[index]
-        if _format_key(str(block.get("text") or "")) == wanted:
-            return block, index + 1
-    return None, cursor
 
 
 def _docx_styled(paragraph, block: dict, fallback: str) -> None:
@@ -1145,9 +1185,13 @@ def _table_of_contents(document) -> None:
     # no page break: unexpanded field would leave page 1 empty
 
 
-def _listed_contents(document, sections: list[dict], block: dict | None) -> None:
+def _listed_contents(document, sections: list[dict], block: dict | None,
+                     field: bool = False) -> None:
     """The 목차 as the top-level headings, numbered as in the body; no page numbers. Its own
-    head is bold body text, not a Heading 1: a chapter count (「3장」) skips it."""
+    head is bold body text, not a Heading 1: a chapter count (「3장」) skips it. `field`: the
+    lines are the result of a TOC field, which Word refreshes with page numbers."""
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
     from docx.shared import Pt
 
     heading = document.add_paragraph(style=_BODY)
@@ -1156,6 +1200,7 @@ def _listed_contents(document, sections: list[dict], block: dict | None) -> None
     label.font.size = Pt(doc_type.TYPE["h1"])
     heading.paragraph_format.space_after = Pt(6)
     numbers = _HeadingNumbers(block)
+    lines = []
     for section in sections:
         name = str(section.get("heading") or "").strip()
         number = numbers.section(section)
@@ -1163,6 +1208,28 @@ def _listed_contents(document, sections: list[dict], block: dict | None) -> None
             continue
         line = document.add_paragraph(f"{number}{name}", style=_BODY)
         line.paragraph_format.space_after = Pt(2)
+        lines.append(line)
+    if not field or not lines:
+        return
+
+    def mark(kind: str):
+        run = OxmlElement("w:r")
+        char = OxmlElement("w:fldChar")
+        char.set(qn("w:fldCharType"), kind)
+        run.append(char)
+        return run
+
+    code = OxmlElement("w:r")
+    instr = OxmlElement("w:instrText")
+    instr.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+    instr.text = ' TOC \\o "1-2" \\h \\z \\u '
+    code.append(instr)
+    first = lines[0]._p
+    head = first.find(qn("w:pPr"))
+    at = 0 if head is None else list(first).index(head) + 1
+    for offset, element in enumerate((mark("begin"), code, mark("separate"))):
+        first.insert(at + offset, element)
+    lines[-1]._p.append(mark("end"))
 
 
 def _docx_cell_margins(table, vertical_pt: float = 3.0, horizontal_pt: float = 6.0) -> None:
@@ -1457,8 +1524,18 @@ _DOCX_CHART_DRAWING = (
 )
 
 
-def _docx_chart(document, chart: dict, index: int, style: dict | None) -> bool:
-    """Native Word chart, or `False`; part, rels and content types must agree."""
+#: a namespace no Office application knows: the picture of a chart sits in an
+#: `mc:Choice` that requires it, so Word and LibreOffice take the `mc:Fallback` (the native,
+#: editable chart) while an editor that draws no chart (the in-app Word editor reads the
+#: Choice first) shows the picture
+_EDITOR_PICTURE_NS = "urn:kloudchat:editor-picture"
+_MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+
+
+def _docx_chart(document, chart: dict, index: int, style: dict | None,
+                fallback: dict | None = None) -> bool:
+    """Native Word chart, or `False`; part, rels and content types must agree. `fallback`:
+    the chart's picture, shown where no chart is drawn (`_EDITOR_PICTURE_NS`)."""
     from docx.opc.constants import CONTENT_TYPE as CT
     from docx.opc.constants import RELATIONSHIP_TYPE as RT
     from docx.opc.packuri import PackURI
@@ -1499,19 +1576,40 @@ def _docx_chart(document, chart: dict, index: int, style: dict | None) -> bool:
         log.warning("could not attach a chart to the docx: %s", exc)
         return False
 
+    drawing = parse_xml(
+        _DOCX_CHART_DRAWING.format(
+            cx=int(150 * 36000),
+            cy=int(85 * 36000),
+            n=index,
+            rid=relationship_id,
+        )
+    )
+    if fallback is not None:
+        from docx.oxml.ns import qn
+
+        body = document.element.body
+        before = len(body)
+        _docx_picture(document, fallback)
+        picture = next((d for b in list(body)[before - 1:] for d in b.iter(qn("w:drawing"))),
+                       None)
+        if picture is not None:
+            # the chart's own size, as the picture is drawn
+            for ext in drawing.iter(qn("wp:extent")):
+                shown = next(picture.iter(qn("wp:extent")))
+                ext.set("cx", shown.get("cx"))
+                ext.set("cy", shown.get("cy"))
+            either = parse_xml(
+                f'<mc:AlternateContent xmlns:mc="{_MC}" xmlns:kcpic="{_EDITOR_PICTURE_NS}">'
+                '<mc:Choice Requires="kcpic"/><mc:Fallback/></mc:AlternateContent>')
+            run = picture.getparent()
+            run.replace(picture, either)
+            either[0].append(picture)
+            either[1].append(drawing)
+            return True
     paragraph = document.add_paragraph()
     paragraph.alignment = 1
     run = paragraph.add_run()
-    run._r.append(
-        parse_xml(
-            _DOCX_CHART_DRAWING.format(
-                cx=int(150 * 36000),
-                cy=int(85 * 36000),
-                n=index,
-                rid=relationship_id,
-            )
-        )
-    )
+    run._r.append(drawing)
     return True
 
 
@@ -2203,7 +2301,10 @@ def to_docx(
         title_heading = document.add_heading(title, level=0)
         visualise_heading(title_heading, 0)
     if _wants_toc(sections) and static_toc:
-        _listed_contents(document, sections, head_block)
+        # a real TOC field (Word updates it on open, with page numbers) whose result is the
+        # headings listed: what an editor that runs no field shows
+        _listed_contents(document, sections, head_block, field=True)
+        _update_fields_on_open(document)
     elif _wants_toc(sections):
         _table_of_contents(document)
         _update_fields_on_open(document)
@@ -2215,6 +2316,8 @@ def to_docx(
     _docx_type_scale(document, fmt)
 
     footnotes = _Footnotes()
+    numbering = _DocxNumbering(document)
+    list_id = 0
     charts = 0
     closing_at = _last_body(sections)
     for at, section in enumerate(sections):
@@ -2227,12 +2330,12 @@ def to_docx(
             )
             visualise_heading(section_heading, 1)
         lines = _section_lines(section, head_block, at == closing_at, "  ")
-        formatted = list(section.get("_formatting") or [])
-        format_cursor = 0
         #: notes read ahead, written after the citing sentence
         notes = {mark: str(body) for kind, body, mark, _ in lines if kind == "note"}
         cited: set[str] = set()
+        previous = ""
         for kind, text, marker, depth in lines:
+            kind_before, previous = previous, kind
             if kind == "pagebreak":
                 document.add_page_break()
                 continue
@@ -2258,13 +2361,17 @@ def to_docx(
                     _docx_callout(document, text)
                 continue
             if kind == "chart":
-                if charts_as_pictures and (
-                        drawn := _diagram_picture(section, {"key": diagram_key(marker)})):
+                drawn = (_diagram_picture(section, {"key": diagram_key(marker)})
+                         if charts_as_pictures else None)
+                charts += 1
+                # a native, editable chart; its picture beside it for an editor that draws
+                # no chart
+                if _docx_chart(document, text, charts, style, fallback=drawn):
+                    continue
+                if drawn:
                     _docx_picture(document, drawn)
                     continue
-                charts += 1
-                if not _docx_chart(document, text, charts, style):
-                    _docx_table(document, _chart_as_rows(text), (style or {}).get("accent", ""))
+                _docx_table(document, _chart_as_rows(text), (style or {}).get("accent", ""))
                 continue
             if kind == "diagram":
                 if picture := _diagram_picture(section, text):
@@ -2281,8 +2388,7 @@ def to_docx(
                 if marker not in cited:
                     document.add_paragraph(clean, style=_BODY)
                 continue
-            block, format_cursor = _next_format(formatted, clean, format_cursor)
-            block = block or _emphasis(text)
+            block = _emphasis(text)
             if kind == "heading":
                 paragraph = document.add_heading("", level=2)
                 if number := numbers.next(2):
@@ -2315,13 +2421,17 @@ def to_docx(
                         run.font.size = Pt(doc_type.type_for(fmt)["note"])
                 cited |= _marks_in(clean)
             elif kind == "number":
-                # not "List Number": numbering runs on across lists
-                paragraph = document.add_paragraph(f"{marker} ", style=_BODY)
+                # a real numbered list (Word renumbers it as items come and go), each list
+                # from 1; not "List Number", whose numbering runs on across lists
+                if list_start := _numbered_from(marker):
+                    list_id = numbering.start(list_start) if kind_before != "number" or (
+                        depth == 0 and list_start == 1) else list_id
+                paragraph = document.add_paragraph(style=_BODY)
+                numbering.put(paragraph, list_id, depth)
                 if block and not _MARK.search(clean):
                     _docx_styled(paragraph, block, clean)
                 else:
                     footnotes.write(paragraph, clean, notes)
-                paragraph.paragraph_format.left_indent = Inches(0.25 * (depth + 1))
                 paragraph.paragraph_format.space_after = Pt(3)
                 cited |= _marks_in(clean)
             else:
@@ -2339,6 +2449,75 @@ def to_docx(
     buffer = io.BytesIO()
     document.save(buffer)
     return buffer.getvalue()
+
+
+_NUMBERED = re.compile(r"\(?(\d{1,4})[.)]")
+
+
+def _numbered_from(marker: str) -> int:
+    """The number a list item's marker states (「3.」 → 3), 0 when it states none."""
+    found = _NUMBERED.match((marker or "").strip())
+    return int(found.group(1)) if found else 0
+
+
+class _DocxNumbering:
+    """Real Word numbering for a report's numbered lists: one definition (1. / 1) / (1) by
+    level), and one numbering instance per list, so each starts from its own first number
+    and renumbers when an item is added or taken out in Word."""
+
+    _LEVELS = (("decimal", "%1."), ("decimal", "%2)"), ("decimal", "(%3)"))
+
+    def __init__(self, document) -> None:
+        self.document = document
+        self.abstract: int | None = None
+
+    def _define(self) -> int:
+        from docx.oxml import parse_xml
+
+        root = self.document.part.numbering_part.element
+        used = [int(x) for x in root.xpath("./w:abstractNum/@w:abstractNumId")]
+        ident = max(used, default=0) + 1
+        levels = "".join(
+            f'<w:lvl w:ilvl="{level}"><w:start w:val="1"/><w:numFmt w:val="{fmt}"/>'
+            f'<w:lvlText w:val="{text}"/><w:lvlJc w:val="left"/>'
+            f'<w:pPr><w:ind w:left="{360 * (level + 1) + 360}" w:hanging="360"/></w:pPr>'
+            "</w:lvl>"
+            for level, (fmt, text) in enumerate(self._LEVELS)
+        )
+        made = parse_xml(
+            '<w:abstractNum xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+            f' w:abstractNumId="{ident}"><w:multiLevelType w:val="hybridMultilevel"/>'
+            f"{levels}</w:abstractNum>")
+        # abstract definitions come before the numbering instances
+        first_num = root.find("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}num")
+        if first_num is not None:
+            first_num.addprevious(made)
+        else:
+            root.append(made)
+        return ident
+
+    def start(self, at: int = 1) -> int:
+        """A new list, its first item numbered `at`; its numbering id."""
+        from docx.oxml import parse_xml
+
+        if self.abstract is None:
+            self.abstract = self._define()
+        root = self.document.part.numbering_part.element
+        used = [int(x) for x in root.xpath("./w:num/@w:numId")]
+        ident = max(used, default=0) + 1
+        root.append(parse_xml(
+            '<w:num xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+            f' w:numId="{ident}"><w:abstractNumId w:val="{self.abstract}"/>'
+            f'<w:lvlOverride w:ilvl="0"><w:startOverride w:val="{max(1, at)}"/></w:lvlOverride>'
+            "</w:num>"))
+        return ident
+
+    def put(self, paragraph, list_id: int, depth: int) -> None:
+        if not list_id:
+            list_id = self.start()
+        props = paragraph._p.get_or_add_pPr()
+        props.get_or_add_numPr().get_or_add_ilvl().val = min(depth, len(self._LEVELS) - 1)
+        props.get_or_add_numPr().get_or_add_numId().val = list_id
 
 
 def _docx_hanging(
@@ -3173,8 +3352,6 @@ def to_pdf(
                 )
             )
         notes: list[tuple[str, str]] = []
-        formatted = list(section.get("_formatting") or [])
-        format_cursor = 0
         # non-breaking: reportlab folds plain spaces
         for kind, text, marker, depth in _section_lines(
             section, head_block, index == closing_at, "\u00a0\u00a0"
@@ -3249,7 +3426,7 @@ def to_pdf(
                     )
                 continue
             plain = _strip_inline(text)
-            block, format_cursor = _next_format(formatted, plain, format_cursor)
+            block = _emphasis(text)
             clean = _MARK.sub(
                 lambda found: f"<super>{_escape(found.group(1))}</super>",
                 _escape(plain),
@@ -3325,7 +3502,7 @@ def to_pdf(
         pdf.saveState()
         pdf.setFont(korean, 8)
         pdf.setFillColor(HexColor("#777777"))
-        header = str(page_settings.get("header") or title)
+        header = _page_header(page_settings, title)
         if header and (page > 1 or bool(page_settings.get("firstPageHeader", False))):
             pdf.drawString(document.leftMargin, A4[1] - 10 * mm, header)
         footer = str(page_settings.get("footer") or "")
@@ -3490,7 +3667,7 @@ _HWPX_HEADER = """<?xml version="1.0" encoding="UTF-8"?>
 {font_faces}
 {border_fills}
 {char_properties}
-{para_properties}
+{numberings}{para_properties}
   <hh:styles itemCnt="1">
    <hh:style id="0" type="PARA" name="바탕글" engName="Normal" paraPrIDRef="3" charPrIDRef="0" nextStyleIDRef="0" langID="1042"/>
   </hh:styles>
@@ -3749,11 +3926,15 @@ def _hwpx_para_properties(
     shapes = [(*shape, _HWPX_LINE_SPACING) for shape in base] + list(extras or [])
     for pid, align, left, prev, nxt, line_spacing, *hang in shapes:
         intent = hang[0] if hang else 0
+        # a numbered paragraph's numbering (`_hwpx_numberings`) and level
+        numbered = hang[1] if len(hang) > 1 else None
+        heading = (f'    <hh:heading type="NUMBER" idRef="{numbered[0]}" level="{numbered[1]}"/>\n'
+                   if numbered else '    <hh:heading type="NONE" idRef="0" level="0"/>\n')
         items.append(
             f'   <hh:paraPr id="{pid}" tabPrIDRef="0" condense="0" fontLineHeight="0"'
             ' snapToGrid="1" suppressLineNumbers="0" checked="0">\n'
             f'    <hh:align horizontal="{align}" vertical="BASELINE"/>\n'
-            '    <hh:heading type="NONE" idRef="0" level="0"/>\n'
+            + heading +
             '    <hh:breakSetting breakLatinWord="KEEP_WORD" breakNonLatinWord="KEEP_WORD"'
             f' widowOrphan="0" keepWithNext="{1 if pid in (1, 2) else 0}" keepLines="0" pageBreakBefore="0"'
             ' lineWrap="BREAK"/>\n'
@@ -3770,6 +3951,26 @@ def _hwpx_para_properties(
         + "\n".join(items)
         + "\n  </hh:paraProperties>"
     )
+
+
+#: a numbered list's levels as 한글 writes them: 1. / 1) / (1)
+_HWPX_NUMBER_LEVELS = ("^1.", "^2)", "(^3)")
+
+
+def _hwpx_numberings(count: int) -> str:
+    """`count` numbering definitions (ids from 1), one per numbered list, so each list starts
+    from 1 and 한글 renumbers it as items come and go; `` for none."""
+    if not count:
+        return ""
+    heads = "".join(
+        f'<hh:paraHead start="1" level="{level + 1}" align="LEFT" useInstWidth="1"'
+        ' autoIndent="1" widthAdjust="0" textOffsetType="PERCENT" textOffset="50"'
+        f' numFormat="DIGIT" charPrIDRef="4294967295" checkable="0">{text}</hh:paraHead>'
+        for level, text in enumerate(_HWPX_NUMBER_LEVELS)
+    )
+    items = "".join(f'   <hh:numbering id="{n}" start="0">{heads}</hh:numbering>\n'
+                    for n in range(1, count + 1))
+    return f'  <hh:numberings itemCnt="{count}">\n{items}  </hh:numberings>\n'
 
 
 def _hwpx_escape(text: str) -> str:
@@ -3902,17 +4103,45 @@ def _hwpx_para(text: str, para_pr: int, char_pr: int = 0) -> str:
     )
 
 
+def _page_header(page_settings: dict, title: str) -> str:
+    """The running header: the title by default; one cleared on purpose stays empty."""
+    if "header" in page_settings:
+        return str(page_settings.get("header") or "").strip()
+    return str(title or "").strip()
+
+
+def _hwpx_auto_number(kind: str) -> str:
+    """A live page number (`PAGE`) or page count (`TOTAL_PAGE`) in a run."""
+    return (
+        '<hp:run charPrIDRef="5"><hp:ctrl>'
+        f'<hp:autoNum num="1" numType="{kind}">'
+        '<hp:autoNumFormat type="DIGIT" userChar="" prefixChar="" suffixChar="" supscript="0"/>'
+        "</hp:autoNum></hp:ctrl></hp:run>"
+    )
+
+
 def _hwpx_page_furniture(title: str, page_settings: dict | None) -> str:
-    """Header, footer and page-number controls."""
+    """Header, footer and page-number controls; 「현재 / 전체」 is a live page and page count."""
     if not page_settings:
         return ""
-    header = str(page_settings.get("header") or title).strip()
+    header = _page_header(page_settings, title)
     footer = str(page_settings.get("footer") or "").strip()
+    numbering = str(page_settings.get("pageNumbers") or "page-total")
+    # current / total in the footer; Hancom's page-number control draws the page alone
+    count = (
+        '<hp:p paraPrIDRef="5" styleIDRef="0">'
+        + _hwpx_auto_number("PAGE")
+        + '<hp:run charPrIDRef="5"><hp:t> / </hp:t></hp:run>'
+        + _hwpx_auto_number("TOTAL_PAGE")
+        + "</hp:p>"
+        if numbering == "page-total"
+        else ""
+    )
 
-    def control(kind: str, text: str, identifier: int) -> str:
-        if not text:
+    def control(kind: str, text: str, identifier: int, extra: str = "") -> str:
+        if not text and not extra:
             return ""
-        paragraph = _hwpx_para(text, 3, 5)
+        paragraph = (_hwpx_para(text, 3, 5) if text else "") + extra
         return (
             f'<hp:ctrl><hp:{kind} id="{identifier}" applyPageType="BOTH">'
             '<hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK"'
@@ -3921,13 +4150,16 @@ def _hwpx_page_furniture(title: str, page_settings: dict | None) -> str:
             f"{paragraph}</hp:subList></hp:{kind}></hp:ctrl>"
         )
 
-    numbering = str(page_settings.get("pageNumbers") or "page-total")
     page_number = (
         '<hp:ctrl><hp:pageNum pos="BOTTOM_RIGHT" formatType="DIGIT" sideChar=""/></hp:ctrl>'
-        if numbering != "none"
+        if numbering == "page"
         else ""
     )
-    return control("header", header, 10001) + control("footer", footer, 10002) + page_number
+    return (
+        control("header", header, 10001)
+        + control("footer", footer, 10002, count)
+        + page_number
+    )
 
 
 def _column_weights(
@@ -4483,6 +4715,21 @@ def _hwpx_document(
             )
         return para_ids[key]
 
+    #: one numbering per numbered list (`_hwpx_numberings`)
+    lists: list[int] = []
+
+    def numbered_para_id(numbering: int, depth: int) -> int:
+        """A numbered list item's shape: its numbering and level, indented like a bullet."""
+        level = min(depth, len(_HWPX_NUMBER_LEVELS) - 1)
+        key = ("number", numbering, level)
+        if key not in para_ids:
+            _, align, left, prev, nxt = para_shapes[(4, 8, 9)[level]]
+            identifier = len(_HWPX_PARA_SHAPES) + len(para_extras)
+            para_ids[key] = identifier
+            para_extras.append((identifier, align, left, prev, nxt, _HWPX_LINE_SPACING, 0,
+                                (numbering, level)))
+        return para_ids[key]
+
     def styled_para(block: dict, base_para: int, base_char: int, prefix: str = "") -> str:
         runs: list[str] = []
         if prefix:
@@ -4540,13 +4787,14 @@ def _hwpx_document(
         number = numbers.section(section)
         if heading and not _is_attachment(section, head_block):
             body.append(_hwpx_para(f"{number}{heading}", 1, 3))
-        formatted = list(section.get("_formatting") or [])
-        format_cursor = 0
         #: footnotes under the section; malformed `<hp:footNote>` won't open
         notes: list[tuple[str, str]] = []
+        last_kind = ""
         for kind, text, marker, depth in _section_lines(
             section, head_block, at == closing_at, "  "
         ):
+            # the line before: a numbered item after other text starts a new list
+            previous, last_kind = last_kind, kind
             if kind == "pagebreak":
                 body.append(
                     '<hp:p paraPrIDRef="3" styleIDRef="0" pageBreak="1">'
@@ -4660,8 +4908,7 @@ def _hwpx_document(
                     body.append(_hwpx_para("[다이어그램]", 5, 0))
                 continue
             clean = _raised_marks(_strip_inline(text))
-            block, format_cursor = _next_format(formatted, _strip_inline(text), format_cursor)
-            block = block or _emphasis(text, _raised_marks)
+            block = _emphasis(text, _raised_marks)
             if kind == "heading":
                 number = numbers.next(2)
                 body.append(
@@ -4683,6 +4930,14 @@ def _hwpx_document(
                     if block
                     else _hwpx_para(f"{lead_text}{clean}", shape, char)
                 )
+            elif kind == "number" and "://" not in clean:
+                # a real numbered list: 한글 numbers it (one numbering per list, from 1)
+                start = _numbered_from(marker)
+                if not lists or (start and (previous != "number" or (depth == 0
+                                                                      and start == 1))):
+                    lists.append(len(lists) + 1)
+                body.append(styled_para(block, numbered_para_id(lists[-1], depth), 0)
+                            if block else _hwpx_para(clean, numbered_para_id(lists[-1], depth)))
             elif kind in ("bullet", "number"):
                 base_para = (4, 8, 9)[min(depth, 2)]
                 if "://" in clean:
@@ -4746,6 +5001,7 @@ def _hwpx_document(
         archive.writestr(
             "Contents/header.xml",
             _HWPX_HEADER.format(
+                numberings=_hwpx_numberings(len(lists)),
                 font_faces=_hwpx_font_faces(),
                 border_fills=_HWPX_BORDER_FILLS.replace(
                     "{accent}", colour(style["accent"], "#333333") if style else "#333333"

@@ -113,10 +113,11 @@ def test_the_file_is_the_report_with_its_sources_pictures_and_contents():
     text = docx_edit.plain_text(docx)
     assert "참고문헌" in text and "[1]" in text and "**" not in text
     names = zipfile.ZipFile(io.BytesIO(docx)).namelist()
-    # the chart as its picture, as in the HWP file; no chart part the web editor cannot draw
+    # the chart a native, editable chart for Word, its picture with it for the web editor
+    # (which draws no chart): both are in the file
     assert any(name.startswith("word/media/") for name in names)
-    assert not any(name.startswith("word/charts/") for name in names)
-    # a 목차 the editor can show: the headings, no field asking for F9
+    assert any(name.startswith("word/charts/") for name in names)
+    # a 목차 the editor can show: the headings (the result of a TOC field), no F9 asked for
     assert "F9" not in text and "목차" in text and "8장" in text
 
 
@@ -279,7 +280,7 @@ def test_a_table_is_added_to_the_written_file(kind):
                            "rows": [[str(c) for c in range(9)]]}])
 
 
-def test_an_hwp_file_made_elsewhere_gets_no_table_it_would_break():
+def test_an_hwp_file_made_elsewhere_gets_a_table_with_shapes_of_its_own():
     data = report_office.file_bytes(ArtifactKind.hwp, "제목", _report_data())
     source = io.BytesIO(data)
     out = io.BytesIO()
@@ -289,9 +290,16 @@ def test_an_hwp_file_made_elsewhere_gets_no_table_it_would_break():
             if item.filename == "Contents/header.xml":
                 body = body.replace(b'<hh:borderFill id="3"', b'<hh:borderFill id="33"')
             after.writestr(item, body)
-    with pytest.raises(hwpx_edit.HwpxError, match="새 표를 넣을 수 없습니다"):
-        hwpx_edit.apply(out.getvalue(), [{"op": "insert_table", "after": "p2",
-                                          "rows": [["a", "b"]]}])
+    # the head row's border is missing under its house id: it is brought in under a new one
+    edited = hwpx_edit.apply(out.getvalue(), [{"op": "insert_table", "after": "p2",
+                                               "rows": [["a", "b"], ["1", "2"]]}]).data
+    with zipfile.ZipFile(io.BytesIO(edited)) as archive:
+        header = archive.read("Contents/header.xml").decode()
+        section = archive.read("Contents/section0.xml").decode()
+    assert '<hh:borderFill id="33"' in header
+    assert 'header="1" hasMargin="1" protect="0" editable="0" dirty="0" borderFillIDRef="3"' \
+        not in section
+    assert "r0: a | b" in hwpx_edit.outline(edited)
 
 
 def test_the_hwp_outline_names_its_chapters_so_a_numbered_part_can_be_found():

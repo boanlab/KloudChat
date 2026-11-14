@@ -33,7 +33,9 @@ import type {
   PrivacyAction,
   PrivacyRouting,
   ReportArtifact,
-  ReportOutput,
+  TurnOutput,
+  SearchConsentAnswer,
+  SearchConsentMode,
   Session,
   SessionKind,
   SessionMade,
@@ -55,7 +57,10 @@ import type { GraphStep, GraphVerdict, PipelineEdge } from '@/types/pipelineGrap
 import { objectParticle, topicParticle } from './formCheck'
 import { currentLang, currentLocale, translate } from './i18n'
 import { setServiceTimeZone } from './serviceTime'
-import { overUploadLimit, tooLargeMessage } from './uploadLimit'
+import { mediaDuration } from './mediaDuration'
+import { isMediaFile, maxMediaMb, mediaReading, overMediaLimit, overUploadLimit, tooLargeMessage } from './uploadLimit'
+import type { ContextQuery, ContextUsage } from './contextGauge'
+import type { Located, Note, ShelfListing, SourceGuide, StudioEstimate, StudioItem, StudioRequest } from './shelf'
 
 export const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
 
@@ -391,6 +396,33 @@ async function call<T>(path: string, init: RequestInit & { timeoutMs?: number } 
 
 const body = (v: unknown) => ({ method: 'POST', body: JSON.stringify(v) })
 
+/** Saves a file the server streams (CSV exports), named as the server names it. */
+async function download(path: string, fallback: string): Promise<void> {
+  const res = await send(`${BASE_URL}${path}`)
+  if (!res.ok) {
+    const detail = await readDetail(res)
+    if (res.status === 401) throw new UnauthorizedError(detail)
+    throw new ApiError(res.status, detail, retryAfter(res))
+  }
+  let name = fallback
+  const encoded = res.headers.get('Content-Disposition')?.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
+  if (encoded) {
+    try {
+      name = decodeURIComponent(encoded).replace(/[\\/:*?"<>|]+/g, '_') || fallback
+    } catch {
+      // A malformed name keeps the fallback.
+    }
+  }
+  const url = URL.createObjectURL(await res.blob())
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = name
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
 /* ── auth: argon2id, short-lived JWT, rotating refresh cookie; signup pending until approved ── */
 
 export interface AuthSession {
@@ -456,6 +488,26 @@ export interface ModelCatalogue {
     qualityReason: 'disabled' | 'classifier_unavailable' | 'no_quality_models' | null
     qualityModelIds: string[]
   }
+  /** The picker's Super Agent entries; absent from an older server. */
+  superAgent?: {
+    enabled: boolean
+    default: SuperAgentOffer
+    strict: SuperAgentOffer
+  }
+}
+
+/** One Super Agent entry: offered or why not, and a typical answer's credits across the table. */
+export interface SuperAgentOffer {
+  available: boolean
+  reason: 'disabled' | 'no_models' | null
+  estimate: { min: number; max: number; models: string[] } | null
+}
+
+/** One row of the admin's Super Agent table. */
+export interface SuperAgentRule {
+  model: string
+  strictModel: string
+  effort: 'default' | 'none' | 'low' | 'high'
 }
 
 export const modelsApi = {
@@ -595,7 +647,12 @@ export const authConfig = {
       /** Where 관리자에게 문의 goes. Empty when nobody can be named. */
       contactEmail: string
       enabledKinds: string[]
-      privacy: { externalDataGuard: boolean; allowUserRawExternal: boolean }
+      privacy: {
+        externalDataGuard: boolean
+        allowUserRawExternal: boolean
+        /** The admin's strict-local web-search setting; absent from older servers. */
+        strictLocalWebSearch?: SearchConsentMode
+      }
       /** Idle minutes before sign-out; 0 off. */
       idleTimeoutMinutes: number
       /** What the signup form should say before somebody is refused. */
@@ -607,7 +664,7 @@ export const authConfig = {
       /** Service time zone (IANA); absent from older servers. */
       timeZone?: string
       /** One file's upload ceiling; absent from older servers. */
-      upload?: { maxMb: number }
+      upload?: { maxMb: number; maxMediaMb?: number; mediaReading?: boolean; maxMediaMinutes?: number }
     }>('/auth/config').then((config) => {
       // Every date on screen follows it, whichever screen asked first.
       setServiceTimeZone(config.timeZone)
@@ -728,6 +785,12 @@ export const adminApi = {
     })
     if (query.q.trim()) params.set('q', query.q.trim())
     return call<UserPage>(`/admin/users/page?${params}`)
+  },
+  /** The list as CSV under the same tab, search and order (every page); the export is audited. */
+  usersCsv: (query: Pick<UserListQuery, 'status' | 'q' | 'sort' | 'order'>) => {
+    const params = new URLSearchParams({ status: query.status, sort: query.sort, order: query.order })
+    if (query.q.trim()) params.set('q', query.q.trim())
+    return download(`/admin/users/export.csv?${params}`, 'kloudchat-users.csv')
   },
   /** Approval and allowance together: an active account without credits reads as a bug. */
   approve: (id: string, monthlyCredits?: number) =>
@@ -899,6 +962,9 @@ export interface AuditQuery {
   /** ISO instants; `until` is exclusive. */
   since?: string
   until?: string
+  /** Server-side column order; newest first when absent. */
+  sort?: 'at' | 'action' | 'target' | 'ip'
+  order?: 'asc' | 'desc'
 }
 
 export interface GovernancePolicy {
@@ -906,6 +972,8 @@ export interface GovernancePolicy {
   externalDataGuard: boolean
   /** A turn carrying internal material (attachments, project files, memories) runs strict-local. */
   internalDataStrictLocal: boolean
+  /** Web search in a strict-local turn: ask each time, allow (queries only) or never. */
+  strictLocalWebSearch: SearchConsentMode
   allowUserRawExternal: boolean
   privacySafeModelIds: string[]
   intentFilter: boolean
@@ -919,6 +987,12 @@ export interface GovernancePolicy {
   adaptiveEconomyModelIds: string[]
   adaptiveQualityEnabled: boolean
   adaptiveQualityModelIds: string[]
+  /** Super Agent entries offered in the picker. */
+  superAgentEnabled: boolean
+  /** Class → model, strict-local model and effort, the admin's changes merged over the defaults. */
+  superAgentRules: Record<string, SuperAgentRule>
+  /** The built-in table (read-only), for 「기본값으로」. */
+  superAgentDefaultRules?: Record<string, SuperAgentRule>
   /** Plans documents when set; null lets each surface's own model plan. */
   outlineModelId: string | null
 }
@@ -1076,7 +1150,11 @@ export const usageApi = {
       method: 'PUT',
       body: JSON.stringify(patch),
     }),
-  report: (days = 7) => call<UsageReport>(`/admin/usage?days=${days}`),
+  /** The last `days` days, or the service-zone calendar days `range.start`..`range.end`. */
+  report: (days = 7, range?: { start: string; end: string }) =>
+    call<UsageReport>(
+      range ? `/admin/usage?start=${range.start}&end=${range.end}` : `/admin/usage?days=${days}`,
+    ),
   /** Disk the uploads and generated media take, per account, and what is left. */
   storage: () => call<StorageReport>('/admin/storage'),
   /** Removes every deleted account's files now, without waiting for the fill mark. */
@@ -1091,6 +1169,14 @@ export const usageApi = {
       if (value !== undefined && value !== '') params.set(key, String(value))
     }
     return call<AuditPage>(`/admin/audit?${params}`)
+  },
+  /** The filtered trail as CSV in the same order (every page); the export is itself recorded. */
+  auditCsv: (query: Omit<AuditQuery, 'page' | 'size'>) => {
+    const params = new URLSearchParams()
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== undefined && value !== '') params.set(key, String(value))
+    }
+    return download(`/admin/audit/export.csv?${params}`, 'kloudchat-audit.csv')
   },
 }
 
@@ -1160,9 +1246,9 @@ export const sessionsApi = {
   agentDraftDecided: (sessionId: string) =>
     call<AgentDraftDecided>(`/sessions/${sessionId}/agent-draft/decided`, { timeoutMs: 0 }),
   /** A report or slides session continuing this chat with its agent; the files carry the conversation. */
-  handoff: (sessionId: string, kind: 'report' | 'slides') =>
-    call<{ session: SessionRow; attachments: FileRow[] }>(
-      `/sessions/${sessionId}/handoff`, body({ kind }),
+  handoff: (sessionId: string, kind: 'report' | 'slides', outputFormat?: TurnOutput) =>
+    call<{ session: SessionRow; attachments: FileRow[]; outputFormat?: TurnOutput | null }>(
+      `/sessions/${sessionId}/handoff`, body(outputFormat ? { kind, outputFormat } : { kind }),
     ),
   forkBeforeMessage: (sessionId: string, messageId: string) =>
     call<{ session: SessionRow; attachments: FileRow[]; attachmentIdMap: Record<string, string> }>(
@@ -1176,6 +1262,8 @@ export const sessionsApi = {
       `/sessions${queryOf({ kind: params?.kind, project_id: params?.projectId, limit: params?.limit })}`,
     ),
   get: (id: string) => call<SessionRow>(`/sessions/${id}`),
+  /** The next turn's share of the model's window (`lib/contextGauge.ts`); no model call. */
+  contextUsage: (query: ContextQuery) => call<ContextUsage>('/sessions/context-usage', body(query)),
   /** `all` resolved server-side, so a conversation from another tab is not spared. */
   /** `files`: the files attached or made in them go too; else they stay in the file box. */
   deleteMany: (payload: { ids?: string[]; all?: boolean; artifacts?: boolean; files?: boolean }) =>
@@ -1299,7 +1387,155 @@ export interface FileRow {
   ocrTotal?: number
   ocrDone?: number
   ocrReview?: number
+  /** Audio/video being understood (`services/video_jobs.py`): null when not media or no worker. */
+  mediaState?: 'queued' | 'running' | 'done' | 'failed' | null
+  /** probe | frames | reading | writing */
+  mediaStage?: string | null
+  mediaDone?: number
+  mediaTotal?: number
+  /** Seconds, once probed. */
+  mediaDuration?: number
   createdAt: string
+}
+
+/** One stretch of a video's time-coded document: what was said and what was on screen. */
+export interface MediaSegment {
+  start: number
+  end: number
+  said: string
+  shown: string
+  /** Keyframe number for its thumbnail, or null. */
+  frame: number | null
+}
+
+/** `GET /files/{id}/media`: the job and its result, with signed URLs for the player. */
+export interface MediaInfo {
+  name: string
+  state: FileRow['mediaState']
+  stage: string | null
+  done: number
+  total: number
+  error: string | null
+  duration: number
+  width: number
+  height: number
+  hasVideo: boolean
+  hasAudio: boolean
+  language: string
+  segments: MediaSegment[]
+  frames: { n: number; t: number }[]
+  notes: string[]
+  timings: Record<string, number>
+  /** The original, seekable; relative to the site. */
+  streamUrl: string
+  /** A keyframe: replace `{n}` with the number, `{n}s` for the thumbnail. */
+  frameUrl: string
+  /** The picture at any moment: replace `{t}` with seconds; empty without the media worker. */
+  posterUrl: string
+}
+
+/** `GET /media/estimate`: what reading a video this long takes. */
+export interface MediaEstimate {
+  seconds: number
+  frames: number
+  minutes: number
+  credits: number
+  maxMinutes: number
+  allowed: boolean
+  enabled: boolean
+  creditsLeft: number
+}
+
+/** Bytes acknowledged by the server, of the whole. */
+export type UploadProgress = (sent: number, total: number) => void
+
+const PIECE_RETRIES = 4
+
+/** Waits, unless aborted. */
+const pause = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(resolve, ms)
+    signal?.addEventListener('abort', () => {
+      clearTimeout(timer)
+      reject(new DOMException('aborted', 'AbortError'))
+    }, { once: true })
+  })
+
+async function sendPiece(id: string, offset: number, piece: Blob, signal?: AbortSignal) {
+  const res = await authedFetch(`${BASE_URL}/uploads/${id}?offset=${offset}`, {
+    method: 'PUT',
+    body: piece,
+    headers: { 'Content-Type': 'application/octet-stream' },
+    signal,
+  })
+  if (!res.ok) {
+    const detail = await readDetail(res)
+    if (res.status === 401) throw new UnauthorizedError(detail)
+    throw new ApiError(res.status, detail)
+  }
+  return (await res.json()) as { received: number }
+}
+
+export const mediaApi = {
+  estimate: (seconds: number) => call<MediaEstimate>(`/media/estimate?seconds=${Math.round(seconds)}`),
+  get: (fileId: string) => call<MediaInfo>(`/files/${fileId}/media`),
+  retry: (fileId: string) => call<FileRow>(`/files/${fileId}/media/retry`, { method: 'POST' }),
+  /**
+   * An audio/video file up in pieces (`routers/media.py`): never the whole file in one request,
+   * each piece retried and the upload resumed from what the server holds; `onProgress` after
+   * every piece. The server then reads it in the background — the tab may close.
+   */
+  upload: async (
+    file: File,
+    opts?: { projectId?: string; sessionId?: string; seconds?: number; onProgress?: UploadProgress; signal?: AbortSignal },
+  ) => {
+    const started = await call<{ id: string; size: number; received: number; pieceBytes: number }>('/uploads', body({
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      projectId: opts?.projectId ?? null,
+      sessionId: opts?.sessionId ?? null,
+      seconds: opts?.seconds && Number.isFinite(opts.seconds) ? opts.seconds : null,
+    }))
+    const { id, pieceBytes } = started
+    let offset = started.received
+    opts?.onProgress?.(offset, file.size)
+    try {
+      while (offset < file.size) {
+        const piece = file.slice(offset, Math.min(file.size, offset + pieceBytes))
+        let tries = 0
+        for (;;) {
+          try {
+            offset = (await sendPiece(id, offset, piece, opts?.signal)).received
+            break
+          } catch (err) {
+            tries += 1
+            const status = err instanceof ApiError ? err.status : 0
+            const transient = status === 0 || status === 409 || status >= 500
+            if (!transient || tries >= PIECE_RETRIES || opts?.signal?.aborted) throw err
+            await pause(800 * 2 ** tries, opts?.signal)
+            // the server says where it stands; a piece it already has is not sent twice
+            offset = (await call<{ received: number }>(`/uploads/${id}`)).received
+            break
+          }
+        }
+        opts?.onProgress?.(offset, file.size)
+      }
+      return await call<FileRow>(`/uploads/${id}/finish`, { method: 'POST' })
+    } catch (err) {
+      // a refused or abandoned upload leaves no partial file behind
+      void call<void>(`/uploads/${id}`, { method: 'DELETE' }).catch(() => undefined)
+      throw err
+    }
+  },
+}
+
+export { isMediaFile }
+
+/** Length of a local video/audio file from its container header (`mediaDuration`), or
+ *  undefined: the server probes it after upload. */
+export function mediaSeconds(file: File): Promise<number | undefined> {
+  return mediaDuration(file)
 }
 
 /** One keyset page: `next` is the cursor for the following page, null on the last. */
@@ -1347,7 +1583,12 @@ export const filesApi = {
     }).toString()
     return call<FileRow[]>(`/files${query ? `?${query}` : ''}`)
   },
-  upload: async (file: File, opts?: { projectId?: string; sessionId?: string }) => {
+  upload: async (file: File, opts?: { projectId?: string; sessionId?: string; onProgress?: UploadProgress }) => {
+    // audio/video: in pieces, to its own limit, read on the server afterwards
+    if (isMediaFile(file) && (mediaReading() || overUploadLimit(file))) {
+      if (overMediaLimit(file)) throw new ApiError(413, tooLargeMessage(maxMediaMb()))
+      return mediaApi.upload(file, { ...opts, seconds: await mediaSeconds(file) })
+    }
     if (overUploadLimit(file)) throw new ApiError(413, tooLargeMessage())
     const form = new FormData()
     form.append('file', file)
@@ -1410,6 +1651,8 @@ export interface ProjectRow {
   designSystemId: string | null
   /** Surface → template; sent whole, a missing key means the built-in track. */
   renderTemplates: Record<string, string>
+  /** Web search in this project's strict-local turns; null follows the admin. */
+  strictLocalWebSearch?: SearchConsentMode | null
   files: FileRow[]
   sessionIds: string[]
   createdAt: string
@@ -1502,6 +1745,12 @@ export const artifactsApi = {
   addSlideImage: (id: string, slideId: string, artifactId: string, caption: string) =>
     call<ArtifactRow>(`/artifacts/${id}/slides/image`, body({ slideId, artifactId, caption })),
   /** This browser's raster of `slide.diagram`, stored for the exporters. Free, no version. */
+  /** Slides whose text the `.pptx` cannot fit even at the type floor, for the slides given
+   *  (the editor's, unsaved edits included). Free, no version. */
+  deckOverflow: (id: string, slides: unknown[], design?: unknown) =>
+    call<{ slideId: string; index: number; what: string[] }[]>(
+      `/artifacts/${id}/deck-overflow`, body({ slides, design: design ?? null }),
+    ),
   storeSlideDiagram: (id: string, slideId: string, key: string, src: string) =>
     call<ArtifactRow>(`/artifacts/${id}/slides/diagram`, body({ slideId, key, src })),
   /** One reading by a reviewer. Costs a model call; annotates, never edits. */
@@ -1517,6 +1766,8 @@ export const artifactsApi = {
     projectId?: string | null
     fileId?: string
     title?: string
+    /** A slides template for a blank PowerPoint deck; the project's default when left out. */
+    templateId?: string
   }) => call<ArtifactRow>(`/artifacts/${kind}`, body(payload)),
   /** A document with no conversation joins `sessionId` (a new chat) to be edited beside it. */
   attachDocument: (kind: OfficeKind, id: string, sessionId: string) =>
@@ -2301,6 +2552,14 @@ export type StreamEvent =
   | ({ type: 'tool_result_answer' } & ToolResultAnswer)
   /** `messageId` is the stored answer's id — the one every later call must use. */
   | { type: 'done'; credits?: number; messageId?: string }
+  /** A strict-local report or deck stopped at the search card before its research. */
+  | { type: 'search_consent'; messageId: string; content: string; routing: PrivacyRouting }
+
+/** The document open beside the chat when a turn is sent, at the version the person sees. */
+export interface OpenArtifact {
+  id: string
+  version?: number
+}
 
 /** Chat, report and slides stream from one endpoint; reports emit a `section` event per section. */
 export async function* streamSession(
@@ -2317,18 +2576,24 @@ export async function* streamSession(
     renderTemplateId?: string
     privacyAction?: PrivacyAction
     privacyDecisionToken?: string
+    /** With `route_strict_local`: the safe model picked on the privacy card. */
+    privacyModelId?: string
     /** Write the outline waiting on this session instead of planning another. */
     approve?: boolean
     /** Outline as edited on the card; titles and order theirs, layouts the planner's. */
     plan?: Record<string, unknown>
     /** The figure card's answer — the second of the two questions. */
     includeFigures?: boolean
-    /** A report's file picked on the screen; wins over a file the request names. */
-    outputFormat?: ReportOutput
+    /** A report's file, or PowerPoint for a deck, picked on the screen; wins over the request. */
+    outputFormat?: TurnOutput
     /** Answers to a stopped turn's questions, keyed by question id. */
     answers?: Record<string, string>
     /** The failed question to run again in place, by message id; the server reuses that row. */
     retryOf?: string
+    /** The document open in the panel: chat edits and the office tools work on it. */
+    openArtifact?: OpenArtifact
+    /** The person's answer to the search card on the answer `retryOf` reruns. */
+    searchConsent?: SearchConsentAnswer
   },
   signal?: AbortSignal,
 ): AsyncGenerator<StreamEvent> {
@@ -3337,4 +3602,59 @@ export const clientErrorsApi = {
     version: string
     requestId: string
   }) => call<void>('/client-errors', body(report)),
+}
+
+// ── 지식 서가 (knowledge shelf) ─────────────────────────────────────────────
+
+/** Fetches a protected endpoint as text (an export) with the bearer token. */
+async function authedText(path: string): Promise<Blob> {
+  const res = await authedFetch(`${BASE_URL}${path}`)
+  if (!res.ok) {
+    const detail = await readDetail(res)
+    if (res.status === 401) throw new UnauthorizedError(detail)
+    throw new ApiError(res.status, detail)
+  }
+  return res.blob()
+}
+
+export const shelfApi = {
+  sources: (projectId: string) => call<ShelfListing>(`/projects/${projectId}/shelf`),
+  addText: (projectId: string, title: string, text: string) =>
+    call<FileRow>(`/projects/${projectId}/shelf/text`, body({ title, text })),
+  guide: (projectId: string, subject: string) =>
+    call<SourceGuide>(`/projects/${projectId}/shelf/guide/${subject}`),
+  makeGuide: (projectId: string, subject: string, force = false) =>
+    call<SourceGuide>(
+      `/projects/${projectId}/shelf/guide/${subject}${force ? '?force=true' : ''}`,
+      { method: 'POST' },
+    ),
+  locate: (projectId: string, query: { fileId?: string; name?: string; q?: string; page?: number | null }) => {
+    const params = new URLSearchParams()
+    if (query.fileId) params.set('file_id', query.fileId)
+    if (query.name) params.set('name', query.name)
+    if (query.q) params.set('q', query.q.slice(0, 1500))
+    if (query.page) params.set('page', String(query.page))
+    return call<Located>(`/projects/${projectId}/shelf/locate?${params}`)
+  },
+  selection: (sessionId: string) => call<{ off: string[] }>(`/sessions/${sessionId}/sources`),
+  setSelection: (sessionId: string, off: string[]) =>
+    call<{ off: string[] }>(`/sessions/${sessionId}/sources`, { method: 'PUT', body: JSON.stringify({ off }) }),
+  studio: (projectId: string) => call<StudioItem[]>(`/projects/${projectId}/studio`),
+  estimate: (projectId: string, request: StudioRequest) =>
+    call<StudioEstimate>(`/projects/${projectId}/studio/estimate`, body(request)),
+  start: (projectId: string, request: StudioRequest) =>
+    call<StudioItem>(`/projects/${projectId}/studio`, body(request)),
+  item: (id: string) => call<StudioItem>(`/studio/${id}`),
+  regenerate: (id: string) => call<StudioItem>(`/studio/${id}/regenerate`, { method: 'POST' }),
+  remove: (id: string) => call<void>(`/studio/${id}`, { method: 'DELETE' }),
+  exportSet: (id: string, format: 'csv' | 'anki') => authedText(`/studio/${id}/export?format=${format}`),
+  sheet: (id: string, format: 'web' | 'hwp' | 'docx') =>
+    call<{ sessionId: string; artifactId: string }>(`/studio/${id}/sheet`, body({ format })),
+  notes: (projectId: string) => call<Note[]>(`/projects/${projectId}/notes`),
+  addNote: (projectId: string, note: { title?: string; body: string; origin?: 'manual' | 'answer' | 'selection'; sessionId?: string | null; messageId?: string | null }) =>
+    call<Note>(`/projects/${projectId}/notes`, body(note)),
+  editNote: (id: string, patch: { title?: string; body?: string; expected?: string }) =>
+    call<Note>(`/notes/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  removeNote: (id: string) => call<void>(`/notes/${id}`, { method: 'DELETE' }),
+  noteToSource: (id: string) => call<FileRow>(`/notes/${id}/source`, { method: 'POST' }),
 }

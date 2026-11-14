@@ -21,7 +21,7 @@ import httpx
 from app.core.config import settings
 from app.models.workspace import ArtifactKind
 from app.services import charts as chartkit
-from app.services import design, design_templates, report_export, richtext
+from app.services import design, design_templates, office_look, report_export, richtext
 
 log = logging.getLogger(__name__)
 
@@ -189,6 +189,11 @@ def file_bytes(kind: ArtifactKind, title: str, data: dict[str, Any],
     page_settings = data.get("pageSettings") or None
     title_block = data.get("titleBlock") or None
     if kind is ArtifactKind.hwp:
+        # the report's template as HWPX can carry it (margins, body face, heading colour),
+        # under the report's own theme and page settings (`office_look`)
+        tokens, page_settings = office_look.hwpx(office_look.Look(
+            tokens=tokens, template_id=str(data.get("templateId") or ""),
+            page_settings=dict(page_settings or {})))
         return report_export.to_hwpx(
             title, sections, tokens=tokens, page_settings=page_settings, title_block=title_block
         )

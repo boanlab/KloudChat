@@ -10,7 +10,7 @@ A project is a workspace that binds materials, instructions, and conversations t
 
 ## Creating
 
-Go to the sidebar → **Projects** → New project, then enter a name, a description, and **project instructions**. After creation, the detail screen lets you set the icon, the theme, and the **default template** for each screen (reports, slide decks).
+Go to the sidebar → **Projects** → New project, then enter a name, a description, and **project instructions**. After creation, the detail screen lets you set the icon, the theme, and the **default template** for each screen. The default template rows are **Report (web · HWP · Word)** and **Slides (web · PowerPoint)**, each with a thumbnail preview. The theme (tone, colors, fonts) applies to every report and slides format, the image gets the style, and audio and video get nothing.
 
 ## Tabs
 
@@ -18,6 +18,8 @@ Go to the sidebar → **Projects** → New project, then enter a name, a descrip
 |---|---|
 | Conversations | Start a new conversation in this project, and add existing conversations to the project or remove them from it. |
 | Knowledge | Add files and register addresses as **web material**. Web material stores the content as it was at registration time. It shows how many tokens each file uses and how much of the context it takes up. You can check the recognized content, download the original, and delete it. A file that meaning-based search does not cover yet is marked **Not indexed**; **Index now** sends it again. A deleted file can be brought back with **Undo** at the bottom of the screen for a few seconds. |
+| Studio | Makes a study guide, FAQ, briefing, timeline, glossary, mind map, quiz or flashcards from the sources you pick. See [Knowledge shelf](./knowledge-shelf.md). |
+| Notes | Collects answers, selected passages and notes written by hand, and makes a note a source. |
 | Skills | Skills you pick with **Choose skills** appear first in this project's composer. |
 | Memory | Memory shared at the project level. Conclusions that an agent leaves through **Share note** also accumulate here. |
 

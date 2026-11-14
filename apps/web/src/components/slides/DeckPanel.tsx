@@ -1,52 +1,37 @@
 import {
   ArrowDown,
   ArrowUp,
-  Bold,
   ChevronLeft,
   ChevronRight,
-  Copy,
   Eraser,
   Grid2x2,
-  History,
-  Share2,
+  Image as ImageIcon,
   ImagePlus,
-  Italic,
-  LayoutTemplate,
   ListPlus,
   Loader2,
   Maximize,
   MessageSquare,
-  MoreHorizontal,
   PanelLeft,
   PanelRight,
   Palette,
-  Pencil,
   Play,
   Presentation,
   Rows3,
-  Save,
   RefreshCw,
-  Redo2,
   ShieldQuestion,
-  StickyNote,
   Trash2,
   TriangleAlert,
-  Underline,
-  Undo2,
   X,
-  ChevronDown,
 } from 'lucide-react'
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { createPortal } from 'react-dom'
+import { createPortal, flushSync } from 'react-dom'
 import {
-  PanelControls,
   usePanelWidth,
   type PanelMode,
 } from '@/components/artifacts/PanelControls'
-import { usePanelNarrow } from '@/lib/usePanelNarrow'
-import { Button, ConfirmDialog, Dropdown, Input, MenuItem, MenuLabel, MenuSeparator, Modal, Textarea } from '@/components/ui'
+import { useMediaQuery } from '@/lib/useMediaQuery'
+import { Button, Input, MenuItem, MenuSeparator, Modal, Textarea } from '@/components/ui'
 import { DownloadMenu, ReuseItems } from '@/components/artifacts/ResultActions'
-import { ShareButton } from '@/components/share/ShareButton'
 import { artifactsApi, errorMessage } from '@/lib/api'
 import { mediaFailure } from '@/lib/failures'
 import { FRAMES, drawIntoFitting, frameElement, paperStyles, rasterise, slideTheme } from '@/lib/mermaid'
@@ -55,18 +40,21 @@ import type { DeckArtifact, LintFinding, Slide } from '@/types'
 import { FactCheckResults } from '@/components/artifacts/FactCheckResults'
 import { LintFindings, byWhere, fixNote } from '@/components/artifacts/LintFindings'
 import { VersionHistory } from '@/components/artifacts/VersionHistory'
-import { overflowRisk } from '@/components/artifacts/artifactExport'
+import { overflowRisk, saveBlob, takeArtifact, type ExportFormat } from '@/components/artifacts/artifactExport'
 import { RunStagesButton } from '@/components/artifacts/RunStages'
 import { useStore } from '@/store/useStore'
 import { SlideChart } from '@/components/slides/SlideChart'
 import { PatternView } from '@/components/slides/PatternView'
 import { BASE_LAYOUTS, PATTERNS, patternOf, type Pattern } from '@/components/slides/patterns'
-import { BODY_BOTTOM, BODY_TOP, BULLET_GAP, FLOOR_PT, LEADING, PAD_X, STEPS, TYPE, columnShares, lines, sharedValue, tablePad, tableSize, titlePt, units } from '@/components/slides/typeScale'
+import { BODY_BOTTOM, BODY_TOP, BULLET_GAP, FLOOR_PT, LEADING, PAD_X, TYPE, columnShares, lines, sharedValue, tablePad, tableSize, titlePt, units } from '@/components/slides/typeScale'
 import { useT, useTIn } from '@/lib/useT'
 import { PicturePicker } from '@/components/artifacts/PicturePicker'
-import { ArtifactRibbon, QuickAccess, RibbonGroup } from '@/components/artifacts/ArtifactRibbon'
-import { copyText } from '@/lib/clipboard'
+import { NotesPane, SlideRail } from '@/components/pptx/chrome'
+import { DeckToolbar } from '@/components/slides/DeckToolbar'
+import { useDeckDocument } from '@/components/slides/useDeckDocument'
+import { DocumentAsk, DocumentHeader, DocumentLock, DocumentNotice, DocumentReadOnlyNote } from '@/components/document/DocumentChrome'
 import { fontFamilyFor } from '@/components/report/docType'
+import { PAIRED, heldCount, pairFields, pairedLayout, relayout } from '@/components/slides/relayout'
 
 /** Whether a slide has content in any field; mirrors `deck.has_content` on the server. */
 function hasContent(slide: Slide): boolean {
@@ -175,8 +163,6 @@ function splitStructuredSlide(slide: Slide, continuation: string): [Slide, Slide
   return null
 }
 
-/** Layouts made of [left, right] pairs; see `Slide.bands`. */
-const PAIRED = ['bands', 'tiles', 'timeline', 'steps', 'cards'] as const
 
 /** Layouts that count as content without a body: cover, dividers, agenda. */
 const STRUCTURAL: Slide['layout'][] = ['title', 'section', 'agenda']
@@ -223,7 +209,6 @@ const LOOKS: Record<VisualStyle, Look> = {
   slate: { bg: '#eef1f5', ink: '#1c2431', muted: '#55617a', faint: '#8b96ab', hair: '#d5dbe6', tint: 8, card: 'outlined', radius: 2, badge: 'square', cover: 'split', ornament: 'bottom-rule', titleWeight: 700, tracking: 0, leading: 1.6 },
   paper: { bg: '#fbfaf6', ink: '#2a2622', muted: '#6b655c', faint: '#9b948a', hair: '#e6e1d6', tint: 6, card: 'outlined', radius: 0, badge: 'square', cover: 'paper', ornament: 'frame', titleWeight: 600, tracking: 0, leading: 1.7 },
 }
-type Paired = (typeof PAIRED)[number]
 type SlideElement = 'title' | 'content' | 'image' | 'table' | 'chart' | 'metrics' | 'cards'
 
 /** Picker groups for the patterns, by arrangement; `slide_patterns.py` holds the table. */
@@ -347,137 +332,6 @@ function inlineText(html: string): string {
   return new DOMParser().parseFromString(html, 'text/html').body.textContent ?? ''
 }
 
-function pairedLayout(slide: Slide): Paired | null {
-  return (PAIRED as readonly string[]).includes(slide.layout)
-    ? (slide.layout as Paired)
-    : null
-}
-
-/** Pairs on the field the layout names; the other paired fields cleared. */
-function pairFields(layout: Paired | null, pairs?: [string, string][]): Partial<Slide> {
-  return {
-    bands: layout === 'bands' ? pairs : undefined,
-    tiles: layout === 'tiles' ? pairs : undefined,
-    timeline: layout === 'timeline' ? pairs : undefined,
-    steps: layout === 'steps' ? pairs : undefined,
-    cards: layout === 'cards' ? pairs : undefined,
-  }
-}
-
-/** The slide's `[left, right]` pairs, from a paired layout or a pairs pattern; `null` if it has none. */
-function pairsOf(slide: Slide): [string, string][] | null {
-  const paired = pairedLayout(slide)
-  if (paired) return slide[paired] ?? []
-  if (patternOf(slide.layout)?.shape === 'pairs') return slide.items ?? []
-  return null
-}
-
-/** `"이름: 설명"` (or `이름 — 설명`) → `['이름', '설명']`; a line with neither keeps it whole on the left. */
-function splitPair(line: string): [string, string] | null {
-  const match = /^(.{1,40}?)\s*(?::\s|：|\s[—–-]\s)\s*(.+)$/.exec(line.trim())
-  return match ? [match[1].trim(), match[2].trim()] : null
-}
-
-/** Re-shape one slide without leaving invisible content from its old layout. */
-function relayout(slide: Slide, layout: Slide['layout']): Slide {
-  if (layout === slide.layout) return slide
-  const columns = slide.columns?.filter((column) => column.title || column.items.length) ?? []
-  const pairs: [string, string][] =
-    pairsOf(slide) ??
-    (columns.length
-      ? columns.flatMap((column) => column.items.map((item) => [column.title, item] as [string, string]))
-      : null) ??
-    slide.metrics ??
-    slide.rows?.map((row) => [row[0] ?? '', row.slice(1).join(' · ')] as [string, string]) ??
-    []
-  const target = patternOf(layout)
-  const lines = slide.bullets?.length
-    ? slide.bullets
-    : slide.body
-      // A pattern takes back the lines a one-line layout joined with ` · `.
-      ? (target ? slide.body.split(' · ').filter(Boolean) : [slide.body])
-      : pairs.map(([left, right]) => [left, right].filter(Boolean).join(columns.length ? ': ' : ' — '))
-  const keepsChart = layout === 'chart' || target?.shape === 'chart'
-  const clean: Slide = {
-    ...slide,
-    layout,
-    body: undefined,
-    bullets: undefined,
-    rows: undefined,
-    metrics: undefined,
-    items: undefined,
-    columns: undefined,
-    chart: keepsChart && slide.chart
-      ? {
-          ...slide.chart,
-          // A chart pattern fixes its kind; back on the plain chart, a kind it cannot draw becomes bars.
-          kind: (target?.params.kind as NonNullable<Slide['chart']>['kind'] | undefined)
-            ?? (slide.chart.kind === 'line' ? 'line' : 'bar'),
-        }
-      : undefined,
-    ...pairFields(null),
-  }
-  // Pairs a new pairs layout carries: the old pairs, else lines split at「:」or numbered.
-  const carried = (number: boolean): [string, string][] =>
-    pairs.length
-      ? pairs
-      : lines.map((line, i) => splitPair(line) ?? (number ? [String(i + 1).padStart(2, '0'), line] : [line, '']))
-  if (target) {
-    const [, most] = target.count
-    if (target.shape === 'pairs') return { ...clean, items: carried(false) }
-    if (target.shape === 'text') return { ...clean, body: slide.body || lines.join(' · ') || undefined }
-    if (target.shape === 'chart') return clean
-    if (target.shape === 'metrics') {
-      const metrics = pairs.length
-        ? pairs.slice(0, most)
-        : lines.slice(0, most).map((line, i) => splitPair(line) ?? ([String(i + 1), line] as [string, string]))
-      return { ...clean, metrics }
-    }
-    // columns: kept as they were, else pairs grouped by their left side (the inverse of flattening).
-    if (columns.length) return { ...clean, columns }
-    const grouped: { title: string; items: string[] }[] = []
-    for (const [left, right] of carried(false)) {
-      const into = grouped.find((column) => column.title === left)
-      if (into) {
-        if (right) into.items.push(right)
-      } else grouped.push({ title: left, items: right ? [right] : [] })
-    }
-    // More groups than the pattern has panels: the rest join the last panel, labelled.
-    const kept = grouped.slice(0, most)
-    for (const extra of grouped.slice(most)) {
-      kept[kept.length - 1].items.push(...(extra.items.length ? extra.items.map((item) => `${extra.title}: ${item}`) : [extra.title]))
-    }
-    return { ...clean, columns: kept }
-  }
-  if (layout === 'title' || layout === 'section' || layout === 'quote' || layout === 'statement') {
-    return { ...clean, body: lines.join(' · ') || undefined }
-  }
-  if (layout === 'big-number') {
-    const [first] = pairs.length ? pairs : lines.slice(0, 1).map((line) => ['1', line] as [string, string])
-    return { ...clean, metrics: first ? [first] : [], body: lines.slice(1).join(' · ') || undefined }
-  }
-  if (layout === 'closing') {
-    return { ...clean, bullets: lines.slice(0, 3), body: slide.body || undefined }
-  }
-  if (layout === 'table') {
-    const rows = slide.rows
-      ?? (columns.length
-        ? [columns.map((column) => column.title), ...Array.from({ length: Math.max(...columns.map((column) => column.items.length)) }, (_, r) => columns.map((column) => column.items[r] ?? ''))]
-        : pairs.map(([left, right]) => [left, right]))
-    return { ...clean, rows: rows.length ? rows : lines.map((line) => [line]) }
-  }
-  if (layout === 'metrics') {
-    const metrics = pairs.length
-      ? pairs.slice(0, 4)
-      : lines.slice(0, 4).map((line, i) => [String(i + 1), line] as [string, string])
-    return { ...clean, metrics }
-  }
-  if ((PAIRED as readonly string[]).includes(layout)) {
-    return { ...clean, ...pairFields(layout as Paired, carried(true)) }
-  }
-  return { ...clean, bullets: lines }
-}
-
 /** Slide matching a finding's `where` title: exact first, then ignoring whitespace. */
 function slideFor(slides: Slide[], where: string): Slide | undefined {
   if (!where) return undefined
@@ -546,6 +400,8 @@ export function SlideView({
         'data-selected': selectedElement === element ? 'true' : undefined,
       } as const)
     : {}
+  // The bullet an Enter just split: its blur must not write the unsplit text back.
+  const splitBullet = useRef<string | null>(null)
   const typed = (key: string, read: (text: string) => Partial<Slide>) =>
     editable
       ? ({
@@ -553,6 +409,10 @@ export function SlideView({
           suppressContentEditableWarning: true,
           spellCheck: false,
           onBlur: (e: React.FocusEvent<HTMLElement>) => {
+            if (splitBullet.current === key) {
+              splitBullet.current = null
+              return
+            }
             const html = cleanInlineHtml(e.currentTarget.innerHTML)
             const richText = { ...(working.current.richText ?? {}) }
             if (html === (e.currentTarget.textContent ?? '')) delete richText[key]
@@ -560,6 +420,60 @@ export function SlideView({
             edit({ ...read(e.currentTarget.textContent ?? ''), richText: Object.keys(richText).length ? richText : undefined })
           },
           className: 'outline-none focus:bg-accent-soft/40',
+        } as const)
+      : {}
+  // One bullet per editable line: Enter splits it into a new bullet after this one (the
+  // caret's tail moves there), Backspace at the start of an empty one removes it. Without
+  // this, Enter put a line break inside the bullet that the saved text then lost, so the
+  // typed line ran into the bullet above it.
+  const bulletKeys = (i: number) =>
+    editable
+      ? ({
+          'data-bullet': i,
+          onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => {
+            if (e.nativeEvent.isComposing) return
+            const span = e.currentTarget
+            const text = span.textContent ?? ''
+            const bullets = [...(working.current.bullets ?? [])]
+            const caret = (() => {
+              const sel = window.getSelection()
+              if (!sel || !sel.rangeCount || !span.contains(sel.anchorNode)) return text.length
+              const range = sel.getRangeAt(0).cloneRange()
+              range.selectNodeContents(span)
+              range.setEnd(sel.anchorNode!, sel.anchorOffset)
+              return range.toString().length
+            })()
+            // Focus moves before the next key is handled: the bullets are rendered at once
+            // (`flushSync` around the edit), so a fast typist's next letters land in the new
+            // bullet, not in the one just split. A parent that renders later is waited for.
+            const focusBullet = (at: number, toEnd: boolean, tries = 10) => {
+              const next = canvas.current?.querySelector<HTMLElement>(`[data-bullet="${at}"]`)
+              if (!next) {
+                if (tries > 0) requestAnimationFrame(() => focusBullet(at, toEnd, tries - 1))
+                return
+              }
+              next.focus()
+              const sel = window.getSelection()
+              sel?.selectAllChildren(next)
+              if (toEnd) sel?.collapseToEnd()
+              else sel?.collapseToStart()
+            }
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault()
+              splitBullet.current = `bullets.${i}`
+              bullets.splice(i, 1, text.slice(0, caret).trimEnd(), text.slice(caret).trimStart())
+              const richText = { ...(working.current.richText ?? {}) }
+              delete richText[`bullets.${i}`]
+              flushSync(() => edit({ bullets, richText: Object.keys(richText).length ? richText : undefined }))
+              focusBullet(i + 1, false)
+            } else if (e.key === 'Backspace' && caret === 0 && !text && bullets.length > 1) {
+              e.preventDefault()
+              splitBullet.current = `bullets.${i}`
+              bullets.splice(i, 1)
+              flushSync(() => edit({ bullets }))
+              focusBullet(Math.max(0, i - 1), true)
+            }
+          },
         } as const)
       : {}
   const rich = (key: string, text: string) => {
@@ -637,7 +551,9 @@ export function SlideView({
     if (!onOverflow || !canvas.current) return
     const root = canvas.current
     const measure = () => {
-      const boxes = [root, ...Array.from(root.querySelectorAll<HTMLElement>('[data-overflow-box]'))]
+      // A cover's decorations (a circle, a band) run past its edges on purpose: its own boxes only.
+      const own = Array.from(root.querySelectorAll<HTMLElement>('[data-overflow-box]'))
+      const boxes = root.dataset.cover !== undefined ? own : [root, ...own]
       onOverflow(boxes.some((box) => box.scrollHeight > box.clientHeight + 2 || box.scrollWidth > box.clientWidth + 2))
     }
     measure()
@@ -699,6 +615,7 @@ export function SlideView({
     return (
       <div
         ref={canvas}
+        data-cover=""
         className="relative flex size-full flex-col justify-center overflow-hidden"
         style={{
           background,
@@ -766,6 +683,7 @@ export function SlideView({
                   {...typed(`bullets.${i}`, (text) => ({
                     bullets: (working.current.bullets ?? []).map((old, at) => (at === i ? text : old)),
                   }))}
+                  {...bulletKeys(i)}
                 >
                   {rich(`bullets.${i}`, b)}
                 </span>
@@ -1206,6 +1124,7 @@ export function SlideView({
                         {...typed(`bullets.${i}`, (text) => ({
                           bullets: (working.current.bullets ?? []).map((old, at) => (at === i ? text : old)),
                         }))}
+                        {...bulletKeys(i)}
                       >
                         {rich(`bullets.${i}`, unnumbered(b))}
                       </span>
@@ -1236,6 +1155,7 @@ export function SlideView({
                             at === i ? text : old,
                           ),
                         }))}
+                        {...bulletKeys(i)}
                       >
                         {rich(`bullets.${i}`, b)}
                       </span>
@@ -1467,15 +1387,21 @@ function SlideFigure({ slide, accent, look, artifactId }: { slide: Slide; accent
 }
 
 /** Inserts an image artifact into a slide; the server embeds it as a `data:` URI. */
-function SlidePicture({ deck, slide }: { deck: DeckArtifact; slide: Slide }) {
+function SlidePicture({ deck, slide, open, onClose }: { deck: DeckArtifact; slide: Slide; open: boolean; onClose: () => void }) {
   const t = useT()
-  const [open, setOpen] = useState(false)
   const [picked, setPicked] = useState<string | null>(null)
   const [caption, setCaption] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const loadArtifacts = useStore((s) => s.loadArtifacts)
   const refreshArtifact = useStore((s) => s.refreshArtifact)
+
+  useEffect(() => {
+    if (!open) return
+    setPicked(null)
+    setCaption('')
+    setError(null)
+  }, [open])
 
   const insert = async () => {
     if (!picked) return
@@ -1485,9 +1411,7 @@ function SlidePicture({ deck, slide }: { deck: DeckArtifact; slide: Slide }) {
       await artifactsApi.addSlideImage(deck.id, slide.id, picked, caption.trim())
       await refreshArtifact(deck.id)
       await loadArtifacts()
-      setOpen(false)
-      setPicked(null)
-      setCaption('')
+      onClose()
     } catch (err) {
       setError(errorMessage(err, t('그림을 넣지 못했습니다.')))
     } finally {
@@ -1496,64 +1420,48 @@ function SlidePicture({ deck, slide }: { deck: DeckArtifact; slide: Slide }) {
   }
 
   return (
-    <>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => {
-          setPicked(null)
-          setCaption('')
-          setError(null)
-          setOpen(true)
-        }}
-      >
-        <ImagePlus size={13} />
-        {slide.diagram ? t('그림 모델로 바꾸기') : slide.image ? t('그림 바꾸기') : t('그림 넣기')}
-      </Button>
-
-      <Modal
-        open={open}
-        onClose={() => setOpen(false)}
-        title={t('{name}에 그림 넣기').replace('{name}', slide.title || t('이 장'))}
-        description={t('여기서 바로 만들거나 이미 만든 그림을 고를 수 있습니다. 링크가 아니라 파일 안에 담기므로 인쇄와 공유에서도 함께 보입니다.')}
-        footer={
-          <>
-            <Button onClick={() => setOpen(false)} disabled={busy}>
-              {t('취소')}
-            </Button>
-            <Button variant="primary" onClick={() => void insert()} disabled={busy || !picked}>
-              {busy ? t('넣는 중…') : t('넣기')}
-            </Button>
-          </>
-        }
-      >
-        <PicturePicker
-          sessionId={deck.sessionId}
-          aspect="16:9"
-          picked={picked}
-          onPick={setPicked}
-          caption={caption}
-          onCaption={setCaption}
-          about={slide.title || t('이 장')}
-          title={deck.title}
-          context={[
-            slide.diagram?.description,
-            slide.body,
-            ...(slide.bullets ?? []),
-            ...(slide.rows ?? []).map((row) => row.join(' · ')),
-            ...(slide.metrics ?? []).map(([value, label]) => `${value} — ${label}`),
-          ]
-            .filter(Boolean)
-            .join('\n')}
-        />
-        {slide.diagram && (
-          <p className="mt-2 text-sm text-muted">
-            {t('이 장의 도식은 글에서 자동으로 그린 것입니다. 이미지 모델의 그림으로 바꾸면 도식은 사라집니다.')}
-          </p>
-        )}
-        {error && <p className="mt-2 text-base text-danger">{error}</p>}
-      </Modal>
-    </>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={t('{name}에 그림 넣기').replace('{name}', slide.title || t('이 장'))}
+      description={t('여기서 바로 만들거나 이미 만든 그림을 고를 수 있습니다. 링크가 아니라 파일 안에 담기므로 인쇄와 공유에서도 함께 보입니다.')}
+      footer={
+        <>
+          <Button onClick={onClose} disabled={busy}>
+            {t('취소')}
+          </Button>
+          <Button variant="primary" onClick={() => void insert()} disabled={busy || !picked}>
+            {busy ? t('넣는 중…') : t('넣기')}
+          </Button>
+        </>
+      }
+    >
+      <PicturePicker
+        sessionId={deck.sessionId}
+        aspect="16:9"
+        picked={picked}
+        onPick={setPicked}
+        caption={caption}
+        onCaption={setCaption}
+        about={slide.title || t('이 장')}
+        title={deck.title}
+        context={[
+          slide.diagram?.description,
+          slide.body,
+          ...(slide.bullets ?? []),
+          ...(slide.rows ?? []).map((row) => row.join(' · ')),
+          ...(slide.metrics ?? []).map(([value, label]) => `${value} — ${label}`),
+        ]
+          .filter(Boolean)
+          .join('\n')}
+      />
+      {slide.diagram && (
+        <p className="mt-2 text-sm text-muted">
+          {t('이 장의 도식은 글에서 자동으로 그린 것입니다. 이미지 모델의 그림으로 바꾸면 도식은 사라집니다.')}
+        </p>
+      )}
+      {error && <p className="mt-2 text-base text-danger">{error}</p>}
+    </Modal>
   )
 }
 
@@ -1588,15 +1496,6 @@ function toLines(slide: Slide): string {
     .join('\n')
 }
 
-/** `| a | b |` → `['a', 'b']`, or `null` for a line that is not a row. */
-function toCells(line: string): string[] | null {
-  const trimmed = line.trim()
-  if (!trimmed.startsWith('|')) return null
-  const cells = trimmed.replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim())
-  // `| --- |` is a Markdown rule, not data.
-  if (cells.every((c) => /^:?-{2,}:?$/.test(c))) return null
-  return cells.length > 1 ? cells : null
-}
 
 function SlideDataEditor({ slide, onChange }: { slide: Slide; onChange: (next: Slide) => void }) {
   const t = useT()
@@ -2040,6 +1939,67 @@ function SlideThumbnail({ deck, slide, index, writing }: { deck: DeckArtifact; s
   )
 }
 
+/**
+ * What the unsaved-edits question says for the web slides' own reasons: a server step on the
+ * saved deck, and a download (made from the saved version). The shared reasons (an agent turn,
+ * leaving, a reload) are `DocumentAsk`'s.
+ */
+const DECK_ASK: Record<'op' | 'export', { description: string; discard: string; save: string }> = {
+  op: {
+    description: '이 작업은 저장된 덱을 고칩니다. 지금 편집을 저장할까요, 버릴까요?',
+    discard: '버리고 계속',
+    save: '저장하고 계속',
+  },
+  export: {
+    description: '내려받는 파일은 저장된 판으로 만듭니다. 지금 편집을 먼저 저장할까요?',
+    discard: '저장된 판 내려받기',
+    save: '저장하고 내려받기',
+  },
+}
+
+/** The deck's typefaces, as the 글꼴 menu offers them. */
+const FONTS: [string, string][] = [['gothic', '고딕'], ['serif', '명조']]
+
+/** The slide's width at 100%, px (the PowerPoint editor's slide is 960 px wide). */
+const NATURAL_WIDTH = 960
+
+/** A deck design with every token set, `patch` over the current one. */
+function designWith(current: DeckArtifact['design'], patch: Partial<NonNullable<DeckArtifact['design']>>) {
+  return {
+    accent: '#5b5bd6',
+    ink: '#1a1a1a',
+    muted: '#666666',
+    font: 'gothic' as const,
+    visualStyle: 'editorial' as const,
+    ...(current ?? {}),
+    ...patch,
+  }
+}
+
+/** A new slide id, unique within the deck. */
+const newSlideId = () => `sl${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
+
+/** The width of an element, as it changes. */
+function useWidth<T extends HTMLElement>() {
+  const ref = useRef<T>(null)
+  const [width, setWidth] = useState(800)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return undefined
+    const observer = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width))
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+  return { ref, width }
+}
+
+/**
+ * The web slides beside the chat, worked the way the PowerPoint editor is (`PptxPanel`): the
+ * same header as every document panel (title, version, 저장 안 됨, 저장, 내려받기, 공유, 더보기),
+ * then the slides chrome the two share (`components/pptx/chrome`): one toolbar row, numbered
+ * thumbnails with the slide menu and drag to reorder, the slide, its speaker notes. Hand edits
+ * stay in the browser until 저장 (`useDeckDocument`); on a phone it reads only.
+ */
 export function DeckPanel({
   deck,
   onClose,
@@ -2055,219 +2015,112 @@ export function DeckPanel({
   const t = useT()
   const tColour = useTIn('colour')
   const width = usePanelWidth(onModeChange)
+  const phone = useMediaQuery('(max-width: 40rem)')
+  const doc = useDeckDocument(deck)
+  const { content, dirty, saving, agentWorking, notice } = doc
+  const slides = content.slides
+  // The deck as edited: what the thumbnails, the stage and the slide show draw.
+  const view: DeckArtifact = { ...deck, slides, design: content.design }
+  const writing = deck.draft === true || deck.slides.length === 0
+  const readOnly = phone && !dirty
+  const canEdit = !readOnly && !writing && !agentWorking && !saving
+  const root = useWidth<HTMLDivElement>()
+  const compact = root.width < 900
+  const narrowLayout = root.width < 560
 
-  // Rewrites the slide a finding names; a deck-wide finding has nowhere to go.
-  const fixFinding = async (finding: LintFinding) => {
-    const slide = slideFor(deck.slides, finding.where)
-    if (!slide) throw new Error(t('어느 장을 고쳐야 하는지 알 수 없습니다.'))
-    const row = await artifactsApi.rewriteSlide(
-      deck.id,
-      slide.id,
-      t('검사에서 지적된 문제를 고쳐 주세요: {message}').replace('{message}', finding.message),
-    )
-    const data = (row.data ?? {}) as { slides?: Slide[] }
-    // Written onto the prop too: the artifacts screen renders a copy, not the store row.
-    if (data.slides) deck.slides = data.slides
-    deck.version = row.version
-    useStore.getState().noteArtifactVersion(deck.id, row.version)
-  }
-  // One rewrite per slide (see `byWhere`), sequential because they share a version.
-  const fixAllFindings = async (findings: LintFinding[]) => {
-    const failed: string[] = []
-    for (const [where, group] of byWhere(findings)) {
-      const slide = where ? slideFor(deck.slides, where) : undefined
-      if (!slide) {
-        failed.push(where || t('덱 전체'))
-        continue
-      }
-      try {
-        const row = await artifactsApi.rewriteSlide(
-          deck.id,
-          slide.id,
-          fixNote(
-            group,
-            t('검사에서 지적된 문제를 고쳐 주세요: {message}'),
-            t('검사에서 지적된 문제를 모두 고쳐 주세요:\n{list}'),
-          ),
-        )
-        const data = (row.data ?? {}) as { slides?: Slide[] }
-        if (data.slides) deck.slides = data.slides
-        deck.version = row.version
-        useStore.getState().noteArtifactVersion(deck.id, row.version)
-      } catch {
-        failed.push(where)
-      }
-    }
-    if (failed.length > 0) {
-      throw new Error(
-        t('고치지 못한 장이 있습니다: {list}').replace('{list}', failed.join(', ')),
-      )
-    }
-  }
-
-  const panel = usePanelNarrow<HTMLDivElement>()
-  const stage = useStageScale()
-  const fit = useFitWidth()
   const [selected, setSelected] = useState(0)
-  // Reading shows a calm header; 「편집」 opens the ribbon, which holds only the editing tabs.
-  const [editMode, setEditMode] = useState(false)
-  const [ribbon, setRibbon] = useState<'text' | 'insert' | 'design' | 'review'>('text')
-  // The header folds its labels and the slide list into ⋯ below this width.
-  const head = usePanelNarrow<HTMLDivElement>(540)
-  const [historyRequest, setHistoryRequest] = useState<{ nonce: number; version?: number } | null>(null)
-  // 「이 아티팩트만 공유」 from ⋯: the share dialog for this artifact alone.
-  const [sharing, setSharing] = useState(false)
-  const [editing, setEditing] = useState(false)
-  // Ribbon slot for the edit tools; without it they render in place.
-  const [editToolbarSlot, setEditToolbarSlot] = useState<HTMLElement | null>(null)
-  const [discardAction, setDiscardAction] = useState<'cancel' | 'close' | null>(null)
-  const [draft, setDraft] = useState('')
-  // The live slide on stage; structured fields do not round-trip through the text box.
-  const [slideDraft, setSlideDraft] = useState<Slide | null>(null)
-  const [editHistory, setEditHistory] = useState<Slide[]>([])
-  const [editFuture, setEditFuture] = useState<Slide[]>([])
-  const applyingHistory = useRef(false)
-  const [notes, setNotes] = useState('')
-  const [saving, setSaving] = useState(false)
-  const savingLock = useRef(false)
-  const [rewritingSlide, setRewritingSlide] = useState(false)
-  const [selectionFormat, setSelectionFormat] = useState({ bold: false, italic: false, underline: false, size: 100 })
+  const index = Math.min(selected, Math.max(slides.length - 1, 0))
+  const slide = slides[index] as Slide | undefined
   const [selectedElement, setSelectedElement] = useState<SlideElement | null>(null)
-  const [overflowing, setOverflowing] = useState(false)
-  const [autoFitting, setAutoFitting] = useState(false)
-  const [fitLimitReached, setFitLimitReached] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [recoveryCopied, setRecoveryCopied] = useState(false)
+  const [historyRequest, setHistoryRequest] = useState<{ nonce: number; version?: number } | null>(null)
+  const [picturing, setPicturing] = useState(false)
+  const [rewritingSlide, setRewritingSlide] = useState(false)
   const [checking, setChecking] = useState(false)
   const [presenting, setPresenting] = useState(false)
   const [reviewOpen, setReviewOpen] = useState(false)
   const [reviewDraft, setReviewDraft] = useState('')
   const [reviewComments, setReviewComments] = useState(deck.reviewComments ?? [])
   const [reviewSaving, setReviewSaving] = useState(false)
-  const [rail, setRail] = useState<'thumbs' | 'outline'>('thumbs')
-  // Rail: closed drawer on a narrow panel, open column otherwise; the toggle flips the default.
-  const [railToggled, setRailToggled] = useState(false)
-  const railShown = panel.narrow ? railToggled : !railToggled
   const [bulkMode, setBulkMode] = useState(false)
   const [bulkSelected, setBulkSelected] = useState<Set<string>>(new Set())
-  const [bulkAccent, setBulkAccent] = useState(deck.design?.accent ?? '#5b5bd6')
-  const [visualStyle, setVisualStyle] = useState(deck.design?.visualStyle ?? 'editorial')
+  const accent = content.design?.accent ?? '#5b5bd6'
+  const visualStyle: VisualStyle = content.design?.visualStyle ?? 'editorial'
+  const [bulkAccent, setBulkAccent] = useState(accent)
   const [bulkScale, setBulkScale] = useState('1')
-
+  const [overflowing, setOverflowing] = useState(false)
+  const [autoFitting, setAutoFitting] = useState(false)
+  const [fitLimitReached, setFitLimitReached] = useState(false)
+  const [opError, setOpError] = useState<string | null>(null)
+  const [zoom, setZoom] = useState<'fit' | number>('fit')
+  /** Slides whose text the `.pptx` cannot fit even at the type floor (the server lays them
+   *  out as the export does), checked a moment after the slides last changed. */
+  const [exportOverflow, setExportOverflow] = useState<Set<string>>(new Set())
   useEffect(() => {
-    const present = new Set(deck.slides.map((candidate) => candidate.id))
-    setBulkSelected((current) => new Set([...current].filter((id) => present.has(id))))
-  }, [deck.slides.length])
-
-  const toggleBulkSlide = (id: string) => setBulkSelected((current) => {
-    const next = new Set(current)
-    if (next.has(id)) next.delete(id)
-    else next.add(id)
-    return next
-  })
-
-  const runFactCheck = async (slideId: string) => {
-    setChecking(true)
-    setError(null)
-    try {
-      const row = await artifactsApi.factcheckSlide(deck.id, slideId)
-      const next = (row.data as { slides?: Slide[] } | null)?.slides
-      if (next) deck.slides = next
-      deck.version = row.version
-      useStore.getState().noteArtifactVersion(deck.id, row.version)
-    } catch (err) {
-      setError(mediaFailure(err, t('확인하지 못했습니다.'), t))
-    } finally {
-      setChecking(false)
+    if (writing || !slides.length) return undefined
+    let live = true
+    const timer = window.setTimeout(() => {
+      artifactsApi.deckOverflow(deck.id, slides, content.design)
+        .then((found) => { if (live) setExportOverflow(new Set(found.map((row) => row.slideId))) })
+        .catch(() => undefined)
+    }, 1200)
+    return () => {
+      live = false
+      window.clearTimeout(timer)
     }
-  }
-  // Slides stream in, so the selection can point past the end.
-  const index = Math.min(selected, Math.max(deck.slides.length - 1, 0))
-  const slide = deck.slides[index] as Slide | undefined
-  const weakSlides = deck.slides
-    .map((s, i) => (s.factCheck?.claims.some((c) => c.verdict !== 'supported') ? i : -1))
-    .filter((i) => i >= 0)
-  const overflowRisks = deck.slides
-    .map((candidate, i) => (overflowRisk(i === index && slideDraft ? slideDraft : candidate) ? i : -1))
-    .filter((i) => i >= 0)
-  const unresolvedReviews = reviewComments.filter((comment) => comment.status === 'open')
-  const exportWarningCount = weakSlides.length + overflowRisks.length + unresolvedReviews.length
-  // Export and editing wait only for the run to finish, not for every slide to have content.
-  const writing = deck.draft === true || deck.slides.length === 0
+  }, [deck.id, slides, content.design, writing])
+  const fit = useFitWidth()
+  const stageWidth = zoom === 'fit' ? (fit.width ?? 0) : Math.round(NATURAL_WIDTH * zoom)
+  const scale = stageWidth > 0 ? stageWidth / 400 : 1
 
   useEffect(() => {
-    if (writing) setEditing(false)
-  }, [writing])
+    onDirtyChange?.(dirty)
+  }, [dirty, onDirtyChange])
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange])
 
+  useEffect(() => {
+    const present = new Set(slides.map((candidate) => candidate.id))
+    setBulkSelected((current) => new Set([...current].filter((id) => present.has(id))))
+    // only the set of slides matters
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slides.length])
 
   useEffect(() => {
     setOverflowing(false)
     setAutoFitting(false)
     setFitLimitReached(false)
+    setSelectedElement(null)
   }, [index])
 
+  const editSlide = (change: (current: Slide) => Slide, key = '') => {
+    if (slide) doc.editSlide(slide.id, change, key)
+  }
+
+  // 「잘린 내용 맞춤」: the slide's type steps down until it fits or reaches the floor.
   useEffect(() => {
     if (!autoFitting) return
     if (!overflowing) {
       setAutoFitting(false)
       return
     }
-    const scale = slideDraft?.textScale ?? 1
-    if (scale <= FLOOR_PT / TYPE.body) {
+    const now = slide?.textScale ?? 1
+    if (now <= FLOOR_PT / TYPE.body) {
       setAutoFitting(false)
       setFitLimitReached(true)
       return
     }
-    const timer = window.setTimeout(() => setSlideDraft((current) => current ? ({
+    const timer = window.setTimeout(() => editSlide((current) => ({
       ...current,
       textScale: Math.max(FLOOR_PT / TYPE.body, Math.round(((current.textScale ?? 1) - 0.05) * 100) / 100),
-    }) : current), 100)
+    }), 'autofit'), 100)
     return () => window.clearTimeout(timer)
-  }, [autoFitting, overflowing, slideDraft?.textScale])
+    // the slide's scale drives the loop
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoFitting, overflowing, slide?.textScale])
 
-  useEffect(() => {
-    if (!editing) {
-      setSelectedElement(null)
-      return
-    }
-    const key = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null
-      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
-      if (event.key === 'Escape') setSelectedElement(null)
-      if ((event.key === 'Delete' || event.key === 'Backspace') && selectedElement === 'image') {
-        event.preventDefault()
-        setSlideDraft((current) => current ? ({ ...current, image: undefined, diagram: undefined }) : current)
-        setSelectedElement(null)
-      }
-      if (selectedElement === 'image' && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
-        event.preventDefault()
-        setSlideDraft((current) => current?.image ? ({
-          ...current,
-          image: { ...current.image, position: event.key === 'ArrowLeft' ? 'left' : 'right' },
-        }) : current)
-      }
-    }
-    window.addEventListener('keydown', key)
-    return () => window.removeEventListener('keydown', key)
-  }, [editing, selectedElement])
-
-  useEffect(() => {
-    if (!editing || !slideDraft) return
-    if (applyingHistory.current) {
-      applyingHistory.current = false
-      return
-    }
-    setEditHistory((current) => {
-      if (JSON.stringify(current.at(-1)) === JSON.stringify(slideDraft)) return current
-      return [...current.slice(-39), structuredClone(slideDraft)]
-    })
-    setEditFuture([])
-  }, [editing, slideDraft])
-
-  // Deck as it stood when editing began; saves compare content, not version.
-  const baseline = useRef('')
+  // ── text formatting on the slide (contentEditable): applied to the selection, committed on blur
+  const [textFormat, setTextFormat] = useState({ active: false, bold: false, italic: false, underline: false, size: 100, color: '#1a1a1a' })
   const formattingRange = useRef<Range | null>(null)
-
+  const stageRef = useRef<HTMLDivElement>(null)
   const rememberFormattingRange = () => {
     const selection = window.getSelection()
     if (!selection?.rangeCount) return
@@ -2276,20 +2129,33 @@ export function DeckPanel({
       ? range.commonAncestorContainer as Element
       : range.commonAncestorContainer.parentElement
     const editable = parent?.closest('[contenteditable="true"]') as HTMLElement | null
-    if (editable) {
-      formattingRange.current = range.cloneRange()
-      const anchor = (range.startContainer.nodeType === Node.ELEMENT_NODE ? range.startContainer : range.startContainer.parentElement) as HTMLElement | null
-      const base = Number.parseFloat(getComputedStyle(editable).fontSize) || 16
-      const current = anchor ? Number.parseFloat(getComputedStyle(anchor).fontSize) || base : base
-      setSelectionFormat({
-        bold: document.queryCommandState('bold'),
-        italic: document.queryCommandState('italic'),
-        underline: document.queryCommandState('underline'),
-        size: Math.round((current / base) * 100),
-      })
+    if (!editable || !stageRef.current?.contains(editable)) {
+      // the selection left the slide (not for the toolbar: its buttons keep it)
+      if (!(parent && root.ref.current?.querySelector('.kc-top')?.contains(parent))) {
+        setTextFormat((now) => (now.active ? { ...now, active: false } : now))
+      }
+      return
     }
+    formattingRange.current = range.cloneRange()
+    const anchor = (range.startContainer.nodeType === Node.ELEMENT_NODE ? range.startContainer : range.startContainer.parentElement) as HTMLElement | null
+    const base = Number.parseFloat(getComputedStyle(editable).fontSize) || 16
+    const current = anchor ? Number.parseFloat(getComputedStyle(anchor).fontSize) || base : base
+    setTextFormat({
+      active: true,
+      bold: document.queryCommandState('bold'),
+      italic: document.queryCommandState('italic'),
+      underline: document.queryCommandState('underline'),
+      size: Math.round((current / base) * 100),
+      color: anchor ? getComputedStyle(anchor).color : '#1a1a1a',
+    })
   }
-
+  useEffect(() => {
+    const changed = () => rememberFormattingRange()
+    document.addEventListener('selectionchange', changed)
+    return () => document.removeEventListener('selectionchange', changed)
+    // reads refs only
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const formatSelection = (command: string, value?: string) => {
     const selection = window.getSelection()
     if (formattingRange.current && selection) {
@@ -2299,7 +2165,6 @@ export function DeckPanel({
     document.execCommand(command, false, value)
     rememberFormattingRange()
   }
-
   const sizeSelection = (percent: number) => {
     const selection = window.getSelection()
     const range = formattingRange.current
@@ -2318,533 +2183,265 @@ export function DeckPanel({
       selection.addRange(range)
     }
     formattingRange.current = range.cloneRange()
+    // the slide's text changed in the browser: unsaved until its box is left
+    doc.markTyping(true)
     rememberFormattingRange()
   }
-
-  useEffect(() => {
-    if (!editing) return
-    const changed = () => rememberFormattingRange()
-    document.addEventListener('selectionchange', changed)
-    return () => document.removeEventListener('selectionchange', changed)
-  }, [editing])
-
-  // Refetches first so the baseline is current.
-  const startEditing = async () => {
-    if (!slide) return
-    setError(null)
-    setRibbon('text')
-    setEditMode(true)
-    const latest = await artifactsApi.get(deck.id).catch(() => null)
-    const onServer = (latest?.data as { slides?: Slide[] } | null)?.slides
-    if (latest && onServer) {
-      deck.slides = onServer
-      deck.version = latest.version
-      useStore.getState().noteArtifactVersion(deck.id, latest.version)
-    }
-    const current = deck.slides[index]
-    if (!current) return
-    baseline.current = JSON.stringify(deck.slides)
-    setDraft(toLines(current))
-    setSlideDraft(structuredClone(current))
-    setEditHistory([structuredClone(current)])
-    setEditFuture([])
-    setSelectedElement(null)
-    setNotes(current.notes ?? '')
-    setEditing(true)
+  const textSelected = textFormat.active && !!formattingRange.current && !formattingRange.current.collapsed
+  const slideSize = Math.round((slide?.textScale ?? 1) * 100)
+  const setSize = (percent: number) => {
+    if (textSelected) sizeSelection(percent)
+    else editSlide((current) => ({ ...current, textScale: percent === 100 ? undefined : percent / 100 }), 'size')
   }
 
-  const undoEdit = () => {
-    if (editHistory.length < 2) return
-    const current = editHistory.at(-1)!
-    const previous = structuredClone(editHistory.at(-2)!)
-    applyingHistory.current = true
-    setEditHistory((rows) => rows.slice(0, -1))
-    setEditFuture((rows) => [current, ...rows])
-    setSlideDraft(previous)
-    setDraft(toLines(previous))
-    setNotes(previous.notes ?? '')
+  // ── slide operations: in the browser until 저장, each one an undo step
+  const go = (i: number) => setSelected(Math.max(0, Math.min(i, slides.length - 1)))
+  const addSlideAfter = (at: number) => {
+    const blank: Slide = { id: newSlideId(), layout: 'bullets', title: t('새 장'), bullets: [], notes: '' }
+    doc.edit((now) => ({ ...now, slides: [...now.slides.slice(0, at + 1), blank, ...now.slides.slice(at + 1)] }))
+    setSelected(at + 1)
   }
-
-  const redoEdit = () => {
-    if (!editFuture.length) return
-    const next = structuredClone(editFuture[0])
-    applyingHistory.current = true
-    setEditFuture((rows) => rows.slice(1))
-    setEditHistory((rows) => [...rows, next])
-    setSlideDraft(next)
-    setDraft(toLines(next))
-    setNotes(next.notes ?? '')
-  }
-
-  const regenerateSlide = async () => {
-    if (!slide || rewritingSlide) return
-    setRewritingSlide(true)
-    setError(null)
-    try {
-      const row = await artifactsApi.rewriteSlide(deck.id, slide.id, '')
-      const data = (row.data ?? {}) as { slides?: Slide[] }
-      if (!data.slides) throw new Error(t('다시 쓰지 못했습니다.'))
-      deck.slides = data.slides
-      deck.version = row.version
-      useStore.getState().noteArtifactVersion(deck.id, row.version)
-      baseline.current = JSON.stringify(data.slides)
-    } catch (err) {
-      setError(mediaFailure(err, t('다시 쓰지 못했습니다.'), t))
-    } finally {
-      setRewritingSlide(false)
-    }
-  }
-
-  const save = async () => {
-    if (!slide) return
-    if (savingLock.current) return
-    const lines = draft
-      .split('\n')
-      .map((l) => l.replace(/^\s*[-*•]\s*/, '').trim())
-      .filter(Boolean)
-    if (lines.length === 0) {
-      setError(t('내용이 비어 있습니다. 저장하지 않았습니다.'))
-      return
-    }
-
-    const [title, ...rest] = lines
-    const table = rest.map(toCells).filter(Boolean) as string[][]
-    const words = rest.filter((line) => toCells(line) === null)
-    // Pairs read from the same `|` lines as table rows; extra cells are rejoined.
-    const sourceSlide = slideDraft ?? slide
-    const pattern = patternOf(sourceSlide.layout)
-    const paired = pairedLayout(sourceSlide)
-    const pairs: [string, string][] = paired
-      ? table.map((cells) => [cells[0], cells.slice(1).join(' | ')])
-      : []
-
-    // What is in the box is what the slide becomes; typing no rows removes the table.
-    const shaped: Slide =
-      table.length > 0 && !paired
-        ? // Two-column rows stay metrics only if the slide already was.
-          sourceSlide.metrics?.length && table.every((row) => row.length === 2)
-          ? { ...sourceSlide, metrics: table.map(([f, l]) => [f, l] as [string, string]), rows: undefined }
-          : { ...sourceSlide, layout: 'table', rows: table, metrics: undefined }
-        : { ...sourceSlide, rows: undefined, metrics: undefined, ...(paired ? pairFields(null) : null) }
-
-    // A pattern keeps its layout and reads its own field back from the box.
-    const patternEdit = (): Slide | null => {
-      if (!pattern) return null
-      const base: Slide = { ...sourceSlide, title, notes, bullets: undefined, rows: undefined }
-      if (pattern.shape === 'pairs') {
-        const items = table.length
-          ? table.map((cells) => [cells[0], cells.slice(1).join(' | ')] as [string, string])
-          : words.map((line) => splitPair(line) ?? ([line, ''] as [string, string]))
-        return { ...base, items, body: undefined }
-      }
-      if (pattern.shape === 'columns') {
-        const columns = table.map(([head, ...rest]) => ({ title: head, items: rest.filter(Boolean) }))
-        return { ...base, columns: columns.length ? columns : sourceSlide.columns, body: undefined }
-      }
-      if (pattern.shape === 'metrics') {
-        const metrics = table.map((cells) => [cells[0], cells.slice(1).join(' ')] as [string, string])
-        return { ...base, metrics: metrics.length ? metrics : sourceSlide.metrics, body: undefined }
-      }
-      if (pattern.shape === 'text') return { ...base, body: words.join(' ') || undefined }
-      return { ...base, body: undefined }
-    }
-    const edited: Slide =
-      patternEdit() ??
-      (sourceSlide.layout === 'chart' && sourceSlide.chart
-        ? { ...sourceSlide, title, notes, body: undefined, bullets: undefined }
-      : paired && pairs.length > 0
-        ? {
-            ...sourceSlide,
-            ...pairFields(paired, pairs),
-            title,
-            rows: undefined,
-            metrics: undefined,
-            bullets: words.length ? words : undefined,
-            body: undefined,
-            notes,
-          }
-        : sourceSlide.layout === 'quote' && words.length <= 1
-          ? { ...shaped, title, body: words[0] ?? '', bullets: undefined, notes }
-          : // `section` must keep its layout: `number` lives on the slide.
-            sourceSlide.layout === 'title' || sourceSlide.layout === 'section'
-            ? { ...shaped, title, body: words.join(' ') || undefined, notes }
-            : table.length > 0
-              ? {
-                  ...shaped,
-                  title,
-                  bullets: words.length ? words : undefined,
-                  body: undefined,
-                  notes,
-                }
-              : {
-                  ...shaped,
-                  layout: sourceSlide.layout === 'two-column' ? 'two-column' : 'bullets',
-                  title,
-                  bullets: words,
-                  body: undefined,
-                  notes,
-                })
-
-    const slides = deck.slides.map((s, i) => (i === index ? edited : s))
-    savingLock.current = true
-    setSaving(true)
-    setError(null)
-    try {
-      // Conflict check by content, not version (the panel's version may be stale).
-      const latest = await artifactsApi.get(deck.id).catch(() => null)
-      const latestData = latest?.data as Partial<DeckArtifact> | null
-      const onServer = latestData?.slides
-      const savedDesign = latestData?.design ?? deck.design
-      const expected = baseline.current || JSON.stringify(deck.slides)
-      if (onServer && JSON.stringify(onServer) !== expected) {
-        setError(
-          t('이 덱은 다른 곳에서 이미 수정되었습니다. 새로고침해 최신 내용을 받은 뒤 다시 저장하세요.'),
-        )
-        return
-      }
-      const row = await artifactsApi.update(deck.id, {
-        data: { ...latestData, kind: 'deck', theme: deck.theme, slides, ...(savedDesign ? { design: savedDesign } : {}) },
-        summary: t('{n}장 편집').replace('{n}', String(index + 1)),
-        // The version just read, not the panel's possibly stale copy.
-        expectedVersion: latest?.version ?? deck.version,
-      })
-      deck.slides = slides
-      if (savedDesign) deck.design = savedDesign
-      deck.version = row.version
-      useStore.getState().noteArtifactVersion(deck.id, row.version)
-      baseline.current = JSON.stringify(slides)
-      setSlideDraft(null)
-      setEditing(false)
-    } catch (err) {
-      setError(errorMessage(err, t('저장하지 못했습니다.')))
-    } finally {
-      savingLock.current = false
-      setSaving(false)
-    }
-  }
-
-  const copySlideRecovery = async () => {
-    const current = slideDraft ?? slide
-    if (!current) return
-    await copyText([toLines(current), notes ? `${t('발표 노트')}: ${notes}` : ''].filter(Boolean).join('\n\n'))
-    setRecoveryCopied(true)
-    window.setTimeout(() => setRecoveryCopied(false), 1800)
-  }
-
-  const reloadLatestDeck = async () => {
-    setSaving(true)
-    try {
-      const latest = await artifactsApi.get(deck.id)
-      const data = latest.data as Partial<DeckArtifact>
-      const slides = data.slides ?? []
-      deck.slides = slides
-      deck.version = latest.version
-      useStore.getState().noteArtifactVersion(deck.id, latest.version)
-      if (data.design) deck.design = data.design
-      baseline.current = JSON.stringify(slides)
-      const current = slides[Math.min(index, Math.max(slides.length - 1, 0))]
-      if (current) {
-        setDraft(toLines(current))
-        setSlideDraft(structuredClone(current))
-        setNotes(current.notes ?? '')
-        setEditHistory([structuredClone(current)])
-        setEditFuture([])
-      } else {
-        setEditing(false)
-        setSlideDraft(null)
-      }
-      setError(null)
-    } catch (err) {
-      setError(errorMessage(err, t('최신 내용을 불러오지 못했습니다.')))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  // Structural edits: the whole deck as one PATCH, checked against the server first.
-  const restructure = async (next: Slide[], summary: string, land: number) => {
-    if (savingLock.current) return
-    savingLock.current = true
-    setSaving(true)
-    setError(null)
-    try {
-      const latest = await artifactsApi.get(deck.id).catch(() => null)
-      const latestData = latest?.data as Partial<DeckArtifact> | null
-      const onServer = latestData?.slides
-      const savedDesign = latestData?.design ?? deck.design
-      // `baseline` is empty until the editor has opened; fall back to the panel's deck.
-      const expected = baseline.current || JSON.stringify(deck.slides)
-      if (onServer && JSON.stringify(onServer) !== expected) {
-        setError(
-          t('이 덱은 다른 곳에서 이미 수정되었습니다. 새로고침해 최신 내용을 받은 뒤 다시 저장하세요.'),
-        )
-        return
-      }
-      const row = await artifactsApi.update(deck.id, {
-        data: { ...latestData, kind: 'deck', theme: deck.theme, slides: next, ...(savedDesign ? { design: savedDesign } : {}) },
-        summary,
-        expectedVersion: latest?.version ?? deck.version,
-      })
-      deck.slides = next
-      if (savedDesign) deck.design = savedDesign
-      deck.version = row.version
-      useStore.getState().noteArtifactVersion(deck.id, row.version)
-      baseline.current = JSON.stringify(next)
-      setEditing(false)
-      setSlideDraft(null)
-      // Follow the slide, not the index.
-      setSelected(Math.max(0, Math.min(land, next.length - 1)))
-    } catch (err) {
-      setError(errorMessage(err, t('저장하지 못했습니다.')))
-    } finally {
-      savingLock.current = false
-      setSaving(false)
-    }
-  }
-
-  const splitOverflow = () => {
-    const source = slideDraft ?? slide
+  const duplicateSlide = (at: number) => {
+    const source = slides[at]
     if (!source) return
-    const parts = splitStructuredSlide(source, t('(계속)'))
-    if (!parts) {
-      setError(t('자동으로 나눌 항목을 찾지 못했습니다. 문장을 줄이거나 새 장을 추가해 주세요.'))
-      return
-    }
-    const next = [...deck.slides.slice(0, index), ...parts, ...deck.slides.slice(index + 1)]
-    void restructure(next, t('{n}장을 두 장으로 나눔').replace('{n}', String(index + 1)), index + 1)
-  }
-
-  const applyBulkSlides = async (kind: 'accent' | 'scale' | 'reset') => {
-    if (!bulkSelected.size || savingLock.current) return
-    savingLock.current = true
-    setSaving(true)
-    setError(null)
-    try {
-      const latest = await artifactsApi.get(deck.id)
-      const latestData = (latest.data ?? {}) as Partial<DeckArtifact>
-      const scale = Number(bulkScale)
-      const next = (latestData.slides ?? deck.slides).map((candidate) => {
-        if (!bulkSelected.has(candidate.id)) return candidate
-        if (kind === 'accent') return { ...candidate, accent: bulkAccent }
-        if (kind === 'scale') return { ...candidate, textScale: scale === 1 ? undefined : scale }
-        const { accent: _accent, textScale: _textScale, ...withoutOverrides } = candidate
-        return withoutOverrides as Slide
-      })
-      const label = kind === 'accent' ? t('선택 장 강조색 변경') : kind === 'scale' ? t('선택 장 글자 크기 변경') : t('선택 장 서식 초기화')
-      const design = latestData.design ?? deck.design
-      const row = await artifactsApi.update(deck.id, {
-        data: { ...latestData, kind: 'deck', theme: deck.theme, slides: next, ...(design ? { design } : {}) },
-        summary: label,
-        expectedVersion: latest.version,
-      })
-      deck.slides = next
-      if (design) deck.design = design
-      deck.version = row.version
-      useStore.getState().noteArtifactVersion(deck.id, row.version)
-      baseline.current = JSON.stringify(next)
-    } catch (err) {
-      setError(errorMessage(err, t('저장하지 못했습니다.')))
-    } finally {
-      savingLock.current = false
-      setSaving(false)
-    }
-  }
-
-  const saveDeckAccent = async (nextAccent = bulkAccent) => {
-    if (savingLock.current) return
-    savingLock.current = true
-    setSaving(true)
-    setError(null)
-    try {
-      const latest = await artifactsApi.get(deck.id)
-      const latestData = (latest.data ?? {}) as Partial<DeckArtifact>
-      const latestSlides = latestData.slides ?? deck.slides
-      const currentDesign = latestData.design ?? deck.design
-      const design = {
-        accent: nextAccent,
-        ink: currentDesign?.ink ?? '#1a1a1a',
-        muted: currentDesign?.muted ?? '#666666',
-        font: currentDesign?.font ?? 'gothic' as const,
-        ...(currentDesign?.footer ? { footer: currentDesign.footer } : {}),
-        ...(currentDesign?.logo ? { logo: currentDesign.logo } : {}),
-        visualStyle: currentDesign?.visualStyle ?? visualStyle,
-      }
-      const row = await artifactsApi.update(deck.id, {
-        data: { ...latestData, kind: 'deck', theme: deck.theme, slides: latestSlides, design },
-        summary: t('덱 기본 강조색 변경'),
-        expectedVersion: latest.version,
-      })
-      deck.slides = latestSlides
-      deck.design = design
-      setBulkAccent(nextAccent)
-      deck.version = row.version
-      useStore.getState().noteArtifactVersion(deck.id, row.version)
-      baseline.current = JSON.stringify(deck.slides)
-    } catch (err) {
-      setError(errorMessage(err, t('저장하지 못했습니다.')))
-    } finally {
-      savingLock.current = false
-      setSaving(false)
-    }
-  }
-
-  const saveDeckVisualStyle = async (nextStyle: NonNullable<DeckArtifact['design']>['visualStyle']) => {
-    if (!nextStyle || savingLock.current || nextStyle === visualStyle) return
-    savingLock.current = true
-    setSaving(true)
-    setError(null)
-    try {
-      const latest = await artifactsApi.get(deck.id)
-      const latestData = (latest.data ?? {}) as Partial<DeckArtifact>
-      const current = latestData.design ?? deck.design
-      const design = {
-        accent: current?.accent ?? bulkAccent,
-        ink: current?.ink ?? '#1a1a1a',
-        muted: current?.muted ?? '#666666',
-        font: current?.font ?? 'gothic' as const,
-        ...(current?.footer ? { footer: current.footer } : {}),
-        ...(current?.logo ? { logo: current.logo } : {}),
-        visualStyle: nextStyle,
-      }
-      const row = await artifactsApi.update(deck.id, {
-        data: { ...latestData, kind: 'deck', theme: deck.theme, slides: latestData.slides ?? deck.slides, design },
-        summary: t('덱 테마 변경'),
-        expectedVersion: latest.version,
-      })
-      deck.design = design
-      deck.version = row.version
-      useStore.getState().noteArtifactVersion(deck.id, row.version)
-      setVisualStyle(nextStyle)
-    } catch (err) {
-      setError(errorMessage(err, t('테마를 바꾸지 못했습니다.')))
-    } finally {
-      savingLock.current = false
-      setSaving(false)
-    }
-  }
-
-  const addSlide = (after: boolean) => {
-    const at = after ? index + 1 : index
-    const blank: Slide = {
-      id: `sl${Date.now().toString(36)}`,
-      layout: 'bullets',
-      title: t('새 장'),
-      bullets: [],
-      notes: '',
-    }
-    const next = [...deck.slides.slice(0, at), blank, ...deck.slides.slice(at)]
-    void restructure(next, t('{n}장 추가').replace('{n}', String(at + 1)), at)
-  }
-
-  const moveSlide = (by: -1 | 1) => {
-    const to = index + by
-    if (to < 0 || to >= deck.slides.length) return
-    const next = [...deck.slides]
-    ;[next[index], next[to]] = [next[to], next[index]]
-    void restructure(next, t('{n}장 옮김').replace('{n}', String(index + 1)), to)
-  }
-
-  const duplicateSlide = () => {
-    if (!slide) return
     const copy: Slide = {
-      ...structuredClone(slide),
-      id: `sl${Date.now().toString(36)}`,
-      title: t('{name} 사본').replace('{name}', slide.title || t('제목 없음')),
+      ...structuredClone(source),
+      id: newSlideId(),
+      title: t('{name} 사본').replace('{name}', source.title || t('제목 없음')),
       // Verdicts are tied to the original's sentences; the copy starts unchecked.
       factCheck: undefined,
     }
-    const next = [...deck.slides.slice(0, index + 1), copy, ...deck.slides.slice(index + 1)]
-    void restructure(next, t('{n}장 복제').replace('{n}', String(index + 1)), index + 1)
+    doc.edit((now) => ({ ...now, slides: [...now.slides.slice(0, at + 1), copy, ...now.slides.slice(at + 1)] }))
+    setSelected(at + 1)
   }
-
-  const changeLayout = (layout: Slide['layout']) => {
-    if (!slide || layout === slide.layout) return
-    const next = deck.slides.map((row, i) => (i === index ? relayout(row, layout) : row))
-    void restructure(next, t('{n}장 레이아웃 변경').replace('{n}', String(index + 1)), index)
-  }
-
-  /** Text scale for this slide only. */
-  const setTextScale = (value: number) => {
-    const next = deck.slides.map((row, i) =>
-      i === index ? { ...row, textScale: value === 1 ? undefined : value } : row,
-    )
-    void restructure(next, t('{n}장 글자 크기').replace('{n}', String(index + 1)), index)
-  }
-
-  const removeSlide = () => {
-    if (deck.slides.length <= 1) {
-      setError(t('마지막 한 장은 지울 수 없습니다. 덱 자체를 지우려면 아티팩트 목록에서 지우세요.'))
+  const deleteSlide = (at: number) => {
+    if (slides.length <= 1) {
+      setOpError(t('마지막 한 장은 지울 수 없습니다. 덱 자체를 지우려면 아티팩트 목록에서 지우세요.'))
       return
     }
-    const next = deck.slides.filter((_, i) => i !== index)
-    void restructure(next, t('{n}장 지움').replace('{n}', String(index + 1)), Math.max(0, index - 1))
+    doc.edit((now) => ({ ...now, slides: now.slides.filter((_, i) => i !== at) }))
+    setSelected(Math.max(0, Math.min(at, slides.length - 2)))
   }
-
-  const go = (i: number) => {
-    setSelected(Math.max(0, Math.min(i, deck.slides.length - 1)))
-    setEditing(false)
-    setSlideDraft(null)
-    setRailToggled(false)
+  const moveSlide = (from: number, to: number) => {
+    if (to < 0 || to >= slides.length || from === to) return
+    doc.edit((now) => {
+      const next = [...now.slides]
+      const [moved] = next.splice(from, 1)
+      next.splice(to, 0, moved)
+      return { ...now, slides: next }
+    })
+    setSelected(to)
   }
-
-  // Arrow/Page/Home/End step slides while nothing else has the keys (not editing, presenting, typing, or under a menu or dialog).
-  const goRef = useRef(go)
-  goRef.current = go
-  useEffect(() => {
-    if (editing || presenting) return
-    const onKey = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return
-      const target = event.target as HTMLElement | null
-      if (target?.closest('input, textarea, select, [contenteditable="true"], [role="menu"], [role="dialog"]')) return
-      if (document.querySelector('[role="menu"], [role="dialog"][aria-modal="true"]')) return
-      const last = deck.slides.length - 1
-      const step: Record<string, number> = {
-        ArrowDown: index + 1, ArrowRight: index + 1, PageDown: index + 1,
-        ArrowUp: index - 1, ArrowLeft: index - 1, PageUp: index - 1, Home: 0, End: last,
-      }
-      if (!(event.key in step)) return
-      event.preventDefault()
-      const next = Math.max(0, Math.min(step[event.key], last))
-      if (next === index) return
-      goRef.current(next)
-      // The rail follows: the chosen thumbnail scrolls into view.
-      requestAnimationFrame(() =>
-        document.querySelector(`[aria-label="${t('{n}번 장').replace('{n}', String(next + 1))}"]`)
-          ?.scrollIntoView({ block: 'nearest' }),
-      )
+  const changeLayout = (layout: Slide['layout']) => {
+    if (!slide || layout === slide.layout) return
+    editSlide((current) => relayout(current, layout))
+  }
+  /** The text 「레이아웃」 left out, onto a new slide after this one in the layout it came from. */
+  const moveHeldToNewSlide = () => {
+    if (!slide?.held) return
+    const held = slide.held
+    const next: Slide = {
+      id: newSlideId(),
+      layout: held.chart ? 'chart' : 'bullets',
+      title: t('{name} (계속)').replace('{name}', slide.title || t('제목 없음')),
+      bullets: held.lines?.length ? held.lines : undefined,
+      chart: held.chart,
+      notes: '',
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [editing, presenting, index, deck.slides.length, t])
+    doc.edit((now) => ({
+      ...now,
+      slides: now.slides.flatMap((candidate) => candidate.id === slide.id
+        ? [{ ...candidate, held: undefined }, next]
+        : [candidate]),
+    }))
+  }
+  const splitOverflow = () => {
+    if (!slide) return
+    const parts = splitStructuredSlide(slide, t('(계속)'))
+    if (!parts) {
+      setOpError(t('자동으로 나눌 항목을 찾지 못했습니다. 문장을 줄이거나 새 장을 추가해 주세요.'))
+      return
+    }
+    doc.edit((now) => ({
+      ...now,
+      slides: now.slides.flatMap((candidate) => (candidate.id === slide.id ? parts : [candidate])),
+    }))
+  }
+  const loadLocalPicture = (file?: File) => {
+    if (!file) return
+    if (!/^image\/(?:png|jpeg|gif|webp)$/.test(file.type)) {
+      setOpError(t('PNG, JPG, GIF, WebP 그림만 넣을 수 있습니다.'))
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setOpError(t('그림 파일은 5MB 이하여야 합니다.'))
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      const src = String(reader.result ?? '')
+      if (!src.startsWith('data:image/')) return
+      editSlide((current) => ({
+        ...current,
+        // A picture a person chose replaces the figure the deck drew for itself.
+        diagram: undefined,
+        image: {
+          src,
+          caption: current.image?.caption ?? '',
+          fit: current.image?.fit ?? 'contain',
+          position: current.image?.position ?? 'right',
+        },
+      }))
+      setSelectedElement('image')
+      setOpError(null)
+    }
+    reader.readAsDataURL(file)
+  }
+  const setImage = (patch: Partial<NonNullable<Slide['image']>>) =>
+    editSlide((current) => (current.image ? { ...current, image: { ...current.image, ...patch } } : current))
+  const removeImage = () => {
+    editSlide((current) => ({ ...current, image: undefined, diagram: undefined }))
+    setSelectedElement(null)
+  }
+  const tableButton = () => {
+    if (!slide) return
+    if (slide.layout !== 'table') changeLayout('table')
+    setSelectedElement('table')
+  }
+  const chartButton = () => {
+    if (!slide) return
+    const isChart = slide.layout === 'chart' || patternOf(slide.layout)?.shape === 'chart'
+    if (!isChart) {
+      editSlide((current) => {
+        const next = relayout(current, 'chart')
+        return next.chart ? next : {
+          ...next,
+          chart: { kind: 'bar', categories: [t('항목 1'), t('항목 2'), t('항목 3')], series: [{ name: t('계열 1'), values: [0, 0, 0] }] },
+        }
+      })
+    }
+    setSelectedElement('chart')
+  }
+  const setDesign = (patch: Partial<NonNullable<DeckArtifact['design']>>) =>
+    doc.edit((now) => ({ ...now, design: designWith(now.design, patch) }))
+  const applyBulkSlides = (kind: 'accent' | 'scale' | 'reset') => {
+    if (!bulkSelected.size) return
+    const scaleValue = Number(bulkScale)
+    doc.edit((now) => ({
+      ...now,
+      slides: now.slides.map((candidate) => {
+        if (!bulkSelected.has(candidate.id)) return candidate
+        if (kind === 'accent') return { ...candidate, accent: bulkAccent }
+        if (kind === 'scale') return { ...candidate, textScale: scaleValue === 1 ? undefined : scaleValue }
+        const { accent: _accent, textScale: _textScale, ...withoutOverrides } = candidate
+        return withoutOverrides as Slide
+      }),
+    }))
+  }
 
+  // ── steps that change the saved deck on the server: unsaved edits are settled first
+  const serverStep = async (run: () => Promise<void>) => {
+    if (!(await doc.settle('op'))) return
+    await run()
+  }
+  const landRow = (row: { version: number; data?: unknown }) => {
+    const data = (row.data ?? {}) as { slides?: Slide[] }
+    // Written onto the prop too: the artifacts screen renders a copy, not the store row.
+    if (data.slides) deck.slides = data.slides
+    deck.version = row.version
+    useStore.getState().noteArtifactVersion(deck.id, row.version)
+    void useStore.getState().refreshArtifact(deck.id)
+  }
+  // Rewrites the slide a finding names; a deck-wide finding has nowhere to go.
+  const fixFinding = async (finding: LintFinding) => {
+    const target = slideFor(deck.slides, finding.where)
+    if (!target) throw new Error(t('어느 장을 고쳐야 하는지 알 수 없습니다.'))
+    landRow(await artifactsApi.rewriteSlide(
+      deck.id,
+      target.id,
+      t('검사에서 지적된 문제를 고쳐 주세요: {message}').replace('{message}', finding.message),
+    ))
+  }
+  // One rewrite per slide (see `byWhere`), sequential because they share a version.
+  const fixAllFindings = async (findings: LintFinding[]) => {
+    const failed: string[] = []
+    for (const [where, group] of byWhere(findings)) {
+      const target = where ? slideFor(deck.slides, where) : undefined
+      if (!target) {
+        failed.push(where || t('덱 전체'))
+        continue
+      }
+      try {
+        landRow(await artifactsApi.rewriteSlide(
+          deck.id,
+          target.id,
+          fixNote(
+            group,
+            t('검사에서 지적된 문제를 고쳐 주세요: {message}'),
+            t('검사에서 지적된 문제를 모두 고쳐 주세요:\n{list}'),
+          ),
+        ))
+      } catch {
+        failed.push(where)
+      }
+    }
+    if (failed.length > 0) {
+      throw new Error(t('고치지 못한 장이 있습니다: {list}').replace('{list}', failed.join(', ')))
+    }
+  }
+  const regenerateSlide = () => serverStep(async () => {
+    if (!slide || rewritingSlide) return
+    setRewritingSlide(true)
+    setOpError(null)
+    try {
+      const row = await artifactsApi.rewriteSlide(deck.id, slide.id, '')
+      if (!(row.data as { slides?: Slide[] } | null)?.slides) throw new Error(t('다시 쓰지 못했습니다.'))
+      landRow(row)
+    } catch (err) {
+      setOpError(mediaFailure(err, t('다시 쓰지 못했습니다.'), t))
+    } finally {
+      setRewritingSlide(false)
+    }
+  })
+  const runFactCheck = () => serverStep(async () => {
+    if (!slide) return
+    setChecking(true)
+    setOpError(null)
+    try {
+      landRow(await artifactsApi.factcheckSlide(deck.id, slide.id))
+    } catch (err) {
+      setOpError(mediaFailure(err, t('확인하지 못했습니다.'), t))
+    } finally {
+      setChecking(false)
+    }
+  })
+  const openPicture = () => void serverStep(async () => setPicturing(true))
+
+  // Review notes are notes on the deck, not edits of it: saved at once, on the newest version.
   const saveReviewComments = async (comments: typeof reviewComments, summary: string) => {
     setReviewSaving(true)
-    setError(null)
+    setOpError(null)
     try {
       const latest = await artifactsApi.get(deck.id)
       const latestData = (latest.data ?? {}) as Partial<DeckArtifact>
       const row = await artifactsApi.update(deck.id, {
-        data: {
-          ...latestData,
-          kind: 'deck',
-          theme: latestData.theme ?? deck.theme,
-          slides: latestData.slides ?? deck.slides,
-          reviewComments: comments,
-        },
+        data: { ...latestData, kind: 'deck', theme: latestData.theme ?? deck.theme,
+          slides: latestData.slides ?? deck.slides, reviewComments: comments },
         summary,
         expectedVersion: latest.version,
       })
       deck.reviewComments = comments
+      // hand edits made from the version before still apply on this one
+      doc.adopt(latest.version, row.version)
       deck.version = row.version
       useStore.getState().noteArtifactVersion(deck.id, row.version)
       setReviewComments(comments)
     } catch (err) {
-      setError(errorMessage(err, t('검토 메모를 저장하지 못했습니다.')))
+      setOpError(errorMessage(err, t('검토 메모를 저장하지 못했습니다.')))
     } finally {
       setReviewSaving(false)
     }
   }
-
   const addReviewComment = () => {
     const body = reviewDraft.trim()
     if (!slide || !body) return
@@ -2858,7 +2455,6 @@ export function DeckPanel({
     setReviewDraft('')
     void saveReviewComments(next, t('{n}번 장 검토 메모 추가').replace('{n}', String(index + 1)))
   }
-
   const toggleReviewComment = (id: string) => {
     const next = reviewComments.map((comment) => comment.id === id ? {
       ...comment,
@@ -2866,91 +2462,125 @@ export function DeckPanel({
     } : comment)
     void saveReviewComments(next, t('검토 메모 상태 변경'))
   }
-
   const deleteReviewComment = (id: string) => {
     void saveReviewComments(reviewComments.filter((comment) => comment.id !== id), t('검토 메모 삭제'))
   }
 
-  const loadLocalPicture = (file?: File) => {
-    if (!file) return
-    if (!/^image\/(?:png|jpeg|gif|webp)$/.test(file.type)) {
-      setError(t('PNG, JPG, GIF, WebP 그림만 넣을 수 있습니다.'))
-      return
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      setError(t('그림 파일은 5MB 이하여야 합니다.'))
-      return
-    }
-    const reader = new FileReader()
-    reader.onload = () => {
-      const src = String(reader.result ?? '')
-      if (!src.startsWith('data:image/')) return
-      setSlideDraft((current) => current ? ({
-        ...current,
-        // A picture a person chose replaces the figure the deck drew for itself.
-        diagram: undefined,
-        image: {
-          src,
-          caption: current.image?.caption ?? '',
-          fit: current.image?.fit ?? 'contain',
-          position: current.image?.position ?? 'right',
-        },
-      }) : current)
-      setError(null)
-    }
-    reader.readAsDataURL(file)
+  // ── what the deck asks to look at before it goes out
+  const weakSlides = slides
+    .map((s, i) => (s.factCheck?.claims.some((c) => c.verdict !== 'supported') ? i : -1))
+    .filter((i) => i >= 0)
+  const overflowRisks = slides
+    .map((candidate, i) => (overflowRisk(candidate) || exportOverflow.has(candidate.id) ? i : -1))
+    .filter((i) => i >= 0)
+  const unresolvedReviews = reviewComments.filter((comment) => comment.status === 'open')
+  const exportWarningCount = weakSlides.length + overflowRisks.length + unresolvedReviews.length
+
+  /** The edited deck as text (title, items, notes per slide): 「내 편집 내려받기」. */
+  const downloadEdits = () => {
+    const text = slides.map((candidate, i) => [
+      `# ${i + 1}. ${toLines(candidate)}`,
+      candidate.notes ? `${t('발표 노트')}: ${candidate.notes}` : '',
+    ].filter(Boolean).join('\n')).join('\n\n')
+    saveBlob(new Blob([text], { type: 'text/plain;charset=utf-8' }), `${deck.title || 'deck'} (${t('내 편집')}).txt`)
+  }
+  const download = async (format: ExportFormat) => {
+    if (dirty && !(await doc.ask('export'))) return
+    await takeArtifact(deck, format)
   }
 
-  const editedDeckSnapshot = slideDraft
-    ? JSON.stringify(deck.slides.map((candidate, at) => at === index ? { ...slideDraft, notes } : candidate))
-    : baseline.current
-  // The text box is parsed only on save, so it can differ from `slideDraft`; that counts as unsaved too.
-  const textDraftChanged = Boolean(slideDraft && draft !== toLines(slideDraft))
-  const hasUnsavedEdit = editing && (textDraftChanged || editedDeckSnapshot !== baseline.current)
+  /** The slide show; afterwards the keys go back to the thumbnails, which step with them. */
+  const present = () => {
+    root.ref.current?.querySelector<HTMLElement>('.kc-rail-list')?.focus({ preventScroll: true })
+    setPresenting(true)
+  }
+
+  // ── keys: 저장, undo and redo over the whole deck, duplicate, delete, step through slides
+  const keys = useRef({ save: () => {}, undo: doc.undo, redo: doc.redo, duplicate: () => {}, removeImage, go, index, canEdit })
+  keys.current = {
+    save: () => {
+      const active = document.activeElement
+      // a box being typed in commits as it is left
+      if (active instanceof HTMLElement && active.isContentEditable) active.blur()
+      if (!readOnly && !agentWorking && doc.dirtyRef.current) void doc.save()
+    },
+    undo: doc.undo,
+    redo: doc.redo,
+    duplicate: () => duplicateSlide(index),
+    removeImage,
+    go,
+    index,
+    canEdit,
+  }
+  const elementRef = useRef(selectedElement)
+  elementRef.current = selectedElement
+  /** The person last pressed inside this panel: keys with focus on the page (no field) are ours. */
+  const inside = useRef(false)
   useEffect(() => {
-    onDirtyChange?.(hasUnsavedEdit)
-    return () => onDirtyChange?.(false)
-  }, [hasUnsavedEdit, onDirtyChange])
+    const pressed = (event: PointerEvent) => {
+      inside.current = !!root.ref.current?.parentElement?.parentElement?.contains(event.target as Node)
+    }
+    window.addEventListener('pointerdown', pressed, true)
+    return () => window.removeEventListener('pointerdown', pressed, true)
+  }, [root.ref])
   useEffect(() => {
-    if (!hasUnsavedEdit) return
-    const protect = (event: BeforeUnloadEvent) => {
+    if (presenting) return undefined
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      const panel = root.ref.current?.parentElement?.parentElement
+      // focus inside the panel, or on what holds it (the page, the main area) after a press in it
+      const ours = !!target && !!panel &&
+        (panel.contains(target) || (target.contains(panel) && inside.current))
+      if (!ours || event.defaultPrevented) return
+      const now = keys.current
+      const mod = event.ctrlKey || event.metaKey
+      const key = event.key.toLowerCase()
+      if (mod && !event.altKey && key === 's') {
+        event.preventDefault()
+        now.save()
+        return
+      }
+      const typing = target?.closest('input, textarea, select, [contenteditable="true"]')
+      if (typing) return
+      // a menu, or a dialog over the deck (not one the panel itself sits in, as the artifacts
+      // page's preview), has the keys
+      const over = (el: Element | null) => !!el && !el.contains(panel)
+      if (target?.closest('[role="menu"]') || over(target?.closest('[role="dialog"]') ?? null)) return
+      if ([...document.querySelectorAll('[role="dialog"][aria-modal="true"]')].some(over)) return
+      if (mod && now.canEdit && (key === 'z' || key === 'y')) {
+        event.preventDefault()
+        if (key === 'y' || event.shiftKey) now.redo()
+        else now.undo()
+        return
+      }
+      if (mod && now.canEdit && key === 'd') {
+        event.preventDefault()
+        now.duplicate()
+        return
+      }
+      if (now.canEdit && (event.key === 'Delete' || event.key === 'Backspace') && elementRef.current === 'image') {
+        event.preventDefault()
+        now.removeImage()
+        return
+      }
+      if (event.key === 'Escape') {
+        setSelectedElement(null)
+        return
+      }
+      if (mod || event.altKey || target?.closest('.kc-rail')) return
+      const last = slides.length - 1
+      const step: Record<string, number> = {
+        ArrowDown: now.index + 1, ArrowRight: now.index + 1, PageDown: now.index + 1,
+        ArrowUp: now.index - 1, ArrowLeft: now.index - 1, PageUp: now.index - 1, Home: 0, End: last,
+      }
+      if (!(event.key in step)) return
       event.preventDefault()
-      event.returnValue = ''
+      now.go(step[event.key])
     }
-    window.addEventListener('beforeunload', protect)
-    return () => window.removeEventListener('beforeunload', protect)
-  }, [hasUnsavedEdit])
-  const discardOr = (action: 'cancel' | 'close') => {
-    if (hasUnsavedEdit) return setDiscardAction(action)
-    if (action === 'close') onClose?.()
-    else { setEditing(false); setSlideDraft(null) }
-  }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [presenting, slides.length, root.ref])
 
-  /** Drops the open editor after a version is restored; it still holds the pre-restore slide. */
-  const restoredVersion = () => {
-    setEditing(false)
-    setSlideDraft(null)
-    setDraft('')
-    setNotes('')
-    baseline.current = ''
-    setError(null)
-  }
-  /** 「편집」: the slide editor on this slide, with the editing ribbon over it. */
-  const enterEditMode = () => {
-    setEditMode(true)
-    setRibbon('text')
-    if (!editing && !bulkMode) void startEditing()
-  }
-  /** Back to reading; unsaved changes ask first and keep the editor until answered. */
-  const leaveEditMode = () => {
-    if (hasUnsavedEdit) return discardOr('cancel')
-    setEditing(false)
-    setSlideDraft(null)
-    setSelectedElement(null)
-    setBulkMode(false)
-    setBulkSelected(new Set())
-    setEditMode(false)
-  }
   // A result card asked for a slide, the review pane or an earlier version.
   const intent = useStore((st) => (st.artifactIntent?.artifactId === deck.id ? st.artifactIntent : null))
   const clearIntent = useStore((st) => st.clearArtifactIntent)
@@ -2964,7 +2594,7 @@ export function DeckPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [intent, clearIntent])
 
-  // What 「검토」 holds, in the ribbon while editing and atop the review pane while reading.
+  // What 「검토」 holds: the slides to look at, the document checks, the stages, the versions.
   const reviewTools = (
     <>
       {weakSlides.length > 0 && (
@@ -2991,477 +2621,467 @@ export function DeckPanel({
       <LintFindings
         findings={deck.lint}
         artifact={deck}
-        onFix={fixFinding}
-        onFixAll={fixAllFindings}
+        onFix={(finding) => serverStep(() => fixFinding(finding))}
+        onFixAll={(findings) => serverStep(() => fixAllFindings(findings))}
       />
       {deck.sessionId && <RunStagesButton sessionId={deck.sessionId} />}
       <VersionHistory
         artifact={deck}
-        hasUnsavedChanges={hasUnsavedEdit}
+        hasUnsavedChanges={dirty}
         currentData={deck}
-        onRestored={restoredVersion}
+        onRestored={() => doc.reset()}
       />
     </>
   )
 
-  // Edit tools, portalled into the ribbon slot when there is one.
-  const editBar = !slide ? null : (
-            <div
-              aria-label={t('슬라이드 편집 도구')}
-              // Tools wrap onto a second row rather than hide past the panel's edge.
-              className={editToolbarSlot
-                ? 'flex flex-wrap items-center gap-1'
-                : 'sticky top-0 z-10 flex min-h-12 flex-wrap items-center gap-1 border-b border-line bg-panel/95 px-3 py-1.5 shadow-sm backdrop-blur'}
+  const isChart = !!slide && (slide.layout === 'chart' || patternOf(slide.layout)?.shape === 'chart')
+  const held = slide ? heldCount(slide) : { lines: 0, chart: false }
+  const showData = !!slide && canEdit &&
+    (['table', 'metrics', 'cards'].includes(selectedElement ?? '') || slide.layout === 'table')
+  const showChart = !!slide?.chart && canEdit && isChart && selectedElement === 'chart'
+  const showCaption = !!slide?.image && canEdit && selectedElement === 'image'
+  const error = doc.error || opError
+
+  const layoutsMenu = (close: () => void) => LAYOUT_GROUPS.map((group) => (
+    <Fragment key={group.label}>
+      <div className="kc-mlabel">{t(group.label)}</div>
+      {group.layouts.map((candidate) => (
+        <button key={candidate.id} type="button" role="menuitemradio" aria-checked={candidate.id === slide?.layout}
+          className={'kc-item' + (candidate.id === slide?.layout ? ' on' : '')}
+          onClick={() => { changeLayout(candidate.id); close() }}>
+          {t(candidate.label)}
+        </button>
+      ))}
+    </Fragment>
+  ))
+  const imageMenu = (close: () => void) => (
+    <>
+      <label className="kc-item">
+        <ImagePlus size={14} />
+        {t('그림 올리기')}
+        <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" aria-label={t('로컬 그림 업로드')}
+          className="sr-only" onChange={(event) => { loadLocalPicture(event.target.files?.[0]); event.target.value = ''; close() }} />
+      </label>
+      <button type="button" className="kc-item" onClick={() => { close(); openPicture() }}>
+        <ImageIcon size={14} />
+        {slide?.diagram ? t('그림 모델로 바꾸기') : slide?.image ? t('그림 바꾸기') : t('그림 넣기')}
+      </button>
+      {slide?.image && (
+        <>
+          <div className="kc-mlabel">{t('선택한 그림')}</div>
+          <button type="button" className={'kc-item' + ((slide.image.fit ?? 'contain') === 'contain' ? ' on' : '')}
+            aria-label={t('그림 전체 표시')} onClick={() => { setImage({ fit: 'contain' }); close() }}>
+            <Grid2x2 size={14} />{t('그림 전체 표시')}
+          </button>
+          <button type="button" className={'kc-item' + (slide.image.fit === 'cover' ? ' on' : '')}
+            aria-label={t('그림 영역 채우기')} onClick={() => { setImage({ fit: 'cover' }); close() }}>
+            <Maximize size={14} />{t('그림 영역 채우기')}
+          </button>
+          <div className="kc-row">
+            {(['small', 'medium', 'large'] as const).map((size) => (
+              <button key={size} type="button" className={'kc-btn' + ((slide.image?.size ?? 'medium') === size ? ' on' : '')}
+                aria-label={t('그림 크기') + ' ' + t(size === 'small' ? '작게' : size === 'medium' ? '보통' : '크게')}
+                onClick={() => setImage({ size })}>
+                {t(size === 'small' ? '작게' : size === 'medium' ? '보통' : '크게')}
+              </button>
+            ))}
+          </div>
+          <div className="kc-row">
+            <button type="button" className={'kc-btn' + (slide.image.position === 'left' ? ' on' : '')}
+              aria-label={t('그림 왼쪽')} title={t('그림 왼쪽')} onClick={() => setImage({ position: 'left' })}>
+              <PanelLeft size={15} />
+            </button>
+            <button type="button" className={'kc-btn' + ((slide.image.position ?? 'right') === 'right' ? ' on' : '')}
+              aria-label={t('그림 오른쪽')} title={t('그림 오른쪽')} onClick={() => setImage({ position: 'right' })}>
+              <PanelRight size={15} />
+            </button>
+          </div>
+          <button type="button" className="kc-item danger" onClick={() => { removeImage(); close() }}>
+            <Trash2 size={14} />{t('그림 제거')}
+          </button>
+        </>
+      )}
+    </>
+  )
+  const designMenu = (close: () => void) => (
+    <>
+      <div className="kc-mlabel">{t('테마')}</div>
+      {LOOK_CHOICES.map(({ id, label, why }) => (
+        <button key={id} type="button" role="menuitemradio" aria-checked={visualStyle === id}
+          className={'kc-item' + (visualStyle === id ? ' on' : '')} title={t(why)}
+          onClick={() => { setDesign({ visualStyle: id }); close() }}>
+          <LookSwatch look={LOOKS[id]} accent={accent} />
+          {t(label)}
+        </button>
+      ))}
+      <div className="kc-mlabel">{t('강조색')}</div>
+      <div className="kc-swatches" role="group" aria-label={t('강조색 고르기')}>
+        {ACCENTS.map(([colour, label]) => (
+          <button key={colour} type="button" className="kc-sw" title={t(label)} aria-label={t(label)}
+            aria-pressed={accent.toLowerCase() === colour}
+            style={{ background: colour, outline: accent.toLowerCase() === colour ? '2px solid #1f1f1f' : undefined }}
+            onClick={() => { setDesign({ accent: colour }); setBulkAccent(colour); close() }} />
+        ))}
+      </div>
+      <label className="kc-item">
+        <input type="color" value={accent} aria-label={tColour('직접 고르기')}
+          onChange={(event) => { setDesign({ accent: event.target.value }); setBulkAccent(event.target.value) }}
+          className="size-4 cursor-pointer border-0 bg-transparent p-0" />
+        {tColour('직접 고르기')}
+      </label>
+      {slide && (
+        <>
+          <div className="kc-mlabel">{t('{n}번 장').replace('{n}', String(index + 1))}</div>
+          <label className="kc-item">
+            <input type="color" aria-label={t('이 장의 강조색')} value={slide.accent ?? accent}
+              onChange={(event) => editSlide((current) => ({ ...current, accent: event.target.value }), 'accent')}
+              className="size-4 cursor-pointer border-0 bg-transparent p-0" />
+            {t('이 장의 강조색')}
+          </label>
+          <button type="button" className="kc-item" disabled={!slide.accent && !slide.textScale}
+            onClick={() => { editSlide((current) => ({ ...current, accent: undefined, textScale: undefined })); close() }}>
+            <Eraser size={14} />{t('이 장 서식 초기화')}
+          </button>
+        </>
+      )}
+      <div className="kc-ctx-sep" role="separator" />
+      <button type="button" className={'kc-item' + (bulkMode ? ' on' : '')} aria-pressed={bulkMode}
+        onClick={() => { setBulkMode((on) => !on); setBulkSelected(new Set()); close() }}>
+        <Rows3 size={14} />{t('여러 장 서식')}
+      </button>
+    </>
+  )
+
+  const deckAsk = DECK_ASK[doc.asking?.reason === 'export' ? 'export' : 'op']
+
+  return (
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden" data-deck-panel={deck.id}>
+      {/* The header every document panel has (`DocumentHeader`): title, version, 저장 안 됨,
+          저장, 내려받기, 공유, 더보기, width and close. */}
+      <DocumentHeader
+        icon={<Presentation size={15} className="shrink-0 text-accent" />}
+        title={deck.title}
+        version={deck.version}
+        dirty={dirty}
+        saving={saving}
+        canSave={!agentWorking && !writing}
+        showSave={!readOnly}
+        compact={phone}
+        onSave={() => keys.current.save()}
+        download={
+          <DownloadMenu
+            artifact={deck}
+            compact={phone}
+            disabled={writing}
+            take={download}
+            checksHeading={t('내보내기 전 확인 {n}건').replace('{n}', String(exportWarningCount))}
+            checks={[
+              ...(overflowRisks.length > 0 ? [{
+                label: t('잘림 위험 {n}장 확인').replace('{n}', String(overflowRisks.length)),
+                icon: <TriangleAlert size={14} />,
+                onClick: () => go(overflowRisks[0]),
+              }] : []),
+              ...(weakSlides.length > 0 ? [{
+                label: t('근거 확인 필요 {n}장').replace('{n}', String(weakSlides.length)),
+                icon: <ShieldQuestion size={14} />,
+                onClick: () => go(weakSlides[0]),
+              }] : []),
+              ...(unresolvedReviews.length > 0 ? [{
+                label: t('미해결 검토 메모 {n}개').replace('{n}', String(unresolvedReviews.length)),
+                icon: <MessageSquare size={14} />,
+                onClick: () => {
+                  const target = slides.findIndex((candidate) => candidate.id === unresolvedReviews[0].slideId)
+                  if (target >= 0) go(target)
+                  setReviewOpen(true)
+                },
+              }] : []),
+            ]}
+          />
+        }
+        artifact={deck}
+        historyRequest={historyRequest}
+        history={{ hasUnsavedChanges: dirty, currentData: deck, onRestored: () => doc.reset() }}
+        more={
+          <>
+            <MenuItem
+              icon={<ShieldQuestion size={14} />}
+              hint={exportWarningCount > 0 ? String(exportWarningCount) : undefined}
+              onClick={() => setReviewOpen(true)}
             >
-              <span className="mr-2 shrink-0 text-xs font-medium text-muted">
-                {t('{n}번 장').replace('{n}', String(index + 1))}
-              </span>
-              {bulkMode && (
-                <div className="flex shrink-0 items-center gap-1 rounded-control border border-accent/30 bg-accent-soft p-1" role="group" aria-label={t('여러 장 서식')}>
-                  <span className="whitespace-nowrap px-1 text-2xs font-semibold text-accent">{t('{n}장 선택').replace('{n}', String(bulkSelected.size))}</span>
-                  <Button size="sm" onClick={() => setBulkSelected(new Set(bulkSelected.size === deck.slides.length ? [] : deck.slides.map((candidate) => candidate.id)))}>
-                    {bulkSelected.size === deck.slides.length ? t('전체 해제') : t('전체 선택')}
+              {t('검토')}
+            </MenuItem>
+            <MenuItem icon={<Play size={14} />} disabled={writing} onClick={present}>
+              {t('발표')}
+            </MenuItem>
+            <MenuItem icon={<RefreshCw size={14} />} disabled={writing || rewritingSlide || readOnly || agentWorking} onClick={() => void regenerateSlide()}>
+              {rewritingSlide ? t('다시 만드는 중…') : t('이 장 다시 만들기')}
+            </MenuItem>
+            <MenuItem icon={checking ? <Loader2 size={14} className="animate-spin" /> : <ShieldQuestion size={14} />} disabled={writing || checking || readOnly || agentWorking} onClick={() => void runFactCheck()}>
+              {t('이 장 팩트체크')}
+            </MenuItem>
+            <ReuseItems artifact={deck} />
+            <MenuSeparator />
+          </>
+        }
+        extra={canEdit ? undefined : (
+          // without the toolbar (reading, a phone) the slide show is still a press away
+          <Button size="sm" variant="ghost" aria-label={t('발표')} title={t('슬라이드 쇼')} disabled={writing} onClick={present}>
+            <Play size={14} />
+            {!phone && t('발표')}
+          </Button>
+        )}
+        mode={width.mode}
+        onCycle={phone ? undefined : width.cycle}
+        onClose={onClose}
+      />
+
+      <DocumentNotice
+        notice={notice}
+        message={error || undefined}
+        onDownloadEdits={downloadEdits}
+        onLoadLatest={() => void doc.load()}
+      />
+
+      {phone && <DocumentReadOnlyNote readOnly={readOnly} testId="office-read-only" />}
+
+      <div className="relative min-h-0 flex-1 bg-elevated">
+        <div
+          ref={root.ref}
+          role="region"
+          aria-label={t('웹 슬라이드 편집기')}
+          data-deck-editor=""
+          className={'kc-slides' + (compact ? ' compact' : '') + (narrowLayout ? ' phone' : '')}
+          onInput={(event) => {
+            if ((event.target as HTMLElement).isContentEditable) doc.markTyping(true)
+          }}
+          onBlur={(event) => {
+            // a box on the slide was left: its onBlur has committed the text
+            if ((event.target as HTMLElement).isContentEditable) doc.markTyping(false)
+          }}
+        >
+          {canEdit && (
+            <div className="kc-top">
+              <DeckToolbar
+                width={root.width}
+                canUndo={doc.canUndo}
+                canRedo={doc.canRedo}
+                onUndo={doc.undo}
+                onRedo={doc.redo}
+                zoom={zoom}
+                fitPercent={Math.round(((fit.width ?? NATURAL_WIDTH) / NATURAL_WIDTH) * 100)}
+                onZoom={setZoom}
+                layouts={layoutsMenu}
+                image={imageMenu}
+                tablePressed={slide?.layout === 'table'}
+                onTable={tableButton}
+                chartPressed={isChart}
+                onChart={chartButton}
+                font={content.design?.font ?? 'gothic'}
+                fonts={FONTS}
+                onFont={(font) => setDesign({ font: font as 'gothic' | 'serif' })}
+                textActive={textFormat.active}
+                size={textSelected ? Math.min(200, Math.max(80, textFormat.size)) : slideSize}
+                onSize={setSize}
+                bold={textFormat.bold}
+                italic={textFormat.italic}
+                underline={textFormat.underline}
+                color={textFormat.color}
+                onFormat={(command, value) => formatSelection(command, value)}
+                design={designMenu}
+                reviewCount={exportWarningCount}
+                reviewOpen={reviewOpen}
+                onReview={() => setReviewOpen((open) => !open)}
+                onPresent={present}
+              />
+            </div>
+          )}
+          <div className="kc-body">
+            {slides.length > 0 && (
+              <SlideRail
+                count={slides.length}
+                active={index}
+                keyOf={(i) => slides[i].id}
+                thumb={(i, size) => (
+                  <div style={{ width: size, aspectRatio: '16 / 9' }}>
+                    <SlideThumbnail deck={view} slide={slides[i]} index={i} writing={writing} />
+                  </div>
+                )}
+                badge={(i) => {
+                  const weak = slides[i].factCheck?.claims.some((c) => c.verdict !== 'supported')
+                  const open = reviewComments.filter((comment) => comment.slideId === slides[i].id && comment.status === 'open').length
+                  return (
+                    <>
+                      {weak && (
+                        <span className="absolute top-0.5 right-0.5 grid size-3.5 place-items-center rounded-full bg-warn text-white">
+                          <TriangleAlert size={9} />
+                        </span>
+                      )}
+                      {open > 0 && (
+                        <span aria-label={t('미해결 메모 {n}개').replace('{n}', String(open))} className="absolute right-0.5 bottom-0.5 grid min-w-4 place-items-center rounded-full bg-accent px-1 text-2xs leading-4 font-semibold text-white">
+                          {open}
+                        </span>
+                      )}
+                    </>
+                  )
+                }}
+                lead={bulkMode ? (i) => (
+                  <input type="checkbox" className="mt-1 size-3.5 shrink-0 accent-[var(--color-accent)]"
+                    checked={bulkSelected.has(slides[i].id)}
+                    onClick={(event) => event.stopPropagation()}
+                    onChange={() => setBulkSelected((current) => {
+                      const next = new Set(current)
+                      const id = slides[i].id
+                      if (next.has(id)) next.delete(id)
+                      else next.add(id)
+                      return next
+                    })}
+                    aria-label={t('{n}번 장 선택').replace('{n}', String(i + 1))} />
+                ) : undefined}
+                canEdit={canEdit}
+                compact={compact}
+                row={narrowLayout}
+                onSelect={go}
+                onMove={moveSlide}
+                onDuplicate={duplicateSlide}
+                onDelete={deleteSlide}
+                onAddAfter={addSlideAfter}
+              />
+            )}
+            <div className="kc-main">
+              {canEdit && bulkMode && (
+                <div className="kc-strip" role="group" aria-label={t('여러 장 서식')}>
+                  <span className="font-semibold">{t('{n}장 선택').replace('{n}', String(bulkSelected.size))}</span>
+                  <Button size="sm" onClick={() => setBulkSelected(new Set(bulkSelected.size === slides.length ? [] : slides.map((candidate) => candidate.id)))}>
+                    {bulkSelected.size === slides.length ? t('전체 해제') : t('전체 선택')}
                   </Button>
                   <label className="relative grid size-8 cursor-pointer place-items-center rounded-control" title={t('일괄 강조색')}>
                     <Palette size={15} />
                     <input type="color" aria-label={t('일괄 강조색')} value={bulkAccent} onChange={(event) => setBulkAccent(event.target.value)} className="absolute inset-0 opacity-0" />
                     <span className="absolute bottom-1 h-0.5 w-4" style={{ background: bulkAccent }} />
                   </label>
-                  <Button size="sm" disabled={!bulkSelected.size || saving} onClick={() => applyBulkSlides('accent')}>{t('선택 장에 색 적용')}</Button>
+                  <Button size="sm" disabled={!bulkSelected.size} onClick={() => applyBulkSlides('accent')}>{t('선택 장에 색 적용')}</Button>
                   <select aria-label={t('일괄 글자 크기')} value={bulkScale} onChange={(event) => setBulkScale(event.target.value)} className="h-8 rounded-control border border-line bg-panel px-1 text-xs">
                     <option value="0.8">80%</option><option value="0.9">90%</option><option value="1">100%</option><option value="1.1">110%</option><option value="1.2">120%</option>
                   </select>
-                  <Button size="sm" disabled={!bulkSelected.size || saving} onClick={() => applyBulkSlides('scale')}>{t('크기 적용')}</Button>
-                  <Button size="sm" disabled={!bulkSelected.size || saving} onClick={() => applyBulkSlides('reset')}>{t('장별 서식 초기화')}</Button>
-                  <Button size="sm" disabled={saving} onClick={() => void saveDeckAccent()}>{t('덱 기본색으로 저장')}</Button>
+                  <Button size="sm" disabled={!bulkSelected.size} onClick={() => applyBulkSlides('scale')}>{t('크기 적용')}</Button>
+                  <Button size="sm" disabled={!bulkSelected.size} onClick={() => applyBulkSlides('reset')}>{t('장별 서식 초기화')}</Button>
+                  <Button size="sm" onClick={() => setDesign({ accent: bulkAccent })}>{t('덱 기본색으로 저장')}</Button>
                   <Button size="sm" onClick={() => { setBulkMode(false); setBulkSelected(new Set()) }}><X size={13} />{t('끝내기')}</Button>
                 </div>
               )}
-              {editing ? (
-                <>
-                  <span className="shrink-0 rounded-full bg-elevated px-2 py-1 text-2xs font-medium text-muted" aria-live="polite">
-                    {selectedElement === 'image' ? t('그림 선택됨') : selectedElement === 'title' ? t('제목 선택됨') : selectedElement === 'chart' ? t('차트 선택됨') : selectedElement === 'table' ? t('표 선택됨') : selectedElement === 'metrics' ? t('핵심 수치 선택됨') : selectedElement === 'cards' ? t('항목 선택됨') : selectedElement === 'content' ? t('본문 선택됨') : t('요소를 선택하세요')}
+              {canEdit && slide && (held.lines > 0 || held.chart) && (
+                <div className="kc-strip" role="status" data-testid="deck-held">
+                  <TriangleAlert size={14} className="shrink-0 text-warn" />
+                  <span className="min-w-0 flex-1">
+                    {t('이 레이아웃에 보이지 않는 내용을 지우지 않고 보관했습니다: {what}').replace('{what}', [
+                      held.lines > 0 ? t('문장 {n}개').replace('{n}', String(held.lines)) : '',
+                      held.chart ? t('차트') : '',
+                    ].filter(Boolean).join(', '))}
                   </span>
-                  {overflowing && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="shrink-0 text-warning"
-                      aria-label={t('잘린 내용 자동 맞춤')}
-                      disabled={autoFitting}
-                      onClick={() => { setFitLimitReached(false); setAutoFitting(true) }}
-                    >
-                      {autoFitting ? <Loader2 size={14} className="animate-spin" /> : <TriangleAlert size={14} />}
+                  <Button size="sm" onClick={moveHeldToNewSlide}>
+                    <ListPlus size={13} />{t('다음 장으로 옮기기')}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => editSlide((current) => ({ ...current, held: undefined }))}>
+                    {t('보관한 내용 지우기')}
+                  </Button>
+                </div>
+              )}
+              {canEdit && slide && (overflowing || overflowRisk(slide) || exportOverflow.has(slide.id)) && (
+                <div className="kc-strip" role="status" data-testid="deck-overflow">
+                  <TriangleAlert size={14} className="shrink-0 text-warn" />
+                  <span className="min-w-0 flex-1">
+                    {fitLimitReached
+                      ? t('한 장에 넣기 어렵습니다.')
+                      : !overflowing && exportOverflow.has(slide.id)
+                        ? t('PowerPoint로 내보내면 이 장의 글이 칸을 넘칩니다.')
+                        : t('글이 장 밖으로 넘칩니다.')}
+                  </span>
+                  {overflowing && !fitLimitReached && (
+                    <Button size="sm" disabled={autoFitting} aria-label={t('잘린 내용 자동 맞춤')}
+                      onClick={() => { setFitLimitReached(false); setAutoFitting(true) }}>
+                      {autoFitting ? <Loader2 size={13} className="animate-spin" /> : <TriangleAlert size={13} />}
                       {autoFitting ? t('맞추는 중…') : t('잘린 내용 맞춤')}
                     </Button>
                   )}
-                  {slideDraft && overflowRisk(slideDraft) && !fitLimitReached && (
-                    <Button size="sm" variant="ghost" disabled={saving} onClick={splitOverflow} aria-label={t('이 장을 두 장으로 나누기')}>
-                      <ListPlus size={14} />{t('장 나누기')}
-                    </Button>
+                  <Button size="sm" onClick={splitOverflow} aria-label={t('이 장을 두 장으로 나누기')}>
+                    <ListPlus size={13} />{t('장 나누기')}
+                  </Button>
+                </div>
+              )}
+              <div className="kc-canvas">
+                <div ref={fit.ref} className={cn('flex min-h-0 min-w-0 flex-1 p-3', zoom === 'fit' ? 'items-center justify-center' : 'overflow-auto')}>
+                  <div
+                    ref={stageRef}
+                    style={{ width: stageWidth || '100%' }}
+                    className={cn('aspect-video shrink-0 overflow-hidden rounded-card border border-line bg-white shadow-raised', zoom !== 'fit' && 'm-auto')}
+                    onPointerDown={(event) => {
+                      // a press on the slide's background lets go of the element
+                      if (event.target === event.currentTarget) setSelectedElement(null)
+                    }}
+                  >
+                    {slide ? (
+                      <SlideView
+                        slide={slide}
+                        scale={scale}
+                        writing={writing}
+                        deckTitle={deck.title}
+                        brand={content.design ?? undefined}
+                        index={index}
+                        total={slides.length}
+                        editable={canEdit}
+                        selectedElement={selectedElement}
+                        onSelectElement={setSelectedElement}
+                        onOverflow={setOverflowing}
+                        artifactId={deck.id}
+                        onEdit={(next) => doc.editSlide(next.id, () => next, `text:${next.id}`)}
+                      />
+                    ) : (
+                      <div className="grid size-full place-items-center bg-white text-base text-[#6b6b6b]">
+                        {/* Literal colour: slides ignore the theme. #6b6b6b on white is 5.3:1. */}
+                        {t('구성을 잡는 중…')}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              {(showData || showChart || showCaption) && slide && (
+                <section className="kc-props" aria-label={t('선택한 요소')}>
+                  {showData && (
+                    <SlideDataEditor slide={slide} onChange={(next) => doc.editSlide(slide.id, () => next, `data:${slide.id}`)} />
                   )}
-                  {fitLimitReached && overflowing && (
-                    <div className="flex shrink-0 items-center gap-1" role="alert">
-                      <span className="text-2xs text-danger">{t('한 장에 넣기 어렵습니다.')}</span>
-                      <Button size="sm" variant="ghost" disabled={saving} onClick={splitOverflow} aria-label={t('내용을 다음 장으로 나누기')}>
-                        <ListPlus size={14} />{t('두 장으로 나누기')}
-                      </Button>
+                  {showCaption && slide.image && (
+                    <label className="block text-xs text-muted">
+                      {t('그림 설명')}
+                      <Input
+                        aria-label={t('그림 설명')}
+                        value={slide.image.caption ?? ''}
+                        onChange={(event) => setImage({ caption: event.target.value })}
+                      />
+                    </label>
+                  )}
+                  {showChart && slide.chart && (
+                    <ChartDataEditor slide={slide} onChange={(next) => doc.editSlide(slide.id, () => next, `chart:${slide.id}`)} />
+                  )}
+                </section>
+              )}
+              {slide && (
+                <NotesPane
+                  slideKey={slide.id}
+                  value={slide.notes ?? ''}
+                  canEdit={canEdit}
+                  onCommit={canEdit ? (text) => doc.editSlide(slide.id, (current) => ({ ...current, notes: text }), `notes:${slide.id}`) : undefined}
+                >
+                  {slide.factCheck?.status === 'done' && (
+                    <div className="max-h-48 overflow-y-auto border-t border-line px-3 py-2">
+                      <FactCheckResults check={slide.factCheck} />
                     </div>
                   )}
-                  <div className="flex shrink-0 items-center gap-0.5 rounded-control border border-line bg-panel p-0.5" role="group" aria-label={t('색상 도구')}>
-                    <label
-                      className="relative grid size-8 cursor-pointer place-items-center rounded-control text-muted hover:bg-elevated hover:text-fg"
-                      title={t('이 장의 강조색')}
-                    >
-                      <Palette size={16} />
-                      <input
-                        type="color"
-                        aria-label={t('도구막대 강조색')}
-                        value={slideDraft?.accent ?? deck.design?.accent ?? '#5b5bd6'}
-                        onChange={(event) => setSlideDraft((current) => current ? ({ ...current, accent: event.target.value }) : current)}
-                        className="absolute inset-0 cursor-pointer opacity-0"
-                      />
-                      <span
-                        aria-hidden="true"
-                        className="absolute bottom-1 h-0.5 w-4 rounded-full"
-                        style={{ backgroundColor: slideDraft?.accent ?? deck.design?.accent ?? '#5b5bd6' }}
-                      />
-                    </label>
-                  </div>
-                  <div className="mx-1 h-6 w-px shrink-0 bg-line" aria-hidden="true" />
-                  <div className={cn('flex shrink-0 items-center gap-0.5 rounded-control border border-line bg-panel p-0.5', selectedElement === 'image' && 'pointer-events-none opacity-40')} role="group" aria-label={t('선택한 글자 서식')} aria-disabled={selectedElement === 'image'}>
-                    <span className="whitespace-nowrap px-1.5 text-2xs font-medium text-muted">{t('선택 영역')}</span>
-                    {([
-                      ['bold', 'bold', t('선택한 글자 굵게'), <Bold key="bold" size={15} />],
-                      ['italic', 'italic', t('선택한 글자 기울임'), <Italic key="italic" size={15} />],
-                      ['underline', 'underline', t('선택한 글자 밑줄'), <Underline key="underline" size={15} />],
-                    ] as const).map(([command, state, label, icon]) => (
-                      <button
-                        key={command}
-                        type="button"
-                        disabled={selectedElement === 'image'}
-                        aria-label={label}
-                        title={label}
-                        aria-pressed={selectionFormat[state]}
-                        onMouseDown={(event) => { event.preventDefault(); rememberFormattingRange() }}
-                        onClick={() => formatSelection(command)}
-                        className={cn('grid size-8 place-items-center rounded-control text-muted hover:bg-elevated hover:text-fg', selectionFormat[state] && 'bg-accent/10 text-accent')}
-                      >
-                        {icon}
-                      </button>
-                    ))}
-                    <select aria-label={t('선택한 글자 크기')} disabled={selectedElement === 'image'} value={Math.min(200, Math.max(80, selectionFormat.size))} onMouseDown={rememberFormattingRange} onChange={(event) => sizeSelection(Number(event.target.value))} className="h-8 rounded-control border-0 bg-transparent px-1 text-xs text-fg outline-none hover:bg-elevated">
-                      {[80, 100, 120, 140, 160, 200].map((value) => <option key={value} value={value}>{value}%</option>)}
-                    </select>
-                    <label className="relative grid size-8 cursor-pointer place-items-center rounded-control text-muted hover:bg-elevated hover:text-fg" title={t('선택한 글자 색')} onMouseDown={rememberFormattingRange}>
-                      <Palette size={15} />
-                      <input type="color" aria-label={t('선택한 글자 색')} disabled={selectedElement === 'image'} defaultValue="#1a1a1a" onChange={(event) => formatSelection('foreColor', event.target.value)} className="absolute inset-0 cursor-pointer opacity-0" />
-                    </label>
-                    <button type="button" aria-label={t('선택한 글자 서식 지우기')} disabled={selectedElement === 'image'} title={t('선택한 글자 서식 지우기')} onMouseDown={(event) => { event.preventDefault(); rememberFormattingRange() }} onClick={() => formatSelection('removeFormat')} className="grid size-8 place-items-center rounded-control text-muted hover:bg-elevated hover:text-fg"><Eraser size={15} /></button>
-                  </div>
-                  <div className="mx-1 h-6 w-px shrink-0 bg-line" aria-hidden="true" />
-                  <div className="flex shrink-0 items-center gap-0.5 rounded-control border border-line bg-panel p-0.5" role="group" aria-label={t('레이아웃')}>
-                    <LayoutTemplate size={15} className="ml-1.5 shrink-0 text-muted" aria-hidden="true" />
-                    <select
-                      aria-label={t('도구막대 레이아웃')}
-                      value={slideDraft?.layout ?? slide.layout}
-                      onChange={(event) => setSlideDraft((current) => {
-                        if (!current) return current
-                        const next = relayout(current, event.target.value as Slide['layout'])
-                        setDraft(toLines(next))
-                        return next
-                      })}
-                      className="h-8 max-w-28 rounded-control border-0 bg-transparent px-1 text-sm text-fg outline-none hover:bg-elevated"
-                    >
-                      {LAYOUT_GROUPS.map((group) => (
-                        <optgroup key={group.label} label={t(group.label)}>
-                          {group.layouts.map((candidate) => (
-                            <option key={candidate.id} value={candidate.id}>{t(candidate.label)}</option>
-                          ))}
-                        </optgroup>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="mx-1 h-6 w-px shrink-0 bg-line" aria-hidden="true" />
-                  <div className="flex shrink-0 items-center gap-0.5 rounded-control border border-line bg-panel p-0.5" role="group" aria-label={t('그림 도구')}>
-                    <label
-                      className="grid size-8 cursor-pointer place-items-center rounded-control text-muted hover:bg-elevated hover:text-fg"
-                      title={slideDraft?.image ? t('그림 교체') : t('그림 업로드')}
-                    >
-                      <ImagePlus size={16} />
-                      <input
-                        type="file"
-                        accept="image/png,image/jpeg,image/gif,image/webp"
-                        aria-label={t('로컬 그림 업로드')}
-                        className="sr-only"
-                        onChange={(event) => loadLocalPicture(event.target.files?.[0])}
-                      />
-                    </label>
-                  {slideDraft?.image && selectedElement === 'image' && (
-                    <>
-                      <button
-                        type="button"
-                        aria-label={t('그림 전체 표시')}
-                        aria-pressed={(slideDraft.image.fit ?? 'contain') === 'contain'}
-                        title={t('그림 전체 표시')}
-                        onClick={() => setSlideDraft((current) => current?.image ? ({ ...current, image: { ...current.image, fit: 'contain' } }) : current)}
-                        className={cn('grid size-8 place-items-center rounded-control text-muted hover:bg-elevated hover:text-fg', (slideDraft.image.fit ?? 'contain') === 'contain' && 'bg-accent/10 text-accent')}
-                      >
-                        <Grid2x2 size={15} />
-                      </button>
-                      <button
-                        type="button"
-                        aria-label={t('그림 영역 채우기')}
-                        aria-pressed={slideDraft.image.fit === 'cover'}
-                        title={t('그림 영역 채우기')}
-                        onClick={() => setSlideDraft((current) => current?.image ? ({ ...current, image: { ...current.image, fit: 'cover' } }) : current)}
-                        className={cn('grid size-8 place-items-center rounded-control text-muted hover:bg-elevated hover:text-fg', slideDraft.image.fit === 'cover' && 'bg-accent/10 text-accent')}
-                      >
-                        <Maximize size={15} />
-                      </button>
-                      <span className="mx-0.5 h-5 w-px bg-line" aria-hidden="true" />
-                      <select aria-label={t('그림 크기')} value={slideDraft.image.size ?? 'medium'} onChange={(event) => setSlideDraft((current) => current?.image ? ({ ...current, image: { ...current.image, size: event.target.value as 'small' | 'medium' | 'large' } }) : current)} className="h-8 rounded-control border-0 bg-transparent px-1 text-xs text-fg outline-none hover:bg-elevated">
-                        <option value="small">{t('작게')}</option>
-                        <option value="medium">{t('보통')}</option>
-                        <option value="large">{t('크게')}</option>
-                      </select>
-                      <button type="button" aria-label={t('그림 왼쪽')} aria-pressed={(slideDraft.image.position ?? 'right') === 'left'} title={t('그림 왼쪽')} onClick={() => setSlideDraft((current) => current?.image ? ({ ...current, image: { ...current.image, position: 'left' } }) : current)} className={cn('grid size-8 place-items-center rounded-control text-muted hover:bg-elevated hover:text-fg', slideDraft.image.position === 'left' && 'bg-accent/10 text-accent')}><PanelLeft size={15} /></button>
-                      <button type="button" aria-label={t('그림 오른쪽')} aria-pressed={(slideDraft.image.position ?? 'right') === 'right'} title={t('그림 오른쪽')} onClick={() => setSlideDraft((current) => current?.image ? ({ ...current, image: { ...current.image, position: 'right' } }) : current)} className={cn('grid size-8 place-items-center rounded-control text-muted hover:bg-elevated hover:text-fg', (slideDraft.image.position ?? 'right') === 'right' && 'bg-accent/10 text-accent')}><PanelRight size={15} /></button>
-                      <button type="button" aria-label={t('그림 제거')} title={t('그림 제거')} onClick={() => { setSlideDraft((current) => current ? ({ ...current, image: undefined, diagram: undefined }) : current); setSelectedElement(null) }} className="grid size-8 place-items-center rounded-control text-muted hover:bg-danger/10 hover:text-danger"><Trash2 size={15} /></button>
-                    </>
-                  )}
-                  </div>
-                  <div className="ml-auto flex shrink-0 items-center gap-1">
-                    <Button size="sm" disabled={editHistory.length < 2} onClick={undoEdit} aria-label={t('슬라이드 편집 실행 취소')} title={editHistory.length < 2 ? t('되돌릴 편집이 아직 없습니다') : t('실행 취소')}><Undo2 size={14} /></Button>
-                    <Button size="sm" disabled={!editFuture.length} onClick={redoEdit} aria-label={t('슬라이드 편집 다시 실행')} title={editFuture.length ? t('다시 실행') : t('다시 실행할 편집이 없습니다')}><Redo2 size={14} /></Button>
-                  </div>
-                </>
-              ) : null}
+                </NotesPane>
+              )}
             </div>
-  )
-  const editTools = !editBar || !(editing || bulkMode)
-    ? null
-    : editToolbarSlot ? createPortal(editBar, editToolbarSlot) : editBar
-
-  return (
-    <div
-      ref={panel.ref}
-      className="flex h-full min-h-0 flex-col"
-      onKeyDown={(event) => {
-        if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 's') return
-        event.preventDefault()
-        if (hasUnsavedEdit) void save()
-      }}
-    >
-      <header className="relative z-40 flex flex-wrap items-center gap-2 border-b border-line bg-panel px-4 py-2 max-sm:px-2">
-        <div ref={head.ref} className={cn('flex w-full min-w-0 items-center gap-1.5', head.narrow && 'flex-wrap')}>
-          <Presentation size={15} className="shrink-0 text-accent" />
-          {/* Narrow: the title takes its own row, so the actions below keep their words. */}
-          <p className={cn('min-w-0 flex-1 truncate whitespace-nowrap text-base font-medium', head.narrow && 'min-w-[calc(100%-1.5rem)]')} title={deck.title}>
-            {deck.title}
-          </p>
-          {!head.narrow && (
-            <span className="shrink-0 text-xs text-faint tabular-nums" title={t('저장된 판')}>v{deck.version}</span>
-          )}
-          <QuickAccess label={t('빠른 도구')}>
-            {!head.narrow && (
-              <Button
-                size="sm"
-                variant="ghost"
-                aria-label={t('장 목록')}
-                aria-pressed={railShown}
-                title={t('장 목록을 접었다 폅니다')}
-                onClick={() => setRailToggled((pressed) => !pressed)}
-              >
-                <Rows3 size={13} />
-                {deck.slides.length ? index + 1 : 0}/{deck.slides.length}
-              </Button>
-            )}
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={writing}
-              aria-label={t('발표')}
-              title={t('슬라이드 쇼')}
-              onClick={() => setPresenting(true)}
-            >
-              <Play size={13} />
-              {!head.narrow && t('발표')}
-            </Button>
-            <Button
-              size="sm"
-              variant={reviewOpen ? 'primary' : 'ghost'}
-              aria-pressed={reviewOpen}
-              aria-label={exportWarningCount > 0
-                ? t('검토 · 확인 {count}').replace('{count}', String(exportWarningCount))
-                : t('검토')}
-              title={t('확인할 장, 문서 검사, 검토 메모, 버전 기록')}
-              onClick={() => setReviewOpen((open) => !open)}
-            >
-              <ShieldQuestion size={14} className={exportWarningCount > 0 && !reviewOpen ? 'text-warn' : undefined} />
-              {head.narrow ? (exportWarningCount > 0 ? <span className="text-2xs font-semibold text-warn">{exportWarningCount}</span> : null) : t('검토')}
-              {!head.narrow && exportWarningCount > 0 && (
-                <span className="rounded-full bg-warn/15 px-1.5 text-2xs font-semibold text-warn">{exportWarningCount}</span>
-              )}
-            </Button>
-            {editing && (
-              <>
-                <Button size="sm" variant="ghost" disabled={saving} onClick={() => discardOr('cancel')} aria-label={t('편집 취소')}>
-                  <X size={14} />{!head.narrow && t('취소')}
-                </Button>
-                <Button variant="primary" size="sm" disabled={saving} onClick={() => void save()} aria-label={t('저장')} aria-keyshortcuts="Control+S Meta+S">
-                  {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}{!head.narrow && t('저장')}
-                </Button>
-              </>
-            )}
-            <DownloadMenu
-              artifact={deck}
-              // Narrow: 발표 and 검토 take the room; 편집 keeps its word.
-              compact={head.narrow}
-              disabled={writing || editing}
-              checksHeading={t('내보내기 전 확인 {n}건').replace('{n}', String(exportWarningCount))}
-              checks={[
-                ...(overflowRisks.length > 0 ? [{
-                  label: t('잘림 위험 {n}장 확인').replace('{n}', String(overflowRisks.length)),
-                  icon: <TriangleAlert size={14} />,
-                  onClick: () => go(overflowRisks[0]),
-                }] : []),
-                ...(weakSlides.length > 0 ? [{
-                  label: t('근거 확인 필요 {n}장').replace('{n}', String(weakSlides.length)),
-                  icon: <ShieldQuestion size={14} />,
-                  onClick: () => go(weakSlides[0]),
-                }] : []),
-                ...(unresolvedReviews.length > 0 ? [{
-                  label: t('미해결 검토 메모 {n}개').replace('{n}', String(unresolvedReviews.length)),
-                  icon: <MessageSquare size={14} />,
-                  onClick: () => {
-                    const target = deck.slides.findIndex((candidate) => candidate.id === unresolvedReviews[0].slideId)
-                    if (target >= 0) go(target)
-                    setReviewOpen(true)
-                  },
-                }] : []),
-              ]}
-            />
-            <Button
-              size="sm"
-              variant={editMode ? 'primary' : 'ghost'}
-              aria-pressed={editMode}
-              aria-label={t('편집')}
-              title={editMode ? t('편집 도구를 닫고 읽기로 돌아갑니다') : t('이 장을 고칩니다')}
-              disabled={writing}
-              data-labelled={head.narrow && editing ? undefined : ''}
-              onClick={() => (editMode ? leaveEditMode() : enterEditMode())}
-            >
-              <Pencil size={13} />
-              {!(head.narrow && editing) && t('편집')}
-            </Button>
-            <Dropdown
-              align="right"
-              trigger={() => (
-                <Button size="sm" variant="ghost" aria-label={t('더보기')} title={t('더보기')}>
-                  <MoreHorizontal size={15} />
-                </Button>
-              )}
-            >
-              {head.narrow && (
-                <MenuItem icon={<Rows3 size={14} />} checked={railShown} onClick={() => setRailToggled((pressed) => !pressed)} hint={`${deck.slides.length ? index + 1 : 0}/${deck.slides.length}`}>
-                  {t('장 목록')}
-                </MenuItem>
-              )}
-              <MenuItem icon={<RefreshCw size={14} />} disabled={writing || rewritingSlide || editing} onClick={() => void regenerateSlide()}>
-                {t('이 장 다시 만들기')}
-              </MenuItem>
-              <MenuItem icon={<History size={14} />} onClick={() => setHistoryRequest((r) => ({ nonce: (r?.nonce ?? 0) + 1 }))}>
-                {t('버전 기록')}
-              </MenuItem>
-              <MenuItem
-                icon={<Share2 size={14} />}
-                disabled={writing}
-                onClick={() => setSharing(true)}
-              >
-                {t('이 아티팩트만 공유')}
-              </MenuItem>
-              <MenuSeparator />
-              <ReuseItems artifact={deck} />
-            </Dropdown>
-            <ShareButton artifact={deck} open={sharing} onClose={() => setSharing(false)} />
-            <span className="max-sm:hidden">
-              <PanelControls mode={width.mode} onCycle={width.cycle} />
-            </span>
-            <PanelControls mode={width.mode} onClose={() => discardOr('close')} />
-          </QuickAccess>
-          <VersionHistory
-            bare
-            request={historyRequest}
-            artifact={deck}
-            hasUnsavedChanges={hasUnsavedEdit}
-            currentData={deck}
-            onRestored={restoredVersion}
-          />
+          </div>
         </div>
-        {editMode && <ArtifactRibbon
-          label={t('슬라이드 메뉴')}
-          tabs={[
-            { id: 'text', label: t('글자') }, { id: 'insert', label: t('삽입') },
-            { id: 'design', label: t('테마') }, { id: 'review', label: t('검토') },
-          ] as Array<{ id: 'text' | 'insert' | 'design' | 'review'; label: string }>}
-          active={ribbon}
-          onChange={(tab) => {
-            if (tab === 'text' && !editing && !bulkMode) {
-              void startEditing()
-              return
-            }
-            // Leaving 「글자」 unchanged ends the edit; unsaved changes keep the editor and 저장·취소.
-            if (tab !== 'text' && editing && !bulkMode && !hasUnsavedEdit) {
-              setEditing(false)
-              setSlideDraft(null)
-              setSelectedElement(null)
-            }
-            setRibbon(tab)
-          }}
-        >
-        {ribbon === 'text' && (editing || bulkMode) && (
-          <RibbonGroup wide label={t('슬라이드 편집')}>
-            <div ref={setEditToolbarSlot} className="peer flex items-center" />
-            <span className="hidden px-2 text-xs text-muted peer-empty:inline">
-              {t('슬라이드의 글자를 누르면 글자 도구가 나옵니다')}
-            </span>
-          </RibbonGroup>
-        )}
-        {ribbon === 'text' && !editing && !bulkMode && <RibbonGroup label={t('슬라이드 작업')}>
-          <Button size="sm" disabled={writing || !slide} onClick={() => void startEditing()}>
-            <Pencil size={13} />
-            {t('직접 고치기')}
-          </Button>
-          <Button
-            size="sm"
-            variant={slide?.bullets?.includes('이 장을 쓰지 못했습니다.') || slide?.body?.includes('이 장을 쓰지 못했습니다.') ? 'primary' : 'secondary'}
-            disabled={writing || rewritingSlide}
-            onClick={() => void regenerateSlide()}
-            aria-label={t('이 장 다시 만들기')}
-          >
-            <RefreshCw size={14} className={rewritingSlide ? 'animate-spin' : undefined} />
-            {rewritingSlide ? t('다시 만드는 중…') : t('이 장 다시 만들기')}
-          </Button>
-        </RibbonGroup>}
-        {ribbon === 'insert' && !editing && slide && <RibbonGroup label={t('콘텐츠')}>
-          <SlidePicture deck={deck} slide={slide} />
-        </RibbonGroup>}
-        {ribbon === 'insert' && editing && <RibbonGroup label={t('콘텐츠')}>
-          <p className="px-2 text-xs text-muted">{t('저장하거나 취소한 뒤 그림을 넣을 수 있습니다')}</p>
-        </RibbonGroup>}
-        {ribbon === 'design' && !editing && <RibbonGroup label={t('테마')}><Dropdown
-          align="left"
-          trigger={() => (
-            <Button size="sm" disabled={saving} aria-label={t('슬라이드 테마 고르기')} title={t(LOOK_CHOICES.find((c) => c.id === visualStyle)?.why ?? '')}>
-              <LookSwatch look={LOOKS[visualStyle]} accent={bulkAccent} />
-              {t(LOOK_CHOICES.find((c) => c.id === visualStyle)?.label ?? visualStyle)}
-              <ChevronDown size={13} className="text-muted" />
-            </Button>
-          )}
-        >
-          <MenuLabel>{t('같은 내용, 다른 인상')}</MenuLabel>
-          {LOOK_CHOICES.map(({ id, label, why }) => (
-            <MenuItem
-              key={id}
-              icon={<LookSwatch look={LOOKS[id]} accent={bulkAccent} size={1.3} />}
-              checked={visualStyle === id}
-              hint={t(why)}
-              onClick={() => void saveDeckVisualStyle(id)}
-            >
-              {t(label)}
-            </MenuItem>
-          ))}
-        </Dropdown></RibbonGroup>}
-        {ribbon === 'design' && !editing && <RibbonGroup label={t('강조색')}><Dropdown
-          align="left"
-          trigger={() => (
-            <Button size="sm" disabled={saving} aria-label={t('강조색 고르기')} title={t('제목 밑줄, 표 머리, 번호, 표지에 쓰는 색')}>
-              <span className="block size-3.5 rounded-full ring-1 ring-black/10" style={{ backgroundColor: bulkAccent }} />
-              {t(ACCENTS.find(([colour]) => colour.toLowerCase() === bulkAccent.toLowerCase())?.[1] ?? '직접 고른 색')}
-              <ChevronDown size={13} className="text-muted" />
-            </Button>
-          )}
-        >
-          <MenuLabel>{t('제목 밑줄, 표 머리, 번호, 표지에 쓰는 색')}</MenuLabel>
-          {ACCENTS.map(([colour, label]) => (
-            <MenuItem key={colour} icon={<span className="block size-3.5 rounded-full ring-1 ring-black/10" style={{ backgroundColor: colour }} />} checked={bulkAccent.toLowerCase() === colour} onClick={() => void saveDeckAccent(colour)}>
-              {t(label)}
-            </MenuItem>
-          ))}
-          <label className="mt-1 flex cursor-pointer items-center gap-2 border-t border-line px-3 py-2 text-sm text-fg hover:bg-elevated">
-            <input type="color" value={bulkAccent} onChange={(event) => void saveDeckAccent(event.target.value)} className="size-4 cursor-pointer border-0 bg-transparent p-0" aria-label={tColour('직접 고르기')} />
-            {tColour('직접 고르기')}
-          </label>
-        </Dropdown></RibbonGroup>}
-        {ribbon === 'design' && editing && <RibbonGroup label={t('테마')}>
-          <p className="px-2 text-xs text-muted">{t('저장하거나 취소한 뒤 테마를 바꿀 수 있습니다')}</p>
-        </RibbonGroup>}
-        {ribbon === 'review' && <RibbonGroup label={t('검토')}>{reviewTools}</RibbonGroup>}
-        </ArtifactRibbon>}
-      </header>
 
-      <div className="relative flex min-h-0 flex-1">
         {reviewOpen && (
           <aside aria-label={t('검토 메모')} className="absolute inset-y-0 right-0 z-30 flex w-80 max-w-full flex-col border-l border-line bg-panel shadow-float">
             <div className="flex items-center gap-2 border-b border-line p-3">
@@ -3471,11 +3091,9 @@ export function DeckPanel({
                 <X size={15} />
               </button>
             </div>
-            {!(editMode && ribbon === 'review') && (
-              <div aria-label={t('검토 도구')} className="flex flex-wrap items-center gap-1.5 border-b border-line p-3">
-                {reviewTools}
-              </div>
-            )}
+            <div aria-label={t('검토 도구')} className="flex flex-wrap items-center gap-1.5 border-b border-line p-3">
+              {reviewTools}
+            </div>
             <div className="border-b border-line p-3">
               <p className="mb-2 text-xs text-faint">{t('{n}번 장에 메모').replace('{n}', String(index + 1))}</p>
               <Textarea rows={3} value={reviewDraft} onChange={(event) => setReviewDraft(event.target.value)} aria-label={t('메모 내용')} placeholder={t('수정할 점이나 확인할 내용을 적으세요')} />
@@ -3487,7 +3105,7 @@ export function DeckPanel({
             <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
               {reviewComments.length === 0 && <p className="text-sm text-faint">{t('아직 검토 메모가 없습니다.')}</p>}
               {reviewComments.map((comment) => {
-                const slideIndex = deck.slides.findIndex((candidate) => candidate.id === comment.slideId)
+                const slideIndex = slides.findIndex((candidate) => candidate.id === comment.slideId)
                 return (
                   <article key={comment.id} className={cn('rounded-card border p-3', comment.status === 'resolved' ? 'border-line bg-elevated/40 opacity-65' : 'border-line bg-panel')}>
                     <button className="text-xs font-semibold text-accent hover:underline" onClick={() => slideIndex >= 0 && go(slideIndex)}>
@@ -3508,462 +3126,121 @@ export function DeckPanel({
             </div>
           </aside>
         )}
-        {panel.narrow && railShown && (
-          <button
-            aria-label={t('장 목록 닫기')}
-            className="absolute inset-0 z-10 bg-black/30"
-            onClick={() => setRailToggled(false)}
-          />
-        )}
-        <nav
-          className={cn(
-            'w-[132px] shrink-0 flex-col border-r border-line bg-sidebar/40',
-            railShown
-              ? panel.narrow
-                ? 'absolute inset-y-0 left-0 z-20 flex shadow-overlay'
-                : 'flex'
-              : 'hidden',
-          )}
-        >
-          <div className="flex items-center gap-0.5 border-b border-line px-1.5 py-1.5">
-            {(
-              [
-                { id: 'thumbs', icon: Grid2x2, label: '그림으로' },
-                { id: 'outline', icon: Rows3, label: '차례로' },
-              ] as const
-            ).map((v) => (
-              <button
-                key={v.id}
-                onClick={() => setRail(v.id)}
-                aria-pressed={rail === v.id}
-                aria-label={t(v.label)}
-                title={t(v.label)}
-                className={cn(
-                  'grid size-6 place-items-center rounded-control transition-colors',
-                  rail === v.id ? 'bg-elevated text-fg' : 'text-faint hover:text-fg',
-                )}
-              >
-                <v.icon size={13} />
-              </button>
-            ))}
-            <button
-              onClick={() => { const next = !bulkMode; setBulkMode(next); setBulkSelected(new Set()); if (next) { setRibbon('text'); setEditMode(true) } }}
-              aria-pressed={bulkMode}
-              aria-label={t('여러 장 선택')}
-              title={t('여러 장 선택')}
-              className={cn('grid size-6 place-items-center rounded-control transition-colors', bulkMode ? 'bg-accent/10 text-accent' : 'text-faint hover:text-fg')}
-            >
-              <Rows3 size={13} />
-            </button>
-            <span className="ml-auto pr-1 text-xs text-faint tabular-nums">
-              {deck.slides.length ? index + 1 : 0}/{deck.slides.length}
-            </span>
-          </div>
-          <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-1.5">
-            {deck.slides.map((s, i) => {
-              const weak = s.factCheck?.claims.some((c) => c.verdict !== 'supported')
-              const openReviews = reviewComments.filter((comment) => comment.slideId === s.id && comment.status === 'open').length
-              return rail === 'thumbs' ? (
-                <div key={s.id} className="relative">
-                <button
-                  onClick={() => go(i)}
-                  aria-label={t('{n}번 장').replace('{n}', String(i + 1))}
-                  aria-current={i === index}
-                  className={cn(
-                    'relative block aspect-video w-full overflow-hidden rounded-control border-2 bg-white transition-colors',
-                    i === index ? 'border-accent' : 'border-line hover:border-line-strong',
-                  )}
-                >
-                  <SlideThumbnail
-                    deck={deck}
-                    slide={editing && i === index && slideDraft ? slideDraft : s}
-                    index={i}
-                    writing={writing}
-                  />
-                  <span className="absolute bottom-0.5 left-0.5 rounded bg-black/55 px-1 text-2xs font-medium text-white tabular-nums">
-                    {i + 1}
-                  </span>
-                  {weak && (
-                    <span className="absolute top-0.5 right-0.5 grid size-3.5 place-items-center rounded-full bg-warn text-white">
-                      <TriangleAlert size={9} />
-                    </span>
-                  )}
-                  {openReviews > 0 && (
-                    <span aria-label={t('미해결 메모 {n}개').replace('{n}', String(openReviews))} className="absolute bottom-0.5 right-0.5 grid min-w-4 place-items-center rounded-full bg-accent px-1 text-2xs font-semibold text-white">
-                      {openReviews}
-                    </span>
-                  )}
-                </button>
-                {bulkMode && (
-                  <label className="absolute left-0.5 top-0.5 z-10 grid size-5 cursor-pointer place-items-center rounded bg-white/90 shadow-sm" onClick={(event) => event.stopPropagation()}>
-                    <input type="checkbox" className="size-3.5 accent-[var(--color-accent)]" checked={bulkSelected.has(s.id)} onChange={() => toggleBulkSlide(s.id)} aria-label={t('{n}번 장 선택').replace('{n}', String(i + 1))} />
-                  </label>
-                )}
-                </div>
-              ) : (
-                <div key={s.id} className="flex items-start">
-                {bulkMode && <input type="checkbox" className="mt-1 size-3.5 shrink-0 accent-[var(--color-accent)]" checked={bulkSelected.has(s.id)} onChange={() => toggleBulkSlide(s.id)} aria-label={t('{n}번 장 선택').replace('{n}', String(i + 1))} />}
-                <button
-                  onClick={() => go(i)}
-                  aria-current={i === index}
-                  className={cn(
-                    'flex w-full items-start gap-1.5 rounded-control px-1.5 py-1 text-left text-xs leading-snug transition-colors',
-                    i === index ? 'bg-elevated text-fg' : 'text-muted hover:bg-elevated hover:text-fg',
-                  )}
-                >
-                  <span className="shrink-0 text-faint tabular-nums">{i + 1}</span>
-                  <span className="min-w-0 flex-1 line-clamp-2">{s.title}</span>
-                  {weak && <TriangleAlert size={10} className="mt-0.5 shrink-0 text-warn" />}
-                  {openReviews > 0 && <span aria-label={t('미해결 메모 {n}개').replace('{n}', String(openReviews))} className="shrink-0 rounded-full bg-accent px-1 text-2xs font-semibold text-white">{openReviews}</span>}
-                </button>
-                </div>
-              )
-            })}
-          </div>
-        </nav>
 
-        {/* Stage (3/4 of the height) over the notes band (1/4); the slide fits 16:9 within its row. */}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
-          {editTools}
-          <div className="flex min-h-[45%] flex-[3] basis-0 items-center gap-2 p-4">
-              <button
-                onClick={() => go(index - 1)}
-                disabled={index === 0}
-                aria-label={t('이전 장')}
-                className="grid size-7 shrink-0 place-items-center rounded-control text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-30"
-              >
-                <ChevronLeft size={16} />
-              </button>
-              <div ref={fit.ref} className="flex min-h-0 min-w-0 flex-1 items-center justify-center self-stretch">
-              <div
-                ref={stage.ref}
-                style={{ width: fit.width ?? '100%' }}
-                className="aspect-video min-w-0 overflow-hidden rounded-card border border-line shadow-raised"
-              >
-                {slide ? (
-                  <SlideView
-                    slide={editing && slideDraft ? slideDraft : slide}
-                    scale={stage.scale}
-                    writing={writing}
-                    deckTitle={deck.title}
-                    brand={deck.design ?? undefined}
-                    index={index}
-                    total={deck.slides.length}
-                    editable={editing}
-                    selectedElement={selectedElement}
-                    onSelectElement={setSelectedElement}
-                    onOverflow={setOverflowing}
-                    artifactId={deck.id}
-                    onEdit={(next) => {
-                      setSlideDraft(next)
-                      setDraft(toLines(next))
-                    }}
-                  />
-                ) : (
-                  <div className="grid size-full place-items-center bg-white text-base text-[#6b6b6b]">
-                    {/* Literal colour: slides ignore the theme. #6b6b6b on white is 5.3:1. */}
-                    {t('구성을 잡는 중…')}
-                  </div>
-                )}
-              </div>
-              </div>
-              <button
-                onClick={() => go(index + 1)}
-                disabled={index >= deck.slides.length - 1}
-                aria-label={t('다음 장')}
-                className="grid size-7 shrink-0 place-items-center rounded-control text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-30"
-              >
-                <ChevronRight size={16} />
-              </button>
-          </div>
-
-          {slide && (
-            <div className="flex min-h-40 flex-1 basis-0 flex-col border-t border-line bg-elevated/40 p-4">
-              <div className="flex items-center gap-2">
-                  <StickyNote size={13} className="shrink-0 text-faint" />
-                  <span className="flex-1 text-xs font-semibold tracking-wide text-faint uppercase">
-                    {editing ? t('이 장 편집') : t('발표 노트')}
-                  </span>
-                  {!editing && (
-                    <Dropdown
-                      align="right"
-                      trigger={() => (
-                        <Button variant="ghost" size="sm" disabled={writing || saving}>
-                          <ListPlus size={13} />
-                          {t('장 편집')}
-                        </Button>
-                      )}
-                    >
-                      <MenuLabel>{t('{n}번 장').replace('{n}', String(index + 1))}</MenuLabel>
-                      <MenuItem onClick={() => addSlide(false)}>{t('앞에 장 추가')}</MenuItem>
-                      <MenuItem onClick={() => addSlide(true)}>{t('뒤에 장 추가')}</MenuItem>
-                      <MenuItem onClick={duplicateSlide}>{t('이 장 복제')}</MenuItem>
-                      <MenuItem onClick={() => moveSlide(-1)} disabled={index === 0}>
-                        {t('위로 옮기기')}
-                      </MenuItem>
-                      <MenuItem
-                        onClick={() => moveSlide(1)}
-                        disabled={index >= deck.slides.length - 1}
-                      >
-                        {t('아래로 옮기기')}
-                      </MenuItem>
-                      <MenuItem onClick={removeSlide}>{t('이 장 지우기')}</MenuItem>
-                      {LAYOUT_GROUPS.map((group, g) => (
-                        <Fragment key={group.label}>
-                          <MenuLabel>{g === 0 ? t('레이아웃') : t(group.label)}</MenuLabel>
-                          {group.layouts.map((candidate) => (
-                            <MenuItem
-                              key={candidate.id}
-                              checked={candidate.id === slide.layout}
-                              onClick={() => changeLayout(candidate.id)}
-                            >
-                              {t(candidate.label)}
-                            </MenuItem>
-                          ))}
-                        </Fragment>
-                      ))}
-                      <MenuLabel>{t('글자 크기')}</MenuLabel>
-                      <MenuItem
-                        onClick={() => setTextScale(STEPS[0] / TYPE.body)}
-                        hint={(slide.textScale ?? 1) > 1 ? '✓' : undefined}
-                      >
-                        {t('크게')}
-                      </MenuItem>
-                      <MenuItem
-                        onClick={() => setTextScale(1)}
-                        hint={(slide.textScale ?? 1) === 1 ? '✓' : undefined}
-                      >
-                        {t('보통')}
-                      </MenuItem>
-                      <MenuItem
-                        onClick={() => setTextScale(STEPS[2] / TYPE.body)}
-                        hint={(slide.textScale ?? 1) < 1 ? '✓' : undefined}
-                      >
-                        {t('작게')}
-                      </MenuItem>
-                    </Dropdown>
-                  )}
-                  {!editing && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={writing || checking}
-                      onClick={() => void runFactCheck(slide.id)}
-                    >
-                      {checking ? (
-                        <Loader2 size={13} className="animate-spin" />
-                      ) : (
-                        <ShieldQuestion size={13} />
-                      )}
-                      {t('팩트체크')}
-                    </Button>
-                  )}
-                </div>
-
-                {editing ? (
-                  <div className="mt-2 space-y-2">
-                    <p className="text-xs font-semibold text-muted">{t('슬라이드 텍스트')}</p>
-                    <Textarea
-                      rows={5}
-                      value={draft}
-                      onChange={(e) => setDraft(e.target.value)}
-                      aria-label={t('슬라이드 텍스트')}
-                    />
-                    <p className="text-xs text-faint">
-                      {t('위 슬라이드에서 글자를 눌러 바로 고칠 수 있습니다. 아래 상자는 한 번에 훑어 고칠 때 씁니다 — 첫 줄이 제목, 나머지 줄이 각각 한 항목이고, | 로 나눈 줄은 표의 한 행입니다.')}
-                    </p>
-                    {/* A table's cells are edited here; clicking one on the slide does not open them. */}
-                    {slideDraft && (['table', 'metrics', 'cards'].includes(selectedElement ?? '') || slideDraft.layout === 'table') && (
-                      <SlideDataEditor
-                        slide={slideDraft}
-                        onChange={(next) => {
-                          setSlideDraft(next)
-                          setDraft(toLines(next))
-                        }}
-                      />
-                    )}
-                    {slideDraft?.image && selectedElement === 'image' && (
-                      <div className="rounded-card border border-line bg-panel p-3">
-                        <label className="block text-xs text-muted">
-                          {t('그림 설명')}
-                          <Input
-                            aria-label={t('그림 설명')}
-                            value={slideDraft.image.caption ?? ''}
-                            onChange={(event) => setSlideDraft((current) => current?.image ? ({
-                              ...current,
-                              image: { ...current.image, caption: event.target.value },
-                            }) : current)}
-                          />
-                        </label>
-                      </div>
-                    )}
-                    {(slideDraft?.layout === 'chart' || patternOf(slideDraft?.layout)?.shape === 'chart') && slideDraft?.chart && selectedElement === 'chart' && (
-                      <div className="space-y-3 rounded-card border border-line bg-panel p-3">
-                        <div className="flex flex-wrap items-end gap-3">
-                          {slideDraft.layout === 'chart' && (
-                            <label className="text-xs text-muted">
-                              {t('차트 종류')}
-                              <select
-                                aria-label={t('차트 종류')}
-                                value={slideDraft.chart.kind}
-                                onChange={(event) => setSlideDraft((current) => current?.chart ? ({
-                                  ...current,
-                                  chart: { ...current.chart, kind: event.target.value as 'bar' | 'line' },
-                                }) : current)}
-                                className="mt-1 block h-9 rounded-control border border-line bg-panel px-2 text-sm"
-                              >
-                                <option value="bar">{t('막대')}</option>
-                                <option value="line">{t('꺾은선')}</option>
-                              </select>
-                            </label>
-                          )}
-                          <label className="min-w-28 flex-1 text-xs text-muted">
-                            {t('단위')}
-                            <Input
-                              aria-label={t('차트 단위')}
-                              value={slideDraft.chart.unit ?? ''}
-                              onChange={(event) => setSlideDraft((current) => current?.chart ? ({
-                                ...current,
-                                chart: { ...current.chart, unit: event.target.value || undefined },
-                              }) : current)}
-                            />
-                          </label>
-                        </div>
-                        <label className="block text-xs text-muted">
-                          {t('가로축 항목')}
-                          <Input
-                            aria-label={t('가로축 항목')}
-                            value={slideDraft.chart.categories.join(', ')}
-                            onChange={(event) => {
-                              const categories = event.target.value.split(',').map((value) => value.trim()).filter(Boolean)
-                              setSlideDraft((current) => current?.chart ? ({
-                                ...current,
-                                chart: {
-                                  ...current.chart,
-                                  categories,
-                                  series: current.chart.series.map((series) => ({
-                                    ...series,
-                                    values: categories.map((_, i) => series.values[i] ?? 0),
-                                  })),
-                                },
-                              }) : current)
-                            }}
-                          />
-                          <span className="mt-1 block text-2xs text-faint">{t('쉼표로 나눠 입력하세요')}</span>
-                        </label>
-                        {slideDraft.chart.series.map((series, seriesIndex) => (
-                          <div key={seriesIndex} className="grid gap-2 sm:grid-cols-[minmax(7rem,0.4fr)_1fr_auto]">
-                            <Input
-                              aria-label={t('{n}번째 계열 이름').replace('{n}', String(seriesIndex + 1))}
-                              value={series.name}
-                              onChange={(event) => setSlideDraft((current) => current?.chart ? ({
-                                ...current,
-                                chart: { ...current.chart, series: current.chart.series.map((row, i) => i === seriesIndex ? { ...row, name: event.target.value } : row) },
-                              }) : current)}
-                            />
-                            <Input
-                              aria-label={t('{n}번째 계열 값').replace('{n}', String(seriesIndex + 1))}
-                              value={series.values.join(', ')}
-                              onChange={(event) => {
-                                const values = event.target.value.split(',').map((value) => Number(value.trim())).filter(Number.isFinite)
-                                setSlideDraft((current) => current?.chart ? ({
-                                  ...current,
-                                  chart: { ...current.chart, series: current.chart.series.map((row, i) => i === seriesIndex ? { ...row, values } : row) },
-                                }) : current)
-                              }}
-                            />
-                            <Button
-                              size="sm"
-                              disabled={(slideDraft.chart?.series.length ?? 0) <= 1}
-                              onClick={() => setSlideDraft((current) => current?.chart ? ({
-                                ...current,
-                                chart: { ...current.chart, series: current.chart.series.filter((_, i) => i !== seriesIndex) },
-                              }) : current)}
-                            >
-                              {t('삭제')}
-                            </Button>
-                          </div>
-                        ))}
-                        <Button
-                          size="sm"
-                          onClick={() => setSlideDraft((current) => current?.chart ? ({
-                            ...current,
-                            chart: {
-                              ...current.chart,
-                              series: [...current.chart.series, {
-                                name: t('새 계열'),
-                                values: current.chart.categories.map(() => 0),
-                              }],
-                            },
-                          }) : current)}
-                        >
-                          {t('계열 추가')}
-                        </Button>
-                      </div>
-                    )}
-                    <p className="text-xs font-semibold text-muted">{t('발표 노트')}</p>
-                    <Textarea
-                      rows={3}
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                      placeholder={t('발표 노트')}
-                      aria-label={t('발표 노트')}
-                    />
-                    {error && (
-                      <div role="alert" className="rounded-card border border-danger/30 bg-panel px-3 py-2">
-                        <p className="text-sm text-danger">{error}</p>
-                        {error.includes(t('다른 곳에서 이미 수정')) && (
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            <Button size="sm" variant="secondary" onClick={() => void copySlideRecovery()}>
-                              <Copy size={13} />
-                              {recoveryCopied ? t('복사됨') : t('내 편집 내용 복사')}
-                            </Button>
-                            <Button size="sm" variant="primary" disabled={saving} onClick={() => void reloadLatestDeck()}>
-                              <RefreshCw size={13} />
-                              {t('최신본 불러오기')}
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="mt-1.5 min-h-0 flex-1 overflow-y-auto">
-                    <p className="text-base text-muted">
-                      {slide.notes || <span className="text-faint">{t('노트 없음')}</span>}
-                    </p>
-                    {slide.factCheck?.status === 'done' && (
-                      <FactCheckResults check={slide.factCheck} />
-                    )}
-                    {error && !editing && <p className="mt-2 text-sm text-danger">{error}</p>}
-                  </div>
-                )}
-            </div>
-          )}
-        </div>
+        {agentWorking && <DocumentLock testId="deck-agent-lock" />}
       </div>
 
+      {slide && <SlidePicture deck={deck} slide={slide} open={picturing} onClose={() => setPicturing(false)} />}
       {presenting && (
         <PresentMode
-          deck={deck}
+          deck={view}
           index={index}
           onIndex={setSelected}
           onClose={() => setPresenting(false)}
         />
       )}
-      <ConfirmDialog
-        open={discardAction !== null}
-        onClose={() => setDiscardAction(null)}
-        title={t('저장하지 않은 변경 내용이 있습니다')}
-        description={t('계속하면 이 장에서 바꾼 내용이 사라집니다.')}
-        confirmLabel={discardAction === 'close' ? t('저장하지 않고 닫기') : t('변경 내용 버리기')}
-        onConfirm={() => {
-          const action = discardAction
-          setEditing(false)
-          setSlideDraft(null)
-          if (action === 'close') onClose?.()
-        }}
+      <DocumentAsk
+        reason={doc.asking && doc.asking.reason !== 'op' && doc.asking.reason !== 'export' ? doc.asking.reason : null}
+        onAnswer={(choice) => void doc.answer(choice)}
       />
+      <Modal
+        open={doc.asking?.reason === 'op' || doc.asking?.reason === 'export'}
+        onClose={() => void doc.answer('cancel')}
+        title={t('저장하지 않은 편집이 있습니다')}
+        description={t(deckAsk.description)}
+        width="max-w-md"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button onClick={() => void doc.answer('cancel')}>{t('취소')}</Button>
+            <Button onClick={() => void doc.answer('discard')}>{t(deckAsk.discard)}</Button>
+            <Button variant="primary" onClick={() => void doc.answer('save')}>
+              {t(deckAsk.save)}
+            </Button>
+          </div>
+        }
+      />
+    </div>
+  )
+}
+
+/** A chart's kind, unit, categories and series, edited in the panel under the slide. */
+function ChartDataEditor({ slide, onChange }: { slide: Slide; onChange: (next: Slide) => void }) {
+  const t = useT()
+  const chart = slide.chart
+  if (!chart) return null
+  const write = (next: NonNullable<Slide['chart']>) => onChange({ ...slide, chart: next })
+  return (
+    <div className="space-y-3 rounded-card border border-line bg-panel p-3">
+      <div className="flex flex-wrap items-end gap-3">
+        {slide.layout === 'chart' && (
+          <label className="text-xs text-muted">
+            {t('차트 종류')}
+            <select
+              aria-label={t('차트 종류')}
+              value={chart.kind}
+              onChange={(event) => write({ ...chart, kind: event.target.value as 'bar' | 'line' })}
+              className="mt-1 block h-9 rounded-control border border-line bg-panel px-2 text-sm"
+            >
+              <option value="bar">{t('막대')}</option>
+              <option value="line">{t('꺾은선')}</option>
+            </select>
+          </label>
+        )}
+        <label className="min-w-28 flex-1 text-xs text-muted">
+          {t('단위')}
+          <Input
+            aria-label={t('차트 단위')}
+            value={chart.unit ?? ''}
+            onChange={(event) => write({ ...chart, unit: event.target.value || undefined })}
+          />
+        </label>
+      </div>
+      <label className="block text-xs text-muted">
+        {t('가로축 항목')}
+        <Input
+          aria-label={t('가로축 항목')}
+          value={chart.categories.join(', ')}
+          onChange={(event) => {
+            const categories = event.target.value.split(',').map((value) => value.trim()).filter(Boolean)
+            write({
+              ...chart,
+              categories,
+              series: chart.series.map((series) => ({ ...series, values: categories.map((_, i) => series.values[i] ?? 0) })),
+            })
+          }}
+        />
+        <span className="mt-1 block text-2xs text-faint">{t('쉼표로 나눠 입력하세요')}</span>
+      </label>
+      {chart.series.map((series, seriesIndex) => (
+        <div key={seriesIndex} className="grid gap-2 sm:grid-cols-[minmax(7rem,0.4fr)_1fr_auto]">
+          <Input
+            aria-label={t('{n}번째 계열 이름').replace('{n}', String(seriesIndex + 1))}
+            value={series.name}
+            onChange={(event) => write({ ...chart, series: chart.series.map((row, i) => i === seriesIndex ? { ...row, name: event.target.value } : row) })}
+          />
+          <Input
+            aria-label={t('{n}번째 계열 값').replace('{n}', String(seriesIndex + 1))}
+            value={series.values.join(', ')}
+            onChange={(event) => {
+              const values = event.target.value.split(',').map((value) => Number(value.trim())).filter(Number.isFinite)
+              write({ ...chart, series: chart.series.map((row, i) => i === seriesIndex ? { ...row, values } : row) })
+            }}
+          />
+          <Button
+            size="sm"
+            disabled={chart.series.length <= 1}
+            onClick={() => write({ ...chart, series: chart.series.filter((_, i) => i !== seriesIndex) })}
+          >
+            {t('삭제')}
+          </Button>
+        </div>
+      ))}
+      <Button
+        size="sm"
+        onClick={() => write({ ...chart, series: [...chart.series, { name: t('새 계열'), values: chart.categories.map(() => 0) }] })}
+      >
+        {t('계열 추가')}
+      </Button>
     </div>
   )
 }

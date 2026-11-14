@@ -25,8 +25,13 @@ _CHARS_PER_TOKEN = 3.0
 
 
 def storage_root() -> Path:
+    """The storage directory, made when it can be: a read or delete where it cannot be made
+    (a process without rights to its parent) still resolves, and finds nothing."""
     root = Path(settings.file_storage_dir)
-    root.mkdir(parents=True, exist_ok=True)
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        log.debug("storage root not created: %s", type(exc).__name__)
     return root
 
 
@@ -94,6 +99,18 @@ def delete_blob(key: str) -> None:
         blob_path(key).unlink(missing_ok=True)
     except (OSError, ValueError) as exc:
         log.warning("could not remove blob %s: %s", key.replace("\n", " ").replace("\r", " "), exc)
+    # a video's keyframes (`video_jobs`) go with it
+    try:
+        frames = blob_path(frames_dir(key))
+        if frames.is_dir():
+            shutil.rmtree(frames, ignore_errors=True)
+    except (OSError, ValueError):
+        pass
+
+
+def frames_dir(key: str) -> str:
+    """Storage key of the directory holding a video's keyframes (`<n>.jpg`, `<n>s.jpg`)."""
+    return f"{key}.frames"
 
 
 #: inline-renderable types; never SVG/HTML (script on the API origin)

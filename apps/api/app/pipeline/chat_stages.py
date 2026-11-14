@@ -13,6 +13,7 @@ from app.pipeline.stage import Base, Context
 from app.services import (
     answer_plan,
     cover_letter,
+    coverage,
     current_evidence,
     freshness,
     guide_echo,
@@ -361,6 +362,36 @@ class Weekdays(Base):
                      [f.fixed for f in fixes][:6])
 
 
+class Coverage(Base):
+    """An each-item ask over project files (「각 강을 한 줄로」) answered for fewer of them ends
+    by naming the ones it left out — never a silent drop."""
+
+    name = "answer-coverage"
+    reads = ("request", "document.answer")
+    writes = ("document.answer",)
+
+    def _items(self, bundle: Bundle) -> list[coverage.Item]:
+        return [coverage.Item.of(item) for item in bundle.request.project_sources or []
+                if item.get("state") in ("included", "truncated")]
+
+    def skip(self, bundle: Bundle) -> str:
+        req = bundle.request
+        if not coverage.asks_each(req.first_message or req.text):
+            return "not an each-item request"
+        return "" if len(self._items(bundle)) >= 2 else "fewer than two project files"
+
+    async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
+        items = self._items(bundle)
+        left = coverage.missing(items, bundle.document.answer)
+        if not left:
+            return
+        bundle.document.answer = (bundle.document.answer.rstrip() + "\n\n"
+                                  + coverage.note(left, len(items)))
+        yield {"type": "step", "id": "coverage",
+               "label": f"자료 {len(items)}건 중 {len(left)}건 빠짐", "status": "done",
+               "detail": ", ".join(item.shown for item in left)}
+
+
 class Replace(Base):
     """Finished answer replaces the streamed one (client retracts the first match)."""
 
@@ -377,7 +408,7 @@ class Replace(Base):
 
 
 for _stage in (Normalize(), StrayHan(), TextFit(), CopyMarks(), MarkLanguage(), GuideEcho(),
-               Weekdays(), Replace()):
+               Weekdays(), Coverage(), Replace()):
     registry.register(_stage)
 
 
@@ -390,7 +421,7 @@ def bundle_for(*, answer: str, request: str, model: dict, actual_model: str | No
                check_options: dict | None = None,
                skill_specs: dict | None = None, traced: bool = False,
                evidence: list[str] | None = None, advice: str = "",
-               urgent: str = "") -> Bundle:
+               urgent: str = "", project_sources: list[dict] | None = None) -> Bundle:
     """Chat answer bundle: streamed answer, turn text, material."""
     req = Request(
         text=request, model=model["id"], api_key=api_key, outline_model=judge,
@@ -400,7 +431,7 @@ def bundle_for(*, answer: str, request: str, model: dict, actual_model: str | No
         check_material=check_material, tool_outputs=list(tool_outputs),
         skill_keys=tuple(skill_keys), check_options=dict(check_options or {}),
         skill_specs=dict(skill_specs or {}), traced=traced, evidence=list(evidence or []),
-        advice=advice, urgent=urgent,
+        advice=advice, urgent=urgent, project_sources=list(project_sources or []) or None,
     )
     return Bundle(
         request=req, material=Material(given=material),

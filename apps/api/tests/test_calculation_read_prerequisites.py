@@ -272,3 +272,11 @@ async def test_a_skill_lookup_is_not_a_read_that_can_end_the_turn(monkeypatch):
                          result=ToolResult(content="없습니다", failed=True))])
     assert seen[0]["tools"] == ["calculate"]
     assert lookups == [] and text == "16"
+
+
+def test_a_request_with_its_own_numbers_is_not_ended_by_an_empty_read():
+    from app.services import agent
+
+    # 원금·이율·기간 are in the request: an unrelated search result does not end the turn
+    assert agent._states_operands("원금 3,000만 원을 연 4.2% 월복리로 7년 두면 원리금은?")
+    assert not agent._states_operands("우리 회사 작년 매출 증가율을 계산해 줘")

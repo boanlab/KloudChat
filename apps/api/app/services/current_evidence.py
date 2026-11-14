@@ -108,7 +108,8 @@ def usable_read_result(tool: Tool | None, result: ToolResult) -> bool:
     if tool.source != "builtin":
         # authorized MCP read data counts as retrieved
         return True
-    if tool.name == "web_search":
+    # `request_web_search` runs the queries a strict-local turn's person allowed
+    if tool.name in ("web_search", "request_web_search"):
         return isinstance(result.search_evidence, SearchEvidence) and bool(
             result.search_evidence.source_urls
         )

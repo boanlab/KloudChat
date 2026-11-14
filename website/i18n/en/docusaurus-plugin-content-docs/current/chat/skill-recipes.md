@@ -51,7 +51,7 @@ Use **개조식 보고** (「과장님께 올릴 1쪽 보고로」) and **비교
 
 ## Before the meeting: the agenda
 
-The **회의 안건** (Meeting agenda) template is the minutes' counterpart. On the report screen choose **+** → template picker → **회의 안건** (or say 「회의 안건」 or 「안건지」 in the request) and send the items and their owners. It writes the same head as the minutes (meeting, date and time, place, attendees, author), an agenda table (order · item · owner · time · goal), points to review per item, pre-reads and the decisions needed. The goal is one of 보고 (information), 논의 (discussion) or 결정 (decision); an owner the material does not name is 「미정」 with one line saying what to confirm. Without a meeting date or attendees in the material, it asks before writing.
+The **회의 안건** (Meeting agenda) template is the minutes' counterpart. On the report screen choose the **Template** chip → **회의 안건** (or say 「회의 안건」 or 「안건지」 in the request) and send the items and their owners. It writes the same head as the minutes (meeting, date and time, place, attendees, author), an agenda table (order · item · owner · time · goal), points to review per item, pre-reads and the decisions needed. The goal is one of 보고 (information), 논의 (discussion) or 결정 (decision); an owner the material does not name is 「미정」 with one line saying what to confirm. Without a meeting date or attendees in the material, it asks before writing.
 
 ## Building an agent from skills
 

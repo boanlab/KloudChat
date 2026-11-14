@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { Button, LoadingState, Modal, ReloadNotice } from '@/components/ui'
+import { Button, Modal, ReloadNotice } from '@/components/ui'
 import { LoadMore } from '@/components/ui/ShowMore'
 import type { FileRow } from '@/lib/api'
 import { useT } from '@/lib/useT'
 import { FileBoxFilter, FileLine } from './FileBoxList'
 import { useFileBox, type FileOrigin } from './fileBox'
+import { ListSkeleton } from '@/components/ui/Skeleton'
 
 /** 「파일함에서 고르기」: files already in the account attached again, nothing uploaded. */
 export function FileBoxPicker({
@@ -67,7 +68,7 @@ export function FileBoxPicker({
       {box.failed && <ReloadNotice onRetry={() => void box.load()} />}
       <div className="max-h-[50vh] overflow-y-auto">
         {box.loading ? (
-          <LoadingState />
+          <ListSkeleton rows={5} />
         ) : shown.length === 0 ? (
           <p className="py-6 text-center text-base text-muted">
             {query ? t('찾는 파일이 없습니다') : t('아직 파일이 없습니다')}

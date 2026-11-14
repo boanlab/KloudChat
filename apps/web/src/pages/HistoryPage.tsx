@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, MessageSquare, Search, Trash2, TriangleAlert } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, MessageSquare, Plus, Search, Trash2, TriangleAlert } from 'lucide-react'
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -7,13 +7,12 @@ import {
   ConfirmDialog,
   EmptyState,
   Input,
-  LoadingState,
   Modal,
   ReloadNotice,
 } from '@/components/ui'
 import { kindMeta } from '@/lib/kinds'
 import { errorMessage, historyApi, searchApi, type SearchRun } from '@/lib/api'
-import { cn, relativeTime } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { DeleteFilesChoice } from '@/components/files/DeleteFilesChoice'
 import { PageBody } from '@/components/layout/AppShell'
@@ -21,6 +20,8 @@ import { TopBar } from '@/components/layout/TopBar'
 import { dayLabel, dayOf } from '@/lib/days'
 import { useT } from '@/lib/useT'
 import type { SessionKind } from '@/types'
+import { RelTime } from '@/components/ui/RelTime'
+import { ListSkeleton } from '@/components/ui/Skeleton'
 
 /** Server pages list and search alike. */
 const PAGE_SIZE = 50
@@ -338,11 +339,21 @@ export function HistoryPage() {
 
       <div className={cn('mt-2', loading && listing && 'opacity-60')} aria-busy={loading}>
         {loading && !listing ? (
-          <LoadingState />
+          <ListSkeleton />
         ) : rows.length === 0 && !failed ? (
           <EmptyState
             icon={<MessageSquare size={18} />}
             title={urlQuery ? t('검색 결과가 없습니다') : t('아직 대화가 없습니다')}
+            action={
+              urlQuery ? (
+                <Button onClick={() => setQuery('')}>{t('검색 지우기')}</Button>
+              ) : (
+                <Button variant="primary" onClick={() => navigate('/')}>
+                  <Plus size={14} />
+                  {t('새 대화 시작')}
+                </Button>
+              )
+            }
           />
         ) : (
           <div className="overflow-hidden rounded-card border border-line bg-panel">
@@ -390,7 +401,7 @@ export function HistoryPage() {
                     </button>
                     <Badge className="shrink-0 max-sm:hidden">{t(meta?.label ?? s.kind)}</Badge>
                     <span className="w-20 shrink-0 pr-1 text-right text-xs text-faint tabular-nums max-sm:w-14">
-                      {relativeTime(s.updatedAt)}
+                      <RelTime iso={s.updatedAt} />
                     </span>
                   </div>
                 </Fragment>

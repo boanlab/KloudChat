@@ -136,7 +136,7 @@ def _shape_of(opener: str | None) -> str:
 
 def _plain_label(raw: str) -> str:
     """Mermaid label as text: <br/> → newline, markup/entities dropped, 「key : value」 kept."""
-    text = re.sub(r"<\s*br\s*/?\s*>", "\n", raw or "", flags=re.I)
+    text = re.sub(r"<\s{0,3}br\s{0,3}/?\s{0,3}>", "\n", raw or "", flags=re.I)
     text = re.sub(r"<[^>]{1,40}>", "", text)
     text = text.replace("&nbsp;", " ").replace("&amp;", "&").replace("#quot;", '"')
     lines = [re.sub(r"\s{2,}", " ", line).strip() for line in text.split("\n")]
@@ -183,7 +183,7 @@ def parse(source: str) -> Graph | None:
             continue
         if line.startswith("%%") or re.match(r"^(classDef|style|linkStyle|direction)\b", line):
             continue
-        if m := re.match(r"^class\s+([\w,가-힣 ]+?)\s+hot\b", line):
+        if m := re.match(r"^class\s{1,4}([\w,가-힣][\w,가-힣 ]{0,200}?)\s{1,4}hot\b", line):
             hot.update(x.strip() for x in m.group(1).split(","))
             continue
         if m := _SUBGRAPH.match(line):

@@ -256,11 +256,13 @@ export function Badge({
   tone = 'neutral',
   className,
   title,
+  'data-testid': testId,
 }: {
   children: ReactNode
   tone?: 'neutral' | 'accent' | 'success' | 'warn' | 'danger'
   className?: string
   title?: string
+  'data-testid'?: string
 }) {
   const tones = {
     neutral: 'bg-elevated text-muted border-line',
@@ -272,6 +274,7 @@ export function Badge({
   return (
     <span
       title={title}
+      data-testid={testId}
       className={cn(
         'inline-flex shrink-0 items-center gap-1 rounded-control border px-1.5 py-0.5 text-xs font-medium whitespace-nowrap',
         tones[tone],

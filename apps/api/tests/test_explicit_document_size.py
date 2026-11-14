@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import io
 import json
-import subprocess
-import sys
 
 import httpx
 import pytest
@@ -55,17 +53,23 @@ def test_only_section_counts_set_a_report_outline_size(prompt, expected):
     assert report.requested_sections(prompt) == expected
 
 
-def test_count_scan_handles_long_spacing_and_many_candidates():
-    script = """
+def test_count_scan_handles_long_spacing_and_many_candidates(linear_scan):
+    # growth first, in a child process: a scan that backtracks fails here instead of hanging
+    linear_scan("""
 from app.services.outline import requested_count
-padding = " \\t\\n\\u3000" * 50_000
-assert requested_count("4장," * 20_000, ("장",), maximum=30) == 4
-spaced = "표지" + padding + "포함" + padding + "4" + padding + "장"
-assert requested_count(spaced, ("장",), maximum=30) == 4
-assert requested_count("4장" + padding + "이상", ("장",), maximum=30) is None
-assert requested_count("4" + padding + "대", ("장",), maximum=30) is None
-"""
-    subprocess.run([sys.executable, "-c", script], check=True, capture_output=True, timeout=5)
+def run(n):
+    padding = " \\t\\n\\u3000" * n
+    requested_count("4장," * n, ("장",), maximum=30)
+    requested_count("표지" + padding + "포함" + padding + "4" + padding + "장", ("장",), maximum=30)
+""", 10_000)
+    from app.services.outline import requested_count
+
+    padding = " \t\n\u3000" * 50_000
+    assert requested_count("4장," * 20_000, ("장",), maximum=30) == 4
+    spaced = "표지" + padding + "포함" + padding + "4" + padding + "장"
+    assert requested_count(spaced, ("장",), maximum=30) == 4
+    assert requested_count("4장" + padding + "이상", ("장",), maximum=30) is None
+    assert requested_count("4" + padding + "대", ("장",), maximum=30) is None
 
 
 @pytest.mark.parametrize(

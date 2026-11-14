@@ -2,7 +2,8 @@ import { WifiOff, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { IssueReportDialog } from '@/components/issues/IssueReportDialog'
-import { useIssueBadge } from '@/lib/issues'
+import { useIssueBadge, useIssues } from '@/lib/issues'
+import { routeTitle, setBrandTitle, setPageTitle, setUnreadTitle } from '@/lib/pageTitle'
 import { useBotAttentionBadge } from '@/lib/publishing'
 import { useNarrowLayout } from '@/lib/useMediaQuery'
 import { cn } from '@/lib/utils'
@@ -152,6 +153,28 @@ function useConfigWatch() {
   }, [refreshConfig])
 }
 
+/** The tab says which screen this is (and how many replies wait), not only the brand. */
+function useTabTitle(pathname: string) {
+  const t = useT()
+  const brand = useStore((s) => s.brand.name)
+  const sessionId = pathname.match(/^\/s\/([^/]+)/)?.[1]
+  const projectId = pathname.match(/^\/projects\/([^/]+)/)?.[1]
+  const sessionTitle = useStore((s) => (sessionId ? s.sessions.find((row) => row.id === sessionId)?.title : undefined))
+  const projectName = useStore((s) => (projectId ? s.projects.find((row) => row.id === projectId)?.name : undefined))
+  const unread = useIssues((s) => s.unread)
+  useEffect(() => {
+    setBrandTitle(brand)
+  }, [brand])
+  useEffect(() => {
+    const label = routeTitle(pathname)
+    setPageTitle(sessionTitle || projectName || (label ? t(label) : ''))
+  }, [pathname, sessionTitle, projectName, t])
+  useEffect(() => {
+    setUnreadTitle(unread)
+    return () => setUnreadTitle(0)
+  }, [unread])
+}
+
 export function AppShell() {
   const t = useT()
   const narrow = useNarrowLayout()
@@ -161,6 +184,7 @@ export function AppShell() {
   useIssueBadge()
   useBotAttentionBadge()
   useConfigWatch()
+  useTabTitle(location.pathname)
 
   // Narrow layout: sidebar overlays, so navigation closes it.
   useEffect(() => {

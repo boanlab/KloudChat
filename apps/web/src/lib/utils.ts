@@ -22,6 +22,11 @@ export function formatTokens(n: number) {
   return String(n)
 }
 
+/** Large counts short, in the screen's language: 「1.2만」 / 「12K」; small ones as they are. */
+export function formatCompact(n: number) {
+  return new Intl.NumberFormat(currentLocale(), { notation: 'compact', maximumFractionDigits: 1 }).format(n)
+}
+
 /** Null-tolerant: a never-signed-in user has no `lastActiveAt`. */
 export function relativeTime(iso: string | null | undefined) {
   if (!iso) return '—'

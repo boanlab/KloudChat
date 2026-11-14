@@ -70,6 +70,13 @@ class FileOut(Wire):
     ocr_total: int = 0
     ocr_done: int = 0
     ocr_review: int = 0
+    #: video/audio job (`video_jobs`): null | "queued" | "running" | "done" | "failed", the
+    #: step, parts done of total, and the length in seconds once probed
+    media_state: str | None = None
+    media_stage: str | None = None
+    media_done: int = 0
+    media_total: int = 0
+    media_duration: float = 0.0
     created_at: datetime
 
     @classmethod
@@ -77,6 +84,7 @@ class FileOut(Wire):
         out = cls.model_validate(f, from_attributes=True)
         out.preview = f.text[:280]
         out.indexed = f.indexed_at is not None
+        out.media_duration = float((f.media or {}).get("duration") or 0.0)
         return out
 
 
@@ -100,6 +108,8 @@ class ProjectOut(Wire):
     design_system_id: str | None = None
     #: surface → template id for new sessions
     render_templates: JsonMap = Field(default_factory=dict)
+    #: strict-local web search for this project; null follows the admin (`search_consent`)
+    strict_local_web_search: str | None = None
     files: list[FileOut] = Field(default_factory=list)
     session_ids: list[str] = Field(default_factory=list)
     created_at: datetime
@@ -139,6 +149,8 @@ class ProjectPatch(Wire):
     #: explicit null clears; omitted unchanged (`exclude_unset`)
     design_system_id: str | None = None
     render_templates: dict[str, str] | None = None
+    #: explicit null follows the admin; never looser than the admin's (`search_consent`)
+    strict_local_web_search: Literal["ask", "allow", "off"] | None = None
 
 
 _CARD_CHARS = 400

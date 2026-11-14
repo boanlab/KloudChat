@@ -51,7 +51,7 @@ jobs:
           build_all() {
             echo "$1"
             {
-              echo 'matrix={"include":[{"name":"api","context":"apps/api","image":"kloudchat-api"},{"name":"print","context":"apps/print","image":"kloudchat-print"},{"name":"web","context":"apps/web","image":"kloudchat-web"}]}'
+              echo 'matrix={"include":[{"name":"api","context":"apps/api","image":"kloudchat-api"},{"name":"print","context":"apps/print","image":"kloudchat-print"},{"name":"web","context":"apps/web","image":"kloudchat-web"},{"name":"media","context":"apps/media","image":"kloudchat-media"}]}'
               echo 'any=true'
             } >> "$GITHUB_OUTPUT"
           }
@@ -89,6 +89,10 @@ jobs:
           if echo "$changed" | grep -q '^apps/web/'; then
             [ -n "$entries" ] && entries="$entries,"
             entries="$entries{\"name\":\"web\",\"context\":\"apps/web\",\"image\":\"kloudchat-web\"}"
+          fi
+          if echo "$changed" | grep -q '^apps/media/'; then
+            [ -n "$entries" ] && entries="$entries,"
+            entries="$entries{\"name\":\"media\",\"context\":\"apps/media\",\"image\":\"kloudchat-media\"}"
           fi
 
           if [ -z "$entries" ]; then

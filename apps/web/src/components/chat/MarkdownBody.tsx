@@ -1,7 +1,7 @@
 import { Check, Copy, X } from 'lucide-react'
 import { detachTables } from '@/lib/markdownTables'
 import { escapeCurrency } from '@/lib/mathDollars'
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useContext, useEffect, useMemo, useState } from 'react'
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import rehypeKatex from 'rehype-katex'
 import remarkCjkFriendly from 'remark-cjk-friendly'
@@ -16,8 +16,12 @@ import { StepList } from '@/components/report/StepList'
 import { diagramKey } from '@/lib/diagramKey'
 import { cn } from '@/lib/utils'
 import { copyText } from '@/lib/clipboard'
+import { MarkdownTable, MarkdownTh } from './MarkdownTable'
 import { useT } from '@/lib/useT'
 import { rehypePlaceholders } from '@/lib/placeholders'
+import { CitationContext, citationHref, linkCitations } from '@/lib/shelfCitations'
+import { linkTimestamps, VIDEO_LINK, type VideoRef } from '@/lib/media'
+import { TimeChip } from './TimeChip'
 
 // Embedded raster pictures only; the same rule as `services/pictures.py`.
 const EMBEDDED_PICTURE =
@@ -260,12 +264,25 @@ export function MarkdownBody({
   children,
   className,
   owner,
+  videos,
 }: {
   children: string
   className?: string
   owner?: DiagramOwner
+  /** Videos the conversation has: time marks written as text link to them. */
+  videos?: VideoRef[]
 }) {
-  const source = useMemo(() => detachTables(normaliseMath(withoutBrokenPictures(children))), [children])
+  const t = useT()
+  // In a project conversation, a citation of project material opens the source viewer.
+  const openCitation = useContext(CitationContext)
+  const cited = useMemo(
+    () => (openCitation ? linkCitations(children) : null),
+    [children, openCitation],
+  )
+  const source = useMemo(
+    () => detachTables(normaliseMath(withoutBrokenPictures(linkTimestamps(cited?.content ?? children, videos ?? [])))),
+    [children, cited, videos],
+  )
   return (
     <div
       className={cn(
@@ -321,6 +338,22 @@ export function MarkdownBody({
           },
           strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
           a: ({ children, href }) => {
+            const target = openCitation && cited ? citationHref(href) : null
+            const cites = target ? cited?.sources.get(target[0]) : undefined
+            if (target && cites && openCitation) {
+              return (
+                <button
+                  type="button"
+                  data-citation={target[0]}
+                  aria-label={t('출처 {n} 원문 보기: {name}').replace('{n}', String(target[0])).replace('{name}', cites.name)}
+                  title={cites.name}
+                  onClick={() => openCitation({ n: target[0], source: cites, claim: cited?.claims[target[1]] ?? '' })}
+                  className="mx-0.5 inline-block rounded border border-accent/40 bg-accent-soft px-1 align-baseline text-[0.72em] leading-snug text-accent hover:bg-accent hover:text-accent-fg"
+                >
+                  {target[0]}
+                </button>
+              )
+            }
             // A source citation the server linked: `[[3]](url)` renders as a small badge.
             const citation =
               Array.isArray(children) && children.length === 1
@@ -328,6 +361,14 @@ export function MarkdownBody({
                 : typeof children === 'string'
                   ? children
                   : ''
+            // A moment of a video: its time and picture, playing from there.
+            const moment = VIDEO_LINK.exec(href ?? '')
+            if (moment && moment[2] !== undefined) {
+              const number = /^\[(\d{1,2})\]$/.exec(citation)?.[1]
+              const chip = <TimeChip fileId={moment[1]} seconds={Number(moment[2])} number={number} />
+              // a stamp or a number is the chip itself; a source line keeps its words before it
+              return number || /^(?:\d{1,2}:)?\d{1,2}:\d{2}$/.test(citation) ? chip : <>{children}{chip}</>
+            }
             if (/^\[\d{1,2}\]$/.test(citation)) {
               return (
                 <a
@@ -359,17 +400,12 @@ export function MarkdownBody({
           ),
           hr: () => <hr className="my-4 border-line" />,
           // `min-w` makes the wrapper scroll instead of squeezing columns to one glyph per line.
-          table: ({ children }) => (
-            <div className="my-3 overflow-x-auto rounded-card border border-line">
-              <table className="w-full min-w-[30rem] border-collapse text-base">
-                {children}
-              </table>
-            </div>
-          ),
+          // Headings sort the rows (MarkdownTable); `tbody`/`tr` pass their nodes along for it.
+          table: ({ node, children }) => <MarkdownTable node={node as never}>{children}</MarkdownTable>,
           thead: ({ children }) => <thead className="bg-elevated">{children}</thead>,
-          th: ({ children }) => (
-            <th className="border-b border-line px-3 py-2 text-left font-semibold break-keep">{children}</th>
-          ),
+          tbody: ({ children }) => <tbody>{children}</tbody>,
+          tr: ({ children }) => <tr>{children}</tr>,
+          th: ({ node, children }) => <MarkdownTh node={node as never}>{children}</MarkdownTh>,
           // The wrapper draws the outer border, so the last row has none.
           td: ({ children }) => (
             <td className="border-b border-line px-3 py-2 align-top break-keep [tr:last-child>&]:border-0">

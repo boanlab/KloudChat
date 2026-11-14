@@ -11,6 +11,8 @@ import { kindMeta, kindOrder } from '@/lib/kinds'
 import type { SessionKind } from '@/types'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
+import { PasswordInput } from '@/components/ui/PasswordInput'
+import { usePageTitle } from '@/lib/pageTitle'
 
 type FieldKey = 'name' | 'email' | 'password'
 
@@ -37,6 +39,7 @@ export function LoginPage() {
   const lang = useStore((s) => s.lang)
   const { login, signup, authError, authRetryAfter, bootstrap, signedOutReason, adoptSession } = useStore()
   const [mode, setMode] = useState<'login' | 'signup'>('login')
+  usePageTitle(mode === 'signup' ? t('회원가입') : t('로그인'))
   // No router while signed out: `?token=` on `/verify` confirms signup, elsewhere resets a password.
   const [resetToken, setResetToken] = useState(() =>
     window.location.pathname === '/verify'
@@ -231,7 +234,7 @@ export function LoginPage() {
             {t('생성형 AI 워크스페이스')}
           </h1>
           <p className="mt-3 text-base leading-relaxed text-muted">
-            {t('자료와 지침을 프로젝트에 모아 두면, 모든 화면이 같은 맥락 위에서 작동합니다. 만든 아티팩트는 아티팩트 화면에 쌓이고 문서로 내보낼 수 있습니다.')}
+            {t('자료와 지침을 프로젝트에 모아 두면, 모든 화면이 같은 맥락 위에서 작동합니다. 보고서는 웹 보고서·한글·Word로, 슬라이드는 웹 슬라이드·PowerPoint로 만들고, 만든 것은 아티팩트 화면에 쌓입니다.')}
           </p>
           <ul className="mt-8 space-y-3">
             {(enabledKinds ?? []).map((kind) => {
@@ -305,6 +308,13 @@ export function LoginPage() {
             </div>
           )}
 
+          {signedOutReason === 'expired' && !resetToken && !forgotOpen && (
+            <div role="status" className="mt-5 flex items-start gap-2 rounded-control border border-line bg-elevated px-3 py-2.5 text-base text-muted">
+              <Clock size={14} className="mt-0.5 shrink-0" />
+              <span>{t('로그인이 만료되었습니다. 다시 로그인하면 하던 화면으로 돌아갑니다.')}</span>
+            </div>
+          )}
+
           {signedOutReason === 'idle' && !resetToken && !forgotOpen && (
             <div className="mt-5 flex items-start gap-2 rounded-control border border-line bg-elevated px-3 py-2.5 text-base text-muted">
               <Clock size={14} className="mt-0.5 shrink-0" />
@@ -320,9 +330,8 @@ export function LoginPage() {
                 error={errorFor('password')}
                 hint={<PasswordRule value={password} minLength={passwordMin} />}
               >
-                <Input
+                <PasswordInput
                   ref={passwordRef}
-                  type="password"
                   value={password}
                   onChange={(e) => {
                     setPassword(e.target.value)
@@ -491,9 +500,8 @@ export function LoginPage() {
               error={errorFor('password')}
               hint={mode === 'signup' ? <PasswordRule value={password} minLength={passwordMin} /> : undefined}
             >
-              <Input
+              <PasswordInput
                 ref={passwordRef}
-                type="password"
                 aria-required
                 value={password}
                 onChange={(e) => {

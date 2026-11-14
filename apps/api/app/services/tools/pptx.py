@@ -6,22 +6,43 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.db import SessionLocal
-from app.services import pptx_doc
+from app.services import pptx_doc, pptx_ops
 from app.services import pptx_edit as edits
 from app.services.tools.office import Toolset, tools_for
 
-__all__ = ["NAMES", "TOOLS", "pptx_edit", "pptx_read", "pptx_write"]
+__all__ = ["NAMES", "TOOLS", "pptx_edit", "pptx_read", "pptx_restore", "pptx_write"]
 
 _OP_HELP = (
     "replace_text {id:'s2.3', text} · fill_blank {blank, value, at?} · "
     "set_cell {table:'s3.2', row, col, text} · set_notes {slide:'s2', text} · "
     "insert_table_row {table, after} · delete_table_row {table, row} · "
     "add_slide {after:'s3', title, body, like?} · duplicate_slide {id:'s2', after?} · "
-    "delete_slide {id} · move_slide {id, after} ('s0' = to the front)"
+    "delete_slide {id} · move_slide {id, after} ('s0' = to the front) · "
+    "insert_table {slide, rows, replace?} · insert_table_column {table, after} · "
+    "delete_table_column {table, col} · insert_picture {slide, file, replace?} · "
+    "replace_picture {id, file} · change_layout {slide, layout}"
 )
 
 
-def _build(args: dict[str, Any]) -> tuple[str, bytes]:
+async def _look(db: Any, ctx: Any) -> tuple[dict | None, str] | None:
+    """The deck's theme and slides template: the conversation's pick, else the project's
+    (`pptx_doc.project_look`, where the slides surface defines it)."""
+    project_look = getattr(pptx_doc, "project_look", None)
+    if project_look is None:
+        return None
+    from app.models.chat import ChatSession
+    from app.models.user import User
+
+    user = await db.get(User, ctx.user_id)
+    session = await db.get(ChatSession, ctx.session_id) if ctx.session_id else None
+    if user is None:
+        return None
+    return await project_look(db, user, session)
+
+
+def _build(args: dict[str, Any], look: Any = None) -> tuple[str, bytes]:
+    """A new deck from the arguments, in `look` (`_look`: theme tokens and template) when
+    `pptx_doc.deck` takes one."""
     title = " ".join(str(args.get("title") or "").split())[:120]
     raw = args.get("slides")
     slides = [s for s in raw if isinstance(s, dict)] if isinstance(raw, list) else []
@@ -39,7 +60,17 @@ def _build(args: dict[str, Any]) -> tuple[str, bytes]:
             raise ValueError(f"slides[{index}].rows는 [[머리 칸, …], [값, …]] 꼴입니다.")
     subtitle = " ".join(str(args.get("subtitle") or "").split())[:200]
     closing = " ".join(str(args.get("closing") or "").split())[:80]
+    if isinstance(look, tuple) and _takes_look():
+        tokens, template = look
+        return title, pptx_doc.deck(title, subtitle, slides, closing, tokens=tokens,
+                                    template=template or "")
     return title, pptx_doc.deck(title, subtitle, slides, closing)
+
+
+def _takes_look() -> bool:
+    import inspect
+
+    return "tokens" in inspect.signature(pptx_doc.deck).parameters
 
 
 TOOLS = tools_for(Toolset(
@@ -50,9 +81,9 @@ TOOLS = tools_for(Toolset(
     error=edits.PptxError,
     # looked up per run, so a test can swap the database
     session=lambda: SessionLocal(),
-    ops=edits.OPS,
+    ops=edits.OPS + pptx_ops.OPS,
     op_help=_OP_HELP,
-    renumbers=edits.RENUMBERS,
+    renumbers=edits.RENUMBERS | pptx_ops.RENUMBERS,
     read_text=(
         "Read the PowerPoint deck open beside this chat, as the person last saved it in the "
         "editor. Returns each slide `── s2 (레이아웃: …) ──` and its shapes `s2.1 (제목): …`, "
@@ -73,16 +104,25 @@ TOOLS = tools_for(Toolset(
         "speaker notes; insert_table_row {table, after}; delete_table_row {table, row}; "
         "add_slide {after:'s3', title, body} adds a slide shaped like slide `after` (or "
         "like:'s2'), body one line per bullet; duplicate_slide {id, after?}; delete_slide "
-        "{id}; move_slide {id, after} (after:'s0' moves it to the front). Charts, pictures and "
-        "SmartArt cannot be edited. Put only facts the person gave; anything still unknown "
-        "stays a bracket blank like 「[담당자]」."
+        "{id}; move_slide {id, after} (after:'s0' moves it to the front). "
+        "「5장」 means s5, the fifth slide in order, not a number printed on a slide. "
+        "insert_table {slide:'s4', rows: [['구분','값'], ['…','…']], replace:'s4.2'} puts a "
+        "real table on the slide (in place of shape s4.2 when given; a request to show a "
+        "slide 「as a table」 is this, never table-like lines of text); insert_table_column "
+        "{table:'s3.2', after: col}; delete_table_column {table, col}; insert_picture "
+        "{slide, file, replace?} and replace_picture {id:'s2.4', file} with `file` an image "
+        "the person attached or a tool made in this conversation (its name or id); "
+        "change_layout {slide, layout} moves a slide to another layout pptx_read lists, its "
+        "content kept. Charts and SmartArt cannot be edited, and a chart cannot be made: say "
+        "so. Put only facts the person gave; anything still unknown stays a bracket blank "
+        "like 「[담당자]」."
     ),
     edit_items={
         "type": "object",
         # where an op acts, then what it puts there: a model that writes the keys in this
         # order (DeepSeek) otherwise ends a set_cell at `col`, without its text
         "properties": {
-            "op": {"type": "string", "enum": list(edits.OPS)},
+            "op": {"type": "string", "enum": list(edits.OPS + pptx_ops.OPS)},
             "id": {"type": "string"},
             "slide": {"type": "string"},
             "table": {"type": "string"},
@@ -96,19 +136,23 @@ TOOLS = tools_for(Toolset(
             "value": {"type": "string"},
             "title": {"type": "string"},
             "body": {"type": "string"},
+            "rows": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}},
+            "replace": {"type": "string"},
+            "file": {"type": "string"},
+            "layout": {"type": "string"},
         },
         "required": ["op"],
     },
     write_text=(
-        "Write a new PowerPoint deck into the editor beside the chat (replacing what is there, "
-        "as a new version): a cover with title and subtitle, then one slide per entry of "
-        "`slides`, each {title, bullets: [...]} or {title, rows: [[header, …], [value, …]]} "
-        "for a table, with optional notes (speaker notes); `closing` adds a last slide with "
-        "that line. Use it only when the person asks for a new PowerPoint file; to change the "
-        "open deck use pptx_read and pptx_edit. Bullets are short lines, three to five a "
-        "slide. Never invent names, dates, places or numbers: write a bracket blank named for "
-        "what goes there, such as 「[담당자]」, 「[YYYY. MM. DD.]」, 「[매출액]」, instead; and "
-        "add no slides the request does not call for."
+        "Write a new PowerPoint deck and open it in the editor beside the chat: a cover with "
+        "title and subtitle, then one slide per entry of `slides`, each {title, bullets: [...]} "
+        "or {title, rows: [[header, …], [value, …]]} for a table, with optional notes "
+        "(speaker notes); `closing` adds a last slide with that line. Use it only when the "
+        "person asks for a new PowerPoint file; to change the open deck use pptx_read and "
+        "pptx_edit. Bullets are short lines, three to five a slide. Never invent names, dates, "
+        "places or numbers: write a bracket blank named for what goes there, such as "
+        "「[담당자]」, 「[YYYY. MM. DD.]」, 「[매출액]」, instead; and add no slides the request "
+        "does not call for."
     ),
     write_params={
         "type": "object",
@@ -136,7 +180,8 @@ TOOLS = tools_for(Toolset(
         "required": ["title", "slides"],
     },
     build=_build,
+    look_for=_look,
 ))
-PPTX_READ, PPTX_EDIT, PPTX_WRITE = TOOLS
-pptx_read, pptx_edit, pptx_write = (tool.run for tool in TOOLS)
+PPTX_READ, PPTX_EDIT, PPTX_WRITE, PPTX_RESTORE = TOOLS
+pptx_read, pptx_edit, pptx_write, pptx_restore = (tool.run for tool in TOOLS)
 NAMES = frozenset(tool.name for tool in TOOLS)

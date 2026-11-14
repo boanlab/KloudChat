@@ -1,0 +1,16 @@
+KloudChat
+Copyright the KloudChat authors. Licensed under the Apache License, Version 2.0 (LICENSE).
+
+Third-party programs shipped in container images, not linked into KloudChat code
+-------------------------------------------------------------------------------
+
+FFmpeg (ffmpeg, ffprobe) — https://ffmpeg.org
+  Image: kloudchat-media (apps/media/Dockerfile)
+  Licence: GNU LGPL 2.1 or later; this Debian build also enables GPL components, so the
+  binaries as distributed are under the GNU GPL 2 or later.
+  How it is used: installed as Debian's unmodified `ffmpeg` package and run only as a
+  separate program by apps/media/server.py, which talks to it through its command line. No
+  KloudChat code links, embeds or modifies FFmpeg. The licence texts and the source offer
+  ship in the image under /usr/share/doc/ffmpeg/ and /usr/share/doc/libav*/ (copyright);
+  the corresponding source is available from Debian (`apt-get source ffmpeg`,
+  https://sources.debian.org/src/ffmpeg/).

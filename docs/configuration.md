@@ -48,12 +48,12 @@ authorizes raw, masked or strict-local egress.
 | Deployment | `FILE_STORAGE_DIR`, `MAX_UPLOAD_MB`, `STORAGE_RECLAIM_AT`, `GEOIP_DATABASE` | Storage paths and what the volume can hold (the upload limit must agree with the proxy's body limit). |
 | Deployment | `JWT_ALGORITHM`, `ACCESS_TOKEN_TTL_MIN`, `REFRESH_TOKEN_TTL_DAYS`, `REFRESH_GRACE_SEC`, `LOGIN_MAX_FAILURES`, `LOGIN_LOCKOUT_MIN`, `ARGON2_TIME_COST`, `ARGON2_MEMORY_COST`, `ARGON2_PARALLELISM` | Sign-in mechanics, tuned to the host's CPU and the threat model, not a product choice. |
 | Deployment | `CHAT_TIMEOUT_SEC`, `CHAT_STALL_SEC`, `TURN_DRAIN_SEC`, `TOOL_TIMEOUT_SEC`, `MAX_TOOL_HOPS`, `TITLE_TIMEOUT_SEC`, `AGENT_DRAFT_TIMEOUT_SEC`, `LITELLM_TIMEOUT_SEC`, `LITELLM_PROBE_TIMEOUT_SEC`, `AUTO_ROUTING_CLASSIFIER_TIMEOUT_SEC`, `FILE_CONTEXT_CHARS`, `DEFAULT_CONTEXT_WINDOW`, `WEB_SEARCH_RESULTS`, `WEB_SEARCH_SCRAPE` | Timeouts and per-turn load, set by how fast the GPU nodes and the search backend are. |
-| Deployment | `SANDBOX_IN_BOUNDARY`, `SELF_HOSTED_THINKING_MODELS`, `OCR_VISION_MODEL`, `SKILL_DRAFTS`, `TIMEZONE` | Facts about the infrastructure: whether the sandbox is inside the boundary, which served models think unless told not to, which served vision model reads pages best when the administrator picked **Auto**, whether this is an evaluation instance, the install's time zone. |
+| Deployment | `SANDBOX_IN_BOUNDARY`, `SELF_HOSTED_THINKING_MODELS`, `OCR_VISION_MODEL`, `KNOWLEDGE_DIGEST_MODEL`, `SKILL_DRAFTS`, `TIMEZONE` | Facts about the infrastructure: whether the sandbox is inside the boundary, which served models think unless told not to, which served vision model reads pages best when the administrator picked **Auto**, which strict-local model writes the per-file digests of project material (only a strict-local one is ever used; empty: code digests only), whether this is an evaluation instance, the install's time zone. |
 | Deployment | `CREDITS_PER_USD`, `LITELLM_BUDGET_HEADROOM` | Accounting constants (shown read-only under **System › Proxy**). |
 | Deployment | `PERF_*` | Performance monitoring: mounts, targets and thresholds of this host. |
 | Product, seeded once | `DEFAULT_CHAT_MODEL`, `DEFAULT_REPORT_MODEL`, `DEFAULT_SLIDES_MODEL`, `DEFAULT_IMAGE_MODEL`, `DEFAULT_AUDIO_MODEL`, `DEFAULT_VIDEO_MODEL`, `TITLE_MODEL`, `CODE_MODEL`, `CODE_FALLBACK_MODEL`, `SELF_HOSTED_CHAT_THINKING`, `EXTERNAL_CHAT_THINKING` | **System › Model** (`models.*`, `thinking.*` in `system_settings`). The environment seeds a fresh install once. |
 | Product, seeded once | `DEFAULT_MONTHLY_CREDITS` | **System › Signup** (`credits.default_monthly`). Seeded once the same way. |
-| Product, environment as fallback | `ADAPTIVE_ROUTING_DEFAULT`, `ADAPTIVE_CLASSIFIER_MODEL_DEFAULT`, `ADAPTIVE_ECONOMY_MODELS_DEFAULT`, `ADAPTIVE_QUALITY_DEFAULT`, `ADAPTIVE_QUALITY_MODELS_DEFAULT`, `OUTLINE_MODEL_DEFAULT`, `INTERNAL_DATA_STRICT_LOCAL_DEFAULT` | **System › Routing** and **Security · audit** (`governance` row). The environment only fills the row when it is first created. |
+| Product, environment as fallback | `ADAPTIVE_ROUTING_DEFAULT`, `ADAPTIVE_CLASSIFIER_MODEL_DEFAULT`, `ADAPTIVE_ECONOMY_MODELS_DEFAULT`, `ADAPTIVE_QUALITY_DEFAULT`, `ADAPTIVE_QUALITY_MODELS_DEFAULT`, `SUPER_AGENT_DEFAULT`, `OUTLINE_MODEL_DEFAULT`, `INTERNAL_DATA_STRICT_LOCAL_DEFAULT` | **System › Routing** and **Security · audit** (`governance` row). The environment only fills the row when it is first created. |
 | Product, environment as fallback | `BRAND_NAME`, `SIGNUP_MODE`, `SMTP_HOST` … `SMTP_FROM` | **System › Branding / Signup / Mail**. A stored value wins; with none stored the environment applies. |
 | Product, admin screen only | enabled surfaces, OCR on/off, reading mode, vision model, page limit, contact address, signup domains and verification, logo, governance policies | No environment variable. |
 
@@ -156,13 +156,18 @@ it when nobody is mid-turn):
 | `KCHAT_DEFAULT_IMAGE_MODEL` | `DEFAULT_IMAGE_MODEL` | `bytedance-seed/seedream-5-0-flash` | Default picture model, for the image surface and for pictures in reports and decks. The picture models are whatever the gateway's catalogue lists; one that does not honour an aspect ratio is offered square only (`imagegen.aspects_for`). Absent from the catalogue → pictures are unavailable until an administrator picks one (`409 default_image_model_unset`); outside an account's allowlist → the first picture model it may use. A strict-local conversation never uses it: see [Governance](#governance-security--audit-admingovernance). |
 | `KCHAT_DEFAULT_AUDIO_MODEL` / `KCHAT_DEFAULT_VIDEO_MODEL` | `DEFAULT_AUDIO_MODEL` / `DEFAULT_VIDEO_MODEL` | `openai/gpt-audio-mini` / `google/veo-3.1-lite` | The Audio / Video surface keeps one default per modality. Absent from the catalogue → that mode is unavailable until an administrator picks one (`409 default_audio_model_unset` for audio). |
 
-### Auto routing
+### Super Agent and the earlier Auto lanes
 
-Auto has two lanes, each with its own switch under **System › Routing**. A
-fresh governance row turns both on (`ADAPTIVE_ROUTING_DEFAULT`,
-`ADAPTIVE_QUALITY_DEFAULT`), with `local/qwen3.8-flash` as the economy model
-and `deepseek/deepseek-v4.1-flash`, `z-ai/glm-5.3-flash` as upgrade models;
-a lane with no usable model is not offered:
+**System › Routing** holds the Super Agent switch (`super_agent_enabled`, on for a fresh
+installation through `SUPER_AGENT_DEFAULT`), its classifier (`adaptive_classifier_model_id`,
+a live zero-cost strict-local model) and the class table (`super_agent_rules`, the admin's
+changes to `super_agent.DEFAULT_RULES`; see docs/architecture.md, "Super Agent"). A `super`
+pick must be a chat model the gateway serves; a `super_strict` pick must be strict-local.
+
+The earlier Auto lanes (`adaptive_routing_enabled`, `adaptive_economy_model_ids`,
+`adaptive_quality_enabled`, `adaptive_quality_model_ids`) are no longer offered in the picker;
+migration 0083 moved their first models into the table (economy → simple, upgrade →
+reasoning) and their conversations to Super Agent. The API still accepts them for comparison:
 
 - **Auto · Save credits** (cost) sends a turn classified as low-complexity to one of
   one to three ordered economy models: cheaper than the chosen model on known
@@ -171,9 +176,6 @@ a lane with no usable model is not offered:
 - **Auto · Favour quality** (quality) sends a turn classified as high-complexity to one
   of one to three ordered upgrade models. An upgrade never widens the data
   boundary of the chosen model and keeps the turn's tools.
-
-Both need one live classifier model declared by LiteLLM as `self_hosted` and
-`strictLocal`, with zero input and output credit cost.
 
 A model's boundary comes from the gateway's catalogue metadata
 (`kchat_data_boundary`): `external`; `hybrid`, a `local/` model that runs on
@@ -208,8 +210,29 @@ shown instead of silently retrying the premium model.
 | `KCHAT_WEB_PORT` | — | `5173` | Host port for the web container. |
 | `KCHAT_API_URL` | `KCHAT_API_URL` | `http://api:8100` | nginx upstream, resolved at run time so the API can move hosts without an image rebuild. `api` is the compose service name, not a fixed container: nginx re-resolves it on every request (`resolver 127.0.0.11`), so it reaches every `api` replica. |
 | `KCHAT_MAX_UPLOAD_MB` | `MAX_UPLOAD_MB` (api), `KCHAT_MAX_UPLOAD_MB` (web) | `200` | One file's ceiling, in MB, for the API and the web container's nginx alike. |
+| `KCHAT_MAX_VIDEO_UPLOAD_MB` | `MAX_VIDEO_UPLOAD_MB` | `500` | One audio/video file's ceiling. Such files go up in pieces, so nginx's body limit does not grow with it. `/auth/config` reports it as `upload.maxMediaMb`. |
+| `KCHAT_UPLOAD_PIECE_MB` | `UPLOAD_PIECE_MB` | `8` | One piece of a pieced upload; never above `MAX_UPLOAD_MB`. |
 | `KCHAT_BUILD_VERSION` | — (web build argument) | build time | Names the web bundle. It is written to `/version.json`, which open pages poll on focus and every ten minutes to offer a reload after a deploy. |
 | `KCHAT_API_REPLICAS` | `API_REPLICAS` | `1` | `api` instances. Migrations run once in the one-shot `migrate` container first, so replicas booting together never race `alembic upgrade head`. The `api` service publishes no host port — reach the API through the web container (`curl localhost:5173/api/health`) or one instance with `docker compose exec api sh`. The stop button's cancellation signal is per-process (`_STOPPING` in `app/routers/sessions.py`); above one replica each process also broadcasts and listens for it over Postgres `NOTIFY` (`services/stop_signal.py`), so a stop request reaches whichever instance is actually streaming. At `1` the broadcast is skipped and no listener connection is held open. |
+
+### Video understanding
+
+| `.env` | Container | Default | Notes |
+| --- | --- | --- | --- |
+| `KCHAT_MEDIA_URL` | `MEDIA_URL` (api) | `http://kloudchat-media:8300` | The media worker. Blank: audio/video are transcribed whole at upload (Whisper's 25 MB), no frames, no timestamps. |
+| `KCHAT_VIDEO_MAX_MINUTES` | `VIDEO_MAX_MINUTES` (api) | `240` | Longest audio/video read; longer ones are refused before upload. Keep `KCHAT_MEDIA_MAX_SECONDS` (worker) at or above it. |
+| `KCHAT_VIDEO_FRAMES_PER_MINUTE` | `VIDEO_FRAMES_PER_MINUTE` (api) | `4` | Keyframes read per minute of video (after near-duplicates are dropped). |
+| `KCHAT_VIDEO_MAX_FRAMES` | `VIDEO_MAX_FRAMES` (api) | `120` | Keyframes read per video at most; a longer video's frames are thinned evenly. |
+| — | `VIDEO_VISION_PARALLEL` (api) | `4` | Frames read at once by the vision model. |
+| `KCHAT_MEDIA_JOBS` | `MEDIA_JOBS` (media) | `2` | ffmpeg runs at once in the worker. |
+| `KCHAT_MEDIA_THREADS` | `MEDIA_THREADS` (media) | `2` | Threads per ffmpeg run. |
+| `KCHAT_MEDIA_MAX_SECONDS` | `MEDIA_MAX_SECONDS` (media) | `14400` | The worker's own ceiling on a video's length. |
+| — | `MEDIA_SCAN_PARALLEL` (media) | `4` | Decoders side by side when looking for changes. |
+| — | `MEDIA_KEYFRAME_MIN_HEIGHT` / `MEDIA_KEYFRAME_MAX_GAP` (media) | `900` / `6` | A picture at least this tall whose keyframes come at least every this many seconds is read at its keyframes only (about a third of a full decode at 1080p); a slide shown for less than the gap may be missed. |
+| `KCHAT_MEDIA_CPUS` / `KCHAT_MEDIA_MEMORY` | — (compose) | `4` / `2g` | The worker container's CPU and memory caps. |
+
+Which vision model reads frames is the OCR one (System › Features › Text from scans): only a
+strict-local model with vision is ever sent a frame.
 
 ### Database
 
@@ -261,6 +284,8 @@ service's `environment:` — or, for `CODE_MODEL` and `CODE_FALLBACK_MODEL`, to
 | `MAX_UPLOAD_MB` | `200` | Exists so one upload cannot fill the disk. Set it as `KCHAT_MAX_UPLOAD_MB` in `.env`: compose hands that one value to the API and to `web`, whose nginx allows a request body 16 MB larger (multipart wrapping; computed at container start by `kchat-body-size.envsh`). `/auth/config` reports it as `upload.maxMb`, and the web app refuses a larger file before sending it. A proxy in front needs the same room — see the deployment guide. |
 | `STORAGE_RECLAIM_AT` | `0.8` | Disk fill (used ÷ total) past which the files of deleted accounts are removed, oldest first, until the volume is back under it. Checked every 30 minutes and from the admin usage screen's **Sweep orphaned files** button. `0` disables the sweep. Living accounts are never touched. |
 | `FILE_CONTEXT_CHARS` | `24000` | Floor for the characters of attached text carried per turn before excerpting. A model gets 35 % of its context window (about 2.5 characters a token, capped at 150,000) — its own window, or `DEFAULT_CONTEXT_WINDOW` when the catalogue does not state one — so a sixteen-page paper reaches a 128k-token model whole. |
+| `KNOWLEDGE_MODELS` | — | The knowledge shelf's model per output kind, as JSON over the table in `services/shelf_models.py` (e.g. `{"quiz": {"strictModel": "strict-local/qwen3.8-27b", "effort": "none"}}`): `strictModel` where internal material must stay inside, `model` where it may leave, `effort` `none` or `high`. Empty keeps the evaluated defaults. |
+| `KNOWLEDGE_CONCURRENCY` | `2` | Knowledge-shelf model calls in flight at once per API replica (source guides, studio outputs, their checks). The self-hosted models serve conversations on the same nodes. |
 | `DEFAULT_CONTEXT_WINDOW` | `131072` | The window (tokens) a chat is fitted to when the model's own is unknown — most hosted models, whose LiteLLM metadata carries no `max_input_tokens`. Longer conversations are cut and summarised instead of resent whole every turn. A model's real window goes in `MODEL_OVERRIDES` as `context_window`. |
 | `CREDITS_PER_USD` | `100000` | The single exchange rate. Adjust this when provider prices move, rather than re-cutting everyone's allowance. |
 | `LITELLM_BUDGET_HEADROOM` | `0.2` | How far above the KloudChat allowance the proxy-side budget sits. A backstop that sits exactly on the limit fires first, blocking someone with a number no screen shows them. |
@@ -440,8 +465,9 @@ selectable as it is, marked unavailable, and is not swapped silently.
 
 ### Routing
 
-The Auto routing classifier, economy and upgrade models — see
-[Auto routing](#auto-routing) — and the outline model, which plans
+Super Agent's switch, classifier and class table — see
+[Super Agent and the earlier Auto lanes](#super-agent-and-the-earlier-auto-lanes) — and the
+outline model, which plans
 a document before the surface's own model writes it.
 
 #### Which model does what
@@ -458,7 +484,7 @@ better on Korean institutional requests:
 | Judging: key figures, cost and score readings, checks, repairs, title block | the outline model, else the writer | follows the outline model |
 | Calculation programs for a document (`calc`) | the outline model, else the writer | follows the outline model |
 | Missing-information questions judged against the material | the outline model's `strict-local/` twin, else the first strict-local model | follows the outline model |
-| Auto classifier | `strict-local/qwen3.8-flash` | **System › Routing › Complexity classifier** |
+| Super Agent classifier | `strict-local/qwen3.8-flash` | **System › Routing › 분류 모델** |
 | Titles, memories, running summary | `local/qwen3.8-flash` | **System › Model › Titles, memories and summaries model** |
 | `run_code` file programs | `local/qwen3.8-27b`, then Flash | **System › Model › Code-writing model**, its fallback |
 | Re-reading scanned pages | `strict-local/qwen3.8-flash` | **System › Features › Text from scans (OCR)** |
@@ -546,7 +572,9 @@ available:
   default (`INTERNAL_DATA_STRICT_LOCAL_DEFAULT`). A chat, report or deck turn
   that carries the organisation's own material — an attachment, a project's
   files or instructions, a memory — runs on the strict-local twin of the chosen
-  model (`local/x` → `strict-local/x`), else the first strict-local safe model,
+  model (`local/x` → `strict-local/x`), else the first strict-local safe model
+  in the order the admin set on the governance screen (the list is a priority
+  list, kept as saved),
   else it is refused with `internal_data_requires_strict_local`. This is decided
   before any Auto lane, and a strict-local writer is never moved outward.
   Pictures, charts, figures and document edits (fact-check, review, section,

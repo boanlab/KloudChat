@@ -33,8 +33,8 @@ picture, a clip — is an **artifact**, kept in its own gallery and exportable:
 
 | Artifact | Exports |
 | --- | --- |
-| Report / document | PDF, DOCX, HWPX, Markdown |
-| Deck | PDF, PPTX, Markdown |
+| Report — made as a web report, an HWP file or a Word file | PDF, DOCX, HWPX, Markdown |
+| Deck — made as web slides or a PowerPoint file | PDF, PPTX, Markdown |
 | Chart | PNG, SVG, CSV |
 
 **Structure and look are separate choices.** A **template** fixes a document's

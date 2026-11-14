@@ -49,6 +49,10 @@ type Group = {
 const groups: Record<string, Group> = {
   freshness: { files: ['freshness-abstention.spec.ts', 'grounded-answer.spec.ts'], projects: { default: {} } },
   'edit-resend': { files: ['edit-resend-message.spec.ts'], projects: { desktop: { viewport: desktop.viewport }, mobile: narrow } },
+  'super-agent': {
+    files: ['super-agent.spec.ts'],
+    projects: { desktop: baseProfile('desktop'), phone: touchPhone },
+  },
   'auto-badge': {
     files: ['auto-routing.spec.ts'],
     grep: /라우팅 기준에 따라|품질 라우팅 결과는 영어|품질 상향 응답은|처리 내역의 전체 모델 정보/,
@@ -68,11 +72,13 @@ const groups: Record<string, Group> = {
   },
   phone: { files: ['phone-variant.spec.ts'], projects: { default: { browserName: 'chromium' } } },
   composer: {
-    files: ['composer-plus.spec.ts', 'composer-races.spec.ts', 'share-sign-in.spec.ts', 'file-box.spec.ts', 'home-layout.spec.ts'],
+    files: ['composer-plus.spec.ts', 'composer-races.spec.ts', 'share-sign-in.spec.ts', 'file-box.spec.ts', 'home-layout.spec.ts', 'context-gauge.spec.ts'],
     projects: { desktop, phone: touchPhone },
   },
   'i18n-gates': { files: ['i18n-audit-gates.spec.ts'], projects: { default: { ...devices['Desktop Chrome'] } } },
-  'report-table': { files: ['report-table-roundtrip.spec.ts', 'report-title-block.spec.ts', 'report-broken-picture.spec.ts', 'report-follows-a-dropped-stream.spec.ts'], projects: { default: desktop } },
+  'report-table': { files: ['report-table-roundtrip.spec.ts', 'report-title-block.spec.ts', 'report-broken-picture.spec.ts', 'report-follows-a-dropped-stream.spec.ts', 'report-edits-in-place.spec.ts'], projects: { default: desktop } },
+  // the web report as one Markdown document: one editor, 「Markdown 원문」, sections split back by heading
+  'report-markdown': { files: ['report-markdown-editor.spec.ts'], projects: { default: desktop } },
   'session-hydration': {
     files: [
       'session-hydration.spec.ts',
@@ -84,6 +90,8 @@ const groups: Record<string, Group> = {
   },
   'report-audit': { files: ['report-panel-audit.spec.ts', 'sign-in-landing.spec.ts'], projects: { default: desktop } },
   'search-masking': { files: ['search-masking-origin.spec.ts'], projects: { default: {} } },
+  // a strict-local turn's search card: allow, edit, material only, reload, phone; the badge
+  'search-consent': { files: ['search-consent.spec.ts'], projects: { desktop, phone: touchPhone } },
   'artifact-source': { files: ['artifact-source-download.spec.ts'], projects: { default: desktop } },
   'audit-log': { files: ['audit-log.spec.ts'], projects: { desktop: desktopChrome, phone: desktopChromePhone } },
   security: { files: ['security-paging.spec.ts'], projects: { desktop: desktopChrome, phone: desktopChromePhone } },
@@ -120,17 +128,24 @@ const groups: Record<string, Group> = {
     projects: { desktop },
   },
   results: { files: ['results.spec.ts', 'panel-header.spec.ts'], projects: { desktop, phone: pixel } },
+  // the web slides as the PowerPoint editor: header, toolbar, rail, notes, keys, saves, phone
+  'deck-editor': { files: ['deck-editor.spec.ts'], projects: { desktop, phone: touchPhone } },
   search: { files: ['search-dialog.spec.ts'], projects: { desktop, phone: pixel } },
   publishing: { files: ['publishing.spec.ts'], projects: { desktop, phone: pixel } },
   ocr: { files: ['ocr.spec.ts'], projects: { desktop, phone: touchPhone } },
+  video: { files: ['video-moments.spec.ts'], projects: { desktop, phone: touchPhone } },
   ux: { files: ['ux-keyboard-forms.spec.ts'], projects: { desktop, phone: pixel } },
   'admin-models': { files: ['admin-models.spec.ts'], projects: { desktop, phone: touchPhone } },
   'admin-users': { files: ['admin-users-paging.spec.ts'], projects: { desktop, phone: touchPhone } },
+  // sortable tables, CSV exports, strict-local priority, 404, tab titles, expired sign-in
+  'ui-polish': { files: ['ui-polish.spec.ts'], projects: { desktop, phone: touchPhone } },
   'share-and-index': {
     files: ['share-one-artifact.spec.ts', 'project-knowledge-reindex.spec.ts'],
     projects: { desktop },
   },
   'failed-saves': { files: ['saves-that-fail.spec.ts'], projects: { desktop } },
+  // 지식 서가: sources panel, source viewer, studio, quiz player, notes
+  'knowledge-shelf': { files: ['knowledge-shelf.spec.ts'], projects: { desktop, phone: touchPhone } },
   // HWP panel against a stand-in editor; the real studio (built by rhwp/build-studio.sh into
   // dist/rhwp) only where it was built, else that spec skips.
   'hwp-panel': { files: ['hwp-panel.spec.ts'], projects: { desktop, phone: touchPhone } },
@@ -140,7 +155,7 @@ const groups: Record<string, Group> = {
   // a report asked for as an HWP or Word file: written by the report screen, opened as the file
   'report-as-office-file': { files: ['report-as-office-file.spec.ts'], projects: { desktop } },
   // the real PowerPoint editor (pptx-react-viewer under our chrome), a chunk of its own
-  'pptx-panel': { files: ['pptx-panel.spec.ts'], projects: { desktop, phone: touchPhone } },
+  'pptx-panel': { files: ['pptx-panel.spec.ts', 'pptx-bullets.spec.ts'], projects: { desktop, phone: touchPhone } },
   // HWP, Word and PowerPoint files in the file box: drawn by their editors, 편집 opens a copy
   'file-box-office': { files: ['file-box-office.spec.ts'], projects: { desktop, phone: touchPhone } },
   // unsaved office edits never dropped unasked; phone read only, retries, share, reopen, artifacts page

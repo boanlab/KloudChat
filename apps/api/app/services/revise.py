@@ -420,8 +420,23 @@ def order_swap(instruction: str, parts: list[str]) -> tuple[int, int] | None:
     return found[0], found[1]
 
 
+#: a part named by its number: 「4장」, 「4번 장」, 「4번째 절」 (a number in words is not read)
+_BY_NUMBER = re.compile(
+    r"(?:제\s{0,2})?(\d{1,3})\s{0,2}(?:번\s{0,2})?(?:째\s{0,2})?(?:장|절|슬라이드|섹션|부분)?"
+    r"|(?:슬라이드|slide|section)\s{0,2}(\d{1,3})", re.I)
+#: a word saying which kind of part a name is: 「위험 요인 장」 is the part 「위험 요인」
+_KIND_WORD = re.compile(r"(?:(?<=\s)|(?<=\d)|(?<=번)|(?<=째))\s{0,2}(?:장|절|슬라이드|섹션|부분)$")
+
+
 def _match_part(name: str, parts: list[str]) -> int | None:
-    """Part by exact title, containing phrase, then shared words."""
+    """Part by its number (「4장」 is the fourth), else by exact title, containing phrase, then
+    shared words."""
+    if found := _BY_NUMBER.fullmatch(name.strip()):
+        number = int(found.group(1) or found.group(2))
+        return number - 1 if 1 <= number <= len(parts) else None
+    bare = _KIND_WORD.sub("", name.strip()).strip()
+    if bare and bare != name.strip():
+        return _match_part(bare, parts)
     squeeze = lambda t: re.sub(r"\s+", "", t).lower()  # noqa: E731
     wanted = squeeze(name)
     if not any(squeeze(part) == wanted or wanted in squeeze(part) for part in parts):
@@ -437,6 +452,157 @@ def _match_part(name: str, parts: list[str]) -> int | None:
     words = set(name.split())
     hits = [i for i, part in enumerate(parts) if words and words <= set(part.split())]
     return hits[0] if len(hits) == 1 else None
+
+
+#: 「위험 요인 장을 3번 장 뒤로 옮겨 줘」, 「3장을 맨 앞으로」: one part moved, nothing rewritten
+_PART_MOVE = re.compile(
+    r"(?P<a>[가-힣A-Za-z0-9·/&()]{1,20}(?:\s{1,8}[가-힣A-Za-z0-9·/&()]{1,20}){0,3}?)\s{0,8}"
+    r"(?:을|를)\s{1,8}"
+    r"(?:(?P<front>맨\s{0,2}(?:앞|처음|뒤|끝|마지막))|(?P<b>[가-힣A-Za-z0-9·/&()]{1,20}"
+    r"(?:\s{1,8}[가-힣A-Za-z0-9·/&()]{1,20}){0,3}?)\s{0,8}(?:의\s{0,4})?(?P<side>뒤|다음|앞))"
+    r"\s{0,4}(?:으로|로|에)\s{0,8}(?:옮겨|옮기|이동|보내|붙여|넣어|가게|오게|배치|두|"
+    r"줘|주세요|해\s{0,2}줘|$)"
+)
+
+
+def part_move(instruction: str, parts: list[str]) -> tuple[int, int] | None:
+    """`(part, after)`: the part to move and the part it goes after (-1: to the front); None
+    when the words ask no single move. No model call."""
+    text = " ".join((instruction or "").split())
+    match = _PART_MOVE.search(text)
+    if not match:
+        return None
+    moving = _match_part(match.group("a").strip(), parts)
+    if moving is None:
+        return None
+    if match.group("front"):
+        end = re.search(r"뒤|끝|마지막", match.group("front"))
+        after = len(parts) - 1 if end else -1
+    else:
+        other = _match_part(match.group("b").strip(), parts)
+        if other is None or other == moving:
+            return None
+        after = other if match.group("side") in ("뒤", "다음") else other - 1
+    if after == moving or after == moving - 1:
+        return None
+    return moving, after
+
+
+def moved(items: list, moving: int, after: int) -> list:
+    """`items` with `moving` put right after `after` (-1: first)."""
+    out = list(items)
+    item = out.pop(moving)
+    place = after + 1 if after < moving else after
+    out.insert(max(0, place), item)
+    return out
+
+
+#: 「되돌려 줘」, 「방금 고친 거 취소해」, 「이전 판으로」, 「v3으로 되돌려」: a version restore
+_UNDO = re.compile(
+    r"되돌려|되돌리|원래\s{0,2}(?:대로|상태로)\s{0,4}(?:돌려|해)|이전\s{0,2}(?:판|버전|상태)\s{0,2}"
+    r"(?:으로|로)|(?:방금|아까)\s{0,4}(?:고친|바꾼|수정한|한)\s{0,4}(?:거|것|부분)?\s{0,4}"
+    r"(?:을|를)?\s{0,4}(?:취소|무르|없던)|\b(?:undo|revert|roll\s?back)\b", re.I)
+_UNDO_TO = re.compile(
+    r"(?:v|버전\s{0,2}|판\s{0,2})(\d{1,4})|(\d{1,4})\s{0,2}(?:번째\s{0,2})?(?:판|버전)", re.I)
+
+
+def asks_undo(instruction: str) -> tuple[bool, int | None]:
+    """Whether the words ask to undo, and the version named (「v3으로」), if any."""
+    text = " ".join((instruction or "").split())
+    if not _UNDO.search(text) or len(text) > 120:
+        return False, None
+    found = _UNDO_TO.search(text)
+    return True, int(found.group(1) or found.group(2)) if found else None
+
+
+#: colour words a theme request names, as the accent they mean
+_COLOURS = {
+    "남색": "#1F3A68", "네이비": "#1F3A68", "navy": "#1F3A68", "파란": "#2563EB", "파랑": "#2563EB",
+    "blue": "#2563EB", "하늘": "#3BA3D0", "빨간": "#C0392B", "빨강": "#C0392B", "red": "#C0392B",
+    "초록": "#2E7D32", "녹색": "#2E7D32", "green": "#2E7D32", "주황": "#E67E22",
+    "orange": "#E67E22", "보라": "#6B4FA0", "purple": "#6B4FA0", "검정": "#222222",
+    "검은": "#222222", "black": "#222222", "회색": "#6B7280", "gray": "#6B7280",
+    "grey": "#6B7280", "분홍": "#D63384", "pink": "#D63384", "갈색": "#8B5A2B",
+    "노란": "#D4A017", "노랑": "#D4A017", "청록": "#0F766E", "teal": "#0F766E",
+}
+_THEME = re.compile(
+    r"(?P<colour>" + "|".join(sorted(map(re.escape, _COLOURS), key=len, reverse=True)) +
+    r"|#[0-9A-Fa-f]{6})\s{0,2}(?:색|빛)?\s{0,4}(?:계열\s{0,2})?(?:의\s{0,2})?"
+    r"(?:테마|강조\s{0,2}색|색상|색깔|색|톤|theme|accent)?\s{0,4}(?:으로|로)\s{0,4}"
+    r"(?:바꿔|바꾸|해\s{0,2}줘|해\s{0,2}주세요|변경|맞춰)", re.I)
+_THEME_WORD = re.compile(
+    r"테마|강조\s{0,2}색|색상|색깔|\b(?:theme|accent|colou?r)\b|색\s{0,2}(?:으로|로)", re.I)
+
+
+def theme_accent(instruction: str) -> str | None:
+    """The accent colour a theme request names (「남색 테마로 바꿔 줘」 → #1F3A68): set in the
+    document's design, never written into a slide or a section as text."""
+    text = " ".join((instruction or "").split())
+    found = _THEME.search(text)
+    if not found or not _THEME_WORD.search(text) or len(text) > 80:
+        return None
+    word = found.group("colour")
+    return word.upper() if word.startswith("#") else _COLOURS.get(word.lower())
+
+
+#: 「절반으로」, 「반으로 줄여」, 「3분의 1로」, 「짧게 줄여」: a shortening ask, and the share kept
+_SHORTEN = re.compile(r"줄여|줄이|짧게|간추|요약|압축|절반|반으로|분의\s{0,2}\d|\b(?:shorten|trim|"
+                      r"condense|half)\b", re.I)
+_SHARE = re.compile(r"(\d{1,2})\s{0,2}분의\s{0,2}(\d{1,2})|절반|반으로|\bhalf\b", re.I)
+_LIST_LINE = re.compile(r"^\s{0,8}(?:[-*+]|\d{1,3}[.)]|[□○ㅇ◦■●])\s{1,4}\S", re.M)
+
+
+def _blocks(text: str) -> tuple[int, int]:
+    """(tables, list items) a Markdown body has."""
+    from app.services import web_doc_edit
+
+    return len(web_doc_edit.tables(text)), len(_LIST_LINE.findall(text))
+
+
+def shortening_loss(before: str, after: str, ask: str) -> str | None:
+    """Why a shortening edit takes too much, or None: asked to shorten (「절반으로」, 「줄여」),
+    it may not keep less than half of the share asked (a third of the text for 「절반」, a
+    quarter when no share is named), nor drop every table or every list item the part had —
+    shortening shortens, it never deletes whole blocks. Not a shortening ask: None."""
+    if not _SHORTEN.search(ask or "") or not before.strip():
+        return None
+    kept = len(" ".join(after.split())) / max(1, len(" ".join(before.split())))
+    share = 0.5
+    if found := _SHARE.search(ask):
+        if found.group(1) and found.group(2):
+            share = max(0.05, int(found.group(2)) / max(1, int(found.group(1))))
+            if share > 1:
+                share = 1 / share
+    floor = share * 0.6 if _SHARE.search(ask) else 0.25
+    tables_before, items_before = _blocks(before)
+    tables_after, items_after = _blocks(after)
+    if tables_before and not tables_after:
+        return ("줄이라는 요청인데 표가 통째로 빠졌습니다. 표는 남기고 줄 수나 글을 줄이세요 "
+                "(표를 빼라는 요청이면 사람에게 확인하세요).")
+    if items_before >= 2 and not items_after:
+        return "줄이라는 요청인데 목록이 통째로 빠졌습니다. 항목 수나 문장을 줄이세요."
+    if kept < floor:
+        return (f"줄이라는 요청인데 글이 {round(kept * 100)}%만 남습니다. 요청한 만큼만 "
+                "줄이세요.")
+    return None
+
+
+def title_block_fields(instruction: str, fields: list) -> dict[str, str]:
+    """Head fields the words set (「작성일은 2026. 11. 13., 작성 부서는 기획팀으로 해 줘」):
+    name -> value, for the names the document's head has; no model call."""
+    names = [str(f[0]) for f in fields or [] if isinstance(f, (list, tuple)) and f]
+    text = " ".join((instruction or "").split())
+    out: dict[str, str] = {}
+    for name in sorted(names, key=len, reverse=True):
+        spaced = r"\s{0,2}".join(re.escape(ch) for ch in name.replace(" ", ""))
+        found = re.search(
+            spaced + r"\s{0,2}(?:은|는|을|를|란|:|=)\s{0,4}(?P<v>[^,，\n「」]{1,60}?)\s{0,2}"
+            r"(?:(?:으로|로)?\s{0,4}(?:해|바꿔|넣어|채워|적어|수정|써|기재|변경)|(?:이고|이며|입니다)"
+            r"|,|，|$)", text)
+        if found and (value := found.group("v").strip(" '\"「」")):
+            if not any(value == v or name in value for v in out.values()):
+                out[name] = value
+    return out
 
 
 def term_swap(instruction: str) -> tuple[str, str] | None:
@@ -1810,7 +1976,7 @@ _FRONT = re.compile(r"맨\s?(?:앞|위|처음)|첫머리|서두|문서\s?(?:앞|
 _PHRASE_REF = re.compile(
     r"(?P<p>[^,.!?\n]{2,60}?)\s?(?:이?라는|라고\s?(?:쓴|적은|한))\s?(?:표현|문구|말|문장|부분|내용)")
 _QUOTED = re.compile(r"[「『'\"‘“]([^」』'\"’”\n]{2,60})[」』'\"’”]")
-_VALUE = re.compile(r"\d[\d,.]*\s?(?:%|만\s?원|억\s?원?|원|명|건|개월|일)")
+_VALUE = re.compile(r"\d[\d,.]{0,30}\s?(?:%|만\s?원|억\s?원?|원|명|건|개월|일)")
 _PARTICLE = re.compile(r"(?:까지|에서|으로|이라|라는|이가|은|는|이|가|을|를|의|에|로|과|와|도)$")
 
 

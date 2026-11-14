@@ -117,6 +117,25 @@ function FullPreview({
   )
 }
 
+/** A small first page or cover of a template, beside a picker; a click opens the whole of it. */
+export function TemplateMiniature({ row, english }: { row: DesignTemplateRow; english: boolean }) {
+  const t = useT()
+  const [open, setOpen] = useState(false)
+  if (!row.hasPreview) return null
+  return (
+    <div className="w-36 shrink-0 overflow-hidden rounded-control border border-line" data-testid="template-miniature">
+      <Thumbnail id={row.id} deck={row.kind === 'deck'} onOpen={() => setOpen(true)} />
+      <FullPreview
+        row={row}
+        english={english}
+        open={open}
+        onClose={() => setOpen(false)}
+        footer={<Button onClick={() => setOpen(false)}>{t('닫기')}</Button>}
+      />
+    </div>
+  )
+}
+
 function Checks({ checks }: { checks: string[] }) {
   const t = useT()
   if (checks.length === 0) return null

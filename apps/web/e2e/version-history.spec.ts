@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { signIn, ribbonTab } from './helpers'
+import { deckHeader, signIn, ribbonTab } from './helpers'
 
 /** Version history works on html, deck and report panels; a restore is itself an edit. */
 
@@ -121,15 +121,15 @@ test('덱도 같은 버튼으로 되돌린다', async ({ page }) => {
   const dialog = page.getByRole('dialog')
   await expect(dialog.getByText('고친 제목').first()).toBeVisible({ timeout: 20_000 })
 
-  await ribbonTab(page, '검토')
-  const history = dialog.getByRole('button', { name: '버전 기록' })
-  await expect(history).toContainText('v2')
-  await history.click()
+  // The deck's header carries the version; 버전 기록 is in its 더보기, as on every document panel.
+  await expect(deckHeader(page).getByText('v2', { exact: true })).toBeVisible()
+  await deckHeader(page).getByRole('button', { name: '더보기' }).click()
+  await page.getByRole('menuitem', { name: '버전 기록' }).click()
   await page.getByRole('button', { name: 'v1 로 되돌리기' }).click()
 
   // The slide itself comes back.
   await expect(dialog.getByText('처음 제목').first()).toBeVisible({ timeout: 20_000 })
-  await expect(history).toContainText('v3')
+  await expect(deckHeader(page).getByText('v3', { exact: true })).toBeVisible()
 })
 
 test('보고서의 되돌리기는 옮겨진 뒤에도 그대로다', async ({ page }) => {

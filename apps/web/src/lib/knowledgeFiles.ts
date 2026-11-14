@@ -1,6 +1,6 @@
 /** What a project's 참고 파일 can read; unreadable files refused before upload. Mirrors `extract_text`. */
 
-import { overUploadLimit, tooLargeMessage } from './uploadLimit'
+import { overLimit } from './uploadLimit'
 
 const READABLE = [
   '.pdf', '.docx', '.pptx', '.xlsx', '.csv', '.tsv', '.hwp', '.hwpx',
@@ -21,6 +21,7 @@ export function knowledgeRefusal(file: File, t: (text: string) => string): strin
     return t('{name}: 실행 파일은 읽을 수 없어 올리지 않았습니다. 문서·PDF·텍스트 파일을 올리세요.')
       .replace('{name}', file.name)
   }
-  if (overUploadLimit(file)) return `${file.name}: ${tooLargeMessage()}`
+  const tooLarge = overLimit(file)
+  if (tooLarge) return `${file.name}: ${tooLarge}`
   return null
 }

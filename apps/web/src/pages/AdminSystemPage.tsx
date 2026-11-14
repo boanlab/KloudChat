@@ -6,7 +6,7 @@ import { PageHeader } from '@/components/ui'
 import { adminApi, errorMessage, type SystemSettings } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/useT'
-import { AutoRoutingSection } from './settings/AutoRoutingSection'
+import { SuperAgentSection } from './settings/SuperAgentSection'
 import { BrandingSection } from './settings/BrandingSection'
 import { ConnectorCatalogSection } from './settings/ConnectorCatalogSection'
 import { FeaturesSection } from './settings/FeaturesSection'
@@ -124,9 +124,9 @@ export function AdminSystemPage() {
               <div className="space-y-5">
                 <Group
                   title={t('모델 자동 라우팅')}
-                  description={t('질문 난이도에 맞는 모델을 사용해 불필요한 고비용 모델 호출을 줄입니다.')}
+                  description={t('질문마다 작업 종류에 맞는 모델과 추론 강도를 골라 비용과 품질을 함께 맞춥니다.')}
                 >
-                  <AutoRoutingSection />
+                  <SuperAgentSection />
                 </Group>
                 <OutlineModelSection />
               </div>

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
@@ -10,7 +11,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import quote, unquote
-from uuid import uuid4
 
 from fastapi import (
     APIRouter,
@@ -23,7 +23,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy import and_, func, or_, tuple_
 from sqlmodel import col, delete, select, update
 
@@ -46,6 +46,7 @@ from app.models.workspace import (
     Visibility,
 )
 from app.pipeline import compose
+from app.schemas.auth import Wire
 from app.schemas.chat import MessageOut, MessageRatingIn
 from app.schemas.workspace import (
     AgentCreateIn,
@@ -73,7 +74,6 @@ from app.schemas.workspace import (
     KnowledgeUrl,
     MemoryIn,
     MemoryOut,
-    OpenedDocument,
     ProjectIn,
     ProjectOut,
     ProjectPatch,
@@ -91,17 +91,18 @@ from app.schemas.workspace import (
     ToolCatalogOut,
 )
 from app.services import (
+    artifact_versions,
     audit,
     critique,
     deck_export,
     design_extract,
     design_templates,
     diagram_render,
+    digest_jobs,
     doc_formats,
     elk_layout,
     factcheck,
     hangul,
-    hwpx_import,
     index_cleanup,
     index_client,
     lint,
@@ -114,16 +115,19 @@ from app.services import (
     printing,
     report_export,
     richtext,
+    search_consent,
     settings_store,
     skill_import,
     skill_packages,
     starter,
     user_templates,
+    video_jobs,
     workspace_context,
 )
 from app.services import deck as deck_service
 from app.services import design as design_service
 from app.services import files as file_service
+from app.services import governance as governance_service
 from app.services import litellm as litellm_service
 from app.services import models as model_service
 from app.services import page as page_service
@@ -452,6 +456,14 @@ async def patch_project(project_id: str, payload: ProjectPatch, user: CurrentUse
         await _validate_design_system_id(db, user, changes["design_system_id"])
     if "render_templates" in changes:
         changes["render_templates"] = _validated_render_templates(changes["render_templates"])
+    if changes.get("strict_local_web_search") is not None:
+        # a project only tightens the admin's setting
+        admin = (await governance_service.current(force=True)).strict_local_web_search
+        if changes["strict_local_web_search"] not in search_consent.project_choices(admin):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="strict_local_web_search_looser_than_admin",
+            )
     for field, value in changes.items():
         setattr(project, field, value)
     project.updated_at = utcnow()
@@ -625,21 +637,30 @@ async def upload_file(
     )
     stored.storage_key = file_service.write_blob(user.id, stored.id, stored.name, data)
 
-    # extraction failure recorded, not raised
-    try:
-        stored.text = await file_service.text_of(stored.name, stored.mime, data)
-        stored.tokens = file_service.estimate_tokens(stored.text)
-    except Exception as exc:  # noqa: BLE001
-        log.info("extraction failed for %s: %s", stored.name, exc)
-        stored.error = str(exc)
+    # audio/video: said and shown, by time, in the background (`video_jobs`)
+    watching = video_jobs.mark(stored)
+    if not watching:
+        # extraction failure recorded, not raised
+        try:
+            stored.text = await file_service.text_of(stored.name, stored.mime, data)
+            stored.tokens = file_service.estimate_tokens(stored.text)
+        except Exception as exc:  # noqa: BLE001
+            log.info("extraction failed for %s: %s", stored.name, exc)
+            stored.error = str(exc)
     # scanned pages read in background; text layer kept meanwhile
-    reading = await ocr_jobs.queue_if_scanned(stored, data)
+    reading = not watching and await ocr_jobs.queue_if_scanned(stored, data)
+    # project material gets its digest once its text is whole (OCR asks for it when done)
+    digesting = not reading and not watching and digest_jobs.mark(stored)
 
     db.add(stored)
     await db.commit()
     await db.refresh(stored)
     if reading:
         ocr_jobs.wake()
+    if digesting:
+        digest_jobs.wake()
+    if watching:
+        video_jobs.wake()
     # indexed for `search_knowledge`; never blocks the upload
     if stored.text.strip():
         if project_id:
@@ -760,9 +781,11 @@ async def add_project_url(project_id: str, payload: KnowledgeUrl, user: CurrentU
         text=text,
         tokens=file_service.estimate_tokens(text),
     )
+    digest_jobs.mark(stored)
     db.add(stored)
     await db.commit()
     await db.refresh(stored)
+    digest_jobs.wake()
     project = await db.get(Project, project_id)
     if project is not None:
         await _index_document(db, user.id, await _project_shelf_key(db, project), stored)
@@ -773,13 +796,16 @@ async def add_project_url(project_id: str, payload: KnowledgeUrl, user: CurrentU
 async def download_file(file_id: str, user: CurrentViewer, db: DbSession):
     stored = await _own(db, StoredFile, "user_id", user, file_id)
     try:
-        data = file_service.read_blob(stored.storage_key)
-    except OSError:
+        path = file_service.blob_path(stored.storage_key)
+        with open(path, "rb") as handle:
+            head = handle.read(4096)
+    except (OSError, ValueError):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="blob_missing") from None
     # inline only for byte-proven picture/PDF/media; no script, no origin
-    media, inline = file_service.served_as(stored.name, stored.mime, data)
-    return Response(
-        content=data,
+    media, inline = file_service.served_as(stored.name, stored.mime, head)
+    # streamed from disk (a 500 MB video never sits in memory), with Range for seeking
+    return FileResponse(
+        path,
         media_type=media,
         headers=file_service.download_headers(media, inline, stored.name),
     )
@@ -816,68 +842,16 @@ async def file_documents(file_id: str, user: CurrentUser, db: DbSession):
     return [ArtifactOut.card(a) for a in rows if office_doc.source_of(a.data) == stored.id]
 
 
-@router.post("/files/{file_id}/open-as-document", response_model=OpenedDocument)
+@router.post("/files/{file_id}/open-as-document", status_code=status.HTTP_410_GONE)
 async def open_file_as_document(file_id: str, user: CurrentUser, db: DbSession):
-    """Uploaded `.hwpx` → editable report session; no model call or charge."""
-    stored = await _own(db, StoredFile, "user_id", user, file_id)
-    if not stored.name.lower().endswith(".hwpx"):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="not_a_hwpx_file"
-        )
-    try:
-        data = file_service.read_blob(stored.storage_key)
-    except OSError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="blob_missing") from None
-    try:
-        document = hwpx_import.read(data)
-    except RuntimeError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
-        ) from exc
-    parts = document.sections
-    if not parts:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="no_document_body"
-        )
-
-    title = document.title[:200] or re.sub(r"\.hwpx$", "", stored.name, flags=re.I)[:200]
-    title = title or "한글 문서"
-    session = ChatSession(
-        user_id=user.id,
-        project_id=stored.project_id,
-        kind=SessionKind.report,
-        title=title,
+    """Gone: an `.hwpx` no longer becomes a web report (HTML sections, no template). It opens
+    as itself in the HWP editor: `POST /artifacts/hwp` with `fileId` (a copy the file box keeps
+    pointing at), as the file box and an attachment's 「HWP로 열기」 do."""
+    await _own(db, StoredFile, "user_id", user, file_id)
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="open_as_document_gone: POST /artifacts/hwp with {\"fileId\": …}",
     )
-    db.add(session)
-    await db.flush()
-    artifact = Artifact(
-        user_id=user.id,
-        session_id=session.id,
-        project_id=stored.project_id,
-        kind=ArtifactKind.report,
-        title=title,
-        data={
-            "sections": [
-                {
-                    "id": uuid4().hex,
-                    "heading": part.heading,
-                    "level": part.level,
-                    "status": "done",
-                    "format": "html",
-                    "content": part.html,
-                }
-                for part in parts
-            ],
-            "sources": [],
-            "citationStyle": "APA",
-        },
-    )
-    db.add(artifact)
-    await db.flush()
-    session.artifact_id = artifact.id
-    db.add(session)
-    await db.commit()
-    return OpenedDocument(id=session.id)
 
 
 @router.delete("/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -885,7 +859,7 @@ async def delete_file(file_id: str, user: CurrentUser, db: DbSession,
                       request: Request = None):  # type: ignore[assignment]
     owned = await _own(db, StoredFile, "user_id", user, file_id)
     # shelf (key mint commits) before row lock: nothing commits between lock and delete
-    shelf = await shelf_of(db, owned) if owned.ocr_state else None
+    shelf = await shelf_of(db, owned) if (owned.ocr_state or owned.media_state) else None
     # locked fresh read: concurrent page reader is seen here or sees the row gone
     stored = (
         await db.exec(
@@ -964,11 +938,16 @@ async def list_artifacts(
     before_at: datetime | None = None,
     before_id: str | None = None,
 ):
-    """Artifact cards page, newest first; `q` matches title."""
+    """Artifact cards page, newest first; `q` matches title; `kind` may be a comma list."""
     # keyset pagination on (before_at, before_id)
     query = select(Artifact).where(Artifact.user_id == user.id)
     if kind:
-        query = query.where(Artifact.kind == kind)
+        # one kind, or a family as a comma list (`report,hwp,docx`)
+        known = {member.value for member in ArtifactKind}
+        kinds = [k.strip() for k in kind.split(",")[:8] if k.strip() in known]
+        if not kinds:
+            return []
+        query = query.where(col(Artifact.kind).in_(kinds))
     if project_id:
         query = query.where(Artifact.project_id == project_id)
     if q and q.strip():
@@ -1011,8 +990,9 @@ async def create_artifact(payload: ArtifactIn, user: CurrentUser, db: DbSession)
             detail=f"{payload.kind.value}_needs_its_file",
         )
     fields = payload.model_dump()
-    # no unsanitised HTML reaches storage
-    fields["data"] = _clean_report_data(fields.get("data"))
+    # reports are stored as Markdown only
+    if payload.kind is ArtifactKind.report:
+        fields["data"] = _clean_report_data(fields.get("data"))
     artifact = Artifact(user_id=user.id, **fields)
     db.add(artifact)
     await db.commit()
@@ -1025,17 +1005,29 @@ async def get_artifact(artifact_id: str, user: CurrentUser, db: DbSession):
     return ArtifactOut.of(await _own(db, Artifact, "user_id", user, artifact_id))
 
 
-def _clean_report_data(data: dict[str, Any] | None) -> dict[str, Any] | None:
-    """Report data with HTML section bodies sanitised."""
+def _clean_report_data(
+    data: dict[str, Any] | None, previous: dict[str, Any] | None = None
+) -> dict[str, Any] | None:
+    """Report data as stored: every section Markdown (HTML from an older client, a template
+    or an import is converted, its styling dropped). A section whose text changed from
+    `previous` loses its fact-check, whose verdicts point at the old sentences."""
     if not data or not isinstance(data.get("sections"), list):
         return data
+    before = {
+        str(row.get("id")): row
+        for row in ((previous or {}).get("sections") or [])
+        if isinstance(row, dict)
+    }
     cleaned = []
     for row in data["sections"]:
-        section = dict(row) if isinstance(row, dict) else {}
-        if section.get("format") == "html":
-            section["content"] = design_templates.sanitise(
-                str(section.get("content") or ""), editable_styles=True
-            )
+        section = richtext.markdown_section(dict(row) if isinstance(row, dict) else {})
+        was = before.get(str(section.get("id")))
+        if (
+            was is not None
+            and "factCheck" in section
+            and richtext.as_markdown(was) != section.get("content")
+        ):
+            section = {key: value for key, value in section.items() if key != "factCheck"}
         cleaned.append(section)
     return {**data, "sections": cleaned}
 
@@ -1066,33 +1058,11 @@ _STALE_ARTIFACT = (
 
 
 async def _next_version(db: DbSession, artifact: Artifact, expected: int, summary: str) -> None:
-    """Move `artifact` from `expected` to the next version in one conditional UPDATE and
-    snapshot the superseded body; 409 when another writer moved it first.
-
-    The check is the UPDATE itself (`WHERE id = … AND version = expected`), not a comparison
-    in Python: of two writers that both read `expected` — two API replicas, or an edit that
-    lands while a rewrite waits on its model — exactly one matches the row, and the row lock
-    it takes holds until this transaction ends.
-    """
-    moved = await db.exec(
-        update(Artifact)
-        .where(col(Artifact.id) == artifact.id, col(Artifact.version) == expected)
-        .values(version=expected + 1)
-        .execution_options(synchronize_session=False)
-    )
-    if moved.rowcount != 1:
+    """Move `artifact` from `expected` to the next version and snapshot the superseded body
+    (`artifact_versions.advance`); 409 when another writer moved it first."""
+    if not await artifact_versions.advance(db, artifact, expected, summary):
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_STALE_ARTIFACT)
-    db.add(
-        ArtifactVersion(
-            artifact_id=artifact.id,
-            version=expected,
-            data=artifact.data,
-            storage_key=artifact.storage_key,
-            summary=summary,
-        )
-    )
-    artifact.version = expected + 1
 
 
 @router.patch("/artifacts/{artifact_id}", response_model=ArtifactOut)
@@ -1113,8 +1083,8 @@ async def patch_artifact(
         await _own(db, Project, "user_id", user, changes["project_id"])
 
     if "data" in changes and artifact.kind is ArtifactKind.report:
-        # browser HTML sanitised at its only boundary
-        changes["data"] = _clean_report_data(changes["data"])
+        # reports are stored as Markdown only
+        changes["data"] = _clean_report_data(changes["data"], artifact.data)
 
     if "data" in changes and isinstance(changes["data"], dict):
         changes["data"] = _relint(artifact.kind, changes["data"])
@@ -1674,18 +1644,10 @@ async def add_section_image(
     mime, blob = await _picture_bytes(db, user, payload.artifact_id)
     src = f"data:{mime};base64,{base64.b64encode(blob).decode('ascii')}"
     caption = payload.caption.strip()
-    body = str(target.get("content") or "").rstrip()
-
-    if target.get("format") == "html":
-        label = design_templates.escape(caption or "그림")
-        figure = f'<figure><img src="{src}" alt="{label}" />'
-        if caption:
-            figure += f"<figcaption>{design_templates.escape(caption)}</figcaption>"
-        figure += "</figure>"
-        target["content"] = design_templates.sanitise(f"{body}{figure}", editable_styles=True)
-    else:
-        # alt text = exported caption
-        target["content"] = f"{body}\n\n![{caption}]({src})\n"
+    # an older HTML section becomes Markdown first; alt text = exported caption
+    body = str(richtext.markdown_section(target).get("content") or "").rstrip()
+    target["content"] = f"{body}\n\n![{caption}]({src})\n"
+    target["format"] = "markdown"
 
     await _next_version(
         db, artifact, artifact.version, f"{target.get('heading') or '절'} 에 그림 넣음"
@@ -2004,7 +1966,10 @@ async def restore_artifact(
     source = office_doc.source_of(artifact.data)
     base = artifact.version if expected is None else expected
     await _next_version(db, artifact, base, f"v{payload.version} 로 되돌리기 전")
-    artifact.data = _clean_report_data(target.data)
+    # an HTML-era version comes back as Markdown
+    artifact.data = (
+        _clean_report_data(target.data) if artifact.kind is ArtifactKind.report else target.data
+    )
     # an office document opened from a file keeps that link whichever version is back
     if source and isinstance(artifact.data, dict) and not office_doc.source_of(artifact.data):
         artifact.data = office_doc.with_source(artifact.data, source)
@@ -2968,6 +2933,35 @@ async def export_artifact(artifact_id: str, user: CurrentUser, db: DbSession, fo
     if artifact.kind not in (ArtifactKind.report, ArtifactKind.deck, ArtifactKind.html):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_exportable")
     return await _export_document(artifact, format)
+
+
+class DeckOverflowIn(Wire):
+    #: the slides as the editor holds them (unsaved edits included); none = the saved ones
+    slides: list[dict] | None = None
+    design: dict | None = None
+
+
+@router.post("/artifacts/{artifact_id}/deck-overflow")
+async def deck_overflow(
+    artifact_id: str, payload: DeckOverflowIn, user: CurrentUser, db: DbSession
+) -> list[dict]:
+    """Slides whose text the `.pptx` cannot fit even at the type floor, as the export writes
+    them (`deck_export.overflowing_slides`): the web editor offers to move it on or split."""
+    artifact = await _own(db, Artifact, "user_id", user, artifact_id)
+    if artifact.kind is not ArtifactKind.deck:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_a_deck")
+    data = artifact.data or {}
+    slides = payload.slides if payload.slides is not None else list(data.get("slides") or [])
+    tokens = payload.design or data.get("design") or None
+    chosen = design_templates.get(data.get("templateId") or "")
+    await elk_layout.prepare(deck_export.figure_sources(slides))
+    return await asyncio.to_thread(
+        deck_export.overflowing_slides,
+        artifact.title or "슬라이드",
+        slides,
+        tokens=tokens,
+        template=chosen.pptx_template if chosen else "",
+    )
 
 
 def export_formats(artifact: Artifact) -> tuple[str, ...]:

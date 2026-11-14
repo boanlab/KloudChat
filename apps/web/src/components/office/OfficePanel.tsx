@@ -1,31 +1,16 @@
-import { Download, Eye, FileType, History, Loader2, MoreHorizontal, RotateCcw, Save, Share2 } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
-import { PanelControls, usePanelWidth, type PanelMode } from '@/components/artifacts/PanelControls'
-import { VersionHistory } from '@/components/artifacts/VersionHistory'
-import { ShareButton } from '@/components/share/ShareButton'
-import { Badge, Button, Dropdown, MenuItem, MenuLabel, Modal } from '@/components/ui'
+import { FileType, Loader2 } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { usePanelWidth, type PanelMode } from '@/components/artifacts/PanelControls'
+import {
+  DocumentAsk,
+  DocumentHeader,
+  DocumentLock,
+  DocumentNotice,
+  DocumentReadOnlyNote,
+} from '@/components/document/DocumentChrome'
 import type { OfficeKind } from '@/lib/api'
 import { useT } from '@/lib/useT'
 import { readOnlyAt, type Doc, type OfficeDocument } from './useOfficeDocument'
-
-/** What the unsaved-edits question says, by why it is asked. */
-const ASK = {
-  send: {
-    description: '에이전트는 저장된 문서를 고칩니다. 지금 편집을 저장할까요, 버릴까요?',
-    discard: '버리고 보내기',
-    save: '저장하고 보내기',
-  },
-  leave: {
-    description: '이 문서를 떠나면 저장하지 않은 편집이 사라집니다. 저장할까요?',
-    discard: '버리기',
-    save: '저장',
-  },
-  reload: {
-    description: '새 버전을 쓰려면 페이지를 새로 고쳐야 합니다. 그 전에 지금 편집을 저장할까요?',
-    discard: '버리기',
-    save: '저장',
-  },
-} as const
 
 /**
  * The panel around an office editor: title, version, unsaved mark, 저장, the download menu,
@@ -65,140 +50,48 @@ export function OfficePanel({
 }) {
   const t = useT()
   const width = usePanelWidth(onModeChange)
-  const [history, setHistory] = useState<{ nonce: number } | null>(null)
-  const [sharing, setSharing] = useState(false)
   const { dirty, saving, agentWorking, loaded, loading, notice, error, asking, answer } = state
   const shown = loaded ?? doc.version
   const readOnly = readOnlyAt(phone, dirty)
   // the first load failed: nothing is shown, so it is offered again
   const reload = !failed && !notice && !!error && loaded === null
-  const ask = ASK[asking?.reason ?? 'send']
   const panel = { [`data-${kind}-panel`]: doc.id }
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden" {...panel}>
-      <header className="flex items-center gap-2 border-b border-line px-4 py-2.5">
-        <FileType size={15} className="shrink-0 text-accent" />
-        <p className="min-w-0 flex-1 truncate text-base font-medium">{doc.title}</p>
-        <Badge>v{shown}</Badge>
-        {/* at phone width the line under the header says so */}
-        {dirty && !phone && <span className="shrink-0 text-xs text-warn">{t('저장 안 됨')}</span>}
-        {!readOnly && (
-          <Button
-            size="sm"
-            variant={dirty ? 'primary' : 'secondary'}
-            disabled={!dirty || saving || agentWorking || !ready}
-            aria-label={t('저장')}
-            onClick={() => void state.save()}
-          >
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            {!phone && t('저장')}
-          </Button>
-        )}
-        <Dropdown
-          align="right"
-          trigger={() => (
-            <Button size="sm" disabled={!ready || loaded === null} aria-label={t('내려받기')}>
-              <Download size={14} />
-              {!phone && t('내려받기')}
-            </Button>
-          )}
-        >
-          <MenuLabel>{t('형식 선택')}</MenuLabel>
-          {downloads}
-        </Dropdown>
-        {/* at phone width the header is full: sharing is in the 더보기 menu */}
-        {!phone && (
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={t('이 아티팩트만 공유')}
-            title={t('이 아티팩트만 공유')}
-            onClick={() => setSharing(true)}
-          >
-            <Share2 size={15} />
-          </Button>
-        )}
-        <ShareButton
-          artifact={{ id: doc.id, title: doc.title }}
-          open={sharing}
-          onClose={() => setSharing(false)}
-        />
-        <Dropdown
-          align="right"
-          trigger={() => (
-            <Button variant="ghost" size="icon" aria-label={t('더보기')}>
-              <MoreHorizontal size={15} />
-            </Button>
-          )}
-        >
-          {phone && (
-            <MenuItem onClick={() => setSharing(true)}>
-              <Share2 size={14} />
-              {t('이 아티팩트만 공유')}
-            </MenuItem>
-          )}
-          <MenuItem onClick={() => setHistory({ nonce: Date.now() })}>
-            <History size={14} />
-            {t('버전 기록')}
-          </MenuItem>
-        </Dropdown>
-        <VersionHistory
-          bare
-          request={history}
-          artifact={{ id: doc.id, title: doc.title, version: doc.version }}
-          hasUnsavedChanges={dirty}
-          onRestored={() => state.markDirty(false)}
-        />
-        <PanelControls mode={width.mode} onCycle={phone ? undefined : width.cycle} onClose={onClose} />
-      </header>
+      <DocumentHeader
+        icon={<FileType size={15} className="shrink-0 text-accent" />}
+        title={doc.title}
+        version={shown}
+        dirty={dirty}
+        saving={saving}
+        canSave={!agentWorking && ready}
+        showSave={!readOnly}
+        compact={phone}
+        onSave={() => void state.save()}
+        downloads={downloads}
+        downloadDisabled={!ready || loaded === null}
+        artifact={{ id: doc.id, title: doc.title, version: doc.version }}
+        history={{ hasUnsavedChanges: dirty, onRestored: () => state.markDirty(false) }}
+        mode={width.mode}
+        onCycle={phone ? undefined : width.cycle}
+        onClose={onClose}
+      />
 
-      {(notice || error || failed) && (
-        <div role="status" className="flex flex-wrap items-center gap-2 border-b border-line bg-elevated px-4 py-2 text-sm">
-          <span className="min-w-0 flex-1">
-            {failed
-              ? t('편집기를 띄우지 못했습니다: {reason}').replace('{reason}', failed)
-              : notice === 'conflict'
-                ? t('그사이 다른 판이 저장되어 저장하지 않았습니다.')
-                : notice === 'behind'
-                  ? t('에이전트가 새 판을 저장했습니다. 지금 편집은 아직 저장되지 않았습니다.')
-                  : error}
-          </span>
-          {failed && onRetry && (
-            <Button size="sm" variant="primary" onClick={onRetry}>
-              <RotateCcw size={14} />
-              {t('다시 시도')}
-            </Button>
-          )}
-          {reload && (
-            <Button size="sm" variant="primary" onClick={() => void state.load()}>
-              <RotateCcw size={14} />
-              {t('다시 시도')}
-            </Button>
-          )}
-          {notice && (
-            <>
-              <Button size="sm" onClick={onDownloadEdits}>
-                {t('내 편집 내려받기')}
-              </Button>
-              <Button size="sm" variant="primary" onClick={() => void state.load()}>
-                {t('최신 판 불러오기')}
-              </Button>
-            </>
-          )}
-        </div>
-      )}
+      <DocumentNotice
+        notice={failed ? null : notice}
+        message={failed ? t('편집기를 띄우지 못했습니다: {reason}').replace('{reason}', failed) : error}
+        onDownloadEdits={onDownloadEdits}
+        onLoadLatest={() => void state.load()}
+        action={
+          failed && onRetry
+            ? { label: t('다시 시도'), run: onRetry }
+            : reload
+              ? { label: t('다시 시도'), run: () => void state.load() }
+              : undefined
+        }
+      />
 
-      {phone && (
-        <p
-          className="flex items-center gap-2 border-b border-line bg-elevated px-4 py-1.5 text-xs text-muted"
-          data-testid="office-read-only"
-        >
-          <Eye size={13} className="shrink-0" />
-          {readOnly
-            ? t('휴대폰에서는 읽기만 합니다. 고칠 내용은 대화에서 에이전트에게 부탁하세요.')
-            : t('이 폭에서는 읽기만 합니다. 저장하지 않은 편집을 먼저 저장하거나 버리세요.')}
-        </p>
-      )}
+      {phone && <DocumentReadOnlyNote readOnly={readOnly} testId="office-read-only" />}
 
       <div className="relative min-h-0 flex-1 bg-elevated">
         {children}
@@ -210,35 +103,10 @@ export function OfficePanel({
             </span>
           </div>
         )}
-        {agentWorking && ready && (
-          <div
-            className="absolute inset-0 z-10 grid place-items-center bg-panel/60 backdrop-blur-[1px]"
-            data-testid={`${kind}-agent-lock`}
-          >
-            <span className="flex items-center gap-2 rounded-card border border-line bg-panel px-3 py-2 text-sm shadow-sm">
-              <Loader2 size={15} className="animate-spin text-accent" />
-              {t('에이전트가 문서를 고치는 중…')}
-            </span>
-          </div>
-        )}
+        {agentWorking && ready && <DocumentLock testId={`${kind}-agent-lock`} />}
       </div>
 
-      <Modal
-        open={asking !== null}
-        onClose={() => void answer('cancel')}
-        title={t('저장하지 않은 편집이 있습니다')}
-        description={t(ask.description)}
-        width="max-w-md"
-        footer={
-          <div className="flex justify-end gap-2">
-            <Button onClick={() => void answer('cancel')}>{t('취소')}</Button>
-            <Button onClick={() => void answer('discard')}>{t(ask.discard)}</Button>
-            <Button variant="primary" onClick={() => void answer('save')}>
-              {t(ask.save)}
-            </Button>
-          </div>
-        }
-      />
+      <DocumentAsk reason={asking?.reason ?? null} onAnswer={(choice) => void answer(choice)} />
     </div>
   )
 }

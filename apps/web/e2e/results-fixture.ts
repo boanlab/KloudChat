@@ -45,7 +45,7 @@ function message(id: string, role: 'user' | 'assistant', content: string, extra:
     artifactIds: null, failure: null, createdAt: role === 'user' ? at : later, ...extra }
 }
 
-export async function resultsFixture(page: Page, testInfo: TestInfo, options: { reportVersion?: number } = {}) {
+export async function resultsFixture(page: Page, testInfo: TestInfo, options: { reportVersion?: number; deckOverflow?: { slideId: string; index: number; what: string[] }[] } = {}) {
   const origin = new URL(String(testInfo.project.use.baseURL)).origin
   const recorded: Recorded = { exports: [], uploads: [], unexpected: [], problems: [] }
   page.on('pageerror', (error) => recorded.problems.push(`pageerror: ${error.message}`))
@@ -134,6 +134,10 @@ export async function resultsFixture(page: Page, testInfo: TestInfo, options: { 
     if (method === 'GET' && version) {
       return route.fulfill({ json: { version: Number(version[2]), summary: '처음 작성', createdAt: at,
         data: artifacts[version[1]]?.data } })
+    }
+    // the export's overflow check of the web slides (none, unless a test says so)
+    if (method === 'POST' && /^\/artifacts\/[0-9a-f]{32}\/deck-overflow$/.test(path)) {
+      return route.fulfill({ json: options.deckOverflow ?? [] })
     }
     const single = path.match(/^\/artifacts\/([0-9a-f]{32})$/)
     if (method === 'GET' && single && artifacts[single[1]]) return route.fulfill({ json: artifacts[single[1]] })

@@ -14,7 +14,7 @@ import {
 } from '@/components/ui'
 import { MemoryEditor, emptyMemory, memoryTypeTone } from '@/components/memory/MemoryEditor'
 import { memoryTypeLabel } from '@/lib/memoryTypes'
-import { cn, matchesQuery, relativeTime } from '@/lib/utils'
+import { cn, formatDateTime, matchesQuery, relativeTime } from '@/lib/utils'
 import { ListSearch, NoMatch } from '@/components/ui/ListSearch'
 import { ShowMore, usePaged } from '@/components/ui/ShowMore'
 import { useStore } from '@/store/useStore'
@@ -125,7 +125,9 @@ export function MemoryPage({ embedded = false }: { embedded?: boolean } = {}) {
                         ))}
                       </p>
                     )}
-                    <p className="mt-2 text-xs text-faint">{t('{when} 수정').replace('{when}', relativeTime(m.updatedAt))}</p>
+                    <p className="mt-2 text-xs text-faint" title={formatDateTime(m.updatedAt)}>
+                      {t('{when} 수정').replace('{when}', relativeTime(m.updatedAt))}
+                    </p>
                   </div>
                   <div className="flex shrink-0 gap-0.5">
                     <Button

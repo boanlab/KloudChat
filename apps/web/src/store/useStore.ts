@@ -1,4 +1,5 @@
-import type { WebSearchSetting } from '@/lib/api'
+import type { OpenArtifact, UploadProgress, WebSearchSetting } from '@/lib/api'
+import { startingMode } from '@/lib/superAgent'
 import { forgetStoredDraft, purgeStoredDrafts } from '@/lib/drafts'
 import { findUnsent, forgetUnsent, keepUnsent, purgeUnsent, unsentId } from '@/lib/unsentSessions'
 import { create } from 'zustand'
@@ -73,6 +74,10 @@ import type {
   ProjectFile,
   PendingPlan,
   ReportOutput,
+  SlidesOutput,
+  TurnOutput,
+  SearchConsentAnswer,
+  SearchConsentMode,
   Session,
   Preferences,
   PrivacyAction,
@@ -95,8 +100,9 @@ import { reportFileKind } from '@/lib/documentRequest'
 import { DEFAULT_PASSWORD_MIN } from '@/lib/formCheck'
 import { currentLang, translate, type Lang } from '@/lib/i18n'
 import { counters } from '@/lib/usage'
-import { setMaxUploadMb } from '@/lib/uploadLimit'
+import { setMaxUploadMb, setMediaUpload } from '@/lib/uploadLimit'
 import { LeaveCancelled, leaveOffice, officeDirty, saveOpenOffice } from '@/lib/officeGuard'
+import { searchCardOf } from '@/lib/privacy'
 
 /** Store-side translation (no hooks here); only strings that reach the screen. */
 const tr = (text: string) => translate(currentLang(), text)
@@ -151,6 +157,13 @@ function queueSessionPersistence(sessionId: string, persist: () => Promise<void>
 }
 
 const noop = () => {}
+
+/** Before the catalogue answers (or from an older server): no Super Agent entry. */
+const NO_SUPER_AGENT: NonNullable<ModelCatalogue['superAgent']> = {
+  enabled: false,
+  default: { available: false, reason: 'disabled', estimate: null },
+  strict: { available: false, reason: 'disabled', estimate: null },
+}
 
 /** Marks a session as having a turn in flight, with the abort for that turn. */
 function beginRun(set: Set, sessionId: string, abort: () => void = noop) {
@@ -241,18 +254,21 @@ type SendOptions = {
   renderTemplateId?: string
   privacyAction?: PrivacyAction
   privacyDecisionToken?: string
+  privacyModelId?: string
   /** Write the pending outline instead of planning again (이대로 생성). */
   approve?: boolean
   /** The figure card's answer; absent means it was not asked. */
   includeFigures?: boolean
-  /** A report's file picked on the screen (`ReportOutput`). */
-  outputFormat?: ReportOutput
+  /** A report's file, or PowerPoint for a deck, picked on the screen. */
+  outputFormat?: TurnOutput
   /** The outline as edited on the proposal card. */
   plan?: Record<string, unknown>
   /** Answers to a stopped turn's questions, keyed by question id. */
   answers?: Record<string, string>
   /** Chat only: rerun this failed user message in place instead of appending. */
   retryOf?: string
+  /** The answer to the search card under `retryOf`'s question (any surface). */
+  searchConsent?: SearchConsentAnswer
   /** One-turn model override (다른 모델로 다시 생성). */
   model?: string
   /** Called as soon as a session id exists, before the stream finishes. */
@@ -287,11 +303,13 @@ interface State {
   /** Seconds left on a sign-in lockout (`Retry-After`), when the server said. */
   authRetryAfter: number | null
   /** Set when the session ended by idle timeout rather than 로그아웃. */
-  signedOutReason: 'idle' | null
+  signedOutReason: 'idle' | 'expired' | null
   /** Minutes of inactivity allowed; 0 is off. */
   idleTimeoutMinutes: number
   /** Whether a speech-to-text backend is configured. */
   dictationEnabled: boolean
+  /** The admin's web search in strict-local turns: ask first, queries only, or never. */
+  strictLocalWebSearch: SearchConsentMode
   bootstrap: () => Promise<void>
   login: (email: string, password: string) => Promise<void>
   signup: (email: string, password: string, name: string) => Promise<void>
@@ -350,6 +368,8 @@ interface State {
   /** Strict-local picture model the server uses when the person picked none. */
   strictImageDefault: string
   autoRouting: ModelCatalogue['autoRouting']
+  /** Super Agent entries; both unavailable until the catalogue says otherwise. */
+  superAgent: NonNullable<ModelCatalogue['superAgent']>
   loadModels: () => Promise<void>
 
   // ── session / generation ──────────────────────────────────────────────
@@ -358,6 +378,8 @@ interface State {
   running: Record<string, () => void>
   modelByKind: Record<SessionKind, string>
   setModel: (kind: SessionKind, id: string) => void
+  /** Forgets the home-screen pick for a surface: its new conversations start on Super Agent. */
+  clearModelPick: (kind: SessionKind) => void
   /** One remembered model per av mode; `modelByKind.av` mirrors the current mode's. */
   avModelByMode: Record<AvMode, string>
   /** Changes one conversation's model; the surface default is left alone. */
@@ -380,7 +402,9 @@ interface State {
     fromSessionId: string,
     kind: 'report' | 'slides',
     text: string,
-    opts?: Pick<SendOptions, 'webSearch' | 'onSession' | 'activatedSkillIds'> & { attachments?: FileRow[] },
+    opts?: Pick<SendOptions, 'webSearch' | 'onSession' | 'activatedSkillIds' | 'outputFormat'> & {
+      attachments?: FileRow[]
+    },
   ) => Promise<string>
   forkBeforeMessage: (sessionId: string, messageId: string) => Promise<{
     sessionId: string; attachments: FileRow[]; attachmentIdMap: Record<string, string>
@@ -406,6 +430,15 @@ interface State {
     text: string,
     opts?: SendOptions,
   ) => Promise<string>
+  /**
+   * Answers a strict-local turn's search card: its question is asked again with the decision,
+   * from the stored transcript (another tab may have answered first).
+   */
+  answerSearchConsent: (
+    sessionId: string,
+    messageId: string,
+    answer: Omit<SearchConsentAnswer, 'messageId'>,
+  ) => Promise<void>
   stopStreaming: (sessionId: string) => void
   /** 「이 단계부터 다시」: reruns a stored run from one stage; the result is a new version. */
   rerunStage: (
@@ -466,7 +499,7 @@ interface State {
   // ── governance (admin) ────────────────────────────────────────────────
   /** Null until fetched. */
   usage: UsageReport | null
-  loadUsage: (days?: number) => Promise<void>
+  loadUsage: (days?: number, range?: { start: string; end: string }) => Promise<void>
   /** Null until fetched. */
   apiKeys: ApiKeyRow[] | null
   loadApiKeys: () => Promise<void>
@@ -516,6 +549,10 @@ interface State {
   /** Rendering template picked in the gallery, waiting for the turn that will use it. */
   pendingTemplate: DesignTemplateRow | null
   setPendingTemplate: (template: DesignTemplateRow | null) => void
+  /** The 형식 picked for a report or deck not yet sent (home screen or an empty session);
+   *  null lets the request decide. One place, so a remount or a refused send keeps it. */
+  outputPick: { report: ReportOutput | null; slides: SlidesOutput | null }
+  setOutputPick: (surface: 'report' | 'slides', value: ReportOutput | SlidesOutput | null) => void
   /** An empty logo draws the default mark. */
   brand: { name: string; logo: string }
   /** Re-reads `/auth/config` so an admin's saved change shows without a reload. */
@@ -570,9 +607,11 @@ interface State {
     kind: 'projects' | 'artifacts' | 'skills' | 'agents' | 'designs' | 'connectors',
     ids: string[],
   ) => Promise<number>
-  uploadFile: (file: File, opts?: { projectId?: string; sessionId?: string }) => Promise<FileRow>
+  uploadFile: (file: File, opts?: { projectId?: string; sessionId?: string; onProgress?: UploadProgress }) => Promise<FileRow>
   /** A fresher copy of a project file (its scanned pages were read meanwhile). */
   refreshProjectFile: (row: FileRow) => void
+  /** A source added outside the upload path (pasted text, a note made a source): listed first. */
+  addProjectFile: (projectId: string, row: FileRow) => void
   /** Indexes the project's unindexed documents, then reloads its rows; returns the counts. */
   reindexProject: (projectId: string) => Promise<{ attempted: number; indexed: number }>
   addProjectUrl: (projectId: string, url: string) => Promise<FileRow>
@@ -960,6 +999,20 @@ export function effectiveModelId(
   return agent?.model || modelByKind[kind]
 }
 
+/** The mode a new conversation starts in (`startingMode`), from this store's state. */
+export function startingRoutingMode(
+  s: Pick<State, 'superAgent' | 'user'>,
+  kind: SessionKind,
+  agentId?: string | null,
+): Session['routingMode'] {
+  return startingMode({
+    kind,
+    agentId,
+    superAgent: s.superAgent,
+    homePick: s.user?.preferences.modelByKind?.[kind],
+  })
+}
+
 /** The model a media turn is sent with, honouring the conversation's own pick. */
 function pickedModel(
   s: Pick<State, 'sessions' | 'agents' | 'modelByKind'>,
@@ -989,12 +1042,13 @@ function rememberSignedOut(out: boolean) {
 }
 
 /** The refresh cookie was refused: signed out here, unsent work kept for the same person. */
-function endSession(set: Set) {
+function endSession(set: Set, expired = false) {
   cancelRefresh()
   disarmIdleWatch()
   setAccessToken(null)
   rememberSignedOut(true)
-  set({ authenticated: false, user: null, authLoading: false })
+  // A session that ended under a signed-in tab says why on the sign-in screen.
+  set({ authenticated: false, user: null, authLoading: false, ...(expired ? { signedOutReason: 'expired' as const } : {}) })
 }
 
 /** First half of signing out: half-typed questions must not outlive the account on a shared PC. */
@@ -1021,6 +1075,7 @@ function clearAccount(set: Set, reason?: 'idle') {
     authError: null,
     signedOutReason: reason ?? null,
     // Never leave one account's work on screen for the next.
+    outputPick: { report: null, slides: null },
     sessions: [],
     users: [],
     usersPage: null,
@@ -1102,6 +1157,7 @@ export const useStore = create<State>((set, get) => ({
           .then((c) => {
             applyBrand(c.brand)
             setMaxUploadMb(c.upload?.maxMb)
+            setMediaUpload(c.upload)
             set({
               brand: c.brand,
               enabledKinds: (c.enabledKinds ?? ['chat']) as SessionKind[],
@@ -1127,7 +1183,7 @@ export const useStore = create<State>((set, get) => ({
         // network or a 5xx says nothing about the cookie: a signed-in tab keeps its session,
         // and either way the refresh is tried again.
         if (refusedRefresh(err)) {
-          endSession(set)
+          endSession(set, get().authenticated)
         } else if (get().authenticated) {
           retryRefreshLater(() => void get().bootstrap())
         } else {
@@ -1284,6 +1340,7 @@ export const useStore = create<State>((set, get) => ({
   artifactsFailed: false,
   litellmAvailable: true,
   strictImageDefault: '',
+  superAgent: NO_SUPER_AGENT,
   autoRouting: {
     enabled: false,
     available: false,
@@ -1358,8 +1415,8 @@ export const useStore = create<State>((set, get) => ({
     (Date.now() - workspaceLoadedAt < WORKSPACE_FRESH_MS ? Promise.resolve() : get().loadWorkspace()),
 
   usage: null,
-  loadUsage: async (days = 7) => {
-    const report = await usageApi.report(days).catch(() => null)
+  loadUsage: async (days = 7, range) => {
+    const report = await usageApi.report(days, range).catch(() => null)
     if (report) set({ usage: report })
   },
   apiKeys: null,
@@ -1385,7 +1442,11 @@ export const useStore = create<State>((set, get) => ({
   setGovernance: async (patch) => {
     // Optimistic; the reload below is what the screen trusts.
     set((s) => (s.governance ? { governance: { ...s.governance, ...patch } } : s))
-    const result = await usageApi.setGovernance(patch).catch(() => null)
+    const result = await usageApi.setGovernance(patch).catch((err) => {
+      // The reload puts the saved policy back on screen; say the change did not hold.
+      get().setToast({ text: errorMessage(err, tr('정책을 저장하지 못했습니다. 화면은 저장된 값으로 돌아갑니다.')) })
+      return null
+    })
     await get().loadGovernance()
     return result?.clearedMessages ?? 0
   },
@@ -1406,6 +1467,7 @@ export const useStore = create<State>((set, get) => ({
         defaultAvModelByMode,
         strictImageDefault,
         autoRouting,
+        superAgent,
       } = await modelsApi.list()
       set((s) => ({
         models: live,
@@ -1416,6 +1478,7 @@ export const useStore = create<State>((set, get) => ({
         ),
         litellmAvailable,
         strictImageDefault: strictImageDefault ?? '',
+        superAgent: superAgent ?? NO_SUPER_AGENT,
         autoRouting: autoRouting ?? {
           enabled: false,
           available: false,
@@ -1491,6 +1554,19 @@ export const useStore = create<State>((set, get) => ({
         ...(byMode ? { avModelByMode: { ...s.avModelByMode, ...byMode } } : {}),
         ...(s.user ? { user: { ...s.user, preferences: { ...s.user.preferences, ...kept } } } : {}),
       }
+    }),
+  clearModelPick: (kind) =>
+    set((s) => {
+      const picks = { ...readRememberedModels(s.user?.preferences.modelByKind) }
+      if (!(kind in picks)) return {}
+      delete picks[kind]
+      try {
+        localStorage.setItem(MODEL_STORAGE_KEY, JSON.stringify(picks))
+      } catch {
+        // storage unavailable: the account keeps it
+      }
+      if (s.user) rememberOnAccount({ modelByKind: picks })
+      return s.user ? { user: { ...s.user, preferences: { ...s.user.preferences, modelByKind: picks } } } : {}
     }),
   setSessionModel: async (sessionId, modelId) => {
     if (holdUnsent(set, get, sessionId, { model: modelId, routingMode: 'manual' })) return
@@ -1577,7 +1653,7 @@ export const useStore = create<State>((set, get) => ({
             (c.unsent || beyondPage(c) || (rowFetchedAt.get(c.id) ?? 0) > asked)),
           // Deleted here and still in the undo window: the server lists it until the request goes.
           ...rows.filter((row) => s.goneSessions[row.id] !== 'deleted')
-            .map((row) => toSession(row, s.sessions.find((c) => c.id === row.id)?.messages)),
+            .map((row) => listedSession(row, s.sessions.find((c) => c.id === row.id))),
         ],
       }))
     } catch {
@@ -1597,7 +1673,7 @@ export const useStore = create<State>((set, get) => ({
         ...s.sessions.filter((c) => !rows.some((row) => row.id === c.id) &&
           (c.projectId !== projectId || c.unsent)),
         ...rows.filter((row) => s.goneSessions[row.id] !== 'deleted')
-          .map((row) => toSession(row, s.sessions.find((c) => c.id === row.id)?.messages)),
+          .map((row) => listedSession(row, s.sessions.find((c) => c.id === row.id))),
       ],
     }))
   },
@@ -1683,7 +1759,7 @@ export const useStore = create<State>((set, get) => ({
 
   newSession: async (
     kind,
-    { projectId = null, agentId = null, routingMode = 'manual' } = {},
+    { projectId = null, agentId = null, routingMode } = {},
   ) => {
     // the panel closes for the new conversation: its document's unsaved edits are asked about first
     if (get().openArtifactId && officeDirty() && !(await leaveOffice())) throw new LeaveCancelled()
@@ -1695,7 +1771,8 @@ export const useStore = create<State>((set, get) => ({
       id: unsentId(), kind, title: tr('새 작업'), projectId, agentId, pipelineId: null,
       // A session model outranks the agent's, so an agent that pins one gets none here.
       model: agent?.model ? '' : (state.modelByKind[kind] ?? ''),
-      routingMode, createdAt: now, updatedAt: now, pinned: false, messages: [], preview: null,
+      routingMode: routingMode ?? startingRoutingMode(state, kind, agentId),
+      createdAt: now, updatedAt: now, pinned: false, messages: [], preview: null,
       messageCount: 0, made: null, artifactId: null, pending: null, skillIds: [],
       renderTemplateId: startingTemplate(state, kind, agent, projectId), unsent: true,
     }
@@ -1760,7 +1837,7 @@ export const useStore = create<State>((set, get) => ({
   handOff: async (fromSessionId, kind, text, opts = {}) => {
     const owner = get().user?.id
     const epoch = get().accountEpoch
-    const result = await sessionsApi.handoff(fromSessionId, kind)
+    const result = await sessionsApi.handoff(fromSessionId, kind, opts.outputFormat)
     if (!owner || owner !== get().user?.id || epoch !== get().accountEpoch || !get().authenticated) {
       throw new Error('account_changed')
     }
@@ -1781,6 +1858,8 @@ export const useStore = create<State>((set, get) => ({
       attachments: files.map((file) => file.id),
       attachmentNames: files.map((file) => file.name),
       activatedSkillIds: opts.activatedSkillIds,
+      // The file asked for on the hand-off, as the server settled it; the first turn carries it.
+      outputFormat: result.outputFormat ?? opts.outputFormat,
       onSession: opts.onSession,
     })
   },
@@ -1796,14 +1875,43 @@ export const useStore = create<State>((set, get) => ({
     return { sessionId: fork.id, attachments: result.attachments, attachmentIdMap: result.attachmentIdMap }
   },
 
+  answerSearchConsent: async (sessionId, messageId, answer) => {
+    const questionOf = (session: Session | undefined) => {
+      const at = session?.messages.findIndex((m) => m.id === messageId) ?? -1
+      for (let i = at - 1; i >= 0; i--) if (session!.messages[i].role === 'user') return session!.messages[i]
+      return undefined
+    }
+    let session = get().sessions.find((s) => s.id === sessionId)
+    if (!session || get().running[sessionId]) return
+    if (!questionOf(session)?.persisted) {
+      // A question sent from this tab keeps its provisional id until the transcript is read back.
+      const fresh = toSession(await sessionsApi.get(sessionId))
+      set((state) => ({ sessions: state.sessions.map((s) => (s.id === sessionId ? fresh : s)) }))
+      session = fresh
+    }
+    const question = questionOf(session)
+    const card = session.messages.find((m) => m.id === messageId)
+    // Answered meanwhile (another tab, a reload): the transcript now says so.
+    if (!question || searchCardOf(card ?? {})?.status !== 'pending') return
+    await get().send(sessionId, session.kind, question.content, {
+      retryOf: question.id,
+      searchConsent: { ...answer, messageId },
+    })
+  },
+
   /** Entry point for all five surfaces; image and av hand off to their job/media paths. */
   send: async (sessionId, kind, text, opts = {}) => {
     const owner = get().user?.id
     const epoch = get().accountEpoch
     const ownsAccount = () => owner === get().user?.id && epoch === get().accountEpoch
-    // A retry resends the original turn's options, not just its sentence.
+    // A retry resends the original turn's options, not just its sentence. The file it was asked
+    // as is not taken from here: the server keeps it on the turn (`turnOptions.outputFormat`)
+    // and reuses it when the retry names none, so it survives a reload.
     const again = opts.retryOf ? sentWith.get(opts.retryOf) : undefined
-    if (again) opts = { ...again, ...opts }
+    if (again) {
+      const { outputFormat: _kept, ...rest } = again
+      opts = { ...rest, ...opts }
+    }
     const fresh = sessionId ? null : await get().newSession(kind, { projectId: opts.projectId ?? null })
     let id: string
     try {
@@ -1875,7 +1983,9 @@ export const useStore = create<State>((set, get) => ({
       // The answer being rerun stays reachable behind the new one (‹ k/n ›).
       const kept = messages
         .slice(at + 1)
-        .filter((m) => m.role === 'assistant' && m.content && !m.failure && !m.error)
+        // a search card is not an answer: it goes with its decision
+        .filter((m) => m.role === 'assistant' && m.content && !m.failure && !m.error &&
+          searchCardOf(m)?.status !== 'pending')
         .flatMap((m) => [
           ...(m.superseded ?? []),
           { id: m.id, content: m.content, model: m.model, usage: m.usage, createdAt: m.createdAt },
@@ -1923,6 +2033,8 @@ export const useStore = create<State>((set, get) => ({
             attachments: opts.attachments,
             plan: opts.plan,
             renderTemplateId: opts.renderTemplateId,
+            retryOf: opts.searchConsent ? retryOf : undefined,
+            searchConsent: opts.searchConsent,
           },
         )
         return id
@@ -1941,9 +2053,13 @@ export const useStore = create<State>((set, get) => ({
             answers: opts.answers,
             webSearch: opts.webSearch,
             includeFigures: opts.includeFigures,
+            // PowerPoint picked: the server makes the file this turn fills.
+            outputFormat: opts.outputFormat,
             attachments: opts.attachments,
             plan: opts.plan,
             renderTemplateId: opts.renderTemplateId,
+            retryOf: opts.searchConsent ? retryOf : undefined,
+            searchConsent: opts.searchConsent,
           },
         )
         return id
@@ -1973,6 +2089,8 @@ export const useStore = create<State>((set, get) => ({
         activatedSkillIds: opts.activatedSkillIds,
         privacyAction: opts.privacyAction,
         privacyDecisionToken: opts.privacyDecisionToken,
+        privacyModelId: opts.privacyModelId,
+        searchConsent: opts.searchConsent,
         onAccepted: acceptSession,
       })
       return id
@@ -2372,20 +2490,25 @@ export const useStore = create<State>((set, get) => ({
   setToast: (toast) => set({ toast }),
   pendingTemplate: null,
   setPendingTemplate: (pendingTemplate) => set({ pendingTemplate }),
+  outputPick: { report: null, slides: null },
+  setOutputPick: (surface, value) => set((s) => ({ outputPick: { ...s.outputPick, [surface]: value } })),
   brand: { name: 'KloudChat', logo: '' },
   refreshConfig: async () => {
     const c = await authConfig.get().catch(() => null)
     if (!c) return
     applyBrand(c.brand)
     setMaxUploadMb(c.upload?.maxMb)
+    setMediaUpload(c.upload)
     set({
       brand: c.brand,
       enabledKinds: (c.enabledKinds ?? ['chat']) as SessionKind[],
       idleTimeoutMinutes: c.idleTimeoutMinutes ?? 0,
       dictationEnabled: Boolean(c.dictationEnabled),
       passwordMinLength: c.password?.minLength ?? DEFAULT_PASSWORD_MIN,
+      strictLocalWebSearch: c.privacy?.strictLocalWebSearch ?? 'ask',
     })
   },
+  strictLocalWebSearch: 'ask',
   passwordMinLength: DEFAULT_PASSWORD_MIN,
   enabledKinds: ['chat', 'report', 'slides'],
   avOptions: {
@@ -2564,6 +2687,14 @@ export const useStore = create<State>((set, get) => ({
       projects: s.projects.map((p) =>
         p.files.some((f) => f.id === row.id)
           ? { ...p, files: p.files.map((f) => (f.id === row.id ? toProjectFile(row) : f)) }
+          : p,
+      ),
+    })),
+  addProjectFile: (projectId, row) =>
+    set((s) => ({
+      projects: s.projects.map((p) =>
+        p.id === projectId
+          ? { ...p, files: [toProjectFile(row), ...p.files.filter((f) => f.id !== row.id)] }
           : p,
       ),
     })),
@@ -3348,6 +3479,16 @@ function toMessage(raw: MessageRow): Message {
   }
 }
 
+/**
+ * A listed row over the one held: the list carries no transcript (held messages are kept), and
+ * it names no document a chat's own fetch found (a Word or HWP file made in the chat, which the
+ * server finds for the conversation itself): that document stays the chat's.
+ */
+function listedSession(raw: SessionRow, held: Session | undefined): Session {
+  const fresh = toSession(raw, held?.messages)
+  return fresh.artifactId === null && held?.artifactId ? { ...fresh, artifactId: held.artifactId } : fresh
+}
+
 function toSession(raw: SessionRow, keepMessages?: Message[]): Session {
   return {
     id: raw.id,
@@ -3393,6 +3534,11 @@ function toProjectFile(f: FileRow): ProjectFile {
     ocrTotal: f.ocrTotal,
     ocrDone: f.ocrDone,
     ocrReview: f.ocrReview,
+    mediaState: f.mediaState,
+    mediaStage: f.mediaStage,
+    mediaDone: f.mediaDone,
+    mediaTotal: f.mediaTotal,
+    mediaDuration: f.mediaDuration,
   }
 }
 
@@ -3408,6 +3554,7 @@ function toProject(p: ProjectRow): Project {
     skillIds: p.skillIds,
     designSystemId: p.designSystemId ?? null,
     renderTemplates: p.renderTemplates ?? {},
+    strictLocalWebSearch: p.strictLocalWebSearch ?? null,
     updatedAt: p.updatedAt,
   }
 }
@@ -3607,6 +3754,19 @@ function toConnector(c: ConnectorRow): Connector {
 }
 
 /** One chat turn: an empty assistant message is filled in place as events arrive. */
+/**
+ * The document open in the panel, as a turn carries it (`openArtifact`): the server's chat edits
+ * and office tools work on it, never on "the newest of its kind". A local draft is not sent.
+ */
+function openTarget(get: Get): OpenArtifact | undefined {
+  const id = get().openArtifactId
+  if (!id) return undefined
+  const artifact = get().artifacts.find((a) => a.id === id)
+  if (artifact?.draft) return undefined
+  const version = get().artifactVersions[id] ?? artifact?.version
+  return version ? { id, version } : { id }
+}
+
 async function streamTurn(
   set: Set,
   get: Get,
@@ -3622,9 +3782,11 @@ async function streamTurn(
     activatedSkillIds?: string[]
     privacyAction?: PrivacyAction
     privacyDecisionToken?: string
+    privacyModelId?: string
     retryOf?: string
     /** Answers to the agent's question card; `{}` goes on with what was given. */
     answers?: Record<string, string>
+    searchConsent?: SearchConsentAnswer
     onAccepted?: () => void
   } = {},
 ) {
@@ -3713,8 +3875,11 @@ async function streamTurn(
         activatedSkillIds: opts.activatedSkillIds,
         privacyAction: opts.privacyAction,
         privacyDecisionToken: opts.privacyDecisionToken,
+        privacyModelId: opts.privacyModelId,
         retryOf: opts.retryOf,
         answers: opts.answers,
+        openArtifact: openTarget(get),
+        searchConsent: opts.searchConsent,
       },
       controller.signal,
     )) {
@@ -3886,6 +4051,12 @@ async function streamTurn(
             assistantId = event.messageId
           }
           break
+        case 'search_consent':
+          settled = true
+          patch((m) => ({ ...m, content: event.content, routing: event.routing }))
+          adoptServerId(set, sessionId, assistantId, event.messageId)
+          assistantId = event.messageId
+          break
       }
     }
   } catch (err) {
@@ -3974,14 +4145,17 @@ async function streamReport(
     answers?: Record<string, string>
     webSearch?: WebSearchSetting
     includeFigures?: boolean
-    /** A report's file picked on the screen; kept on the waiting card. */
-    outputFormat?: ReportOutput
+    /** The file picked on the screen; kept on the waiting card. */
+    outputFormat?: TurnOutput
     plan?: Record<string, unknown>
     /** Resent with the approval: the server assembles context fresh per request. */
     attachments?: string[]
     renderTemplateId?: string
     /** 「이 단계부터 다시」: streams the rerun instead of a turn, into the document already open. */
     rerun?: { runId: string; fromStage: string; label: string; answers?: Record<string, string> }
+    /** The question asked again with the answer to its search card. */
+    retryOf?: string
+    searchConsent?: SearchConsentAnswer
   } = {},
 ) {
   const draftId = uid('a')
@@ -4010,6 +4184,8 @@ async function streamReport(
     artifactId: get().sessions.find((c) => c.id === sessionId)?.artifactId ?? null,
     open: get().openArtifactId,
   }
+  // The document the person sees, sent with the turn before a draft takes the panel.
+  const opened = openTarget(get)
   // A planning pass produces no document, so it opens none; a rerun writes into the one there is.
   // A report written as an HWP or Word file shows no HTML draft: the file opens when written.
   const waiting = get().sessions.find((c) => c.id === sessionId)?.pending
@@ -4073,6 +4249,9 @@ async function streamReport(
         outputFormat: gate.outputFormat,
         attachments: gate.attachments,
         plan: gate.plan,
+        openArtifact: opened,
+        retryOf: gate.retryOf,
+        searchConsent: gate.searchConsent,
       },
       controller.signal,
     )) {
@@ -4087,7 +4266,7 @@ async function streamReport(
             attachments: gate.attachments ?? p?.attachments ?? [],
             answers: p?.answers ?? {},
             plan: e.plan,
-            output: gate.outputFormat ?? p?.output,
+            output: (gate.outputFormat === 'pptx' ? undefined : gate.outputFormat) ?? p?.output,
           }))
           break
         case 'needs':
@@ -4098,7 +4277,7 @@ async function streamReport(
             attachments: gate.attachments ?? p?.attachments ?? [],
             answers: p?.answers ?? {},
             questions: e.questions,
-            output: gate.outputFormat ?? p?.output,
+            output: (gate.outputFormat === 'pptx' ? undefined : gate.outputFormat) ?? p?.output,
           }))
           break
         case 'skills_applied':
@@ -4106,6 +4285,13 @@ async function streamReport(
             ...message,
             steps: upsertStep(message.steps, appliedSkillsStep(e)),
           }))
+          break
+        // Research would search first: the card asks before anything is sent.
+        case 'search_consent':
+          settled = true
+          patchMessage(set, sessionId, assistantId, (m) => ({ ...m, content: e.content, routing: e.routing }))
+          adoptServerId(set, sessionId, assistantId, e.messageId)
+          assistantId = e.messageId
           break
         case 'title':
           patchReport((a) => ({ ...a, title: e.title }))
@@ -4150,11 +4336,19 @@ async function streamReport(
             assistantId = e.messageId
           }
           break
+        case 'delta':
+          // an edit made in place with the document tools answers in words, as a chat does
+          patchMessage(set, sessionId, assistantId, (m) => ({ ...m, content: (m.content ?? '') + e.text }))
+          break
         case 'step':
           if (e.stage) {
             const stage = e.stage
             patchMessage(set, sessionId, assistantId, (m) => withStage(m, stage))
             break
+          }
+          if (e.artifactId && e.status === 'done') {
+            // a document tool saved a version mid-turn: the panel shows it now
+            void get().refreshArtifact(e.artifactId)
           }
           set((s) => ({
             sessions: s.sessions.map((c) =>
@@ -4274,7 +4468,12 @@ async function streamDeck(
     attachments?: string[]
     renderTemplateId?: string
     /** 「이 단계부터 다시」: streams the rerun instead of a turn, into the document already open. */
+    /** `pptx`: a PowerPoint file the server makes for this turn; web slides send none. */
+    outputFormat?: TurnOutput
     rerun?: { runId: string; fromStage: string; label: string; answers?: Record<string, string> }
+    /** The question asked again with the answer to its search card. */
+    retryOf?: string
+    searchConsent?: SearchConsentAnswer
   } = {},
 ) {
   const draftId = uid('a')
@@ -4301,6 +4500,8 @@ async function streamDeck(
     artifactId: get().sessions.find((c) => c.id === sessionId)?.artifactId ?? null,
     open: get().openArtifactId,
   }
+  // The document the person sees, sent with the turn before a draft takes the panel.
+  const opened = openTarget(get)
   // A planning pass produces no document, so it opens none; a rerun writes into the one there is.
   const willWrite = gate.approve === true && !gate.rerun
   // Approved outline spent; a new proposal arrives as its own event.
@@ -4355,8 +4556,12 @@ async function streamDeck(
         answers: gate.answers,
         webSearch: gate.webSearch,
         includeFigures: gate.includeFigures,
+        ...(gate.outputFormat ? { outputFormat: gate.outputFormat } : {}),
         attachments: gate.attachments,
         plan: gate.plan,
+        openArtifact: opened,
+        retryOf: gate.retryOf,
+        searchConsent: gate.searchConsent,
       },
       controller.signal,
     )) {
@@ -4389,6 +4594,13 @@ async function streamDeck(
             steps: upsertStep(message.steps, appliedSkillsStep(e)),
           }))
           break
+        // Research would search first: the card asks before anything is sent.
+        case 'search_consent':
+          settled = true
+          patchMessage(set, sessionId, assistantId, (m) => ({ ...m, content: e.content, routing: e.routing }))
+          adoptServerId(set, sessionId, assistantId, e.messageId)
+          assistantId = e.messageId
+          break
         case 'title':
           patchDeck((a) => ({ ...a, title: e.title }))
           break
@@ -4413,11 +4625,19 @@ async function streamDeck(
             assistantId = e.messageId
           }
           break
+        case 'delta':
+          // an edit made in place with the document tools answers in words, as a chat does
+          patchMessage(set, sessionId, assistantId, (m) => ({ ...m, content: (m.content ?? '') + e.text }))
+          break
         case 'step':
           if (e.stage) {
             const stage = e.stage
             patchMessage(set, sessionId, assistantId, (m) => withStage(m, stage))
             break
+          }
+          if (e.artifactId && e.status === 'done') {
+            // a document tool saved a version mid-turn: the panel shows it now
+            void get().refreshArtifact(e.artifactId)
           }
           set((s) => ({
             sessions: s.sessions.map((c) =>
@@ -4798,7 +5018,7 @@ export function renewSession(): Promise<boolean> {
       scheduleRefresh(session.expiresIn, () => void renewSession())
       return true
     } catch (err) {
-      if (refusedRefresh(err)) endSession(set)
+      if (refusedRefresh(err)) endSession(set, true)
       else retryRefreshLater(() => void renewSession())
       return false
     } finally {

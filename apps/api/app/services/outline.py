@@ -90,6 +90,24 @@ def _range_in(request: str, units: tuple[str, ...], *, maximum: int) -> tuple[in
     return None
 
 
+def approximate_count(request: str, units: tuple[str, ...], *, maximum: int) -> int | None:
+    """The number an approximate count states (「5장 정도」 → 5), or None: what the document
+    aims at, a stated range (`requested_range`) being only its tolerance."""
+    text = " ".join((request or "").split())
+    unit = "|".join(re.escape(value) for value in units)
+    for match in re.finditer(
+        rf"(?<![\d.~～–-])(\d{{1,2}})\s{{0,2}}(?:개\s{{0,2}})?(?:{unit})", text
+    ):
+        if _APPROXIMATE.match(suffix_words(text, match.end())):
+            prefix = text[max(0, match.start() - 8) : match.start()].rstrip()
+            if prefix.endswith(("제", "본문", "본론", "내용")):
+                continue
+            value = int(match.group(1))
+            if 1 <= value <= maximum:
+                return value
+    return None
+
+
 #: approximate-count qualifiers
 _APPROXIMATE = re.compile(r"(?:으로|로)?\s{0,2}(?:내외|안팎|정도|쯤|가량|남짓|전후|언저리)")
 

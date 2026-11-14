@@ -2,11 +2,12 @@ import { Loader2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { PasswordRule } from '@/components/auth/PasswordRule'
-import { Button, Field, Input, RequiredNote } from '@/components/ui'
+import { Button, Field, RequiredNote } from '@/components/ui'
 import { ApiError, errorMessage } from '@/lib/api'
 import { checkRequired, passwordProblem } from '@/lib/formCheck'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
+import { PasswordInput } from '@/components/ui/PasswordInput'
 
 type Key = 'current' | 'next' | 'confirm'
 
@@ -92,9 +93,8 @@ export function PasswordSection() {
         <RequiredNote />
         <div className="grid gap-3 sm:grid-cols-3">
           <Field label={t('현재 비밀번호')} required error={errorFor('current')}>
-            <Input
+            <PasswordInput
               ref={refs.current}
-              type="password"
               autoComplete="current-password"
               value={pw.current}
               onChange={(e) => edit('current', e.target.value)}
@@ -106,18 +106,16 @@ export function PasswordSection() {
             error={errorFor('next')}
             hint={<PasswordRule value={pw.next} minLength={passwordMinLength} />}
           >
-            <Input
+            <PasswordInput
               ref={refs.next}
-              type="password"
               autoComplete="new-password"
               value={pw.next}
               onChange={(e) => edit('next', e.target.value)}
             />
           </Field>
           <Field label={t('새 비밀번호 확인')} required error={errorFor('confirm')}>
-            <Input
+            <PasswordInput
               ref={refs.confirm}
-              type="password"
               autoComplete="new-password"
               value={pw.confirm}
               onChange={(e) => edit('confirm', e.target.value)}

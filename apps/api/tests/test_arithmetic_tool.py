@@ -198,7 +198,7 @@ async def test_ten_choices_are_allowed_and_the_last_can_be_selected():
         "20%",
         "7//2",
         "2**0.5",
-        "2**31",
+        "2**10001",
         "1e99",
         "0**-1",
         "3j",
@@ -360,3 +360,42 @@ async def test_engineering_powers_and_scientific_notation_are_exact():
     assert data["exact"] == "1/960"
     rounded = await calculate({"expression": "1E-3 * 10**3", "decimal_places": 2})
     assert json.loads(rounded.content)["value"] == "1.00"
+
+
+@pytest.mark.asyncio
+async def test_compound_interest_past_the_exact_budget_is_approximated_and_flagged():
+    # 3,000만 원 at 4.2% a year compounded monthly for 7 years: 84 periods
+    output = await calculate({"expression": "30000000*(1+0.042/12)**84", "decimal_places": 0})
+    data = json.loads(output.content)
+    assert not output.failed and data["approximate"] is True
+    assert data["value"] == "40232860"
+    assert data["exact"].startswith("40232860.17538")
+    growth = json.loads((await calculate({"expression": "(1+0.042/12)**84"})).content)
+    assert growth["approximate"] is True and growth["value"].startswith("1.341095339179")
+    # within the exact budget it stays exact and unflagged
+    exact = json.loads((await calculate({"expression": "2**31"})).content)
+    assert exact["exact"] == "2147483648" and "approximate" not in exact
+    tenth = json.loads((await calculate({"expression": "(1+0.1)**30"})).content)
+    assert "approximate" not in tenth
+    assert tenth["exact"].endswith("/" + "1" + "0" * 30)
+
+
+@pytest.mark.asyncio
+async def test_an_approximate_value_still_grades_a_choice():
+    output = await calculate({
+        "expression": "30000000*(1+0.042/12)**84", "decimal_places": 0,
+        "choices": ["40232860", "40000000"], "submitted_choice": 1,
+    })
+    data = json.loads(output.content)
+    assert data["choice_status"] == "unique" and data["grading"] == "correct"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("expression", [
+    "10**2000", "2**10000", "1.5**3000", "0.5**-5000", "3**9999", "9**10001",
+    "(1.0001**9999)**9999",
+])
+async def test_pathological_sizes_are_still_refused(expression):
+    output = await calculate({"expression": expression})
+    assert output.failed
+    assert json.loads(output.content)["error"] == "invalid_calculation"

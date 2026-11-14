@@ -66,7 +66,7 @@ def test_the_caption_is_what_the_reader_sees_under_it() -> None:
 
 
 def test_the_route_is_mounted_and_only_takes_a_report() -> None:
-    """The route is mounted, accepts only reports, snapshots, and sanitises."""
+    """The route is mounted, accepts only reports, snapshots, and keeps the section Markdown."""
     routes = {
         route.path: set(route.methods)
         for route in router.router.routes
@@ -81,8 +81,8 @@ def test_the_route_is_mounted_and_only_takes_a_report() -> None:
     # Snapshotted like a rewrite.
     # superseded body kept, version moved in one conditional UPDATE
     assert "_next_version(" in source
-    # A hand-formatted body goes through the PATCH sanitiser.
-    assert "editable_styles=True" in source
+    # An older HTML body is stored as Markdown before the picture joins it.
+    assert "markdown_section(" in source
 
 
 def test_a_picture_for_a_document_is_told_not_to_be_one() -> None:

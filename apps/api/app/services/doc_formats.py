@@ -107,6 +107,14 @@ FORMATS: tuple[DocFormat, ...] = (
         optional=("사업 기간",),
     ),
     DocFormat(
+        # Before `plan` and `event_plan`: a course's plan is not research, nor an event.
+        "syllabus", "강의계획서",
+        r"(?:강의|수업|교과목|교과|과목|학기)\s{0,3}(?:운영\s{0,3})?계획서|강의\s{0,3}계획(?:안)?(?!서)"
+        r"|syllabus|실라버스|교수\s{0,3}요목",
+        ("교과목명", "담당교수", "개설 학기", "학점·시간", "강의실", "연락처"), head="header",
+        optional=("학점·시간", "강의실", "연락처"),
+    ),
+    DocFormat(
         "plan", "연구·조사 계획서",
         r"(?:연구|조사)\s{0,3}계획|연구\s{0,3}제안서",
         ("과제명", "연구자", "소속", "연구 기간", "지도교수", "작성일"), head="cover",
@@ -770,6 +778,10 @@ def _tables_out_of_items(lines: list[str]) -> list[str]:
 _OFFICIAL_ITEM = re.compile(r"^\s{0,12}(?:\d{1,2}[.)]|[가-하][.)]|\(\d{1,2}\)|※|붙\s{0,2}임)\s")
 
 
+_NESTED_NUMBER = re.compile(r"^\s{0,24}\d{1,3}[.)]\s{1,4}(\S.*)$")
+_HANGUL_ITEMS = "가나다라마바사아자차카타파하"
+
+
 def official_body(text: str) -> str:
     """공문 body, one paragraph per item; tables and fences pass through."""
     out: list[str] = []
@@ -778,6 +790,8 @@ def official_body(text: str) -> str:
     def table(line: str) -> bool:
         return line.lstrip().startswith("|")
 
+    #: a numbered item nested under another (「   1. 일시」 under 「2. 안내」): 가. 나. …
+    nested = 0
     for line in (text or "").split("\n"):
         if _FENCE_LINE.match(line):
             fenced = not fenced
@@ -790,8 +804,15 @@ def official_body(text: str) -> str:
         if not stripped:
             out.append("")
             continue
+        indent = len(line) - len(line.lstrip())
+        if (number := _NESTED_NUMBER.match(line)) and indent >= 2:
+            # the second level of a 공문 is 가., 나. — not a second run of 1., 2.
+            line = f"{_HANGUL_ITEMS[min(nested, len(_HANGUL_ITEMS) - 1)]}. {number.group(1)}"
+            nested += 1
+        elif _NESTED_NUMBER.match(line):
+            nested = 0
         if _OFFICIAL_ITEM.match(line):
-            line = stripped
+            line = line.strip()
         # Blank line between lines unless both table rows.
         if out and out[-1].strip() and not (table(out[-1]) and table(line)):
             out.append("")

@@ -1881,6 +1881,11 @@ def knowledge_tool(documents: list[tuple[str, str, str | None]], collection: str
                 detail="해당 없음",
                 empty=True,
             )
+        # a vector hit names its document only: a video's player link comes from the shelf
+        links = {name: url for name, _, url in documents if url}
+        for passage in passages:
+            if not passage.source_url:
+                passage.source_url = links.get(passage.document)
         body = knowledge.render(passages)
         detail = f"{len(passages)}개 대목" if ranked else f"자료 {len(passages)}건 전문"
         return ToolResult(content=body, detail=detail)

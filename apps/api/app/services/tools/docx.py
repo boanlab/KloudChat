@@ -8,7 +8,7 @@ from app.services import docx_doc
 from app.services import docx_edit as edits
 from app.services.tools.office import Toolset, tools_for
 
-__all__ = ["NAMES", "TOOLS", "docx_edit", "docx_read", "docx_write"]
+__all__ = ["NAMES", "TOOLS", "docx_edit", "docx_read", "docx_restore", "docx_write"]
 
 TOOLS = tools_for(Toolset(
     prefix="docx",
@@ -25,6 +25,6 @@ TOOLS = tools_for(Toolset(
         "footer text (머리글, 바닥글) follows the body; fill_blank without `at` reaches it."
     ),
 ))
-DOCX_READ, DOCX_EDIT, DOCX_WRITE = TOOLS
-docx_read, docx_edit, docx_write = (tool.run for tool in TOOLS)
+DOCX_READ, DOCX_EDIT, DOCX_WRITE, DOCX_RESTORE = TOOLS
+docx_read, docx_edit, docx_write, docx_restore = (tool.run for tool in TOOLS)
 NAMES = frozenset(tool.name for tool in TOOLS)

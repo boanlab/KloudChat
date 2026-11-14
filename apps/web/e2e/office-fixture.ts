@@ -38,6 +38,11 @@ export type OfficeOptions = {
   artifactsPage?: boolean
   /** A share link to the document, read without an account: the page opens on it. */
   shared?: { token: string }
+  /** The chat is opened by its address alone (a reload, a link): its document is named only by
+   *  the conversation's own fetch, as the server finds a chat's newest office document. */
+  reopen?: boolean
+  /** The conversation (`POST /sessions`) and the document (`POST /artifacts/{kind}`) wait for this. */
+  holdCreate?: Promise<void>
 }
 
 export async function officeFixture(page: Page, options: OfficeOptions) {
@@ -88,7 +93,7 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
     : []
   const session = {
     id: sessionId, title: '연수 공문', kind: options.sessionKind ?? 'chat', model: 'fixture/base', routingMode: 'manual',
-    projectId: null, agentId: null, artifactId: null, pinned: false,
+    projectId: null, agentId: null, artifactId: options.reopen ? artifactId : null, pinned: false,
     messages,
     messageCount: messages.length, made: null, createdAt: at, updatedAt: at,
   }
@@ -128,12 +133,14 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
     if (path === '/sessions' && method === 'POST') {
       // the conversation the home screen's document button starts, under the id the client chose
       const body = request.postDataJSON()
+      if (options.holdCreate) await options.holdCreate
       Object.assign(session, { id: body.id, title: '새 작업', kind: body.kind ?? 'chat', messages: [], messageCount: 0 })
       return json(session)
     }
     if (path === `/artifacts/${kind}` && method === 'POST') {
       const body = request.postDataJSON()
       created.push(body)
+      if (options.holdCreate) await options.holdCreate
       const named = options.box && body.fileId === options.box.id
         ? options.box.name.replace(/\.[^.]+$/, '') : options.title
       artifact = {
@@ -193,7 +200,9 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
       artifact = { ...artifact, sessionId: body.sessionId }
       return json(artifact)
     }
-    if (path === '/sessions' && method === 'GET') return json([session])
+    if (path === '/sessions' && method === 'GET') {
+      return json([options.reopen ? { ...session, artifactId: null } : session])
+    }
     if (path === `/sessions/${session.id}` && method === 'GET') return json(session)
     if (path === `/sessions/${session.id}/messages` && method === 'GET') return json(messages)
     if (path === `/sessions/${session.id}/messages` && method === 'POST') {
@@ -271,7 +280,7 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
   const opened = options.shared ? `/share/${options.shared.token}`
     : options.box ? '/files' : options.fromHome ? '/'
       : options.orphan || options.artifactsPage ? '/artifacts'
-        : options.attachment ? `/s/${sessionId}` : `/s/${sessionId}?artifact=${artifactId}`
+        : options.attachment || options.reopen ? `/s/${sessionId}` : `/s/${sessionId}?artifact=${artifactId}`
   await page.goto(opened)
   return {
     unexpected, problems, saves, heads, files, sent, created, csp, fileWrites, shares, attached,

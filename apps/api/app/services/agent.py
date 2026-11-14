@@ -9,6 +9,7 @@ import logging
 import re
 import time
 from collections.abc import AsyncIterator, Callable
+from contextvars import ContextVar
 from copy import deepcopy
 from typing import Any, Literal, TypedDict
 from zoneinfo import ZoneInfo
@@ -19,6 +20,7 @@ from app.core.config import settings
 from app.services import (
     answer_plan,
     calc_check,
+    claim_support,
     current_evidence,
     fallback_watch,
     internal_words,
@@ -37,6 +39,13 @@ from app.services.tools import arithmetic, deferred
 from app.services.tools.base import SearchEvidence, Tool, ToolContext, ToolResult, to_openai
 
 log = logging.getLogger(__name__)
+
+#: Reasoning fields by model for this turn's writer and rescue writer
+#: (`super_agent.reasoning_fields`), set for the turn's task; calls of those models use them
+#: instead of the deployment setting.
+TURN_REASONING: ContextVar[dict[str, dict[str, Any]] | None] = ContextVar(
+    "turn_reasoning", default=None
+)
 
 
 class ToolResultAnswerEvent(TypedDict):
@@ -213,6 +222,12 @@ async def _stream_once(
     if not self_hosted and not roles.external_thinking:
         # `thinking.switch` skips providers that refused.
         payload.update(thinking.switch(model))
+    override = (TURN_REASONING.get() or {}).get(model)
+    if override and not capped_reasoning:
+        # the router's effort for this class replaces the deployment-wide switch
+        payload.pop("reasoning", None)
+        payload.pop("chat_template_kwargs", None)
+        payload.update(deepcopy(override))
     if capped_reasoning:
         # an uncapped retry can spend every output token on reasoning and answer nothing
         payload.update(thinking.template_switch(model) if self_hosted
@@ -1014,6 +1029,19 @@ _NUMBERED = re.compile(r"^\[(\d+)\] (.*)$")
 _MATERIAL = re.compile(r"^\[(\d{1,3})\] 자료: (.{1,300})$")
 #: Source marker for material (no URL).
 MATERIAL_SOURCE = "material:"
+#: A video passage's player link under its label (`knowledge.render`): 「영상: /files?open=…&t=…」.
+_PLAYER = re.compile(r"^영상: (/files\?open=[A-Za-z0-9-]{1,64}&t=\d{1,6})$")
+#: Separates a material label from its player link inside one source entry.
+_LINK_SEP = "\t"
+
+
+def material_link(source: str) -> tuple[str, str | None]:
+    """A material source's label and its player link, if it is a video passage."""
+    label = source.removeprefix(MATERIAL_SOURCE)
+    if _LINK_SEP in label:
+        label, link = label.split(_LINK_SEP, 1)
+        return label, link
+    return label, None
 
 
 def _number_sources(
@@ -1028,7 +1056,9 @@ def _number_sources(
         for i, line in enumerate(lines):
             if match := _MATERIAL.match(line):
                 label = match.group(2).strip()
-                lines[i] = f"[{_source_number(MATERIAL_SOURCE + label, sources)}] 자료: {label}"
+                player = _PLAYER.match(lines[i + 1]) if i + 1 < len(lines) else None
+                key = label + (_LINK_SEP + player.group(1) if player else "")
+                lines[i] = f"[{_source_number(MATERIAL_SOURCE + key, sources)}] 자료: {label}"
         return "\n".join(lines)
     entries: list[tuple[int, str]] = []
     for i, line in enumerate(lines[:-1]):
@@ -1152,6 +1182,17 @@ def _fetched_url(call: dict) -> str:
         return ""
 
 
+def _material_citation(n: int, source: str) -> str:
+    _, link = material_link(source)
+    return f"[[{n}]]({link})" if link else f"[{n}]"
+
+
+def _material_entry(n: int, source: str) -> str:
+    """「- [n] label」 in the list under an answer; a video passage links to its moment."""
+    label, link = material_link(source)
+    return f"- [{n}] [{label}]({link})" if link else f"- [{n}] {label}"
+
+
 def _link_citations(answer: str, sources: list[str],
                     seen: dict[str, str] | None = None) -> tuple[str, list[int]]:
     """Link `[n]` citations to sources (code blocks untouched); returns answer and cited numbers.
@@ -1176,16 +1217,20 @@ def _link_citations(answer: str, sources: list[str],
             return match.group(0)
         if seen:
             claim = _claim_at(piece, match.start())
-            kept = [n for n in wanted if sources[n - 1].startswith(MATERIAL_SOURCE)
-                    or not _unrelated(claim, seen.get(sources[n - 1], ""))]
+            kept = [n for n in wanted if (
+                claim_support.backed(claim, seen[sources[n - 1]])
+                if sources[n - 1].startswith(MATERIAL_SOURCE) and sources[n - 1] in seen
+                else sources[n - 1].startswith(MATERIAL_SOURCE)
+                or not _unrelated(claim, seen.get(sources[n - 1], "")))]
             if not kept:
                 return "\x00"
             wanted = kept
         for n in wanted:
             if n not in cited:
                 cited.append(n)
-        # Material passages keep plain numbers.
-        return "".join(f"[{n}]" if sources[n - 1].startswith(MATERIAL_SOURCE)
+        # Material passages keep plain numbers; a video passage links to its moment.
+        return "".join(_material_citation(n, sources[n - 1])
+                       if sources[n - 1].startswith(MATERIAL_SOURCE)
                        else f"[[{n}]]({sources[n - 1]})" for n in wanted)
 
     pieces = answer.split("```")
@@ -1246,6 +1291,30 @@ _LISTED_SOURCE = re.compile(r"^\s{0,3}[-*]\s{1,3}\[(\d{1,2})\]\s{1,3}(?:\[([^\]\
                             r"(https?://[^\s)]{1,500})?")
 #: what an unverified-link note says (earlier answers' notes are not sources)
 _MEMORY_NOTES = ("기억으로 적은", "written from memory")
+
+
+_MATERIAL_NOTE = (
+    "# Citing project files\n"
+    "The project files above are numbered for citation:\n{listed}\n"
+    "After a statement taken from one of them, put its number in square brackets, like "
+    "{example}. Use only these numbers for these files.\n"
+    "예: 「벡터 시계로 동시성을 판단할 수 있습니다 {example}.」"
+)
+
+
+def _with_material_numbers(messages: list[dict[str, Any]], sources: list[str],
+                           names: list[str] | tuple[str, ...]) -> list[dict[str, Any]]:
+    """`messages` with the turn's project files numbered as material sources (after the numbers
+    earlier answers used) and a system note saying which number is which file."""
+    numbered = [(_source_number(MATERIAL_SOURCE + name, sources), name)
+                for name in dict.fromkeys(n for n in names if n)]
+    if not numbered:
+        return messages
+    note = _MATERIAL_NOTE.format(
+        listed="\n".join(f"[{n}] {name}" for n, name in numbered),
+        example=f"[{numbered[0][0]}]")
+    at = next((i for i, m in enumerate(messages) if m.get("role") != "system"), len(messages))
+    return [*messages[:at], {"role": "system", "content": note}, *messages[at:]]
 
 
 def _earlier_sources(messages: list[dict[str, Any]]) -> tuple[list[str], dict[str, str]]:
@@ -1581,6 +1650,12 @@ def _without_duplicate_paragraphs(text: str, *, minimum: int = 80) -> tuple[str,
     return "".join(pieces), removed
 
 
+def _states_operands(request: str | None) -> bool:
+    """The request carries two or more numbers of its own (원금 3,000만 원, 연 4.2%, 7년):
+    a calculation can go on without a read supplying them."""
+    return len(re.findall(r"\d[\d,.]*", request or "")) >= 2
+
+
 async def _run_tool(tool: Tool, arguments: str, ctx: ToolContext) -> ToolResult:
     try:
         parsed = json.loads(arguments or "{}")
@@ -1664,6 +1739,10 @@ async def run_turn(
     #: A turned-on skill searches deep (`process.deep_search`): twice the searches, as a
     #: document's research does.
     deep_search: bool = False,
+    #: Project files the context gave whole or in part, name → text: numbered as material
+    #: sources before any search, so the answer cites them 「[n]」 and lists them by name
+    #: under it; a citation of one the claim's words are not in is taken out.
+    cited_material: dict[str, str] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """One assistant turn to a final answer; exactly one `usage`, `done` left to caller."""
     search_scale = 2 if deep_search else 1
@@ -1811,8 +1890,12 @@ async def run_turn(
     #: turn that cites 「[6]」 again means the same source); "" where an
     #: earlier number is unknown.
     sources, source_titles = _earlier_sources(messages)
-    #: what the writer read under each URL this turn (title, snippet, excerpt)
-    source_seen: dict[str, str] = {}
+    if cited_material:
+        messages = _with_material_numbers(messages, sources, list(cited_material))
+    #: what the writer read under each URL this turn (title, snippet, excerpt); a project
+    #: file given whole is read under its material number
+    source_seen: dict[str, str] = {MATERIAL_SOURCE + name: text
+                                   for name, text in (cited_material or {}).items()}
     #: URLs earlier answers gave (not those they already flagged): found then, not written
     #: from memory now.
     earlier_urls = {u for m in messages if m.get("role") == "assistant"
@@ -2505,10 +2588,19 @@ async def run_turn(
             if prerequisite_batch:
                 if result.failed or result.empty or not result.content.strip():
                     result.failed = True
-                    result.final_text = (
-                        "계산에 앞서 필요한 자료를 확인하지 못해 답을 확정할 수 없습니다. "
-                        "확인할 수 있는 수치와 조건을 제공해 주세요."
-                    )
+                    if _states_operands(ctx.request):
+                        # the request gives its own numbers: a read that found nothing (an
+                        # unrelated search) does not end it; the calculator runs on those
+                        result.final_text = None
+                        result.content = (
+                            "No usable operands came from this read. Calculate with the numbers "
+                            "the request itself states, and say which ones, if any, are missing."
+                        )
+                    else:
+                        result.final_text = (
+                            "계산에 앞서 필요한 자료를 확인하지 못해 답을 확정할 수 없습니다. "
+                            "확인할 수 있는 수치와 조건을 제공해 주세요."
+                        )
                 else:
                     # Reads supply operands but can't end a numeric answer.
                     result.final_text = None
@@ -3088,7 +3180,7 @@ async def run_turn(
     if cited and not own_list and not form_fixed:
         # a form the person fixed (「조언만, 다른 건 쓰지 마」) keeps the inline links only
         appendix = ("\n\n### 출처\n" if reply_korean else "\n\n### Sources\n") + "\n".join(
-            f"- [{n}] {sources[n - 1].removeprefix(MATERIAL_SOURCE)}"
+            _material_entry(n, sources[n - 1])
             if sources[n - 1].startswith(MATERIAL_SOURCE)
             else f"- [{n}] [{_labelled(sources[n - 1])}]"
             f"({sources[n - 1]}){_dated(sources[n - 1])}"

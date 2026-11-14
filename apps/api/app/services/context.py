@@ -747,6 +747,24 @@ def standing_directives(history: list[dict[str, str]]) -> list[str]:
     return [text for text, _ in found[-_STANDING_MAX:]]
 
 
+#: pinned memory items a revision or an office tool is reminded of, newest kept
+_PINNED_RULES = 20
+
+
+def standing_rules(history: list[dict[str, str]], pinned: list[dict] | None = None) -> list[str]:
+    """What the person set for the whole conversation, for a step that reads only part of it
+    (a document revision, an office tool): their standing directives over every user turn,
+    the latest included (`standing_directives`), then the running memory's pinned facts and
+    rules (`conversation_summary.pinned_lines`) once older turns were folded into it."""
+    from app.services.conversation_summary import pinned_lines
+
+    found = standing_directives([*history, {"role": "user", "content": ""}])
+    for line in pinned_lines(pinned)[-_PINNED_RULES:]:
+        if line not in found:
+            found.append(line)
+    return found
+
+
 #: Requested answer language.
 _ASKS_ENGLISH = re.compile(r"영어로|영문으로|\b(?:in|into)\s+English\b|\bEnglish\s+only\b", re.I)
 _ASKS_KOREAN = re.compile(r"한국어로|한글로|우리말로|\bin\s+Korean\b", re.I)

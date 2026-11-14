@@ -11,13 +11,13 @@ import {
 } from 'ooxml-ui/pptx'
 import {
   AlignCenter, AlignJustify, AlignLeft, AlignRight, ArrowDown, ArrowDownToLine, ArrowUp,
-  ArrowUpToLine, Baseline, Bold, ChevronDown, ChevronUp, ClipboardPaste, Copy, CopyPlus,
+  ArrowUpToLine, Baseline, Bold, ClipboardPaste, Copy, CopyPlus,
   Image as ImageIcon, Italic, List, ListOrdered, Minus, MoreVertical, Plus, Redo2, Scissors,
   Shapes, Table2, Trash2, Type, Underline, Undo2, type LucideIcon,
 } from 'lucide-react'
 import {
   createElement, useCallback, useEffect, useMemo, useRef, useState,
-  type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject,
+  type MouseEvent as ReactMouseEvent, type RefObject,
 } from 'react'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
@@ -25,7 +25,7 @@ import {
   charSelection, relabelHeader, setCharSelection, staggered, translateKo, wordAt,
   type CharRange,
 } from './slideTools'
-import './slides.css'
+import { Btn, Menu, NotesPane, Sep, SlideRail } from './chrome'
 
 /** What the panel asks of the editor. */
 export interface SlidesApi {
@@ -44,9 +44,6 @@ type Tp = ToolbarProps
 type Element = PptxElement
 type TableState = Tp['tableEditorState']
 type Flags = ReturnType<typeof getSelectionTextStyleFlags>
-
-/** Keeps toolbar clicks from taking the inline editor's selection. */
-const keep = (event: ReactMouseEvent) => event.preventDefault()
 
 const SHAPES: [string, string][] = [
   ['rect', '직사각형'], ['roundRect', '둥근 직사각형'], ['ellipse', '타원'], ['triangle', '삼각형'],
@@ -116,80 +113,6 @@ function caretRunStyle(el: Element | null): Record<string, unknown> {
 }
 
 // ── small parts ──
-
-function Btn({
-  label, icon: Icon, onClick, disabled, pressed, children,
-}: {
-  label: string
-  icon?: LucideIcon
-  onClick?: () => void
-  disabled?: boolean
-  pressed?: boolean
-  children?: ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      className={'kc-btn' + (pressed ? ' on' : '')}
-      title={label}
-      aria-label={label}
-      aria-pressed={pressed === undefined ? undefined : !!pressed}
-      disabled={disabled}
-      onMouseDown={keep}
-      onClick={onClick}
-    >
-      {Icon ? <Icon size={16} strokeWidth={2} /> : null}
-      {children}
-    </button>
-  )
-}
-
-function Menu({
-  label, button, disabled, children, width, testid,
-}: {
-  label: string
-  button: ReactNode
-  disabled?: boolean
-  children: (close: () => void) => ReactNode
-  width?: number
-  testid?: string
-}) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!open) return undefined
-    const away = (event: MouseEvent) => {
-      if (!ref.current?.contains(event.target as Node)) setOpen(false)
-    }
-    window.addEventListener('mousedown', away, true)
-    return () => window.removeEventListener('mousedown', away, true)
-  }, [open])
-  return (
-    <div className="kc-menu" ref={ref} data-testid={testid}>
-      <button
-        type="button"
-        className={'kc-btn kc-drop' + (open ? ' on' : '')}
-        title={label}
-        aria-label={label}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        disabled={disabled}
-        onMouseDown={keep}
-        onClick={() => setOpen((was) => !was)}
-      >
-        {button}
-        <ChevronDown size={12} />
-      </button>
-      {open && !disabled ? (
-        <div className="kc-pop" role="menu" style={width ? { width } : undefined} onMouseDown={keep}>
-          {children(() => setOpen(false))}
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
-const Sep = () => <span className="kc-sep" aria-hidden="true" />
 
 function TablePicker({ onPick, hint }: { onPick: (rows: number, cols: number) => void; hint: string }) {
   const [hover, setHover] = useState<[number, number]>([0, 0])
@@ -389,112 +312,29 @@ function SlidesToolbar({
 // ── thumbnail rail ──
 
 function Rail({ sp, compact, row }: { sp: SlidesPaneProps; compact: boolean; row: boolean }) {
-  const t = useT()
-  const [drag, setDrag] = useState<{ from: number; over: number } | null>(null)
-  const [menu, setMenu] = useState<{ i: number; x: number; y: number } | null>(null)
-  const width = row ? 112 : compact ? 92 : 148
-  const active = sp.activeSlideIndex
-  const listRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    listRef.current?.querySelector(`.kc-thumb[data-i="${active}"]`)
-      ?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-  }, [active])
-  useEffect(() => {
-    if (!menu) return undefined
-    const away = (event: MouseEvent) => {
-      if (!(event.target as HTMLElement).closest?.('.kc-ctx')) setMenu(null)
-    }
-    window.addEventListener('mousedown', away, true)
-    return () => window.removeEventListener('mousedown', away, true)
-  }, [menu])
-  const close = (run: () => void) => () => {
-    run()
-    setMenu(null)
-  }
   return (
-    <nav className="kc-rail" aria-label={t('슬라이드')}
-      style={row ? undefined : { width: width + (compact ? 30 : 36) }}
-      onKeyDown={(event) => {
-        if (!sp.canEdit && !['ArrowDown', 'ArrowUp'].includes(event.key)) return
-        if (event.key === 'Delete' || event.key === 'Backspace') {
-          event.preventDefault()
-          if (sp.slides.length > 1) sp.onDeleteSlides([active])
-        } else if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
-          event.preventDefault()
-          sp.onSelectSlide(Math.min(sp.slides.length - 1, active + 1))
-        } else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
-          event.preventDefault()
-          sp.onSelectSlide(Math.max(0, active - 1))
-        }
-      }}>
-      <div className="kc-rail-list" tabIndex={0} ref={listRef}>
-        {sp.slides.map((slide, i) => (
-          <div key={slide.id} data-i={i}
-            className={'kc-thumb' + (i === active ? ' on' : '') + (drag && drag.over === i ? ' over' : '') +
-              (slide.hidden ? ' hid' : '')}
-            draggable={sp.canEdit}
-            aria-current={i === active ? 'true' : undefined}
-            onDragStart={() => setDrag({ from: i, over: i })}
-            onDragOver={(event) => { event.preventDefault(); if (drag) setDrag({ ...drag, over: i }) }}
-            onDrop={() => { if (drag && drag.from !== i) sp.onMoveSlide(drag.from, i); setDrag(null) }}
-            onDragEnd={() => setDrag(null)}
-            onClick={() => sp.onSelectSlide(i)}
-            onContextMenu={(event) => {
-              event.preventDefault()
-              sp.onSelectSlide(i)
-              if (sp.canEdit) setMenu({ i, x: event.clientX, y: event.clientY })
-            }}>
-            <span className="kc-num">{i + 1}</span>
-            <div className="kc-tframe" style={{ width }}>
-              <SlideThumbnail slide={slide} templateElements={sp.templateElementsBySlideId[slide.id] || []}
-                canvasSize={sp.canvasSize} previewWidth={width} fieldContext={sp.fieldContext}
-                tableStyleContext={sp.tableStyleContext} />
-            </div>
-            {sp.canEdit && (
-              <button type="button" className="kc-tmore" aria-label={t('슬라이드 메뉴')}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  sp.onSelectSlide(i)
-                  const box = event.currentTarget.getBoundingClientRect()
-                  setMenu({ i, x: box.left, y: box.bottom })
-                }}>
-                <MoreVertical size={14} />
-              </button>
-            )}
-          </div>
-        ))}
-      </div>
-      {sp.canEdit && (
-        <button type="button" className="kc-add" title={t('새 슬라이드')} aria-label={t('새 슬라이드')}
-          onClick={() => sp.onAddSlideAfter(active)}>
-          <Plus size={16} />
-          {compact || row ? null : <span>{t('새 슬라이드')}</span>}
-        </button>
-      )}
-      {menu && (
-        <div className="kc-ctx" role="menu" style={{ left: menu.x, top: menu.y }}>
-          <button type="button" role="menuitem" className="kc-item" onClick={close(() => sp.onAddSlideAfter(menu.i))}>
-            <Plus size={14} />{t('새 슬라이드')}
-          </button>
-          <button type="button" role="menuitem" className="kc-item"
-            onClick={close(() => sp.onDuplicateSlides([menu.i]))}>
-            <Copy size={14} />{t('슬라이드 복제')}
-          </button>
-          <button type="button" role="menuitem" className="kc-item" disabled={menu.i === 0}
-            onClick={close(() => sp.onMoveSlide(menu.i, menu.i - 1))}>
-            <ArrowUp size={14} />{t('위로 이동')}
-          </button>
-          <button type="button" role="menuitem" className="kc-item" disabled={menu.i === sp.slides.length - 1}
-            onClick={close(() => sp.onMoveSlide(menu.i, menu.i + 1))}>
-            <ArrowDown size={14} />{t('아래로 이동')}
-          </button>
-          <button type="button" role="menuitem" className="kc-item danger" disabled={sp.slides.length < 2}
-            onClick={close(() => sp.onDeleteSlides([menu.i]))}>
-            <Trash2 size={14} />{t('슬라이드 삭제')}
-          </button>
-        </div>
-      )}
-    </nav>
+    <SlideRail
+      count={sp.slides.length}
+      active={sp.activeSlideIndex}
+      keyOf={(i) => sp.slides[i].id}
+      hidden={(i) => !!sp.slides[i].hidden}
+      thumb={(i, width) => {
+        const slide = sp.slides[i]
+        return (
+          <SlideThumbnail slide={slide} templateElements={sp.templateElementsBySlideId[slide.id] || []}
+            canvasSize={sp.canvasSize} previewWidth={width} fieldContext={sp.fieldContext}
+            tableStyleContext={sp.tableStyleContext} />
+        )
+      }}
+      canEdit={sp.canEdit}
+      compact={compact}
+      row={row}
+      onSelect={sp.onSelectSlide}
+      onMove={sp.onMoveSlide}
+      onDuplicate={(i) => sp.onDuplicateSlides([i])}
+      onDelete={(i) => sp.onDeleteSlides([i])}
+      onAddAfter={sp.onAddSlideAfter}
+    />
   )
 }
 
@@ -507,43 +347,12 @@ function Notes({
   canEdit: boolean
   update?: Added['updateNotes']
 }) {
-  const t = useT()
-  const [open, setOpen] = useState(true)
-  const [draft, setDraft] = useState(slide?.notes || '')
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const id = slide?.id
-  useEffect(() => {
-    setDraft(slide?.notes || '')
-    // a new slide's notes, not every edit of these
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id])
-  const commit = (text: string) => {
-    clearTimeout(timer.current)
-    if (!update || text === (slide?.notes || '')) return
-    update(text, text.split('\n').flatMap((line, i) => [
-      ...(i ? [{ text: '\n', isParagraphBreak: true }] : []),
-      ...(line ? [{ text: line, style: {} }] : []),
-    ]))
-  }
   return (
-    <section className="kc-notes" aria-label={t('발표자 노트')}>
-      <button type="button" className="kc-notes-bar" aria-expanded={open} onClick={() => setOpen((was) => !was)}>
-        {open ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
-        <span>{t('발표자 노트')}</span>
-      </button>
-      {open && (
-        <textarea className="kc-notes-text" value={draft} aria-label={t('발표자 노트')}
-          placeholder={canEdit ? t('클릭하여 발표자 노트 추가') : ''}
-          readOnly={!canEdit || !update}
-          onChange={(event) => {
-            const text = event.target.value
-            setDraft(text)
-            clearTimeout(timer.current)
-            timer.current = setTimeout(() => commit(text), 600)
-          }}
-          onBlur={(event) => commit(event.target.value)} />
-      )}
-    </section>
+    <NotesPane slideKey={slide?.id} value={slide?.notes || ''} canEdit={canEdit}
+      onCommit={update && ((text) => update(text, text.split('\n').flatMap((line, i) => [
+        ...(i ? [{ text: '\n', isParagraphBreak: true }] : []),
+        ...(line ? [{ text: line, style: {} }] : []),
+      ])))} />
   )
 }
 

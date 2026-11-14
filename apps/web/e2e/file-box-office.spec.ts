@@ -142,3 +142,22 @@ for (const kind of ['hwp', 'docx', 'pptx'] as const) {
     expect(state.csp).toEqual([])
   })
 }
+
+test('a long HWP file previews every page, each drawn as it is scrolled to @phone', async ({ page }) => {
+  const state = await fixture(page, 'hwp')
+  // a 45-page document: past the 30 pages a preview used to stop at
+  await page.route('**/rhwp/**', (route) => route.fulfill({
+    contentType: 'text/html', body: studio.replace('const PAGES = 1', 'const PAGES = 45'),
+  }))
+  await openPreview(page, 'hwp')
+  const sheets = preview(page, 'hwp').locator('[data-hwp-page]')
+  await expect(sheets).toHaveCount(45)
+  await expect(sheets.first().locator('svg')).toContainText('1쪽')
+  // the far pages wait until they are reached
+  const last = preview(page, 'hwp').locator('[data-hwp-page="45"]')
+  await expect(last.locator('svg')).toHaveCount(0)
+  await last.scrollIntoViewIfNeeded()
+  await expect(last.locator('svg')).toContainText('45쪽')
+  await expect(preview(page, 'hwp')).not.toContainText('쪽만 보여 줍니다')
+  expect(state.problems).toEqual([])
+})

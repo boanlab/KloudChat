@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { E2E_ADMIN } from './helpers'
 import { auditEnglishMode } from './i18n-audit'
-import { shellRead } from './shell-mocks'
+import { contextUsage, shellRead } from './shell-mocks'
 
 type Scenario = 'admin' | '401' | 'pending' | 'nonadmin' | 'malformed' | 'refresh-loss'
 
@@ -40,6 +40,8 @@ async function mockAudit(page: Page, scenario: Scenario = 'admin') {
         ? { json: session }
         : { status: 401, json: { detail: 'no_refresh_token' } })
     }
+    // the composer's context gauge reads with a POST; it changes nothing
+    if (path === '/api/sessions/context-usage' && method === 'POST') return route.fulfill({ json: contextUsage() })
     if (method !== 'GET') {
       state.forbidden.push(`${method} ${path}`)
       return route.abort('blockedbyclient')

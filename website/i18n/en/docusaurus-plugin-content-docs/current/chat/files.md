@@ -46,7 +46,7 @@ When you delete a conversation you can tick **Also delete the conversation's fil
 
 - State exactly what you are looking for. "Summarize this file" is less accurate than "List only the remote work application steps from this file".
 - Attach table-heavy material as Excel or CSV rather than PDF. It is read far more accurately that way.
-- For an attached Hangul file (.hwpx), select **Open as document** on the file chip to convert it straight into an editable report. The conversion calls no model, so it uses no credits.
+- An attached HWP (.hwp, .hwpx), Word (.docx) or PowerPoint (.pptx) file opens as that same file in its editor with **Open as HWP**, **Open in Word editor** or **Open in PowerPoint editor** on the file chip (the format is kept). The same file in the file box opens as a copy with **Edit**. To get a web report or web slides as an HWP, Word or PowerPoint file, use **Download** (export) on that screen.
 
 ## Scanned PDFs and document photos
 

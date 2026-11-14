@@ -8,6 +8,7 @@ import {
   Download,
   FileType,
   Flag,
+  Gauge,
   Loader2,
   Paperclip,
   Pencil,
@@ -18,7 +19,8 @@ import {
   ThumbsUp,
   TriangleAlert,
 } from 'lucide-react'
-import { memo, useState } from 'react'
+import { memo, useMemo, useState } from 'react'
+import type { VideoRef } from '@/lib/media'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Button } from '@/components/ui'
 import { MediaResult } from '@/components/media/MediaResult'
@@ -28,19 +30,22 @@ import {
 } from '@/lib/api'
 import { useIssues } from '@/lib/issues'
 import { currentLang } from '@/lib/i18n'
-import { FINDING_LABEL, maskingCategories, requestMaskingLabel } from '@/lib/privacy'
+import { FINDING_LABEL, maskingCategories, requestProtection, searchCardOf } from '@/lib/privacy'
 import { cn, fileSize, formatTokens, isMedia } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
-import type { CostRouting, LengthCheck, Message, ModelInfo } from '@/types'
+import type { CostRouting, LengthCheck, Message, ModelInfo, PrivacyRouting } from '@/types'
 import { Markdown } from './Markdown'
 import { RetryActions } from './RetryActions'
 import { OutputFiles, StepTimeline } from './StepTimeline'
 import { ProposalCard } from './ProposalCard'
+import { SearchConsentCard } from './SearchConsentCard'
 import { doingPhrase, waitingCardMessageId } from '@/lib/stages'
 import { TurnProgress } from './TurnProgress'
 import { copyText } from '@/lib/clipboard'
+import { PinNoteButton } from '@/components/shelf/PinNoteButton'
 import { useT } from '@/lib/useT'
 import { tokenTotals } from '@/lib/usage'
+import { superRouteLabel } from '@/lib/superAgent'
 
 function costRouteDecisionLabel(
   route: CostRouting,
@@ -293,6 +298,21 @@ function MessageItemInner({
   const newSession = useStore((s) => s.newSession)
   const ensureSession = useStore((s) => s.ensureSession)
   const sessionProject = useStore((s) => s.sessions.find((c) => c.id === sessionId)?.projectId)
+  const sessionMessages = useStore((s) => s.sessions.find((c) => c.id === sessionId)?.messages)
+  const projectFiles = useStore((s) => s.projects.find((p) => p.id === sessionProject)?.files)
+  /** Videos this conversation has (its attachments, its project's files): an answer's time marks open them. */
+  const videos = useMemo<VideoRef[]>(() => {
+    const found = new Map<string, string>()
+    for (const m of sessionMessages ?? []) {
+      for (const a of m.attachments ?? []) {
+        if (a.id && /^(video|audio)\//.test(a.type)) found.set(a.id, a.name)
+      }
+    }
+    for (const f of projectFiles ?? []) {
+      if (f.mediaState === 'done') found.set(f.id, f.name)
+    }
+    return [...found].map(([id, name]) => ({ id, name }))
+  }, [sessionMessages, projectFiles])
   /** The copy opened in this chat earlier, reopened from the attachment: a new one only on request. */
   const [reopened, setReopened] = useState<{ kind: OfficeKind; id: string } | null>(null)
   /**
@@ -355,20 +375,21 @@ function MessageItemInner({
   const freshness = message.routing && 'freshness' in message.routing ? message.routing : null
   const toolAnswer = message.routing && 'answerOrigin' in message.routing &&
     message.routing.answerOrigin === 'tool_result' ? message.routing : null
-  const routing = message.routing && 'action' in message.routing ? message.routing : null
+  // A document's routing may carry only the search record (`searchConsent`), no privacy action.
+  const routing = message.routing && ('action' in message.routing || 'searchConsent' in message.routing)
+    ? message.routing as PrivacyRouting
+    : null
   const lengthCheck = message.routing && 'lengthCheck' in message.routing
     ? message.routing.lengthCheck
     : undefined
-  const requestAction = routing?.initialAction ?? routing?.action
-  const requestProtection = requestAction && requestAction !== 'none'
-    ? requestAction === 'route_strict_local' || requestAction === 'strict_local'
-      ? 'strict-local로 보호됨'
-      : requestAction === 'mask_external'
-        ? requestMaskingLabel(routing?.findingCounts)
-        : routing?.action !== 'send_raw_external'
-          ? '확인 후 요청 원문은 외부 전송'
-          : '확인 후 외부 원문 전송'
+  // What the routing record says happened to the request, and to the web in a strict-local turn.
+  const protection = requestProtection(routing)
+  const requestProtectionText = protection
+    ? [t(protection.base), protection.search && t(protection.search).replace('{n}', String(protection.n))]
+        .filter(Boolean).join(' · ')
     : null
+  const searchCard = searchCardOf(message)
+  const searchPending = searchCard?.status === 'pending' && viewing === null
   const toolMaskingDetails = maskingCategories(routing?.toolOutputFindings)
     .map(({ label, count }) => t('{category} {n}건')
       .replace('{category}', t(label)).replace('{n}', count.toLocaleString()))
@@ -377,11 +398,12 @@ function MessageItemInner({
     t('민감정보 후보로 탐지된 부분을 도구 결과에서 가렸습니다.'), toolMaskingDetails,
   ].filter(Boolean).join(' ')
   const actualModelChanged = Boolean(
-    routing?.actualModel && routing.actualModel !== routing.requestedModels[0],
+    routing?.actualModel && routing.actualModel !== routing.requestedModels?.[0],
   )
   const fallback = routing?.fallback
   const showRouting = Boolean(
-    routing && (routing.action !== 'none' || actualModelChanged || routing.costRouting || fallback),
+    routing && ((routing.action && routing.action !== 'none') || actualModelChanged ||
+      routing.costRouting || routing.superAgent || fallback || routing.searchConsent),
   )
   const messageBoundary =
     model?.dataBoundary ??
@@ -551,6 +573,14 @@ function MessageItemInner({
 
   const costRoute = routing?.costRouting
   const costRouteDisplay = costRoute ? costRoutePresentation(costRoute, models, t) : null
+  const superRoute = routing?.superAgent
+  const superRouteDisplay = superRoute
+    ? superRouteLabel(
+        superRoute,
+        (id) => models.find((model) => model.id === id)?.label ?? id,
+        t,
+      )
+    : null
   const linked = (message.artifactIds ?? [])
     .map((id) => artifacts.find((a) => a.id === id))
     .filter((a) => a !== undefined)
@@ -569,7 +599,8 @@ function MessageItemInner({
   const routingBadges = routing
     ? [
         costRoute && costRouteDisplay,
-        requestProtection,
+        superRouteDisplay,
+        requestProtectionText,
         messageBoundary,
         routing.toolOutputMasked,
         actualModelChanged && !routing.costRouting && routing.actualModel,
@@ -627,11 +658,27 @@ function MessageItemInner({
                 {costRouteDisplay.label}
               </Badge>
             )}
-            {requestProtection && (
+            {superRouteDisplay && (
               <Badge
-                tone={requestAction === 'send_raw_external' ? 'warn' : 'success'}
+                tone="accent"
+                title={superRouteDisplay.title}
+                className="max-w-full whitespace-normal! [overflow-wrap:anywhere]"
               >
-                {t(requestProtection)}
+                <Gauge size={11} />
+                {superRouteDisplay.label}
+              </Badge>
+            )}
+            {requestProtectionText && (
+              <Badge
+                tone={protection?.tone ?? 'success'}
+                data-testid="request-protection"
+                className="max-w-full whitespace-normal! [overflow-wrap:anywhere]"
+                title={searchCard && (searchCard.status === 'allowed' || searchCard.status === 'auto') &&
+                  searchCard.queries.length > 0
+                  ? `${t('보낸 검색어')}: ${searchCard.queries.map((q) => (typeof q === 'string' ? q : q.text)).join(' · ')}`
+                  : undefined}
+              >
+                {requestProtectionText}
               </Badge>
             )}
             {messageBoundary && (
@@ -695,7 +742,16 @@ function MessageItemInner({
           />
         )}
 
-        {message.content ? (
+        {searchPending && (
+          // The search card in place of its sentence, which it repeats; answered by rerunning the question.
+          <SearchConsentCard
+            sessionId={sessionId}
+            messageId={message.id}
+            consent={searchCard!}
+            actionable={Boolean(last && !streaming && !editBlocked && askedAbove)}
+          />
+        )}
+        {message.content && !searchPending ? (
           <>
             {viewing !== null && (
               <Badge className="mb-2">
@@ -709,11 +765,11 @@ function MessageItemInner({
                   {t('끊긴 답 · 끝까지 쓰지 못했습니다')}
                 </Badge>
                 <div className="opacity-70">
-                  <Markdown>{shownContent}</Markdown>
+                  <Markdown videos={videos}>{shownContent}</Markdown>
                 </div>
               </div>
             ) : (
-              <Markdown>{shownContent}</Markdown>
+              <Markdown videos={videos}>{shownContent}</Markdown>
             )}
           </>
         ) : (
@@ -799,6 +855,7 @@ function MessageItemInner({
           <div className="mt-2 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-faint">
             <span className="flex items-center gap-1">
             {copyButton(t('복사'))}
+            <PinNoteButton sessionId={sessionId} messageId={message.id} content={message.content} />
             <Button
               variant="ghost"
               size="icon"
@@ -873,7 +930,8 @@ function MessageItemInner({
                 </Button>
               </span>
             )}
-            {last && !failed && !madeHere && !streaming && sessionKind === 'chat' && askedAbove?.persisted && (
+            {last && !failed && !madeHere && !streaming && sessionKind === 'chat' && askedAbove?.persisted &&
+              !searchPending && (
               <span className="ml-1">
                 <RetryActions
                   sessionId={sessionId}

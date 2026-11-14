@@ -11,6 +11,7 @@ import { useT } from '@/lib/useT'
 import { relativeTime } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { fileSize, officeKindOf } from './fileBox'
+import { MediaPlayer } from './MediaPlayer'
 import { PREVIEW_LABEL, PREVIEWS } from './OfficeView'
 
 /** What each kind's preview is called, and what is said when its editor cannot open a copy. */
@@ -24,6 +25,7 @@ type Shown =
   | { kind: 'loading' }
   | { kind: 'image' | 'pdf' | 'audio' | 'video'; url: string }
   | { kind: 'office'; office: OfficeKind; bytes: ArrayBuffer }
+  | { kind: 'player' }
   | { kind: 'text'; text: string; truncated: boolean; note?: string }
   | { kind: 'failed'; message: string }
 
@@ -41,7 +43,7 @@ function mediaOf(type: string): 'image' | 'pdf' | 'audio' | 'video' | null {
  * as their editor draws them (read only), with 「편집」, which opens a copy in that editor
  * beside a new chat (the file itself is never written); every other file as its text.
  */
-export function FilePreview({ row, onClose }: { row: FileRow | null; onClose: () => void }) {
+export function FilePreview({ row, onClose, start }: { row: FileRow | null; onClose: () => void; start?: number }) {
   const t = useT()
   const navigate = useNavigate()
   const phone = useMediaQuery('(max-width: 40rem)')
@@ -69,6 +71,11 @@ export function FilePreview({ row, onClose }: { row: FileRow | null; onClose: ()
       if (kind) {
         const bytes = await (await fileBlob(row.id)).arrayBuffer()
         if (alive) setShown({ kind: 'office', office: kind, bytes })
+        return
+      }
+      if (row.mime.startsWith('video/') || row.mime.startsWith('audio/')) {
+        // streamed with seeking, with what was read from it: never fetched whole
+        if (alive) setShown({ kind: 'player' })
         return
       }
       if (mediaOf(row.mime)) {
@@ -198,6 +205,7 @@ export function FilePreview({ row, onClose }: { row: FileRow | null; onClose: ()
         {shown.kind === 'pdf' && <iframe src={shown.url} title={row.name} className="h-[68vh] w-full rounded-control border border-line" />}
         {shown.kind === 'audio' && <audio src={shown.url} controls className="w-full self-center" />}
         {shown.kind === 'video' && <video src={shown.url} controls className="max-h-[68vh] max-w-full" />}
+        {shown.kind === 'player' && <MediaPlayer fileId={row.id} start={start} audio={row.mime.startsWith('audio/')} />}
         {shown.kind === 'office' && Preview && (
           <Suspense fallback={<LoadingState />}>
             <Preview

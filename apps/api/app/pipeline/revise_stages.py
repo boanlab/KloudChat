@@ -139,9 +139,9 @@ class Route(Base):
 
     name = "revise-route"
     kind = "model"
-    reads = ("request", "document.sections", "plan.title")
+    reads = ("request", "document.sections", "document.data", "plan.title")
     writes = ("document.sections", "plan.title", "plan.revision", "document.changed",
-              "document.by_hand")
+              "document.by_hand", "document.data")
 
     async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
         report, req, doc = _report(), bundle.request, bundle.document
@@ -151,23 +151,55 @@ class Route(Base):
         # the document as loaded: tables it had are no copies this edit made
         doc.original = [str(p.get("content") or "") for p in parts]
         if revise.asks_question(instruction):
-            # a question about the document, whatever the planner read: nothing rewritten;
-            # this screen only edits, so said how to ask it
-            yield {"type": "step", "id": "route", "label": "질문", "status": "done"}
-            example = "3장을 표로 바꿔줘" if is_deck else "2절을 두 문장으로 줄여줘"
-            sample = "Make slide 3 a table" if is_deck else "Shorten section 2"
-            for event in _stopped(bundle, (
-                    "This reads as a question, so nothing was changed. On this screen, say "
-                    f"what to change (「{sample}」). To ask about the content, attach the "
-                    "downloaded file in Chat."
-                    if output_language.typed_in_english(instruction) else
-                    "질문으로 보여 바꾼 것이 없습니다. 이 화면에서는 "
-                    f"「{example}」처럼 고칠 곳을 알려 주시면 고칩니다. 내용을 물어보려면 "
-                    "내려받은 파일을 챗에 첨부해 물어보세요.")):
+            # a question about the document or the conversation: answered from them, nothing
+            # rewritten
+            yield {"type": "step", "id": "route", "label": "질문에 답하는 중", "status": "running"}
+            try:
+                answer, used = await answer_about(bundle, names)
+            except Exception as exc:  # noqa: BLE001 — said, not a crash
+                log.info("document question failed: %s", logs.safe(exc))
+                answer, used = "", {"inputTokens": 0, "outputTokens": 0}
+            bundle.usage["inputTokens"] += int(used.get("inputTokens", 0))
+            bundle.usage["outputTokens"] += int(used.get("outputTokens", 0))
+            yield {"type": "step", "id": "route", "label": "질문에 답함", "status": "done"}
+            english = output_language.typed_in_english(instruction)
+            for event in _stopped(bundle, answer or (
+                    "I could not answer from the document just now. Please ask again."
+                    if english else "지금은 문서를 읽고 답하지 못했습니다. 다시 물어봐 주세요.")):
                 yield event
             raise Stop("a question")
         changed = 0
         typed = instruction
+        if accent := revise.theme_accent(instruction):
+            # a theme's colour: the document's design, by hand; no slide or section rewritten
+            doc.data = {**doc.data, "design": {**dict(doc.data.get("design") or {}),
+                                               "accent": accent}}
+            yield {"type": "step", "id": "route", "status": "done",
+                   "label": f"강조색 바꿈: {accent}"}
+            if is_deck:
+                # a slide that carries its own accent takes the new one
+                parts = [{**p, "accent": accent} if p.get("accent") else p for p in parts]
+                for part in parts:
+                    yield _part_event(part, is_deck)
+            doc.sections, doc.by_hand, doc.changed = parts, True, 1
+            bundle.plan.revision = revise.Plan(scope="parts", targets=[],
+                                               note=f"강조색 → {accent}")
+            return
+        head = dict(doc.data.get("titleBlock") or {}) if not is_deck else {}
+        filled = revise.title_block_fields(instruction, head.get("fields") or [])
+        if filled:
+            # the document's head (작성일, 작성 부서, 작성자 …), by hand: its own fields, no part
+            # rewritten
+            head["fields"] = [[name, filled.get(str(name), value)]
+                              for name, value, *_ in head.get("fields") or []]
+            doc.data = {**doc.data, "titleBlock": head}
+            yield {"type": "step", "id": "route", "status": "done",
+                   "label": "머리 칸 채움: " + ", ".join(f"{k} {v}" for k, v in filled.items())}
+            doc.sections, doc.by_hand, doc.changed = parts, True, len(filled)
+            bundle.plan.revision = revise.Plan(
+                scope="parts", targets=[],
+                note=", ".join(f"{k} → {v}" for k, v in filled.items()))
+            return
         rename = None if is_deck else revise.title_rename(instruction, names)
         if rename is not None and rename[1] is None:
             # the document's title, by hand; the rest of the sentence goes on without it
@@ -180,7 +212,21 @@ class Route(Base):
                 plan = revise.Plan(scope="parts", targets=[], note=f"제목 → {rename[0]}")
         swap = revise.term_swap(typed) if typed else None
         reorder = revise.order_swap(typed, names) if swap is None and typed else None
-        if reorder is not None:
+        move = (revise.part_move(typed, names) if swap is None and reorder is None and typed
+                else None)
+        if move is not None:
+            # a part moved by hand: nothing rewritten, nothing else moves
+            moving, after = move
+            where = "맨 앞" if after < 0 else f"{names[after]} 뒤"
+            parts = revise.moved(parts, moving, after)
+            yield {"type": "step", "id": "route", "status": "done",
+                   "label": f"옮기는 중: {names[moving]} → {where}"}
+            for part in parts:
+                yield _part_event(part, is_deck)
+            plan = revise.Plan(scope="parts", targets=[], note=f"{names[moving]} → {where}")
+            changed = 1
+            reorder = move
+        elif reorder is not None:
             # swap by hand: model would redraw the deck (and add a 목차)
             first, second = reorder
             parts[first], parts[second] = parts[second], parts[first]
@@ -436,6 +482,8 @@ class Rewrite(Base):
         today = req.today if isinstance(req.today, dt.date) else None
         #: the document as it stood: its percentages and sums are no new ones
         deck_before = "\n".join(s for p in parts for s in strings(p)) if is_deck else ""
+        #: rules the person set for the whole conversation, added to every part's note
+        standing = standing_note(req.turn.get("standing"))
         parts_before = [] if is_deck else [str(p.get("content") or "") for p in parts]
         for index in bundle.plan.order:
             part = parts[index]
@@ -517,7 +565,8 @@ class Rewrite(Base):
                         model=req.model,
                         api_key=req.api_key,
                         note=(plan.note if asked == instruction else asked) + (
-                            _OWN_POINTS if deck_service.requested_layout(asked) else ""),
+                            _OWN_POINTS if deck_service.requested_layout(asked) else ""
+                        ) + standing,
                         material=material,
                         typed=asked,
                         notes_only=revise.notes_only(asked),
@@ -546,7 +595,8 @@ class Rewrite(Base):
                                 target_id=str(part.get("id") or ""), model=req.model,
                                 api_key=req.api_key,
                                 note=(plan.note if asked == instruction else asked)
-                                + f"\nKeep every figure the slide shows now: {', '.join(lost)}.",
+                                + f"\nKeep every figure the slide shows now: {', '.join(lost)}."
+                                + standing,
                                 material=material, typed=asked)
                         except Exception as exc:  # noqa: BLE001 — the first rewrite stands
                             log.info("slide rewrite to keep figures failed: %s", logs.safe(exc))
@@ -600,6 +650,7 @@ class Rewrite(Base):
                         else f"{plan.note}\n사용자가 입력한 문장(그대로 반영): "
                         f"{(plan.typed or instruction).strip()[:400]}"
                     )
+                    note += standing + figure_note(" ".join(asks) or instruction)
                     #: numbered tables and figures this edit took out of the part
                     emptied = doc.emptied.get(str(part.get("id") or ""), [])
                     if emptied:
@@ -707,6 +758,11 @@ class Rewrite(Base):
                         # part: sent back once, then the part stays
                         faults = revise.new_faults(before, body, heading=label,
                                                    instruction=instruction)
+                        if loss := revise.shortening_loss(before, body,
+                                                          " / ".join(asks) or _typed(bundle)):
+                            # shortening shortens: a table or list gone whole, or far more
+                            # cut than asked, is sent back, then the part stays
+                            faults.append(loss)
                         if shortening:
                             faults += revise.drift_faults(before, body, [
                                 str(p.get("content") or "") for i, p in enumerate(parts)
@@ -985,6 +1041,62 @@ class Consistency(Base):
 
 for _stage in (Route(), Widen(), Rewrite(), Consistency()):
     registry.register(_stage)
+
+
+#: how much of the document and the conversation a question reads
+_ASKED_DOC, _ASKED_TALK = 24_000, 8_000
+
+_QUESTION = (
+    "The person asks a question about the document below or about this conversation. Answer "
+    "it from them only: quote or point to the part (its number and title), say plainly when "
+    "the document or the conversation does not say, and change nothing. Answer briefly in the "
+    "person's language (Korean by default, 합니다체).\n\n"
+    "# Document 「{title}」\n{document}\n\n# Conversation so far\n{talk}\n\n"
+    "# Rules the person set\n{rules}\n\n# Question\n{question}"
+)
+
+
+async def answer_about(bundle: Bundle, names: list[str]) -> tuple[str, dict]:
+    """The person's question about the document or the conversation (「몇 장으로 해 달라고
+    했죠?」, 「제가 고친 부분 남아 있나요?」), answered from them; `(text, usage)`."""
+    req = bundle.request
+    parts = bundle.document.sections
+    lines = []
+    for index, part in enumerate(parts):
+        body = " / ".join(strings(part)) if req.is_deck else str(part.get("content") or "")
+        lines.append(f"## {index + 1}. {names[index] if index < len(names) else ''}\n{body}")
+    talk = "\n".join(f"{m.get('role')}: {m.get('content')}"
+                      for m in req.turn.get("history") or [])
+    prompt = _QUESTION.format(
+        title=bundle.plan.title, document="\n\n".join(lines)[:_ASKED_DOC],
+        talk=talk[-_ASKED_TALK:] or "(없음)",
+        rules="\n".join(f"- {r}" for r in req.turn.get("standing") or []) or "(없음)",
+        question=req.instruction[:2000])
+    text, used = await _report()._complete(
+        req.model, [{"role": "user", "content": prompt}], req.api_key, 900)
+    return text.strip(), used
+
+
+def figure_note(asked: str) -> str:
+    """A section asked for a diagram (「도식을 넣어 주세요」): drawn as a mermaid figure in the
+    section, not answered with a sentence about one."""
+    if not deck_service.asks_slide_figure(asked or ""):
+        return ""
+    return ("\nThe person asked for a diagram in this section: add exactly one ```mermaid``` "
+            "figure (a flowchart or structure diagram) drawn only from what the section and "
+            "the material state, with a one-line caption under it; keep the section's text. "
+            "Invent no step, actor or number for it.")
+
+
+def standing_note(rules: object) -> str:
+    """The rules the person set for the whole conversation, as a rewrite note's last lines
+    (「앞으로 기관명은 익명으로」 holds for every later edit, not only the turn it was said in)."""
+    lines = [" ".join(str(x).split()) for x in rules or [] if str(x).strip()] \
+        if isinstance(rules, list) else []
+    if not lines:
+        return ""
+    return ("\nThe person set these rules earlier in the conversation; they hold for this "
+            "rewrite too (keep to every one):\n" + "\n".join(f"- {x}" for x in lines))
 
 
 def bundle_for(*, request: str, instruction: str, model: dict, planner: dict | None,

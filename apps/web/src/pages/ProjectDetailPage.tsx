@@ -25,6 +25,8 @@ import { currentLang } from '@/lib/i18n'
 import { PROJECT_EMOJIS, kindMeta, kindOrder } from '@/lib/kinds'
 import { memoryTypeLabel } from '@/lib/memoryTypes'
 import { cn, formatTokens, relativeTime } from '@/lib/utils'
+import { MediaDialog } from '@/components/files/MediaPlayer'
+import { mediaPreflight } from '@/lib/media'
 import { isReading, ocrNote, useOcrProgress } from '@/lib/ocr'
 import {
   MemoryEditor,
@@ -37,10 +39,18 @@ import { startFailure } from '@/lib/failures'
 import type { MemoryEntry } from '@/types'
 import { useMarkUnsaved } from '@/lib/unsaved'
 import { useT } from '@/lib/useT'
+import { ProjectSearchConsent } from '@/components/projects/ProjectSearchConsent'
 import { isListed } from '@/lib/listed'
 import { KNOWLEDGE_ACCEPT, knowledgeRefusal } from '@/lib/knowledgeFiles'
+import { RelTime } from '@/components/ui/RelTime'
+import { TemplateMiniature } from '@/components/chat/DesignGallery'
+import { SHELF_NAMES, withNames } from '@/lib/shelfNames'
+import { AddTextModal } from '@/components/shelf/AddTextModal'
+import { NotesTab } from '@/components/shelf/NotesTab'
+import { SourceGuide } from '@/components/shelf/SourceGuide'
+import { StudioTab } from '@/components/shelf/StudioTab'
 
-type Tab = 'sessions' | 'knowledge' | 'skills' | 'memory'
+type Tab = 'sessions' | 'knowledge' | 'studio' | 'notes' | 'skills' | 'memory'
 
 /** Closes the menu on pick. */
 function EmojiGrid({ onPick }: { onPick: (emoji: string) => void }) {
@@ -91,6 +101,8 @@ export function ProjectDetailPage() {
     deleteMemory,
     refreshProjectFile,
     reindexProject,
+    addProjectFile,
+    setDraft,
   } = useStore()
   const project = projects.find((p) => p.id === projectId)
   // Scanned files read in the background; rows follow the pages.
@@ -107,6 +119,10 @@ export function ProjectDetailPage() {
   } | null>(null)
   const [memoryDraft, setMemoryDraft] = useState<MemoryEntry | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<{ name: string; sent: number; total: number } | null>(null)
+  const [mediaNotes, setMediaNotes] = useState<string[]>([])
+  /** The video file open in the player. */
+  const [playing, setPlaying] = useState<{ id: string; name: string } | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
   const [urlOpen, setUrlOpen] = useState(false)
   const [urlError, setUrlError] = useState<string | null>(null)
@@ -114,6 +130,10 @@ export function ProjectDetailPage() {
   const [urlDraft, setUrlDraft] = useState('')
   const [urlBusy, setUrlBusy] = useState(false)
   const [expandedFile, setExpandedFile] = useState<string | null>(null)
+  // 지식 서가: a file's guide open, the project's guide open, pasted text.
+  const [guideFile, setGuideFile] = useState<string | null>(null)
+  const [projectGuide, setProjectGuide] = useState(false)
+  const [pasting, setPasting] = useState(false)
   // 색인하기: documents the meaning search does not cover yet.
   const [reindexing, setReindexing] = useState(false)
   const [reindexNote, setReindexNote] = useState<string | null>(null)
@@ -205,14 +225,29 @@ export function ProjectDetailPage() {
     setFileError(problems.length ? problems.join(' ') : null)
     if (!readable.length) return
     setUploading(true)
+    const notes: string[] = []
     try {
       for (const file of readable) {
-        await uploadFile(file, { projectId: project.id }).catch((err) => {
+        // a long video says what reading it takes before it goes up; one that cannot be read stays
+        const { note, refusal } = await mediaPreflight(file, t).catch(() => ({ note: null, refusal: null }))
+        if (refusal) {
+          problems.push(`${file.name}: ${refusal}`)
+          continue
+        }
+        if (note) notes.push(note)
+        setMediaNotes([...notes])
+        await uploadFile(file, {
+          projectId: project.id,
+          onProgress: (sent, total) => setUploadProgress({ name: file.name, sent, total }),
+        }).catch((err) => {
           problems.push(`${file.name}: ${errorMessage(err, t('올리지 못했습니다.'))}`)
         })
+        setUploadProgress(null)
       }
     } finally {
       setUploading(false)
+      setUploadProgress(null)
+      setMediaNotes([])
       setFileError(problems.length ? problems.join(' ') : null)
     }
   }
@@ -226,6 +261,15 @@ export function ProjectDetailPage() {
       setFileError(errorMessage(err, t('파일을 내려받지 못했습니다.')))
     }
   }
+
+  /** A suggested question: a new conversation in the project with it in the composer. */
+  const ask = (question: string) =>
+    void newSession('chat', { projectId: project.id })
+      .then((id) => {
+        navigate(`/s/${id}`)
+        setDraft(question)
+      })
+      .catch((err: unknown) => setNotice(startFailure(err, t)))
 
   const saveUrl = async () => {
     if (urlBusy) return
@@ -474,7 +518,7 @@ export function ProjectDetailPage() {
           <div>
             <p className="text-base font-medium">{t('테마')}</p>
             <p className="text-sm text-muted">
-              {t('말투는 대화·보고서·슬라이드에, 색과 서체는 슬라이드와 보고서 표지에, 스타일은 이미지에 적용됩니다. 오디오·동영상에는 적용되지 않습니다.')}
+              {t('말투·색·서체는 모든 보고서 형식(웹 보고서·한글·Word)과 모든 슬라이드 형식(웹 슬라이드·PowerPoint)에 적용되고, 말투는 대화에도 적용됩니다. 이미지에는 스타일이 적용되고, 오디오·동영상에는 적용되지 않습니다.')}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -501,23 +545,46 @@ export function ProjectDetailPage() {
               ))}
             </select>
           </div>
+          {selectedDesign && (
+            // A small specimen: the accent, ink and muted colours on the theme's typeface.
+            <div
+              className="flex items-center gap-3 rounded-control border border-line bg-white px-3 py-2"
+              data-testid="theme-specimen"
+              style={{ fontFamily: selectedDesign.tokens.font === 'serif' ? 'var(--font-serif, serif)' : undefined }}
+            >
+              <span className="h-8 w-1 shrink-0 rounded-full" style={{ background: selectedDesign.tokens.accent }} aria-hidden />
+              <div className="min-w-0">
+                <p className="truncate text-base font-semibold" style={{ color: selectedDesign.tokens.ink }}>
+                  {t(selectedDesign.name)}
+                </p>
+                <p className="truncate text-xs" style={{ color: selectedDesign.tokens.muted }}>
+                  {selectedDesign.tokens.font === 'serif' ? t('명조 계열 서체') : t('고딕 계열 서체')}
+                </p>
+              </div>
+            </div>
+          )}
           {selectedDesign?.description && (
             <p className="text-sm text-faint">{selectedDesign.description}</p>
           )}
         </Card>
+
+        <ProjectSearchConsent project={project} />
 
         {formatSurfaces.length > 0 && (
           <Card className="space-y-3 p-4">
             <div>
               <p className="text-base font-medium">{t('기본 템플릿')}</p>
               <p className="text-sm text-muted">
-                {t('이 프로젝트에서 새로 시작하는 작업이 어떤 템플릿으로 나올지 정합니다. 대화마다 다시 고를 수 있습니다.')}
+                {t('이 프로젝트에서 새로 시작하는 보고서(웹 보고서·한글·Word)와 슬라이드(웹 슬라이드·PowerPoint)가 어떤 템플릿으로 나올지 정합니다. 어느 형식으로 내보내도 같은 템플릿을 따르며, 대화마다 다시 고를 수 있습니다.')}
               </p>
             </div>
-            {formatSurfaces.map((kind) => (
-              <div key={kind} className="flex items-center gap-2">
-                <span className="w-16 shrink-0 text-base text-muted">
-                  {t(kindMeta[kind].label)}
+            {formatSurfaces.map((kind) => {
+              const chosen = formats.find((row) => row.id === project.renderTemplates[kind])
+              return (
+              <div key={kind} className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="shrink-0 text-base text-muted">
+                  {kind === 'report' ? t('보고서 (웹·한글·Word)') : kind === 'slides' ? t('슬라이드 (웹·PowerPoint)') : t(kindMeta[kind].label)}
                 </span>
                 <select
                   aria-label={t('{kind} 템플릿').replace('{kind}', t(kindMeta[kind].label))}
@@ -543,7 +610,10 @@ export function ProjectDetailPage() {
                     ))}
                 </select>
               </div>
-            ))}
+              {chosen && <TemplateMiniature row={chosen} english={english} />}
+              </div>
+              )
+            })}
           </Card>
         )}
         </aside>
@@ -555,6 +625,8 @@ export function ProjectDetailPage() {
           tabs={[
             { id: 'sessions', label: t('작업'), count: projectSessions.length },
             { id: 'knowledge', label: t('지식'), count: project.files.length },
+            { id: 'studio', label: t(SHELF_NAMES.studio) },
+            { id: 'notes', label: t(SHELF_NAMES.notes) },
             { id: 'skills', label: t('스킬'), count: projectSkills.length },
             { id: 'memory', label: t('메모리'), count: projectMemories.length },
           ]}
@@ -631,7 +703,7 @@ export function ProjectDetailPage() {
                           </p>
                         </div>
                         <span className="shrink-0 text-xs text-faint">
-                          {relativeTime(c.updatedAt)}
+                          <RelTime iso={c.updatedAt} />
                         </span>
                         <Button
                           variant="ghost"
@@ -682,7 +754,11 @@ export function ProjectDetailPage() {
                     void addKnowledgeFiles(picked)
                   }}
                 />
-                <div className="flex gap-2">
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button size="sm" onClick={() => setPasting(true)}>
+                    <Plus size={14} />
+                    {t('텍스트')}
+                  </Button>
                   <Button size="sm" onClick={() => setUrlOpen(true)}>
                     <Link2 size={14} />
                     {t('웹 자료')}
@@ -693,6 +769,42 @@ export function ProjectDetailPage() {
                   </Button>
                 </div>
               </div>
+              {uploading && uploadProgress && uploadProgress.total > 0 && (
+                <div data-testid="upload-progress" className="space-y-1 text-xs text-faint">
+                  <p>
+                    {t('{name} 올리는 중 {percent}%')
+                      .replace('{name}', uploadProgress.name)
+                      .replace('{percent}', String(Math.floor((uploadProgress.sent / uploadProgress.total) * 100)))}
+                  </p>
+                  <div className="h-1 overflow-hidden rounded bg-elevated">
+                    <div className="h-full bg-accent" style={{ width: `${(uploadProgress.sent / uploadProgress.total) * 100}%` }} />
+                  </div>
+                </div>
+              )}
+              {uploading && mediaNotes.map((note) => (
+                <p key={note} role="status" data-testid="media-estimate" className="text-xs text-muted">{note}</p>
+              ))}
+              {project.files.length > 0 && (
+                <Card className="px-4 py-3" data-testid="project-guide">
+                  <button
+                    type="button"
+                    aria-expanded={projectGuide}
+                    onClick={() => setProjectGuide((v) => !v)}
+                    className="flex w-full items-center gap-2 text-left"
+                  >
+                    <Sparkles size={15} className="shrink-0 text-accent" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-base font-medium">{withNames(t('프로젝트 전체 {guide}'), t)}</span>
+                      <span className="block text-sm text-muted">{t('자료 전체의 요약과 질문 예시입니다. 질문을 누르면 새 대화의 입력창에 들어갑니다.')}</span>
+                    </span>
+                  </button>
+                  {projectGuide && (
+                    <div className="mt-3 border-t border-line pt-3">
+                      <SourceGuide projectId={project.id} subject="project" onAsk={ask} />
+                    </div>
+                  )}
+                </Card>
+              )}
               {project.files.length === 0 ? (
                 <EmptyState
                   icon={<FileText size={18} />}
@@ -706,14 +818,16 @@ export function ProjectDetailPage() {
                     {f.sourceUrl ? <Link2 size={15} className="shrink-0 text-accent" /> : <FileText size={15} className="shrink-0 text-faint" />}
                     <span className="min-w-0 flex-1">
                       <button
-                        onClick={() => f.sourceUrl ? window.open(f.sourceUrl, '_blank', 'noopener,noreferrer') : void openFile(f.id, f.name)}
-                        title={t('원본 파일을 내려받습니다')}
+                        onClick={() => f.sourceUrl
+                          ? window.open(f.sourceUrl, '_blank', 'noopener,noreferrer')
+                          : f.mediaState ? setPlaying(f) : void openFile(f.id, f.name)}
+                        title={f.mediaState ? t('영상을 엽니다') : t('원본 파일을 내려받습니다')}
                         className="block max-w-full truncate text-left text-base text-accent hover:underline"
                       >
                         {f.name}
                       </button>
                       <span className="block text-xs text-faint">
-                        {f.sourceUrl ? t('웹페이지 스냅샷') : f.size} · {t('{n} 토큰').replace('{n}', formatTokens(f.tokens))} · {relativeTime(f.addedAt)}
+                        {f.sourceUrl ? t('웹페이지 스냅샷') : f.size} · {t('{n} 토큰').replace('{n}', formatTokens(f.tokens))} · <RelTime iso={f.addedAt} />
                       </span>
                       {f.error && (
                         <span className="block text-xs text-warn">
@@ -725,6 +839,7 @@ export function ProjectDetailPage() {
                         return reading ? (
                           <span
                             data-ocr={f.ocrState ?? undefined}
+                            data-media={f.mediaState ?? undefined}
                             className={cn(
                               'flex items-center gap-1 text-xs',
                               reading.tone === 'warn' ? 'text-warn' : 'text-faint',
@@ -746,6 +861,16 @@ export function ProjectDetailPage() {
                         {t('색인 안 됨')}
                       </span>
                     )}
+                    {!f.error && f.tokens > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-expanded={guideFile === f.id}
+                        onClick={() => setGuideFile((id) => (id === f.id ? null : f.id))}
+                      >
+                        {t(SHELF_NAMES.guide)}
+                      </Button>
+                    )}
                     {f.preview && (
                       <Button variant="ghost" size="sm" onClick={() => setExpandedFile((id) => id === f.id ? null : f.id)}>
                         {expandedFile === f.id ? t('미리보기 닫기') : t('읽은 내용 확인')}
@@ -761,6 +886,11 @@ export function ProjectDetailPage() {
                       <Trash2 size={14} />
                     </Button>
                     </div>
+                    {guideFile === f.id && (
+                      <div className="mt-2 border-t border-line pt-2">
+                        <SourceGuide projectId={project.id} subject={f.id} onAsk={ask} />
+                      </div>
+                    )}
                     {expandedFile === f.id && f.preview && (
                       <div className="mt-2 rounded-control border border-line bg-elevated px-3 py-2 text-sm leading-relaxed text-muted" data-testid="knowledge-preview">
                         {f.preview}
@@ -789,6 +919,10 @@ export function ProjectDetailPage() {
               {fileError && <p role="alert" className="text-base text-danger">{fileError}</p>}
             </div>
           )}
+
+          {tab === 'studio' && <StudioTab projectId={project.id} />}
+
+          {tab === 'notes' && <NotesTab projectId={project.id} />}
 
           {tab === 'skills' && (
             <div className="space-y-2">
@@ -928,12 +1062,20 @@ export function ProjectDetailPage() {
         description={t(DELETE_SCOPE)}
       />
 
+      <AddTextModal
+        projectId={project.id}
+        open={pasting}
+        onClose={() => setPasting(false)}
+        onAdded={(row) => addProjectFile(project.id, row)}
+      />
+
       <MemoryEditor
         draft={memoryDraft}
         onDraft={setMemoryDraft}
         onClose={() => setMemoryDraft(null)}
         lockScope
       />
+      {playing && <MediaDialog fileId={playing.id} name={playing.name} onClose={() => setPlaying(null)} />}
     </>
   )
 }

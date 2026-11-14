@@ -7,6 +7,7 @@ import json
 import logging
 import re
 import uuid
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -26,6 +27,19 @@ log = logging.getLogger(__name__)
 
 #: Planned queries per document.
 MAX_QUERIES = 4
+
+
+@dataclass(slots=True)
+class Allowed:
+    """A strict-local document turn's searches: only the queries the person allowed, once."""
+
+    queries: tuple[str, ...] = ()
+    used: bool = False
+
+
+#: Set for a strict-local document turn (`search_consent`): research sends only these queries
+#: (none when empty), plans none of its own and reads products no further. None elsewhere.
+ALLOWED: ContextVar[Allowed | None] = ContextVar("research_allowed", default=None)
 #: Results per query before cross-query dedupe.
 _PER_QUERY = 5
 #: Bodies fetched per query; rest title+snippet.
@@ -284,6 +298,15 @@ async def literature_plan(request: str, model: str, api_key: str) -> tuple[list[
     return [q for q in queries if q.strip() and q.strip() != request[:300].strip()], entities
 
 
+async def plan(
+    request: str, model: str, api_key: str, *, scholarly: bool = False,
+    most: int = MAX_QUERIES,
+) -> tuple[list[str], dict[str, int]]:
+    """The queries `run` would send for `request`, and the planner's spend; the request on
+    failure. A strict-local document shows them to the person before any is sent."""
+    return await _plan(request, model, api_key, scholarly=scholarly, most=most)
+
+
 async def _plan(
     request: str, model: str, api_key: str, *, scholarly: bool = False,
     most: int = MAX_QUERIES,
@@ -343,7 +366,9 @@ async def _planned(
     text = (payload["choices"][0]["message"]["content"] or "").strip()
     if by_entity:
         queries, entities = scholar_queries(text, request)
-        log.info("literature queries %s (entities %s)", queries, entities)
+        log.info("literature queries %s (entities %s)",
+                 [q.replace("\r", " ").replace("\n", " ") for q in queries],
+                 [e.replace("\r", " ").replace("\n", " ") for e in entities])
         return queries or fallback, spent, entities
     if scholarly:
         # Planner cap = literature mode's.
@@ -487,16 +512,24 @@ async def run(
     backends = await settings_store.tools_config()
     if not backends.search:
         return Findings()
+    allowed = ALLOWED.get()
+    if allowed is not None and (allowed.used or not allowed.queries):
+        return Findings()
 
     if deep:
         max_sources *= 2
-    queries, spent = await _plan(request, model, api_key, scholarly=scholarly,
-                                 most=MAX_QUERIES * (2 if deep else 1))
+    if allowed is not None:
+        # the person's queries, as they allowed them; nothing planned beside them
+        allowed.used = True
+        queries, spent = list(allowed.queries), {"inputTokens": 0, "outputTokens": 0}
+    else:
+        queries, spent = await _plan(request, model, api_key, scholarly=scholarly,
+                                     most=MAX_QUERIES * (2 if deep else 1))
     if scholarly:
         max_sources = max(max_sources, _SCHOLAR_SOURCES)
     # Korean-scholarship requests add a Korean papers query.
     korean_query = (korean_papers.query_for(request, queries)
-                    if korean_papers.wanted(request) else "")
+                    if korean_papers.wanted(request) and allowed is None else "")
     hit_lists, korean_hits = await asyncio.gather(
         asyncio.gather(*(_gather(backends.search, q, scholarly=scholarly) for q in queries)),
         korean_papers.search(korean_query) if korean_query else asyncio.sleep(0, []),
@@ -706,7 +739,7 @@ async def deepen_for_products(
 ) -> Findings:
     """Re-search each found product for its own pages; appends to `findings`. Never raises."""
     axes = comparison_axes(request)
-    if not findings.sources or not model or not axes:
+    if not findings.sources or not model or not axes or ALLOWED.get() is not None:
         return findings
     try:
         text, spent = await _ask(

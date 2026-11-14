@@ -21,8 +21,15 @@ _FIELDS = frozenset({"expression", "choices", "submitted_choice", "decimal_place
 _CHARACTERS = frozenset("0123456789.+-*/()eE \t\r\n")
 #: Decimal, optional small-exponent scientific notation.
 _NUMBER = re.compile(r"(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]{1,2})?\Z")
-#: Max exponent; keeps exact rationals within bit budget.
+#: Max exponent of scientific notation in a literal (8.0e-6).
 _MAX_EXPONENT = 30
+#: Past the exact budget (a long compounding period, a fractional base raised high): the
+#: expression is evaluated again in decimal with this many significant digits, flagged
+#: approximate. Its own bounds refuse pathological sizes.
+_APPROX_DIGITS = 50
+_MAX_APPROX_EXPONENT = 10_000
+#: A result (or step) further from 1 than 10**this is refused, not approximated.
+_MAX_APPROX_MAGNITUDE = 100
 _SCOPE = (
     "입력한 식의 산술과 선지 일치만 검증했습니다. "
     "식이 문제의 조건과 단위에 맞는지는 별도로 확인해야 합니다."
@@ -50,8 +57,19 @@ class _DivisionByZero(_InvalidCalculation):
     pass
 
 
+class _BeyondExact(_InvalidCalculation):
+    """Valid, but past the exact budget: the decimal pass may still answer it."""
+
+
 def _bounded(value: Fraction) -> Fraction:
     if max(value.numerator.bit_length(), value.denominator.bit_length()) > _MAX_INTEGER_BITS:
+        raise _BeyondExact
+    return value
+
+
+def _sane(value: Decimal) -> Decimal:
+    """A decimal-pass step within the magnitude bound (zero is fine)."""
+    if not value.is_finite() or (value and abs(value.adjusted()) > _MAX_APPROX_MAGNITUDE):
         raise _InvalidCalculation
     return value
 
@@ -110,7 +128,7 @@ def _expression(raw: object) -> tuple[str, Fraction]:
             if not (
                 isinstance(power, ast.Constant)
                 and type(power.value) is int
-                and abs(sign * power.value) <= _MAX_EXPONENT
+                and abs(sign * power.value) <= _MAX_APPROX_EXPONENT
             ):
                 raise _InvalidCalculation
 
@@ -127,10 +145,14 @@ def _expression(raw: object) -> tuple[str, Fraction]:
         if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Pow):
             base = evaluate(node.left, level + 1)
             power = evaluate(node.right, level + 1)
-            if power.denominator != 1 or abs(power.numerator) > _MAX_EXPONENT:
+            if power.denominator != 1:
                 raise _InvalidCalculation
             if not base and power.numerator < 0:
                 raise _DivisionByZero
+            size = max(base.numerator.bit_length(), base.denominator.bit_length())
+            if base not in (0, 1, -1) and size * abs(power.numerator) > _MAX_INTEGER_BITS:
+                # checked before raising, so the exact pass never builds a huge rational
+                raise _BeyondExact
             return _bounded(base ** power.numerator)
         if isinstance(node, ast.BinOp) and isinstance(
             node.op, (ast.Add, ast.Sub, ast.Mult, ast.Div)
@@ -150,7 +172,84 @@ def _expression(raw: object) -> tuple[str, Fraction]:
             return _bounded(value)
         raise _InvalidCalculation
 
-    return source, evaluate(tree.body)
+    try:
+        return source, evaluate(tree.body)
+    except _BeyondExact:
+        pass
+    raise _Approximate(source, _approximate(source, tree.body))
+
+
+class _Approximate(Exception):
+    """The exact pass ran out of budget; carries the decimal pass's value."""
+
+    def __init__(self, source: str, value: Decimal) -> None:
+        super().__init__(source)
+        self.source = source
+        self.value = value
+
+
+def _approximate(source: str, body: ast.AST) -> Decimal:
+    """The same (already validated) expression in decimal with `_APPROX_DIGITS` digits."""
+    with localcontext() as context:
+        context.prec = _APPROX_DIGITS
+        context.Emax = _MAX_APPROX_MAGNITUDE * 2
+        context.Emin = -_MAX_APPROX_MAGNITUDE * 2
+
+        def evaluate(node: ast.AST) -> Decimal:
+            if isinstance(node, ast.Constant):
+                return _sane(Decimal(ast.get_source_segment(source, node) or ""))
+            if isinstance(node, ast.UnaryOp):
+                value = evaluate(node.operand)
+                return -value if isinstance(node.op, ast.USub) else value
+            if isinstance(node, ast.BinOp):
+                left = evaluate(node.left)
+                right = evaluate(node.right)
+                if isinstance(node.op, ast.Pow):
+                    if right != right.to_integral_value():
+                        raise _InvalidCalculation
+                    if not left and right < 0:
+                        raise _DivisionByZero
+                    # magnitude checked before raising: |log10(base)| * exponent
+                    if left and abs(left) != 1:
+                        size = abs(abs(left).log10() * right)
+                        if size > _MAX_APPROX_MAGNITUDE:
+                            raise _InvalidCalculation
+                    return _sane(left ** int(right))
+                if isinstance(node.op, ast.Add):
+                    return _sane(left + right)
+                if isinstance(node.op, ast.Sub):
+                    return _sane(left - right)
+                if isinstance(node.op, ast.Mult):
+                    return _sane(left * right)
+                if isinstance(node.op, ast.Div):
+                    if not right:
+                        raise _DivisionByZero
+                    return _sane(left / right)
+            raise _InvalidCalculation
+
+        try:
+            return +evaluate(body)
+        except ArithmeticError as error:
+            raise _InvalidCalculation from error
+
+
+def _approx_text(value: Decimal, places: int | None) -> str:
+    """The decimal pass's value: rounded to `places` when asked, else 15 significant digits."""
+    with localcontext() as context:
+        context.prec = _APPROX_DIGITS + _MAX_APPROX_MAGNITUDE
+        if places is not None:
+            rounded = value.quantize(Decimal(1).scaleb(-places), rounding=ROUND_HALF_UP)
+        else:
+            digits = 15 - value.adjusted() - 1 if value else 0
+            rounded = value.quantize(Decimal(1).scaleb(-max(digits, 0)), rounding=ROUND_HALF_UP)
+            rounded = rounded.normalize() if rounded == rounded.to_integral_value() else rounded
+    if rounded == 0:
+        rounded = abs(rounded)
+    if places is None and abs(rounded.adjusted()) > 20:
+        # very large or small: 15 significant digits in scientific notation, not padded zeros
+        return f"{rounded:.14E}"
+    text = format(rounded, "f")
+    return text.rstrip("0").rstrip(".") if "." in text else text
 
 
 def _exact_decimal(value: Fraction) -> str:
@@ -185,6 +284,29 @@ def _rounded(value: Fraction, places: int) -> str:
     return format(rounded, "f")
 
 
+def _value(raw: object) -> Fraction | Decimal:
+    """A choice's value: exact, or the decimal pass's when past the exact budget."""
+    try:
+        return _expression(raw)[1]
+    except _Approximate as past:
+        return past.value
+
+
+def _same(choice: Fraction | Decimal, target: Fraction | Decimal) -> bool:
+    """Exact equality; with an approximate side, equal to 12 significant digits."""
+    if isinstance(choice, Fraction) and isinstance(target, Fraction):
+        return choice == target
+    def as_decimal(value: Fraction | Decimal) -> Decimal:
+        if isinstance(value, Fraction):
+            return Decimal(value.numerator) / Decimal(value.denominator)
+        return value
+
+    left, right = as_decimal(choice), as_decimal(target)
+    if not right:
+        return not left
+    return abs(left - right) <= abs(right) * Decimal("1e-12")
+
+
 def _calculate(arguments: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(arguments, dict) or len(arguments) > len(_FIELDS) or set(arguments) - _FIELDS:
         raise _InvalidCalculation
@@ -202,15 +324,23 @@ def _calculate(arguments: dict[str, Any]) -> dict[str, Any]:
         raise _InvalidCalculation
 
     try:
-        evaluated = [_expression(choice)[1] for choice in choices] if choices else []
+        evaluated = [_value(choice) for choice in choices] if choices else []
     except _DivisionByZero:
         # Malformed option ≠ evidence of division by zero.
         raise _InvalidCalculation from None
-    expression, exact = _expression(arguments.get("expression"))
-    value = _exact_decimal(exact) if places is None else _rounded(exact, places)
-    target = exact if places is None else Fraction(value)
+    try:
+        expression, exact = _expression(arguments.get("expression"))
+        approximate = None
+    except _Approximate as past:
+        expression, exact, approximate = past.source, None, past.value
+    if approximate is None:
+        value = _exact_decimal(exact) if places is None else _rounded(exact, places)
+        target: Fraction | Decimal = exact if places is None else Fraction(value)
+    else:
+        value = _approx_text(approximate, places)
+        target = approximate if places is None else Decimal(value)
 
-    matches = [index + 1 for index, choice in enumerate(evaluated) if choice == target]
+    matches = [index + 1 for index, choice in enumerate(evaluated) if _same(choice, target)]
     if choices is None:
         status = "not_requested"
     elif len(matches) == 1:
@@ -226,8 +356,12 @@ def _calculate(arguments: dict[str, Any]) -> dict[str, Any]:
         grading = "correct" if submitted == answer else "incorrect"
     return {
         "expression": expression,
-        "exact": str(exact),
+        # an approximate result carries its 50-digit decimal here, flagged below
+        "exact": str(exact) if approximate is None else _approx_text(approximate, None),
         "value": value,
+        **({"approximate": True, "significant_digits": _APPROX_DIGITS,
+            "note": "근삿값입니다(유효숫자 50자리로 계산해 반올림)."}
+           if approximate is not None else {}),
         "decimal_places": places,
         "choice_status": status,
         "matched_choices": matches,
@@ -252,6 +386,8 @@ CALCULATE = Tool(
     name="calculate",
     description=(
         "사칙연산과 정수 거듭제곱을 정확히 계산하고 숫자 선지·제출 답을 대조합니다. "
+        "복리처럼 지수가 크거나 값이 정확히 다루기에 너무 크면 유효숫자 50자리 근삿값을 "
+        "approximate: true로 돌려줍니다. "
         "숫자(8.0e-6 같은 지수 표기 가능), + - * /, ** (정수 지수), 괄호만 사용하세요. "
         "단위는 제외하고 퍼센트는 *100을 명시하세요. "
         "decimal_places는 문제에 반올림 지시가 있을 때만 지정하세요. "

@@ -1,4 +1,5 @@
-"""Edited-section HTML (`format: "html"`) to exporter Markdown; input already `sanitise`d."""
+"""Report HTML to Markdown: template-drawn blocks, imported documents and sections
+stored as `format: "html"` before reports became Markdown-only; input already `sanitise`d."""
 
 from __future__ import annotations
 
@@ -6,7 +7,8 @@ import html
 import re
 from dataclasses import dataclass, field
 from html import unescape
-from html.parser import HTMLParser
+
+from app.services.design_templates import sanitise
 
 #: paragraph-ending block tags
 _BLOCK = re.compile(
@@ -20,6 +22,7 @@ _EMPHASIS = (
     (re.compile(r"<(strong|b)\b[^>]*>(.*?)</\1\s*>", re.S | re.I), r"**\2**"),
     (re.compile(r"<(em|i)\b[^>]*>(.*?)</\1\s*>", re.S | re.I), r"*\2*"),
     (re.compile(r"<code\b[^>]*>(.*?)</code\s*>", re.S | re.I), r"`\1`"),
+    (re.compile(r"<(s|del|strike)\b[^>]*>(.*?)</\1\s*>", re.S | re.I), r"~~\2~~"),
 )
 
 
@@ -76,111 +79,6 @@ class Grid:
                     out[index][column] = cell.text.replace("\n", newline)
                 column += cell.colspan
         return out
-
-
-_FORMAT_BLOCKS = {"p", "h3", "h4", "li", "blockquote"}
-_FORMAT_INLINE = {"strong", "b", "em", "i", "u", "s", "strike", "span", "code"}
-
-
-def _style_map(value: str) -> dict[str, str]:
-    out: dict[str, str] = {}
-    for declaration in value.split(";"):
-        if ":" not in declaration:
-            continue
-        name, setting = declaration.split(":", 1)
-        name, setting = name.strip().lower(), setting.strip()
-        if (
-            name
-            in {
-                "font-size",
-                "font-family",
-                "font-weight",
-                "font-style",
-                "text-align",
-                "text-decoration",
-                "color",
-                "background-color",
-                "line-height",
-            }
-            and setting
-        ):
-            out[name] = setting
-    return out
-
-
-class _FormatReader(HTMLParser):
-    """Prose block styles and inline runs Markdown can't carry."""
-
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self.blocks: list[dict] = []
-        self.block: dict | None = None
-        self.styles: list[dict[str, str]] = [{}]
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        tag = tag.lower()
-        attributes = {name.lower(): value or "" for name, value in attrs}
-        style = _style_map(attributes.get("style", ""))
-        if tag in _FORMAT_BLOCKS and self.block is None:
-            self.block = {
-                "tag": tag,
-                "style": style,
-                "runs": [],
-                "text": "",
-            }
-            self.styles = [
-                {
-                    key: value
-                    for key, value in style.items()
-                    if key not in {"text-align", "line-height"}
-                }
-            ]
-            return
-        if tag in _FORMAT_INLINE and self.block is not None:
-            merged = dict(self.styles[-1])
-            merged.update(style)
-            if tag in {"strong", "b"}:
-                merged["font-weight"] = "bold"
-            if tag in {"em", "i"}:
-                merged["font-style"] = "italic"
-            if tag == "u":
-                merged["text-decoration"] = "underline"
-            if tag in {"s", "strike"}:
-                merged["text-decoration"] = "line-through"
-            self.styles.append(merged)
-        elif tag == "br" and self.block is not None:
-            self.handle_data("\n")
-
-    def handle_endtag(self, tag: str) -> None:
-        tag = tag.lower()
-        if tag in _FORMAT_INLINE and self.block is not None and len(self.styles) > 1:
-            self.styles.pop()
-        if tag in _FORMAT_BLOCKS and self.block is not None and self.block["tag"] == tag:
-            if self.block["text"].strip():
-                self.blocks.append(self.block)
-            self.block = None
-            self.styles = [{}]
-
-    def handle_data(self, data: str) -> None:
-        if self.block is None or not data:
-            return
-        style = dict(self.styles[-1])
-        runs = self.block["runs"]
-        if runs and runs[-1]["style"] == style:
-            runs[-1]["text"] += data
-        else:
-            runs.append({"text": data, "style": style})
-        self.block["text"] += data
-
-
-def formatted_blocks(fragment: str) -> list[dict]:
-    """Editable prose blocks with their set presentation."""
-    if not fragment or "<" not in fragment:
-        return []
-    reader = _FormatReader()
-    reader.feed(fragment)
-    reader.close()
-    return reader.blocks
 
 
 def _span(markup: str, name: str) -> int:
@@ -625,25 +523,32 @@ def as_markdown(section: dict) -> str:
 
 
 def normalise(sections: list[dict]) -> list[dict]:
-    """Sections as Markdown; HTML ones also carry `tables` and `_formatting`."""
-    out: list[dict] = []
-    for section in sections:
-        body = str(section.get("content") or "")
-        moved = {**section, "content": as_markdown(section), "format": "markdown"}
-        if section.get("format") == "html":
-            moved["_formatting"] = formatted_blocks(body)
-        if section.get("format") == "html" and (found := grids(body)):
-            moved["tables"] = found
-        out.append(moved)
-    return out
+    """Sections as Markdown, whatever an older copy stored."""
+    return [
+        {**section, "content": as_markdown(section), "format": "markdown"} for section in sections
+    ]
+
+
+def markdown_section(section: dict) -> dict:
+    """A report section as stored: HTML (an older save, a template block, an import) becomes
+    Markdown through `sanitise` and `to_markdown`; styling has no Markdown and is dropped."""
+    if section.get("format") != "html":
+        return section
+    body = to_markdown(sanitise(str(section.get("content") or "")))
+    # a table row a merge covered whole has nothing of its own: Markdown cannot merge it back
+    body = "\n".join(line for line in body.split("\n") if not _EMPTY_ROW.match(line))
+    return {**section, "content": body, "format": "markdown"}
+
+
+_EMPTY_ROW = re.compile(r"^\|(?:[ \t]*\|)+[ \t]*$")
 
 
 __all__ = [
     "Cell",
     "Grid",
     "as_markdown",
-    "formatted_blocks",
     "grids",
+    "markdown_section",
     "normalise",
     "tidy_tables",
     "to_markdown",

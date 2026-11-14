@@ -45,6 +45,7 @@ browser ──── KloudChat API ──┬── backend gateway ───┬�
    │           │         │                      └── /tools/ocr       text from scanned pages
    │           ├── Postgres
    │           ├── file store (local disk)
+   │           ├── media worker (stock ffmpeg, internal network only)
    │           └── MCP connectors (stdio · http)
    └── /api/files/…?t=… ← media is fetched by the element itself (§6)
 ```
@@ -94,7 +95,11 @@ attached to this one route rather than to the default dependency
 issue, each with the client's address and browser. Two screens read it: an
 account's own **Access log** (`GET /auth/me/access`, the account's rows only) and
 the administrator's audit trail (`GET /admin/audit`, everything, a page at a time
-with action, account, period and text filters). A change event keeps
+with action, account, period and text filters, sorted on the server by time, action,
+target or address). `GET /admin/audit/export.csv` and `GET /admin/users/export.csv`
+stream the same filtered, ordered rows as CSV (`services/csv_export.py`: UTF-8 BOM,
+service-zone times, formula-looking cells kept as text, at most 50,000 rows); each export
+is itself recorded (`audit.export`, `user.export`) with the filters it used. A change event keeps
 `metadata.changes = {field: [old, new]}` from `services/audit.py:diff`, secrets masked
 and long values clipped; `audit.ACTIONS` lists every code, and the screen labels each one.
 
@@ -162,7 +167,9 @@ Migrations live under `alembic/versions/`. The principal tables:
   `api_keys` · `audit_events`
 - `sessions` · `messages` — conversation. `messages.usage` is JSONB
 - `credit_ledger` — the ledger
-- `projects` · `files` · `file_pages` (OCR text per page) · `artifacts` ·
+- `projects` · `files` · `file_pages` (OCR text per page) · `media_parts` (a video's
+  transcribed pieces and read frames) · `file_uploads` (uploads arriving in pieces) ·
+  `artifacts` ·
   `artifact_versions` · `skills` · `memories` · `agents` · `connectors` ·
   `connector_tools` · `connector_credentials` · `connector_catalog`
 - `design_systems` — themes: the look a project's or agent's output wears.
@@ -214,7 +221,7 @@ Migrations live under `alembic/versions/`. The principal tables:
   addresses, model roles, enabled surfaces, OCR, branding, SMTP, signup policy.
   Database values override environment variables
 - `governance` — the one instance-wide policy row: privacy guard and masking,
-  internal-material routing, Auto routing lanes, outline model, intent filter,
+  internal-material routing, Super Agent and the earlier Auto lanes, outline model, intent filter,
   idle sign-out, retention
 
 `files` carries the scope it belongs to: `project_id` for project knowledge,
@@ -677,6 +684,64 @@ is 「—」, never an invented value.
 notes on every slide") is a whole-deck
 pass whatever the planner picked (`revise.notes_everywhere`), and a notes-only
 rewrite (`revise.notes_only`) changes nothing on the slide but its notes.
+
+### Editing a web report: one Markdown document
+
+The web report is Markdown only. Precise formatting (fonts, colours, sizes, line
+spacing, alignment, merged cells) is what a report written as an HWP or Word file
+is for (`services/report_office.py`, edited in those editors); the web report keeps
+one Markdown document that both the person and the agent's chat edits change, so an
+edit by one never loses formatting the other cannot see.
+
+Storage stays `sections[]`, every one `format: "markdown"`. The editor
+(`components/report/DocumentEditor.tsx`, schema `reportSchema.ts`) is one
+Tiptap/ProseMirror document over the whole report: each section is a `##` heading
+(a level-2 section a `###`) that carries the section id as a node attribute, then
+its body, whose own headings sit one level below (`lib/reportDoc.ts` shifts them on
+the way in and out). Only what Markdown can write back exists in the schema:
+headings, bold, italic, strikethrough, inline code, links, bullet/numbered/task
+lists, quotes, GFM tables (a header row, no merges), pictures, code blocks, the
+drawn fences (mermaid, chart, kpi, steps, cards, callout; shown drawn, edited as
+text), rules, page breaks (`<!-- pagebreak -->`), and `[n]` citations and `[빈칸]`
+blanks as plain text. Selecting, deleting and merging across a section boundary
+works because it is one document; typing a new `##` heading starts a section.
+The edit view does not guess where pages break: the only page marks there are the
+person's own breaks, drawn as a labelled 「쪽 나누기」 line. Exact pages and page
+counts are the page view's (Paged.js) and the exported files'.
+
+On save the document is serialised (`blocksToMarkdown`, minimal escaping so `[1]`
+and `[담당자]` stay as typed) and split at its section headings (`docToSections`).
+A section keeps its id, and with it its diagrams and other fields, wherever it moved;
+a heading split or pasted twice gets a new id (`SectionIds` keeps them unique); a
+deleted heading's body joins the section above. A section whose text the editor did
+not change keeps its stored Markdown byte for byte; one whose text changed loses its
+fact-check (its verdicts point at sentences that are gone; 검토 runs it again). The
+server drops it too when a PATCH changes a section's text. 「Markdown 원문」 shows the
+same document as Markdown text (`# 제목` first); reading it back matches sections by
+heading, then by place, so inserting or moving a section shifts no other id. One
+undo history covers the whole document; find and replace runs in document order
+from the caret, across marks, through headings and the title, and a replace-all is
+one undo step.
+
+The server stores nothing else: `PATCH`, create and restore convert an HTML section
+(an older client, an HTML-era version, a template's block, an imported `.hwpx`)
+through `design_templates.sanitise` and `richtext.to_markdown` (`markdown_section`),
+dropping its styling and the rows a merge covered. Migration `0082` did the same to
+every stored report with an HTML section, keeping the data before it as a version
+(「Markdown 전환 전」). The exporters read Markdown only (bold, italic and
+strikethrough as runs; quotes, rules and task boxes as text).
+
+The panel follows the shared document-panel chrome (`components/document/DocumentChrome.tsx`,
+also the office panels'): title · vN · 「저장 안 됨」 · 저장 (Ctrl+S) · 내려받기 · 공유 ·
+더보기 · expand · close; hand edits stay in the browser until 저장, which is
+conditional on the version the editor started from (a lost race shows 「내 편집
+내려받기」 / 「최신 판 불러오기」); the report registers with `lib/officeGuard.ts`, so a
+chat turn, closing, another artifact or a reload asks 저장 / 버리기 / 취소 first;
+the editor is locked while the agent works and reloads on its version (a version
+that arrives under unsaved edits waits behind the notice). A phone reads only. The
+report's ribbon is the Word editor's: 홈 · 삽입 · 레이아웃 · 검토 · 보기 with group
+captions and tall labelled buttons (`ArtifactRibbon look="word"`; the deck keeps its
+compact ribbon).
 
 ### Templates
 
@@ -1732,6 +1797,20 @@ whose `add_slide` keeps its look. A blank deck (`pptx_edit.blank_deck`) is
 python-pptx's default template stretched from 4:3 to 16:9 (masters and layouts
 too) with 맑은 고딕 as the theme's East Asian font. A legacy `.ppt` is refused.
 
+Written decks (`deck_export.to_pptx`, for `pptx_write` and the web slides' download)
+use real bullets: `a:buChar` in the accent (`a:buClr`) with a hanging indent
+(`marL` and a negative `indent`, `pptx_edit.set_bullet`), the item's own run in
+the body colour; a line break inside an item is `a:br`, never a raw newline in a
+run (the editor would split it into a paragraph that borrows the bullet's
+style); the corner page number is a `slidenum` field, renumbered on every save.
+Text a pattern layout cannot fit is written whole and shrunk (`a:normAutofit`);
+only the PDF draws an ellipsis. Decks written before this heal as they are read
+(`pptx_edit.healed`: on load for the agent's edits and when the editor fetches
+the file): a lone marker run with `buNone` becomes a real bullet, newlines in runs
+become breaks, a static corner number becomes the field. `pptx_doc.deck` takes the
+project's design tokens and slides template like the web slides' export
+(`pptx_doc.project_look` finds them from the conversation's project).
+
 The editor is pptx-react-viewer (crv, Apache-2.0, pinned to 4.74.0, with
 `ooxml-core` and `ooxml-ui` pinned as it resolves them), used through its
 building blocks (`useViewerBuildingBlocks`, `SlideCanvas`, `SlideThumbnail`)
@@ -1768,6 +1847,47 @@ the app's i18n; crv's own few canvas words get Korean through
 `PptxI18nProvider`. On a phone the deck is read only, its thumbnails a row under
 the slide.
 
+### Web slides editor
+
+The web slides (`DeckPanel`, a deck artifact's JSON) work the way the PowerPoint
+editor does, so the two read as one family. The header is the document panels'
+(`OfficePanel`): title, version, 저장 안 됨, 저장 (and Ctrl+S), 내려받기, 공유, 더보기
+(버전 기록, 검토, 발표, 이 장 다시 만들기, 이 장 팩트체크, reuse), width, close; it
+mirrors `OfficePanel` until the shared header is extracted. Under it is the
+chrome the two editors share (`components/pptx/chrome.tsx`, no editor library
+with it): one toolbar row (`DeckToolbar`) in the PowerPoint editor's order and
+icons (실행 취소, 다시 실행, 확대/축소 | 레이아웃, 이미지, 표, 차트 | 글꼴, 크기 | 굵게,
+기울임꼴, 밑줄, 텍스트 색상, 서식 지우기 | 테마, then 검토 and 발표), where the layout,
+table and chart stand in the place of the text box and shape (a web slide places
+its content by layout) and 테마 holds the deck's look, accent colours, this
+slide's accent and several slides at once; the numbered thumbnail rail with the
+slide menu (새 슬라이드, 슬라이드 복제, 위로 이동, 아래로 이동, 슬라이드 삭제), drag to
+reorder and 「+ 새 슬라이드」; the speaker notes under the slide. A selected table,
+chart, metric set or picture opens its data editor between the slide and the
+notes. Keys: Ctrl+S, Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z), Ctrl+D (duplicate the
+slide), Delete (the slide in the rail, a selected picture), arrows and
+Page/Home/End to step; text boxes keep the browser's own keys.
+
+Hand edits stay in the browser until 저장 (`useDeckDocument`): the deck (slides
+and design) is one working copy, so moving between slides never drops an edit,
+and undo covers the whole deck (100 steps; typing in one field within a moment
+is one step) and starts afresh when another version comes in or one is
+restored. 저장 writes the whole deck once, conditional on the version the edits
+started from; a lost race shows the conflict notice with 「내 편집 내려받기」 (the
+edited deck as text) and 「최신 판 불러오기」. The deck registers with
+`lib/officeGuard.ts` like an office document, so closing, opening another
+artifact, navigating, reloading and an agent turn in the deck's conversation ask
+저장 / 버리기 / 취소 first; steps that change the saved deck on the server (rewrite
+a slide, fact check, fix a finding, put in a picture) ask the same. While the
+agent works the editor is locked; its version shows when nothing is unsaved.
+Review notes are notes on the deck and save at once. A layout change converts
+the content into the new layout's fields without cutting it (`relayout.ts`);
+what the new layout cannot show (a chart on a text layout, text the conversion
+left out) is kept on the slide as `held`, said under the slide with
+「다음 장으로 옮기기」, and taken back by a later layout change. On a phone the
+deck reads only, with the PowerPoint editor's note and layout (thumbnails in a
+row under the slide).
+
 ### Office files in the file box
 
 The file box (`FilesPage`, `components/files/FilePreview.tsx`) previews an
@@ -1793,8 +1913,108 @@ every version and a restore keeps it, so no migration is needed.
 `GET /files/{id}/documents` lists the documents opened from a file, newest
 first, and the preview offers the newest whose chat still exists
 (「이어서 편집」) before 「새 사본으로 편집」 makes another. On a phone the
-preview, like the editors, only reads. The `.hwpx` 「문서로 열기」 in a chat
-(`POST /files/{id}/open-as-document`, an HTML report session) is unchanged.
+preview, like the editors, only reads; an HWP preview lays out a sheet for every
+page and draws each as it is scrolled to (`components/hwp/lazyPages.ts`), so a long
+file is never cut at a page count. The old `POST /files/{id}/open-as-document`
+(an `.hwpx` turned into an HTML report session) answers 410 and names
+`POST /artifacts/hwp` with `fileId` instead.
+
+### Chat edits of the document open beside the chat
+
+All five document formats (웹 보고서, 한글, Word, 웹 슬라이드, PowerPoint) take chat edits
+the same way; only the file differs.
+
+**Which document.** Every turn carries the document open in the panel,
+`SendMessage.openArtifact` `{id, version}` (`useStore.openTarget`; a local draft is not
+sent). The server trusts it only when it is the person's and this conversation's
+(`_opened_document`). A report or slides conversation then makes it its document
+(`session.artifact_id`), so a revision lands on what the person sees. The office tools
+pick by `office_doc.target`: the document this turn already read or wrote, else the open
+one, else the conversation's only one of the kind; with several and none open the read
+tool says so and the model asks which (`*_read` takes `document`, a title). The
+server's pre-read and its chapter count (「3장」) read the same document, never "the
+newest of its kind".
+
+**Versions.** Every writer moves a document only from the version it read. JSON
+documents (web report, web deck) go through `artifact_versions.advance`, the
+conditional UPDATE the hand save (`workspace._next_version`) also uses. A chat revision
+pins the version `revise-load` read (`turn.base`); at `revise-save`
+(`save_stages.store_revision`), if a hand save landed meanwhile, the parts the revision
+changed are put onto the newer version when nobody touched them there
+(`artifact_versions.merge`, by part id, title and other keys as wholes); otherwise the
+revision is kept apart as a draft document 「… (수정안)」 beside the person's version and
+the reply says so. A whole rewrite (re-plan, regeneration, a report written again as
+HWP or Word) pins the version its turn started from (`_document_base`) and keeps its
+result as a draft on a conflict too. Office files move the same way in
+`office_doc.save`. 「되돌려 줘」 is a version restore, never a rewrite: `revise.asks_undo`
+routes it to `_undo_document` (web) and the `*_restore` tools bring an earlier office
+version back as the newest (conditional, history kept).
+
+**Office tools.** `*_read` (outline with ids), `*_edit` (ops, all or none, against the
+ids read), `*_write` (a new document beside the others; `replace: true` rewrites the
+open one only when asked and only after a read; a blank open document is written into),
+`*_restore`. The edit ops are text (`replace_text` keeps the runs around a change in
+both HWP and Word, `fill_blank` across runs, `set_cell` line by line keeping a cell's
+other paragraphs and nested tables, `whole: true` to empty it), structure
+(`insert_paragraph`, `delete_paragraph`, `move_paragraphs` for a chapter with its body,
+tables and their rows and columns, `merge_cells`, `split_cell`, `insert_table`), format
+(`set_style`, `format_text` on a span, `align`), pictures (`insert_picture`,
+`replace_picture` from an image the person attached or a tool made in the
+conversation, found by `tools/office._pictures`) and `page_setup` (orientation,
+margins, header, footer, page numbers) — `docx_ops.py`, `hwpx_ops.py`. In HWPX a shape is
+never changed in place, since paragraphs share its id: the changed copy, and every house
+shape a new table or picture brings, is defined in the file's own header under a fresh
+id or an equal definition there is reused (`hwpx_edit._define`, `_import_shapes`).
+PowerPoint adds `insert_table` (a real `a:tbl`, in place of a body box), table columns,
+pictures and `change_layout` (`pptx_ops.py`); its outline counts slides in order
+(「5장」 is `s5`, not a printed page number). The tool descriptions say what cannot be
+done (charts, text boxes, footnotes, a table of contents). After the turn
+`office_claims.note` holds the reply to what the tools saved: a claimed change with no
+saved version, or a claimed failure with one, gets a sentence saying what is so.
+
+**Web report and web deck edits** work like the office files. A report or slides
+conversation with a finished document runs an edit turn as its chat
+(`_web_edit_target`) with `report_read`/`report_edit` or `deck_read`/`deck_edit`
+(`tools/web_doc.py`, ops in `web_doc_edit.py`): the outline numbers sections and slides in
+order, and the ops change only what they name. A report takes span replacement, blank
+filling, one section rewritten, sections renamed, added, deleted or moved, Markdown table
+cells, rows and columns, the title, the head fields and the theme. A deck takes the same plus a
+slide's title, subtitle, body or speaker notes alone (a notes request changes only
+`slides[i].notes`), its list items, a real table, slide duplication and its design
+(`design.visualStyle`, `accent`, `font`, the slides surface's own fields). The tool saves
+from the version it read, as a hand save does. The writers keep what is not an edit in
+place: a new document, a new structure or a whole rewrite asked in so many words, an undo,
+a file hand-over, an answer to a waiting card. A shortening (「절반으로」, 「줄여」) that would
+drop a part's table or list whole, or cut far more than the share asked, is refused in both
+paths (`revise.shortening_loss`). Counts asked are held: 「5장 정도」 aims at 5, and a reply
+says when the slides or sections written differ from the count asked
+(`deck.count_note`, `save_stages.section_count_note`).
+
+**Web report and web deck revisions by the writers** run the `revise` flow on the loaded
+parts. By hand, with no model: a part moved (「위험 요인 장을 3번 장 뒤로」, `revise.part_move`;
+numbers name parts as titles do), two swapped, a theme colour (`revise.theme_accent`
+→ `design.accent`), the head fields 작성일·작성 부서·작성자 (`revise.title_block_fields`
+→ `titleBlock`). A question about the document or the conversation is answered from
+them (`revise_stages.answer_about`), not refused. A part the edit was not asked to
+touch that a rewrite left without figures it stated is put back as it was
+(`save_stages.keep_untouched`), unless the new figures are the ones the person typed.
+
+**What the person set holds.** Standing rules from the conversation
+(`context.standing_rules`: 「앞으로 …」 directives over every user turn, and the running
+memory's pinned items) reach every part rewritten (`revise_stages.standing_note`) and
+every office `*_read`. In a revision's material, attachments spend the budget newest
+first, and a file sent again under the same name replaces the older one.
+
+**Look.** HWP and Word documents written by the tools, blank ones made in a project and
+reports written as HWP take the project's theme and the conversation's (else the
+project's default) report template (`office_look`): Word builds on the template's
+`template.docx`; HWPX takes what it can carry from it (page margins, body face, heading
+colour), the theme's colour first. Reports written as Word number their lists with real
+numbering definitions, put the 목차 in a TOC field whose result is the headings listed
+(Word refreshes it on open; an editor that runs no field shows the list), and keep each
+chart a native, editable chart with its picture in an `mc:AlternateContent` Choice that
+only the in-app editor takes. HWPX numbers its lists with `hh:numbering`; it has no chart
+element, so its charts stay pictures.
 
 ### Unsaved office edits, phones, sharing
 
@@ -2205,6 +2425,120 @@ low or that holds a ruled table is read again by the vision model, whose text is
 when the two readings differ in words or in any number the page is marked for review.
 Pages read are recorded on the ledger as units.
 
+### Understanding videos and recordings
+
+People upload lecture recordings and screen recordings to a project or a conversation and
+ask about them. An answer has to use what was **said** and what was **shown** (slide text,
+code, diagrams), say **when**, and let the reader jump there. Everything runs on the server
+after the upload, so the tab can close, and every model it calls is inside the deployment
+whatever the chat model is.
+
+**Upload in pieces** (`routers/media.py`). Audio and video go up through `POST /uploads`,
+`PUT /uploads/{id}?offset=` (one piece of `UPLOAD_PIECE_MB`, 8 MB, per request) and
+`POST /uploads/{id}/finish`, to their own ceiling `MAX_VIDEO_UPLOAD_MB` (500 MB). Each piece is
+appended to a partial file under the storage root, so no request body is ever larger than a
+piece: the API replicas never hold a video in memory, and nginx's body limit stays at
+`MAX_UPLOAD_MB`. A piece already received (a retry after a dropped answer) is acknowledged,
+one ahead of what arrived is refused with the offset to resume from, and the browser
+(`mediaApi.upload`) retries a piece four times and then asks where the server stands. The
+browser reads the video's length first and asks `GET /media/estimate`: a video over
+`VIDEO_MAX_MINUTES` is refused before a byte is sent, and one over ten minutes says how long
+reading it will take (and its credits, for a priced vision model). `finish` checks the bytes
+are audio/video, moves the partial file into place and queues the job. Pieced uploads left
+for a day are removed by the job loop.
+
+**The media worker** (`apps/media`, the `media` service). ffmpeg is LGPL/GPL, so it is
+never linked or bundled into the app: it runs as Debian's unmodified package in a container
+of its own, behind a standard-library HTTP API — `/probe` (ffprobe), `/audio` (a 16 kHz mono
+FLAC piece), `/scenes` (the times the picture changes, below), `/frame` (one JPEG), `/poster`'s
+source.
+
+*Finding changes.* The worker compares edge maps — ffmpeg's `edgedetect` at 320×180, averaged
+to 80×45 — because text and slide shapes are crisp edges while a speaker's motion is mostly
+soft ones: a frame is a change when more than 4 % of the cells moved past a step against the
+last kept frame, and the frame kept is the first after the change settles (a transition, a
+build). How the frames are read depends on the file: a picture at least 900 px tall whose
+keyframes come at least every 6 s (`MEDIA_KEYFRAME_*`) is read at its keyframes only, one
+seek each, `MEDIA_SCAN_PARALLEL` side by side; anything else is decoded at 1 fps in that many
+segments side by side. A stretch over 90 s without a change still gets a frame. It reads uploads through a read-only mount, so a request names a storage key and
+never carries the video; it holds no secrets, joins only the internal `media` network, runs
+ffmpeg at low priority with `MEDIA_JOBS` runs at once, and compose caps it at `KCHAT_MEDIA_CPUS`
+and `KCHAT_MEDIA_MEMORY`.
+
+**The job** (`services/video_jobs.py`). Claimed like OCR jobs — `SKIP LOCKED`, a claim token,
+a ten-minute lease another replica takes over — and taken through:
+
+1. *probe* — duration and streams; a file with neither, or longer than `VIDEO_MAX_MINUTES`,
+   fails at once with the reason;
+2. *frames* — the worker's candidate times (twice the cap), each frame fetched once; one that
+   is the same picture as the last kept frame is dropped (`video_read.same_picture`: a 64-bit
+   difference hash within 6 bits *and* at most 1.5 % of a 640×360 edge map moved — the hash
+   alone calls slides of one template with different text the same); the rest thinned evenly to
+   `VIDEO_FRAMES_PER_MINUTE` × minutes (at most `VIDEO_MAX_FRAMES`); each kept frame and a
+   320 px thumbnail are stored beside the video (`<key>.frames/`, removed with it);
+3. *reading* — speech and pictures side by side. Speech: ten-minute pieces overlapping by 5 s
+   to the internal Whisper (`transcribe.segments_of`, `verbose_json` with segment timings; the
+   first piece's language holds for the rest). Pictures: each frame to the strict-local vision
+   model the OCR settings choose (`video_read`, `qwen3.8-flash` by default, checked per
+   deployment before the first frame), `VIDEO_VISION_PARALLEL` at a time, for its kind, its
+   text verbatim and a one-line description; a picture shown again (back to an earlier
+   slide) is read once. Without a vision model the speech still counts; without audio the
+   pictures do;
+4. *writing* — the pieces merged on one timeline (each piece owns its stretch to the middle of
+   its overlaps, so a word at a seam appears once), scenes cut at the kept frames holding the
+   speech said while they were on screen, a long talk over one picture split every 75 s.
+
+Every finished piece and frame is a `media_parts` row with its own short session, so a job
+taken over after a restart resumes where it stopped, and a failure is retried three times
+(a file that cannot be read fails at once). Speech is recorded on the ledger as seconds
+(`media.transcribe`), pictures as tokens (`media.vision`) — a priced vision model is charged
+at its full rate, no cache discount, and is checked against the owner's credits before the
+first frame.
+
+Measured on 20-minute windows of three public-domain lectures with 61 slide changes marked by
+hand (a slide webinar, a CDC Grand Rounds deck where every slide shares one template, a Zoom
+lecture with a speaker inset): slides missed went from 3, 5 and 9 with the first version
+(ffmpeg's scene score and the hash alone) to 1, 0 and 0 — the one missed was on screen for
+three seconds. The 1080p scene pass took 14.6 s instead of 48.8 s (keyframes; 24 of 25
+slides, the full decode 25 of 25 in 24.5 s), and a 1080p talking head now gives two frames in
+ten minutes, read in 6 s.
+
+**The time-coded document** becomes the file's text, so search, project context, the index
+and per-file digests read it like any document:
+
+```
+# 강의.mp4 — 영상 00:21:11 (말·화면을 시간 순서로 옮김)
+
+[00:12:30]
+(화면) 도표 — 연도별 환자 수 | 글자: 2010 2015 2020 …
+(말) 보시다시피 환자가 크게 늘었습니다 …
+```
+
+Marks are always `[HH:MM:SS]`. `files.media` keeps the structured form for the player:
+segments `{start, end, said, shown, frame}`, the kept frames, timings and notes.
+
+**Answers point at a moment.** `knowledge.search` gives a video passage the time of the mark
+it sits under (the best-matching one when it spans several) and the label
+「강의.mp4 · 00:12:30」; the shelf gives a finished video the link `/files?open=<id>`, so the
+tool prints 「영상: /files?open=<id>&t=750」 under the passage and `agent._number_sources`
+keeps it with the source: the citation becomes `[[1]](/files?open=<id>&t=750)` and the source
+list links the label. A video given whole in the context carries a note under its heading
+(`workspace_context.VIDEO_NOTE`) asking for the mark after a claim; the web links such marks
+(`lib/media.linkTimestamps`) to the video named just before them, else the one the answer
+cites, else the conversation's only video. A link into a video renders as a chip with the
+moment's thumbnail (`TimeChip`); a click opens the player at that time.
+
+**The player** (`MediaPlayer`, also the file box preview and `/files?open=<id>&t=<s>`) asks
+`GET /files/{id}/media` for the state, the segments and signed URLs — `stream` (the original,
+served from disk with HTTP Range, so seeking never downloads the whole file) and `frames`
+(thumbnails). The signature is an HMAC over the file, its owner and an expiry six hours out:
+an element cannot send an Authorization header, and an access token in a URL would outlive
+nothing and land in logs. Below the player, the outline lists each stretch with its picture,
+what was on screen and what was said; a click plays from there. While the job runs, the file
+chip and the player show the step and progress, and a failed video offers 「다시 읽기」
+(finished pieces are kept). A conversation asking about a video still being read is told so,
+and told not to guess (`ContextFile.state = "watching"`).
+
 ### Transcription and fact-checking
 
 Both are contained within this instance.
@@ -2363,6 +2697,27 @@ paste one turn later still reads the paste, not only its summary. A prompt the p
 still refuses for length is reported as `context_length_exceeded` with a sentence that
 says what to do.
 
+**The composer shows how much of the window the next turn takes.** A gauge beside the
+model picker (`components/chat/ContextGauge.tsx`, chat only) asks
+`POST /sessions/context-usage` (`routers/context_usage.py`) — with no conversation yet,
+for the project's or agent's base cost — when the conversation, the model or the
+attachments change. The route assembles the next turn with the turn's own pieces — the
+same workspace context, tool schemas, `build_messages` envelope, `fit_history` cut,
+pasted-material carry and cached memory — counted with `estimate_tokens`, and calls no
+model and writes nothing. It answers the window (stated, and the one fitted to after the
+foreign-tokenizer factor), the answer reserve, the estimated request split into base
+system prompt, agent/project instructions, summary and memory, files and project
+knowledge, kept history, the draft and tool schemas; whether older turns already run on
+the summary and how much history still fits before the next cut; and the provider's own
+input count for the last answer (every tool round added up). Wording-driven extras the
+turn adds (a date rule, a calculation brief, a forced search's instructions) are left
+out, so the figure is an estimate, within a few percent of what is sent. The draft is
+counted in the browser as it is typed (`lib/contextGauge.ts`, the same estimator), so
+typing does not call the server. The ring turns amber at 80 % of the summary threshold
+(`window − reserve`) or once the conversation runs on a summary, and red where this turn
+would cut older messages. Under Auto the gauge measures against the model that answered
+last, else the conversation's default, and says so.
+
 The design block sits after the project's own instructions and before the
 skills: the look is a property of the project, and a skill switched on for this
 turn is the more specific instruction, so it comes later and wins.
@@ -2427,6 +2782,54 @@ artifact payloads and routing metadata) is deterministically masked with the
 `answer` scope described next, even when the inbound envelope was clean. Title
 generation and automatic memory receive only the masked turn text.
 
+**A strict-local turn asks before it searches** (`services/search_consent.py`). Dropping
+the search silently left the person unaware that a question about other work was answered
+from their own material alone, so a strict-local turn whose web search is on (or 자동) shows
+what would leave and asks. Nothing but short queries ever leaves; the material stays inside.
+
+- *Chat.* The turn is offered a local tool, `request_web_search(queries)` (1–5 short keyword
+  queries, no sentences or figures from the material). A question the server would search
+  anyway (`search_plan`, the current-fact rules) forces that tool instead of `web_search`. In
+  「매번 묻기」 the tool ends the turn: the answer row is the card (`routing.searchConsent`,
+  `status: pending`, the proposed queries) and the transcript keeps it until it is answered,
+  across reloads. The browser answers by rerunning the question (`retry_of`) with
+  `searchConsent: {messageId, decision, queries?, remember?}`. The server checks the card is
+  still pending in the stored transcript (`409 search_consent_stale` otherwise — another tab
+  or replica answered it; the turn claim keeps two answers from running at once), settles the
+  decision against today's policy and vets the queries again (the browser's edit is never
+  trusted), deletes the card row, and runs `request_web_search` as the turn's preset call: the
+  approved queries go to the ordinary `web_search` one by one, and their numbered results are
+  read by the same local model, which cites them as `[n]`. The model's own arguments cannot
+  widen what was approved, and a second call is refused.
+- *Report and slides.* Research runs before the outline and cannot pause mid-pipeline, so the
+  local planner proposes the queries up front (`research.plan`) and the card is stored before
+  the pipeline starts (`_search_card`, SSE `search_consent`). Every strict-local document
+  turn sets `research.ALLOWED`: research sends only the approved queries, once, plans none of
+  its own and follows no product pages; with nothing approved it sends nothing, so an
+  approved outline's later turns cannot search again.
+- *Vetting* (`search_consent.vet`): queries are cut to 100 characters, at most five; personal
+  identifiers are masked with the egress detectors; a query carrying a secret, a 40-character
+  run of the turn's internal material, or an administrator-blocked category is withheld and
+  the card says why. Edited queries pass the same check.
+- *Saying it.* Declined, withheld, turned off, or simply not asked although the question
+  plainly reaches outside the material (`search_consent.needs_outside`, the server's search
+  rules): the answer ends with 「외부 검색 없이 자료만으로 답했습니다.」 (a server note,
+  stripped before the answer is sent back as history).
+- *Settings.* `governance.strict_local_web_search`: `ask` (default), `allow` (queries only,
+  no card) or `off`. A project's `strict_local_web_search` may only tighten it (the PATCH is
+  refused otherwise; at run time the stricter of the two applies). 「이 대화에서는 계속 허용」
+  on the card stores `remember` on the answer; later turns of that conversation then send
+  the model's vetted queries without a card (as `allow` does), unless policy is `off`. The
+  composer says which applies to a strict-local model (「웹 검색: 보내기 전에 묻기
+  (strict-local)」) and sends the person's search setting, so the server can offer the ask.
+- *Record.* The answer's `routing.searchConsent` keeps `status` (`pending`, `allowed`,
+  `auto`, `declined`, `blocked`, `unavailable`, `none`), the queries sent, the withheld ones
+  and why, `decidedBy`, `decidedAt` and `remember`; the same goes to the audit log as
+  `search.consent_*` with the paused card's id. The answer's badge reads from that record —
+  「strict-local로 보호됨 · 외부 검색 2회(허용)」, 「… · 외부 검색 안 함」, 「… · 외부 검색 확인
+  대기」 — and every strict-local action (`internal_strict_local` included) reads as
+  strict-local; a request-side 「외부 전송」 label appears only for `send_raw_external`.
+
 **Masking is scoped by where the text is going.** The detector tells a
 person's details (a mobile number, a personal mailbox, a routable address, an
 ID or card number) from an organisation's (a switchboard or 15xx service
@@ -2476,7 +2879,70 @@ whole, a direct call to a deferred tool still runs, and the loader's text comes 
 same tool-definition snapshot the privacy scan read. A `load_tools` result is not material:
 it gets no source number and adds no number sources.
 
-### Auto routing
+### Super Agent
+
+Super Agent is two picker entries, `routing_mode` `super` and `super_strict`, that choose a
+model, a reasoning effort and a tool budget for every turn (`services/super_agent.py`). Both
+replace the two Auto lanes in the picker; conversations on an Auto lane were moved to `super`
+by migration 0083. The Auto code below stays for comparison and for sessions set through the
+API.
+
+**Task class first, by rules.** Each turn is sorted into `simple`, `chat`, `transform`
+(translate, summarise, proofread), `calc`, `code`, `current` (facts that change; search
+switched on), `long` (large pasted material or conversation), `reasoning` or `document`
+(report and deck sessions). Rules read only the ask, not material pasted with it
+(`split_ask`): a meeting memo that mentions 「코드 프리즈」 is not a coding task. Calculation and
+current-fact cues reuse `calculation_policy` and `freshness`. Only a turn the rules cannot
+place (short or unmarked) goes to the classifier: a zero-cost strict-local model
+(`adaptive_classifier_model_id`, else the table's strict `simple` model) that receives the
+request and the previous question, each cut short — about 300 tokens, against the 4,000+ of
+Auto's whole-envelope classifier — and answers one JSON class. A failure or a confidence
+under 0.6 keeps the rule's answer. The classifier is never called when the turn holds
+personal data.
+
+**The table.** `DEFAULT_RULES` maps every class to a model for `super`, a strict-local model
+for `super_strict`, and an effort (`default`, `none`, `low`, `high`); the admin edits it in
+설정 › 시스템 › 라우팅 and only changes are stored (`governance.super_agent_rules`). Effort
+becomes the request fields of the routed writer only (`agent.TURN_REASONING`): OpenRouter
+`reasoning.effort` for external models (the lowest offered level when a model cannot turn
+reasoning off), the vLLM template switch for self-hosted ones (`enable_thinking` for Qwen,
+`thinking` for DeepSeek). A table model that is not served, not allowed, too small for the
+conversation, without tools a class needs or without vision for pictures falls back along a
+short list, then to the surface default. Defaults come from the 2026-11-13 evaluation (31
+scenarios, judged blind by Sonnet and Opus separately), with hard classes moved to DeepSeek
+V4.1 Flash at high effort by the owner's decision of 2026-11-14:
+
+| Class | `super` | `super_strict` | Effort | Why |
+|---|---|---|---|---|
+| simple, chat, transform | Qwen3.8 Flash | strict Flash | none | Flash matched every larger model (8.5/8.2 of 10) |
+| calc, code, long, reasoning, current | DeepSeek V4.1 Flash | strict Flash (no search for current) | high | hard turns: thinking Flash matched (8.3–8.5) but sometimes left nothing; DeepSeek searches and cites best (8.7 vs Flash 6.3) |
+| document | Qwen3.8 27B | strict 27B | default | 6.0 free vs GLM-5.3 6.7 at ~800 credits |
+| escalation | DeepSeek V4.1 Flash | strict Flash | high | never empty; 9/10 where thinking Flash left nothing |
+
+**Escalation, de-escalation, stickiness.** 「다시」, 「더 자세히」, 「틀렸어」 and the like, or an
+empty or failed previous answer, move the turn to the `escalation` row; that row's model also
+rewrites, inside the same turn, an answer the class's model left empty or cut (the rescue
+writer, with its own effort). A thanks or 「ok」 after a hard turn comes down to `simple`. A
+short follow-up with no markers of its own keeps the previous turn's class and model (one
+voice per thread, and the provider's prefix cache stays warm), and every revision of a report
+or deck keeps the model that wrote its first version (`_first_document_model`). The pick is
+the turn's: `sessions.model` is not overwritten.
+
+**Boundaries.** `super_strict` picks only `self_hosted` strict-local models; with none usable
+the turn is refused (503 `strict_local_unavailable`), never answered outside, and titles,
+summaries and checks follow the strict writer. In `super`, personal data in the conversation
+or internal material (attachments, a project, `internal_data_strict_local`) picks from the
+strict-local column instead of asking, and the privacy resolution still runs on the pick as
+for a manual choice. The user's `allowed_models` bound every pick.
+
+**What the person sees.** The answer's processing row reads 「이번 답: Qwen3.8 Flash · 간단한
+질문」 plus the reason when there is one (same model as before, retried stronger, personal data
+kept inside); its title names rules or classifier, the effort, tools and the classifier's
+tokens and time. The picker shows each entry with a typical answer's credits (10k tokens in,
+1k out) across the table. The route is stored as `routing.superAgent` and audited as
+`routing.super`.
+
+### Auto routing (earlier lanes)
 
 Auto is a session mode, not a model alias. `sessions.model` always stores the
 last real model the person selected; the separate `routing_mode` field is
@@ -2707,8 +3173,40 @@ backfills files uploaded before the index existed. The lexical shelf the tool
 also reads includes the project's files, so a passage the budget could not
 carry whole is still reachable by lookup.
 
-Project knowledge is also injected: it shares the turn's file budget and is
-excerpted around the question once it no longer fits whole (§7).
+Project knowledge is also injected: it shares the turn's file budget and goes whole
+while it fits (§7). Once it does not, the turn still sees **every file**:
+
+- **Per-file digests.** Each project file gets a short digest (`files.digest`: unit label
+  such as 「3강」, title, a 2–4 sentence summary, its outline and key terms, plus the text
+  length it was made from). `services/digest_jobs.py` makes them in the background, claimed
+  like OCR jobs (`digest_state` queued → running → done/failed, three attempts, a stale claim
+  taken over). A file is queued when its text arrives (upload, URL snapshot, finished OCR),
+  lazily when a turn finds it without a current digest, or by the administrator's backfill
+  (`POST /admin/knowledge/digests`, `?project_id=`, `?force=true`). The digest is written
+  only by a strict-local model the catalogue lists as such (`KNOWLEDGE_DIGEST_MODEL`,
+  default the strict-local flash; an outside model configured there is never used), so a
+  file's text never leaves the deployment whatever model the conversation uses. The file
+  text is sent as delimited data the prompt tells the model never to follow. The call is
+  billed as a side call (`knowledge.digest`): a priced model at its full rate, a self-hosted
+  one as a zero-credit ledger row with the tokens. Until a digest exists (or when no
+  strict-local model is served) a code digest stands in: the label from the file name, the
+  first line as title, headings and frequent terms (`file_digest.code_digest`).
+- **The 「자료 목록」.** The knowledge block opens with every file, one entry each, within
+  45% of the knowledge budget: full entries, then one-line entries, then name and label
+  only, and past that as many names as fit with the rest counted.
+- **Passages after the list.** A focused question gets the best eight passages, lexical and
+  — outside strict-local turns, as with `search_knowledge` — merged with the index's hits.
+  A request about each item (`coverage.asks_each`: 「각 강」, 「모든 자료」, 「주차별」,
+  「21개 강의」, "each lecture") gets one passage from every file instead (its best match, or
+  its opening when the ask names no topic), each within an even share of the room, and the
+  file report adds a rule to cover every listed file and name any it cannot.
+- **No silent drop.** For such a request, the report pipeline's `coverage` stage and the
+  chat finish stage `answer-coverage` look for each file in the finished text (its unit
+  label, title, file name or citation number) and end the document or answer with
+  「※ 자료 N건 중 M건은 이 답에서 다루지 못했습니다: …」 when some are missing.
+
+A file that reached the model only as its list entry is a `ContextFile` with `listed`; it
+becomes a numbered source of a document only when the request asks about each item.
 
 Files uploaded into a conversation sit on the same shelf. They are injected
 (§7) *and* searchable: the tool is what finds the passage the injected excerpt
@@ -2742,6 +3240,84 @@ everything, which an embedding-model change needs).
 urlsafe randomness, minted on first use and never derived from `agent_id`,
 which travels in URLs and API responses. Deleting an agent drops its collection.
 
+### Knowledge shelf (지식 서가)
+
+The project's sources — its `files` rows: uploads, web snapshots, pasted text, notes made
+into sources, video/recording transcripts — get three things on top of §7's injection and
+the `search_knowledge` shelf. User-facing names live in `apps/web/src/lib/shelfNames.ts`
+(server titles in `services/shelf_names.py`), so the working name can change in one place.
+
+**Per-conversation selection.** `source_selections` keeps, per conversation, the source ids
+switched *off* (no row = all on; a source added later starts on). `source_selection.keep`
+drops them in both places a turn reads project material: `workspace_context._project_knowledge`
+(injection) and `sessions._knowledge_shelf` (the lexical shelf, and through `_living_hits`
+the vector hits too, which are kept only for documents still on the shelf).
+
+**Guides and citations.** `source_guides` (one row per source, plus `subject = "project"`)
+holds a summary, key topics and suggested questions, written in the background by the
+strict-local guide model (`shelf_models`) the first time someone opens one and kept
+until the material's signature (ids and text lengths) changes; a per-file digest
+(`files.digest`, when present) fills the summary meanwhile. A chat answer that cites project
+material ends with a source list of names: the project files a turn was given are numbered
+as material sources before any search (`agent._with_material_numbers`, from the context's
+`knowledge` fates, after the numbers earlier answers used), a system note tells the writer
+which number is which file, and search passages (`agent._number_sources`) number on after
+them; material citations keep their plain `[n]` and the server lists them by name. A
+citation of a project file the citing sentence is not backed by (`claim_support`) is taken
+out before the answer is linked. The web links its
+inline `[n]` to the source viewer, which asks `GET /projects/{id}/shelf/locate` for the
+passage closest to the citing sentence (`shelf_sources.locate`: lexical chunk score, then
+the best sentence), its page from `[페이지 n]` marks and, for a transcript, its
+`[HH:MM:SS]` time code; a video plays from there in the file box (`/files?open=<id>&t=<s>`).
+
+**Studio and notes.** `studio_items` are one-click outputs grounded in the sources the person
+picks: documents (study guide, FAQ, briefing, timeline, glossary, mind map), quiz and
+flashcard sets; the studio writes text only and makes no audio. `studio.start` writes a `running` row
+and returns; the work runs on its own DB session (`shelf_jobs.spawn`; a row older than 20
+minutes in `running` reads as failed). The sources are numbered `[n] name` within the
+writer's window (`shelf_sources.bundle`: small ones whole, long ones read in windows spread
+to their end), the model answers one JSON object per kind (`studio_kinds`), and code then
+holds the output to its sources: citations of numbers outside the list are removed, a
+document with no citation at all is asked for once more, a glossary keeps only terms
+written in the sources, and quiz items need a valid key, distinct choices (shuffled so the
+key's place carries no pattern) and an explanation. `shelf_checks` then reads every
+sentence, question and card: its script (Japanese kana, Chinese outside a gloss, other
+scripts, a Hangul word glued to Latin letters, an English word the sources never use, a
+source term misspelt by one letter), its grounding (`claim_support`: the numbers of a cited
+sentence must be in its cited sources and at least 35% of its content words, matched with
+up to two letters of particle or ending), and its fluency (the writer and the guide model
+each give a verdict per sentence; a verdict naming the sources' own wording is ignored).
+What fails goes back to the writer once, in one call, with its problem and its cited
+passages; what still fails is mended in code (a script slip) or dropped (an unbacked or
+garbled sentence, or an item left without its question or answer).
+Guide questions are kept only when the writer and the guide model both find every part of
+the answer in the question's best passages. Documents are saved as a report artifact
+(or an HWP/Word file through `report_office`) in a conversation of their own, so they open,
+edit and export in the document panel; quiz sheets take the same path. `project_notes` is
+the 메모함: notes pinned from an answer or a selection or written by hand, saved explicitly
+with a version check (`expected` → `note_conflict`), and made into a source (a `.md` file,
+indexed like an upload; later edits update it).
+
+**Models.** Which model writes each output kind, and with what reasoning effort, is one table
+(`services/shelf_models.py`, overridable as JSON in `KNOWLEDGE_MODELS`): a strict-local pick
+and a pick for where material may leave. On a ten-lecture project judged by Sonnet, flash beat
+the 27B on the briefing (7 vs 6), the glossary (7 vs 5) and the quiz (8 vs 7). With thinking
+on, flash ran past a 14k-token room on every long document, so documents are written without
+thinking and quizzes and flashcards with it; a thinking call that runs out of room is answered
+again without thinking. Where material may leave, each kind takes the Super Agent's escalation
+pick (DeepSeek V4.1 Flash, reasoning on). At most `KNOWLEDGE_CONCURRENCY` calls (2) run at once
+per replica, since flash serves conversations on the same node.
+
+**Boundaries and billing.** Project sources are internal material: while
+`governance.internal_data_strict_local` holds, guides and studio outputs use a strict-local
+model only (`shelf_calls.route`; asking for another is refused with
+`internal_data_requires_strict_local`); otherwise an outside pick sees the text masked for
+personal data. Every call is a side call billed
+at the full rate with no cache discount, or a zero-credit token row on a self-hosted model;
+`POST /projects/{id}/studio/estimate` shows tokens and credits before anything runs.
+Audio and video reach the shelf only as input, turned into text (transcripts, frame reading,
+OCR); nothing is spoken back.
+
 ---
 
 ## 9. Frontend structure
@@ -2756,7 +3332,7 @@ apps/web/src/
                 layout · ui
   store/        useStore.ts — a single zustand store
   lib/          api.ts (the backend seam) · kinds.ts · i18n.ts · useT.ts ·
-                reportMarkdown.ts · mermaid.ts · shortcuts.ts
+                reportDoc.ts · mermaid.ts · shortcuts.ts
 ```
 
 **The store has an epoch guard.** Every action that writes to the workspace

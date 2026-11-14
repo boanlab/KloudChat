@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { crc32 as zlibCrc32, deflateSync } from 'node:zlib'
 import { expect, test } from '@playwright/test'
-import { signIn, ribbonTab } from './helpers'
+import { deckThumbs, deckToolbarMenu, signIn } from './helpers'
 
 /** Inserting an image into a JSON deck slide: stored as a `data:` URI the preview and exporters read.
  *  Seeded through the API. */
@@ -122,10 +122,11 @@ test('JSON 덱의 한 장에 그림을 넣고, 파일로 받으면 그림이 들
   await card.click()
 
   const dialog = page.getByRole('dialog')
-  // The picture goes into the slide being shown.
-  await dialog.getByRole('button', { name: '다음 장' }).click()
-  await ribbonTab(page, '삽입')
-  await dialog.getByRole('button', { name: '그림 넣기' }).click()
+  // The picture goes into the slide being shown: 이미지 › 그림 넣기 on slide 2.
+  await deckThumbs(page).nth(1).click()
+  await expect(deckThumbs(page).nth(1)).toHaveAttribute('aria-current', 'true')
+  const pictures = await deckToolbarMenu(page, '이미지')
+  await pictures.getByRole('button', { name: '그림 넣기' }).click()
   await page.getByRole('button', { name: pictureTitle, exact: true }).click()
   await page.getByLabel('설명').fill('그림 1. 슬라이드')
   await page.getByRole('button', { name: '넣기', exact: true }).click()

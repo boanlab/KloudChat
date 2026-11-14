@@ -23,10 +23,11 @@ import {
 } from 'lucide-react'
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { FileRow, OfficeKind, PrivacyDecision, WebSearchSetting } from '@/lib/api'
-import { ApiError, artifactsApi, transcriptionsApi } from '@/lib/api'
+import { ApiError, transcriptionsApi } from '@/lib/api'
 import { startWavRecording, type WavRecorder } from '@/lib/wavRecorder'
 import { DesignGalleryModal, offersTemplates } from '@/components/chat/DesignGallery'
 import { FileBoxPicker } from '@/components/files/FileBoxPicker'
+import { warmStudio } from '@/components/hwp/warmStudio'
 import { errorCode, errorMessage, PrivacyDecisionError, templateText } from '@/lib/api'
 import { refusalSentence, startFailure, withRetryWait } from '@/lib/failures'
 import {
@@ -40,13 +41,14 @@ import { FINDING_LABEL } from '@/lib/privacy'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 import { useNavigate } from 'react-router-dom'
 import { agentStartKind, distinctAgents, kindMeta } from '@/lib/kinds'
-import { Badge, Button, Dropdown, MenuItem, MenuLabel, MenuSeparator, Modal } from '@/components/ui'
+import { Badge, Button, Dropdown, MenuItem, MenuLabel, MenuSeparator, Modal, Select } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { ChatSendRecoveryError, FIGURE_STYLES, composerKey, effectiveModelId, useStore } from '@/store/useStore'
 import type {
   ModelInfo, PrivacyAction, ReportOutput, SessionKind, Skill, SlidesOutput, WebSearchMode,
 } from '@/types'
 import { servedAspect, servedAspects } from '@/lib/aspects'
+import { ContextGauge } from './ContextGauge'
 import { ModelPicker } from './ModelPicker'
 import { SharedBotItems } from './SharedBotItems'
 import { useFileDrop, usePasteFiles } from '@/lib/useFileDrop'
@@ -54,9 +56,11 @@ import { useT } from '@/lib/useT'
 import { askAboutEdits, hasOfficeEditor, LeaveCancelled } from '@/lib/officeGuard'
 import { isListed } from '@/lib/listed'
 import { runsOnServer } from '@/lib/serverSkills'
+import { isWatching, mediaPreflight } from '@/lib/media'
 import { isReading, ocrNote, useOcrProgress } from '@/lib/ocr'
 import { ATTACH_ACCEPT, attachRefusal } from '@/lib/attachable'
 import { isImeKey } from '@/lib/ime'
+import { useBlankDocument } from '@/lib/useBlankDocument'
 
 /** Shown when a send timed out at the gateway: the turn may be running on the server. */
 const GATEWAY_NOTICE =
@@ -186,6 +190,13 @@ const OUTPUTS = {
   ],
 } as const satisfies Record<'report' | 'slides', readonly { value: ReportOutput | SlidesOutput; label: string }[]>
 
+/** What 「빈 문서로 시작」 says while its document opens. */
+const OPENING_EDITOR = {
+  hwp: '한글 편집기를 여는 중…',
+  docx: 'Word 편집기를 여는 중…',
+  pptx: 'PowerPoint 편집기를 여는 중…',
+} as const satisfies Record<OfficeKind, string>
+
 /** The 형식 chip of a new report or deck, as the picture options are chips; a picked file also
  *  offers 「빈 문서로 시작」. */
 function OutputOptions({
@@ -194,15 +205,22 @@ function OutputOptions({
   onPick,
   onBlank,
   opening,
+  stage,
 }: {
   surface: 'report' | 'slides'
   shown: ReportOutput | SlidesOutput
   onPick: (value: ReportOutput | SlidesOutput) => void
   onBlank?: (kind: OfficeKind) => void
   opening: OfficeKind | null
+  /** What the opening is doing now (made the conversation, the document…). */
+  stage?: string
 }) {
   const t = useT()
   const file = shown === 'hwp' || shown === 'docx' || shown === 'pptx' ? shown : null
+  // 한글 picked: its editor's files (tens of MB) start downloading now, not after the document is made
+  useEffect(() => {
+    if (file === 'hwp') void warmStudio()
+  }, [file])
   const label = (value: ReportOutput | SlidesOutput) =>
     t(OUTPUTS[surface].find((option) => option.value === value)?.label ?? value)
   return (
@@ -219,12 +237,18 @@ function OutputOptions({
           type="button"
           onClick={() => onBlank(file)}
           disabled={opening !== null}
+          aria-busy={opening === file}
           title={t('입력 없이 빈 문서를 편집기에 엽니다')}
           className="flex h-8 items-center gap-1.5 rounded-control border border-line px-2.5 text-sm text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-60"
         >
           {opening === file ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
-          {t('빈 문서로 시작')}
+          {opening === file ? t(OPENING_EDITOR[file]) : t('빈 문서로 시작')}
         </button>
+      )}
+      {file && opening === file && stage && (
+        <span role="status" className="flex h-8 items-center text-xs text-muted" data-testid="blank-document-stage">
+          {stage}
+        </span>
       )}
     </>
   )
@@ -501,11 +525,12 @@ export function Composer({
   kind,
   projectId,
   autoFocus,
-  output,
+  output: outputProp,
   onDetectOutput,
-  onPickOutput,
-  onBlankDocument,
-  openingDocument = null,
+  onPickOutput: onPickOutputProp,
+  onBlankDocument: onBlankProp,
+  openingDocument: openingProp = null,
+  openingStage: openingStageProp,
 }: {
   sessionId: string | null
   kind: SessionKind
@@ -515,13 +540,32 @@ export function Composer({
   output?: ReportOutput | SlidesOutput | null
   /** The file the typed request names (「한글 문서로」, 「PowerPoint로」), for that pick's default. */
   onDetectOutput?: (detected: ReportOutput | SlidesOutput | null) => void
-  /** Shows the 형식 chip for a new report or deck; the person's pick. */
+  /** The person's pick in the 형식 chip; left out, the composer keeps the pick itself (an
+   *  empty report or deck session shows the same chips as the home screen). */
   onPickOutput?: (value: ReportOutput | SlidesOutput) => void
   /** 「빈 문서로 시작」 beside a picked file: that file blank in its editor beside a chat. */
   onBlankDocument?: (kind: OfficeKind) => void
   openingDocument?: OfficeKind | null
+  /** What the blank document's opening is doing now. */
+  openingStage?: string
 }) {
   const t = useT()
+  // The 형식 pick and 「빈 문서로 시작」: the home screen's when it passes them, else our own.
+  const storedPick = useStore((s) => (kind === 'report' || kind === 'slides' ? s.outputPick[kind] : null))
+  const setOutputPick = useStore((s) => s.setOutputPick)
+  const output = onPickOutputProp ? (outputProp ?? null) : storedPick
+  const onPickOutput =
+    onPickOutputProp ??
+    ((value: ReportOutput | SlidesOutput) => {
+      if (kind === 'report' || kind === 'slides') setOutputPick(kind, value)
+    })
+  const ownBlank = useBlankDocument(projectId)
+  // The slides template shown on the chip, for a blank PowerPoint start (set below).
+  const blankTemplate = useRef<string | undefined>(undefined)
+  const chatEnabled = useStore((s) => s.enabledKinds.includes('chat'))
+  const onBlankDocument = onBlankProp ?? (chatEnabled ? (file: OfficeKind) => void ownBlank.start(file, blankTemplate.current) : undefined)
+  const openingDocument = onBlankProp ? openingProp : ownBlank.opening
+  const openingStage = onBlankProp ? openingStageProp : ownBlank.stage
   const isMedia = kind === 'image' || kind === 'av'
   const canWebSearch = kind === 'chat' || kind === 'report' || kind === 'slides'
   const messageEdit = useStore((s) => s.messageEdit)
@@ -635,6 +679,12 @@ export function Composer({
   livePasted.current = pasted
   const [reusableSessionId, setReusableSessionId] = useState<string | null>(null)
   const [privacyRetrying, setPrivacyRetrying] = useState(false)
+  // The safe model picked on the privacy card, for that card's decision only.
+  const [safeChoice, setSafeChoice] = useState<{ token: string; id: string } | null>(null)
+  // The project's default template taken off on this start.
+  const [projectTemplateOff, setProjectTemplateOff] = useState(false)
+  const safePick =
+    pendingPrivacy && safeChoice?.token === pendingPrivacy.decision.decisionToken ? safeChoice.id : undefined
   const [modelSelectionPending, setModelSelectionPending] = useState(false)
   const [chatError, setChatError] = useState<string | null>(null)
   // A form a picked template brought with it; taken once and cleared.
@@ -698,6 +748,10 @@ export function Composer({
   }, [composerRestore, sessionId, setComposerRestore])
 
   const [ownUploading, setUploading] = useState(false)
+  /** The file going up now, bytes the server holds of it (audio/video goes in pieces). */
+  const [uploadProgress, setUploadProgress] = useState<{ name: string; sent: number; total: number } | null>(null)
+  /** What reading a long video picked now will take, shown while it goes up. */
+  const [mediaNotes, setMediaNotes] = useState<string[]>([])
   /** Names of files whose upload failed, shown until the next upload attempt. */
   const [uploadFailed, setUploadFailed] = useState<string[]>([])
   // File picked while an agent's conversation opened: uploaded by the picking composer; shown here with its failure.
@@ -925,6 +979,7 @@ export function Composer({
     jobs,
     uploadFile,
     newSession,
+    clearModelPick,
     setSessionSkills,
     setSessionRoutingMode,
     skillStore,
@@ -942,16 +997,23 @@ export function Composer({
 
   const project = projects.find((p) => p.id === projectId)
   const effectiveSessionId = sessionId ?? reusableSessionId
+  const session = sessions.find((candidate) => candidate.id === effectiveSessionId)
+  // Nothing sent yet (the home screen, /new/:kind, a project's start, any empty session):
+  // the same 형식·템플릿 chips and first-send options as the home screen.
+  const opened = sessionId ? sessions.find((candidate) => candidate.id === sessionId) : undefined
+  const fresh =
+    !sessionId ||
+    (!!opened && opened.messages.length === 0 && (opened.messageCount ?? 0) === 0 && !opened.pending &&
+      !opened.artifactId)
   // the file the request names, shown as the pick's default until one is picked
-  const detectedOutput: ReportOutput | SlidesOutput | null = sessionId ? null
+  const detectedOutput: ReportOutput | SlidesOutput | null = !fresh ? null
     : kind === 'report' ? reportFileKind(value)
       : kind === 'slides' && NAMES_PPTX.test(value) ? 'pptx' : null
   useEffect(() => {
     onDetectOutput?.(detectedOutput)
   }, [detectedOutput, onDetectOutput])
   // A new report or deck picks the file it is made as.
-  const outputSurface = !sessionId && (kind === 'report' || kind === 'slides') ? kind : null
-  const session = sessions.find((candidate) => candidate.id === effectiveSessionId)
+  const outputSurface = fresh && (kind === 'report' || kind === 'slides') ? kind : null
   // A generation awaiting an answer or approval (document surfaces only).
   const pending = session?.pending ?? null
   const sessionAgent = agents.find((agent) => agent.id === session?.agentId)
@@ -959,7 +1021,10 @@ export function Composer({
   const shownTemplate =
     (pendingTemplate?.surface === kind ? pendingTemplate : null) ??
     designTemplates.find((row) => row.id === session?.renderTemplateId) ??
+    // A project's default template for this surface, before anything is sent (unless taken off).
+    (fresh && !projectTemplateOff ? designTemplates.find((row) => row.surface === kind && row.id === project?.renderTemplates?.[kind]) : undefined) ??
     null
+  blankTemplate.current = shownTemplate?.surface === 'slides' ? shownTemplate.id : undefined
   // Same gate as the gallery button.
   const hasTemplates =
     offersTemplates(kind) && designTemplates.some((row) => row.surface === kind)
@@ -973,16 +1038,22 @@ export function Composer({
   const model = models.find(
     (candidate) => candidate.id === effectiveModelId(session, kind, agents, modelByKind),
   )
-  // A strict-local model gets no network tool; the control follows the turn, not the stored preference.
-  const searchBlocked = Boolean(model?.strictLocal)
-  const effectiveWebSearch = webSearch && !searchBlocked
-  const sentWebSearch: WebSearchSetting = !effectiveWebSearch
+  // A strict-local model gets no network tool: it asks before any query leaves (or sends queries
+  // alone), unless the admin turned that off; the control follows the turn, not the preference.
+  const strictLocalWebSearch = useStore((s) => s.strictLocalWebSearch)
+  const searchBlocked = Boolean(model?.strictLocal) && strictLocalWebSearch === 'off'
+  const searchAsks = Boolean(model?.strictLocal) && !searchBlocked
+  const sendsWebSearch = webSearch && !searchBlocked
+  // a skill's own `web_search` never runs inside the boundary
+  const effectiveWebSearch = sendsWebSearch && !searchAsks
+  const sentWebSearch: WebSearchSetting = !sendsWebSearch
     ? false
     : webSearchMode === 'auto'
       ? 'auto'
       : true
   // 자동 is the default and needs no chip; 항상 and 끔 do, and so does a model that blocks search.
-  const webSearchChip = canWebSearch && (searchBlocked ? webSearch : webSearchMode !== 'auto')
+  const webSearchChip = canWebSearch &&
+    (searchBlocked || searchAsks ? webSearch : webSearchMode !== 'auto')
   const agentSkillAllowlist = sessionAgent?.skillIds
   const agentToolAllowlist = sessionAgent?.tools
   const recommended = new Set(project?.skillIds ?? [])
@@ -1018,7 +1089,7 @@ export function Composer({
       }
     }
     if (skill.requiredTools.includes('web_search') && !effectiveWebSearch) {
-      return searchBlocked
+      return searchBlocked || searchAsks
         ? t('strict-local 모델은 웹 검색 도구를 쓸 수 없습니다.')
         : t('먼저 웹 검색을 켜야 합니다.')
     }
@@ -1189,6 +1260,7 @@ export function Composer({
     action?: PrivacyAction,
     decisionToken?: string,
     restoreToken?: number,
+    privacyModelId?: string,
   ) => {
     setChatError(null)
     const resolvedSessionId = targetSessionId ?? reusableSessionId
@@ -1219,6 +1291,7 @@ export function Composer({
         activatedSkillIds: skillIds,
         privacyAction: action,
         privacyDecisionToken: decisionToken,
+        privacyModelId,
         reconcileBeforeRetry: Boolean(editScope),
         onSession: (id) => {
           if (!ownsView()) return
@@ -1349,10 +1422,24 @@ export function Composer({
       const reason = attachRefusal(file, t)
       return reason ? [`${file.name} — ${reason}`] : []
     })
-    const picked = offered.filter((file) => !attachRefusal(file, t))
+    const allowed = offered.filter((file) => !attachRefusal(file, t))
     setUploadFailed(refused)
-    if (!picked.length) return
+    if (!allowed.length) return
     setUploading(true)
+    // a long video says what reading it takes before it goes up; one that cannot be read stays
+    const notes: string[] = []
+    const picked: File[] = []
+    for (const file of allowed) {
+      const { note, refusal } = await mediaPreflight(file, t).catch(() => ({ note: null, refusal: null }))
+      if (refusal) setUploadFailed((current) => [...current, `${file.name} — ${refusal}`])
+      else picked.push(file)
+      if (note) notes.push(note)
+    }
+    setMediaNotes(notes)
+    if (!picked.length) {
+      setUploading(false)
+      return
+    }
     // A file picked while an agent's conversation is being opened belongs to that conversation.
     const starting = agentStart.current
     let carriedTo: string | null = null
@@ -1365,9 +1452,13 @@ export function Composer({
       const movedOn = () =>
         !!uploadSession && (!composerMounted.current || liveSessionId.current !== uploadSession)
       for (const file of picked) {
+        setUploadProgress(null)
         const row = await uploadFile(file, {
           projectId: editing ? undefined : projectId ?? undefined,
           sessionId: editing ? undefined : uploadSession ?? undefined,
+          onProgress: (sent, total) => {
+            if (composerMounted.current) setUploadProgress({ name: file.name, sent, total })
+          },
         }).catch((err) => {
           // Said where the chips are: a file that never arrived must not look attached.
           // Too large (a proxy's 413 too) says the limit; anything else names the file only.
@@ -1394,7 +1485,10 @@ export function Composer({
       }
     } finally {
       if (carriedTo) countLateUpload(carriedTo, -1)
-      if (composerMounted.current) setUploading(false)
+      if (composerMounted.current) {
+        setUploading(false)
+        setUploadProgress(null)
+      }
     }
   }
 
@@ -1460,9 +1554,9 @@ export function Composer({
       return
     }
     if (startPending || !text || busy || composing.current || modelSelectionPending || unsupportedVideo || uploading || editSending.current || pendingPrivacy) return
-    if (!editing && kind === 'chat' && !editsChecked && hasOfficeEditor(sessionId)) {
-      // the agent edits the saved file: unsaved hand edits (asked of the editor now, not as
-      // last polled) are saved or dropped first
+    if (!editing && (kind === 'chat' || kind === 'report' || kind === 'slides') && !editsChecked && hasOfficeEditor(sessionId)) {
+      // the agent edits the saved file (an office document's, or the web slides'): unsaved hand
+      // edits (asked of the editor now, not as last polled) are saved or dropped first
       if (checkingEdits.current) return
       checkingEdits.current = true
       void askAboutEdits(sessionId!)
@@ -1598,29 +1692,6 @@ export function Composer({
       }).finally(startSettled)
       return
     }
-    // 「PowerPoint」 picked (or named) on the slides screen: today's PowerPoint path, a chat
-    // with a blank deck in its editor whose tools write the request into it
-    if (kind === 'slides' && !sessionId && (output ?? detectedOutput) === 'pptx') {
-      void (async () => {
-        const id = await useStore.getState().ensureSession(
-          await newSession('chat', { projectId: projectId ?? null }))
-        const row = await artifactsApi.createDocument('pptx', {
-          sessionId: id, title: t('새 PowerPoint 문서'),
-        })
-        releaseStart()
-        navigate(`/s/${id}?artifact=${row.id}`, { replace: true })
-        await deliverChat(id, text, sentAttachments, sentWebSearch, sentSkillIds)
-      })().finally(startSettled).catch((error: unknown) => {
-        setComposerRestore({
-          sessionId: null,
-          value: text,
-          attachments: sentAttachments,
-          activatedSkillIds: sentSkillIds,
-          error: errorMessage(error, t('PowerPoint 문서를 열지 못했습니다.')),
-        })
-      })
-      return
-    }
     if (kind === 'image') {
       // Not streamed: `generateImages` writes both halves from one call.
       void generateImages(sessionId, text, {
@@ -1730,6 +1801,9 @@ export function Composer({
     // The pick is spent on this turn; the session row is the record from here.
     const sentTemplate = pendingTemplate?.surface === kind ? pendingTemplate : null
     setPendingTemplate(null)
+    // The 형식 pick is spent the same way, and handed back if the send is refused.
+    const sentPick = fresh && (kind === 'report' || kind === 'slides') ? output : null
+    if (sentPick) setOutputPick(kind as 'report' | 'slides', null)
     // Reassigned by `onSession` when this turn creates the session.
     let landedSessionId = sessionId
     void send(sessionId, kind, text, {
@@ -1740,7 +1814,10 @@ export function Composer({
       activatedSkillIds: sentSkillIds,
       renderTemplateId: shownTemplate ? shownTemplate.id : undefined,
       // a file picked beside the surface chips; else the server reads the request
-      outputFormat: kind === 'report' && !sessionId && output ? output as ReportOutput : undefined,
+      // PowerPoint for a deck is the same send: the server makes the blank file the turn fills.
+      outputFormat: !fresh ? undefined
+        : kind === 'report' ? (output as ReportOutput | null) ?? undefined
+          : kind === 'slides' && (output ?? detectedOutput) === 'pptx' ? 'pptx' : undefined,
       // Sending from /new/:kind creates a session; the URL has to follow it.
       onSession: (id) => {
         landedSessionId = id
@@ -1764,6 +1841,8 @@ export function Composer({
         })
         // Session row rolled back with the refusal: hand the pick back unless a newer one exists.
         if (sentTemplate && !livePendingTemplate.current) setPendingTemplate(sentTemplate)
+        const surface = kind as 'report' | 'slides'
+        if (sentPick && !useStore.getState().outputPick[surface]) setOutputPick(surface, sentPick)
       })
   }
 
@@ -1824,7 +1903,7 @@ export function Composer({
     }
   }
   // Everything but dictation, model and send sits behind 「+」; active options show as chips.
-  const showTemplates = hasTemplates && (started || !sessionId) && !editing
+  const showTemplates = hasTemplates && (started || fresh) && !editing
   // Offered before any skill is added, so a new account can find them from here.
   const showSkills = !isMedia
   // On a phone the microphone moves into 「+」 unless it is recording.
@@ -2231,6 +2310,8 @@ export function Composer({
         try {
           let id = sessionId ?? reusableSessionId
           if (!id) {
+            // Super Agent picked on the home screen: new conversations start on it again
+            if (mode === 'super') clearModelPick(kind)
             id = await newSession(kind, { projectId, routingMode: mode })
             carriedComposer = heldComposer(id)
             setReusableSessionId(id)
@@ -2240,13 +2321,24 @@ export function Composer({
           }
         } catch (error) {
           setChatError(
-            errorMessage(error, t('Auto를 켜지 못했습니다. 잠시 후 다시 시도하세요.')),
+            refusalSentence(errorCode(error), t) ??
+              errorMessage(error, t('Super Agent를 켜지 못했습니다. 잠시 후 다시 시도하세요.')),
           )
         }
       }}
       onBusyChange={setModelSelectionPending}
     />
     </fieldset>
+  )
+  const contextGauge = (
+    <ContextGauge
+      sessionId={sessionId ?? reusableSessionId}
+      kind={kind}
+      projectId={projectId}
+      draft={value}
+      attachmentIds={attachments.filter((f) => !f.error).map((f) => f.id)}
+      phone={phone}
+    />
   )
   const sendButton = (
     <button
@@ -2318,6 +2410,7 @@ export function Composer({
           attachments.length > 0 ||
           pasted.length > 0 ||
           uploadFailed.length > 0 ||
+          uploading ||
           webSearchChip ||
           sessionAgent ||
           activeSkills.length > 0 ||
@@ -2338,6 +2431,14 @@ export function Composer({
                 <Badge tone="warn">
                   <Globe size={11} />
                   {t('웹 검색 안 함 · 이 모델은 외부에 연결하지 않습니다')}
+                </Badge>
+              ) : searchAsks ? (
+                // strict-local: the model may ask; only queries would leave, after the card
+                <Badge tone="accent" title={t('검색이 필요하면 밖으로 나갈 검색어를 보여 주고 묻습니다. 자료 내용은 보내지 않습니다.')}>
+                  <Globe size={11} />
+                  {strictLocalWebSearch === 'allow'
+                    ? t('웹 검색: 검색어만 보냄 (strict-local)')
+                    : t('웹 검색: 보내기 전에 묻기 (strict-local)')}
                 </Badge>
               ) : (
                 <Badge tone={webSearchMode === 'on' ? 'accent' : 'neutral'}>
@@ -2366,7 +2467,7 @@ export function Composer({
                 {project.emoji} {project.name}
               </Badge>
             )}
-            {shownTemplate && (
+            {shownTemplate && !(outputSurface && showTemplates) && (
               <Badge tone="accent" title={t('이 대화의 템플릿')}>
                 <LayoutGrid size={11} />
                 {/* Named by its role: beside an agent of the same name (「@회의록」) it reads as the form. */}
@@ -2418,6 +2519,7 @@ export function Composer({
               <span
                 key={f.id}
                 data-ocr={f.ocrState ?? undefined}
+                data-media={f.mediaState ?? undefined}
                 className={cn(
                   'flex items-center gap-1.5 rounded-control border px-1.5 py-0.5 text-xs',
                   f.error
@@ -2431,7 +2533,7 @@ export function Composer({
                     : t('{n} 토큰').replace('{n}', f.tokens.toLocaleString()))
                 }
               >
-                {isReading(f) ? (
+                {isReading(f) || isWatching(f) ? (
                   <Loader2 size={10} className="animate-spin text-faint" />
                 ) : (
                   <Paperclip size={10} className={f.error ? '' : 'text-faint'} />
@@ -2498,11 +2600,21 @@ export function Composer({
               </span>
             ))}
             {uploading && (
-              <span className="flex items-center gap-1.5 rounded-control border border-line bg-elevated px-1.5 py-0.5 text-xs text-faint">
+              <span
+                data-testid="upload-progress"
+                className="flex items-center gap-1.5 rounded-control border border-line bg-elevated px-1.5 py-0.5 text-xs text-faint"
+              >
                 <Loader2 size={10} className="animate-spin" />
-                {t('업로드 중')}
+                {uploadProgress && uploadProgress.total > 0
+                  ? t('{name} 올리는 중 {percent}%')
+                    .replace('{name}', uploadProgress.name)
+                    .replace('{percent}', String(Math.floor((uploadProgress.sent / uploadProgress.total) * 100)))
+                  : t('업로드 중')}
               </span>
             )}
+            {uploading && mediaNotes.map((note) => (
+              <p key={note} role="status" data-testid="media-estimate" className="w-full text-xs text-muted">{note}</p>
+            ))}
             {attachments.some((f) => f.error) && (
               <p
                 role="status"
@@ -2523,7 +2635,7 @@ export function Composer({
           </div>
         )}
 
-        {outputSurface && onPickOutput && (
+        {outputSurface && (
           <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-2.5 py-2">
             <OutputOptions
               surface={outputSurface}
@@ -2531,7 +2643,41 @@ export function Composer({
               onPick={onPickOutput}
               onBlank={onBlankDocument}
               opening={openingDocument}
+              stage={openingStage}
             />
+            {showTemplates && (
+              // The template beside the format, in the same chip style; opens the gallery. Every
+              // format takes it: a PowerPoint deck is made from the picked slides template too.
+              <button
+                type="button"
+                onClick={() => setGalleryOpen(true)}
+                aria-label={shownTemplate
+                  ? t('템플릿: {name}').replace('{name}', templateText(shownTemplate, currentLang() === 'en').name)
+                  : t('템플릿 고르기')}
+                data-testid="template-chip"
+                className="flex h-8 max-w-[16rem] items-center gap-1.5 rounded-control border border-line px-2.5 text-sm text-muted transition-colors hover:bg-elevated hover:text-fg disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
+              >
+                <span className="text-faint">{t('템플릿')}</span>
+                <span className="truncate font-medium">
+                  {shownTemplate ? templateText(shownTemplate, currentLang() === 'en').name : t('기본값')}
+                </span>
+              </button>
+            )}
+            {showTemplates && shownTemplate && (
+              <button
+                type="button"
+                onClick={() => {
+                  setPendingTemplate(null)
+                  setProjectTemplateOff(true)
+                  if (session?.renderTemplateId) void setSessionTemplate(session.id, null)
+                }}
+                aria-label={t('{name} 템플릿 해제').replace('{name}', templateText(shownTemplate, currentLang() === 'en').name)}
+                title={t('템플릿 없이 시작')}
+                className="-ml-1 grid size-8 place-items-center rounded-control text-faint hover:bg-elevated hover:text-fg"
+              >
+                <X size={13} />
+              </button>
+            )}
           </div>
         )}
 
@@ -2642,6 +2788,7 @@ export function Composer({
             {plusMenu}
             {micButton}
             <div className="ml-auto flex min-w-0 items-center gap-1">
+              {contextGauge}
               {modelPicker}
               {sendButton}
             </div>
@@ -2649,7 +2796,7 @@ export function Composer({
         )}
       </div>
       {/* The phone's line has no room for the model; it sits just under the box. */}
-      {phone && modelPicker && <div className="mt-1 flex justify-end">{modelPicker}</div>}
+      {phone && modelPicker && <div className="mt-1 flex items-center justify-end gap-1">{contextGauge}{modelPicker}</div>}
       {mediaError && (
         <p
           role="status"
@@ -2714,7 +2861,9 @@ export function Composer({
                 ? t('Enter로 생성 · 음성과 음악은 아티팩트에 쌓입니다')
                 : kind === 'av'
                   ? t('Enter로 생성 · 영상은 몇 분 걸리고 진행은 카드에 표시됩니다')
-                  : kind === 'slides'
+                  : kind === 'slides' && outputSurface && (output ?? detectedOutput) === 'pptx'
+                    ? t('Enter로 생성 · PowerPoint 편집기가 열리고 대화가 그 파일을 채웁니다')
+                    : kind === 'slides'
                     ? t('Enter로 생성 · 구성을 잡은 뒤 한 장씩 채웁니다')
                     : `${t('Enter 전송, Shift+Enter 줄바꿈')}, ${isMac() ? 'Cmd' : 'Ctrl'}+/ ${t('단축키 보기')}`}
       </p>
@@ -2749,6 +2898,24 @@ export function Composer({
                 </Badge>
               ))}
             </div>
+            {pendingPrivacy.decision.allowedActions.includes('route_strict_local') &&
+              pendingPrivacy.decision.safeModels.length > 1 && (
+                <label className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="text-muted">{t('전환할 로컬 모델')}</span>
+                  <Select
+                    value={safePick ?? pendingPrivacy.decision.safeModels[0].id}
+                    onChange={(e) => setSafeChoice({ token: pendingPrivacy.decision.decisionToken, id: e.target.value })}
+                    disabled={privacyRetrying}
+                    className="h-8 w-auto min-w-0 flex-1"
+                  >
+                    {pendingPrivacy.decision.safeModels.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+              )}
             <div className="grid gap-2 sm:grid-cols-2">
               {pendingPrivacy.decision.allowedActions.includes('route_strict_local') && (
                 <Button
@@ -2765,6 +2932,8 @@ export function Composer({
                       'route_strict_local',
                       pendingPrivacy.decision.decisionToken,
                       pendingPrivacy.restoreToken,
+                      // The pick on this card; the first offered when none was made.
+                      safePick ?? pendingPrivacy.decision.safeModels[0]?.id,
                     )
                       .catch(() => undefined)
                       .finally(() => setPrivacyRetrying(false))

@@ -133,6 +133,16 @@ services:
       TIMEZONE: ${KCHAT_TIMEZONE:-Asia/Seoul}
       # Path to a mounted GeoLite2 City .mmdb. Empty: no region lookup.
       GEOIP_DATABASE: ${KCHAT_GEOIP_DATABASE:-}
+      # Audio/video understanding through the `media` worker (stock ffmpeg). Blank: audio and
+      # video are transcribed whole at upload as before (Whisper's 25 MB), no frames read.
+      MEDIA_URL: ${KCHAT_MEDIA_URL:-http://kloudchat-media:8300}
+      # One audio/video file's ceiling; it goes up in UPLOAD_PIECE_MB pieces, so nginx's body
+      # limit (MAX_UPLOAD_MB) does not grow with it.
+      MAX_VIDEO_UPLOAD_MB: ${KCHAT_MAX_VIDEO_UPLOAD_MB:-500}
+      UPLOAD_PIECE_MB: ${KCHAT_UPLOAD_PIECE_MB:-8}
+      VIDEO_MAX_MINUTES: ${KCHAT_VIDEO_MAX_MINUTES:-240}
+      VIDEO_FRAMES_PER_MINUTE: ${KCHAT_VIDEO_FRAMES_PER_MINUTE:-4}
+      VIDEO_MAX_FRAMES: ${KCHAT_VIDEO_MAX_FRAMES:-120}
     # `default` reaches the database, the gateway and the internet; `printer`
     # is the only way to the print service.
     #
@@ -144,6 +154,7 @@ services:
     networks:
       - default
       - printer
+      - media
     volumes:
       # Uploaded originals. Extracted text lives in the database.
       - ./data/files:/srv/data/files
@@ -191,6 +202,36 @@ services:
       start_period: 30s
       retries: 3
 
+  # Stock ffmpeg/ffprobe behind a small HTTP API (apps/media): probes videos, cuts audio
+  # pieces for Whisper, picks scene-change keyframes. ffmpeg is LGPL/GPL and runs here only as
+  # Debian's unmodified program, never linked into the app (NOTICE). It reads uploads through a
+  # read-only mount, holds no secrets, and its network has no route out.
+  media:
+    container_name: kloudchat-media
+    image: boanlab/kloudchat-media:latest
+    restart: unless-stopped
+    networks:
+      - media
+    volumes:
+      - ./data/files:/srv/data/files:ro
+    environment:
+      # ffmpeg runs at once, threads each, and the longest video accepted (seconds).
+      MEDIA_JOBS: ${KCHAT_MEDIA_JOBS:-2}
+      MEDIA_THREADS: ${KCHAT_MEDIA_THREADS:-2}
+      MEDIA_MAX_SECONDS: ${KCHAT_MEDIA_MAX_SECONDS:-14400}
+    # Decoding is CPU-bound; the cap keeps a long video from starving the API on one host.
+    cpus: ${KCHAT_MEDIA_CPUS:-4}
+    mem_limit: ${KCHAT_MEDIA_MEMORY:-2g}
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8300/health', timeout=8).status == 200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 10s
+      retries: 3
+
   # The only thing the browser talks to: static bundle plus a proxy for /api
   # and /llm.
   web:
@@ -221,4 +262,7 @@ networks:
   default:
   # `internal`: no gateway, so nothing on this network can reach outside it.
   printer:
+    internal: true
+  # API ↔ media worker only; no gateway.
+  media:
     internal: true

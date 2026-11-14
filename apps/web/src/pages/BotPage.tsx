@@ -33,6 +33,7 @@ import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { Step } from '@/types'
 import { isImeKey } from '@/lib/ime'
+import { usePageTitle } from '@/lib/pageTitle'
 
 interface Turn extends BotTranscriptMessage {
   live?: boolean
@@ -73,6 +74,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
   const signedIn = useStore((s) => s.authenticated)
   const authenticated = signedIn && !embedded
   const [bot, setBot] = useState<BotPageData | null>(null)
+  usePageTitle(bot?.title)
   const [missing, setMissing] = useState(false)
   const [rows, setRows] = useState<BotConversationRow[]>([])
   const [listFailed, setListFailed] = useState(false)

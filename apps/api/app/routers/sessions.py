@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import copy
 import datetime as dt
 import json
 import logging
@@ -102,6 +103,7 @@ from app.services import (
     answer_plan,
     app_help,
     artifact_extract,
+    artifact_versions,
     audiogen,
     calculation_policy,
     chart_code,
@@ -127,8 +129,10 @@ from app.services import (
     lint,
     message_links,
     model_tier,
+    office_claims,
     office_doc,
     office_edit,
+    office_look,
     output_language,
     pptx_doc,
     prompt_tier,
@@ -136,12 +140,17 @@ from app.services import (
     red_flags,
     report_office,
     revise,
+    richtext,
+    search_consent,
     server_notes,
     settings_store,
+    shelf_sources,
     skill_specs,
     skill_turn,
+    source_selection,
     starter,
     stop_signal,
+    super_agent,
     user_templates,
 )
 from app.services import agent as agent_service
@@ -154,6 +163,7 @@ from app.services import (
     diagram as diagram_service,
 )
 from app.services import files as file_service
+from app.services import knowledge as knowledge_service
 from app.services import litellm as litellm_service
 from app.services import models as model_service
 from app.services import (
@@ -230,6 +240,21 @@ class _PrivacyResolution:
         )
 
 
+def _project_source(item: ContextFile) -> dict[str, Any]:
+    """A project file as a document's source; `listed`, `label` and `title` let the writer
+    tell a file it only saw in the 「자료 목록」 and name it in an each-item check."""
+    return {
+        "id": item.id,
+        "name": item.name,
+        "state": item.state,
+        "sourceUrl": item.source_url,
+        "locations": list(item.locations),
+        **({"listed": True} if item.listed else {}),
+        **({"label": item.label} if item.label else {}),
+        **({"title": item.title} if item.title else {}),
+    }
+
+
 def _strict_model(model: dict) -> bool:
     return model.get("dataBoundary") == "self_hosted" and model.get("strictLocal") is True
 
@@ -249,21 +274,110 @@ _STRICT_LOCAL_TOOL_NAMES = frozenset(
         "hwp_read",
         "hwp_edit",
         "hwp_write",
+        "hwp_restore",
         "docx_read",
         "docx_edit",
         "docx_write",
+        "docx_restore",
         "pptx_read",
         "pptx_edit",
         "pptx_write",
+        "pptx_restore",
     }
 )
 
+#: what a report or slides conversation's own document may be: the one its panel shows
+_SURFACE_KINDS = {
+    SessionKind.report: (ArtifactKind.report, ArtifactKind.hwp, ArtifactKind.docx),
+    SessionKind.slides: (ArtifactKind.deck, ArtifactKind.pptx),
+}
+
+
+async def _opened_document(
+    db: AsyncSession, user: User, session: ChatSession, opened: Any
+) -> Artifact | None:
+    """The document the turn says is open beside the chat (`SendMessage.open_artifact`), when
+    it is this person's and this conversation's; anything else is not trusted and ignored.
+    A report or slides conversation then works on that document: it becomes the conversation's
+    document (`session.artifact_id`), so a revision never lands on another one."""
+    if opened is None or not getattr(opened, "id", ""):
+        return None
+    found = await db.get(Artifact, opened.id)
+    if found is None or found.user_id != user.id or found.session_id != session.id:
+        return None
+    if (found.kind in _SURFACE_KINDS.get(session.kind, ())
+            and session.artifact_id != found.id and not session.pending):
+        session.artifact_id = found.id
+        db.add(session)
+        await db.commit()
+        await db.refresh(session)
+    return found
+
+
 async def _office_report(db: AsyncSession, session: ChatSession) -> Artifact | None:
-    """The HWP or Word file a report conversation wrote (`report_office`), or None."""
-    if session.kind is not SessionKind.report or not session.artifact_id:
+    """The office file a document conversation works on beside it, or None: the HWP or Word
+    file a report conversation wrote (`report_office`), the PowerPoint file a slides one
+    was asked to make (`_pptx_surface`)."""
+    if session.kind not in (SessionKind.report, SessionKind.slides) or not session.artifact_id:
         return None
     found = await db.get(Artifact, session.artifact_id)
-    return found if found is not None and found.kind in report_office.FORMATS else None
+    if found is None or found.session_id != session.id:
+        return None
+    wanted = (report_office.FORMATS if session.kind is SessionKind.report
+              else {ArtifactKind.pptx: "pptx"})
+    return found if found.kind in wanted else None
+
+
+#: 「전체를 다시 써」, 「처음부터 다시」: the whole document written anew, by its writer
+_WHOLE_REWRITE = re.compile(
+    r"(?:전체|전부|통째로|처음부터|새로)\s{0,4}(?:를|을)?\s{0,4}(?:다시\s{0,4})?(?:써|작성|만들)|"
+    r"다시\s{0,4}(?:써|작성해|만들어)\s{0,4}(?:줘|주세요)\s{0,2}$|\b(?:rewrite|redo)\s+(?:the\s+)?"
+    r"(?:whole|entire|all)\b", re.I)
+
+
+async def _web_edit_target(db: AsyncSession, session: ChatSession,
+                           payload: SendMessage) -> Artifact | None:
+    """The web report or deck an edit turn works on in place (`report_*`/`deck_*` tools), or
+    None for a turn the document writers keep: a waiting card, an approval or answers, a new
+    document, a new structure or a whole rewrite asked in so many words, a file hand-over, an
+    undo (a version restore)."""
+    if session.kind not in (SessionKind.report, SessionKind.slides) or not session.artifact_id:
+        return None
+    if session.pending or payload.approve or payload.answers is not None:
+        return None
+    text = payload.content or ""
+    if (revise.obviously_new(text) or revise.asks_restructure(text)
+            or _WHOLE_REWRITE.search(text) or revise.asks_undo(text)[0]
+            or (revise.export_request(text) or (None, True))[1] is False):
+        return None
+    found = await db.get(Artifact, session.artifact_id)
+    wanted = ArtifactKind.report if session.kind is SessionKind.report else ArtifactKind.deck
+    if (found is None or found.kind is not wanted or found.session_id != session.id
+            or not (found.data or {}).get("sections" if wanted is ArtifactKind.report
+                                           else "slides")):
+        return None
+    return found
+
+
+async def _pptx_surface(db: AsyncSession, user: User, session: ChatSession) -> None:
+    """A slides conversation asked for a PowerPoint file (`output_format` `pptx`) and holding
+    no document yet gets a blank deck as its document: the turn then runs as the office chat
+    (`_office_report`) whose PowerPoint tools write into it. One flow on the server, so the
+    client sends the request with the pick and nothing else."""
+    if session.kind is not SessionKind.slides or session.artifact_id:
+        return
+    blank = pptx_doc.blank()
+    if project_look := getattr(pptx_doc, "project_look", None):
+        # the project's theme and slides template (the conversation's pick first)
+        tokens, template = await project_look(db, user, session)
+        blank = pptx_doc.blank(tokens=tokens, template=template or "")
+    made = await pptx_doc.create(db, user_id=user.id, title="PowerPoint 문서",
+                                 data=blank, session_id=session.id,
+                                 project_id=session.project_id)
+    session.artifact_id = made.id
+    db.add(session)
+    await db.commit()
+    await db.refresh(session)
 
 
 _CHAPTER = re.compile(r"^(p(\d+)) \(heading 1\): (.+)$")
@@ -306,7 +420,32 @@ def _document_preset(
     tool = f"{document.kind.value}_read"
     if tool not in tool_names:
         return None
-    return (tool, {}) if str((document.data or {}).get("text") or "").strip() else None
+    return (tool, {}) if _written(document) else None
+
+
+def _written(document: Artifact) -> bool:
+    """The document holds text: a blank one (an office file's outline empty, its `slides` only
+    a count) is written into, not read first."""
+    data = document.data or {}
+    listed = [data.get("sections"), data.get("slides")]
+    return bool(str(data.get("text") or "").strip()
+                or any(isinstance(rows, list) and rows for rows in listed))
+
+
+def _blank_write_first(
+    document: Artifact | None, tool_names: set[str], content: str, session: ChatSession
+) -> str | None:
+    """`<kind>_write` when the document beside the chat is still blank and the turn asks for
+    content (or the surface opened it for this request), unless the person asked for a search:
+    the first write goes into the file, not a round of research into the chat."""
+    if document is None or _document_preset(document, tool_names) is not None:
+        return None
+    tool = f"{document.kind.value}_write"
+    if tool not in tool_names or requests_web_search(content):
+        return None
+    asked = bool(_WRITES_DOCUMENT.search(_ask_of(content))) or (
+        session.kind is not SessionKind.chat and document.id == session.artifact_id)
+    return tool if asked else None
 
 
 #: 「한글 문서로」, 「Word로」: a request for an HWP or Word document (`report_office`)
@@ -317,6 +456,33 @@ _ASKS_PPTX = re.compile(
     r"(?<![A-Za-z])pptx(?![A-Za-z])|(?<![A-Za-z])(?:ms\s?)?power\s?point(?![A-Za-z])|"
     r"파워\s?포인트|(?<![A-Za-z])ppt\s{0,2}(?:파일|files?)",
     re.I,
+)
+#: a request to write, fill or change a document (not a question about it)
+_WRITES_DOCUMENT = re.compile(
+    r"작성|써\s{0,2}(?:줘|주세요|줄래)|쓰고|만들어|채워|넣어|고쳐|바꿔|수정|정리해|추가해|옮겨|"
+    r"\b(?:write|draft|fill|edit|change|update)\b", re.I)
+#: what a chat with an office document open beside it is told about writing into it
+_OFFICE_RULE = (
+    "The document 「{title}」 is open in the editor beside this chat. When the person asks to "
+    "write, fill or change a document, do it in that file with {p}_write (a blank or new "
+    "document) or {p}_read then {p}_edit: never paste the document into the chat instead, "
+    "and do not search the web unless the person asked for facts from it. Say only what the "
+    "tools report as saved; if an edit failed or an op is missing, say so plainly. Never "
+    "invent names, numbers, dates or attachments (붙임): leave a bracket blank like "
+    "「[담당자]」 and say what is still missing. Do not delete text the person typed unless "
+    "they asked for exactly that; ask first. To undo, use {p}_restore."
+)
+#: what a web report or deck conversation's edit turn is told (`tools/web_doc`)
+_WEB_RULE = (
+    "The document 「{title}」 is open beside this chat. The person's message is about it: "
+    "answer a question from {p}_read; for a change, call {p}_read, then {p}_edit with the "
+    "smallest ops that do exactly what was asked (a word: replace_text; one section or slide: "
+    "only that one). Leave every other part as it is. Keep counts the person gave (slides, "
+    "sections, items, sentences) and say the real count after. Say only what the tool reports "
+    "as saved; if an op was refused, say so plainly. Never invent names, numbers, dates or "
+    "attachments: leave a bracket blank like 「[담당자]」 and say what is missing. Do not delete "
+    "text the person typed unless they asked for exactly that; ask first. Shortening "
+    "(「절반으로」, 「줄여」) shortens: keep the tables and lists, cut words and rows."
 )
 #: office documents a chat works on beside it: tool prefix, service, what asks for one
 _OFFICE = (
@@ -342,8 +508,12 @@ async def _knowledge_shelf(
             .order_by(col(StoredFile.created_at))
         )
     ).all()
+    # project sources the conversation switched off (지식 서가) are not searched
+    if session.project_id:
+        rows = source_selection.keep(rows, await source_selection.excluded(db, session.id))
     shelf = [
-        (row.name, row.text, row.source_url)
+        (row.name, row.text, row.source_url
+         or (knowledge_service.video_link(row.id) if row.media_state == "done" else None))
         for row in rows
         if row.text
         and (
@@ -919,6 +1089,10 @@ async def _audit_media_boundary(
 _widens_boundary = adaptive_routing.widens_boundary
 
 _AUTO_MODES = frozenset({RoutingMode.auto, RoutingMode.auto_quality})
+#: Super Agent entries (`super_agent`); offered on the same surfaces as Auto.
+_SUPER_MODES = frozenset({RoutingMode.super, RoutingMode.super_strict})
+#: every routed (not model-pinned) mode
+_ROUTED_MODES = _AUTO_MODES | _SUPER_MODES
 #: Surfaces whose writer an Auto lane may choose (`_document_route`).
 _AUTO_KINDS = frozenset({SessionKind.chat, SessionKind.report, SessionKind.slides})
 #: kinds whose picked skills stay on for later turns (a plan's approval included)
@@ -1032,6 +1206,29 @@ async def _require_auto_quality_model(user: User, model_id: str | None) -> None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="auto_quality_model_required",
+        )
+
+
+async def _project_super_mode(user: User) -> RoutingMode:
+    """A new project conversation on Super Agent: project material is internal, so where the
+    admin keeps internal material strict-local it starts on `super_strict` (when that entry
+    has models this person may use); otherwise on `super`."""
+    policy = await governance.current()
+    if not policy.internal_data_strict_local:
+        return RoutingMode.super
+    catalogue = await model_service.list_models()
+    allowed = set(user.allowed_models or [])
+    rules = super_agent.normalise_rules(policy.super_agent_rules)
+    if super_agent.estimate(rules, catalogue["models"], strict=True, allowed=allowed):
+        return RoutingMode.super_strict
+    return RoutingMode.super
+
+
+async def _require_super_agent() -> None:
+    """Super Agent entries need the admin's switch."""
+    if not (await governance.current()).super_agent_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="super_agent_disabled"
         )
 
 
@@ -1219,6 +1416,179 @@ async def _resolve_cost_routing(
     )
 
 
+def _super_history(history: list[Message]) -> tuple[tuple[str, str, dict | None], ...]:
+    """History as the Super Agent router reads it; a failed answer reads as empty."""
+    return tuple(
+        (
+            message.role.value,
+            "" if message.failure is not None else (message.content or ""),
+            message.routing if isinstance(message.routing, dict) else None,
+        )
+        for message in history
+    )
+
+
+def _super_reasoning(
+    model: dict, effort: str, rescue: dict | None, rescue_effort: str
+) -> dict[str, dict[str, Any]] | None:
+    """Effort fields by model for `agent.TURN_REASONING`; None leaves the deployment's."""
+    fields: dict[str, dict[str, Any]] = {}
+    for row, level in ((rescue, rescue_effort), (model, effort)):
+        if row is not None and (wanted := super_agent.reasoning_fields(
+                str(row["id"]), level, row)):
+            fields[str(row["id"])] = wanted
+    return fields or None
+
+
+def _super_rescue(
+    route: dict[str, Any], *, policy, user: User, catalogue: list[dict], writer: dict,
+    strict_local: bool,
+) -> tuple[dict | None, str]:
+    """Who rewrites an answer the routed writer left empty or cut: the table's escalation row,
+    inside the turn's boundary; `(None, …)` when that is the writer itself."""
+    rules = super_agent.normalise_rules(policy.super_agent_rules)
+    chosen, _ = super_agent.pick(
+        rules, super_agent.ESCALATION_CLASS,
+        _allowed_models(user, catalogue, kind=SessionKind.chat.value), kind="chat",
+        strict=strict_local or route.get("mode") == super_agent.SUPER_STRICT,
+        allowed=set(user.allowed_models or []), needs_tools=True,
+    )
+    if chosen is None or chosen["id"] == writer["id"] or _widens_boundary(chosen, writer):
+        return None, "default"
+    return chosen, rules[super_agent.ESCALATION_CLASS]["effort"]
+
+
+def _first_document_model(history: list[Message]) -> str | None:
+    """The model that wrote this document session's first version: its revisions keep it."""
+    for message in history:
+        route = (message.routing or {}).get("superAgent") if message.routing else None
+        if isinstance(route, dict) and route.get("selectedModel"):
+            return str(route["selectedModel"])
+    return None
+
+
+async def _super_route(
+    *,
+    db: DbSession,
+    user: User,
+    session: ChatSession,
+    policy,
+    catalogue: list[dict],
+    default: dict,
+    history: list[Message],
+    content: str,
+    kind: SessionKind,
+    web_search: bool | str | None,
+    attachments: list[str] | None,
+    tool_bound: bool,
+    pictures: bool = False,
+) -> tuple[dict, dict[str, Any], str]:
+    """Super Agent turn: `(model, route note, effort)`.
+
+    Rules first; the short-payload classifier only when they cannot tell (and never with
+    personal data in the turn). `super_strict`, internal material and personal data pick from
+    the strict-local column, so privacy routing has nothing left to move."""
+    mode = str(getattr(session.routing_mode, "value", session.routing_mode))
+    rules = super_agent.normalise_rules(policy.super_agent_rules)
+    allowed = set(user.allowed_models or [])
+    turn = super_agent.Turn(
+        text=content,
+        kind=kind.value,
+        history=_super_history(history),
+        web_search=web_search if web_search in (True, "auto") else False,
+        attachments=bool(attachments),
+        pictures=pictures,
+        tool_bound=tool_bound,
+        context_bytes=adaptive_routing.estimated_context_tokens(
+            [content, *(m.content or "" for m in history)]
+        ),
+    )
+    decision = super_agent.classify(turn)
+    personal = governance.findings(
+        {"current_input": content, "conversation_history": [m.content for m in history]},
+        legacy=policy.pii_masking,
+    )
+    internal = policy.internal_data_strict_local and _internal_data_present(
+        session, None, attachments, history
+    )
+    strict = mode == super_agent.SUPER_STRICT or bool(personal) or internal
+    classified: super_agent.Classified | None = None
+    classifier_id: str | None = None
+    if decision.ambiguous and not personal:
+        classifier_id = str(policy.adaptive_classifier_model_id or "") or rules["simple"][
+            "strictModel"]
+        classifier = model_service.find(catalogue, classifier_id)
+        if adaptive_routing.classifier_is_usable(classifier, allowed_model_ids=allowed):
+            api_key = litellm_service.user_key(user) or await litellm_service.ensure_key(user)
+            if db.is_modified(user):
+                db.add(user)
+                await db.commit()
+            if api_key:
+                classified = await super_agent.classify_with_model(
+                    turn, model_id=classifier_id, user_id=user.id, api_key=api_key
+                )
+            if (
+                classified is not None
+                and classified.confidence >= super_agent.CLASSIFIER_MIN_CONFIDENCE
+            ):
+                decision = super_agent.Decision(
+                    classified.task_class, "classifier", "classified",
+                    confidence=classified.confidence, signals=decision.signals,
+                )
+    needs_tools = decision.task_class not in ("simple", "transform", "document") or tool_bound
+    chosen: dict | None = None
+    how = "rule"
+    sticky_id = (
+        _first_document_model(history) if decision.task_class == "document"
+        else str((super_agent._previous_route(turn.history) or {}).get("selectedModel") or "")
+        if decision.source == "sticky" else None
+    )
+    if sticky_id:
+        # a document's revisions, and a short follow-up, stay on the same model
+        candidate = model_service.find(catalogue, sticky_id)
+        if super_agent.usable_for(
+            candidate, kind=kind.value, strict=strict, allowed=allowed,
+            context_bytes=turn.context_bytes, needs_tools=needs_tools, needs_vision=pictures,
+        ):
+            chosen, how = candidate, "sticky"
+    if chosen is None:
+        chosen, how = super_agent.pick(
+            rules, decision.task_class, catalogue, kind=kind.value, strict=strict,
+            allowed=allowed, context_bytes=turn.context_bytes, needs_tools=needs_tools,
+            needs_vision=pictures, default=default,
+        )
+    if chosen is None and strict and mode != super_agent.SUPER_STRICT:
+        # no strict-local model here: privacy routing decides on the ordinary pick
+        chosen, how = super_agent.pick(
+            rules, decision.task_class, catalogue, kind=kind.value, strict=False,
+            allowed=allowed, context_bytes=turn.context_bytes, needs_tools=needs_tools,
+            needs_vision=pictures, default=default,
+        )
+    if chosen is None and strict:
+        # never a model that may leave: no answer rather than an outside one
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="strict_local_unavailable"
+        )
+    if chosen is None:
+        # nothing in the table serves here: the surface default answers, as a manual pick
+        chosen, how = default, "default"
+    tools = (
+        "none"
+        if decision.task_class == "simple" and not tool_bound and not attachments
+        and web_search is not True
+        else "full"
+    )
+    effort = super_agent.effort_for(rules, decision)
+    route = super_agent.route_metadata(
+        mode=mode, decision=decision, selected=chosen, effort=effort, how=how,
+        classified=classified, classifier_model=classifier_id if classified else None,
+        tools=tools,
+    )
+    if strict and mode != super_agent.SUPER_STRICT:
+        route["strictReason"] = "personal_data" if personal else "internal_data"
+    return chosen, route, effort
+
+
 def _apply_effective_model(routing: dict[str, Any], model: dict) -> dict[str, Any]:
     """Updates privacy routing after a clean Auto decision."""
     model_id = model["id"]
@@ -1314,6 +1684,19 @@ def _strict_twin(model: dict, catalogue: list[dict], allowed: set[str]) -> dict 
     return twin if not allowed or twin_id in allowed else None
 
 
+def _safe_models(policy: Governance, catalogue: list[dict], allowed: set[str]) -> list[dict]:
+    """Privacy-safe strict-local chat models in the admin's priority order (governance screen)."""
+    by_id = {m.get("id"): m for m in catalogue}
+    return [
+        by_id[model_id]
+        for model_id in dict.fromkeys(policy.privacy_safe_model_ids or [])
+        if model_id in by_id
+        and _strict_model(by_id[model_id])
+        and "chat" in by_id[model_id].get("kinds", [])
+        and (not allowed or model_id in allowed)
+    ]
+
+
 def _planned_web_search(history: list[Message]) -> bool | str:
     """Web-search setting of the latest question that recorded one; off if none."""
     for message in reversed(history):
@@ -1333,6 +1716,63 @@ def _brings_material(content: str) -> bool:
     return len(pasted_material(content or "")) >= 1500
 
 
+async def _document_super_route(
+    *,
+    db: DbSession,
+    user: User,
+    session: ChatSession,
+    policy,
+    catalogue: list[dict],
+    model: dict,
+    blocks,
+    attachments: list[str] | None,
+    history: list[Message],
+    request: str,
+) -> tuple[dict, bool, dict[str, Any] | None] | JSONResponse:
+    """Super Agent's document writer: the table's document model, kept for the whole revision
+    chain; strict-local for the strict entry, internal material or personal data."""
+    usable = _allowed_models(user, catalogue, kind=session.kind.value)
+    chosen, route, _effort = await _super_route(
+        db=db, user=user, session=session, policy=policy, catalogue=usable, default=model,
+        history=history, content=request, kind=session.kind, web_search=False,
+        attachments=attachments, tool_bound=False,
+    )
+    strict = _strict_model(chosen)
+    if (
+        not strict
+        and policy.internal_data_strict_local
+        and _internal_data_present(session, blocks, attachments, history)
+    ):
+        # project knowledge or design blocks only show up here: the twin, as for a manual pick
+        twin = _strict_twin(chosen, catalogue, set(user.allowed_models or []))
+        if twin is None:
+            return JSONResponse(
+                status_code=status.HTTP_409_CONFLICT,
+                content={
+                    "detail": "internal_data_requires_strict_local",
+                    "action": "internal_data_requires_strict_local",
+                    "requestedModels": [chosen.get("id")],
+                    "safeModels": [],
+                    "findings": [],
+                    "policyVersion": governance.POLICY_VERSION,
+                    "detectorVersion": governance.DETECTOR_VERSION,
+                },
+            )
+        route = {**route, "boundaryModel": twin["id"], "strictReason": "internal_data"}
+        return twin, True, {
+            "action": "internal_strict_local",
+            "requestedModels": [chosen.get("id")],
+            "routedModels": [twin.get("id")],
+            "effectiveModels": [twin.get("id")],
+            "dataBoundary": twin.get("dataBoundary") or "self_hosted",
+            "superAgent": route,
+        }
+    note: dict[str, Any] = {"superAgent": route}
+    if chosen.get("id") != model.get("id"):
+        note = {**_substitution_routing(model, chosen), "action": "none", "superAgent": route}
+    return chosen, strict, note
+
+
 async def _document_route(
     *,
     db: DbSession,
@@ -1348,16 +1788,18 @@ async def _document_route(
 ) -> tuple[dict, bool, dict[str, Any] | None] | JSONResponse:
     """Report/deck writer, strict-local flag, route note; internal → strict-local twin."""
     allowed = set(user.allowed_models or [])
+    if session.routing_mode in _SUPER_MODES:
+        return await _document_super_route(
+            db=db, user=user, session=session, policy=policy, catalogue=catalogue,
+            model=model, blocks=blocks, attachments=attachments, history=history,
+            request=request,
+        )
     if (
         policy.internal_data_strict_local
         and not _strict_model(model)
         and _internal_data_present(session, blocks, attachments, history)
     ):
-        safe = [
-            m for m in catalogue
-            if m.get("id") in set(policy.privacy_safe_model_ids or []) and _strict_model(m)
-            and (not allowed or m.get("id") in allowed)
-        ]
+        safe = _safe_models(policy, catalogue, allowed)
         twin = _strict_twin(model, catalogue, allowed) or (safe[0] if safe else None)
         if twin is None:
             return JSONResponse(
@@ -1473,6 +1915,7 @@ async def _resolve_privacy(
     decision_token: str | None,
     internal_data: bool = False,
     force_strict_local: bool = False,
+    chosen_model_id: str | None = None,
 ) -> _PrivacyResolution | JSONResponse:
     """One egress decision before persistence, billing or upstream; unknown = external."""
     rows = (
@@ -1484,18 +1927,8 @@ async def _resolve_privacy(
     digest = governance.envelope_digest(sources)
 
     allowed_models = set(user.allowed_models or [])
-    safe: list[dict] = []
-    safe_ids = set(policy.privacy_safe_model_ids or [])
-    # priority = catalogue order (admin screen order)
-    for model in catalogue:
-        model_id = model.get("id")
-        if (
-            model_id in safe_ids
-            and _strict_model(model)
-            and "chat" in model.get("kinds", [])
-            and (not allowed_models or model_id in allowed_models)
-        ):
-            safe.append(model)
+    # priority = the admin's order on the governance screen
+    safe = _safe_models(policy, catalogue, allowed_models)
 
     action = "none"
     effective = requested
@@ -1558,7 +1991,8 @@ async def _resolve_privacy(
 
         if chosen == "route_strict_local":
             action = chosen
-            effective = [safe[0]]
+            # the model picked on the privacy card, else the first in priority order
+            effective = [next((m for m in safe if m["id"] == chosen_model_id), safe[0])]
         elif chosen == "mask_external":
             action = chosen
             mask_outbound = True
@@ -2444,7 +2878,7 @@ async def create_session(payload: SessionCreate, user: CurrentUser, db: DbSessio
             agent.catalog_key or "") in starter.draft_agents():
         # in evaluation: admins only
         raise HTTPException(status_code=404, detail="agent_not_found")
-    if payload.routing_mode in _AUTO_MODES and payload.kind not in _AUTO_KINDS:
+    if payload.routing_mode in _ROUTED_MODES and payload.kind not in _AUTO_KINDS:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="auto_routing_chat_only",
@@ -2456,6 +2890,11 @@ async def create_session(payload: SessionCreate, user: CurrentUser, db: DbSessio
         )
     if payload.routing_mode in _AUTO_MODES:
         await _require_auto_quality_model(user, payload.model)
+    routing_mode = payload.routing_mode
+    if routing_mode in _SUPER_MODES:
+        await _require_super_agent()
+        if routing_mode == RoutingMode.super and payload.project_id:
+            routing_mode = await _project_super_mode(user)
     session = ChatSession(
         **({"id": payload.id} if payload.id else {}),
         user_id=user.id,
@@ -2463,7 +2902,7 @@ async def create_session(payload: SessionCreate, user: CurrentUser, db: DbSessio
         project_id=payload.project_id,
         agent_id=payload.agent_id,
         model=payload.model or "",
-        routing_mode=payload.routing_mode,
+        routing_mode=routing_mode,
         render_template_id=(await _agent_template_loaded(db, user, agent, payload.kind))
         or await _project_render_template(db, payload.project_id, payload.kind),
     )
@@ -2735,7 +3174,12 @@ async def handoff_session(
         raise
     await db.refresh(target)
     files.extend(by_id[file_id] for file_id in earlier if file_id in by_id)
-    return HandoffOut(session=SessionOut.of(target, []), attachments=[FileOut.of(f) for f in files])
+    fitting = {SessionKind.report: ("web", "hwp", "docx"), SessionKind.slides: ("web", "pptx")}
+    return HandoffOut(
+        session=SessionOut.of(target, []), attachments=[FileOut.of(f) for f in files],
+        output_format=(payload.output_format
+                       if payload.output_format in fitting.get(kind, ()) else None),
+    )
 
 
 async def _template_skills(
@@ -2980,7 +3424,7 @@ async def patch_session(session_id: str, payload: SessionPatch, user: CurrentUse
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="auto_is_not_a_model_id",
         )
-    if changes.get("routing_mode") in _AUTO_MODES and session.kind not in _AUTO_KINDS:
+    if changes.get("routing_mode") in _ROUTED_MODES and session.kind not in _AUTO_KINDS:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="auto_routing_chat_only",
@@ -2990,6 +3434,8 @@ async def patch_session(session_id: str, payload: SessionPatch, user: CurrentUse
         changes["routing_mode"] = RoutingMode.manual
     if changes.get("routing_mode", session.routing_mode) in _AUTO_MODES:
         await _require_auto_quality_model(user, changes.get("model", session.model))
+    if changes.get("routing_mode") in _SUPER_MODES:
+        await _require_super_agent()
     if "render_template_id" in changes:
         if not await user_templates.usable(db, user.id, changes["render_template_id"]):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
@@ -3781,10 +4227,36 @@ async def _store_document(
     title: str,
     data: dict,
     summary: str,
+    base: dict | None = None,
+    drafted: list[str] | None = None,
 ) -> str:
-    """Same-kind regeneration → version; new kind → new row."""
-    follow_document_title(session, title)
+    """Same-kind regeneration → version; new kind → new row. `base` (`_document_base`) is the
+    document and version the turn started from: a version moves only from it, so a hand save
+    made while the turn wrote is not overwritten; the result is then kept apart as a draft
+    beside the document (`artifact_versions.draft`), and `drafted` gets the reply's sentence."""
     existing = await db.get(Artifact, session.artifact_id) if session.artifact_id else None
+    if (
+        existing is not None
+        and existing.kind is kind
+        and existing.user_id == user_id
+        and existing.session_id == session.id
+        and base
+        and base.get("artifactId") == existing.id
+        and isinstance(base.get("version"), int)
+    ):
+        if await artifact_versions.advance(db, existing, base["version"], summary):
+            follow_document_title(session, title)
+            existing.title, existing.data, existing.updated_at = title, data, utcnow()
+            db.add(existing)
+            return existing.id
+        await db.refresh(existing)
+        kept = await artifact_versions.draft(db, existing, title=title, data=data)
+        if drafted is not None:
+            drafted.append(
+                f"쓰는 사이 「{existing.title}」이 v{existing.version}로 저장되어 그 판을 "
+                f"덮어쓰지 않았습니다. 새로 쓴 문서는 「{kept.title}」으로 따로 남겼습니다.")
+        return kept.id
+    follow_document_title(session, title)
     if (
         existing is not None
         and existing.kind is kind
@@ -3820,6 +4292,18 @@ async def _store_document(
     return artifact.id
 
 
+async def _document_base(session_id: str) -> dict[str, Any]:
+    """The conversation's document and its version as a turn starts (`_store_document`'s
+    `base`); `{}` when it has none."""
+    async with SessionLocal() as db:
+        session = await db.get(ChatSession, session_id)
+        current = (await db.get(Artifact, session.artifact_id)
+                   if session is not None and session.artifact_id else None)
+    if current is None:
+        return {}
+    return {"artifactId": current.id, "version": current.version, "title": current.title}
+
+
 def _report_output(picked: str, request: str) -> str:
     """`hwp`, `docx` or `` (the HTML report): a pick wins over the file the request names."""
     if picked in ("hwp", "docx"):
@@ -3853,17 +4337,35 @@ async def _store_office_report(
     title: str,
     summary: str,
     data: dict,
+    base: dict | None = None,
+    drafted: list[str] | None = None,
 ) -> str:
     """The report's sections as an HWP or Word file: a new office artifact, or the next
-    version of the one this conversation has (its hand edits kept in the history)."""
+    version of the one this conversation has (its hand edits kept in the history). A hand
+    save made while the turn wrote (the version moved past `base`) is not overwritten: the
+    file is kept apart as a new document and `drafted` says so."""
     service = hwp_doc if kind is ArtifactKind.hwp else docx_doc
     blob = await report_office.write(kind, title, data)
-    follow_document_title(session, title)
     current = await db.get(Artifact, session.artifact_id) if session.artifact_id else None
     if current is not None and current.kind is kind and current.session_id == session.id:
-        saved = await service.save(db, current, blob, expected=current.version,
-                                   summary=summary, title=title)
+        expected = (base or {}).get("version") if (base or {}).get("artifactId") == current.id \
+            else current.version
+        try:
+            saved = await service.save(db, current, blob, expected=int(expected or 0),
+                                       summary=summary, title=title)
+        except office_doc.Conflict:
+            await db.refresh(current)
+            kept = await service.create(
+                db, user_id=user_id, title=f"{title}{artifact_versions.DRAFT_SUFFIX}"[:200],
+                data=blob, session_id=session.id, project_id=project_id)
+            if drafted is not None:
+                drafted.append(
+                    f"쓰는 사이 「{current.title}」이 v{current.version}로 저장되어 그 판을 "
+                    f"덮어쓰지 않았습니다. 새로 쓴 문서는 「{kept.title}」으로 따로 남겼습니다.")
+            return kept.id
+        follow_document_title(session, title)
         return saved.id
+    follow_document_title(session, title)
     made = await service.create(db, user_id=user_id, title=title, data=blob,
                                 session_id=session.id, project_id=project_id)
     return made.id
@@ -4364,6 +4866,11 @@ async def _send_message(
         payload = SendMessage(content=payload.content, retry_of=payload.retry_of)
     else:
         session = await _owned(db, user, session_id)
+    #: the document open in the panel beside the chat: chat edits work on it
+    opened = (await _opened_document(db, user, session, payload.open_artifact)
+              if published is None else None)
+    if published is None and payload.output_format == "pptx" and not session.pending:
+        await _pptx_surface(db, user, session)
     #: the surface this turn runs as: a report written as an HWP or Word file is worked on from
     #: here like a chat's office document, its tools and pre-read included
     kind = SessionKind.chat if await _office_report(db, session) else session.kind
@@ -4388,9 +4895,19 @@ async def _send_message(
                 "activated_skill_ids": turn_options.get(
                     "activatedSkillIds", payload.activated_skill_ids
                 ),
+                "output_format": payload.output_format or (
+                    turn_options.get("outputFormat")
+                    if turn_options.get("outputFormat") in ("web", "hwp", "docx", "pptx")
+                    else None),
             }
         )
 
+    #: the web report or deck this turn edits in place with targeted ops, as the office files
+    #: are (`tools/web_doc`): the turn runs as the conversation's chat with those tools
+    web_edit = (await _web_edit_target(db, session, payload)
+                if published is None and kind is not SessionKind.chat else None)
+    if web_edit is not None:
+        kind = SessionKind.chat
     #: a question about the document, or an edit of a named part, while a card waits: not
     #: its answer; the card stays for a question, goes for an edit
     card_aside = _sets_card_aside(session, payload, kind)
@@ -4481,6 +4998,13 @@ async def _send_message(
         kind is SessionKind.chat
         and session.routing_mode in _AUTO_MODES
         and payload.model is None
+    )
+    #: Super Agent picks this turn's model (`_super_route`); a turn-level model pick wins
+    super_turn = bool(
+        kind is SessionKind.chat
+        and session.routing_mode in _SUPER_MODES
+        and payload.model is None
+        and published is None
     )
 
     # refused before any write, never dropped
@@ -4575,6 +5099,37 @@ async def _send_message(
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="retry_not_latest")
         superseded = history[at + 1 :]
         history = history[:at]
+    #: the search card this turn answers: its paused answer, as stored (another tab or replica
+    #: may have answered it first)
+    consent_paused: Message | None = None
+    if payload.search_consent is not None:
+        consent_paused = next(
+            (m for m in superseded
+             if m.id == payload.search_consent.message_id and search_consent.paused(m)), None)
+        if consent_paused is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail="search_consent_stale"
+            )
+
+    #: the Super Agent route note and the writer's reasoning effort for this turn
+    super_route: dict[str, Any] | None = None
+    super_effort = "default"
+    if super_turn:
+        model, super_route, super_effort = await _super_route(
+            db=db,
+            user=user,
+            session=session,
+            policy=policy,
+            catalogue=usable,
+            default=model,
+            history=history,
+            content=content,
+            kind=kind,
+            web_search=payload.web_search,
+            attachments=payload.attachments,
+            tool_bound=bool(payload.activated_skill_ids or session.agent_id),
+        )
+        requested_model = model
 
     # ownership before privacy assembly
     rows, attachment_meta = await _owned_attachments(db, user, payload.attachments)
@@ -4587,6 +5142,8 @@ async def _send_message(
     outbound_history = [server_notes.strip(message.content) if message.role is Role.assistant
                         else message.content for message in history]
     privacy_resolution: _PrivacyResolution | None = None
+    #: what this strict-local chat turn may do about the web (`search_consent`)
+    turn_consent: search_consent.TurnConsent | None = None
     tools: list[Tool] = []
     tool_definitions: list[dict[str, Any]] = []
     candidate_tools: list[Tool] = []
@@ -4701,14 +5258,37 @@ async def _send_message(
     #: this chat's HWP, Word and PowerPoint documents; their tools join the turn, as they do
     #: when one is asked for
     office_documents: dict[str, Artifact] = {}
+    #: the one the pre-read and the chapter count read: open beside the chat, else the
+    #: conversation's only one; several and none open, none (the tools ask which)
+    office_target: Artifact | None = None
+    office_look_wire: dict | None = None
     if kind is SessionKind.chat and requested_model.get("supportsTools"):
+        every: list[Artifact] = []
         for name, service, _ in _OFFICE if published is None else ():
-            if found := await service.session_document(db, user.id, session.id):
-                office_documents[name] = found
+            kept = await office_doc.session_documents(db, service.KIND, user.id, session.id)
+            if kept:
+                office_documents[name] = kept[0]
+                every += kept
+        office_target = (
+            opened if opened is not None and opened in every
+            else every[0] if len(every) == 1 else None
+        )
+        if published is None and (every or any(asks.search(content) for *_, asks in _OFFICE)):
+            # what the office tools write takes the project's theme and report template
+            # (the conversation's own template first)
+            look = await office_look.for_project(
+                db, user, await db.get(Project, session.project_id)
+                if session.project_id else None, session.render_template_id or "")
+            office_look_wire = (
+                {"tokens": look.tokens, "templateId": look.template_id} if look else None)
         office_open = {
             name: published is None and (bool(asks.search(content)) or name in office_documents)
             for name, _, asks in _OFFICE
         }
+        if web_edit is not None:
+            # the conversation's web report or deck, edited in place
+            office_open["deck" if web_edit.kind is ArtifactKind.deck else "report"] = True
+            office_target = office_target or web_edit
         skill_shelf = [] if published is not None else await _skill_shelf(
             db, user, agent=agent_row,
             exclude={*active_skill_ids, *((agent_row.active_skill_ids or []) if agent_row else [])}
@@ -4773,6 +5353,8 @@ async def _send_message(
             question=_asked_about(content, history),
             how_to=how_to,
             kind=kind,
+            # the index joins passage picking outside strict-local turns, as `search_knowledge`
+            vector=not requested_is_strict,
             # report/deck writers: no chat tool loop
             available_tool_names=(
                 {tool.name for tool in requested_tools}
@@ -4924,6 +5506,7 @@ async def _send_message(
             sources=privacy_sources,
             explicit_action=payload.privacy_action,
             decision_token=payload.privacy_decision_token,
+            chosen_model_id=payload.privacy_model_id,
             internal_data=published is not None or _internal_data_present(
                 session, workspace.blocks, payload.attachments, history
             ),
@@ -4988,6 +5571,19 @@ async def _send_message(
                 tools,
                 legacy=policy.pii_masking,
             )
+        if strict_local and published is None and (
+                effective_web_search or consent_paused is not None):
+            # no web tool inside the boundary: the model may ask, the person decides
+            turn_consent = await search_consent.for_turn(
+                db, policy=policy, session=session, history=history, user_id=user.id,
+                material=[b.text for b in workspace.blocks if b.source in _INTERNAL_SOURCES],
+                needs_outside=(forced_tool == "web_search" or fresh_fact or bool(exact_reason)
+                               or search_consent.needs_outside(content)),
+                tools=bool(requested_model.get("supportsTools") and model.get("supportsTools")),
+                paused=consent_paused, answer=payload.search_consent,
+            )
+            if turn_consent.offers:
+                tools = [*tools, turn_consent.tool()]
         tool_definitions = openai_snapshot(tools)
     elif policy.pii_masking:
         # decision flow chat-only; report/slides always mask
@@ -5015,6 +5611,7 @@ async def _send_message(
                 available_tool_names={tool.name for tool in tools},
                 how_to=how_to,
                 kind=kind,
+                vector=not _strict_model(model),
             )
         except WorkspaceContextError as exc:
             _raise_workspace_error(exc)
@@ -5028,8 +5625,8 @@ async def _send_message(
         untrusted_context = [
             b.text for b in workspace.blocks if not b.trusted and b.source != "attachment"
         ]
-        newest = max(office_documents.values(), key=lambda a: a.updated_at, default=None)
-        if newest is not None and (located := _named_parts(newest, _ask_of(content))):
+        if office_target is not None and (
+                located := _named_parts(office_target, _ask_of(content))):
             # 「3장」 counted by the server on the file's chapter headings, every model alike
             untrusted_context = [*untrusted_context, located]
     if privacy_resolution and privacy_resolution.mask_outbound:
@@ -5079,6 +5676,8 @@ async def _send_message(
     turn_options = {
         "webSearch": payload.web_search,
         "activatedSkillIds": active_skill_ids,
+        # the file picked on the screen: a retry after a reload makes the same file
+        **({"outputFormat": payload.output_format} if payload.output_format else {}),
     }
     # stored for retry replay; defaults store nothing
     if any(turn_options.values()):
@@ -5243,6 +5842,18 @@ async def _send_message(
             routed_down = True
         strict_local = resolved.strict_local
 
+    if super_route is not None and privacy_resolution is not None:
+        if model["id"] != super_route["selectedModel"]:
+            # privacy routing moved the turn (strict twin, safe model): the note says so
+            super_route = {**super_route, "boundaryModel": model["id"]}
+        privacy_resolution.routing = {**privacy_resolution.routing, "superAgent": super_route}
+        if super_route.get("tools") == "none" and not calculation_required:
+            # a simple turn needs no tools: the shorter tool-free envelope, as Auto's economy
+            tools = []
+            tool_definitions = []
+            messages = envelope(wire_history, economy=True)
+            routed_down = True
+
     if not has_headroom(user, model):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="insufficient_credits"
@@ -5268,7 +5879,9 @@ async def _send_message(
     if retry_of is not None:
         # reuse question row; failed reply goes now, good one on commit as an earlier answer
         for row in superseded:
-            if row.role is Role.assistant and row.content and row.failure is None:
+            # a search card is not an answer to keep: it goes with its decision
+            if (row.role is Role.assistant and row.content and row.failure is None
+                    and not search_consent.paused(row)):
                 earlier_answers = [*(row.superseded or []), _earlier_answer(row)]
                 superseded_ids.append(row.id)
             else:
@@ -5295,8 +5908,8 @@ async def _send_message(
         # turn answers (or skips) the chat agent's gap card
         session.pending = None
     # request models are turn-only; lasting choices via session settings API
-    if payload.model is None:
-        # substitute is turn-only
+    if payload.model is None and not super_turn:
+        # substitute is turn-only; a Super Agent pick is the turn's, not the session's
         if revoked_model is None:
             session.model = requested_model["id"]
     session.updated_at = utcnow()
@@ -5329,6 +5942,18 @@ async def _send_message(
         if privacy_resolution and privacy_resolution.routing
         else None
     )
+    if super_route is not None:
+        db.add(AuditEvent(
+            actor_id=user.id,
+            action="routing.super",
+            target=session.id,
+            detail=super_agent.ROUTER_VERSION,
+            event_metadata=dict(
+                (privacy_resolution.routing or {}).get("superAgent") or super_route
+                if privacy_resolution else super_route
+            ),
+            ip=client_ip(request),
+        ))
     if cost_route:
         routing_audit = AuditEvent(
             actor_id=user.id,
@@ -5412,14 +6037,7 @@ async def _send_message(
                     context_steps=context_steps,
                     outline_model=outline_model,
                     project_sources=[
-                        {
-                            "id": item.id,
-                            "name": item.name,
-                            "state": item.state,
-                            "sourceUrl": item.source_url,
-                            "locations": list(item.locations),
-                        }
-                        for item in workspace.knowledge
+                        _project_source(item) for item in workspace.knowledge
                     ],
                     # no network on strict-local
                     web_search=effective_web_search and not strict_local,
@@ -5452,6 +6070,16 @@ async def _send_message(
         )
     if asked_files is not None:
         content = revise.without_export(content)
+    if route == "revise" and (undo := revise.asks_undo(typed_content))[0]:
+        # 「되돌려 줘」: an earlier version back as the newest, never the text rewritten
+        return StreamingResponse(
+            _survive_disconnect(_undo_document(
+                user_id=user.id, session_id=session.id, version=undo[1],
+                routing=document_routing)),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive",
+                     "X-Accel-Buffering": "no"},
+        )
     if route == "revise":
         # local planner judges the instruction, not the external writer
         planner = outline_model or _local_planner(
@@ -5518,7 +6146,69 @@ async def _send_message(
             context_steps=context_steps, web_search=effective_web_search and not strict_local,
             attachments=list(payload.attachments or []), catalogue=catalogue_models,
             agent=agent_row,
+            # the file picked on the screen, as the plain report path takes it
+            office=("" if session.artifact_id or kind is not SessionKind.report
+                    else _report_output(payload.output_format or str(pending.get("output") or ""),
+                                        str(pending.get("request") or "") or typed_content)),
         )
+
+    #: strict-local report or deck: whether its research may search, and only what was allowed
+    document_web = False
+    if kind in (SessionKind.report, SessionKind.slides) and strict_local:
+        allowed: tuple[str, ...] = ()
+        wanted = bool(effective_web_search) and (
+            report_service.asks_public_sources(content) or not (
+                report_service._own_material(content) or report_service.material_complete(
+                    content, workspace.doc_format,
+                    has_files=bool(untrusted_context or turn_context)))
+            if kind is SessionKind.report
+            else not (payload.web_search == "auto" and report_service.given_material_suffices(
+                content, has_files=_grounded_in_files(workspace))))
+        if route in ("report", "deck") and approved_plan is None and (
+                wanted or consent_paused is not None):
+            planner = outline_model or model
+            doc_consent, allowed, planned_spend = await search_consent.for_document(
+                db, policy=policy, session=session, history=history, user_id=user.id,
+                request=content,
+                material=[b.text for b in workspace.blocks if b.source in _INTERNAL_SOURCES],
+                needs_outside=search_consent.needs_outside(content),
+                planner=planner["id"], api_key=api_key,
+                scholarly=kind is SessionKind.report and report_service.scholarly_document(content),
+                paused=consent_paused, answer=payload.search_consent,
+            )
+            planned_credits = charge_for_tokens(
+                planner, planned_spend["inputTokens"], planned_spend["outputTokens"])
+            if doc_consent.card is not None:
+                # research would search first: the queries are asked about before it runs
+                return StreamingResponse(
+                    _survive_disconnect(_search_card(
+                        user_id=user.id, session_id=session.id, card=doc_consent.card,
+                        routing=document_routing, model=planner["id"], usage=planned_spend,
+                        credits=planned_credits,
+                    )),
+                    media_type="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "Connection": "keep-alive",
+                             "X-Accel-Buffering": "no"},
+                )
+            if planned_credits:
+                settle(db, user, planned_credits, reason="chat.completion",
+                       session_id=session.id, model=planner["id"])
+            if (record := doc_consent.record(by=user.id)) is not None:
+                document_routing = {**(document_routing or {}), "searchConsent": record}
+                if record.get("status") in search_consent.AUDIT_ACTIONS:
+                    db.add(AuditEvent(
+                        actor_id=user.id,
+                        action=search_consent.AUDIT_ACTIONS[record["status"]],
+                        target=session.id, detail=f"{len(record.get('queries') or [])}",
+                        event_metadata=search_consent.audit_metadata(
+                            record, session_id=session.id, message_id=None,
+                            paused_id=consent_paused.id if consent_paused else None),
+                        ip=client_ip(request),
+                    ))
+            await db.commit()
+        # research sends only the queries the person allowed (none otherwise), wherever it runs
+        research_service.ALLOWED.set(research_service.Allowed(allowed))
+        document_web = bool(allowed)
 
     #: the stop button's signal for this report or deck (`_stoppable`)
     stopping = asyncio.Event()
@@ -5568,21 +6258,14 @@ async def _send_message(
                     context_steps=context_steps,
                     outline_model=outline_model,
                     project_sources=[
-                        {
-                            "id": item.id,
-                            "name": item.name,
-                            "state": item.state,
-                            "sourceUrl": item.source_url,
-                            "locations": list(item.locations),
-                        }
-                        for item in workspace.knowledge
+                        _project_source(item) for item in workspace.knowledge
                     ] + [
                         # attached files are sources with their own number, like project files
                         {"id": item.id, "name": item.name, "state": item.state, "attached": True}
                         for item in (*workspace.attachments, *workspace.carried)
                     ],
-                    # no network on strict-local
-                    web_search=effective_web_search and not strict_local,
+                    # strict-local: only the searches the person allowed
+                    web_search=document_web if strict_local else effective_web_search,
                     office=office_file,
                 ),
             )),
@@ -5631,9 +6314,9 @@ async def _send_message(
                     skills_event=skills_event,
                     context_steps=context_steps,
                     outline_model=outline_model,
-                    # no network on strict-local; on 「auto」 a talk built from the person's own
-                    # material looks nothing up
-                    web_search=effective_web_search and not strict_local and not (
+                    # strict-local: only the searches the person allowed; on 「auto」 a talk
+                    # built from the person's own material looks nothing up
+                    web_search=document_web if strict_local else effective_web_search and not (
                         payload.web_search == "auto"
                         and report_service.given_material_suffices(
                             content, has_files=_grounded_in_files(workspace))),
@@ -5710,6 +6393,11 @@ async def _send_message(
         and published is None and not agent_material and not declines_web_search(content)
         else []
     )
+    if not preflight_tool and forced_tool in (None, "web_search") and (
+            first_write := _blank_write_first(office_target, tool_names, content, session)):
+        # a blank document open beside the chat and content asked for: written into it first,
+        # not researched into the chat (a search runs only when the person asked for one)
+        forced_tool = first_write
     if forced_tool == "web_search" and "web_search" in tool_names and not given_links:
         # reuse only privacy-processed history; never re-send the earlier raw question
         lookup_content = (
@@ -5786,11 +6474,34 @@ async def _send_message(
             messages,
             publishing.MATERIAL_ONLY_RULE if published is not None else _MATERIAL_FIRST_RULE,
         )
+    if turn_consent is not None and search_consent.TOOL_NAME in tool_names:
+        if turn_consent.decision is not None:
+            # the queries the person allowed run first, whatever the model would ask
+            if preset_call is None and not preflight_tool:
+                preset_call = (search_consent.TOOL_NAME, {})
+            else:
+                forced_tool = search_consent.TOOL_NAME
+        elif forced_tool == "web_search":
+            # a question the server would search for: the card, not an answer from memory
+            forced_tool = search_consent.TOOL_NAME
+    if turn_consent is not None and (rule := turn_consent.instruction()):
+        messages = _with_system_rule(messages, rule)
     if preset_call is None and forced_tool is None and not preflight_tool:
-        # the newest of them, when the chat has both
-        preset_call = _document_preset(
-            max(office_documents.values(), key=lambda a: a.updated_at, default=None), tool_names
-        )
+        # the one open beside the chat (or its only one), never the newest of several
+        preset_call = _document_preset(office_target, tool_names)
+        if (preset_call is None and office_target is not None
+                and (_WRITES_DOCUMENT.search(_ask_of(content))
+                     or (session.kind is not SessionKind.chat
+                         and office_target.id == session.artifact_id))
+                and f"{office_target.kind.value}_write" in tool_names):
+            # a blank document open and a document asked for: written into it, not into the
+            # chat and not after a round of searches
+            forced_tool = f"{office_target.kind.value}_write"
+    if office_target is not None and kind is SessionKind.chat:
+        rule = (_WEB_RULE if office_target.kind in (ArtifactKind.report, ArtifactKind.deck)
+                else _OFFICE_RULE)
+        messages = _with_system_rule(messages, rule.format(
+            p=office_target.kind.value, title=office_target.title))
     # substantial chat request: short plan beside it; not on economy/calculator turns
     if (
         kind is SessionKind.chat
@@ -5809,9 +6520,16 @@ async def _send_message(
             return answer_plan.attach(current, outline)
     else:
         plan_messages = None
+    super_rescue, rescue_effort = (
+        _super_rescue(super_route, policy=policy, user=user, catalogue=catalogue_models,
+                      writer=model, strict_local=strict_local)
+        if super_route is not None else (None, "default")
+    )
     return StreamingResponse(
         _survive_disconnect(
             _run_turn(
+                reasoning=_super_reasoning(model, super_effort, super_rescue, rescue_effort)
+                if super_route else None,
                 user_id=user.id,
                 api_key=api_key,
                 # visitor's words never remembered on the owner's account
@@ -5878,15 +6596,24 @@ async def _send_message(
                     tuple(check_skills.of_stage(check_keys, "post", specs)), advice),
                 advice=advice or "",
                 urgent=urgent.kind if urgent else "",
+                project_sources=[_project_source(item) for item in workspace.knowledge],
                 skill_keys=_skill_keys(workspace.applied_skills, specs),
                 skill_specs=specs,
                 own_scripts=own_scripts,
+                # the office tools work on the document open beside the chat
+                open_artifact=(
+                    {"id": opened.id, "version": opened.version} if opened is not None else None
+                ),
+                standing=list(standing_rules),
+                look=office_look_wire,
                 check_options=check_options,
                 # agent's 담당 부서·연락처 may be repeated verbatim
                 check_material="\n".join([*workspace.untrusted, *(
                     [agent_row.contact] if agent_row is not None and agent_row.contact.strip()
                     else [])]),
                 carries_material=material_turn,
+                # project files read this turn, numbered for citation (지식 서가 jumps to them)
+                cited_material=await shelf_sources.given_texts(db, workspace.knowledge),
                 agent_key=agent_key or "",
                 calculation_required=calculation_required,
                 # calculator-skipping writer hands off to the outline model
@@ -5896,7 +6623,7 @@ async def _send_message(
                 ),
                 # an answer the writer left empty or only announced: the other local model
                 # writes it once more
-                rescue=await _rescue_model(
+                rescue=super_rescue or await _rescue_model(
                     user=user, catalogue=catalogue_models, writer=model,
                     strict_local=strict_local, outline=outline_model),
                 calculation_expression=(
@@ -5906,6 +6633,7 @@ async def _send_message(
                 side_credits=summary_credits,
                 earlier_answers=earlier_answers or None,
                 superseded_ids=superseded_ids or None,
+                consent=turn_consent,
             )
         ),
         media_type="text/event-stream",
@@ -6313,9 +7041,41 @@ def _table_analysis_instruction(files: list[StoredFile]) -> str:
     )
 
 
+async def _search_card(*, user_id: str, session_id: str, card: dict, routing: dict | None,
+                       model: str, usage: dict, credits: int) -> AsyncIterator[str]:
+    """A strict-local document's turn that stops at the search card: the card is stored on
+    the answer row (it survives a reload and any replica answers it) and nothing is sent."""
+    stored = {**(routing or {}), "searchConsent": card}
+    async with SessionLocal() as db:
+        answer = Message(
+            session_id=session_id, role=Role.assistant, content=search_consent.PAUSE_TEXT,
+            routing=stored, model=model, usage={**usage, "credits": credits},
+        )
+        db.add(answer)
+        user = await db.get(User, user_id)
+        if user is not None and credits:
+            settle(db, user, credits, reason="chat.completion", session_id=session_id, model=model)
+        db.add(AuditEvent(
+            actor_id=user_id, action=search_consent.AUDIT_ACTIONS["pending"], target=session_id,
+            detail=f"{len(card.get('queries') or [])}",
+            event_metadata={"sessionId": session_id, "messageId": answer.id,
+                            "queries": [q.get("text") for q in card.get("queries") or []]},
+        ))
+        await db.commit()
+    yield chat_service.sse({"type": "search_consent", "messageId": answer.id,
+                            "content": search_consent.PAUSE_TEXT, "routing": stored})
+    yield chat_service.sse({"type": "usage", **usage, "credits": credits})
+    yield chat_service.sse({"type": "done", "messageId": answer.id})
+
+
 async def _run_turn(*, published: publishing.PublishedTurn | None = None,
+                    reasoning: tuple[str, dict[str, Any]] | None = None,
                     **kwargs: Any) -> AsyncIterator[str]:
-    """Drives one assistant turn; a published bot's turn releases its slot however it ends."""
+    """Drives one assistant turn; a published bot's turn releases its slot however it ends.
+    `reasoning`: the routed writer's effort fields (`agent.TURN_REASONING`), set for the task
+    that runs the turn."""
+    if reasoning is not None:
+        agent_service.TURN_REASONING.set(reasoning)
     events = _answer_turn(published=published, **kwargs)
     if published is not None:
         events = publishing.holding(events, published)
@@ -6389,18 +7149,31 @@ async def _answer_turn(
     skill_specs: dict | None = None,
     #: own scripts by skill key, for `run_skill_script`
     own_scripts: dict | None = None,
+    #: the document open beside the chat (`SendMessage.open_artifact`, checked)
+    open_artifact: dict | None = None,
+    #: rules the person set for the whole conversation (`standing_directives`)
+    standing: list[str] | None = None,
+    #: the theme and report template office documents are written in (`office_look`)
+    look: dict | None = None,
     #: agent's `check_options`: trace strictness
     check_options: dict | None = None,
     #: attached/carried file text: also a valid value source
     check_material: str = "",
     #: turn reads files, project knowledge or pasted material: the answer is traced to them
     carries_material: bool = False,
+    #: project files given this turn, name → text; numbered so the answer can cite them
+    cited_material: dict[str, str] | None = None,
     #: catalogue agent key: which pipeline finishes the answer
     agent_key: str = "",
     #: `exact_facts.advice_domain` of the turn: writer rule and grounding check
     advice: str = "",
     #: `red_flags.detect` kind of the turn: the answer opens with the emergency action
     urgent: str = "",
+    #: strict-local turn's web search: the card it may raise, or the decision it carries out
+    consent: search_consent.TurnConsent | None = None,
+    #: project files of the turn (`_project_source`): an each-item answer names those it
+    #: left out (`answer-coverage`)
+    project_sources: list[dict] | None = None,
 ) -> AsyncIterator[str]:
     """Drives one assistant turn to completion; own DB session (request one closes)."""
     text_parts: list[str] = []
@@ -6448,6 +7221,9 @@ async def _answer_turn(
         project_id=project_id,
         agent_name=agent_name,
         own_scripts=dict(own_scripts or {}),
+        open_artifact=dict(open_artifact or {}),
+        standing=list(standing or []),
+        look=dict(look or {}),
         # latest user message, not the opening line
         request=next(
             (
@@ -6533,6 +7309,7 @@ async def _answer_turn(
                 **({"freshness_request": freshness_request} if freshness_request else {}),
                 **({"caveat_request": caveat_request} if caveat_request else {}),
                 **({"material_given": True} if carries_material else {}),
+                **({"cited_material": cited_material} if cited_material else {}),
                 **({"deep_search": True} if _deep_search(skill_keys, skill_specs) else {}),
             ),
             stopping,
@@ -6655,8 +7432,10 @@ async def _answer_turn(
 
     # answer-generation scope; earlier classifier/search work keeps its audit
     skip_completion_work = server_abstention or tool_result_answer
+    #: the turn stopped at the search card: its words are the card's, not an answer to finish
+    paused_turn = consent is not None and consent.card is not None
     content = "".join(text_parts)
-    if content.strip() and not failed and not skip_completion_work:
+    if content.strip() and not failed and not skip_completion_work and not paused_turn:
         # agent finish pipeline (`app/pipelines/*.toml` `finish`); streamed text replaced if changed
         finish = chat_stages.bundle_for(
             answer=content, request=ctx.request, model=model, actual_model=actual_model,
@@ -6667,7 +7446,7 @@ async def _answer_turn(
             evidence=list(ctx.searched),
             kept_steps=steps, usage=usage, skill_keys=skill_keys, check_options=check_options,
             skill_specs=skill_specs, traced=carries_material, advice=advice,
-            urgent=urgent,
+            urgent=urgent, project_sources=project_sources,
         )
         pipe = pipeline_registry.for_chat(agent_key)
         runner = PipelineRunner(pipe.stages("finish"), name=f"{pipe.name}.finish")
@@ -6684,6 +7463,23 @@ async def _answer_turn(
         # finish records kept on `routing.run` for reloaded transcripts
         if summary := _run_summary(finish, pipe.name, "finish"):
             routing = {**routing, "run": summary}
+    offered = {name.split("_")[0] for name in (t.name for t in tools)
+               if name.split("_")[0] in ("hwp", "docx", "pptx", "report", "deck")
+               and name.endswith(("_edit", "_write"))}
+    if content.strip() and not failed and (said := office_claims.note(content, ctx, offered)):
+        # what the reply says it did to the document, held to the versions actually saved
+        content += said
+        yield chat_service.sse({"type": "delta", "text": said})
+    if consent is not None:
+        if content.strip() and not failed and (note := consent.note(korean=not _english(
+                ctx.request))) and note.strip() not in content:
+            # written without the outside search the question wanted: said under it
+            content += note
+            yield chat_service.sse({"type": "delta", "text": note})
+        if (consent_record := consent.record(by=user_id)) is not None:
+            # what left the boundary, if anything, and on whose decision
+            routing = {**(routing or {}), "searchConsent": consent_record}
+            yield chat_service.sse({"type": "privacy_route", **routing})
     if not content.strip() and not failed and not skip_completion_work and not superseded_ids:
         # no answer, from the agent or once the finish stages cleaned it: said, not silent
         log.warning("chat turn in session %s ended without an answer", session_id)
@@ -6771,7 +7567,8 @@ async def _answer_turn(
 
     # stored and announced before title call and message commit, so the panel catches up
     new_artifact: str | None = None
-    if stored_content and not failed and not skip_completion_work and published is None:
+    if stored_content and not failed and not skip_completion_work and published is None \
+            and not paused_turn:
         new_artifact = await _store_artifacts(
             user_id=user_id,
             session_id=session_id,
@@ -6805,7 +7602,8 @@ async def _answer_turn(
     title: str | None = None
     title_credits = 0
     title_model: str | None = None
-    if is_first_turn and stored_content and not failed and not skip_completion_work:
+    if is_first_turn and stored_content and not failed and not skip_completion_work \
+            and not paused_turn:
         enrichment = await _enrichment_model(
             model, strict_local=strict_local, disable_fallbacks=disable_fallbacks
         )
@@ -6949,6 +7747,20 @@ async def _answer_turn(
             if made_ids:
                 session.artifact_id = made_ids[-1]
             db.add(session)
+            consent_record = (stored_routing or {}).get("searchConsent")
+            if consent_record and consent_record.get("status") in search_consent.AUDIT_ACTIONS:
+                # who let which queries out, and when; or that none went
+                paused_id = consent.decision.message_id if consent and consent.decision else None
+                db.add(AuditEvent(
+                    actor_id=user_id,
+                    action=search_consent.AUDIT_ACTIONS[consent_record["status"]],
+                    target=session_id,
+                    detail=f"{len(consent_record.get('queries') or [])}",
+                    event_metadata=search_consent.audit_metadata(
+                        consent_record, session_id=session_id, message_id=answer_id,
+                        paused_id=paused_id),
+                    severity="info",
+                ))
             if fallback is not None:
                 # ops record: a self-hosted answer that LiteLLM's fallback served instead
                 db.add(AuditEvent(
@@ -7007,7 +7819,8 @@ async def _answer_turn(
 
     # own transaction after durability: auto-memory needs `answer_id`
     memory_step: dict | None = None
-    if stored_content and not failed and not skip_completion_work and published is None:
+    if stored_content and not failed and not skip_completion_work and published is None \
+            and not paused_turn:
         memory_step = await _enrich_memory(
             user_id=user_id,
             session_id=session_id,
@@ -7243,6 +8056,8 @@ async def _run_page(
         "user_id": user_id, "model": model, "outline_model": outline_model,
         "project_id": project_id, "routing": routing, "skills_event": skills_event,
         "context_steps": list(context_steps or []),
+        # the document as this turn found it (`_store_document`)
+        "base": await _document_base(session_id),
         "writer": {
             "web_search": web_search, "request": request, "approved_plan": approved_plan,
             "may_ask": may_ask, "model": model["id"],
@@ -7291,6 +8106,8 @@ async def _page_save(work: PipelineBundle) -> AsyncIterator[dict]:
     )
     saved: dict[str, Any] = {"artifactId": None, "credits": credits, "messageId": None}
     artifact_id: str | None = None
+    #: a hand save landed while this turn wrote: the result kept apart (`_store_document`)
+    drafted: list[str] = []
     async with SessionLocal() as db:
         session = await db.get(ChatSession, session_id)
         user = await db.get(User, user_id)
@@ -7298,7 +8115,7 @@ async def _page_save(work: PipelineBundle) -> AsyncIterator[dict]:
             title = (doc_title or session.title or request.strip()[:60] or template.name)[:200]
             summary = (rerun_note(turn) or _regeneration_summary(request))[:80]
             if written and html and session.kind is SessionKind.report:
-                # report blocks as HTML sections (re-renderable); decks keep html
+                # report blocks as Markdown sections; decks keep html
                 artifact_id = await _store_document(
                     db,
                     session,
@@ -7307,18 +8124,23 @@ async def _page_save(work: PipelineBundle) -> AsyncIterator[dict]:
                     kind=ArtifactKind.report,
                     title=title,
                     summary=summary,
+                    base=turn.get("base"),
+                    drafted=drafted,
                     data={
                         "kind": "report",
                         "templateId": template.id,
+                        # stored as Markdown, like every report section
                         "sections": [
-                            {
-                                "id": f"s{index}_{uuid4().hex[:6]}",
-                                "heading": block["title"],
-                                "level": 1,
-                                "status": "done",
-                                "content": block["html"],
-                                "format": "html",
-                            }
+                            richtext.markdown_section(
+                                {
+                                    "id": f"s{index}_{uuid4().hex[:6]}",
+                                    "heading": block["title"],
+                                    "level": 1,
+                                    "status": "done",
+                                    "content": block["html"],
+                                    "format": "html",
+                                }
+                            )
                             for index, block in enumerate(blocks)
                             if block.get("layout") != "cover"
                         ],
@@ -7339,7 +8161,8 @@ async def _page_save(work: PipelineBundle) -> AsyncIterator[dict]:
                         **({"design": design_tokens} if design_tokens else {}),
                     },
                 )
-                session.artifact_id = artifact_id
+                if not drafted:
+                    session.artifact_id = artifact_id
                 session.pending = None
             elif written and html:
                 artifact_id = await _store_document(
@@ -7350,6 +8173,8 @@ async def _page_save(work: PipelineBundle) -> AsyncIterator[dict]:
                     kind=ArtifactKind.html,
                     title=title,
                     summary=summary,
+                    base=turn.get("base"),
+                    drafted=drafted,
                     data={
                         "kind": "html",
                         "language": "html",
@@ -7370,7 +8195,8 @@ async def _page_save(work: PipelineBundle) -> AsyncIterator[dict]:
                         **({"design": design_tokens} if design_tokens else {}),
                     },
                 )
-                session.artifact_id = artifact_id
+                if not drafted:
+                    session.artifact_id = artifact_id
                 # proposal became the document
                 session.pending = None
 
@@ -7393,8 +8219,8 @@ async def _page_save(work: PipelineBundle) -> AsyncIterator[dict]:
                 message = Message(
                     session_id=session_id,
                     role=Role.assistant,
-                    content=rerun_note(turn)
-                    or f"{template.name}으로 {len(written)}개 부분을 작성했습니다.",
+                    content=" ".join([*drafted, rerun_note(turn) or (
+                        f"{template.name}으로 {len(written)}개 부분을 작성했습니다.")]),
                     usage={**usage, "credits": credits},
                     model=model["id"],
                     steps=_prelude_steps(turn.get("skills_event"),
@@ -7475,6 +8301,8 @@ async def _run_deck(
         "project_id": project_id, "routing": routing, "skills_event": skills_event,
         "context_steps": list(context_steps or []), "carry_from": carry_from,
         "carry_note": carry_note, "traced": traced, "check_keys": list(check_keys),
+        # the document as this turn found it (`_store_document`)
+        "base": await _document_base(session_id),
         "writer": {
             "web_search": web_search, "figures_plan": figures_plan, "image_model": image_model,
             "auto_image_model": auto_image_model,
@@ -7785,6 +8613,7 @@ async def _deck_save(work: PipelineBundle) -> AsyncIterator[dict]:
                             "font": design_service.font_for(request, requested_style),
                         }
                     )
+                drafted: list[str] = []
                 artifact_id = await _store_document(
                     db,
                     session,
@@ -7792,6 +8621,8 @@ async def _deck_save(work: PipelineBundle) -> AsyncIterator[dict]:
                     project_id=turn.get("project_id"),
                     kind=ArtifactKind.deck,
                     title=title,
+                    base=turn.get("base"),
+                    drafted=drafted,
                     summary=(rerun_note(turn) or _regeneration_summary(request))[:80],
                     data={
                         "kind": "deck",
@@ -7805,17 +8636,23 @@ async def _deck_save(work: PipelineBundle) -> AsyncIterator[dict]:
                         "slides": slides,
                     },
                 )
-                session.artifact_id = artifact_id
+                if not drafted:
+                    session.artifact_id = artifact_id
                 # proposal became the document
                 session.pending = None
                 message = Message(
                     session_id=session_id,
                     role=Role.assistant,
-                    content=rerun_note(turn) or _restructured_said(
-                        work.document.before if carry_from else [], slides,
-                        # in the deck's language, or the language the reshape was asked in
-                        english=deck_service.deck_language(slides) == "en" or bool(
-                            carry_from) and output_language.typed_in_english(carry_note)),
+                    content=" ".join(x for x in [
+                        *drafted, rerun_note(turn) or _restructured_said(
+                            work.document.before if carry_from else [], slides,
+                            # in the deck's language, or the language the reshape was asked in
+                            english=deck_service.deck_language(slides) == "en" or bool(
+                                carry_from) and output_language.typed_in_english(carry_note)),
+                        # the count asked, held to the count written
+                        deck_service.count_note(
+                            carry_note or request, len(deck_service.filled(slides)),
+                            english=deck_service.deck_language(slides) == "en")] if x),
                     usage={**usage, "credits": credits},
                     model=model["id"],
                     steps=_prelude_steps(skills_event, context_steps) or None,
@@ -7922,6 +8759,18 @@ async def _revision_plan(
         return revise.Plan(
             scope="parts", targets=[], note=f"{skeleton[first]} ↔ {skeleton[second]}"
         ), skeleton
+    if revise.theme_accent(instruction):
+        # a theme colour, set in the design by hand in the revise route
+        return revise.Plan(scope="parts", targets=[], note=instruction), skeleton
+    if revise.title_block_fields(
+            instruction, ((artifact.data or {}).get("titleBlock") or {}).get("fields") or []):
+        # the head's fields (작성일, 작성자 …), filled by hand in the revise route
+        return revise.Plan(scope="parts", targets=[], note=instruction), skeleton
+    if (move := revise.part_move(instruction, skeleton)) is not None:
+        # a part moved in place, never the document planned and written again
+        where = "맨 앞" if move[1] < 0 else f"{skeleton[move[1]]} 뒤"
+        return revise.Plan(scope="parts", targets=[],
+                           note=f"{skeleton[move[0]]} → {where}"), skeleton
     if (added := revise.explicit_insert(instruction, skeleton)) is not None:
         # 「위험 장을 하나 추가해 줘」 is an insert; a new-document reading would refuse it
         return added, skeleton
@@ -7998,6 +8847,16 @@ async def _revise_document(
         yield chat_service.sse({"type": "done"})
         return
     is_deck = loaded["kind"] == ArtifactKind.deck.value
+    # the version read: the revision is saved onto it only (`revise-save`); the person's
+    # standing rules reach every part rewritten (`revise-rewrite`)
+    turn["base"] = {"artifactId": loaded.get("artifactId"), "version": loaded.get("version"),
+                    "title": loaded.get("title")}
+    turn["standing"] = list(loaded.get("standing") or [])
+    turn["history"] = list(loaded.get("history") or [])
+    # every part as read: one the edit was not asked to touch is saved as it was if a rewrite
+    # dropped its figures (`revise-save`)
+    turn["before_parts"] = copy.deepcopy(
+        list(loaded["data"].get("slides") if is_deck else loaded["data"].get("sections") or []))
     data = dict(loaded["data"])
     parts = list(data.get("slides") if is_deck else data.get("sections") or [])
     if not parts:
@@ -8187,6 +9046,56 @@ async def _hand_over_document(
     yield chat_service.sse({"type": "done"})
 
 
+async def _undo_document(
+    *,
+    user_id: str,
+    session_id: str,
+    version: int | None,
+    routing: dict[str, Any] | None = None,
+) -> AsyncIterator[str]:
+    """The conversation's document back at an earlier version (the one before the current
+    unless named), saved as its newest version from the one it read: a save made meanwhile
+    is not overwritten; nothing is rewritten by a model."""
+    if routing:
+        yield chat_service.sse({"type": "privacy_route", **routing})
+    said, artifact_id = "", None
+    async with SessionLocal() as db:
+        session = await db.get(ChatSession, session_id)
+        artifact = (await db.get(Artifact, session.artifact_id)
+                    if session is not None and session.artifact_id else None)
+        if session is None or artifact is None or artifact.user_id != user_id:
+            said = "되돌릴 문서를 찾지 못했습니다."
+        else:
+            current = artifact.version
+            want = version or current - 1
+            body = (await artifact_versions.body_at(db, artifact, want)
+                    if 1 <= want < current else None)
+            if body is None:
+                said = (f"되돌릴 판이 없습니다. 지금 v{current}이고, v1~v{current - 1} 중에서 "
+                        "고를 수 있습니다." if current > 1 else "되돌릴 이전 판이 없습니다.")
+            elif not await artifact_versions.advance(db, artifact, current, f"v{want}로 되돌림"):
+                await db.rollback()
+                said = "그사이 문서가 저장되어 되돌리지 않았습니다. 다시 요청해 주세요."
+            else:
+                artifact.data, artifact.updated_at = body, utcnow()
+                db.add(artifact)
+                artifact_id = artifact.id
+                said = (f"v{want}의 내용으로 되돌려 v{current + 1}로 저장했습니다. 그 사이의 판은 "
+                        "버전 기록에 남아 있습니다.")
+        if session is not None:
+            db.add(Message(session_id=session_id, role=Role.assistant, content=said,
+                           usage={"inputTokens": 0, "outputTokens": 0, "credits": 0},
+                           routing=routing))
+            session.updated_at = utcnow()
+            db.add(session)
+            await db.commit()
+    if artifact_id:
+        yield chat_service.sse({"type": "artifact", "artifactId": artifact_id})
+    yield chat_service.sse({"type": "delta", "text": said})
+    yield chat_service.sse({"type": "usage", "inputTokens": 0, "outputTokens": 0, "credits": 0})
+    yield chat_service.sse({"type": "done"})
+
+
 def _reshaped_plan(plan: dict | None, carry_from: str | None) -> bool:
     """A restructure of the open document with parts planned: written with no outline card."""
     return bool(carry_from) and bool((plan or {}).get("slides") or (plan or {}).get("sections"))
@@ -8262,6 +9171,8 @@ async def _run_report(
         carry_from=carry_from, carry_note=carry_note,
         run_id=recorder.run_id if recorder else "", office=office,
     )
+    # the document as this turn found it: what it writes is saved only onto that version
+    turn["base"] = await _document_base(session_id) if writing else {}
     #: stream output, for writers that don't store their own result
     told: dict[str, Any] = {}
 

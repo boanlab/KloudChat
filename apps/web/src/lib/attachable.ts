@@ -1,6 +1,6 @@
 /** Composer picker filter and pre-upload refusals; the server reads most types, so only binaries, archives, empty files and files over the upload limit are refused. */
 
-import { overUploadLimit, tooLargeMessage } from './uploadLimit'
+import { overLimit } from './uploadLimit'
 
 const DOCUMENTS = ['.pdf', '.hwp', '.hwpx', '.docx', '.pptx', '.xlsx', '.doc', '.ppt', '.xls', '.csv', '.tsv']
 const TEXT = [
@@ -23,7 +23,8 @@ const SUPPORTED_FORMATS = 'PDF·한글(HWP·HWPX)·워드·엑셀·파워포인�
 /** Why `file` is not uploaded, or null when it may be. */
 export function attachRefusal(file: File, t: (key: string) => string): string | null {
   if (file.size === 0) return t('빈 파일입니다')
-  if (overUploadLimit(file)) return tooLargeMessage()
+  const tooLarge = overLimit(file)
+  if (tooLarge) return tooLarge
   const dot = file.name.lastIndexOf('.')
   const suffix = dot >= 0 ? file.name.slice(dot).toLowerCase() : ''
   if (BINARY.has(suffix)) {

@@ -20,7 +20,7 @@ from app.routers.workspace import _own
 from app.schemas.auth import Wire
 from app.schemas.workspace import ArtifactOut
 from app.services import files as file_service
-from app.services import office_doc
+from app.services import office_doc, office_look, pptx_edit
 
 
 class DocumentCreate(Wire):
@@ -29,6 +29,8 @@ class DocumentCreate(Wire):
     project_id: str | None = None
     #: an uploaded file to open; none = a blank page
     file_id: str | None = None
+    #: a slides 서식 picked for a blank PowerPoint deck (else the project's default)
+    template_id: str | None = None
 
 
 class DocumentSession(Wire):
@@ -40,7 +42,8 @@ class Routes:
     #: `/artifacts/{slug}` and `/artifacts/{id}/{slug}`
     slug: str
     kind: office_doc.Kind
-    blank: Callable[[], bytes]
+    #: an empty document; the hwp and docx ones take a `office_look.Look`
+    blank: Callable[..., bytes]
     blank_title: str
     #: an upload's name ending, dropped from the title
     suffix: re.Pattern[str]
@@ -91,8 +94,24 @@ def router_for(spec: Routes) -> APIRouter:
             except OSError:
                 raise HTTPException(status.HTTP_404_NOT_FOUND, detail="blob_missing") from None
             title = title or spec.suffix.sub("", stored.name)
+        elif spec.slug == "pptx" and (project_id or payload.template_id):
+            # a blank deck in a project wears its 테마 and 서식, as its web decks do
+            from app.services import pptx_doc
+
+            session = (
+                await db.get(ChatSession, payload.session_id) if payload.session_id else None
+            )
+            tokens, template = await pptx_doc.project_look(
+                db, user, session, project_id=project_id, template_id=payload.template_id
+            )
+            data = pptx_doc.blank(tokens=tokens, template=template)
+            title = title or spec.blank_title
         else:
-            data = spec.blank()
+            # a blank document in a project takes its theme and default report template
+            look = None
+            if project_id and spec.slug in ("hwp", "docx"):
+                look = await office_look.for_project(db, user, await db.get(Project, project_id))
+            data = spec.blank(look) if look is not None else spec.blank()
             title = title or spec.blank_title
         try:
             artifact = await office_doc.create(
@@ -122,6 +141,13 @@ def router_for(spec: Routes) -> APIRouter:
         except (OSError, FileNotFoundError):
             raise HTTPException(status.HTTP_404_NOT_FOUND, detail="blob_missing") from None
         fmt = kind.file_format(data) or kind.editable
+        if fmt == "pptx":
+            # a deck written before real bullets heals as it opens (the same bytes when it
+            # needs nothing): character bullets, line breaks inside runs, static page numbers
+            try:
+                data = pptx_edit.healed(data)
+            except Exception:  # noqa: BLE001 - the file as stored still opens
+                pass
         name = office_doc.download_name(artifact.title, fmt)
         return Response(
             content=data,

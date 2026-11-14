@@ -14,8 +14,8 @@ from app.core import db as core_db
 from app.core import logs
 from app.models.user import User, utcnow
 from app.models.workspace import FilePage, StoredFile
+from app.services import digest_jobs, index_cleanup, ocr
 from app.services import files as file_service
-from app.services import index_cleanup, ocr
 from app.services.credits import record_units
 
 log = logging.getLogger(__name__)
@@ -245,6 +245,8 @@ async def process(db, stored: StoredFile, token: str) -> None:
     stored = await _hold(db, file_id, token)
     await _finish(db, stored, kind, state="done", error=None)
     await _reindex(db, stored)
+    # the whole text is in: project material gets its digest now
+    await digest_jobs.requeue_on_new_text(db, file_id)
 
 
 async def run_one() -> bool:

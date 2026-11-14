@@ -52,7 +52,13 @@ test('report: reading shows no ribbon and downloads from the header', { tag: '@p
   await expect(panel(page).getByRole('tablist')).toHaveCount(0)
   await fitsOneRow(page)
   await shot(page, 'report-reading', viewport(testInfo))
-  await keepsWords(page, ['내려받기', '편집'])
+  if (viewport(testInfo) === 'phone') {
+    // A phone reads the report, as it reads every document; the agent edits it.
+    await expect(page.getByTestId('report-read-only')).toBeVisible()
+    await expect(header(page).getByRole('button', { name: '편집', exact: true })).toHaveCount(0)
+  } else {
+    await keepsWords(page, ['내려받기', '편집'])
+  }
 
   const download = header(page).getByRole('button', { name: '내려받기' })
   await expect(download).toBeInViewport()
@@ -85,14 +91,14 @@ test('report: ⋯ holds the views it folded, the contents, versions and reuse', 
   await expect(page.getByRole('dialog', { name: '버전 기록' })).toBeVisible()
 })
 
-test('report: 편집 opens the editing tabs; 테마 holds the look, 강조색, 템플릿 and the page', async ({ page }, testInfo) => {
+test('report: 편집 opens the editing tabs; 레이아웃 holds the look, 강조색, 템플릿 and the page', async ({ page }, testInfo) => {
   await resultsFixture(page, testInfo)
   await open(page, reportSession)
   await header(page).getByRole('button', { name: '편집', exact: true }).click()
-  expect(await tabs(page)).toEqual(['글자', '삽입', '테마', '검토'])
-  await expect(panel(page).getByRole('tab', { name: '글자' })).toHaveAttribute('aria-selected', 'true')
+  expect(await tabs(page)).toEqual(['홈', '삽입', '레이아웃', '검토', '보기'])
+  await expect(panel(page).getByRole('tab', { name: '홈' })).toHaveAttribute('aria-selected', 'true')
   await shot(page, 'report-editing', viewport(testInfo))
-  await panel(page).getByRole('tab', { name: '테마' }).click()
+  await panel(page).getByRole('tab', { name: '레이아웃' }).click()
   await expect(header(page).getByRole('button', { name: '문서 테마 고르기' })).toBeVisible()
   await expect(header(page).getByRole('button', { name: '강조색 고르기' })).toBeVisible()
   await expect(header(page).getByRole('button', { name: '페이지 설정' })).toBeVisible()
@@ -108,13 +114,13 @@ test('report: 편집 opens the editing tabs; 테마 holds the look, 강조색, �
   await expect(panel(page).getByRole('tablist')).toHaveCount(0)
 })
 
-test('slides: 발표 and 내려받기 in the header, editing tabs only while editing', { tag: '@phone' }, async ({ page }, testInfo) => {
+test('slides: the document header, with 발표 and 검토 in 더보기 and the toolbar', { tag: '@phone' }, async ({ page }, testInfo) => {
   const recorded = await resultsFixture(page, testInfo)
   await open(page, deckSession)
+  // no ribbon tabs: the web slides have the PowerPoint editor's one toolbar row
   await expect(panel(page).getByRole('tablist')).toHaveCount(0)
   await fitsOneRow(page)
-  await expect(header(page).getByRole('button', { name: '발표' })).toBeVisible()
-  await keepsWords(page, viewport(testInfo) === 'phone' ? ['편집'] : ['내려받기', '편집'])
+  if (viewport(testInfo) !== 'phone') await keepsWords(page, ['저장', '내려받기'])
   await shot(page, 'deck-reading', viewport(testInfo))
   await header(page).getByRole('button', { name: '내려받기' }).click()
   for (const name of ['PowerPoint', 'PDF \\(발표용\\)', '텍스트']) {
@@ -125,40 +131,27 @@ test('slides: 발표 and 내려받기 in the header, editing tabs only while edi
   expect((await file).suggestedFilename()).toMatch(/\.pdf$/)
   expect(recorded.exports).toEqual(['deck:pdf'])
 
-  await header(page).getByRole('button', { name: /^검토/ }).click()
+  await header(page).getByRole('button', { name: '더보기' }).click()
+  for (const name of ['버전 기록', '검토', '발표', '이 장 다시 만들기', '이 장 팩트체크', '이걸로 새로 시작', '새 대화에 첨부']) {
+    await expect(menu(page).getByRole('menuitem', { name: new RegExp(name) })).toBeVisible()
+  }
+  await menu(page).getByRole('menuitem', { name: /검토/ }).click()
   await expect(panel(page).getByRole('complementary', { name: '검토 메모' })).toBeVisible()
   await expect(panel(page).getByLabel('검토 도구').getByRole('button', { name: /버전 기록/ })).toBeVisible()
   await panel(page).getByRole('button', { name: '검토 메모 닫기' }).click()
-
-  await header(page).getByRole('button', { name: '더보기' }).click()
-  for (const name of ['이 장 다시 만들기', '버전 기록', '이걸로 새로 시작', '새 대화에 첨부']) {
-    await expect(menu(page).getByRole('menuitem', { name: new RegExp(name) })).toBeVisible()
-  }
-  await page.keyboard.press('Escape')
-
-  await header(page).getByRole('button', { name: '편집', exact: true }).click()
-  expect(await tabs(page)).toEqual(['글자', '삽입', '테마', '검토'])
-  await expect(header(page).getByRole('button', { name: '저장' })).toBeVisible()
-  await shot(page, 'deck-editing', viewport(testInfo))
-  await header(page).getByRole('button', { name: '편집 취소' }).click()
-  await panel(page).getByRole('tab', { name: '테마' }).click()
-  await expect(header(page).getByRole('button', { name: '슬라이드 테마 고르기' })).toBeVisible()
-  await expect(header(page).getByRole('button', { name: '강조색 고르기' })).toBeVisible()
-  await shot(page, 'deck-design-tab', viewport(testInfo))
 })
 
 test('slides: a table slide opens its cells to edit, under labels that say which box is which', async ({ page }, testInfo) => {
-  await resultsFixture(page, testInfo)
+  const recorded = await resultsFixture(page, testInfo)
   await open(page, deckSession)
   // The third slide is the table.
-  await panel(page).getByRole('button', { name: '다음 장' }).click()
-  await panel(page).getByRole('button', { name: '다음 장' }).click()
-  await header(page).getByRole('button', { name: '편집', exact: true }).click()
-  await expect(panel(page).getByLabel('슬라이드 텍스트')).toBeVisible()
-  await expect(panel(page).getByText('이 장 편집', { exact: true })).toBeVisible()
+  await panel(page).getByRole('button', { name: '3번 장' }).click()
   // No click on the drawn table is needed to reach its cells.
   await expect(panel(page).getByLabel('1행 1열')).toBeVisible()
   await panel(page).getByLabel('1행 1열').fill('기준(수정)')
-  await expect(panel(page).getByLabel('슬라이드 텍스트')).toHaveValue(/기준\(수정\)/)
+  await expect(header(page).getByText('저장 안 됨')).toBeVisible()
   await shot(page, 'deck-table-edit', viewport(testInfo))
+  await header(page).getByRole('button', { name: '저장' }).click()
+  await expect(header(page).getByText('저장 안 됨')).toHaveCount(0)
+  expect(recorded.unexpected).toEqual([])
 })

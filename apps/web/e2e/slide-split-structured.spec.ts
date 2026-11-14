@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { E2E_ADMIN, signIn, ribbonTab } from './helpers'
+import { E2E_ADMIN, deckEditor, deckPanel, deckThumbs, saveDeck, signIn } from './helpers'
 
 test('긴 표와 차트를 구조를 보존해 두 장으로 나눈다', async ({ page }) => {
   test.setTimeout(90_000)
@@ -27,11 +27,16 @@ test('긴 표와 차트를 구조를 보존해 두 장으로 나눈다', async (
     await page.goto('/artifacts')
     await page.getByRole('tab', { name: /^슬라이드/ }).click()
     await page.locator('button.aspect-video').first().click()
-    await ribbonTab(page, '글자')
+    await deckThumbs(page).first().click()
+  }
+  // the strip over a slide at risk of being cut offers the split; it stays in the browser until 저장
+  const split = async (title: RegExp) => {
+    await deckEditor(page).getByTestId('deck-overflow').getByRole('button', { name: '이 장을 두 장으로 나누기' }).click()
+    await expect(deckPanel(page).getByText(title).first()).toBeVisible({ timeout: 20_000 })
+    await saveDeck(page)
   }
   await open()
-  await page.getByRole('button', { name: '이 장을 두 장으로 나누기' }).click()
-  await expect(page.getByText(/부서별 실행 현황 \(계속\)/).first()).toBeVisible({ timeout: 20_000 })
+  await split(/부서별 실행 현황 \(계속\)/)
 
   let parts = await page.evaluate(async ([admin, artifactId]) => {
     const login = await fetch('/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: admin.email, password: admin.password }) })
@@ -53,8 +58,7 @@ test('긴 표와 차트를 구조를 보존해 두 장으로 나눈다', async (
     await fetch(`/api/artifacts/${artifactId}`, { method: 'PATCH', headers, body: JSON.stringify({ data }) })
   }, [E2E_ADMIN, id] as [typeof E2E_ADMIN, string])
   await open()
-  await page.getByRole('button', { name: '이 장을 두 장으로 나누기' }).click()
-  await expect(page.getByText(/월별 성과 추이 \(계속\)/).first()).toBeVisible({ timeout: 20_000 })
+  await split(/월별 성과 추이 \(계속\)/)
   parts = await page.evaluate(async ([admin, artifactId]) => {
     const login = await fetch('/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: admin.email, password: admin.password }) })
     const auth = await login.json(); const headers = { Authorization: `Bearer ${auth.accessToken ?? auth.access_token}` }

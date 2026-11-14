@@ -916,6 +916,38 @@ def _worksheet(text: str) -> str:
     return "\n".join(out)
 
 
+#: a sentence repeating the context budget's record (`workspace_context._file_report`):
+#: 「전체 8,904자에서 1,165자만 전달된 강…」, 「…자 중 일부입니다」, 「전달되지 않은 부분은…」
+_BUDGET_NOTE = re.compile(
+    r"\d[\d,]{0,9}\s{0,2}자\s{0,2}(?:에서|중)\s{0,2}(?:\d[\d,]{0,9}\s{0,2}자|일부)"
+    r"|(?:전달|제공)되지\s{0,2}않은\s{0,2}(?:부분|내용|대목)"
+    r"|\d[\d,]{0,9}\s{0,2}자만\s{0,2}(?:전달|제공|읽)"
+)
+_SENTENCE = re.compile(r"[^.!?。\n]*(?:[.!?。](?=\s|$)|$)")
+
+
+def strip_budget_notes(text: str) -> str:
+    """`text` minus sentences that repeat the context budget's record (how many characters
+    of a file reached the writer): server bookkeeping, never document content. Table rows,
+    fences and headings are left alone."""
+    if not text or not _BUDGET_NOTE.search(text):
+        return text
+    out: list[str] = []
+    fenced = False
+    for line in text.split("\n"):
+        if line.lstrip().startswith(("```", "~~~")):
+            fenced = not fenced
+        structural = line.lstrip().startswith(("|", "#", "```", "~~~"))
+        if fenced or structural or not _BUDGET_NOTE.search(line):
+            out.append(line)
+            continue
+        kept = "".join(s for s in _SENTENCE.findall(line) if s and not _BUDGET_NOTE.search(s))
+        if kept.strip():
+            out.append(kept.strip())
+    joined = re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip("\n")
+    return joined + ("\n" if text.endswith("\n") else "")
+
+
 def strip_work_notes(text: str, *, request: str = "", document: bool = False) -> str:
     """`text` minus the writer's work notes: plan narration (English or Korean), a worksheet's
     labels and notes, check verdicts, lone 「check」 lines and 「[질문]」 stubs. Headings,
@@ -924,7 +956,7 @@ def strip_work_notes(text: str, *, request: str = "", document: bool = False) ->
     if not text or not text.strip():
         return text
     if document:
-        text = strip_plan_preface(text)
+        text = strip_budget_notes(strip_plan_preface(text))
     korean = _latin_share(request) < 0.5 if request.strip() else _latin_share(text) < 0.5
     asked_check = bool(_ASKED_CHECK.search(request or ""))
     asked_edit = bool(_ASKED_EDIT.search(request or ""))

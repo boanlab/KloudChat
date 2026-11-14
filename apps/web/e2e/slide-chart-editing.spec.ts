@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { E2E_ADMIN, signIn, ribbonTab } from './helpers'
+import { E2E_ADMIN, deckSelect, deckSelection, deckThumbs, saveDeck, signIn } from './helpers'
 
 test('차트의 축·계열·수치를 고치면 차트 레이아웃과 데이터가 함께 저장된다', async ({ page }) => {
   test.setTimeout(90_000)
@@ -28,17 +28,17 @@ test('차트의 축·계열·수치를 고치면 차트 레이아웃과 데이�
   await page.goto('/artifacts')
   await page.getByRole('tab', { name: /^슬라이드/ }).click()
   await page.locator('button.aspect-video').first().click()
-  await ribbonTab(page, '글자')
-  await page.locator('[data-slide-element="chart"]').click()
-  await expect(page.getByText('차트 선택됨')).toBeVisible()
-  await expect(page.getByLabel('차트 종류')).toBeVisible()
-  await page.getByLabel('차트 종류').selectOption('line')
-  await page.getByLabel('차트 단위').fill('%')
-  await page.getByLabel('가로축 항목').fill('상반기, 하반기')
-  await page.getByLabel('1번째 계열 이름').fill('달성률')
-  await page.getByLabel('1번째 계열 값').fill('72, 91')
-  await page.getByRole('button', { name: '저장', exact: true }).click()
-  await expect(page.getByLabel('차트 종류')).toBeHidden({ timeout: 20_000 })
+  // The slide is editable in place; selecting the chart shows its data under the slide.
+  await deckThumbs(page).first().click()
+  await deckSelect(page, 'chart')
+  const chart = deckSelection(page)
+  await expect(chart.getByLabel('차트 종류')).toBeVisible()
+  await chart.getByLabel('차트 종류').selectOption('line')
+  await chart.getByLabel('차트 단위').fill('%')
+  await chart.getByLabel('가로축 항목').fill('상반기, 하반기')
+  await chart.getByLabel('1번째 계열 이름').fill('달성률')
+  await chart.getByLabel('1번째 계열 값').fill('72, 91')
+  await saveDeck(page)
 
   const stored = await page.evaluate(async ([admin, artifactId]) => {
     const login = await fetch('/api/auth/login', {
@@ -66,16 +66,15 @@ test('차트의 축·계열·수치를 고치면 차트 레이아웃과 데이�
   await page.goto('/artifacts')
   await page.getByRole('tab', { name: /^슬라이드/ }).click()
   await page.locator('button.aspect-video').first().click()
-  await ribbonTab(page, '글자')
-  await page.locator('[data-slide-element="table"]').click()
-  await expect(page.getByText('표 선택됨')).toBeVisible()
-  await page.getByLabel('2행 2열').fill('25')
-  await page.getByRole('button', { name: '행 추가' }).click()
-  await page.getByLabel('3행 1열').fill('개선')
-  await page.getByLabel('3행 2열').fill('40')
-  await page.getByRole('button', { name: '3행 위로' }).click()
-  await page.getByRole('button', { name: '저장', exact: true }).click()
-  await expect(page.getByLabel('2행 2열')).toBeHidden({ timeout: 20_000 })
+  await deckThumbs(page).first().click()
+  await deckSelect(page, 'table')
+  const grid = deckSelection(page)
+  await grid.getByLabel('2행 2열').fill('25')
+  await grid.getByRole('button', { name: '행 추가' }).click()
+  await grid.getByLabel('3행 1열').fill('개선')
+  await grid.getByLabel('3행 2열').fill('40')
+  await grid.getByRole('button', { name: '3행 위로' }).click()
+  await saveDeck(page)
 
   const table = await page.evaluate(async ([admin, artifactId]) => {
     const login = await fetch('/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: admin.email, password: admin.password }) })

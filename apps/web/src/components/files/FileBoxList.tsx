@@ -1,12 +1,14 @@
-import { FileImage, FileSpreadsheet, FileText, File as FileIcon, Search } from 'lucide-react'
+import { FileImage, FileSpreadsheet, FileText, File as FileIcon, Loader2, Search } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Input, Tabs } from '@/components/ui'
 import type { FileRow } from '@/lib/api'
-import { relativeTime } from '@/lib/utils'
+import { ocrNote } from '@/lib/ocr'
+import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
 import { fileSize, type FileOrigin } from './fileBox'
+import { RelTime } from '@/components/ui/RelTime'
 
 /** The file's kind at a glance: picture, table, document, other. */
 function FileGlyph({ row }: { row: FileRow }) {
@@ -79,6 +81,24 @@ function FilePlace({ row }: { row: FileRow }) {
   return <span className="truncate">{row.sessionId ? t('지운 대화') : t('대화 밖에서 올림')}</span>
 }
 
+/** How far a scan or a video is read (「읽는 중」), or how it was read; nothing for others. */
+function FileReading({ row }: { row: FileRow }) {
+  const t = useT()
+  const note = ocrNote(row, t)
+  if (!note) return null
+  return (
+    <p
+      data-testid="file-reading"
+      data-media={row.mediaState ?? undefined}
+      data-ocr={row.ocrState ?? undefined}
+      className={cn('flex items-center gap-1 text-xs', note.tone === 'warn' ? 'text-warn' : 'text-faint')}
+    >
+      {note.tone === 'busy' && <Loader2 size={11} className="animate-spin" />}
+      {note.text}
+    </p>
+  )
+}
+
 /** One file: icon, name, size · when · where, and the caller's controls. `onOpen` makes the name open it. */
 export function FileLine({
   row,
@@ -111,9 +131,10 @@ export function FileLine({
         )}
         <p className="flex min-w-0 flex-wrap items-center gap-x-2 text-xs text-faint">
           <span>{fileSize(row.size)}</span>
-          <span>{relativeTime(row.createdAt)}</span>
+          <RelTime iso={row.createdAt} />
           <FilePlace row={row} />
         </p>
+        <FileReading row={row} />
       </div>
       {actions && <div className="flex shrink-0 items-center max-sm:-mt-1 max-sm:basis-full max-sm:justify-end">{actions}</div>}
     </div>
