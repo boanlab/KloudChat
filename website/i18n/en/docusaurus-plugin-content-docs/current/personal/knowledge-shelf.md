@@ -4,7 +4,7 @@ title: Knowledge shelf
 
 # Knowledge shelf
 
-The knowledge shelf is for asking about, summarising and studying a project's sources. Pick sources and get answers from those sources only; click an answer's source number to open the passage it came from. From the same sources you can make a study guide, FAQ, quiz or audio overview in one click.
+The knowledge shelf is for asking about, summarising and studying a project's sources. Pick sources and get answers from those sources only; click an answer's source number to open the passage it came from. From the same sources you can make a study guide, FAQ, quiz or flashcards in one click.
 
 Project sources are treated as internal material. Under your administrator's rule, internal material is read only by models running inside your organisation (strict-local), and the screens show a **strict-local** mark when that applies.
 
@@ -48,7 +48,7 @@ In the project's **Studio** tab, pick the sources to use, then what to make.
 | Timeline | Dated events from the sources in order (dates as the sources write them) |
 | Glossary | Terms the sources use and what they mean |
 | Mind map | The structure of the subject on one diagram |
-| Quiz, flashcards, audio overview | See “Learning tools” below |
+| Quiz, flashcards | See “Learning tools” below |
 
 Before anything is made you see how many sources are read, the model, the tokens read and written, and the expected credits. Models running inside cost no credits. Sources too long to read whole are read in parts spread across them, and you are told which. You can choose the format (web report, Hangul, Word), the language and a focus (e.g. “focus on lectures 5–8”).
 
@@ -59,7 +59,6 @@ Documents cite a source number for each statement; numbers not in the source lis
 - **Quiz**: multiple-choice and short-answer questions with explanations and sources. Answer one at a time, see your score, and use **Only the wrong ones again** and **Shuffle**. Short answers are compared ignoring spaces and punctuation; an answer written differently but right can be marked with **Count it as correct**.
 - **Flashcards**: front-and-back cards. Click a card or press Space to flip it, and review **Only the cards not known yet**.
 - **Export**: CSV (Excel), text for Anki import, and for quizzes a Hangul, Word or web-report quiz sheet (questions, then answers and explanations).
-- **Audio overview**: a script in which a host and a guide talk through the sources (short, standard, long). Speech is made by a speech model running inside when there is one. When only an outside speech model exists, speech is made only if your administrator lets internal material leave, and only after you confirm that the script (personal data masked) is sent out. Otherwise you are told why and get the script alone.
 
 ## Notes
 

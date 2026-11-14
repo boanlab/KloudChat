@@ -1,6 +1,6 @@
 """지식 서가: per-conversation source switches reach retrieval, guides and studio outputs are
 grounded in the picked sources and cite only them, quizzes are checked before they are kept,
-speech never leaves where internal data must stay inside, and notes become sources."""
+and notes become sources."""
 
 from __future__ import annotations
 
@@ -35,7 +35,6 @@ from app.services import (
     shelf_jobs,
     shelf_sources,
     source_selection,
-    studio,
     studio_kinds,
     workspace_context,
 )
@@ -51,8 +50,6 @@ STRICT = {"id": "strict-local/qwen3.8-27b", "label": "27B", "kinds": ["chat"],
           "inputCreditCost": 0, "contextWindow": 131072}
 OUTSIDE = {"id": "openai/gpt-x", "label": "GPT", "kinds": ["chat"], "dataBoundary": "external",
            "strictLocal": False, "creditCost": 2, "inputCreditCost": 1}
-SPEECH = {"id": "openai/gpt-audio", "kinds": ["av"], "dataBoundary": "external",
-          "strictLocal": False, "creditCost": 3, "inputCreditCost": 1}
 
 LECTURE = (
     "# 3강 논리 시계\n\n[페이지 1]\n분산 시스템에는 전역 시계가 없다. "
@@ -107,7 +104,7 @@ async def shelf(monkeypatch, tmp_path):
 
     rules = SimpleNamespace(internal_data_strict_local=True, external_data_guard=True,
                             pii_masking=False)
-    catalogue = {"models": [STRICT, OUTSIDE, SPEECH], "defaultChatModel": OUTSIDE["id"]}
+    catalogue = {"models": [STRICT, OUTSIDE], "defaultChatModel": OUTSIDE["id"]}
     calls: list[dict] = []
     answers: list[str] = []
 
@@ -144,7 +141,6 @@ async def shelf(monkeypatch, tmp_path):
 
     monkeypatch.setattr(shelf_calls, "policy", policy)
     monkeypatch.setattr(shelf_calls.model_service, "list_models_for_egress", models_for_egress)
-    monkeypatch.setattr(studio.model_service, "list_models_for_egress", models_for_egress)
     monkeypatch.setattr(shelf_calls, "complete", complete)
 
     async def no_index(*args, **kwargs):
@@ -378,82 +374,6 @@ async def test_a_quiz_keeps_only_sound_questions_and_exports(shelf):
     assert "① " in artifact.data["sections"][0]["content"]
 
 
-async def test_speech_stays_off_where_internal_data_must_stay_inside(shelf, monkeypatch):
-    monkeypatch.setattr(studio_kinds, "AUDIO_SHORT", 0)
-    shelf.answers.append(json.dumps({"title": "개요", "sections": [
-        {"topic": "시계", "points": ["전역 시계"], "sources": [1]},
-        {"topic": "램포트", "points": ["정수"], "sources": [1]},
-        {"topic": "정리", "points": ["요약"], "sources": [1]}]}, ensure_ascii=False))
-    for lines in (
-        [{"speaker": "A", "text": "오늘은 논리 시계 이야기예요."},
-         {"speaker": "B", "text": "전역 시계가 없어서 순서를 따로 정해야 해요 [1]."}],
-        [{"speaker": "A", "text": "램포트 시계는 어떻게 하나요?"},
-         {"speaker": "B", "text": "**사건마다** 정수를 붙여요."}],
-        [{"speaker": "A", "text": "정리해 볼까요?"}, {"speaker": "B", "text": "네, 좋아요."}],
-    ):
-        shelf.answers.append(json.dumps({"lines": lines}, ensure_ascii=False))
-    started = await shelf.client.post(f"/projects/{shelf.ids.project}/studio", json={
-        "kind": "audio", "sourceIds": [shelf.ids.lecture], "options": {"length": "short"}})
-    await shelf_jobs.drain()
-    item = (await shelf.client.get(f"/studio/{started.json()['id']}")).json()
-    lines = item["content"]["lines"]
-    assert [line["speaker"] for line in lines] == ["A", "B", "A", "B", "A", "B"]
-    # no citations or markdown in what is read aloud
-    assert lines[1]["text"].endswith("정해야 해요.") and "**" not in lines[3]["text"]
-    assert item["speech"]["state"] == "idle"
-    # a later section is told how the conversation so far ends
-    assert "The conversation so far ends with" in shelf.calls[2]["system"]
-
-    refused = await shelf.client.post(f"/studio/{item['id']}/speech", json={"consent": True})
-    assert refused.status_code == 409 and refused.json()["detail"] == "strict_local_no_tts"
-    shelf.rules.internal_data_strict_local = False
-    unconsented = await shelf.client.post(f"/studio/{item['id']}/speech", json={})
-    assert unconsented.json()["detail"] == "speech_consent_required"
-    plan = (await shelf.client.get(f"/projects/{shelf.ids.project}/studio/speech")).json()
-    assert plan["mode"] == "outside" and plan["model"] == SPEECH["id"]
-
-
-async def test_speech_from_two_voices_becomes_one_clip(shelf, monkeypatch):
-    shelf.rules.internal_data_strict_local = False
-    async with shelf.maker() as db:
-        item = StudioItem(user_id="me", project_id=shelf.ids.project, kind="audio",
-                          title="개요", state="done", speech_state="idle",
-                          content={"lines": [{"speaker": "A", "text": "안녕하세요 010-1234-5678"},
-                                             {"speaker": "B", "text": "반갑습니다"}]})
-        db.add(item)
-        await db.commit()
-        item_id = item.id
-    voices: list[tuple[str, str]] = []
-
-    async def speak(**kwargs):
-        voices.append((kwargs["voice"], kwargs["prompt"]))
-        from app.services import audiogen
-
-        return audiogen.GeneratedAudio(audiogen._wav(b"\x01\x00" * 2400), "audio/wav", "wav",
-                                       10, 50, "")
-
-    async def key(user):
-        return "k"
-
-    async def credentials(user):
-        return "http://litellm", "k"
-
-    monkeypatch.setattr(studio.audiogen, "generate", speak)
-    from app.services import litellm as litellm_service
-
-    monkeypatch.setattr(litellm_service, "ensure_key", key)
-    monkeypatch.setattr(litellm_service, "credentials_for", credentials)
-    started = await shelf.client.post(f"/studio/{item_id}/speech", json={"consent": True})
-    assert started.status_code == 202, started.text
-    await shelf_jobs.drain()
-    done = (await shelf.client.get(f"/studio/{item_id}")).json()
-    assert done["speech"]["state"] == "done" and done["audioFileId"]
-    assert [v for v, _ in voices] == ["nova", "onyx"]
-    # an outside speech model gets the script masked for personal data
-    assert "010-1234-5678" not in voices[0][1]
-    assert done["credits"] > 0
-
-
 # ── notes ─────────────────────────────────────────────────────────────
 
 
@@ -630,25 +550,6 @@ def test_a_cited_sentence_needs_its_sources_words_and_figures():
     # a figure the source does not hold
     assert claim_support.support("램포트 시계는 1979년에 나왔다", LECTURE).missing_numbers == (
         "1979",)
-
-
-async def test_a_short_audio_section_is_asked_to_be_longer(shelf, monkeypatch):
-    monkeypatch.setattr(studio_kinds, "AUDIO_SECTIONS", {"short": 1})
-    shelf.answers.append(json.dumps({"title": "개요", "sections": [
-        {"topic": "시계", "points": ["전역 시계"], "sources": [1]}]}, ensure_ascii=False))
-    short = [{"speaker": "A", "text": "시작해요."}, {"speaker": "B", "text": "네."},
-             {"speaker": "A", "text": "끝."}, {"speaker": "B", "text": "네."}]
-    longer = [{"speaker": "A" if i % 2 == 0 else "B",
-               "text": "분산 시스템에는 전역 시계가 없어서 사건마다 정수를 붙여 순서를 정합니다."}
-              for i in range(24)]
-    shelf.answers.extend([json.dumps({"lines": short}, ensure_ascii=False),
-                          json.dumps({"lines": longer}, ensure_ascii=False)])
-    started = await shelf.client.post(f"/projects/{shelf.ids.project}/studio", json={
-        "kind": "audio", "sourceIds": [shelf.ids.lecture], "options": {"length": "short"}})
-    await shelf_jobs.drain()
-    item = (await shelf.client.get(f"/studio/{started.json()['id']}")).json()
-    assert len(item["content"]["lines"]) == 24
-    assert "had only" in shelf.calls[2]["system"]
 
 
 def test_a_glossary_keeps_only_the_sources_own_terms():

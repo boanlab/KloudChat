@@ -35,7 +35,6 @@ DEFAULTS: dict[str, dict[str, str]] = {
     "timeline": dict(_FLASH),
     "glossary": dict(_FLASH),
     "mindmap": dict(_FLASH),
-    "audio": dict(_FLASH),
     "quiz": dict(_FLASH_THINKING),
     "flashcards": dict(_FLASH_THINKING),
     #: source guides: short summaries of one file, many of them; no thinking needed

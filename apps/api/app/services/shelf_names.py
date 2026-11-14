@@ -19,7 +19,6 @@ KINDS: dict[str, dict[str, str]] = {
     "mindmap": {"ko": "마인드맵", "en": "Mind map"},
     "quiz": {"ko": "퀴즈", "en": "Quiz"},
     "flashcards": {"ko": "플래시카드", "en": "Flashcards"},
-    "audio": {"ko": "오디오 개요", "en": "Audio overview"},
 }
 
 

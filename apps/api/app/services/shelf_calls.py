@@ -1,4 +1,4 @@
-"""Model calls of 지식 서가 (guides, studio outputs, quizzes, audio scripts): which model may
+"""Model calls of 지식 서가 (guides, studio outputs, quizzes): which model may
 read the project's sources, the call itself, and its bill.
 
 Project sources are internal material. While the administrator keeps internal data on

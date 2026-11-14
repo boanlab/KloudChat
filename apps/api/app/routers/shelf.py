@@ -1,5 +1,5 @@
 """지식 서가: a project's sources with their guides and per-conversation switches, the source
-viewer's passage lookup, the studio (outputs, quizzes, flashcards, audio overviews) and the
+viewer's passage lookup, the studio (outputs, quizzes, flashcards) and the
 project's notes (메모함)."""
 
 from __future__ import annotations
@@ -86,7 +86,7 @@ async def _index(db: DbSession, user: User, project: Project, stored: StoredFile
 @router.get("/projects/{project_id}/shelf")
 async def shelf(project_id: str, user: CurrentUser, db: DbSession) -> dict[str, Any]:
     """The project's sources with their kind, digest and guide state, and what this account
-    may do with them (strict-local rule, speech)."""
+    may do with them (the strict-local rule)."""
     project = await _project(db, user, project_id)
     files = await source_guides.project_files(db, project.id, user.id)
     notes = await _note_files(db, project.id)
@@ -237,7 +237,7 @@ async def store_selection(session_id: str, payload: Selection, user: CurrentUser
 # ── studio ────────────────────────────────────────────────────────────
 
 Kind = Literal["study_guide", "faq", "briefing", "timeline", "glossary", "mindmap", "quiz",
-               "flashcards", "audio"]
+               "flashcards"]
 
 
 class StudioRequest(Wire):
@@ -349,33 +349,6 @@ async def studio_sheet(item_id: str, payload: SheetRequest, user: CurrentUser, d
     except shelf_calls.ShelfError as exc:
         raise _refused(exc) from exc
     return {"sessionId": session_id, "artifactId": artifact_id}
-
-
-class SpeechRequest(Wire):
-    #: the person agreed that the script goes to an outside speech model
-    consent: bool = False
-
-
-@router.post("/studio/{item_id}/speech", status_code=status.HTTP_202_ACCEPTED)
-async def studio_speech(item_id: str, payload: SpeechRequest, user: CurrentUser,
-                        db: DbSession):
-    """Speech for an audio overview's script; outside models only with consent and only
-    where internal data may leave."""
-    item = await _item(db, user, item_id)
-    try:
-        return studio.wire(await studio.start_speech(db, user, item, consent=payload.consent))
-    except shelf_calls.ShelfError as exc:
-        raise _refused(exc) from exc
-
-
-@router.get("/projects/{project_id}/studio/speech")
-async def studio_speech_plan(project_id: str, user: CurrentUser, db: DbSession,
-                             length: str = "standard"):
-    await _project(db, user, project_id)
-    try:
-        return await studio.speech_plan(user, {"length": length})
-    except shelf_calls.ShelfError as exc:
-        raise _refused(exc) from exc
 
 
 # ── notes ─────────────────────────────────────────────────────────────

@@ -2909,13 +2909,13 @@ reasoning off), the vLLM template switch for self-hosted ones (`enable_thinking`
 `thinking` for DeepSeek). A table model that is not served, not allowed, too small for the
 conversation, without tools a class needs or without vision for pictures falls back along a
 short list, then to the surface default. Defaults come from the 2026-11-13 evaluation (31
-scenarios, judged blind by Sonnet and Opus separately):
+scenarios, judged blind by Sonnet and Opus separately), with hard classes moved to DeepSeek
+V4.1 Flash at high effort by the owner's decision of 2026-11-14:
 
 | Class | `super` | `super_strict` | Effort | Why |
 |---|---|---|---|---|
 | simple, chat, transform | Qwen3.8 Flash | strict Flash | none | Flash matched every larger model (8.5/8.2 of 10) |
-| calc, code, long, reasoning | Qwen3.8 Flash | strict Flash | high | thinking Flash 8.3–8.5 vs 2–6 without; free |
-| current | DeepSeek V4.1 Flash | strict Flash (no search) | none | searches and cites best (8.7 vs Flash 6.3) |
+| calc, code, long, reasoning, current | DeepSeek V4.1 Flash | strict Flash (no search for current) | high | hard turns: thinking Flash matched (8.3–8.5) but sometimes left nothing; DeepSeek searches and cites best (8.7 vs Flash 6.3) |
 | document | Qwen3.8 27B | strict 27B | default | 6.0 free vs GLM-5.3 6.7 at ~800 credits |
 | escalation | DeepSeek V4.1 Flash | strict Flash | high | never empty; 9/10 where thinking Flash left nothing |
 
@@ -3272,7 +3272,7 @@ the best sentence), its page from `[페이지 n]` marks and, for a transcript, i
 
 **Studio and notes.** `studio_items` are one-click outputs grounded in the sources the person
 picks: documents (study guide, FAQ, briefing, timeline, glossary, mind map), quiz and
-flashcard sets, and two-voice audio overview scripts. `studio.start` writes a `running` row
+flashcard sets; the studio writes text only and makes no audio. `studio.start` writes a `running` row
 and returns; the work runs on its own DB session (`shelf_jobs.spawn`; a row older than 20
 minutes in `running` reads as failed). The sources are numbered `[n] name` within the
 writer's window (`shelf_sources.bundle`: small ones whole, long ones read in windows spread
@@ -3289,10 +3289,7 @@ up to two letters of particle or ending), and its fluency (the writer and the gu
 each give a verdict per sentence; a verdict naming the sources' own wording is ignored).
 What fails goes back to the writer once, in one call, with its problem and its cited
 passages; what still fails is mended in code (a script slip) or dropped (an unbacked or
-garbled sentence, or an item left without its question or answer). An audio overview is
-planned in sections (3, 5 or 7 by length), each written to its share of the length (asked
-50% long, as writers fall short) and asked once to be longer when it lands under 80%; each
-line keeps its section's sources, and the explainer's lines are grounded against them.
+garbled sentence, or an item left without its question or answer).
 Guide questions are kept only when the writer and the guide model both find every part of
 the answer in the question's best passages. Documents are saved as a report artifact
 (or an HWP/Word file through `report_office`) in a conversation of their own, so they open,
@@ -3317,11 +3314,9 @@ model only (`shelf_calls.route`; asking for another is refused with
 `internal_data_requires_strict_local`); otherwise an outside pick sees the text masked for
 personal data. Every call is a side call billed
 at the full rate with no cache discount, or a zero-credit token row on a self-hosted model;
-`POST /projects/{id}/studio/estimate` shows tokens and credits before anything runs. Speech
-for an audio overview uses a strict-local speech model when the catalogue lists one; the
-only speech models on the current LLM stack are outside ones (`gpt-audio`), so speech is
-offered only where internal data may leave, after the person consents to the script
-(masked) going out; otherwise the script alone, with the reason.
+`POST /projects/{id}/studio/estimate` shows tokens and credits before anything runs.
+Audio and video reach the shelf only as input, turned into text (transcripts, frame reading,
+OCR); nothing is spoken back.
 
 ---
 

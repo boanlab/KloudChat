@@ -56,17 +56,9 @@ export interface StudioRequest {
     language?: 'auto' | 'ko' | 'en'
     format?: 'web' | 'hwp' | 'docx'
     count?: number
-    length?: 'short' | 'standard' | 'long'
     focus?: string
     model?: string
   }
-}
-
-export interface SpeechPlan {
-  mode: 'local' | 'outside' | 'none'
-  model?: string
-  credits?: number
-  reason?: 'no_speech_model' | 'strict_local_no_tts'
 }
 
 export interface StudioEstimate {
@@ -83,7 +75,6 @@ export interface StudioEstimate {
   outputTokens: number
   credits: number
   maxCredits: number
-  speech?: SpeechPlan
 }
 
 export interface NumberedSource {
@@ -121,7 +112,6 @@ export interface StudioContent {
   sections?: { id: string; heading: string; content: string }[]
   questions?: QuizQuestion[]
   cards?: Flashcard[]
-  lines?: { speaker: 'A' | 'B'; text: string }[]
 }
 
 export interface StudioItem {
@@ -136,8 +126,6 @@ export interface StudioItem {
   content: StudioContent | null
   artifactId: string | null
   sessionId: string | null
-  audioFileId: string | null
-  speech: { state: '' | 'idle' | 'running' | 'done' | 'failed'; done: number; total: number } | null
   model: string
   credits: number
   inputTokens: number

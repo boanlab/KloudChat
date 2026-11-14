@@ -6,7 +6,7 @@ import type { StudioEstimate, StudioRequest } from '@/lib/shelf'
 import { STUDIO_KINDS, type StudioKind } from '@/lib/shelfNames'
 import { useT } from '@/lib/useT'
 import { formatTokens } from '@/lib/utils'
-import { shelfFailure, speechNote } from './failures'
+import { shelfFailure } from './failures'
 
 const DOCUMENT_FORMATS: { id: 'web' | 'hwp' | 'docx'; label: string }[] = [
   { id: 'web', label: '웹 보고서' },
@@ -39,7 +39,7 @@ export function StudioDialog({
 
   useEffect(() => {
     if (!kind) return
-    setOptions(kind === 'quiz' ? { count: 10 } : kind === 'flashcards' ? { count: 15 } : kind === 'audio' ? { length: 'standard' } : { format: 'web' })
+    setOptions(kind === 'quiz' ? { count: 10 } : kind === 'flashcards' ? { count: 15 } : { format: 'web' })
   }, [kind])
 
   const request = kind ? { kind, sourceIds, options } : null
@@ -118,15 +118,6 @@ export function StudioDialog({
             />
           </Field>
         )}
-        {kind === 'audio' && (
-          <Field label={t('길이')}>
-            <Select value={options.length ?? 'standard'} onChange={(e) => set({ length: e.target.value as 'short' | 'standard' | 'long' })}>
-              <option value="short">{t('짧게 (약 5분)')}</option>
-              <option value="standard">{t('보통 (약 10분)')}</option>
-              <option value="long">{t('길게 (약 15분)')}</option>
-            </Select>
-          </Field>
-        )}
         <Field label={t('언어')}>
           <Select value={options.language ?? 'auto'} onChange={(e) => set({ language: e.target.value as 'auto' | 'ko' | 'en' })}>
             <option value="auto">{t('자료의 언어로')}</option>
@@ -181,7 +172,6 @@ export function StudioDialog({
                 {t('분량이 커서 다음 자료는 고르게 일부만 읽습니다: {names}').replace('{names}', estimate.partial.join(', '))}
               </p>
             )}
-            {kind === 'audio' && <p className="text-muted">{speechNote(estimate.speech, t)}</p>}
           </div>
         )}
         {error && <p role="alert" className="text-danger">{error}</p>}

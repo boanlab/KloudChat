@@ -22,7 +22,6 @@ export type StudioKind =
   | 'mindmap'
   | 'quiz'
   | 'flashcards'
-  | 'audio'
 
 /** Studio outputs by kind: name and one-line description (Korean source strings). */
 export const STUDIO_KINDS: Record<StudioKind, { name: string; about: string }> = {
@@ -34,11 +33,10 @@ export const STUDIO_KINDS: Record<StudioKind, { name: string; about: string }> =
   mindmap: { name: '마인드맵', about: '주제의 구조를 한 장의 도식으로' },
   quiz: { name: '퀴즈', about: '객관식·단답형, 해설과 출처 포함' },
   flashcards: { name: '플래시카드', about: '앞면·뒷면 카드로 외우기' },
-  audio: { name: '오디오 개요', about: '두 사람이 대화하듯 설명하는 대본과 음성' },
 }
 
 export const DOCUMENT_KINDS: StudioKind[] = ['study_guide', 'faq', 'briefing', 'timeline', 'glossary', 'mindmap']
-export const LEARNING_KINDS: StudioKind[] = ['quiz', 'flashcards', 'audio']
+export const LEARNING_KINDS: StudioKind[] = ['quiz', 'flashcards']
 
 /** Fills `{shelf}`, `{studio}`, `{notes}`, `{guide}`, `{sources}` with the translated names. */
 export function withNames(text: string, t: (s: string) => string): string {

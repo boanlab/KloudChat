@@ -86,8 +86,8 @@ class ProjectNote(SQLModel, table=True):
 
 
 class StudioItem(SQLModel, table=True):
-    """One studio output of a project: a document (saved as an artifact too), a quiz or
-    flashcard set, or an audio overview script (and its speech)."""
+    """One studio output of a project: a document (saved as an artifact too), or a quiz or
+    flashcard set."""
 
     __tablename__ = "studio_items"
     __table_args__ = (Index("ix_studio_items_project_created", "project_id", "created_at"),)
@@ -95,23 +95,18 @@ class StudioItem(SQLModel, table=True):
     id: str = Field(default_factory=_uuid, primary_key=True)
     user_id: str = Field(foreign_key="users.id", index=True)
     project_id: str = Field(max_length=32)
-    #: study_guide | faq | briefing | timeline | glossary | mindmap | quiz | flashcards | audio
+    #: study_guide | faq | briefing | timeline | glossary | mindmap | quiz | flashcards
     kind: str = Field(max_length=20)
     title: str = Field(default="", max_length=200)
     #: running | done | failed
     state: str = Field(default="running", max_length=12)
-    #: speech: idle | running | done | failed (audio overviews only)
-    speech_state: str = Field(default="", max_length=12)
-    speech_done: int = Field(default=0)
-    speech_total: int = Field(default=0)
     source_ids: list | None = Field(default=None, sa_column=_json(nullable=True))
-    #: the request's options (language, format, count, length, model)
+    #: the request's options (language, format, count, model, focus)
     options: dict | None = Field(default=None, sa_column=_json(nullable=True))
     #: the output (`services/studio.py` shapes per kind) and its numbered sources
     content: dict | None = Field(default=None, sa_column=_json(nullable=True))
     artifact_id: str | None = Field(default=None, max_length=32)
     session_id: str | None = Field(default=None, max_length=32)
-    audio_file_id: str | None = Field(default=None, max_length=32)
     model: str = Field(default="", max_length=120)
     credits: int = Field(default=0)
     input_tokens: int = Field(default=0)

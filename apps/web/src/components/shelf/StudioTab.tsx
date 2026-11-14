@@ -1,5 +1,5 @@
 import {
-  BookOpenCheck, CalendarRange, FileQuestion, FileText, GalleryVerticalEnd, Headphones,
+  BookOpenCheck, CalendarRange, FileQuestion, FileText, GalleryVerticalEnd,
   ListChecks, Loader2, MoreHorizontal, Network, RefreshCw, ShieldCheck, SpellCheck, Trash2,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -10,7 +10,6 @@ import { poll, type ShelfSource, type StudioItem } from '@/lib/shelf'
 import { DOCUMENT_KINDS, LEARNING_KINDS, SHELF_NAMES, STUDIO_KINDS, withNames, type StudioKind } from '@/lib/shelfNames'
 import { useT } from '@/lib/useT'
 import { relativeTime } from '@/lib/utils'
-import { AudioOverview } from './AudioOverview'
 import { FlashcardPlayer } from './FlashcardPlayer'
 import { QuizPlayer } from './QuizPlayer'
 import { shelfFailure } from './failures'
@@ -27,12 +26,11 @@ const ICONS: Record<StudioKind, typeof FileText> = {
   mindmap: Network,
   quiz: ListChecks,
   flashcards: GalleryVerticalEnd,
-  audio: Headphones,
 }
 
 /**
  * A project's 스튜디오: pick the sources, then one click for a study guide, FAQ, briefing,
- * timeline, glossary, mind map, quiz, flashcards or audio overview, each grounded in those
+ * timeline, glossary, mind map, quiz or flashcards, each grounded in those
  * sources with citations. Outputs list below; documents open in the document panel.
  */
 export function StudioTab({ projectId }: { projectId: string }) {
@@ -113,7 +111,7 @@ export function StudioTab({ projectId }: { projectId: string }) {
       <div className="rounded-card border border-dashed border-line-strong px-4 py-3">
         <p className="text-base font-medium">{t(SHELF_NAMES.studio)}</p>
         <p className="text-sm text-muted">
-          {withNames(t('고른 자료만으로 정리 문서·퀴즈·오디오 개요를 만듭니다. 문장마다 어느 자료에서 왔는지 번호로 남기고, 번호를 누르면 원문 대목이 열립니다.'), t)}
+          {withNames(t('고른 자료만으로 정리 문서·퀴즈·플래시카드를 만듭니다. 문장마다 어느 자료에서 왔는지 번호로 남기고, 번호를 누르면 원문 대목이 열립니다.'), t)}
         </p>
         {strict && (
           <p className="mt-1 flex items-center gap-1.5 text-xs text-muted">
@@ -136,7 +134,7 @@ export function StudioTab({ projectId }: { projectId: string }) {
               {cards(DOCUMENT_KINDS)}
             </div>
             <div className="space-y-2">
-              <p className="text-sm font-medium text-muted">{t('학습·오디오')}</p>
+              <p className="text-sm font-medium text-muted">{t('학습')}</p>
               {cards(LEARNING_KINDS)}
             </div>
           </>
@@ -204,7 +202,6 @@ export function StudioTab({ projectId }: { projectId: string }) {
       {open && DOCUMENT_KINDS.includes(open.kind) && <StudioReader item={open} onClose={() => setOpen(null)} />}
       {open?.kind === 'quiz' && <QuizPlayer item={open} onClose={() => setOpen(null)} />}
       {open?.kind === 'flashcards' && <FlashcardPlayer item={open} onClose={() => setOpen(null)} />}
-      {open?.kind === 'audio' && <AudioOverview item={open} onClose={() => { setOpen(null); void loadItems() }} />}
       <ConfirmDialog
         open={!!removing}
         onClose={() => setRemoving(null)}

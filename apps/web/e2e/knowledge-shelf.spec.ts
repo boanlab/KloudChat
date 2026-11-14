@@ -42,8 +42,8 @@ const ANSWER = [
 
 const QUIZ = {
   id: 'q1', projectId, kind: 'quiz', title: '시계와 합의 퀴즈', state: 'done', error: '',
-  sourceIds: ['f1', 'f2'], options: { count: 2 }, artifactId: null, sessionId: null, audioFileId: null,
-  speech: null, model: 'strict-local/qwen3.8-27b', credits: 0, inputTokens: 900, outputTokens: 300,
+  sourceIds: ['f1', 'f2'], options: { count: 2 }, artifactId: null, sessionId: null,
+  model: 'strict-local/qwen3.8-27b', credits: 0, inputTokens: 900, outputTokens: 300,
   createdAt: at, updatedAt: at,
   content: {
     language: 'ko', partial: [], strict: true,
@@ -143,9 +143,6 @@ async function fixture(page: Page, info: TestInfo, opts: { strict?: boolean } = 
       writes.push({ method, path, data: body() })
       studio = [{ ...QUIZ, state: 'running', content: null }]
       return json(studio[0], 202)
-    }
-    if (method === 'GET' && path === `/projects/${projectId}/studio/speech`) {
-      return json({ mode: 'none', reason: 'strict_local_no_tts' })
     }
     if (method === 'GET' && path === `/projects/${projectId}/notes`) return json(notes)
     if (method === 'POST' && path === `/projects/${projectId}/notes`) {
@@ -292,12 +289,12 @@ test('a note edit that lost the race offers both versions, and a note becomes a 
   expect(state.unexpected).toEqual([])
 })
 
-test('an audio overview in a strict-local project offers the script and says why there is no speech', async ({ page }, info) => {
+test('the studio makes text only: no audio overview is offered', async ({ page }, info) => {
   const state = await fixture(page, info)
   await page.goto(`/projects/${projectId}`)
   await page.getByRole('tab', { name: '스튜디오' }).click()
-  await page.locator('[data-studio-kind="audio"]').click()
-  await expect(page.getByTestId('studio-estimate')).toContainText('크레딧 없음')
+  await expect(page.locator('[data-studio-kind="flashcards"]')).toBeVisible()
+  await expect(page.locator('[data-studio-kind="audio"]')).toHaveCount(0)
   expect(state.unexpected).toEqual([])
 })
 

@@ -43,15 +43,12 @@ FIELDS: dict[str, tuple[tuple[str | None, str, str], ...]] = {
     "glossary": (("terms", "term", "label"), ("terms", "definition", "prose")),
     "quiz": (("questions", "question", "stem"), ("questions", "explanation", "prose")),
     "flashcards": (("cards", "front", "stem"), ("cards", "back", "prose")),
-    "audio": (("lines", "text", "prose"),),
     "mindmap": (),
 }
 #: the field an item cannot lose; an item whose field is emptied is dropped
 _MAIN = {("items", "q"), ("items", "a"), ("events", "what"), ("people", "role"),
          ("terms", "definition"), ("questions", "question"), ("questions", "explanation"),
-         ("cards", "front"), ("cards", "back"), ("lines", "text")}
-#: content words a spoken line needs before its grounding is judged (talk carries few)
-_SPOKEN_WORDS = 4
+         ("cards", "front"), ("cards", "back")}
 
 
 @dataclass(slots=True)
@@ -210,11 +207,6 @@ def unbacked(unit: Unit, by_number: dict[int, str]) -> str:
     if unit.role != "prose" or not cites:
         return ""
     found = claim_support.support(unit.text, "\n".join(by_number[n] for n in cites))
-    if unit.group == "lines" and (
-            unit.holder.get("speaker") == "A" or unit.text.rstrip().endswith("?")
-            or found.words < _SPOKEN_WORDS) and not found.missing_numbers:
-        # the host's questions and links, and short talk, carry no claim of their own
-        return ""
     if found.missing_numbers:
         return "the cited sources do not contain the figures " + ", ".join(found.missing_numbers)
     if not found.backed:

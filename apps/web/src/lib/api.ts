@@ -59,7 +59,7 @@ import { currentLang, currentLocale, translate } from './i18n'
 import { setServiceTimeZone } from './serviceTime'
 import { isMediaFile, maxMediaMb, mediaReading, overMediaLimit, overUploadLimit, tooLargeMessage } from './uploadLimit'
 import type { ContextQuery, ContextUsage } from './contextGauge'
-import type { Located, Note, ShelfListing, SourceGuide, SpeechPlan, StudioEstimate, StudioItem, StudioRequest } from './shelf'
+import type { Located, Note, ShelfListing, SourceGuide, StudioEstimate, StudioItem, StudioRequest } from './shelf'
 
 export const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
 
@@ -3666,10 +3666,6 @@ export const shelfApi = {
   exportSet: (id: string, format: 'csv' | 'anki') => authedText(`/studio/${id}/export?format=${format}`),
   sheet: (id: string, format: 'web' | 'hwp' | 'docx') =>
     call<{ sessionId: string; artifactId: string }>(`/studio/${id}/sheet`, body({ format })),
-  speech: (id: string, consent: boolean) =>
-    call<StudioItem>(`/studio/${id}/speech`, body({ consent })),
-  speechPlan: (projectId: string, length: string) =>
-    call<SpeechPlan>(`/projects/${projectId}/studio/speech?length=${length}`),
   notes: (projectId: string) => call<Note[]>(`/projects/${projectId}/notes`),
   addNote: (projectId: string, note: { title?: string; body: string; origin?: 'manual' | 'answer' | 'selection'; sessionId?: string | null; messageId?: string | null }) =>
     call<Note>(`/projects/${projectId}/notes`, body(note)),

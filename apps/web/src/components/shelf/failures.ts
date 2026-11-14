@@ -1,5 +1,3 @@
-import type { StudioEstimate } from '@/lib/shelf'
-
 /** Why a guide could not be made, in words. */
 export function shelfFailure(code: string | undefined, t: (s: string) => string): string {
   switch (code) {
@@ -17,19 +15,4 @@ export function shelfFailure(code: string | undefined, t: (s: string) => string)
     default:
       return t('만들지 못했습니다. 다시 시도하세요.')
   }
-}
-
-/** Speech in words, by the plan the server gives. */
-export function speechNote(plan: StudioEstimate['speech'], t: (s: string) => string): string {
-  if (!plan) return ''
-  if (plan.mode === 'local') return t('음성은 안에서 돌아가는 음성 모델로 만듭니다.')
-  if (plan.mode === 'outside') {
-    return t('음성은 바깥 음성 모델({model})로 만듭니다. 대본(개인정보는 가림)이 바깥으로 나가므로 만들기 전에 한 번 더 묻습니다. 약 {n} 크레딧.')
-      .replace('{model}', plan.model ?? '')
-      .replace('{n}', String(plan.credits ?? 0))
-  }
-  if (plan.reason === 'strict_local_no_tts') {
-    return t('이 프로젝트 자료는 안에서만 다루도록 정해져 있고, 안에서 돌아가는 음성 모델이 없어 대본만 만듭니다.')
-  }
-  return t('쓸 수 있는 음성 모델이 없어 대본만 만듭니다.')
 }
