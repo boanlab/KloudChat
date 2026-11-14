@@ -109,7 +109,8 @@ class ContextFile:
     """How much of a file reached the model."""
 
     name: str
-    #: included | truncated | omitted | unreadable | picture | picture_unseen | reading.
+    #: included | truncated | omitted | unreadable | picture | picture_unseen | reading |
+    #: watching (a video's media job).
     state: str
     kept_chars: int
     total_chars: int
@@ -515,7 +516,7 @@ async def _project_knowledge(
         chosen = picked.get(stored.id, [])
         if chosen:
             excerpt = "\n\n".join(f"[{p.index}번째 조각]\n{p.text}" for p in chosen)
-            parts.append(f"## {stored.name}\n{excerpt}")
+            parts.append(f"## {stored.name}{_video_note(stored)}\n{excerpt}")
         kept = len(entry) + sum(len(p.text) for p in chosen)
         if not kept:
             # past the names the list could carry
@@ -596,6 +597,19 @@ def file_budget(model: dict | None) -> int:
     return max(floor, min(int(window * _FILE_WINDOW_SHARE * _CHARS_PER_TOKEN), _FILE_BUDGET_CAP))
 
 
+#: under a video's heading: the time-coded document is cited by its marks (the web turns a
+#: mark into a chip that opens the player there)
+VIDEO_NOTE = (
+    "\n(A video, written out by time: (말) is what was said, (화면) what was shown. When you "
+    "use it, write the time mark of that moment after the claim, e.g. 「… [00:12:30]」; with "
+    "several videos, name the file before the mark.)"
+)
+
+
+def _video_note(stored: StoredFile) -> str:
+    return VIDEO_NOTE if stored.media_state == "done" else ""
+
+
 def _knowledge_block(
     files: list[StoredFile], header: str, focus: str = "", budget: int | None = None
 ) -> tuple[str, list[ContextFile]]:
@@ -622,7 +636,7 @@ def _knowledge_block(
             kept = budget
             text = _excerpt(stored.text, budget, focus) + f"\n…(전체 {total:,}자 중 일부입니다)"
         budget -= len(text)
-        parts.append(f"## {stored.name}\n{text}")
+        parts.append(f"## {stored.name}{_video_note(stored)}\n{text}")
         used.append(
             ContextFile(
                 stored.name,
@@ -1029,6 +1043,12 @@ def _file_report(
                 "아직 읽지 않은 쪽의 내용은 알 수 없으므로 지어내지 말고, 다 읽은 뒤 "
                 "다시 물어 달라고 안내하라."
             )
+        elif file.state == "watching":
+            progress = (f" ({file.pages_done}/{file.pages_total})" if file.pages_total else "")
+            lines.append(
+                f"- {name} — 영상의 말과 화면을 옮기는 중{progress}. 아직 옮기지 않은 내용은 "
+                "알 수 없으므로 지어내지 말고, 다 옮긴 뒤 다시 물어 달라고 안내하라."
+            )
         elif file.state == "picture_unseen":
             lines.append(
                 f"- {name} — 그림이며 파일은 온전하나, 지금 모델은 그림을 "
@@ -1193,12 +1213,16 @@ async def assemble(
         def being_read(stored) -> bool:
             return stored.ocr_state in ("queued", "running")
 
+        def being_watched(stored) -> bool:
+            return stored.media_state in ("queued", "running")
+
         # OCR'd pictures sent as both: text for privacy checks, image for the rest.
         readable = [stored for stored in ordered if stored.text]
         unreadable = [
             stored
             for stored in ordered
             if not stored.text and not is_picture(stored) and not being_read(stored)
+            and not being_watched(stored)
         ]
         attached, used = _knowledge_block(
             readable, header="# 이번 요청에 첨부된 파일", focus=focus, budget=file_budget
@@ -1207,6 +1231,9 @@ async def assemble(
         spent = iter(used)
 
         def _fate(stored) -> ContextFile:
+            if being_watched(stored):
+                return ContextFile(stored.name, "watching", 0, 0, pages_done=stored.media_done,
+                                   pages_total=stored.media_total)
             if being_read(stored):
                 kept = next(spent) if stored.text else None
                 return ContextFile(

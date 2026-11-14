@@ -74,4 +74,6 @@ async def test_config_tells_the_screens_the_limit(monkeypatch):
 
     body = await auth.auth_config(db=None)
 
-    assert body["upload"] == {"maxMb": 75}
+    assert body["upload"]["maxMb"] == 75
+    # audio/video have their own, larger limit (they go up in pieces)
+    assert body["upload"]["maxMediaMb"] == max(75, auth.settings.max_video_upload_mb)

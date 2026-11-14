@@ -25,6 +25,8 @@ import { currentLang } from '@/lib/i18n'
 import { PROJECT_EMOJIS, kindMeta, kindOrder } from '@/lib/kinds'
 import { memoryTypeLabel } from '@/lib/memoryTypes'
 import { cn, formatTokens, relativeTime } from '@/lib/utils'
+import { MediaDialog } from '@/components/files/MediaPlayer'
+import { mediaPreflight } from '@/lib/media'
 import { isReading, ocrNote, useOcrProgress } from '@/lib/ocr'
 import {
   MemoryEditor,
@@ -117,6 +119,10 @@ export function ProjectDetailPage() {
   } | null>(null)
   const [memoryDraft, setMemoryDraft] = useState<MemoryEntry | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<{ name: string; sent: number; total: number } | null>(null)
+  const [mediaNotes, setMediaNotes] = useState<string[]>([])
+  /** The video file open in the player. */
+  const [playing, setPlaying] = useState<{ id: string; name: string } | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
   const [urlOpen, setUrlOpen] = useState(false)
   const [urlError, setUrlError] = useState<string | null>(null)
@@ -219,14 +225,29 @@ export function ProjectDetailPage() {
     setFileError(problems.length ? problems.join(' ') : null)
     if (!readable.length) return
     setUploading(true)
+    const notes: string[] = []
     try {
       for (const file of readable) {
-        await uploadFile(file, { projectId: project.id }).catch((err) => {
+        // a long video says what reading it takes before it goes up; one that cannot be read stays
+        const { note, refusal } = await mediaPreflight(file, t).catch(() => ({ note: null, refusal: null }))
+        if (refusal) {
+          problems.push(`${file.name}: ${refusal}`)
+          continue
+        }
+        if (note) notes.push(note)
+        setMediaNotes([...notes])
+        await uploadFile(file, {
+          projectId: project.id,
+          onProgress: (sent, total) => setUploadProgress({ name: file.name, sent, total }),
+        }).catch((err) => {
           problems.push(`${file.name}: ${errorMessage(err, t('올리지 못했습니다.'))}`)
         })
+        setUploadProgress(null)
       }
     } finally {
       setUploading(false)
+      setUploadProgress(null)
+      setMediaNotes([])
       setFileError(problems.length ? problems.join(' ') : null)
     }
   }
@@ -748,6 +769,21 @@ export function ProjectDetailPage() {
                   </Button>
                 </div>
               </div>
+              {uploading && uploadProgress && uploadProgress.total > 0 && (
+                <div data-testid="upload-progress" className="space-y-1 text-xs text-faint">
+                  <p>
+                    {t('{name} 올리는 중 {percent}%')
+                      .replace('{name}', uploadProgress.name)
+                      .replace('{percent}', String(Math.floor((uploadProgress.sent / uploadProgress.total) * 100)))}
+                  </p>
+                  <div className="h-1 overflow-hidden rounded bg-elevated">
+                    <div className="h-full bg-accent" style={{ width: `${(uploadProgress.sent / uploadProgress.total) * 100}%` }} />
+                  </div>
+                </div>
+              )}
+              {uploading && mediaNotes.map((note) => (
+                <p key={note} role="status" data-testid="media-estimate" className="text-xs text-muted">{note}</p>
+              ))}
               {project.files.length > 0 && (
                 <Card className="px-4 py-3" data-testid="project-guide">
                   <button
@@ -782,8 +818,10 @@ export function ProjectDetailPage() {
                     {f.sourceUrl ? <Link2 size={15} className="shrink-0 text-accent" /> : <FileText size={15} className="shrink-0 text-faint" />}
                     <span className="min-w-0 flex-1">
                       <button
-                        onClick={() => f.sourceUrl ? window.open(f.sourceUrl, '_blank', 'noopener,noreferrer') : void openFile(f.id, f.name)}
-                        title={t('원본 파일을 내려받습니다')}
+                        onClick={() => f.sourceUrl
+                          ? window.open(f.sourceUrl, '_blank', 'noopener,noreferrer')
+                          : f.mediaState ? setPlaying(f) : void openFile(f.id, f.name)}
+                        title={f.mediaState ? t('영상을 엽니다') : t('원본 파일을 내려받습니다')}
                         className="block max-w-full truncate text-left text-base text-accent hover:underline"
                       >
                         {f.name}
@@ -801,6 +839,7 @@ export function ProjectDetailPage() {
                         return reading ? (
                           <span
                             data-ocr={f.ocrState ?? undefined}
+                            data-media={f.mediaState ?? undefined}
                             className={cn(
                               'flex items-center gap-1 text-xs',
                               reading.tone === 'warn' ? 'text-warn' : 'text-faint',
@@ -1036,6 +1075,7 @@ export function ProjectDetailPage() {
         onClose={() => setMemoryDraft(null)}
         lockScope
       />
+      {playing && <MediaDialog fileId={playing.id} name={playing.name} onClose={() => setPlaying(null)} />}
     </>
   )
 }

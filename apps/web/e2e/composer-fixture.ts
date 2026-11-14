@@ -104,6 +104,7 @@ export async function composerFixture(
     extraAgents = [],
     files = [],
     kinds = ['chat', 'report', 'slides', 'image', 'av'],
+    reply = answer,
   }: {
     skills?: boolean
     agents?: boolean
@@ -113,6 +114,8 @@ export async function composerFixture(
     files?: Record<string, unknown>[]
     /** Enabled surfaces (`/auth/config`), read on every request: a test may change them mid-way. */
     kinds?: string[]
+    /** The stored answer in the fixture conversation. */
+    reply?: string
   } = {},
 ) {
   const origin = new URL(String(testInfo.project.use.baseURL)).origin
@@ -126,7 +129,7 @@ export async function composerFixture(
   const rows = new Map<string, Record<string, unknown>>()
   rows.set(chatId, sessionRow(chatId, 'chat', [
     { id: 'm0000000000000000000000000000001', role: 'user', content: question, attachments: [], createdAt: at },
-    { id: 'm0000000000000000000000000000002', role: 'assistant', content: answer, attachments: [],
+    { id: 'm0000000000000000000000000000002', role: 'assistant', content: reply, attachments: [],
       model: 'fixture/model', createdAt: at },
   ]))
   let next = 2

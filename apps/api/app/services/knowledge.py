@@ -29,18 +29,44 @@ class Passage:
     page: int | None = None
     #: 시행일/개정일 as written
     dated: str = ""
+    #: seconds into a video from its 「[00:12:30]」 marks (`video_doc`)
+    time: float | None = None
 
     @property
     def label(self) -> str:
-        """Citation form: 「학칙 · 제12조(휴학) · 3쪽 · 시행 2025. 3. 1.」."""
+        """Citation form: 「학칙 · 제12조(휴학) · 3쪽 · 시행 2025. 3. 1.」, a video's
+        「강의.mp4 · 00:12:30」."""
         parts = [self.document]
         if self.section:
             parts.append(self.section)
         if self.page:
             parts.append(f"{self.page}쪽")
+        if self.time is not None:
+            parts.append(_stamp(self.time))
         if self.dated:
             parts.append(self.dated)
         return " · ".join(parts)
+
+    @property
+    def player(self) -> str | None:
+        """The player link at this passage's time, for a video passage (`source_url` is the
+        video's 「/files?open=<id>」 link, see `video_link`)."""
+        if self.time is None or not (self.source_url or "").startswith(VIDEO_LINK):
+            return None
+        return f"{self.source_url}&t={int(self.time)}"
+
+
+#: a video's own address in the app: the file box opens its player (`&t=` seeks)
+VIDEO_LINK = "/files?open="
+
+
+def video_link(file_id: str) -> str:
+    return f"{VIDEO_LINK}{file_id}"
+
+
+def _stamp(seconds: float) -> str:
+    whole = max(0, int(seconds))
+    return f"{whole // 3600:02d}:{whole % 3600 // 60:02d}:{whole % 60:02d}"
 
 
 def _body(text: str) -> str:
@@ -80,6 +106,8 @@ _ARTICLE = re.compile(
     r"(?:[ \t]{0,2}\([^()\n]{1,40}\))?)")
 #: PDF page mark (`files._from_pdf`)
 _PAGE = re.compile(r"\[페이지 (\d{1,5})\]")
+#: video time mark (`video_doc.render`)
+_TIME = re.compile(r"^\[(\d{2}):([0-5]\d):([0-5]\d)\]", re.M)
 #: 「시행 2025. 3. 1.」「2024.2.28. 개정」「2025년 3월 1일부터 시행한다」
 _DATE = r"(\d{4})[ \t]{0,2}(?:\.|년|-)[ \t]{0,2}(\d{1,2})[ \t]{0,2}(?:\.|월|-)[ \t]{0,2}(\d{1,2})"
 _DATED = re.compile(
@@ -131,6 +159,33 @@ def _page_at(body: str, start: int, piece: str) -> int | None:
         return marks[-1]
     first = _PAGE.search(piece)
     return int(first.group(1)) if first else None
+
+
+def _seconds(match: re.Match[str]) -> float:
+    return int(match.group(1)) * 3600 + int(match.group(2)) * 60 + int(match.group(3))
+
+
+def _time_at(body: str, start: int, piece: str, query: str = "") -> float | None:
+    """Time of a video passage: the mark it sits under; a passage spanning several marks
+    takes the one whose part matches the query best (the moment the answer is about)."""
+    before = list(_TIME.finditer(body, 0, start + 1))
+    current = _seconds(before[-1]) if before else None
+    inside = list(_TIME.finditer(piece))
+    if not inside:
+        return current
+    parts = [(current, piece[: inside[0].start()])] if current is not None else []
+    for i, mark in enumerate(inside):
+        end = inside[i + 1].start() if i + 1 < len(inside) else len(piece)
+        parts.append((_seconds(mark), piece[mark.start():end]))
+    if len(parts) == 1 or not query:
+        return parts[0][0]
+    return max(parts, key=lambda part: score(query, part[1]))[0]
+
+
+def time_of(text: str) -> float | None:
+    """First time mark in a passage (a vector hit carries only its own text)."""
+    first = _TIME.search(text or "")
+    return _seconds(first) if first else None
 
 
 def dated(text: str) -> str:
@@ -211,6 +266,7 @@ def search(
                     section=(section := _section_at(body, start, piece, query)),
                     page=_page_of(body, start, piece, section),
                     dated=when,
+                    time=_time_at(body, start, piece, query),
                 )
                 for i, (start, piece) in enumerate(_spans(body))
             ),
@@ -245,12 +301,21 @@ def gather(
 
 
 def _articles(name: str, body: str, url: str | None) -> list[Passage]:
-    """Whole document, split at article headings when ≥2."""
+    """Whole document, split at article headings when ≥2 (a video's at its time marks)."""
     when = dated(body)
+    marks = list(_TIME.finditer(body))
+    if len(marks) >= 2:
+        cuts = [0, *(m.start() for m in marks[1:]), len(body)]
+        return [
+            Passage(document=name, index=i + 1, text=piece, score=1.0, source_url=url,
+                    time=time_of(piece) if i else 0.0)
+            for i, (start, end) in enumerate(zip(cuts, cuts[1:], strict=False))
+            if (piece := body[start:end].strip())
+        ]
     heads = list(_ARTICLE.finditer(body))
     if len(heads) < 2:
         return [Passage(document=name, index=1, text=body, score=1.0, source_url=url,
-                        dated=when, page=_page_at(body, 0, body))]
+                        dated=when, page=_page_at(body, 0, body), time=time_of(body))]
     out: list[Passage] = []
     cuts = [0, *(m.start() for m in heads[1:]), len(body)]
     for i, (start, end) in enumerate(zip(cuts, cuts[1:], strict=False)):
@@ -268,11 +333,19 @@ def render(passages: list[Passage]) -> str:
     if not passages:
         return ""
     return "\n\n".join(
-        f"[{n}] 자료: {p.label}"
-        + (f"\n출처: {p.source_url}" if p.source_url else "")
-        + f"\n{p.text}"
+        f"[{n}] 자료: {p.label}" + _where(p) + f"\n{p.text}"
         for n, p in enumerate(passages, 1)
     )
+
+
+def _where(p: Passage) -> str:
+    """The line under a passage's label: its web address, or a video's player link at the
+    passage's time (`agent._number_sources` links the citation to it)."""
+    if (player := p.player) is not None:
+        return f"\n영상: {player}"
+    if p.source_url and not p.source_url.startswith(VIDEO_LINK):
+        return f"\n출처: {p.source_url}"
+    return ""
 
 
 #: vector share of merged score
@@ -284,12 +357,14 @@ def merge(vector: list[dict], lexical: list[Passage], *, limit: int = 4) -> list
     merged: dict[tuple[str, int], Passage] = {}
     for row in vector:
         key = (str(row.get("document") or ""), int(row.get("index") or 0))
+        text = str(row.get("text") or "")
         merged[key] = Passage(
             document=key[0],
             index=key[1],
-            text=str(row.get("text") or ""),
+            text=text,
             score=round(_VECTOR_WEIGHT * float(row.get("score") or 0.0), 4),
             source_url=row.get("source_url"),
+            time=time_of(text),
         )
     for passage in lexical:
         key = (passage.document, passage.index)
@@ -301,7 +376,8 @@ def merge(vector: list[dict], lexical: list[Passage], *, limit: int = 4) -> list
                 index=found.index,
                 text=found.text,
                 score=round(found.score + lexical_part, 4),
-                source_url=found.source_url,
+                source_url=found.source_url or passage.source_url,
+                time=passage.time if passage.time is not None else found.time,
             )
         else:
             merged[key] = Passage(
@@ -310,5 +386,6 @@ def merge(vector: list[dict], lexical: list[Passage], *, limit: int = 4) -> list
                 text=passage.text,
                 score=round(lexical_part, 4),
                 source_url=passage.source_url,
+                time=passage.time,
             )
     return sorted(merged.values(), key=lambda p: p.score, reverse=True)[:limit]

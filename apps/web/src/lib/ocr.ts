@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react'
 import { filesApi, type FileRow } from '@/lib/api'
+import { isWatching, mediaNote, type MediaFields } from '@/lib/media'
 
 /** What a file row says about its scanned pages being read (`services/ocr_jobs.py`). */
-interface OcrFields {
+interface OcrFields extends MediaFields {
   id: string
   ocrState?: FileRow['ocrState']
   ocrTotal?: number
@@ -18,6 +19,8 @@ export function ocrNote(
   file: OcrFields,
   t: (key: string) => string,
 ): { text: string; tone: 'busy' | 'warn' | 'quiet' } | null {
+  // an audio/video file says how far its reading is instead
+  if (file.mediaState) return mediaNote(file, t)
   const total = file.ocrTotal ?? 0
   const done = file.ocrDone ?? 0
   if (isReading(file)) {
@@ -41,13 +44,13 @@ export function ocrNote(
 /** How often a screen asks after files still being read. */
 const POLL_MS = 3000
 
-/** Polls rows still being read until none remain; stops on unmount. */
+/** Polls rows still being read (scans, or audio/video) until none remain; stops on unmount. */
 export function useOcrProgress(rows: OcrFields[], onRow: (row: FileRow) => void) {
   const onRowRef = useRef(onRow)
   useEffect(() => {
     onRowRef.current = onRow
   })
-  const reading = rows.filter(isReading).map((row) => row.id)
+  const reading = rows.filter((row) => isReading(row) || isWatching(row)).map((row) => row.id)
   const key = reading.join(',')
   useEffect(() => {
     if (!key) return

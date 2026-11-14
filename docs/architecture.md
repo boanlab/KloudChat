@@ -45,6 +45,7 @@ browser ──── KloudChat API ──┬── backend gateway ───┬�
    │           │         │                      └── /tools/ocr       text from scanned pages
    │           ├── Postgres
    │           ├── file store (local disk)
+   │           ├── media worker (stock ffmpeg, internal network only)
    │           └── MCP connectors (stdio · http)
    └── /api/files/…?t=… ← media is fetched by the element itself (§6)
 ```
@@ -166,7 +167,9 @@ Migrations live under `alembic/versions/`. The principal tables:
   `api_keys` · `audit_events`
 - `sessions` · `messages` — conversation. `messages.usage` is JSONB
 - `credit_ledger` — the ledger
-- `projects` · `files` · `file_pages` (OCR text per page) · `artifacts` ·
+- `projects` · `files` · `file_pages` (OCR text per page) · `media_parts` (a video's
+  transcribed pieces and read frames) · `file_uploads` (uploads arriving in pieces) ·
+  `artifacts` ·
   `artifact_versions` · `skills` · `memories` · `agents` · `connectors` ·
   `connector_tools` · `connector_credentials` · `connector_catalog`
 - `design_systems` — themes: the look a project's or agent's output wears.
@@ -2421,6 +2424,120 @@ System › Features › Text from scans (OCR). With both, the engine reads every
 low or that holds a ruled table is read again by the vision model, whose text is kept;
 when the two readings differ in words or in any number the page is marked for review.
 Pages read are recorded on the ledger as units.
+
+### Understanding videos and recordings
+
+People upload lecture recordings and screen recordings to a project or a conversation and
+ask about them. An answer has to use what was **said** and what was **shown** (slide text,
+code, diagrams), say **when**, and let the reader jump there. Everything runs on the server
+after the upload, so the tab can close, and every model it calls is inside the deployment
+whatever the chat model is.
+
+**Upload in pieces** (`routers/media.py`). Audio and video go up through `POST /uploads`,
+`PUT /uploads/{id}?offset=` (one piece of `UPLOAD_PIECE_MB`, 8 MB, per request) and
+`POST /uploads/{id}/finish`, to their own ceiling `MAX_VIDEO_UPLOAD_MB` (500 MB). Each piece is
+appended to a partial file under the storage root, so no request body is ever larger than a
+piece: the API replicas never hold a video in memory, and nginx's body limit stays at
+`MAX_UPLOAD_MB`. A piece already received (a retry after a dropped answer) is acknowledged,
+one ahead of what arrived is refused with the offset to resume from, and the browser
+(`mediaApi.upload`) retries a piece four times and then asks where the server stands. The
+browser reads the video's length first and asks `GET /media/estimate`: a video over
+`VIDEO_MAX_MINUTES` is refused before a byte is sent, and one over ten minutes says how long
+reading it will take (and its credits, for a priced vision model). `finish` checks the bytes
+are audio/video, moves the partial file into place and queues the job. Pieced uploads left
+for a day are removed by the job loop.
+
+**The media worker** (`apps/media`, the `media` service). ffmpeg is LGPL/GPL, so it is
+never linked or bundled into the app: it runs as Debian's unmodified package in a container
+of its own, behind a standard-library HTTP API — `/probe` (ffprobe), `/audio` (a 16 kHz mono
+FLAC piece), `/scenes` (the times the picture changes, below), `/frame` (one JPEG), `/poster`'s
+source.
+
+*Finding changes.* The worker compares edge maps — ffmpeg's `edgedetect` at 320×180, averaged
+to 80×45 — because text and slide shapes are crisp edges while a speaker's motion is mostly
+soft ones: a frame is a change when more than 4 % of the cells moved past a step against the
+last kept frame, and the frame kept is the first after the change settles (a transition, a
+build). How the frames are read depends on the file: a picture at least 900 px tall whose
+keyframes come at least every 6 s (`MEDIA_KEYFRAME_*`) is read at its keyframes only, one
+seek each, `MEDIA_SCAN_PARALLEL` side by side; anything else is decoded at 1 fps in that many
+segments side by side. A stretch over 90 s without a change still gets a frame. It reads uploads through a read-only mount, so a request names a storage key and
+never carries the video; it holds no secrets, joins only the internal `media` network, runs
+ffmpeg at low priority with `MEDIA_JOBS` runs at once, and compose caps it at `KCHAT_MEDIA_CPUS`
+and `KCHAT_MEDIA_MEMORY`.
+
+**The job** (`services/video_jobs.py`). Claimed like OCR jobs — `SKIP LOCKED`, a claim token,
+a ten-minute lease another replica takes over — and taken through:
+
+1. *probe* — duration and streams; a file with neither, or longer than `VIDEO_MAX_MINUTES`,
+   fails at once with the reason;
+2. *frames* — the worker's candidate times (twice the cap), each frame fetched once; one that
+   is the same picture as the last kept frame is dropped (`video_read.same_picture`: a 64-bit
+   difference hash within 6 bits *and* at most 1.5 % of a 640×360 edge map moved — the hash
+   alone calls slides of one template with different text the same); the rest thinned evenly to
+   `VIDEO_FRAMES_PER_MINUTE` × minutes (at most `VIDEO_MAX_FRAMES`); each kept frame and a
+   320 px thumbnail are stored beside the video (`<key>.frames/`, removed with it);
+3. *reading* — speech and pictures side by side. Speech: ten-minute pieces overlapping by 5 s
+   to the internal Whisper (`transcribe.segments_of`, `verbose_json` with segment timings; the
+   first piece's language holds for the rest). Pictures: each frame to the strict-local vision
+   model the OCR settings choose (`video_read`, `qwen3.8-flash` by default, checked per
+   deployment before the first frame), `VIDEO_VISION_PARALLEL` at a time, for its kind, its
+   text verbatim and a one-line description; a picture shown again (back to an earlier
+   slide) is read once. Without a vision model the speech still counts; without audio the
+   pictures do;
+4. *writing* — the pieces merged on one timeline (each piece owns its stretch to the middle of
+   its overlaps, so a word at a seam appears once), scenes cut at the kept frames holding the
+   speech said while they were on screen, a long talk over one picture split every 75 s.
+
+Every finished piece and frame is a `media_parts` row with its own short session, so a job
+taken over after a restart resumes where it stopped, and a failure is retried three times
+(a file that cannot be read fails at once). Speech is recorded on the ledger as seconds
+(`media.transcribe`), pictures as tokens (`media.vision`) — a priced vision model is charged
+at its full rate, no cache discount, and is checked against the owner's credits before the
+first frame.
+
+Measured on 20-minute windows of three public-domain lectures with 61 slide changes marked by
+hand (a slide webinar, a CDC Grand Rounds deck where every slide shares one template, a Zoom
+lecture with a speaker inset): slides missed went from 3, 5 and 9 with the first version
+(ffmpeg's scene score and the hash alone) to 1, 0 and 0 — the one missed was on screen for
+three seconds. The 1080p scene pass took 14.6 s instead of 48.8 s (keyframes; 24 of 25
+slides, the full decode 25 of 25 in 24.5 s), and a 1080p talking head now gives two frames in
+ten minutes, read in 6 s.
+
+**The time-coded document** becomes the file's text, so search, project context, the index
+and per-file digests read it like any document:
+
+```
+# 강의.mp4 — 영상 00:21:11 (말·화면을 시간 순서로 옮김)
+
+[00:12:30]
+(화면) 도표 — 연도별 환자 수 | 글자: 2010 2015 2020 …
+(말) 보시다시피 환자가 크게 늘었습니다 …
+```
+
+Marks are always `[HH:MM:SS]`. `files.media` keeps the structured form for the player:
+segments `{start, end, said, shown, frame}`, the kept frames, timings and notes.
+
+**Answers point at a moment.** `knowledge.search` gives a video passage the time of the mark
+it sits under (the best-matching one when it spans several) and the label
+「강의.mp4 · 00:12:30」; the shelf gives a finished video the link `/files?open=<id>`, so the
+tool prints 「영상: /files?open=<id>&t=750」 under the passage and `agent._number_sources`
+keeps it with the source: the citation becomes `[[1]](/files?open=<id>&t=750)` and the source
+list links the label. A video given whole in the context carries a note under its heading
+(`workspace_context.VIDEO_NOTE`) asking for the mark after a claim; the web links such marks
+(`lib/media.linkTimestamps`) to the video named just before them, else the one the answer
+cites, else the conversation's only video. A link into a video renders as a chip with the
+moment's thumbnail (`TimeChip`); a click opens the player at that time.
+
+**The player** (`MediaPlayer`, also the file box preview and `/files?open=<id>&t=<s>`) asks
+`GET /files/{id}/media` for the state, the segments and signed URLs — `stream` (the original,
+served from disk with HTTP Range, so seeking never downloads the whole file) and `frames`
+(thumbnails). The signature is an HMAC over the file, its owner and an expiry six hours out:
+an element cannot send an Authorization header, and an access token in a URL would outlive
+nothing and land in logs. Below the player, the outline lists each stretch with its picture,
+what was on screen and what was said; a click plays from there. While the job runs, the file
+chip and the player show the step and progress, and a failed video offers 「다시 읽기」
+(finished pieces are kept). A conversation asking about a video still being read is told so,
+and told not to guess (`ContextFile.state = "watching"`).
 
 ### Transcription and fact-checking
 

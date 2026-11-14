@@ -109,9 +109,12 @@ class _User:
 
 
 @pytest.mark.asyncio
-async def test_a_script_uploaded_as_a_picture_is_downloaded_not_shown(monkeypatch):
+async def test_a_script_uploaded_as_a_picture_is_downloaded_not_shown(monkeypatch, tmp_path):
     row = StoredFile(id="f1", user_id="owner", name="logo.png", mime="image/png", storage_key="k")
-    monkeypatch.setattr(workspace.file_service, "read_blob", lambda key: _SVG)
+    blob = tmp_path / "logo.png"
+    blob.write_bytes(_SVG)
+    # served from disk (a large video never sits in memory)
+    monkeypatch.setattr(workspace.file_service, "blob_path", lambda key: blob)
 
     response = await workspace.download_file("f1", _User(), _Db(row))
 
@@ -122,9 +125,12 @@ async def test_a_script_uploaded_as_a_picture_is_downloaded_not_shown(monkeypatc
 
 
 @pytest.mark.asyncio
-async def test_a_real_picture_still_shows_in_place(monkeypatch):
+async def test_a_real_picture_still_shows_in_place(monkeypatch, tmp_path):
     row = StoredFile(id="f2", user_id="owner", name="pixel.png", mime="image/png", storage_key="k")
-    monkeypatch.setattr(workspace.file_service, "read_blob", lambda key: _PNG)
+    blob = tmp_path / "pixel.png"
+    blob.write_bytes(_PNG)
+    # served from disk (a large video never sits in memory)
+    monkeypatch.setattr(workspace.file_service, "blob_path", lambda key: blob)
 
     response = await workspace.download_file("f2", _User(), _Db(row))
 

@@ -19,7 +19,8 @@ import {
   ThumbsUp,
   TriangleAlert,
 } from 'lucide-react'
-import { memo, useState } from 'react'
+import { memo, useMemo, useState } from 'react'
+import type { VideoRef } from '@/lib/media'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Button } from '@/components/ui'
 import { MediaResult } from '@/components/media/MediaResult'
@@ -297,6 +298,21 @@ function MessageItemInner({
   const newSession = useStore((s) => s.newSession)
   const ensureSession = useStore((s) => s.ensureSession)
   const sessionProject = useStore((s) => s.sessions.find((c) => c.id === sessionId)?.projectId)
+  const sessionMessages = useStore((s) => s.sessions.find((c) => c.id === sessionId)?.messages)
+  const projectFiles = useStore((s) => s.projects.find((p) => p.id === sessionProject)?.files)
+  /** Videos this conversation has (its attachments, its project's files): an answer's time marks open them. */
+  const videos = useMemo<VideoRef[]>(() => {
+    const found = new Map<string, string>()
+    for (const m of sessionMessages ?? []) {
+      for (const a of m.attachments ?? []) {
+        if (a.id && /^(video|audio)\//.test(a.type)) found.set(a.id, a.name)
+      }
+    }
+    for (const f of projectFiles ?? []) {
+      if (f.mediaState === 'done') found.set(f.id, f.name)
+    }
+    return [...found].map(([id, name]) => ({ id, name }))
+  }, [sessionMessages, projectFiles])
   /** The copy opened in this chat earlier, reopened from the attachment: a new one only on request. */
   const [reopened, setReopened] = useState<{ kind: OfficeKind; id: string } | null>(null)
   /**
@@ -749,11 +765,11 @@ function MessageItemInner({
                   {t('끊긴 답 · 끝까지 쓰지 못했습니다')}
                 </Badge>
                 <div className="opacity-70">
-                  <Markdown>{shownContent}</Markdown>
+                  <Markdown videos={videos}>{shownContent}</Markdown>
                 </div>
               </div>
             ) : (
-              <Markdown>{shownContent}</Markdown>
+              <Markdown videos={videos}>{shownContent}</Markdown>
             )}
           </>
         ) : (

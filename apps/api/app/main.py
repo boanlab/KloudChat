@@ -27,6 +27,7 @@ from app.routers import (
     jobs,
     keys,
     llm,
+    media,
     models,
     perf,
     pipelines,
@@ -57,6 +58,7 @@ from app.services import (
     starter,
     stop_signal,
     storage,
+    video_jobs,
 )
 from app.services.perf import collector as perf_collector
 from app.services.perf import live as perf_live
@@ -139,6 +141,8 @@ async def lifespan(app: FastAPI):
     reader = asyncio.create_task(ocr_jobs.watch())
     # per-file digests of project material, by a strict-local model
     digester = asyncio.create_task(digest_jobs.watch())
+    # audio/video understanding through the media worker
+    watcher = asyncio.create_task(video_jobs.watch())
     # index deletes that failed, until they land
     unindexer = asyncio.create_task(index_cleanup.watch())
     key_usage = asyncio.create_task(api_key_usage.watch())
@@ -161,6 +165,7 @@ async def lifespan(app: FastAPI):
     bots.cancel()
     reader.cancel()
     digester.cancel()
+    watcher.cancel()
     unindexer.cancel()
     key_usage.cancel()
     if stop_listener is not None:
@@ -206,6 +211,7 @@ app.include_router(user_templates.router, prefix=settings.api_prefix)
 app.include_router(hwp.router, prefix=settings.api_prefix)
 app.include_router(docx.router, prefix=settings.api_prefix)
 app.include_router(pptx.router, prefix=settings.api_prefix)
+app.include_router(media.router, prefix=settings.api_prefix)
 app.include_router(workspace.router, prefix=settings.api_prefix)
 app.include_router(shelf.router, prefix=settings.api_prefix)
 app.include_router(skill_files.router, prefix=settings.api_prefix)

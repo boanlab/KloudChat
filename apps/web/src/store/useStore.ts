@@ -1,4 +1,4 @@
-import type { OpenArtifact, WebSearchSetting } from '@/lib/api'
+import type { OpenArtifact, UploadProgress, WebSearchSetting } from '@/lib/api'
 import { forgetStoredDraft, purgeStoredDrafts } from '@/lib/drafts'
 import { findUnsent, forgetUnsent, keepUnsent, purgeUnsent, unsentId } from '@/lib/unsentSessions'
 import { create } from 'zustand'
@@ -99,7 +99,7 @@ import { reportFileKind } from '@/lib/documentRequest'
 import { DEFAULT_PASSWORD_MIN } from '@/lib/formCheck'
 import { currentLang, translate, type Lang } from '@/lib/i18n'
 import { counters } from '@/lib/usage'
-import { setMaxUploadMb } from '@/lib/uploadLimit'
+import { setMaxUploadMb, setMediaUpload } from '@/lib/uploadLimit'
 import { LeaveCancelled, leaveOffice, officeDirty, saveOpenOffice } from '@/lib/officeGuard'
 import { searchCardOf } from '@/lib/privacy'
 
@@ -604,7 +604,7 @@ interface State {
     kind: 'projects' | 'artifacts' | 'skills' | 'agents' | 'designs' | 'connectors',
     ids: string[],
   ) => Promise<number>
-  uploadFile: (file: File, opts?: { projectId?: string; sessionId?: string }) => Promise<FileRow>
+  uploadFile: (file: File, opts?: { projectId?: string; sessionId?: string; onProgress?: UploadProgress }) => Promise<FileRow>
   /** A fresher copy of a project file (its scanned pages were read meanwhile). */
   refreshProjectFile: (row: FileRow) => void
   /** A source added outside the upload path (pasted text, a note made a source): listed first. */
@@ -1140,6 +1140,7 @@ export const useStore = create<State>((set, get) => ({
           .then((c) => {
             applyBrand(c.brand)
             setMaxUploadMb(c.upload?.maxMb)
+            setMediaUpload(c.upload)
             set({
               brand: c.brand,
               enabledKinds: (c.enabledKinds ?? ['chat']) as SessionKind[],
@@ -2466,6 +2467,7 @@ export const useStore = create<State>((set, get) => ({
     if (!c) return
     applyBrand(c.brand)
     setMaxUploadMb(c.upload?.maxMb)
+    setMediaUpload(c.upload)
     set({
       brand: c.brand,
       enabledKinds: (c.enabledKinds ?? ['chat']) as SessionKind[],
@@ -3501,6 +3503,11 @@ function toProjectFile(f: FileRow): ProjectFile {
     ocrTotal: f.ocrTotal,
     ocrDone: f.ocrDone,
     ocrReview: f.ocrReview,
+    mediaState: f.mediaState,
+    mediaStage: f.mediaStage,
+    mediaDone: f.mediaDone,
+    mediaTotal: f.mediaTotal,
+    mediaDuration: f.mediaDuration,
   }
 }
 

@@ -210,8 +210,29 @@ shown instead of silently retrying the premium model.
 | `KCHAT_WEB_PORT` | — | `5173` | Host port for the web container. |
 | `KCHAT_API_URL` | `KCHAT_API_URL` | `http://api:8100` | nginx upstream, resolved at run time so the API can move hosts without an image rebuild. `api` is the compose service name, not a fixed container: nginx re-resolves it on every request (`resolver 127.0.0.11`), so it reaches every `api` replica. |
 | `KCHAT_MAX_UPLOAD_MB` | `MAX_UPLOAD_MB` (api), `KCHAT_MAX_UPLOAD_MB` (web) | `200` | One file's ceiling, in MB, for the API and the web container's nginx alike. |
+| `KCHAT_MAX_VIDEO_UPLOAD_MB` | `MAX_VIDEO_UPLOAD_MB` | `500` | One audio/video file's ceiling. Such files go up in pieces, so nginx's body limit does not grow with it. `/auth/config` reports it as `upload.maxMediaMb`. |
+| `KCHAT_UPLOAD_PIECE_MB` | `UPLOAD_PIECE_MB` | `8` | One piece of a pieced upload; never above `MAX_UPLOAD_MB`. |
 | `KCHAT_BUILD_VERSION` | — (web build argument) | build time | Names the web bundle. It is written to `/version.json`, which open pages poll on focus and every ten minutes to offer a reload after a deploy. |
 | `KCHAT_API_REPLICAS` | `API_REPLICAS` | `1` | `api` instances. Migrations run once in the one-shot `migrate` container first, so replicas booting together never race `alembic upgrade head`. The `api` service publishes no host port — reach the API through the web container (`curl localhost:5173/api/health`) or one instance with `docker compose exec api sh`. The stop button's cancellation signal is per-process (`_STOPPING` in `app/routers/sessions.py`); above one replica each process also broadcasts and listens for it over Postgres `NOTIFY` (`services/stop_signal.py`), so a stop request reaches whichever instance is actually streaming. At `1` the broadcast is skipped and no listener connection is held open. |
+
+### Video understanding
+
+| `.env` | Container | Default | Notes |
+| --- | --- | --- | --- |
+| `KCHAT_MEDIA_URL` | `MEDIA_URL` (api) | `http://kloudchat-media:8300` | The media worker. Blank: audio/video are transcribed whole at upload (Whisper's 25 MB), no frames, no timestamps. |
+| `KCHAT_VIDEO_MAX_MINUTES` | `VIDEO_MAX_MINUTES` (api) | `240` | Longest audio/video read; longer ones are refused before upload. Keep `KCHAT_MEDIA_MAX_SECONDS` (worker) at or above it. |
+| `KCHAT_VIDEO_FRAMES_PER_MINUTE` | `VIDEO_FRAMES_PER_MINUTE` (api) | `4` | Keyframes read per minute of video (after near-duplicates are dropped). |
+| `KCHAT_VIDEO_MAX_FRAMES` | `VIDEO_MAX_FRAMES` (api) | `120` | Keyframes read per video at most; a longer video's frames are thinned evenly. |
+| — | `VIDEO_VISION_PARALLEL` (api) | `4` | Frames read at once by the vision model. |
+| `KCHAT_MEDIA_JOBS` | `MEDIA_JOBS` (media) | `2` | ffmpeg runs at once in the worker. |
+| `KCHAT_MEDIA_THREADS` | `MEDIA_THREADS` (media) | `2` | Threads per ffmpeg run. |
+| `KCHAT_MEDIA_MAX_SECONDS` | `MEDIA_MAX_SECONDS` (media) | `14400` | The worker's own ceiling on a video's length. |
+| — | `MEDIA_SCAN_PARALLEL` (media) | `4` | Decoders side by side when looking for changes. |
+| — | `MEDIA_KEYFRAME_MIN_HEIGHT` / `MEDIA_KEYFRAME_MAX_GAP` (media) | `900` / `6` | A picture at least this tall whose keyframes come at least every this many seconds is read at its keyframes only (about a third of a full decode at 1080p); a slide shown for less than the gap may be missed. |
+| `KCHAT_MEDIA_CPUS` / `KCHAT_MEDIA_MEMORY` | — (compose) | `4` / `2g` | The worker container's CPU and memory caps. |
+
+Which vision model reads frames is the OCR one (System › Features › Text from scans): only a
+strict-local model with vision is ever sent a frame.
 
 ### Database
 

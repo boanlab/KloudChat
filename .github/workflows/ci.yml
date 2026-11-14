@@ -187,7 +187,7 @@ jobs:
           build_all() {
             echo "$1"
             {
-              echo 'matrix={"include":[{"name":"api","context":"apps/api"},{"name":"print","context":"apps/print"},{"name":"web","context":"apps/web"}]}'
+              echo 'matrix={"include":[{"name":"api","context":"apps/api"},{"name":"print","context":"apps/print"},{"name":"web","context":"apps/web"},{"name":"media","context":"apps/media"}]}'
               echo 'any=true'
             } >> "$GITHUB_OUTPUT"
           }
@@ -221,6 +221,10 @@ jobs:
             [ -n "$entries" ] && entries="$entries,"
             entries="$entries{\"name\":\"web\",\"context\":\"apps/web\"}"
           fi
+          if echo "$changed" | grep -q '^apps/media/'; then
+            [ -n "$entries" ] && entries="$entries,"
+            entries="$entries{\"name\":\"media\",\"context\":\"apps/media\"}"
+          fi
 
           if [ -z "$entries" ]; then
             echo "No image sources changed — nothing to build."
@@ -250,9 +254,17 @@ jobs:
         with:
           context: ${{ matrix.context }}
           push: false
-          load: false
+          # the media worker is tested inside its own image (stock ffmpeg, generated clip)
+          load: ${{ matrix.name == 'media' }}
+          tags: ${{ matrix.name == 'media' && 'kloudchat-media:ci' || '' }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,scope=${{ matrix.name }},mode=max
+
+      - name: Test the media worker with its own ffmpeg
+        if: matrix.name == 'media'
+        run: >-
+          docker run --rm -v "$PWD/apps/media:/t:ro" -w /t kloudchat-media:ci
+          python -m unittest discover -s tests -v
 
   compose:
     name: Compose · validate

@@ -731,7 +731,11 @@ async def auth_config(db: DbSession):
         "idleTimeoutMinutes": policy.idle_timeout_minutes,
         "password": {"minLength": PASSWORD_MIN_LENGTH},
         # the web refuses a larger file before sending it; nginx's body limit derives from it
-        "upload": {"maxMb": settings.max_upload_mb},
+        # audio/video goes up in pieces (`routers/media.py`) to its own, larger limit
+        "upload": {"maxMb": settings.max_upload_mb,
+                   "maxMediaMb": max(settings.max_video_upload_mb, settings.max_upload_mb),
+                   "mediaReading": bool(settings.media_url.strip()),
+                   "maxMediaMinutes": settings.video_max_minutes},
         "login": {
             "maxFailures": max(1, settings.login_max_failures),
             "lockoutMinutes": settings.login_lockout_min,

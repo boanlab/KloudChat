@@ -163,6 +163,7 @@ from app.services import (
     diagram as diagram_service,
 )
 from app.services import files as file_service
+from app.services import knowledge as knowledge_service
 from app.services import litellm as litellm_service
 from app.services import models as model_service
 from app.services import (
@@ -488,7 +489,8 @@ async def _knowledge_shelf(
     if session.project_id:
         rows = source_selection.keep(rows, await source_selection.excluded(db, session.id))
     shelf = [
-        (row.name, row.text, row.source_url)
+        (row.name, row.text, row.source_url
+         or (knowledge_service.video_link(row.id) if row.media_state == "done" else None))
         for row in rows
         if row.text
         and (

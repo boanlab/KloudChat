@@ -94,6 +94,18 @@ def delete_blob(key: str) -> None:
         blob_path(key).unlink(missing_ok=True)
     except (OSError, ValueError) as exc:
         log.warning("could not remove blob %s: %s", key.replace("\n", " ").replace("\r", " "), exc)
+    # a video's keyframes (`video_jobs`) go with it
+    try:
+        frames = blob_path(frames_dir(key))
+        if frames.is_dir():
+            shutil.rmtree(frames, ignore_errors=True)
+    except ValueError:
+        pass
+
+
+def frames_dir(key: str) -> str:
+    """Storage key of the directory holding a video's keyframes (`<n>.jpg`, `<n>s.jpg`)."""
+    return f"{key}.frames"
 
 
 #: inline-renderable types; never SVG/HTML (script on the API origin)

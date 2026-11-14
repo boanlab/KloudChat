@@ -1,5 +1,6 @@
 import { Suspense, lazy } from 'react'
 import { cn } from '@/lib/utils'
+import type { VideoRef } from '@/lib/media'
 import type { DiagramOwner } from './MarkdownBody'
 
 /** Lazy: react-markdown and KaTeX are most of the initial bundle. */
@@ -11,10 +12,12 @@ export function Markdown({
   children,
   className,
   owner,
+  videos,
 }: {
   children: string
   className?: string
   owner?: DiagramOwner
+  videos?: VideoRef[]
 }) {
   return (
     <Suspense
@@ -25,7 +28,7 @@ export function Markdown({
         </div>
       }
     >
-      <Body className={className} owner={owner}>
+      <Body className={className} owner={owner} videos={videos}>
         {children}
       </Body>
     </Suspense>

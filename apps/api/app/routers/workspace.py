@@ -23,7 +23,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy import and_, func, or_, tuple_
 from sqlmodel import col, delete, select, update
 
@@ -121,6 +121,7 @@ from app.services import (
     skill_packages,
     starter,
     user_templates,
+    video_jobs,
     workspace_context,
 )
 from app.services import deck as deck_service
@@ -636,17 +637,20 @@ async def upload_file(
     )
     stored.storage_key = file_service.write_blob(user.id, stored.id, stored.name, data)
 
-    # extraction failure recorded, not raised
-    try:
-        stored.text = await file_service.text_of(stored.name, stored.mime, data)
-        stored.tokens = file_service.estimate_tokens(stored.text)
-    except Exception as exc:  # noqa: BLE001
-        log.info("extraction failed for %s: %s", stored.name, exc)
-        stored.error = str(exc)
+    # audio/video: said and shown, by time, in the background (`video_jobs`)
+    watching = video_jobs.mark(stored)
+    if not watching:
+        # extraction failure recorded, not raised
+        try:
+            stored.text = await file_service.text_of(stored.name, stored.mime, data)
+            stored.tokens = file_service.estimate_tokens(stored.text)
+        except Exception as exc:  # noqa: BLE001
+            log.info("extraction failed for %s: %s", stored.name, exc)
+            stored.error = str(exc)
     # scanned pages read in background; text layer kept meanwhile
-    reading = await ocr_jobs.queue_if_scanned(stored, data)
+    reading = not watching and await ocr_jobs.queue_if_scanned(stored, data)
     # project material gets its digest once its text is whole (OCR asks for it when done)
-    digesting = not reading and digest_jobs.mark(stored)
+    digesting = not reading and not watching and digest_jobs.mark(stored)
 
     db.add(stored)
     await db.commit()
@@ -655,6 +659,8 @@ async def upload_file(
         ocr_jobs.wake()
     if digesting:
         digest_jobs.wake()
+    if watching:
+        video_jobs.wake()
     # indexed for `search_knowledge`; never blocks the upload
     if stored.text.strip():
         if project_id:
@@ -790,13 +796,16 @@ async def add_project_url(project_id: str, payload: KnowledgeUrl, user: CurrentU
 async def download_file(file_id: str, user: CurrentViewer, db: DbSession):
     stored = await _own(db, StoredFile, "user_id", user, file_id)
     try:
-        data = file_service.read_blob(stored.storage_key)
-    except OSError:
+        path = file_service.blob_path(stored.storage_key)
+        with open(path, "rb") as handle:
+            head = handle.read(4096)
+    except (OSError, ValueError):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="blob_missing") from None
     # inline only for byte-proven picture/PDF/media; no script, no origin
-    media, inline = file_service.served_as(stored.name, stored.mime, data)
-    return Response(
-        content=data,
+    media, inline = file_service.served_as(stored.name, stored.mime, head)
+    # streamed from disk (a 500 MB video never sits in memory), with Range for seeking
+    return FileResponse(
+        path,
         media_type=media,
         headers=file_service.download_headers(media, inline, stored.name),
     )
@@ -850,7 +859,7 @@ async def delete_file(file_id: str, user: CurrentUser, db: DbSession,
                       request: Request = None):  # type: ignore[assignment]
     owned = await _own(db, StoredFile, "user_id", user, file_id)
     # shelf (key mint commits) before row lock: nothing commits between lock and delete
-    shelf = await shelf_of(db, owned) if owned.ocr_state else None
+    shelf = await shelf_of(db, owned) if (owned.ocr_state or owned.media_state) else None
     # locked fresh read: concurrent page reader is seen here or sees the row gone
     stored = (
         await db.exec(

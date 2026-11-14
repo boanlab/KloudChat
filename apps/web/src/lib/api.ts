@@ -57,7 +57,7 @@ import type { GraphStep, GraphVerdict, PipelineEdge } from '@/types/pipelineGrap
 import { objectParticle, topicParticle } from './formCheck'
 import { currentLang, currentLocale, translate } from './i18n'
 import { setServiceTimeZone } from './serviceTime'
-import { overUploadLimit, tooLargeMessage } from './uploadLimit'
+import { isMediaFile, maxMediaMb, mediaReading, overMediaLimit, overUploadLimit, tooLargeMessage } from './uploadLimit'
 import type { ContextQuery, ContextUsage } from './contextGauge'
 import type { Located, Note, ShelfListing, SourceGuide, SpeechPlan, StudioEstimate, StudioItem, StudioRequest } from './shelf'
 
@@ -663,7 +663,7 @@ export const authConfig = {
       /** Service time zone (IANA); absent from older servers. */
       timeZone?: string
       /** One file's upload ceiling; absent from older servers. */
-      upload?: { maxMb: number }
+      upload?: { maxMb: number; maxMediaMb?: number; mediaReading?: boolean; maxMediaMinutes?: number }
     }>('/auth/config').then((config) => {
       // Every date on screen follows it, whichever screen asked first.
       setServiceTimeZone(config.timeZone)
@@ -1386,7 +1386,172 @@ export interface FileRow {
   ocrTotal?: number
   ocrDone?: number
   ocrReview?: number
+  /** Audio/video being understood (`services/video_jobs.py`): null when not media or no worker. */
+  mediaState?: 'queued' | 'running' | 'done' | 'failed' | null
+  /** probe | frames | reading | writing */
+  mediaStage?: string | null
+  mediaDone?: number
+  mediaTotal?: number
+  /** Seconds, once probed. */
+  mediaDuration?: number
   createdAt: string
+}
+
+/** One stretch of a video's time-coded document: what was said and what was on screen. */
+export interface MediaSegment {
+  start: number
+  end: number
+  said: string
+  shown: string
+  /** Keyframe number for its thumbnail, or null. */
+  frame: number | null
+}
+
+/** `GET /files/{id}/media`: the job and its result, with signed URLs for the player. */
+export interface MediaInfo {
+  name: string
+  state: FileRow['mediaState']
+  stage: string | null
+  done: number
+  total: number
+  error: string | null
+  duration: number
+  width: number
+  height: number
+  hasVideo: boolean
+  hasAudio: boolean
+  language: string
+  segments: MediaSegment[]
+  frames: { n: number; t: number }[]
+  notes: string[]
+  timings: Record<string, number>
+  /** The original, seekable; relative to the site. */
+  streamUrl: string
+  /** A keyframe: replace `{n}` with the number, `{n}s` for the thumbnail. */
+  frameUrl: string
+  /** The picture at any moment: replace `{t}` with seconds; empty without the media worker. */
+  posterUrl: string
+}
+
+/** `GET /media/estimate`: what reading a video this long takes. */
+export interface MediaEstimate {
+  seconds: number
+  frames: number
+  minutes: number
+  credits: number
+  maxMinutes: number
+  allowed: boolean
+  enabled: boolean
+  creditsLeft: number
+}
+
+/** Bytes acknowledged by the server, of the whole. */
+export type UploadProgress = (sent: number, total: number) => void
+
+const PIECE_RETRIES = 4
+
+/** Waits, unless aborted. */
+const pause = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(resolve, ms)
+    signal?.addEventListener('abort', () => {
+      clearTimeout(timer)
+      reject(new DOMException('aborted', 'AbortError'))
+    }, { once: true })
+  })
+
+async function sendPiece(id: string, offset: number, piece: Blob, signal?: AbortSignal) {
+  const res = await authedFetch(`${BASE_URL}/uploads/${id}?offset=${offset}`, {
+    method: 'PUT',
+    body: piece,
+    headers: { 'Content-Type': 'application/octet-stream' },
+    signal,
+  })
+  if (!res.ok) {
+    const detail = await readDetail(res)
+    if (res.status === 401) throw new UnauthorizedError(detail)
+    throw new ApiError(res.status, detail)
+  }
+  return (await res.json()) as { received: number }
+}
+
+export const mediaApi = {
+  estimate: (seconds: number) => call<MediaEstimate>(`/media/estimate?seconds=${Math.round(seconds)}`),
+  get: (fileId: string) => call<MediaInfo>(`/files/${fileId}/media`),
+  retry: (fileId: string) => call<FileRow>(`/files/${fileId}/media/retry`, { method: 'POST' }),
+  /**
+   * An audio/video file up in pieces (`routers/media.py`): never the whole file in one request,
+   * each piece retried and the upload resumed from what the server holds; `onProgress` after
+   * every piece. The server then reads it in the background — the tab may close.
+   */
+  upload: async (
+    file: File,
+    opts?: { projectId?: string; sessionId?: string; seconds?: number; onProgress?: UploadProgress; signal?: AbortSignal },
+  ) => {
+    const started = await call<{ id: string; size: number; received: number; pieceBytes: number }>('/uploads', body({
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      projectId: opts?.projectId ?? null,
+      sessionId: opts?.sessionId ?? null,
+      seconds: opts?.seconds && Number.isFinite(opts.seconds) ? opts.seconds : null,
+    }))
+    const { id, pieceBytes } = started
+    let offset = started.received
+    opts?.onProgress?.(offset, file.size)
+    try {
+      while (offset < file.size) {
+        const piece = file.slice(offset, Math.min(file.size, offset + pieceBytes))
+        let tries = 0
+        for (;;) {
+          try {
+            offset = (await sendPiece(id, offset, piece, opts?.signal)).received
+            break
+          } catch (err) {
+            tries += 1
+            const status = err instanceof ApiError ? err.status : 0
+            const transient = status === 0 || status === 409 || status >= 500
+            if (!transient || tries >= PIECE_RETRIES || opts?.signal?.aborted) throw err
+            await pause(800 * 2 ** tries, opts?.signal)
+            // the server says where it stands; a piece it already has is not sent twice
+            offset = (await call<{ received: number }>(`/uploads/${id}`)).received
+            break
+          }
+        }
+        opts?.onProgress?.(offset, file.size)
+      }
+      return await call<FileRow>(`/uploads/${id}/finish`, { method: 'POST' })
+    } catch (err) {
+      // a refused or abandoned upload leaves no partial file behind
+      void call<void>(`/uploads/${id}`, { method: 'DELETE' }).catch(() => undefined)
+      throw err
+    }
+  },
+}
+
+export { isMediaFile }
+
+/** Length of a local video/audio file as the browser reads it, or undefined. */
+export function mediaSeconds(file: File): Promise<number | undefined> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file)
+    const el = document.createElement(file.type.startsWith('audio/') ? 'audio' : 'video')
+    const done = (value: number | undefined) => {
+      URL.revokeObjectURL(url)
+      resolve(value)
+    }
+    const timer = setTimeout(() => done(undefined), 5000)
+    el.preload = 'metadata'
+    el.onloadedmetadata = () => {
+      clearTimeout(timer)
+      done(Number.isFinite(el.duration) ? el.duration : undefined)
+    }
+    el.onerror = () => {
+      clearTimeout(timer)
+      done(undefined)
+    }
+    el.src = url
+  })
 }
 
 /** One keyset page: `next` is the cursor for the following page, null on the last. */
@@ -1434,7 +1599,12 @@ export const filesApi = {
     }).toString()
     return call<FileRow[]>(`/files${query ? `?${query}` : ''}`)
   },
-  upload: async (file: File, opts?: { projectId?: string; sessionId?: string }) => {
+  upload: async (file: File, opts?: { projectId?: string; sessionId?: string; onProgress?: UploadProgress }) => {
+    // audio/video: in pieces, to its own limit, read on the server afterwards
+    if (isMediaFile(file) && (mediaReading() || overUploadLimit(file))) {
+      if (overMediaLimit(file)) throw new ApiError(413, tooLargeMessage(maxMediaMb()))
+      return mediaApi.upload(file, { ...opts, seconds: await mediaSeconds(file) })
+    }
     if (overUploadLimit(file)) throw new ApiError(413, tooLargeMessage())
     const form = new FormData()
     form.append('file', file)

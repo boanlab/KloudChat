@@ -20,6 +20,8 @@ import { MarkdownTable, MarkdownTh } from './MarkdownTable'
 import { useT } from '@/lib/useT'
 import { rehypePlaceholders } from '@/lib/placeholders'
 import { CitationContext, citationHref, linkCitations } from '@/lib/shelfCitations'
+import { linkTimestamps, VIDEO_LINK, type VideoRef } from '@/lib/media'
+import { TimeChip } from './TimeChip'
 
 // Embedded raster pictures only; the same rule as `services/pictures.py`.
 const EMBEDDED_PICTURE =
@@ -262,10 +264,13 @@ export function MarkdownBody({
   children,
   className,
   owner,
+  videos,
 }: {
   children: string
   className?: string
   owner?: DiagramOwner
+  /** Videos the conversation has: time marks written as text link to them. */
+  videos?: VideoRef[]
 }) {
   const t = useT()
   // In a project conversation, a citation of project material opens the source viewer.
@@ -275,8 +280,8 @@ export function MarkdownBody({
     [children, openCitation],
   )
   const source = useMemo(
-    () => detachTables(normaliseMath(withoutBrokenPictures(cited?.content ?? children))),
-    [children, cited],
+    () => detachTables(normaliseMath(withoutBrokenPictures(linkTimestamps(cited?.content ?? children, videos ?? [])))),
+    [children, cited, videos],
   )
   return (
     <div
@@ -356,6 +361,14 @@ export function MarkdownBody({
                 : typeof children === 'string'
                   ? children
                   : ''
+            // A moment of a video: its time and picture, playing from there.
+            const moment = VIDEO_LINK.exec(href ?? '')
+            if (moment && moment[2] !== undefined) {
+              const number = /^\[(\d{1,2})\]$/.exec(citation)?.[1]
+              const chip = <TimeChip fileId={moment[1]} seconds={Number(moment[2])} number={number} />
+              // a stamp or a number is the chip itself; a source line keeps its words before it
+              return number || /^(?:\d{1,2}:)?\d{1,2}:\d{2}$/.test(citation) ? chip : <>{children}{chip}</>
+            }
             if (/^\[\d{1,2}\]$/.test(citation)) {
               return (
                 <a

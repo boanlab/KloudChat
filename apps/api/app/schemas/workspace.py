@@ -70,6 +70,13 @@ class FileOut(Wire):
     ocr_total: int = 0
     ocr_done: int = 0
     ocr_review: int = 0
+    #: video/audio job (`video_jobs`): null | "queued" | "running" | "done" | "failed", the
+    #: step, parts done of total, and the length in seconds once probed
+    media_state: str | None = None
+    media_stage: str | None = None
+    media_done: int = 0
+    media_total: int = 0
+    media_duration: float = 0.0
     created_at: datetime
 
     @classmethod
@@ -77,6 +84,7 @@ class FileOut(Wire):
         out = cls.model_validate(f, from_attributes=True)
         out.preview = f.text[:280]
         out.indexed = f.indexed_at is not None
+        out.media_duration = float((f.media or {}).get("duration") or 0.0)
         return out
 
 
