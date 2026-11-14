@@ -1360,6 +1360,13 @@ def written_bullets_only(data: bytes) -> bytes:
 # ── a blank deck ──
 
 
+def _no_shrink(root) -> None:
+    """Every `a:normAutofit` under `root` becomes `a:noAutofit` (same place in `a:bodyPr`)."""
+    for fit in list(root.iter(qn("a:normAutofit"))):
+        fit.addprevious(fit.makeelement(qn("a:noAutofit"), {}))
+        fit.getparent().remove(fit)
+
+
 def blank_deck() -> bytes:
     """One empty title slide, 16:9, on python-pptx's default template stretched to 16:9 (its
     masters and layouts are drawn for 4:3), Korean text in 맑은 고딕."""
@@ -1372,6 +1379,11 @@ def blank_deck() -> bytes:
         for ext in root.iter(qn("a:ext")):
             if ext.get("cx") is not None:
                 ext.set("cx", str(int(int(ext.get("cx", "0")) * factor)))
+    # The default template's text places shrink their text to fit (`a:normAutofit`): the
+    # editor would then shrink a whole box as soon as a line is added. Fixed boxes here; the
+    # house writer's own overflow fallback (`deck_export._autofit`) is the only shrink.
+    for root in [prs.slide_master._element, *(lay._element for lay in prs.slide_layouts)]:
+        _no_shrink(root)
     theme = prs.slide_master.part.part_related_by(RT.THEME)
     root = etree.fromstring(theme.blob)
     for ea in root.iter(qn("a:ea")):

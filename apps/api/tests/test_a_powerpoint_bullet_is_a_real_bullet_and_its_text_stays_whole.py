@@ -472,3 +472,20 @@ async def test_the_deck_overflow_route_reports_the_editors_slides(monkeypatch):
     found = await workspace.deck_overflow("a1", workspace.DeckOverflowIn(slides=slides), None, None)
     assert [row["slideId"] for row in found] == ["s1"]
     assert await workspace.deck_overflow("a1", workspace.DeckOverflowIn(), None, None) == []
+
+
+def test_a_blank_deck_never_shrinks_a_box_when_a_line_is_added():
+    # python-pptx's default places carry `a:normAutofit`: the editor shrank a whole box as
+    # soon as a line was typed into it. The blank deck's places are fixed boxes instead.
+    blank = pptx_edit.blank_deck()
+    prs = Presentation(io.BytesIO(blank))
+    for root in [prs.slide_master._element, *(lay._element for lay in prs.slide_layouts)]:
+        assert not list(root.iter(qn("a:normAutofit")))
+    written = pptx_edit.apply(blank, [
+        {"op": "add_slide", "title": "랜섬웨어 피해 증가",
+         "body": "랜섬웨어 공격 지속 확대\n탐지·대응 시간 단축\n이중 피해 위험"},
+    ]).data
+    deck = Presentation(io.BytesIO(written))
+    for slide in deck.slides:
+        for part in (slide._element, slide.slide_layout._element):
+            assert not list(part.iter(qn("a:normAutofit")))
