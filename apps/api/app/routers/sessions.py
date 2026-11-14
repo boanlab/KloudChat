@@ -420,9 +420,32 @@ def _document_preset(
     tool = f"{document.kind.value}_read"
     if tool not in tool_names:
         return None
+    return (tool, {}) if _written(document) else None
+
+
+def _written(document: Artifact) -> bool:
+    """The document holds text: a blank one (an office file's outline empty, its `slides` only
+    a count) is written into, not read first."""
     data = document.data or {}
-    return (tool, {}) if (str(data.get("text") or "").strip() or data.get("sections")
-                          or data.get("slides")) else None
+    listed = [data.get("sections"), data.get("slides")]
+    return bool(str(data.get("text") or "").strip()
+                or any(isinstance(rows, list) and rows for rows in listed))
+
+
+def _blank_write_first(
+    document: Artifact | None, tool_names: set[str], content: str, session: ChatSession
+) -> str | None:
+    """`<kind>_write` when the document beside the chat is still blank and the turn asks for
+    content (or the surface opened it for this request), unless the person asked for a search:
+    the first write goes into the file, not a round of research into the chat."""
+    if document is None or _document_preset(document, tool_names) is not None:
+        return None
+    tool = f"{document.kind.value}_write"
+    if tool not in tool_names or requests_web_search(content):
+        return None
+    asked = bool(_WRITES_DOCUMENT.search(_ask_of(content))) or (
+        session.kind is not SessionKind.chat and document.id == session.artifact_id)
+    return tool if asked else None
 
 
 #: 「한글 문서로」, 「Word로」: a request for an HWP or Word document (`report_office`)
@@ -6370,6 +6393,11 @@ async def _send_message(
         and published is None and not agent_material and not declines_web_search(content)
         else []
     )
+    if not preflight_tool and forced_tool in (None, "web_search") and (
+            first_write := _blank_write_first(office_target, tool_names, content, session)):
+        # a blank document open beside the chat and content asked for: written into it first,
+        # not researched into the chat (a search runs only when the person asked for one)
+        forced_tool = first_write
     if forced_tool == "web_search" and "web_search" in tool_names and not given_links:
         # reuse only privacy-processed history; never re-send the earlier raw question
         lookup_content = (

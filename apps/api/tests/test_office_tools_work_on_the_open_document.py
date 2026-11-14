@@ -145,3 +145,27 @@ async def test_a_blank_document_open_is_written_into(local):
     ctx = ToolContext(user_id=USER, session_id=SESSION, open_artifact={"id": blank.id})
     made = await hwp_tools.hwp_write({"title": "연수 공문", "format": "plain", "body": "본문"}, ctx)
     assert not made.failed and made.trace == {"artifactId": blank.id, "artifactVersion": 2}
+
+
+def test_a_blank_document_is_written_first_unless_a_search_was_asked_for():
+    from app.models.chat import ChatSession, SessionKind
+    from app.models.workspace import Artifact, ArtifactKind
+    from app.routers import sessions as sessions_router
+
+    tools = {"pptx_write", "pptx_read", "pptx_edit", "web_search"}
+    blank = Artifact(id="d1", user_id=USER, kind=ArtifactKind.pptx, title="PowerPoint 문서",
+                     data={"text": "", "slides": 1})
+    slides = ChatSession(id=SESSION, user_id=USER, kind=SessionKind.slides, artifact_id="d1")
+    ask = ("2026년 사이버 보안 위협 전망을 임원 브리핑용 PowerPoint 6장으로 만들어 주세요. "
+           "꼭 들어갈 내용: Agentic AI, 랜섬웨어 피해 증가, 공급망 공격 확대.")
+    first = sessions_router._blank_write_first
+    assert first(blank, tools, ask, slides) == "pptx_write"
+    # the person asked for research first: the search runs
+    assert first(blank, tools, "최신 자료를 검색해서 " + ask, slides) is None
+    # a written deck is read first, not rewritten
+    written = Artifact(id="d1", user_id=USER, kind=ArtifactKind.pptx, title="덱",
+                       data={"text": "표지", "slides": 3})
+    assert first(written, tools, ask, slides) is None
+    # a question about a blank chat document is no write
+    chat = ChatSession(id=SESSION, user_id=USER, kind=SessionKind.chat)
+    assert first(blank, tools, "이 문서는 몇 장이야?", chat) is None
