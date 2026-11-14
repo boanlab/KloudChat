@@ -2291,7 +2291,8 @@ export function Composer({
           }
         } catch (error) {
           setChatError(
-            errorMessage(error, t('Auto를 켜지 못했습니다. 잠시 후 다시 시도하세요.')),
+            refusalSentence(errorCode(error), t) ??
+              errorMessage(error, t('Super Agent를 켜지 못했습니다. 잠시 후 다시 시도하세요.')),
           )
         }
       }}

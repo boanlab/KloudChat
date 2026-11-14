@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.core.deps import AdminUser, CurrentUser, DbSession
-from app.services import adaptive_routing, governance
+from app.services import adaptive_routing, governance, super_agent
 from app.services import models as model_service
 from app.services.credits import refill_due
 
@@ -72,7 +72,26 @@ async def _catalogue_for_user(user: CurrentUser, *, force: bool = False):
             ),
             "qualityModelIds": quality_ids,
         },
+        "superAgent": _super_agent_offer(policy, catalogue["models"], allowed),
     }
+
+
+def _super_agent_offer(policy, catalogue: list[dict], allowed: set[str]) -> dict:
+    """The picker's two Super Agent entries: offered or why not, with a typical turn's
+    credits (min–max across the class table)."""
+    rules = super_agent.normalise_rules(policy.super_agent_rules)
+    offer: dict = {"enabled": policy.super_agent_enabled}
+    for key, strict in (("default", False), ("strict", True)):
+        estimate = super_agent.estimate(rules, catalogue, strict=strict, allowed=allowed)
+        offer[key] = {
+            "available": bool(policy.super_agent_enabled and estimate),
+            "reason": (
+                "disabled" if not policy.super_agent_enabled
+                else None if estimate else "no_models"
+            ),
+            "estimate": estimate,
+        }
+    return offer
 
 
 @router.get("/models")

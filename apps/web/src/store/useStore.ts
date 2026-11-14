@@ -157,6 +157,13 @@ function queueSessionPersistence(sessionId: string, persist: () => Promise<void>
 
 const noop = () => {}
 
+/** Before the catalogue answers (or from an older server): no Super Agent entry. */
+const NO_SUPER_AGENT: NonNullable<ModelCatalogue['superAgent']> = {
+  enabled: false,
+  default: { available: false, reason: 'disabled', estimate: null },
+  strict: { available: false, reason: 'disabled', estimate: null },
+}
+
 /** Marks a session as having a turn in flight, with the abort for that turn. */
 function beginRun(set: Set, sessionId: string, abort: () => void = noop) {
   set((s) => ({ running: { ...s.running, [sessionId]: abort } }))
@@ -360,6 +367,8 @@ interface State {
   /** Strict-local picture model the server uses when the person picked none. */
   strictImageDefault: string
   autoRouting: ModelCatalogue['autoRouting']
+  /** Super Agent entries; both unavailable until the catalogue says otherwise. */
+  superAgent: NonNullable<ModelCatalogue['superAgent']>
   loadModels: () => Promise<void>
 
   // ── session / generation ──────────────────────────────────────────────
@@ -1311,6 +1320,7 @@ export const useStore = create<State>((set, get) => ({
   artifactsFailed: false,
   litellmAvailable: true,
   strictImageDefault: '',
+  superAgent: NO_SUPER_AGENT,
   autoRouting: {
     enabled: false,
     available: false,
@@ -1437,6 +1447,7 @@ export const useStore = create<State>((set, get) => ({
         defaultAvModelByMode,
         strictImageDefault,
         autoRouting,
+        superAgent,
       } = await modelsApi.list()
       set((s) => ({
         models: live,
@@ -1447,6 +1458,7 @@ export const useStore = create<State>((set, get) => ({
         ),
         litellmAvailable,
         strictImageDefault: strictImageDefault ?? '',
+        superAgent: superAgent ?? NO_SUPER_AGENT,
         autoRouting: autoRouting ?? {
           enabled: false,
           available: false,

@@ -109,7 +109,8 @@ class _RouteDb(_NoWriteDb):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("mode", list(RoutingMode))
+#: `super_strict` answers only on a strict-local model; these catalogues offer none
+@pytest.mark.parametrize("mode", [m for m in RoutingMode if m is not RoutingMode.super_strict])
 @pytest.mark.parametrize("unavailable", ["off", "strict", "no_tools", "allowlist"])
 @pytest.mark.parametrize(
     "question",
@@ -390,7 +391,8 @@ async def test_noncurrent_or_declined_political_tasks_keep_the_normal_route(monk
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("mode", list(RoutingMode))
+#: `super_strict` answers only on a strict-local model; these catalogues offer none
+@pytest.mark.parametrize("mode", [m for m in RoutingMode if m is not RoutingMode.super_strict])
 async def test_available_lookup_is_a_trusted_preset_even_for_implicit_officeholder(
     monkeypatch, mode
 ):

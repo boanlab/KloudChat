@@ -48,6 +48,7 @@ export const ACTION_LABEL: Record<string, string> = {
   'filter.blocked': '의도 필터 차단',
   'pii.masked': '개인정보 가림',
   'routing.auto': 'Auto 라우팅',
+  'routing.super': 'Super Agent 라우팅',
   'privacy.none': '개인정보 검사 통과',
   'privacy.decision_required': '개인정보 처리 선택 요청',
   'privacy.internal_strict_local': '내부 자료 strict-local 처리',

@@ -4,7 +4,7 @@ title: Policy and routing
 
 # Policy and routing
 
-This screen sets the level of personal data protection, the audit record, and automatic model switching (Auto).
+This screen sets the level of personal data protection, the audit record, and automatic model choice (Super Agent).
 
 ## Policy settings
 
@@ -27,10 +27,11 @@ In an environment where every model runs on organization servers, **Personal dat
 
 Time, account, action, target, and access location. The log covers sign-ins, failures, approvals, suspensions, permission changes, setting changes, key issuance, discards, password resets, token reuse detection, and more. Search by account, action, or IP. The Time, Action, Target and Access location headings sort the log on the server. **Export CSV** downloads every page under the current filters and order (up to 50,000 rows), and the export itself is recorded in the audit log. It cannot be edited or deleted from the screen.
 
-## Auto routing
+## Super Agent
 
-- **Auto · Cost saving** — an on/off switch, the difficulty classification model (free strict-local only), and up to 3 saving models in priority order. A saving model is used only when its output price is lower than the quality model the user chose, its data boundary is no wider, and its context length is sufficient. In an environment where every model is free, there is nothing to save, so it does not run.
-- **Auto · Quality first** — an on/off switch and up to 3 upgrade models.
+- **Switch** — whether the model picker shows the two Super Agent entries.
+- **Classifier model** — a free strict-local model that gets only the requests the rules cannot sort, briefly.
+- **Table by task type** — for each task type, the Super Agent model, the strict-local model and the reasoning effort. The "after a retry request or empty answer" row handles requests to redo and empty answers. **Reset table to defaults** restores the evaluated default table.
 - **Structuring stage model** — The model that sets the outline for a report or slide deck. If you leave it empty, it is the same as the writing model.
 
 The default model per screen is not an administrator setting. It sits under **each user's Settings → Preferences**. Administrators only restrict the allowed models per user.

@@ -485,6 +485,26 @@ export interface ModelCatalogue {
     qualityReason: 'disabled' | 'classifier_unavailable' | 'no_quality_models' | null
     qualityModelIds: string[]
   }
+  /** The picker's Super Agent entries; absent from an older server. */
+  superAgent?: {
+    enabled: boolean
+    default: SuperAgentOffer
+    strict: SuperAgentOffer
+  }
+}
+
+/** One Super Agent entry: offered or why not, and a typical answer's credits across the table. */
+export interface SuperAgentOffer {
+  available: boolean
+  reason: 'disabled' | 'no_models' | null
+  estimate: { min: number; max: number; models: string[] } | null
+}
+
+/** One row of the admin's Super Agent table. */
+export interface SuperAgentRule {
+  model: string
+  strictModel: string
+  effort: 'default' | 'none' | 'low' | 'high'
 }
 
 export const modelsApi = {
@@ -964,6 +984,12 @@ export interface GovernancePolicy {
   adaptiveEconomyModelIds: string[]
   adaptiveQualityEnabled: boolean
   adaptiveQualityModelIds: string[]
+  /** Super Agent entries offered in the picker. */
+  superAgentEnabled: boolean
+  /** Class → model, strict-local model and effort, the admin's changes merged over the defaults. */
+  superAgentRules: Record<string, SuperAgentRule>
+  /** The built-in table (read-only), for 「기본값으로」. */
+  superAgentDefaultRules?: Record<string, SuperAgentRule>
   /** Plans documents when set; null lets each surface's own model plan. */
   outlineModelId: string | null
 }

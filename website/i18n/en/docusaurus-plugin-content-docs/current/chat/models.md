@@ -25,16 +25,16 @@ Depending on how the gateway registers models, one model name can appear as two 
 
 When a **May switch to an external provider** model fails to answer and the gateway's fallback model answers instead, the answer carries an **Answered by external fallback** badge (**Answered by fallback model** when the fallback also runs on organization servers). Hover over the badge to see the model you asked for and the one that answered. The same event is recorded in the administrator's audit log as **Fallback model answered**.
 
-## Auto mode
+## Super Agent
 
-When the administrator enables it on the Chat screen, two modes appear at the top of the list. These modes apply to the conversation, not to a model.
+When the administrator turns it on, two entries appear at the top of the list. They apply to the conversation, not to a model.
 
-| Mode | What it does |
+| Entry | What it does |
 |---|---|
-| Auto · Quality first | Only the requests judged complex switch to the higher model the administrator set. Everything else uses the model you selected. |
-| Auto · Cost saving | Switches simple requests to a cheaper model. Everything else uses the model you selected. |
+| Super Agent | Sorts each question by task (simple question, translation or summary, calculation, code, current facts, complex reasoning and so on) and picks a fitting model and reasoning effort. With personal data or internal material it uses an in-house model. |
+| Super Agent (strict-local) | Picks the same way but only among strict-local in-house models. Questions and material never leave, and the web is not searched. |
 
-Auto does not apply to requests that use files, projects, agents, skills, or web search set to Always. Those requests use the model you selected. A badge above the composer then shows that Auto was not applied. Each answer also shows the reason for the decision and an estimate of the credits saved.
+Each entry shows the usual credits for one answer. Every answer shows "This answer: model · task type" and the reason in its processing row. Saying "again" or "more detail" answers once more with a stronger setup; short follow-ups in the same conversation and revisions of the same document stay on the same model.
 
 ## Scope of a model selection
 

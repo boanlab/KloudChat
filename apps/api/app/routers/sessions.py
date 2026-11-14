@@ -148,6 +148,7 @@ from app.services import (
     skill_turn,
     starter,
     stop_signal,
+    super_agent,
     user_templates,
 )
 from app.services import agent as agent_service
@@ -1043,6 +1044,10 @@ async def _audit_media_boundary(
 _widens_boundary = adaptive_routing.widens_boundary
 
 _AUTO_MODES = frozenset({RoutingMode.auto, RoutingMode.auto_quality})
+#: Super Agent entries (`super_agent`); offered on the same surfaces as Auto.
+_SUPER_MODES = frozenset({RoutingMode.super, RoutingMode.super_strict})
+#: every routed (not model-pinned) mode
+_ROUTED_MODES = _AUTO_MODES | _SUPER_MODES
 #: Surfaces whose writer an Auto lane may choose (`_document_route`).
 _AUTO_KINDS = frozenset({SessionKind.chat, SessionKind.report, SessionKind.slides})
 #: kinds whose picked skills stay on for later turns (a plan's approval included)
@@ -1156,6 +1161,14 @@ async def _require_auto_quality_model(user: User, model_id: str | None) -> None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="auto_quality_model_required",
+        )
+
+
+async def _require_super_agent() -> None:
+    """Super Agent entries need the admin's switch."""
+    if not (await governance.current()).super_agent_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="super_agent_disabled"
         )
 
 
@@ -1343,6 +1356,179 @@ async def _resolve_cost_routing(
     )
 
 
+def _super_history(history: list[Message]) -> tuple[tuple[str, str, dict | None], ...]:
+    """History as the Super Agent router reads it; a failed answer reads as empty."""
+    return tuple(
+        (
+            message.role.value,
+            "" if message.failure is not None else (message.content or ""),
+            message.routing if isinstance(message.routing, dict) else None,
+        )
+        for message in history
+    )
+
+
+def _super_reasoning(
+    model: dict, effort: str, rescue: dict | None, rescue_effort: str
+) -> dict[str, dict[str, Any]] | None:
+    """Effort fields by model for `agent.TURN_REASONING`; None leaves the deployment's."""
+    fields: dict[str, dict[str, Any]] = {}
+    for row, level in ((rescue, rescue_effort), (model, effort)):
+        if row is not None and (wanted := super_agent.reasoning_fields(
+                str(row["id"]), level, row)):
+            fields[str(row["id"])] = wanted
+    return fields or None
+
+
+def _super_rescue(
+    route: dict[str, Any], *, policy, user: User, catalogue: list[dict], writer: dict,
+    strict_local: bool,
+) -> tuple[dict | None, str]:
+    """Who rewrites an answer the routed writer left empty or cut: the table's escalation row,
+    inside the turn's boundary; `(None, …)` when that is the writer itself."""
+    rules = super_agent.normalise_rules(policy.super_agent_rules)
+    chosen, _ = super_agent.pick(
+        rules, super_agent.ESCALATION_CLASS,
+        _allowed_models(user, catalogue, kind=SessionKind.chat.value), kind="chat",
+        strict=strict_local or route.get("mode") == super_agent.SUPER_STRICT,
+        allowed=set(user.allowed_models or []), needs_tools=True,
+    )
+    if chosen is None or chosen["id"] == writer["id"] or _widens_boundary(chosen, writer):
+        return None, "default"
+    return chosen, rules[super_agent.ESCALATION_CLASS]["effort"]
+
+
+def _first_document_model(history: list[Message]) -> str | None:
+    """The model that wrote this document session's first version: its revisions keep it."""
+    for message in history:
+        route = (message.routing or {}).get("superAgent") if message.routing else None
+        if isinstance(route, dict) and route.get("selectedModel"):
+            return str(route["selectedModel"])
+    return None
+
+
+async def _super_route(
+    *,
+    db: DbSession,
+    user: User,
+    session: ChatSession,
+    policy,
+    catalogue: list[dict],
+    default: dict,
+    history: list[Message],
+    content: str,
+    kind: SessionKind,
+    web_search: bool | str | None,
+    attachments: list[str] | None,
+    tool_bound: bool,
+    pictures: bool = False,
+) -> tuple[dict, dict[str, Any], str]:
+    """Super Agent turn: `(model, route note, effort)`.
+
+    Rules first; the short-payload classifier only when they cannot tell (and never with
+    personal data in the turn). `super_strict`, internal material and personal data pick from
+    the strict-local column, so privacy routing has nothing left to move."""
+    mode = str(getattr(session.routing_mode, "value", session.routing_mode))
+    rules = super_agent.normalise_rules(policy.super_agent_rules)
+    allowed = set(user.allowed_models or [])
+    turn = super_agent.Turn(
+        text=content,
+        kind=kind.value,
+        history=_super_history(history),
+        web_search=web_search if web_search in (True, "auto") else False,
+        attachments=bool(attachments),
+        pictures=pictures,
+        tool_bound=tool_bound,
+        context_bytes=adaptive_routing.estimated_context_tokens(
+            [content, *(m.content or "" for m in history)]
+        ),
+    )
+    decision = super_agent.classify(turn)
+    personal = governance.findings(
+        {"current_input": content, "conversation_history": [m.content for m in history]},
+        legacy=policy.pii_masking,
+    )
+    internal = policy.internal_data_strict_local and _internal_data_present(
+        session, None, attachments, history
+    )
+    strict = mode == super_agent.SUPER_STRICT or bool(personal) or internal
+    classified: super_agent.Classified | None = None
+    classifier_id: str | None = None
+    if decision.ambiguous and not personal:
+        classifier_id = str(policy.adaptive_classifier_model_id or "") or rules["simple"][
+            "strictModel"]
+        classifier = model_service.find(catalogue, classifier_id)
+        if adaptive_routing.classifier_is_usable(classifier, allowed_model_ids=allowed):
+            api_key = litellm_service.user_key(user) or await litellm_service.ensure_key(user)
+            if db.is_modified(user):
+                db.add(user)
+                await db.commit()
+            if api_key:
+                classified = await super_agent.classify_with_model(
+                    turn, model_id=classifier_id, user_id=user.id, api_key=api_key
+                )
+            if (
+                classified is not None
+                and classified.confidence >= super_agent.CLASSIFIER_MIN_CONFIDENCE
+            ):
+                decision = super_agent.Decision(
+                    classified.task_class, "classifier", "classified",
+                    confidence=classified.confidence, signals=decision.signals,
+                )
+    needs_tools = decision.task_class not in ("simple", "transform", "document") or tool_bound
+    chosen: dict | None = None
+    how = "rule"
+    sticky_id = (
+        _first_document_model(history) if decision.task_class == "document"
+        else str((super_agent._previous_route(turn.history) or {}).get("selectedModel") or "")
+        if decision.source == "sticky" else None
+    )
+    if sticky_id:
+        # a document's revisions, and a short follow-up, stay on the same model
+        candidate = model_service.find(catalogue, sticky_id)
+        if super_agent.usable_for(
+            candidate, kind=kind.value, strict=strict, allowed=allowed,
+            context_bytes=turn.context_bytes, needs_tools=needs_tools, needs_vision=pictures,
+        ):
+            chosen, how = candidate, "sticky"
+    if chosen is None:
+        chosen, how = super_agent.pick(
+            rules, decision.task_class, catalogue, kind=kind.value, strict=strict,
+            allowed=allowed, context_bytes=turn.context_bytes, needs_tools=needs_tools,
+            needs_vision=pictures, default=default,
+        )
+    if chosen is None and strict and mode != super_agent.SUPER_STRICT:
+        # no strict-local model here: privacy routing decides on the ordinary pick
+        chosen, how = super_agent.pick(
+            rules, decision.task_class, catalogue, kind=kind.value, strict=False,
+            allowed=allowed, context_bytes=turn.context_bytes, needs_tools=needs_tools,
+            needs_vision=pictures, default=default,
+        )
+    if chosen is None and strict:
+        # never a model that may leave: no answer rather than an outside one
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="strict_local_unavailable"
+        )
+    if chosen is None:
+        # nothing in the table serves here: the surface default answers, as a manual pick
+        chosen, how = default, "default"
+    tools = (
+        "none"
+        if decision.task_class == "simple" and not tool_bound and not attachments
+        and web_search is not True
+        else "full"
+    )
+    effort = super_agent.effort_for(rules, decision)
+    route = super_agent.route_metadata(
+        mode=mode, decision=decision, selected=chosen, effort=effort, how=how,
+        classified=classified, classifier_model=classifier_id if classified else None,
+        tools=tools,
+    )
+    if strict and mode != super_agent.SUPER_STRICT:
+        route["strictReason"] = "personal_data" if personal else "internal_data"
+    return chosen, route, effort
+
+
 def _apply_effective_model(routing: dict[str, Any], model: dict) -> dict[str, Any]:
     """Updates privacy routing after a clean Auto decision."""
     model_id = model["id"]
@@ -1470,6 +1656,63 @@ def _brings_material(content: str) -> bool:
     return len(pasted_material(content or "")) >= 1500
 
 
+async def _document_super_route(
+    *,
+    db: DbSession,
+    user: User,
+    session: ChatSession,
+    policy,
+    catalogue: list[dict],
+    model: dict,
+    blocks,
+    attachments: list[str] | None,
+    history: list[Message],
+    request: str,
+) -> tuple[dict, bool, dict[str, Any] | None] | JSONResponse:
+    """Super Agent's document writer: the table's document model, kept for the whole revision
+    chain; strict-local for the strict entry, internal material or personal data."""
+    usable = _allowed_models(user, catalogue, kind=session.kind.value)
+    chosen, route, _effort = await _super_route(
+        db=db, user=user, session=session, policy=policy, catalogue=usable, default=model,
+        history=history, content=request, kind=session.kind, web_search=False,
+        attachments=attachments, tool_bound=False,
+    )
+    strict = _strict_model(chosen)
+    if (
+        not strict
+        and policy.internal_data_strict_local
+        and _internal_data_present(session, blocks, attachments, history)
+    ):
+        # project knowledge or design blocks only show up here: the twin, as for a manual pick
+        twin = _strict_twin(chosen, catalogue, set(user.allowed_models or []))
+        if twin is None:
+            return JSONResponse(
+                status_code=status.HTTP_409_CONFLICT,
+                content={
+                    "detail": "internal_data_requires_strict_local",
+                    "action": "internal_data_requires_strict_local",
+                    "requestedModels": [chosen.get("id")],
+                    "safeModels": [],
+                    "findings": [],
+                    "policyVersion": governance.POLICY_VERSION,
+                    "detectorVersion": governance.DETECTOR_VERSION,
+                },
+            )
+        route = {**route, "boundaryModel": twin["id"], "strictReason": "internal_data"}
+        return twin, True, {
+            "action": "internal_strict_local",
+            "requestedModels": [chosen.get("id")],
+            "routedModels": [twin.get("id")],
+            "effectiveModels": [twin.get("id")],
+            "dataBoundary": twin.get("dataBoundary") or "self_hosted",
+            "superAgent": route,
+        }
+    note: dict[str, Any] = {"superAgent": route}
+    if chosen.get("id") != model.get("id"):
+        note = {**_substitution_routing(model, chosen), "action": "none", "superAgent": route}
+    return chosen, strict, note
+
+
 async def _document_route(
     *,
     db: DbSession,
@@ -1485,6 +1728,12 @@ async def _document_route(
 ) -> tuple[dict, bool, dict[str, Any] | None] | JSONResponse:
     """Report/deck writer, strict-local flag, route note; internal → strict-local twin."""
     allowed = set(user.allowed_models or [])
+    if session.routing_mode in _SUPER_MODES:
+        return await _document_super_route(
+            db=db, user=user, session=session, policy=policy, catalogue=catalogue,
+            model=model, blocks=blocks, attachments=attachments, history=history,
+            request=request,
+        )
     if (
         policy.internal_data_strict_local
         and not _strict_model(model)
@@ -2569,7 +2818,7 @@ async def create_session(payload: SessionCreate, user: CurrentUser, db: DbSessio
             agent.catalog_key or "") in starter.draft_agents():
         # in evaluation: admins only
         raise HTTPException(status_code=404, detail="agent_not_found")
-    if payload.routing_mode in _AUTO_MODES and payload.kind not in _AUTO_KINDS:
+    if payload.routing_mode in _ROUTED_MODES and payload.kind not in _AUTO_KINDS:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="auto_routing_chat_only",
@@ -2581,6 +2830,8 @@ async def create_session(payload: SessionCreate, user: CurrentUser, db: DbSessio
         )
     if payload.routing_mode in _AUTO_MODES:
         await _require_auto_quality_model(user, payload.model)
+    if payload.routing_mode in _SUPER_MODES:
+        await _require_super_agent()
     session = ChatSession(
         **({"id": payload.id} if payload.id else {}),
         user_id=user.id,
@@ -3110,7 +3361,7 @@ async def patch_session(session_id: str, payload: SessionPatch, user: CurrentUse
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="auto_is_not_a_model_id",
         )
-    if changes.get("routing_mode") in _AUTO_MODES and session.kind not in _AUTO_KINDS:
+    if changes.get("routing_mode") in _ROUTED_MODES and session.kind not in _AUTO_KINDS:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="auto_routing_chat_only",
@@ -3120,6 +3371,8 @@ async def patch_session(session_id: str, payload: SessionPatch, user: CurrentUse
         changes["routing_mode"] = RoutingMode.manual
     if changes.get("routing_mode", session.routing_mode) in _AUTO_MODES:
         await _require_auto_quality_model(user, changes.get("model", session.model))
+    if changes.get("routing_mode") in _SUPER_MODES:
+        await _require_super_agent()
     if "render_template_id" in changes:
         if not await user_templates.usable(db, user.id, changes["render_template_id"]):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
@@ -4683,6 +4936,13 @@ async def _send_message(
         and session.routing_mode in _AUTO_MODES
         and payload.model is None
     )
+    #: Super Agent picks this turn's model (`_super_route`); a turn-level model pick wins
+    super_turn = bool(
+        kind is SessionKind.chat
+        and session.routing_mode in _SUPER_MODES
+        and payload.model is None
+        and published is None
+    )
 
     # refused before any write, never dropped
     if payload.render_template_id is not None:
@@ -4787,6 +5047,26 @@ async def _send_message(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT, detail="search_consent_stale"
             )
+
+    #: the Super Agent route note and the writer's reasoning effort for this turn
+    super_route: dict[str, Any] | None = None
+    super_effort = "default"
+    if super_turn:
+        model, super_route, super_effort = await _super_route(
+            db=db,
+            user=user,
+            session=session,
+            policy=policy,
+            catalogue=usable,
+            default=model,
+            history=history,
+            content=content,
+            kind=kind,
+            web_search=payload.web_search,
+            attachments=payload.attachments,
+            tool_bound=bool(payload.activated_skill_ids or session.agent_id),
+        )
+        requested_model = model
 
     # ownership before privacy assembly
     rows, attachment_meta = await _owned_attachments(db, user, payload.attachments)
@@ -5496,6 +5776,18 @@ async def _send_message(
             routed_down = True
         strict_local = resolved.strict_local
 
+    if super_route is not None and privacy_resolution is not None:
+        if model["id"] != super_route["selectedModel"]:
+            # privacy routing moved the turn (strict twin, safe model): the note says so
+            super_route = {**super_route, "boundaryModel": model["id"]}
+        privacy_resolution.routing = {**privacy_resolution.routing, "superAgent": super_route}
+        if super_route.get("tools") == "none" and not calculation_required:
+            # a simple turn needs no tools: the shorter tool-free envelope, as Auto's economy
+            tools = []
+            tool_definitions = []
+            messages = envelope(wire_history, economy=True)
+            routed_down = True
+
     if not has_headroom(user, model):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="insufficient_credits"
@@ -5550,8 +5842,8 @@ async def _send_message(
         # turn answers (or skips) the chat agent's gap card
         session.pending = None
     # request models are turn-only; lasting choices via session settings API
-    if payload.model is None:
-        # substitute is turn-only
+    if payload.model is None and not super_turn:
+        # substitute is turn-only; a Super Agent pick is the turn's, not the session's
         if revoked_model is None:
             session.model = requested_model["id"]
     session.updated_at = utcnow()
@@ -5584,6 +5876,18 @@ async def _send_message(
         if privacy_resolution and privacy_resolution.routing
         else None
     )
+    if super_route is not None:
+        db.add(AuditEvent(
+            actor_id=user.id,
+            action="routing.super",
+            target=session.id,
+            detail=super_agent.ROUTER_VERSION,
+            event_metadata=dict(
+                (privacy_resolution.routing or {}).get("superAgent") or super_route
+                if privacy_resolution else super_route
+            ),
+            ip=client_ip(request),
+        ))
     if cost_route:
         routing_audit = AuditEvent(
             actor_id=user.id,
@@ -6159,9 +6463,16 @@ async def _send_message(
             return answer_plan.attach(current, outline)
     else:
         plan_messages = None
+    super_rescue, rescue_effort = (
+        _super_rescue(super_route, policy=policy, user=user, catalogue=catalogue_models,
+                      writer=model, strict_local=strict_local)
+        if super_route is not None else (None, "default")
+    )
     return StreamingResponse(
         _survive_disconnect(
             _run_turn(
+                reasoning=_super_reasoning(model, super_effort, super_rescue, rescue_effort)
+                if super_route else None,
                 user_id=user.id,
                 api_key=api_key,
                 # visitor's words never remembered on the owner's account
@@ -6252,7 +6563,7 @@ async def _send_message(
                 ),
                 # an answer the writer left empty or only announced: the other local model
                 # writes it once more
-                rescue=await _rescue_model(
+                rescue=super_rescue or await _rescue_model(
                     user=user, catalogue=catalogue_models, writer=model,
                     strict_local=strict_local, outline=outline_model),
                 calculation_expression=(
@@ -6698,8 +7009,13 @@ async def _search_card(*, user_id: str, session_id: str, card: dict, routing: di
 
 
 async def _run_turn(*, published: publishing.PublishedTurn | None = None,
+                    reasoning: tuple[str, dict[str, Any]] | None = None,
                     **kwargs: Any) -> AsyncIterator[str]:
-    """Drives one assistant turn; a published bot's turn releases its slot however it ends."""
+    """Drives one assistant turn; a published bot's turn releases its slot however it ends.
+    `reasoning`: the routed writer's effort fields (`agent.TURN_REASONING`), set for the task
+    that runs the turn."""
+    if reasoning is not None:
+        agent_service.TURN_REASONING.set(reasoning)
     events = _answer_turn(published=published, **kwargs)
     if published is not None:
         events = publishing.holding(events, published)

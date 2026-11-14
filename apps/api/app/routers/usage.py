@@ -26,6 +26,7 @@ from app.services import (
     geoip,
     governance,
     settings_store,
+    super_agent,
 )
 from app.services import audit as audit_service
 from app.services import credits as credits_service
@@ -846,6 +847,9 @@ async def get_governance(admin: AdminUser, db: DbSession):
         "adaptiveQualityEnabled": policy.adaptive_quality_enabled,
         "internalDataStrictLocal": policy.internal_data_strict_local,
         "strictLocalWebSearch": policy.strict_local_web_search or "ask",
+        "superAgentEnabled": policy.super_agent_enabled,
+        "superAgentRules": super_agent.normalise_rules(policy.super_agent_rules),
+        "superAgentDefaultRules": super_agent.DEFAULT_RULES,
         "adaptiveQualityModelIds": list(policy.adaptive_quality_model_ids or []),
         "outlineModelId": policy.outline_model_id,
         "intentFilter": policy.intent_filter,
@@ -853,6 +857,44 @@ async def get_governance(admin: AdminUser, db: DbSession):
         "retentionDays": policy.retention_days,
         "idleTimeoutMinutes": policy.idle_timeout_minutes,
     }
+
+
+async def _validated_super_rules(raw: dict | None) -> dict:
+    """Super Agent table as stored (changes from the built-in one only); a model the
+    catalogue does not serve for chat, or a non-strict-local strict pick, is refused."""
+    raw = raw or {}
+    unknown = [name for name in raw if name not in super_agent.CLASSES]
+    if unknown:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="super_agent_class_unknown",
+        )
+    for rule in raw.values():
+        if rule.get("effort") not in (None, *super_agent.EFFORTS):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="super_agent_effort_invalid",
+            )
+    merged = super_agent.normalise_rules(raw)
+    catalogue = {m["id"]: m for m in (await model_service.list_models())["models"]}
+    changed = super_agent.stored_rules(raw)
+    for name, rule in changed.items():
+        kind = "report" if name == "document" else "chat"
+        model = catalogue.get(merged[name]["model"]) if "model" in rule else None
+        if "model" in rule and (model is None or kind not in model.get("kinds", [])):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="super_agent_model_invalid",
+            )
+        strict = catalogue.get(merged[name]["strictModel"]) if "strictModel" in rule else None
+        if "strictModel" in rule and (
+            not super_agent.strict_model(strict) or kind not in (strict or {}).get("kinds", [])
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="super_agent_strict_model_must_be_strict_local",
+            )
+    return changed
 
 
 @router.put("/governance")
@@ -996,6 +1038,8 @@ async def put_governance(payload: GovernanceIn, request: Request, admin: AdminUs
     if "strict_local_web_search" in patch and patch["strict_local_web_search"] is None:
         # null is no setting: unchanged
         del patch["strict_local_web_search"]
+    if "super_agent_rules" in patch:
+        patch["super_agent_rules"] = await _validated_super_rules(patch["super_agent_rules"])
     if patch.get("pii_masking", policy.pii_masking):
         # masking: no raw-delivery exception, persisted so unmasking can't revive it
         patch["allow_user_raw_external"] = False

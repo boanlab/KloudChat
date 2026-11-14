@@ -22,7 +22,7 @@ title: Glossary
 | Connector (커넥터) | An external tool the model uses (MCP). Turned on and off for the whole account |
 | Memory (메모리) | A fact remembered beyond one conversation. Settings › Memory |
 | strict-local | A mark on a model confirmed not to send anything outside |
-| Auto | A conversation mode that changes the model to suit the request (quality first or cost saving) |
+| Super Agent | A conversation mode that picks the model and reasoning effort for each request by its task type (with a strict-local-only entry) |
 | Credit (크레딧) | The unit of usage. Free models do not use it |
 | Processing steps (작업 단계) | The "Done · N steps" line above an answer. It shows the items used |
 | Turn (턴) | One question and its answer. Shown on the screen in forms such as "Attachment from an earlier turn" |

@@ -15,6 +15,7 @@ import { cn, formatTokens } from '@/lib/utils'
 import { effectiveModelId, useStore } from '@/store/useStore'
 import type { ModelInfo, RoutingMode, SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
+import { isSuperMode, superLaneTitle } from '@/lib/superAgent'
 
 /** Price label in the modality's own unit; text models quote both directions. */
 function rateLabel(m: ModelInfo, t: (s: string) => string): string {
@@ -82,6 +83,33 @@ function phoneModelLabel(m: ModelInfo, t: (s: string) => string): string {
   return place ? `${core} · ${place}` : core
 }
 
+type Lane = {
+  mode: RoutingMode
+  title: string
+  available: boolean
+  blurb: string
+  /** Super Agent: a typical answer's credits; `''` hides the line. */
+  cost?: string
+}
+
+function superReason(reason: string | null, t: (s: string) => string): string {
+  return reason === 'no_models'
+    ? t('이 계정에서 쓸 수 있는 모델이 표에 없습니다.')
+    : t('관리자가 Super Agent를 켜지 않았습니다.')
+}
+
+/** 「답 하나에 보통 0~120 크레딧」; free when every class runs on a self-hosted model. */
+function superEstimate(
+  estimate: { min: number; max: number } | null,
+  t: (s: string) => string,
+): string {
+  if (!estimate) return ''
+  if (estimate.max === 0) return t('답 하나에 보통 무료(내부 모델)')
+  return t('답 하나에 보통 {min}~{max} 크레딧')
+    .replace('{min}', estimate.min.toLocaleString())
+    .replace('{max}', estimate.max.toLocaleString())
+}
+
 export function ModelPicker({
   kind,
   sessionId,
@@ -120,6 +148,7 @@ export function ModelPicker({
     modelsLoading,
     litellmAvailable,
     autoRouting,
+    superAgent,
   } = useStore()
   const session = sessionId ? sessions.find((s) => s.id === sessionId) : undefined
   const usable = models.filter(
@@ -135,10 +164,15 @@ export function ModelPicker({
   const active = current ?? usable[0]
   // A picture or av surface without the admin's default: none chosen, said so (never the first or cheapest).
   const noDefault = !current && (kind === 'image' || kind === 'av')
-  const autoLane = kind === 'chat' && session?.routingMode !== 'manual'
+  const routedSurface = kind === 'chat' || kind === 'report' || kind === 'slides'
+  const superLane = routedSurface && isSuperMode(session?.routingMode)
     ? session?.routingMode
     : undefined
-  const autoActive = autoLane === 'auto' || autoLane === 'auto_quality'
+  const autoLane = superLane ?? (kind === 'chat' && session?.routingMode !== 'manual'
+    ? session?.routingMode
+    : undefined)
+  const legacyAutoActive = autoLane === 'auto' || autoLane === 'auto_quality'
+  const autoActive = legacyAutoActive || superLane !== undefined
   const unresolvedAgentModel = !autoActive &&
     (kind === 'chat' || kind === 'report' || kind === 'slides') &&
     Boolean(session?.agentId && !session.model && !agents.some((agent) => agent.id === session.agentId))
@@ -175,9 +209,11 @@ export function ModelPicker({
     : noDefault
       ? t('기본 모델 없음 · 모델 고르기')
       : active.label
-  const triggerText = autoActive
-    ? `${autoLane === 'auto_quality' ? t('Auto · 품질 우선') : t('Auto · 비용 절약')} · ${modelLabel}`
-    : modelLabel
+  const triggerText = superLane
+    ? superLaneTitle(superLane)
+    : legacyAutoActive
+      ? `${autoLane === 'auto_quality' ? t('Auto · 품질 우선') : t('Auto · 비용 절약')} · ${modelLabel}`
+      : modelLabel
 
   return (
     <Dropdown
@@ -215,7 +251,9 @@ export function ModelPicker({
             {!field && (
               // A phone keeps what tells models apart; the menu has the full name.
               <span className="hidden min-w-[120px] truncate phone:inline">
-                {autoActive
+                {superLane
+                  ? superLaneTitle(superLane)
+                  : autoActive
                   ? `Auto · ${unresolvedAgentModel ? modelLabel : phoneModelLabel(active, t)}`
                   : unresolvedAgentModel || noDefault
                     ? modelLabel
@@ -233,6 +271,7 @@ export function ModelPicker({
         unresolvedAgentModel={unresolvedAgentModel || noDefault}
         autoLane={autoLane}
         autoRouting={autoRouting}
+        superAgent={superAgent}
         showAuto={canRouteAuto}
         litellmAvailable={litellmAvailable}
         selectionPending={selectionPending}
@@ -261,6 +300,7 @@ function ModelMenu({
   unresolvedAgentModel,
   autoLane,
   autoRouting,
+  superAgent,
   showAuto,
   litellmAvailable,
   selectionPending,
@@ -272,6 +312,7 @@ function ModelMenu({
   unresolvedAgentModel: boolean
   autoLane: RoutingMode | undefined
   autoRouting: ReturnType<typeof useStore.getState>['autoRouting']
+  superAgent: ReturnType<typeof useStore.getState>['superAgent']
   showAuto: boolean
   litellmAvailable: boolean
   selectionPending: boolean
@@ -303,7 +344,27 @@ function ModelMenu({
       : autoRouting.qualityReason === 'no_quality_models'
         ? t('관리자가 상향할 모델을 지정하지 않았습니다.')
         : t('관리자가 Auto 품질 우선을 켜지 않았습니다.')
-  const lanes: { mode: RoutingMode; title: string; available: boolean; blurb: string }[] = [
+  const superLanes: Lane[] = [
+    {
+      mode: 'super',
+      title: superLaneTitle('super'),
+      available: superAgent.default.available,
+      blurb: superAgent.default.available
+        ? t('질문마다 알맞은 모델과 추론 강도를 골라 비용과 품질을 함께 맞춥니다.')
+        : superReason(superAgent.default.reason, t),
+      cost: superEstimate(superAgent.default.estimate, t),
+    },
+    {
+      mode: 'super_strict',
+      title: superLaneTitle('super_strict'),
+      available: superAgent.strict.available,
+      blurb: superAgent.strict.available
+        ? t('기관 안의 모델만 골라 씁니다. 질문과 자료가 밖으로 나가지 않습니다.')
+        : superReason(superAgent.strict.reason, t),
+      cost: superEstimate(superAgent.strict.estimate, t),
+    },
+  ]
+  const lanes: Lane[] = [
     {
       mode: 'auto',
       title: t('Auto · 비용 절약'),
@@ -321,8 +382,13 @@ function ModelMenu({
         : qualityReason,
     },
   ]
-  // A lane the administrator has not made usable is not offered; the one in use stays visible.
-  const offeredLanes = showAuto ? lanes.filter((lane) => lane.available || autoLane === lane.mode) : []
+  // Super Agent replaces the two Auto lanes; an Auto lane stays visible only while in use.
+  const offeredLanes = showAuto
+    ? [
+        ...superLanes.filter((lane) => lane.available || autoLane === lane.mode),
+        ...lanes.filter((lane) => autoLane === lane.mode),
+      ]
+    : []
   return (
     <>
       {offeredLanes.length > 0 && (
@@ -351,9 +417,15 @@ function ModelMenu({
                   </Badge>
                 </span>
                 <span className="mt-0.5 block text-sm text-muted">{lane.blurb}</span>
-                <span className="mt-1 block truncate text-xs text-faint">
-                  {lane.mode === 'auto_quality' ? t('현재 모델') : t('품질 모델')}: {unresolvedAgentModel ? t('에이전트 기본 모델') : active.label}
-                </span>
+                {lane.cost !== undefined ? (
+                  lane.cost && (
+                    <span className="mt-1 block truncate text-xs text-faint">{lane.cost}</span>
+                  )
+                ) : (
+                  <span className="mt-1 block truncate text-xs text-faint">
+                    {lane.mode === 'auto_quality' ? t('현재 모델') : t('품질 모델')}: {unresolvedAgentModel ? t('에이전트 기본 모델') : active.label}
+                  </span>
+                )}
               </span>
             </button>
           ))}
