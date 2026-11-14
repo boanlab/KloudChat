@@ -207,3 +207,27 @@ def test_a_request_scoped_to_some_lectures_is_about_those_only():
     every = "올린 강의 자료 20개 전체를 주차별로 요약해 줘"
     assert coverage.asked_of(items, every) == items
     assert coverage.asked_of(items, "3~4주차를 각각 정리") == items
+
+
+async def test_a_project_that_fits_whole_still_names_its_files_by_unit(monkeypatch):
+    """Walk 11-14 rerun: 22 short lecture files went whole without their 「N강」 labels, so a
+    request scoped to 1~8강 could not tell which files it meant."""
+    from app.models.workspace import StoredFile
+    from app.services import workspace_context
+
+    files = [StoredFile(id=f"f{n}", user_id="u", project_id="p", name=f"{n:02d}강_주제{n}.pdf",
+                        text=f"제{n}강 주제{n}\n클라우드 강의 노트 본문 {n}") for n in (1, 2)]
+
+    class _Rows:
+        def all(self):
+            return files
+
+    class _Db:
+        async def exec(self, _query):
+            return _Rows()
+
+    monkeypatch.setattr(workspace_context.digest_jobs, "request", lambda ids: None)
+    project = type("P", (), {"id": "p"})()
+    user = type("U", (), {"id": "u"})()
+    _block, used = await workspace_context._project_knowledge(_Db(), user, project, budget=50_000)
+    assert [(f.state, f.label) for f in used] == [("included", "1강"), ("included", "2강")]

@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -423,6 +423,22 @@ def _best_per_file(stored: StoredFile, query: str, vector: list[dict]) -> knowle
                                      0.0, stored.source_url)
 
 
+def _labelled(readable: list[StoredFile], given: tuple[str, list[ContextFile]]
+              ) -> tuple[str, list[ContextFile]]:
+    """Fates of a project that went whole, named by unit as the 「자료 목록」 ones are
+    (「4강」, its title): an each-item check and its scope read them by label."""
+    block, used = given
+    by_id = {stored.id: stored for stored in readable}
+    out = []
+    for fate in used:
+        stored = by_id.get(fate.id)
+        if stored is not None and not fate.label:
+            digest = file_digest.digest_for(stored)
+            fate = replace(fate, label=digest.label, title=fate.title or digest.title)
+        out.append(fate)
+    return block, out
+
+
 def _fate(stored: StoredFile, digest, picked: list, kept: int) -> ContextFile:
     excerpt = "\n".join(p.text for p in picked)
     pages = tuple(dict.fromkeys(re.findall(r"\[페이지\s+(\d+)\]", excerpt)))
@@ -467,7 +483,8 @@ async def _project_knowledge(
     budget = budget or settings.file_context_chars
     total = sum(len(f.text) for f in readable)
     if not readable or total <= budget:
-        return _knowledge_block(readable, header="# 프로젝트 지식", focus=focus, budget=budget)
+        return _labelled(readable, _knowledge_block(
+            readable, header="# 프로젝트 지식", focus=focus, budget=budget))
 
     # lazy backfill: files without a current digest are queued; the code digest stands in now
     digest_jobs.request([f.id for f in readable if digest_jobs.needs_digest(f)])
@@ -475,7 +492,8 @@ async def _project_knowledge(
     listing, entries = _catalogue(readable, digests, int(budget * _LIST_SHARE))
     if not listing:
         # too little room for even one line: files in order, as far as they go
-        return _knowledge_block(readable, header="# 프로젝트 지식", focus=focus, budget=budget)
+        return _labelled(readable, _knowledge_block(
+            readable, header="# 프로젝트 지식", focus=focus, budget=budget))
     room = budget - len(listing)
     each = coverage.asks_each(focus)
     picked: dict[str, list] = {}
