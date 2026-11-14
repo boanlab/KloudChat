@@ -322,6 +322,11 @@ async def test_an_outside_model_is_refused_while_internal_data_stays_inside(shel
     body = allowed.json()
     assert allowed.status_code == 200 and body["strict"] is False and body["credits"] > 0
     assert body["sources"] == 2 and body["inputTokens"] > 0
+    # the ceiling is never below the typical cost (it read 「약 632 (최대 188)」 on eval)
+    assert body["maxCredits"] >= body["credits"]
+    quiz = (await shelf.client.post(f"/projects/{shelf.ids.project}/studio/estimate", json={
+        "kind": "quiz", "options": {"model": OUTSIDE["id"]}})).json()
+    assert quiz["maxCredits"] >= quiz["credits"] > 0
 
 
 async def test_an_unreadable_answer_is_asked_again_then_fails(shelf):

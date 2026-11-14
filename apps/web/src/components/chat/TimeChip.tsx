@@ -1,5 +1,6 @@
 import { Play } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { MediaDialog } from '@/components/files/MediaPlayer'
 import type { MediaInfo } from '@/lib/api'
 import { clock, frameAt, frameSrc, mediaInfo } from '@/lib/media'
@@ -43,8 +44,10 @@ export function TimeChip({ fileId, seconds, number }: { fileId: string; seconds:
         {number && <span className="text-faint">{number}</span>}
         <span className="font-mono">{clock(seconds)}</span>
       </button>
-      {open && (
-        <MediaDialog fileId={fileId} name={info?.name ?? t('영상')} start={seconds} onClose={() => setOpen(false)} />
+      {open && createPortal(
+        // to the page: a message's own layout (an animation's transform) would clip a fixed dialog
+        <MediaDialog fileId={fileId} name={info?.name ?? t('영상')} start={seconds} onClose={() => setOpen(false)} />,
+        document.body,
       )}
     </>
   )

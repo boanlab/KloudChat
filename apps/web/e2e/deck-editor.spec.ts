@@ -203,6 +203,30 @@ test('굵게 on a selection on the slide, then 저장: the slide keeps it as ric
   expect(JSON.stringify((sent[0].slides[3] as { richText?: unknown }).richText)).toMatch(/<(b|strong)>신청서는 학생이 제출합니다\.<\/(b|strong)>/)
 })
 
+test('Enter in a bullet on the slide starts the next bullet, and Backspace on an empty one removes it', async ({ page }, testInfo) => {
+  test.skip(viewport(testInfo) === 'phone', 'desktop width')
+  await resultsFixture(page, testInfo)
+  const sent = patches(page)
+  await open(page)
+  await thumbs(page).nth(3).click()
+  const item = editor(page).locator('.kc-canvas [contenteditable="true"]', { hasText: '신청서는 학생이 제출합니다.' }).last()
+  await item.click()
+  await page.keyboard.press('End')
+  await page.keyboard.press('Enter')
+  await page.keyboard.insertText('보안 검토: 정보보호팀 협업')
+  // an empty bullet, then Backspace: gone again
+  await page.keyboard.press('Enter')
+  await page.keyboard.press('Backspace')
+  await page.keyboard.press('Control+s')
+  await expect(unsaved(page)).toHaveCount(0)
+  expect(sent).toHaveLength(1)
+  const bullets = sent[0].slides[3].bullets ?? []
+  const at = bullets.indexOf('신청서는 학생이 제출합니다.')
+  expect(at).toBeGreaterThanOrEqual(0)
+  expect(bullets[at + 1]).toBe('보안 검토: 정보보호팀 협업')
+  expect(bullets.filter((b) => !b.trim())).toHaveLength(0)
+})
+
 test('a layout change keeps what the new layout cannot show, and saves only with 저장', async ({ page }, testInfo) => {
   test.skip(viewport(testInfo) === 'phone', 'desktop width')
   await resultsFixture(page, testInfo)

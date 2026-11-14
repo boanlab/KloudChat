@@ -377,7 +377,9 @@ class TurnConsent:
         if self.decision is not None:
             if self.decision.status == "allowed" and self.decision.queries:
                 return ALLOWED_RULE
-            return DECLINED_RULE
+            if self.decision.status == "declined":
+                return DECLINED_RULE + DECLINED_WHY
+            return DECLINED_RULE + BLOCKED_WHY
         return OFFER_RULE if self.offered else ""
 
 
@@ -559,6 +561,16 @@ DECLINED_RULE = (
     "No outside search runs this turn. Answer from the material and this conversation only. Do "
     "not write that you searched, and say plainly which parts the material does not cover "
     "(예: 「자료에는 다른 연구와의 비교가 없습니다」) instead of filling them from memory."
+)
+#: why no search ran, said as it was: never as a tool failure
+DECLINED_WHY = (
+    "\nThe person chose 「이번엔 자료만으로」 on the search card: if you mention the missing "
+    "search, say it was not run at their choice "
+    "(예: 「이번에는 검색하지 않고 자료로만 답합니다」), never that a tool failed or errored."
+)
+BLOCKED_WHY = (
+    "\nThe search was not allowed here (policy, or nothing safe to send): if you mention it, "
+    "say it was not allowed, never that a tool failed or errored."
 )
 
 

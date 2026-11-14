@@ -94,6 +94,7 @@ async def estimate(db, user: User, project: Project, kind: str, ids: list[str] |
     made = shelf_sources.bundle(files, source_budget(how.model))
     system = studio_kinds.system_prompt(kind, "ko", options)
     input_tokens = shelf_calls.tokens_of(system) + shelf_calls.tokens_of(made.text)
+    read_tokens = input_tokens
     output_tokens = int(studio_kinds.MAX_TOKENS[kind] * studio_kinds.TYPICAL_SHARE)
     # the checks' re-ask: what failed, with its passages, rewritten once
     input_tokens += output_tokens
@@ -113,10 +114,19 @@ async def estimate(db, user: User, project: Project, kind: str, ids: list[str] |
         "inputTokens": input_tokens,
         "outputTokens": output_tokens,
         "credits": shelf_calls.estimate(how.model, input_tokens, output_tokens),
-        "maxCredits": shelf_calls.estimate(how.model, input_tokens,
-                                           studio_kinds.MAX_TOKENS[kind]),
+        "maxCredits": _most_credits(how, read_tokens, kind),
     }
     return out
+
+
+def _most_credits(how: Any, read_tokens: int, kind: str) -> int:
+    """The ceiling: both calls written to the kind's limit (the answer, then the checks' re-ask
+    reading it back and rewriting a third), with the thinking when reasoning is on."""
+    ceiling = studio_kinds.MAX_TOKENS[kind]
+    written = ceiling + ceiling // 3
+    if how.effort in ("low", "high"):
+        written += thinking_tokens(kind)
+    return shelf_calls.estimate(how.model, read_tokens + ceiling, written)
 
 
 def thinking_tokens(kind: str) -> int:

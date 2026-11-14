@@ -4,7 +4,6 @@ project's notes (메모함)."""
 
 from __future__ import annotations
 
-import importlib.util
 import logging
 import re
 from typing import Any, Literal
@@ -20,8 +19,8 @@ from app.models.user import User, utcnow
 from app.models.workspace import Project, StoredFile
 from app.schemas.auth import Wire
 from app.schemas.workspace import FileOut
-from app.services import files as file_service
 from app.services import (
+    digest_jobs,
     shelf_calls,
     shelf_sources,
     source_guides,
@@ -29,6 +28,7 @@ from app.services import (
     studio,
     studio_kinds,
 )
+from app.services import files as file_service
 
 log = logging.getLogger(__name__)
 
@@ -64,20 +64,18 @@ async def _note_files(db: DbSession, project_id: str) -> set[str]:
 
 
 async def _index(db: DbSession, user: User, project: Project, stored: StoredFile) -> None:
-    """Into the project's search index, as an uploaded file is; and its digest asked for
-    where per-file digests exist (`digest_jobs`, fix/project-coverage)."""
+    """Into the project's search index, as an uploaded file is, with its digest asked for
+    (`digest_jobs`)."""
     from app.routers.workspace import _index_document, _project_shelf_key
 
     try:
         await _index_document(db, user.id, await _project_shelf_key(db, project), stored)
     except Exception as exc:  # noqa: BLE001 — word search still finds it; 색인하기 retries
         log.info("shelf source not indexed: %s", type(exc).__name__)
-    if importlib.util.find_spec("app.services.digest_jobs") is not None:
-        digest_jobs = importlib.import_module("app.services.digest_jobs")
-        if digest_jobs.mark(stored):
-            db.add(stored)
-            await db.commit()
-            digest_jobs.wake()
+    if digest_jobs.mark(stored):
+        db.add(stored)
+        await db.commit()
+        digest_jobs.wake()
 
 
 # ── sources ───────────────────────────────────────────────────────────

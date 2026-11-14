@@ -37,7 +37,8 @@ export function StudioTab({ projectId }: { projectId: string }) {
   const t = useT()
   const navigate = useNavigate()
   const [sources, setSources] = useState<ShelfSource[] | null>(null)
-  const [strict, setStrict] = useState(true)
+  // unknown until the listing answers: the strict-local line is not claimed while loading
+  const [strict, setStrict] = useState<boolean | null>(null)
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [items, setItems] = useState<StudioItem[] | null>(null)
   const [asking, setAsking] = useState<StudioKind | null>(null)
@@ -113,7 +114,7 @@ export function StudioTab({ projectId }: { projectId: string }) {
         <p className="text-sm text-muted">
           {withNames(t('고른 자료만으로 정리 문서·퀴즈·플래시카드를 만듭니다. 문장마다 어느 자료에서 왔는지 번호로 남기고, 번호를 누르면 원문 대목이 열립니다.'), t)}
         </p>
-        {strict && (
+        {strict === true && (
           <p className="mt-1 flex items-center gap-1.5 text-xs text-muted">
             <ShieldCheck size={12} className="text-success" />
             {t('내부 자료라 strict-local 모델로만 만듭니다.')}

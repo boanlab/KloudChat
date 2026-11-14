@@ -400,6 +400,8 @@ export function SlideView({
         'data-selected': selectedElement === element ? 'true' : undefined,
       } as const)
     : {}
+  // The bullet an Enter just split: its blur must not write the unsplit text back.
+  const splitBullet = useRef<string | null>(null)
   const typed = (key: string, read: (text: string) => Partial<Slide>) =>
     editable
       ? ({
@@ -407,6 +409,10 @@ export function SlideView({
           suppressContentEditableWarning: true,
           spellCheck: false,
           onBlur: (e: React.FocusEvent<HTMLElement>) => {
+            if (splitBullet.current === key) {
+              splitBullet.current = null
+              return
+            }
             const html = cleanInlineHtml(e.currentTarget.innerHTML)
             const richText = { ...(working.current.richText ?? {}) }
             if (html === (e.currentTarget.textContent ?? '')) delete richText[key]
@@ -414,6 +420,55 @@ export function SlideView({
             edit({ ...read(e.currentTarget.textContent ?? ''), richText: Object.keys(richText).length ? richText : undefined })
           },
           className: 'outline-none focus:bg-accent-soft/40',
+        } as const)
+      : {}
+  // One bullet per editable line: Enter splits it into a new bullet after this one (the
+  // caret's tail moves there), Backspace at the start of an empty one removes it. Without
+  // this, Enter put a line break inside the bullet that the saved text then lost, so the
+  // typed line ran into the bullet above it.
+  const bulletKeys = (i: number) =>
+    editable
+      ? ({
+          'data-bullet': i,
+          onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => {
+            if (e.nativeEvent.isComposing) return
+            const span = e.currentTarget
+            const text = span.textContent ?? ''
+            const bullets = [...(working.current.bullets ?? [])]
+            const caret = (() => {
+              const sel = window.getSelection()
+              if (!sel || !sel.rangeCount || !span.contains(sel.anchorNode)) return text.length
+              const range = sel.getRangeAt(0).cloneRange()
+              range.selectNodeContents(span)
+              range.setEnd(sel.anchorNode!, sel.anchorOffset)
+              return range.toString().length
+            })()
+            const focusBullet = (at: number, toEnd: boolean) =>
+              requestAnimationFrame(() => {
+                const next = canvas.current?.querySelector<HTMLElement>(`[data-bullet="${at}"]`)
+                if (!next) return
+                next.focus()
+                const sel = window.getSelection()
+                sel?.selectAllChildren(next)
+                if (toEnd) sel?.collapseToEnd()
+                else sel?.collapseToStart()
+              })
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault()
+              splitBullet.current = `bullets.${i}`
+              bullets.splice(i, 1, text.slice(0, caret).trimEnd(), text.slice(caret).trimStart())
+              const richText = { ...(working.current.richText ?? {}) }
+              delete richText[`bullets.${i}`]
+              edit({ bullets, richText: Object.keys(richText).length ? richText : undefined })
+              focusBullet(i + 1, false)
+            } else if (e.key === 'Backspace' && caret === 0 && !text && bullets.length > 1) {
+              e.preventDefault()
+              splitBullet.current = `bullets.${i}`
+              bullets.splice(i, 1)
+              edit({ bullets })
+              focusBullet(Math.max(0, i - 1), true)
+            }
+          },
         } as const)
       : {}
   const rich = (key: string, text: string) => {
@@ -623,6 +678,7 @@ export function SlideView({
                   {...typed(`bullets.${i}`, (text) => ({
                     bullets: (working.current.bullets ?? []).map((old, at) => (at === i ? text : old)),
                   }))}
+                  {...bulletKeys(i)}
                 >
                   {rich(`bullets.${i}`, b)}
                 </span>
@@ -1063,6 +1119,7 @@ export function SlideView({
                         {...typed(`bullets.${i}`, (text) => ({
                           bullets: (working.current.bullets ?? []).map((old, at) => (at === i ? text : old)),
                         }))}
+                        {...bulletKeys(i)}
                       >
                         {rich(`bullets.${i}`, unnumbered(b))}
                       </span>
@@ -1093,6 +1150,7 @@ export function SlideView({
                             at === i ? text : old,
                           ),
                         }))}
+                        {...bulletKeys(i)}
                       >
                         {rich(`bullets.${i}`, b)}
                       </span>
