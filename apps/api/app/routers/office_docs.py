@@ -20,7 +20,7 @@ from app.routers.workspace import _own
 from app.schemas.auth import Wire
 from app.schemas.workspace import ArtifactOut
 from app.services import files as file_service
-from app.services import office_doc
+from app.services import office_doc, office_look
 
 
 class DocumentCreate(Wire):
@@ -40,7 +40,8 @@ class Routes:
     #: `/artifacts/{slug}` and `/artifacts/{id}/{slug}`
     slug: str
     kind: office_doc.Kind
-    blank: Callable[[], bytes]
+    #: an empty document; the hwp and docx ones take a `office_look.Look`
+    blank: Callable[..., bytes]
     blank_title: str
     #: an upload's name ending, dropped from the title
     suffix: re.Pattern[str]
@@ -92,7 +93,11 @@ def router_for(spec: Routes) -> APIRouter:
                 raise HTTPException(status.HTTP_404_NOT_FOUND, detail="blob_missing") from None
             title = title or spec.suffix.sub("", stored.name)
         else:
-            data = spec.blank()
+            # a blank document in a project takes its theme and default report template
+            look = None
+            if project_id and spec.slug in ("hwp", "docx"):
+                look = await office_look.for_project(db, user, await db.get(Project, project_id))
+            data = spec.blank(look) if look is not None else spec.blank()
             title = title or spec.blank_title
         try:
             artifact = await office_doc.create(

@@ -1074,7 +1074,10 @@ def _sub_args(bundle: Bundle, info: AgentInfo, request: str) -> dict[str, Any]:
         derived_context=_derived(bundle),
         tool_outputs=[p.text for p in bundle.material.parts if p.origin == "computed"],
         web_search=bool(req.turn.get("web_search", req.web_search)),
-        template_id=info.template_id or None, format_id=info.doc_format or None,
+        # the conversation's template (chosen there or the project's default) first; a step
+        # agent's own only where the conversation has none
+        template_id=str(req.turn.get("session_template") or "") or info.template_id or None,
+        format_id=info.doc_format or None,
         design_tokens=req.design_tokens, check_keys=tuple(info.checks) or None,
         check_options=dict(info.check_options), skill_specs=info.skill_specs(),
         process=dict(info.process) or None,

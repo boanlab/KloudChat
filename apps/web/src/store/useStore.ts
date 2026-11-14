@@ -1,4 +1,4 @@
-import type { WebSearchSetting } from '@/lib/api'
+import type { OpenArtifact, WebSearchSetting } from '@/lib/api'
 import { forgetStoredDraft, purgeStoredDrafts } from '@/lib/drafts'
 import { findUnsent, forgetUnsent, keepUnsent, purgeUnsent, unsentId } from '@/lib/unsentSessions'
 import { create } from 'zustand'
@@ -1577,7 +1577,7 @@ export const useStore = create<State>((set, get) => ({
             (c.unsent || beyondPage(c) || (rowFetchedAt.get(c.id) ?? 0) > asked)),
           // Deleted here and still in the undo window: the server lists it until the request goes.
           ...rows.filter((row) => s.goneSessions[row.id] !== 'deleted')
-            .map((row) => toSession(row, s.sessions.find((c) => c.id === row.id)?.messages)),
+            .map((row) => listedSession(row, s.sessions.find((c) => c.id === row.id))),
         ],
       }))
     } catch {
@@ -1597,7 +1597,7 @@ export const useStore = create<State>((set, get) => ({
         ...s.sessions.filter((c) => !rows.some((row) => row.id === c.id) &&
           (c.projectId !== projectId || c.unsent)),
         ...rows.filter((row) => s.goneSessions[row.id] !== 'deleted')
-          .map((row) => toSession(row, s.sessions.find((c) => c.id === row.id)?.messages)),
+          .map((row) => listedSession(row, s.sessions.find((c) => c.id === row.id))),
       ],
     }))
   },
@@ -3348,6 +3348,16 @@ function toMessage(raw: MessageRow): Message {
   }
 }
 
+/**
+ * A listed row over the one held: the list carries no transcript (held messages are kept), and
+ * it names no document a chat's own fetch found (a Word or HWP file made in the chat, which the
+ * server finds for the conversation itself): that document stays the chat's.
+ */
+function listedSession(raw: SessionRow, held: Session | undefined): Session {
+  const fresh = toSession(raw, held?.messages)
+  return fresh.artifactId === null && held?.artifactId ? { ...fresh, artifactId: held.artifactId } : fresh
+}
+
 function toSession(raw: SessionRow, keepMessages?: Message[]): Session {
   return {
     id: raw.id,
@@ -3607,6 +3617,19 @@ function toConnector(c: ConnectorRow): Connector {
 }
 
 /** One chat turn: an empty assistant message is filled in place as events arrive. */
+/**
+ * The document open in the panel, as a turn carries it (`openArtifact`): the server's chat edits
+ * and office tools work on it, never on "the newest of its kind". A local draft is not sent.
+ */
+function openTarget(get: Get): OpenArtifact | undefined {
+  const id = get().openArtifactId
+  if (!id) return undefined
+  const artifact = get().artifacts.find((a) => a.id === id)
+  if (artifact?.draft) return undefined
+  const version = get().artifactVersions[id] ?? artifact?.version
+  return version ? { id, version } : { id }
+}
+
 async function streamTurn(
   set: Set,
   get: Get,
@@ -3715,6 +3738,7 @@ async function streamTurn(
         privacyDecisionToken: opts.privacyDecisionToken,
         retryOf: opts.retryOf,
         answers: opts.answers,
+        openArtifact: openTarget(get),
       },
       controller.signal,
     )) {
@@ -4010,6 +4034,8 @@ async function streamReport(
     artifactId: get().sessions.find((c) => c.id === sessionId)?.artifactId ?? null,
     open: get().openArtifactId,
   }
+  // The document the person sees, sent with the turn before a draft takes the panel.
+  const opened = openTarget(get)
   // A planning pass produces no document, so it opens none; a rerun writes into the one there is.
   // A report written as an HWP or Word file shows no HTML draft: the file opens when written.
   const waiting = get().sessions.find((c) => c.id === sessionId)?.pending
@@ -4073,6 +4099,7 @@ async function streamReport(
         outputFormat: gate.outputFormat,
         attachments: gate.attachments,
         plan: gate.plan,
+        openArtifact: opened,
       },
       controller.signal,
     )) {
@@ -4150,11 +4177,19 @@ async function streamReport(
             assistantId = e.messageId
           }
           break
+        case 'delta':
+          // an edit made in place with the document tools answers in words, as a chat does
+          patchMessage(set, sessionId, assistantId, (m) => ({ ...m, content: (m.content ?? '') + e.text }))
+          break
         case 'step':
           if (e.stage) {
             const stage = e.stage
             patchMessage(set, sessionId, assistantId, (m) => withStage(m, stage))
             break
+          }
+          if (e.artifactId && e.status === 'done') {
+            // a document tool saved a version mid-turn: the panel shows it now
+            void get().refreshArtifact(e.artifactId)
           }
           set((s) => ({
             sessions: s.sessions.map((c) =>
@@ -4301,6 +4336,8 @@ async function streamDeck(
     artifactId: get().sessions.find((c) => c.id === sessionId)?.artifactId ?? null,
     open: get().openArtifactId,
   }
+  // The document the person sees, sent with the turn before a draft takes the panel.
+  const opened = openTarget(get)
   // A planning pass produces no document, so it opens none; a rerun writes into the one there is.
   const willWrite = gate.approve === true && !gate.rerun
   // Approved outline spent; a new proposal arrives as its own event.
@@ -4357,6 +4394,7 @@ async function streamDeck(
         includeFigures: gate.includeFigures,
         attachments: gate.attachments,
         plan: gate.plan,
+        openArtifact: opened,
       },
       controller.signal,
     )) {
@@ -4413,11 +4451,19 @@ async function streamDeck(
             assistantId = e.messageId
           }
           break
+        case 'delta':
+          // an edit made in place with the document tools answers in words, as a chat does
+          patchMessage(set, sessionId, assistantId, (m) => ({ ...m, content: (m.content ?? '') + e.text }))
+          break
         case 'step':
           if (e.stage) {
             const stage = e.stage
             patchMessage(set, sessionId, assistantId, (m) => withStage(m, stage))
             break
+          }
+          if (e.artifactId && e.status === 'done') {
+            // a document tool saved a version mid-turn: the panel shows it now
+            void get().refreshArtifact(e.artifactId)
           }
           set((s) => ({
             sessions: s.sessions.map((c) =>

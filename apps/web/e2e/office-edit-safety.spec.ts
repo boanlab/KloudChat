@@ -256,6 +256,40 @@ test.describe('phone and retries', () => {
     expect(state.unexpected).toEqual([])
   })
 
+  test('on a phone the HWP editor\'s ribbon is never in view, not even while it starts @phone', async ({ page }) => {
+    test.skip((page.viewportSize()?.width ?? 0) > 640, 'phone width only')
+    let release!: () => void
+    const hold = new Promise<void>((resolve) => (release = resolve))
+    // the editor's page arrives late, as a first download on a phone does
+    await page.route('**/rhwp/**', async (route) => {
+      await hold
+      return route.fulfill({ contentType: 'text/html', body: studio })
+    })
+    const state = await officeFixture(page, {
+      kind: 'hwp', file: hwpx, agentFile: hwpx, title: '직원 연수 참석 요청',
+    })
+    /** What a tap at the middle of the document area would reach. */
+    const tapped = () => page.evaluate(() => {
+      const frame = document.querySelector('[data-hwp-panel] iframe')
+      const area = (frame?.parentElement?.parentElement ?? document.querySelector('[data-hwp-panel]'))!
+      const box = area.getBoundingClientRect()
+      const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)
+      return hit?.closest('[data-hwp-cover]') ? 'cover'
+        : hit?.closest('[data-hwp-pages]') ? 'pages'
+          : hit?.tagName === 'IFRAME' ? 'editor' : hit?.tagName ?? 'nothing'
+    })
+    await expect(panel(page).getByTestId('office-read-only'))
+      .toHaveText('휴대폰에서는 읽기만 합니다. 고칠 내용은 대화에서 에이전트에게 부탁하세요.')
+    await expect(panel(page).locator('[data-hwp-cover]')).toBeVisible()
+    await expect.poll(tapped).not.toBe('editor')
+    release()
+    await expect(panel(page).locator('[data-hwp-page="1"] svg'))
+      .toContainText(`document.hwpx 1쪽 ${hwpx.length}`)
+    await expect(panel(page).locator('[data-hwp-cover]')).toHaveCount(0)
+    await expect.poll(tapped).toBe('pages')
+    expect(state.unexpected).toEqual([])
+  })
+
   test('Word and PowerPoint say they read only on a phone @phone', async ({ page }) => {
     test.skip((page.viewportSize()?.width ?? 0) > 640, 'phone width only')
     await fixture(page, 'docx')

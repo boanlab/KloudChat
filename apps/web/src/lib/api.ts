@@ -2302,6 +2302,12 @@ export type StreamEvent =
   /** `messageId` is the stored answer's id — the one every later call must use. */
   | { type: 'done'; credits?: number; messageId?: string }
 
+/** The document open beside the chat when a turn is sent, at the version the person sees. */
+export interface OpenArtifact {
+  id: string
+  version?: number
+}
+
 /** Chat, report and slides stream from one endpoint; reports emit a `section` event per section. */
 export async function* streamSession(
   sessionId: string,
@@ -2329,6 +2335,8 @@ export async function* streamSession(
     answers?: Record<string, string>
     /** The failed question to run again in place, by message id; the server reuses that row. */
     retryOf?: string
+    /** The document open in the panel: chat edits and the office tools work on it. */
+    openArtifact?: OpenArtifact
   },
   signal?: AbortSignal,
 ): AsyncGenerator<StreamEvent> {

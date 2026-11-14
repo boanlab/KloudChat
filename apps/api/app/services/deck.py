@@ -1755,6 +1755,29 @@ def slide_range(request: str) -> tuple[int, int] | None:
     )
 
 
+def about_slides(request: str) -> int | None:
+    """The number an approximate count states (「5장 정도」 → 5): the outline aims at it."""
+    return plan_rules.approximate_count(
+        request, ("슬라이드", "페이지", "장", "쪽"), maximum=_MAX_SLIDES
+    )
+
+
+def count_note(request: str, written: int, *, english: bool = False) -> str:
+    """A sentence when the deck's slide count is not the one asked: 「요청하신 6장과 달리
+    8장입니다.」; `` when it is, or none was asked."""
+    wanted = requested_slides(request) or about_slides(request)
+    if not wanted or written == wanted:
+        return ""
+    if not requested_slides(request) and abs(written - wanted) <= 1:
+        # 「5장 정도」 met within one
+        return ""
+    if english:
+        return (f"You asked for {wanted} slides; this deck has {written}. Say which to add or "
+                "take out to change it.")
+    return (f"요청하신 {wanted}장과 달리 {written}장입니다. 더하거나 뺄 슬라이드를 말씀해 "
+            "주시면 맞추겠습니다.")
+
+
 def slides_for_minutes(request: str) -> int | None:
     """Fewest slides for the stated talk length (~1 per 2 min, capped); `None` if unstated."""
     match = re.search(r"(\d{1,3})\s*분(?!기|류|석|산|리|야|할|량|배|담|위|과)", request)
@@ -4614,7 +4637,8 @@ async def write(
                     ask_rule=grounding.ASK_RULE if may_ask else grounding.PROCEED_RULE,
                     lo=wanted or (span[0] if span else None) or slides_for_minutes(request)
                     or _MIN_SLIDES,
-                    hi=wanted or (span[1] if span else _DEFAULT_MAX),
+                    # 「5장 정도」 aims at 5: its range is only the tolerance
+                    hi=wanted or about_slides(request) or (span[1] if span else _DEFAULT_MAX),
                     theme_rule=(
                         ""
                         if fixed_accent

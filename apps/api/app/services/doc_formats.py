@@ -770,6 +770,10 @@ def _tables_out_of_items(lines: list[str]) -> list[str]:
 _OFFICIAL_ITEM = re.compile(r"^\s{0,12}(?:\d{1,2}[.)]|[가-하][.)]|\(\d{1,2}\)|※|붙\s{0,2}임)\s")
 
 
+_NESTED_NUMBER = re.compile(r"^\s{0,24}\d{1,3}[.)]\s{1,4}(\S.*)$")
+_HANGUL_ITEMS = "가나다라마바사아자차카타파하"
+
+
 def official_body(text: str) -> str:
     """공문 body, one paragraph per item; tables and fences pass through."""
     out: list[str] = []
@@ -778,6 +782,8 @@ def official_body(text: str) -> str:
     def table(line: str) -> bool:
         return line.lstrip().startswith("|")
 
+    #: a numbered item nested under another (「   1. 일시」 under 「2. 안내」): 가. 나. …
+    nested = 0
     for line in (text or "").split("\n"):
         if _FENCE_LINE.match(line):
             fenced = not fenced
@@ -790,8 +796,15 @@ def official_body(text: str) -> str:
         if not stripped:
             out.append("")
             continue
+        indent = len(line) - len(line.lstrip())
+        if (number := _NESTED_NUMBER.match(line)) and indent >= 2:
+            # the second level of a 공문 is 가., 나. — not a second run of 1., 2.
+            line = f"{_HANGUL_ITEMS[min(nested, len(_HANGUL_ITEMS) - 1)]}. {number.group(1)}"
+            nested += 1
+        elif _NESTED_NUMBER.match(line):
+            nested = 0
         if _OFFICIAL_ITEM.match(line):
-            line = stripped
+            line = line.strip()
         # Blank line between lines unless both table rows.
         if out and out[-1].strip() and not (table(out[-1]) and table(line)):
             out.append("")

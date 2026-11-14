@@ -66,7 +66,7 @@ All under `/api` except `/llm`. The complete list is the OpenAPI document at
 | `POST /artifacts/{id}/sections/…` · `slides/…` · `blocks/…` · `critique` · `GET {id}/marks` | Rewrite, fact-check, picture and figure on a finished document; review; check marks |
 | `GET /projects` · `files` · `skills` · `memory` · `agents` · `designs` | Workspace (`designs` are themes) |
 | `GET /files/page` · `/issues/page` · `/publications/{id}/conversations/page` · `/admin/publications/{id}/conversations/page` | Long lists by keyset: `cursor` (opaque, from the last page's `next`; malformed → 422), `limit` (default 50, at most 200); `{items, total, next}`, `next` null on the last page. Files add `box`, `origin`, `q`, `projectId`/`sessionId` filters and per-origin `counts`; issues add `unread`; the admin list needs `reason` (audited per page) and takes `date_from`/`date_to` (inclusive UTC days, on last activity) |
-| `POST /files/{id}/open-as-document` · `POST /designs/extract` | Open an uploaded `.hwpx` as an editable report; draft a theme from a file or URL |
+| `POST /files/{id}/open-as-document` (410) · `POST /designs/extract` | Gone: open an `.hwpx` with `POST /artifacts/hwp` and `fileId`; draft a theme from a file or URL |
 | `POST /projects/{id}/knowledge/url` · `…/reindex` · `POST /agents/{id}/knowledge` · `…/url` · `…/from-files` · `…/reindex` | Project and agent knowledge, and backfilling the vector index |
 | `GET /skills/store` · `POST /skills/{id}/install` · `POST /agents/{id}/install` · `POST /skills/import` · `GET /skills/{id}/export` | What others shared, copying from it, skill packages |
 | `GET /pipelines` · `GET /agents/{id}/pipeline` · `GET /agent-bases` · `PUT /agents/{id}/process` | Built-in processes and an agent's process (How it works) |

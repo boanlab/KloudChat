@@ -50,6 +50,15 @@ async def _stopped_with(bundle) -> tuple[str, list[dict]]:
 
 @pytest.mark.asyncio
 async def test_a_question_rewrites_no_slide_even_when_planned_for_all(monkeypatch):
+    from app.services import report
+
+    asked: list[str] = []
+
+    async def answer(model, messages, api_key, max_tokens):
+        asked.append(messages[0]["content"])
+        return "2장 「매출 추이」가 핵심입니다.", {"inputTokens": 5, "outputTokens": 3}
+
+    monkeypatch.setattr(report, "_complete", answer)
     whole = revise.Plan(scope="whole", targets=list(range(len(CHARTED))), note="전체")
     bundle = _deck("이 슬라이드의 핵심 메시지가 뭐야? 설명만 해줘.", whole)
     reason, events = await _stopped_with(bundle)
@@ -59,7 +68,9 @@ async def test_a_question_rewrites_no_slide_even_when_planned_for_all(monkeypatc
                    revise.Plan(scope="parts", targets=[1], note="x"))
     _, events = await _stopped_with(bundle)
     text = "".join(e.get("text", "") for e in events if e["type"] == "delta")
-    assert text.startswith("This reads as a question, so nothing was changed.")
+    # answered from the document, not refused
+    assert text == "2장 「매출 추이」가 핵심입니다."
+    assert CHARTED[1]["title"] in asked[-1] and "What is the main takeaway" in asked[-1]
 
 
 @pytest.mark.asyncio

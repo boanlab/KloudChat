@@ -13,7 +13,9 @@ test.use({ serviceWorkers: 'block' })
 const hwpx = readFileSync(new URL('./fixtures/hwp-official.hwpx', import.meta.url))
 const studio = readFileSync(new URL('./fixtures/fake-rhwp.html', import.meta.url), 'utf8')
 
-type Options = { conflict?: boolean; holdTurn?: Promise<void>; fromHome?: boolean }
+type Options = {
+  conflict?: boolean; holdTurn?: Promise<void>; fromHome?: boolean; holdCreate?: Promise<void>
+}
 
 async function fixture(page: Page, options: Options = {}) {
   await page.route('**/rhwp/**', (route) =>
@@ -155,4 +157,71 @@ test('home opens a blank HWP document from the report surface\'s 한글 pick', a
   await expect(editor(page).locator('#doc')).toHaveText(`document.hwpx ${hwpx.length}`)
   expect(state.created).toEqual([{ sessionId: expect.any(String), title: '새 한글 문서' }])
   expect(state.unexpected).toEqual([])
+})
+
+test('home\'s blank HWP says what it is doing, takes one click, and fetches the editor meanwhile', async ({ page }) => {
+  test.skip((page.viewportSize()?.width ?? 0) <= 640, 'desktop width')
+  let release!: () => void
+  const holdCreate = new Promise<void>((resolve) => (release = resolve))
+  /** The studio's files the page fetched ahead of the editor (not the editor's own frame). */
+  const warmed: string[] = []
+  const state = await fixture(page, { fromHome: true, holdCreate })
+  // after the fixture's own studio route: this one answers first
+  await page.route('**/rhwp/**', (route) => {
+    const request = route.request()
+    if (request.resourceType() !== 'fetch') return route.fallback()
+    const path = new URL(request.url()).pathname
+    warmed.push(path)
+    if (path === '/rhwp/') {
+      return route.fulfill({
+        contentType: 'text/html',
+        body: '<script type="module" crossorigin src="/rhwp/assets/index-test.js"></script>',
+      })
+    }
+    if (path === '/rhwp/assets/index-test.js') {
+      return route.fulfill({
+        contentType: 'text/javascript',
+        body: 'e=new URL(`/rhwp/assets/rhwp_bg-test.wasm`,``+import.meta.url)',
+      })
+    }
+    return route.fulfill({ contentType: 'application/wasm', body: Buffer.from([0, 97, 115, 109]) })
+  })
+  await page.getByRole('group', { name: '만들 것' }).getByRole('button', { name: '보고서' }).click()
+  await page.getByRole('button', { name: /^형식/ }).click()
+  await page.getByRole('menuitemcheckbox', { name: '한글', exact: true }).click()
+  // picking 한글 starts the editor's download, before anything is made
+  await expect.poll(() => warmed).toContain('/rhwp/assets/rhwp_bg-test.wasm')
+
+  await page.getByRole('button', { name: '빈 문서로 시작' }).click()
+  const opening = page.getByRole('button', { name: '한글 편집기를 여는 중…' })
+  await expect(opening).toBeDisabled()
+  await expect(page.getByTestId('blank-document-stage')).toHaveText(/대화를 만드는 중…|빈 문서를 만드는 중…/)
+  await opening.click({ force: true })
+  release()
+  await expect(page).toHaveURL(/\/s\/[0-9a-z_-]+/)
+  await expect(editor(page).locator('#doc')).toHaveText(`document.hwpx ${hwpx.length}`)
+  expect(state.created).toEqual([{ sessionId: expect.any(String), title: '새 한글 문서' }])
+  // once per page: the pick and the click fetched the files once
+  expect(warmed.filter((path) => path.endsWith('.wasm'))).toHaveLength(1)
+  expect(state.unexpected).toEqual([])
+})
+
+test('while the editor starts, the panel says so and how long it has waited', async ({ page }) => {
+  test.skip((page.viewportSize()?.width ?? 0) <= 640, 'desktop width')
+  let release!: () => void
+  const hold = new Promise<void>((resolve) => (release = resolve))
+  // the editor's files come only when released, as a slow first download would
+  await page.route('**/rhwp/**', async (route) => {
+    await hold
+    return route.fulfill({ contentType: 'text/html', body: studio })
+  })
+  await officeFixture(page, {
+    kind: 'hwp', file: hwpx, agentFile: hwpx, title: '직원 연수 참석 요청',
+  })
+  const note = panel(page).getByTestId('hwp-starting')
+  await expect(note).toContainText('한글 편집기를 불러오는 중…')
+  await expect(note).toContainText(/\d+초/, { timeout: 8_000 })
+  release()
+  await expect(editor(page).locator('#doc')).toHaveText(`document.hwpx ${hwpx.length}`)
+  await expect(note).toHaveCount(0)
 })

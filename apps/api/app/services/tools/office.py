@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from types import ModuleType
 from typing import Any
 
-from app.services import doc_formats
+from app.services import doc_formats, office_doc, office_look
 from app.services.office_edit import OPS
 from app.services.tools.base import Tool, ToolContext, ToolResult
 
@@ -49,10 +49,63 @@ class Toolset:
     edit_text: str = ""
     edit_items: dict[str, Any] | None = None
     renumbers: frozenset[str] = frozenset({"insert_paragraph", "delete_paragraph",
-                                           "insert_table"})
+                                           "insert_table", "move_paragraphs",
+                                           "insert_picture"})
     write_text: str = ""
     write_params: dict[str, Any] | None = None
-    build: Callable[[dict[str, Any]], tuple[str, bytes]] | None = None
+    build: Callable[[dict[str, Any], Any], tuple[str, bytes]] | None = None
+    #: a kind whose look is resolved its own way (PowerPoint's slides template): awaited with
+    #: (db, ctx) before `build`, its result given to `build` as the look
+    look_for: Callable[[Any, Any], Any] | None = None
+
+
+#: ops that put a picture in: their `file` names one of the person's image files
+PICTURE_OPS = frozenset({"insert_picture", "replace_picture"})
+#: a picture put into a document: the formats every editor draws, and a size cap
+_PICTURE_MIMES = ("image/png", "image/jpeg", "image/gif")
+MAX_PICTURE = 15 * 1024 * 1024
+
+
+async def _pictures(db: Any, ctx: ToolContext, ops: list) -> dict[str, tuple[str, bytes]]:
+    """`file` of each picture op -> (mime, bytes): an image the person attached or a tool made
+    in this conversation (its id, or its name), only theirs; a name that matches several is
+    the newest. One the person cannot reach is left out, and the edit says so."""
+    from sqlmodel import col, select
+
+    from app.models.workspace import StoredFile
+    from app.services import files
+
+    wanted = {
+        str(op.get("file") or "").strip()
+        for op in ops
+        if isinstance(op, dict) and op.get("op") in PICTURE_OPS and op.get("file")
+    }
+    wanted.discard("")
+    if not wanted:
+        return {}
+    rows = (
+        await db.exec(
+            select(StoredFile)
+            .where(StoredFile.user_id == ctx.user_id,
+                   (col(StoredFile.id).in_(wanted)) | (col(StoredFile.name).in_(wanted)))
+            .order_by(col(StoredFile.created_at).desc())
+        )
+    ).all()
+    out: dict[str, tuple[str, bytes]] = {}
+    for row in rows:
+        # the conversation's own files first: a name shared with another chat's file
+        if ctx.session_id and row.session_id not in (None, ctx.session_id):
+            continue
+        mime = (row.mime or "").split(";")[0].strip().lower()
+        if mime not in _PICTURE_MIMES or not row.storage_key or row.size > MAX_PICTURE:
+            continue
+        for key in (row.id, row.name):
+            if key in wanted and key not in out:
+                try:
+                    out[key] = (mime, files.read_blob(row.storage_key))
+                except OSError:
+                    continue
+    return out
 
 
 def _trace(artifact_id: str, version: int) -> dict[str, Any]:
@@ -61,9 +114,14 @@ def _trace(artifact_id: str, version: int) -> dict[str, Any]:
 
 
 _OP_HELP = (
-    "replace_text {id, text} · fill_blank {blank, value} · set_cell {table, row, col, text} · "
-    "insert_paragraph {after, text} · delete_paragraph {id} · insert_table_row {table, after} · "
-    "delete_table_row {table, row} · insert_table {after, rows}"
+    "replace_text {id, text} · fill_blank {blank, value} · set_cell {table, row, col, text, "
+    "whole?} · insert_paragraph {after, text} · delete_paragraph {id} · insert_table_row "
+    "{table, after} · delete_table_row {table, row} · insert_table {after, rows} · set_style "
+    "{id, style} · format_text {id, find?, bold?, italic?, underline?, color?, size?} · align "
+    "{id, align} · move_paragraphs {from, to, after} · insert_table_column {table, after} · "
+    "delete_table_column {table, col} · merge_cells {table, row, col, span_rows, span_cols} · "
+    "split_cell {table, row, col} · insert_picture {after, file} · replace_picture {id, file} · "
+    "page_setup {orientation?, margins_mm?, header?, footer?, page_numbers?}"
 )
 
 _HEADS = ", ".join(
@@ -71,7 +129,30 @@ _HEADS = ", ".join(
 )
 
 
-def _paragraph_write(kit: Toolset, args: dict[str, Any]) -> tuple[str, bytes]:
+#: which document a tool works on, said in every read tool
+_WHICH = (
+    " It reads the document open in the panel; with none open and several of this kind in "
+    "the conversation it says so: ask the person which one, then read it with `document`."
+)
+#: `*_write` makes a new document unless a rewrite of the open one was asked
+_REPLACE = (
+    " The new document is made beside the conversation's other documents, which stay as "
+    "they are (the person's hand edits included). Set replace:true only when the person "
+    "asked to rewrite the open document from scratch; it then becomes that document's next "
+    "version and needs a {p}_read of it first."
+)
+
+
+def _with_replace(params: dict[str, Any]) -> dict[str, Any]:
+    """A write tool's parameters with `replace`, the explicit whole-rewrite flag."""
+    return {**params, "properties": {**params.get("properties", {}), "replace": {
+        "type": "boolean",
+        "description": "true only when the person asked to rewrite the open document",
+    }}}
+
+
+def _paragraph_write(kit: Toolset, args: dict[str, Any],
+                     look: Any = None) -> tuple[str, bytes]:
     """A paragraph kind's new document: a `doc_formats` head over a markdown body."""
     title = " ".join(str(args.get("title") or "").split())[:120]
     body = str(args.get("body") or "").strip()
@@ -83,12 +164,13 @@ def _paragraph_write(kit: Toolset, args: dict[str, Any]) -> tuple[str, bytes]:
         raise ValueError(f"format은 {', '.join(FORMATS)} 중 하나입니다.")
     fields = {str(k): str(v) for k, v in raw.items() if str(v or "").strip()}
     data = (
-        kit.doc.plain(title, body) if fmt == "plain" else kit.doc.official(title, body, fields, fmt)
+        kit.doc.plain(title, body, look=look) if fmt == "plain"
+        else kit.doc.official(title, body, fields, fmt, look=look)
     )
     return title, data
 
 
-def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool]:
+def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool, Tool]:
     p, editable = kit.prefix, kit.doc.KIND.editable
     op_help = kit.op_help or _OP_HELP
 
@@ -101,14 +183,42 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool]:
             failed=True,
         )
 
+    def ask_which(choices: tuple[Any, ...]) -> ToolResult:
+        # several documents of the kind and none open: asked, never the newest guessed
+        named = ", ".join(f"「{a.title}」(v{a.version})" for a in choices[:8])
+        return ToolResult(
+            content=(
+                f"이 대화에는 {kit.label} 문서가 {len(choices)}개 있고 옆 패널에 열린 것이 "
+                f"없습니다: {named}. 어느 문서를 말하는지 사람에게 물어보세요. 사람이 고르면 "
+                f"{p}_read의 document에 그 제목을 넣어 읽으세요."
+            ),
+            failed=True,
+        )
+
+    async def pick(db: Any, ctx: ToolContext, named: str = "") -> Any:
+        return await office_doc.target(
+            db, kit.doc.KIND, user_id=ctx.user_id, session_id=ctx.session_id,
+            worked_on=str(state(ctx).get("id") or ""),
+            opened=str((ctx.open_artifact or {}).get("id") or ""),
+            named=named,
+        )
+
     def unconverted(artifact_id: str) -> ToolResult:
         return ToolResult(content=kit.unconverted, failed=True, trace={"artifactId": artifact_id})
 
+    def rules(ctx: ToolContext) -> str:
+        # what the person set for the whole conversation reaches every edit
+        if not ctx.standing:
+            return ""
+        lines = "\n".join(f"- {line}" for line in ctx.standing)
+        return ("\n\n이 대화에서 사람이 정해 둔 규칙(고치고 쓸 때 계속 지키세요):\n" + lines)
+
     async def read(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
         async with kit.session() as db:
-            artifact = await kit.doc.session_document(db, ctx.user_id, ctx.session_id)
+            found = await pick(db, ctx, str(args.get("document") or ""))
+            artifact = found.artifact
             if artifact is None:
-                return not_open()
+                return ask_which(found.choices) if found.choices else not_open()
             if (artifact.data or {}).get("format") != editable:
                 return unconverted(artifact.id)
             try:
@@ -119,20 +229,26 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool]:
                 return ToolResult(content=f"문서를 읽지 못했습니다: {exc}", failed=True)
         state(ctx).update(id=artifact.id, version=artifact.version)
         head = f"「{artifact.title}」 v{artifact.version} (사람이 편집기에서 저장한 내용 포함)\n"
-        return ToolResult(content=head + outline, detail=f"v{artifact.version}")
+        return ToolResult(content=head + outline + rules(ctx), detail=f"v{artifact.version}")
 
     async def edit(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
         ops = args.get("ops")
         summary = " ".join(str(args.get("summary") or "").split())[:120]
+        seen = state(ctx)
+        if not seen.get("id"):
+            # ids name positions in the version read
+            return ToolResult(
+                content=f"고치기 전에 {p}_read로 지금 내용을 읽고, 그 번호로 고치세요.",
+                failed=True,
+            )
         async with kit.session() as db:
-            artifact = await kit.doc.session_document(db, ctx.user_id, ctx.session_id)
+            artifact = (await pick(db, ctx)).artifact
             if artifact is None:
                 return not_open()
             if (artifact.data or {}).get("format") != editable:
                 return unconverted(artifact.id)
-            seen = state(ctx)
             if seen.get("id") != artifact.id or seen.get("version") != artifact.version:
-                # ids name positions in the version read; a hand save moves them
+                # a hand save moved the ids
                 return ToolResult(
                     content=(
                         f"문서가 v{artifact.version}입니다. 고치기 전에 {p}_read로 지금 내용을 "
@@ -140,9 +256,12 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool]:
                     ),
                     failed=True,
                 )
+            ops = ops if isinstance(ops, list) else []
             try:
+                # a picture op names a file of the person's; its bytes are found here
+                pictures = await _pictures(db, ctx, ops)
                 result = kit.edit.apply(
-                    kit.doc.read(artifact), ops if isinstance(ops, list) else []
+                    kit.doc.read(artifact), ops, **({"pictures": pictures} if pictures else {})
                 )
             except kit.error as exc:
                 # what the model got wrong, for tuning the tool's description
@@ -161,6 +280,9 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool]:
                     failed=True,
                 )
         state(ctx).update(id=saved.id, version=saved.version, changed=True)
+        # what was saved, for holding the reply to it (`office_claims`)
+        state(ctx).setdefault("saved", []).append(
+            {"version": saved.version, "changes": list(result.changes)})
         lines = "\n".join(f"- {line}" for line in result.changes)
         content = f"v{saved.version}로 저장했습니다. 바뀐 곳:\n{lines}"
         if any(isinstance(op, dict) and op.get("op") in kit.renumbers for op in ops):
@@ -177,23 +299,47 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool]:
 
     async def write(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
         try:
-            title, data = (kit.build or (lambda a: _paragraph_write(kit, a)))(args)
+            # the conversation's theme and report template (`office_look`)
+            look = office_look.of(ctx.look)
+            if kit.look_for is not None:
+                async with kit.session() as db:
+                    look = await kit.look_for(db, ctx)
+            title, data = (kit.build(args, look) if kit.build
+                           else _paragraph_write(kit, args, look))
         except ValueError as exc:
             return ToolResult(content=str(exc), failed=True)
         except Exception as exc:  # noqa: BLE001 — a writer failure goes back to the model
             log.warning("%s_write failed: %s", p, exc, exc_info=True)
             return ToolResult(content=f"문서를 만들지 못했습니다: {exc}", failed=True)
+        replace = args.get("replace") is True
         async with kit.session() as db:
-            artifact = await kit.doc.session_document(db, ctx.user_id, ctx.session_id)
-            if artifact is None:
-                saved = await kit.doc.create(
-                    db, user_id=ctx.user_id, title=title, data=data,
-                    session_id=ctx.session_id or None, project_id=ctx.project_id or None,
-                )
-            else:
+            found = await pick(db, ctx)
+            # a blank document open beside the chat is written into: nothing there to keep
+            blank = (found.artifact is not None and not replace
+                     and not str((found.artifact.data or {}).get("text") or "").strip())
+            if blank:
+                state(ctx).update(id=found.artifact.id, version=found.artifact.version)
+            artifact = found.artifact if replace or blank else None
+            if replace and artifact is None:
+                return (ask_which(found.choices) if found.choices else ToolResult(
+                    content=f"바꿀 {kit.label} 문서가 없습니다. replace 없이 새 문서로 쓰세요.",
+                    failed=True))
+            if artifact is not None:
+                seen = state(ctx)
+                if seen.get("id") != artifact.id or seen.get("version") != artifact.version:
+                    # a whole rewrite of what the person may have edited by hand: only from
+                    # the version the agent read this turn
+                    return ToolResult(
+                        content=(
+                            f"「{artifact.title}」 v{artifact.version}을 통째로 바꾸려면 먼저 "
+                            f"{p}_read로 지금 판을 읽으세요. 사람이 처음부터 다시 쓰라고 한 것이 "
+                            f"아니면 replace 없이 새 문서로 쓰거나 {p}_edit으로 고치세요."
+                        ),
+                        failed=True,
+                    )
                 try:
                     saved = await kit.doc.save(
-                        db, artifact, data, expected=artifact.version, summary="에이전트 작성",
+                        db, artifact, data, expected=artifact.version, summary="에이전트 다시 씀",
                         title=title,
                     )
                 except kit.doc.Conflict:
@@ -201,11 +347,24 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool]:
                         content=f"그사이 사람이 문서를 저장했습니다. {p}_read로 읽고 다시 하세요.",
                         failed=True,
                     )
+                said = (f"「{title}」 v{saved.version}로 문서를 처음부터 다시 썼습니다"
+                        "(이전 판은 버전 기록에 있습니다).")
+            else:
+                # a new document beside the others: nothing the person saved is replaced
+                saved = await kit.doc.create(
+                    db, user_id=ctx.user_id, title=title, data=data,
+                    session_id=ctx.session_id or None, project_id=ctx.project_id or None,
+                )
+                kept = [a for a in (found.artifact, *found.choices) if a is not None]
+                said = f"「{title}」을 새 문서로 만들어 편집기에 띄웠습니다." + (
+                    " 이 대화의 다른 문서는 그대로 두었습니다." if kept else "")
         state(ctx).update(id=saved.id, version=saved.version, changed=True)
+        state(ctx).setdefault("saved", []).append(
+            {"version": saved.version, "changes": [f"「{title}」 작성"]})
         left = kit.edit.blanks(data)
         return ToolResult(
             content=(
-                f"「{title}」 v{saved.version}을 편집기에 띄웠습니다. 남은 빈칸: "
+                f"{said} 남은 빈칸: "
                 + (", ".join(left) if left else "없음")
                 + f"\n고칠 때는 {p}_read로 번호를 읽은 뒤 {p}_edit을 쓰세요."
             ),
@@ -213,17 +372,62 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool]:
             trace=_trace(saved.id, saved.version),
         )
 
+    async def restore(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
+        async with kit.session() as db:
+            found = await pick(db, ctx, str(args.get("document") or ""))
+            artifact = found.artifact
+            if artifact is None:
+                return ask_which(found.choices) if found.choices else not_open()
+            current = artifact.version
+            try:
+                want = int(args.get("version") or current - 1)
+            except (TypeError, ValueError):
+                return ToolResult(content="version은 판 번호(숫자)입니다.", failed=True)
+            if not 1 <= want < current:
+                return ToolResult(
+                    content=f"되돌릴 판이 없습니다 (지금 v{current}; v1~v{current - 1} 중 하나).",
+                    failed=True)
+            try:
+                data = await office_doc.read_version(db, artifact, want)
+                if kit.doc.KIND.file_format(data) != editable:
+                    return ToolResult(content=f"v{want}은 아직 편집할 수 있는 형식이 아니라 "
+                                      "되돌리지 못합니다.", failed=True)
+                saved = await kit.doc.save(db, artifact, data, expected=current,
+                                           summary=f"v{want}로 되돌림")
+            except FileNotFoundError:
+                return ToolResult(content=f"v{want}의 파일을 찾지 못했습니다.", failed=True)
+            except kit.doc.Conflict:
+                return ToolResult(
+                    content=f"그사이 사람이 문서를 저장했습니다. {p}_read로 다시 읽고 하세요.",
+                    failed=True)
+        state(ctx).update(id=saved.id, version=saved.version, changed=True)
+        state(ctx).setdefault("saved", []).append(
+            {"version": saved.version, "changes": [f"v{want}의 내용으로 되돌림"]})
+        return ToolResult(
+            content=(f"v{want}의 내용을 v{saved.version}로 저장해 되돌렸습니다 (그 사이의 판은 "
+                     "버전 기록에 남아 있습니다)."),
+            detail=f"v{want}",
+            trace=_trace(saved.id, saved.version),
+        )
+
     label = kit.label
     read_tool = Tool(
         name=f"{p}_read",
-        description=kit.read_text or (
+        description=(kit.read_text or (
             f"Read the {label} document open beside this chat, as the person last saved it in "
             "the editor. Returns numbered paragraphs (p1, p2 …), tables (t1 …) with rows "
             "`r0: a | b` (row and column count from 0), and the bracket blanks still to fill "
             f"(「[기관명]」).{kit.read_note} Call it before every {p}_edit: the numbers belong "
             "to this version."
-        ),
-        parameters={"type": "object", "properties": {}, "additionalProperties": False},
+        )) + _WHICH,
+        parameters={
+            "type": "object",
+            "properties": {"document": {
+                "type": "string",
+                "description": "문서 제목: 여러 문서 중 사람이 고른 것을 읽을 때만",
+            }},
+            "additionalProperties": False,
+        },
         run=read,
         label="문서 확인하는 중",
         title="문서 확인",
@@ -238,14 +442,32 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool]:
             "{blank:'[연수명]', value:'교원연수'} fills every place that blank appears, or only "
             f"one place with at:'p6' or at:'t1 r3c1' ({p}_read lists where each blank stands: "
             "give `at` when the same blank means different things, such as a date in the head "
-            "and another in the body); set_cell {table:'t1', row, col, text}; insert_paragraph "
-            "{after:'p7', text} (takes p7's format); delete_paragraph {id}; insert_table_row "
-            "{table, after}; delete_table_row {table, row}; insert_table {after:'p7', rows: "
-            "[['구분','내용'], ['…','…']]} adds a new table after p7, its first row the head "
-            "(a caption is an insert_paragraph before it). When one line holds several blanks "
-            "that one fact fills (「[YYYY. MM. DD.] [HH:MM] ~ [HH:MM]」), rewrite that line with "
-            "replace_text instead. Put only facts the person gave; anything still unknown stays "
-            "a bracket blank like 「[담당자]」."
+            "and another in the body); set_cell {table:'t1', row, col, text} rewrites the "
+            "cell's text, one line per paragraph (\\n between), keeping its other contents; "
+            "whole:true empties the cell first (only when asked to replace the whole cell); "
+            "insert_paragraph {after:'p7', text} (takes p7's format); delete_paragraph {id}; "
+            "insert_table_row {table, after}; delete_table_row {table, row}; insert_table "
+            "{after:'p7', rows: [['구분','내용'], ['…','…']]} adds a new table after p7, its "
+            "first row the head (a caption is an insert_paragraph before it). "
+            "Format: set_style {id, style: title | heading 1 | heading 2 | heading 3 | body}; "
+            "format_text {id:'p5' or 't1 r2c1', find:'3억 원' (leave out for the whole "
+            "paragraph), bold, italic, underline (true/false), color:'#C00000', size: pt}; "
+            "align {id, align: left | center | right | justify}. "
+            "Move: move_paragraphs {from:'p9', to:'p14', after:'p3'} moves p9~p14 (a chapter "
+            "with its body and tables) after p3. "
+            "Tables: insert_table_column {table, after: col}; delete_table_column {table, col}; "
+            "merge_cells {table, row, col, span_rows, span_cols}; split_cell {table, row, col}. "
+            "Pictures: insert_picture {after:'p5', file, width_mm?}; replace_picture {id:'p6', "
+            "file} — `file` is the name or id of an image the person attached or a tool made in "
+            "this conversation. Page: page_setup {orientation: portrait | landscape, "
+            "margins_mm: {top, bottom, left, right}, header, footer, page_numbers: true/false}. "
+            "Ops that move or add paragraphs renumber what follows: read again before the next "
+            "edit. It cannot edit charts, text boxes, footnotes or a table of contents, and "
+            "cannot make a chart: say so instead of pasting one into the chat. "
+            "When one line holds several blanks that one fact fills (「[YYYY. MM. DD.] [HH:MM] "
+            "~ [HH:MM]」), rewrite that line with replace_text instead. Put only facts the "
+            "person gave; anything still unknown stays a bracket blank like 「[담당자]」; never "
+            "delete text the person typed unless they asked for that very text to go."
         ),
         parameters={
             "type": "object",
@@ -269,6 +491,29 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool]:
                             "value": {"type": "string"},
                             "rows": {"type": "array",
                                      "items": {"type": "array", "items": {"type": "string"}}},
+                            "whole": {"type": "boolean"},
+                            "style": {"type": "string"},
+                            "find": {"type": "string"},
+                            "bold": {"type": "boolean"},
+                            "italic": {"type": "boolean"},
+                            "underline": {"type": "boolean"},
+                            "color": {"type": "string"},
+                            "size": {"type": "number"},
+                            "align": {"type": "string",
+                                      "enum": ["left", "center", "right", "justify"]},
+                            "from": {"type": "string"},
+                            "to": {"type": "string"},
+                            "span_rows": {"type": "integer"},
+                            "span_cols": {"type": "integer"},
+                            "file": {"type": "string"},
+                            "width_mm": {"type": "number"},
+                            "orientation": {"type": "string",
+                                            "enum": ["portrait", "landscape"]},
+                            "margins_mm": {"type": "object",
+                                           "additionalProperties": {"type": "number"}},
+                            "header": {"type": "string"},
+                            "footer": {"type": "string"},
+                            "page_numbers": {"type": "boolean"},
                         },
                         "required": ["op"],
                     },
@@ -285,22 +530,25 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool]:
     )
     write_tool = Tool(
         name=f"{p}_write",
-        description=kit.write_text or (
-            f"Write a new {label} document into the editor beside the chat (replacing what is "
-            "there, as a new version). Use it when the person asks for a new document; to "
-            f"change the open one use {p}_read and {p}_edit. format: 'official' is a 공문 "
+        description=(kit.write_text or (
+            f"Write a new {label} document and open it in the editor beside the chat. Use it "
+            f"when the person asks for a new document; to change the open one use {p}_read and "
+            f"{p}_edit. format: 'official' is a 공문 "
             "(head table 수신·참조·발신·시행일, then 제목, numbered items 1. 가. (1), 「끝.」 "
             f"added); other heads: {_HEADS}; 'plain' has no head. fields: head values the "
             "person gave; leave out what they did not give and it shows as a blank 「[수신]」. "
             "body: markdown; the title is printed above it, so the body does not repeat a 제목 "
             "line. For 'official' write items as lines like `1. 관련: …`, `2. …`, "
             "`  가. 일시: …`, and attachments as an unnumbered last line "
-            "`붙임  1. 연수 일정표 1부.` (more on following lines); 「끝.」 is added for you. "
+            "`붙임  1. 연수 일정표 1부.` (more on following lines) when the person named one; "
+            "「끝.」 is added for you. "
             "Never invent names, dates, places or numbers: write a bracket blank named for what "
             "goes there, such as 「[기관명]」, 「[연수 일시]」, 「[장소]」, instead; and add no "
-            "items the request does not call for (costs, penalties, procedures)."
-        ),
-        parameters=kit.write_params or {
+            "items the request does not call for (costs, penalties, procedures); write a 붙임 line "
+            "only for attachments the person named. Number items once: the format numbers "
+            "them (write `1. 관련`, never `가. 1. 관련`)."
+        )) + _REPLACE.format(p=p),
+        parameters=_with_replace(kit.write_params or {
             "type": "object",
             "properties": {
                 "title": {"type": "string"},
@@ -309,11 +557,31 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool]:
                 "body": {"type": "string"},
             },
             "required": ["title", "body"],
-        },
+        }),
         run=write,
         label="문서 쓰는 중",
         title="문서 작성",
         read_only=False,
         wants_context=True,
     )
-    return read_tool, edit_tool, write_tool
+    restore_tool = Tool(
+        name=f"{p}_restore",
+        description=(
+            f"Undo: bring back an earlier version of the {label} document open beside the chat, "
+            "saved as its newest version (nothing is lost; every version stays in its history). "
+            "Use it when the person asks to undo or go back (「되돌려 줘」, 「이전 판으로」, "
+            "「방금 고친 거 취소」) instead of rewriting the text by hand. version: the version "
+            "to bring back; leave it out for the one before the current."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {"version": {"type": "integer"}, "document": {"type": "string"}},
+            "additionalProperties": False,
+        },
+        run=restore,
+        label="이전 판으로 되돌리는 중",
+        title="문서 되돌리기",
+        read_only=False,
+        wants_context=True,
+    )
+    return read_tool, edit_tool, write_tool, restore_tool

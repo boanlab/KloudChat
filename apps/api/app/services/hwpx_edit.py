@@ -54,6 +54,8 @@ class _Doc:
     #: top-level paragraphs in reading order
     paragraphs: list[etree._Element] = field(default_factory=list)
     tables: list[_Table] = field(default_factory=list)
+    #: files added to the package (a picture's `BinData/…`), stored as they are
+    added: dict[str, bytes] = field(default_factory=dict)
 
 
 def _sections(archive: zipfile.ZipFile) -> list[str]:
@@ -220,9 +222,12 @@ def outline(data: bytes) -> str:
     for index, paragraph in enumerate(doc.paragraphs, start=1):
         pid = f"p{index}"
         text = _own_text(paragraph)
-        if not text.strip() and pid not in tables_at:
+        pictured = paragraph.find(f".//{{{HP}}}pic") is not None
+        if not text.strip() and pid not in tables_at and not pictured:
             out.empty(index)
             continue
+        if pictured and not text.strip():
+            text = "(그림)"
         out.paragraph(index, text, marks.get(index - 1, ""))
         for table in tables_at.get(pid, []):
             cells = [(r, c, _cell_text(cell)) for r, c, cell in _cells(table.element)]
@@ -272,6 +277,94 @@ def _set_text(paragraph: etree._Element, text: str) -> None:
     _relayout(paragraph)
 
 
+#: a paragraph's text leaf: (holder, `text` or `tail` of it, or `break` for a line break)
+_Piece = tuple[etree._Element, str, str]
+
+
+def _pieces(paragraph: etree._Element) -> list[_Piece]:
+    """The paragraph's own text in order, as `_own_text` reads it: each `<hp:t>`'s text, a
+    line break `\\n`, and the text after each control inside the `<hp:t>`."""
+    out: list[_Piece] = []
+    for run in paragraph.iterchildren(_RUN):
+        for t in run.iterchildren(_T):
+            out.append((t, "text", t.text or ""))
+            for child in t:
+                if child.tag == _LINEBREAK:
+                    out.append((child, "break", "\n"))
+                out.append((child, "tail", child.tail or ""))
+    return out
+
+
+def _put(holder: etree._Element, where: str, value: str) -> None:
+    if where == "text":
+        holder.text = value
+    else:
+        holder.tail = value
+
+
+def _starts(pieces: list[_Piece]) -> list[int]:
+    starts, at = [], 0
+    for _, _, text in pieces:
+        starts.append(at)
+        at += len(text)
+    return starts
+
+
+def _splice(pieces: list[_Piece], start: int, end: int, value: str) -> bool:
+    """Characters `start:end` of the paragraph replaced by `value`, written into the text
+    piece the first of them is in and cut from the pieces after it, so every run outside the
+    span keeps its own shape. False (nothing changed) when the span crosses a line break."""
+    starts = _starts(pieces)
+    hit = [(piece, at) for piece, at in zip(pieces, starts, strict=True)
+           if at < end and start < at + len(piece[2])]
+    if any(where == "break" for (_, where, _), _ in hit):
+        return False
+    if start == end:
+        # an insertion: into the text the character before it is in (the first at 0)
+        holder = next(((piece, at) for piece, at in zip(pieces, starts, strict=True)
+                       if piece[1] != "break" and at < start <= at + len(piece[2])), None)
+        if holder is None and start == 0:
+            holder = next(((piece, at) for piece, at in zip(pieces, starts, strict=True)
+                           if piece[1] != "break"), None)
+        if holder is None:
+            return False
+        (element, where, text), at = holder
+        _put(element, where, text[: start - at] + value + text[start - at:])
+        return True
+    placed = False
+    for (element, where, text), at in hit:
+        head = text[: max(0, start - at)]
+        tail = text[end - at:] if end - at < len(text) else ""
+        _put(element, where, head + (value if not placed else "") + tail)
+        placed = True
+    return placed
+
+
+def _rewrite(paragraph: etree._Element, text: str) -> None:
+    """The paragraph's text made `text`, touching only what changed: the text both share at
+    the start and at the end stays in its own runs (a bold 「수신」 label stays bold, a red
+    word stays red), and the changed middle takes the shape of the run it begins in. A change
+    with nowhere to sit (no shared start or end, or one across a line break) rewrites the
+    paragraph in its first run (`_set_text`)."""
+    pieces = _pieces(paragraph)
+    old = "".join(t for _, _, t in pieces)
+    if old == text:
+        return
+    pre = 0
+    while pre < min(len(old), len(text)) and old[pre] == text[pre]:
+        pre += 1
+    suf = 0
+    while (suf < min(len(old), len(text)) - pre
+           and old[len(old) - 1 - suf] == text[len(text) - 1 - suf]):
+        suf += 1
+    value = text[pre:len(text) - suf]
+    if (not pre and not suf) or "\n" in value or not _splice(
+            pieces, pre, len(old) - suf, value):
+        _set_text(paragraph, text)
+        return
+    _relayout(paragraph)
+
+
 def _relayout(paragraph: etree._Element) -> None:
     """Drop stored line layout so the viewer lays the new text out again."""
     for stale in list(paragraph.iterchildren(_LINESEG)):
@@ -283,25 +376,24 @@ def _filled(text: str, old: str, new: str) -> tuple[str, int]:
 
 
 def _replace_in(paragraph: etree._Element, old: str, new: str) -> int:
-    """Replace `old` inside single `<hp:t>` texts (shape kept); spanning runs: whole text."""
-    count = 0
-    for run in paragraph.iterchildren(_RUN):
-        for t in run.iterchildren(_T):
-            if t.text and old in t.text:
-                t.text, n = _filled(t.text, old, new)
-                count += n
-            for child in t:
-                if child.tail and old in child.tail:
-                    child.tail, n = _filled(child.tail, old, new)
-                    count += n
-    if not count:
-        text = _own_text(paragraph)
-        if old in text:
-            text, count = _filled(text, old, new)
-            _set_text(paragraph, text)
-    if count:
-        _relayout(paragraph)
-    return count
+    """Every `old` in the paragraph, across runs, replaced by `new` and an agreeing particle;
+    the shape of the run each one starts in is kept, the runs around it untouched."""
+    pieces = _pieces(paragraph)
+    text = "".join(t for _, _, t in pieces)
+    found = list(office_edit.blank_with_particle(old).finditer(text))
+    if not found:
+        return 0
+    if "\n" in new:
+        _set_text(paragraph, office_edit.filled(text, old, new)[0])
+        return len(found)
+    # right to left: what is cut never moves a place still to fill
+    for match in reversed(found):
+        if not _splice(_pieces(paragraph), match.start(), match.end(),
+                       office_edit.put(new, match.group(1))):
+            _rewrite(paragraph, office_edit.filled(_own_text(paragraph), old, new)[0])
+            break
+    _relayout(paragraph)
+    return len(found)
 
 
 def _new_paragraph(like: etree._Element, text: str) -> etree._Element:
@@ -381,14 +473,53 @@ def _places(doc: _Doc, at: object) -> list[etree._Element]:
     return [_paragraph(doc, text)[1]]
 
 
-def _set_cell(cell: etree._Element, text: str) -> None:
+def _holds_more(paragraph: etree._Element) -> bool:
+    """The paragraph carries more than text: a nested table, a picture, a shape, a field."""
+    return any(
+        child.tag not in (_T, f"{{{HP}}}secPr", f"{{{HP}}}ctrl")
+        for run in paragraph.iterchildren(_RUN) for child in run
+    ) or paragraph.find(f".//{_TBL}") is not None
+
+
+def _set_cell(cell: etree._Element, text: str, *, whole: bool = False) -> None:
+    """The cell's text made `text`, one line per text paragraph in order: a line that stays
+    keeps its runs, a changed one keeps the shapes around its change (`_rewrite`); lines past
+    the cell's paragraphs become new paragraphs like its last, and text paragraphs past the
+    lines go. A paragraph holding a nested table or a picture is never one of them and
+    stays. `whole`: the cell emptied to one paragraph with `text` (nested tables too),
+    asked for in so many words."""
     sub = cell.find(_SUBLIST)
     paragraphs = list(sub.iterchildren(_P)) if sub is not None else []
     if not paragraphs:
         raise HwpxError("문단 없는 칸입니다.")
-    for extra in paragraphs[1:]:
-        sub.remove(extra)
-    _set_text(paragraphs[0], text)
+    if whole:
+        for extra in paragraphs[1:]:
+            sub.remove(extra)
+        for run in paragraphs[0].iterchildren(_RUN):
+            for child in list(run):
+                if child.tag != _T:
+                    run.remove(child)
+        _set_text(paragraphs[0], text)
+        return
+    lines = text.split("\n")
+    texts = [p for p in paragraphs if not _holds_more(p)]
+    if not texts:
+        # only a nested table or picture: the text goes in a new paragraph before it
+        fresh = _new_paragraph(_text_like_in(paragraphs), "")
+        paragraphs[0].addprevious(fresh)
+        texts = [fresh]
+    for paragraph, line in zip(texts, lines, strict=False):
+        _rewrite(paragraph, line)
+    for paragraph in texts[len(lines):]:
+        sub.remove(paragraph)
+    last = texts[min(len(lines), len(texts)) - 1]
+    for line in reversed(lines[len(texts):]):
+        last.addnext(_new_paragraph(last, line))
+
+
+def _text_like_in(paragraphs: list[etree._Element]) -> etree._Element:
+    """A cell paragraph whose shapes a new one takes: the first holding text, else the first."""
+    return next((p for p in paragraphs if p.find(f".//{_T}") is not None), paragraphs[0])
 
 
 def _renumber_rows(table: etree._Element) -> None:
@@ -426,12 +557,18 @@ def _text_arg(op: dict, name: str = "text") -> str:
     return office_edit.text_arg(op, name, HwpxError)
 
 
-def apply(data: bytes, ops: list[dict]) -> Result:
-    """Every op or none: targets resolve against `data` before anything changes."""
+def apply(data: bytes, ops: list[dict],
+          pictures: dict[str, tuple[str, bytes]] | None = None) -> Result:
+    """Every op or none: targets resolve against `data` before anything changes. `pictures`:
+    the image files picture ops name (`file`), found by the tool."""
+    from app.services import hwpx_ops
+
     office_edit.check_ops(ops, HwpxError)
     archive, doc = _load(data)
     # resolve first: ids name the version the model read
     plan: list[tuple[dict, object]] = []
+    #: house shapes put into this file's header, once (`_import_shapes`)
+    shapes: dict[str, dict[str, str]] | None = None
     for op in ops:
         if not isinstance(op, dict):
             raise HwpxError('op마다 {"op": ...} 객체여야 합니다.')
@@ -471,8 +608,12 @@ def apply(data: bytes, ops: list[dict]) -> Result:
             plan.append((op, (table, rows[index])))
         elif kind == "insert_table":
             rows = office_edit.table_arg(op, HwpxError)
-            _house_shapes(archive)
-            plan.append((op, (_paragraph(doc, op.get("after"))[1], _table_paragraph(rows))))
+            if shapes is None:
+                shapes = _import_shapes(_header(archive, doc))
+            plan.append((op, (_paragraph(doc, op.get("after"))[1],
+                              _remapped(_table_paragraph(rows), shapes))))
+        elif kind in hwpx_ops.OPS:
+            plan.append((op, hwpx_ops.resolve(archive, doc, op, pictures or {})))
         else:
             raise office_edit.unknown_op(kind, HwpxError)
 
@@ -481,7 +622,7 @@ def apply(data: bytes, ops: list[dict]) -> Result:
         kind = op["op"]
         if kind == "replace_text":
             before = _own_text(target)
-            _set_text(target, _text_arg(op))
+            _rewrite(target, _text_arg(op))
             changes.append(f"{op['id']}: 「{short(before)}」 → 「{short(op['text'])}」")
         elif kind == "fill_blank":
             blank, value = op["blank"].strip(), _text_arg(op, "value")
@@ -489,7 +630,7 @@ def apply(data: bytes, ops: list[dict]) -> Result:
             where = f"{op['at']}: " if op.get("at") else ""
             changes.append(f"{where}{blank} → 「{short(value)}」 ({count}곳)")
         elif kind == "set_cell":
-            _set_cell(target, _text_arg(op))
+            _set_cell(target, _text_arg(op), whole=op.get("whole") is True)
             changes.append(f"{op['table']} r{op['row']}c{op['col']} → 「{short(op['text'])}」")
         elif kind == "insert_paragraph":
             index, anchor = target
@@ -504,7 +645,7 @@ def apply(data: bytes, ops: list[dict]) -> Result:
             table, row = target
             fresh = copy.deepcopy(row)
             for cell in fresh.iterchildren(_TC):
-                _set_cell(cell, "")
+                _set_cell(cell, "", whole=True)
                 for span in cell.iter(f"{{{HP}}}cellSpan"):
                     span.set("rowSpan", "1")
                 cell.set("header", "0")
@@ -522,26 +663,138 @@ def apply(data: bytes, ops: list[dict]) -> Result:
             rows = op["rows"]
             changes.append(f"{op['after']} 뒤에 표 추가 ({len(rows)}줄 × "
                            f"{max(len(row) for row in rows)}칸)")
+        elif kind in hwpx_ops.OPS:
+            changes.append(hwpx_ops.run(archive, doc, op, target))
     return Result(_write(archive, doc), changes)
 
 
-#: the shapes a new table is drawn in: `report_export`'s house header (bordered cells, the
-#: thick-ruled head row, body and bold body text, a left-aligned cell paragraph)
-_HOUSE = {"borderFill": {"2", "3"}, "charPr": {"0", "1"}, "paraPr": {"3", "7"}}
+#: the shapes a new table is drawn in, by `report_export`'s house ids: bordered cells, the
+#: thick-ruled head row and the table's own frame; body and bold body text; the body and the
+#: left-aligned cell paragraph
+_HOUSE = {"borderFill": ("1", "2", "3"), "charPr": ("0", "1"), "paraPr": ("3", "7")}
+#: where each kind's definitions sit in `header.xml`
+_LISTS = {"borderFill": "borderFills", "charPr": "charProperties", "paraPr": "paraProperties"}
+#: attributes that point at a definition, and its kind
+_REFS = {"borderFillIDRef": "borderFill", "charPrIDRef": "charPr", "paraPrIDRef": "paraPr"}
+_FONT_SLOTS = ("hangul", "latin", "hanja", "japanese", "other", "symbol", "user")
+_HEADER = "Contents/header.xml"
 
 
-def _house_shapes(archive: zipfile.ZipFile) -> None:
-    """A new table borrows the house shapes by id; a file without them (one made in 한글
-    rather than here) gets no new table rather than a broken one."""
-    try:
-        header = etree.fromstring(archive.read("Contents/header.xml"), _PARSER)
-    except (KeyError, etree.XMLSyntaxError) as exc:
-        raise HwpxError("문서 머리(header.xml)를 읽지 못해 표를 넣을 수 없습니다.") from exc
-    for name, wanted in _HOUSE.items():
-        have = {element.get("id") for element in header.iter(f"{{{HH}}}{name}")}
-        if not wanted <= have:
-            raise HwpxError("이 문서에는 새 표를 넣을 수 없습니다. 있는 표에 줄을 넣거나 "
-                            "(insert_table_row) 표 내용을 문단으로 쓰세요.")
+def _house_header() -> etree._Element:
+    """`header.xml` of a file the HWPX export writes: where the house shapes are defined."""
+    from app.services import report_export
+
+    data = report_export.to_hwpx("표", [{"id": "b", "heading": "", "content": "표"}])
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        return etree.fromstring(archive.read(_HEADER), _PARSER)
+
+
+def _bare(element: etree._Element) -> bytes:
+    """A definition without its id, to tell an equal one already in the file."""
+    copied = copy.deepcopy(element)
+    copied.attrib.pop("id", None)
+    for node in copied.iter():
+        node.tail = None
+        if node.text is not None and not node.text.strip():
+            node.text = None
+    return etree.tostring(copied, method="c14n", exclusive=True)
+
+
+def _font_id(head: etree._Element, lang: str, face: str) -> str:
+    """The id of font `face` in the file's `lang` list, added there when missing."""
+    faces = next((f for f in head.iter(f"{{{HH}}}fontface") if f.get("lang") == lang), None)
+    if faces is None:
+        raise HwpxError("문서 머리에 글꼴 목록이 없어 표를 넣을 수 없습니다.")
+    for font in faces.iterchildren(f"{{{HH}}}font"):
+        if font.get("face") == face:
+            return str(font.get("id"))
+    ids = [int(f.get("id")) for f in faces.iterchildren(f"{{{HH}}}font")
+           if str(f.get("id") or "").isdigit()]
+    new = str(max(ids, default=-1) + 1)
+    etree.SubElement(faces, f"{{{HH}}}font", id=new, face=face, type="TTF", isEmbedded="0")
+    faces.set("fontCnt", str(len(faces.findall(f"{{{HH}}}font"))))
+    return new
+
+
+def _listing(head: etree._Element, kind: str) -> etree._Element:
+    listing = next(head.iter(f"{{{HH}}}{_LISTS[kind]}"), None)
+    if listing is None:
+        raise HwpxError("문서 머리(header.xml)에 모양 목록이 없습니다.")
+    return listing
+
+
+def _define(head: etree._Element, kind: str, made: etree._Element) -> str:
+    """The id of a definition equal to `made` in the file's header, `made` added under a fresh
+    id when there is none."""
+    listing = _listing(head, kind)
+    defined = {str(e.get("id")): e for e in listing.iterchildren(f"{{{HH}}}{kind}")}
+    same = next((i for i, e in defined.items() if _bare(e) == _bare(made)), None)
+    if same is not None:
+        return same
+    ids = [int(i) for i in defined if i.isdigit()]
+    same = str(max(ids, default=-1) + 1)
+    made = copy.deepcopy(made)
+    made.set("id", same)
+    made.tail = listing[-1].tail if len(listing) else None
+    listing.append(made)
+    listing.set("itemCnt", str(len(defined) + 1))
+    return same
+
+
+def _import_shapes(head: etree._Element, wanted: dict[str, tuple[str, ...]] | None = None
+                   ) -> dict[str, dict[str, str]]:
+    """House shapes (`wanted`, the new table's by default) put into a file's own header under
+    ids of its own: an equal definition already there is reused, any other is added with a
+    fresh id, so a file made in 한글 (whose `charPr` 1 may be a red 20 pt title) never lends
+    its own meaning to what is added. House id -> file id, per kind."""
+    wanted = wanted or _HOUSE
+    house = _house_header()
+    house_faces = {
+        (f.getparent().get("lang") or "").lower(): {}
+        for f in house.iter(f"{{{HH}}}font")
+    }
+    for font in house.iter(f"{{{HH}}}font"):
+        house_faces[(font.getparent().get("lang") or "").lower()][str(font.get("id"))] = \
+            font.get("face")
+    remap: dict[str, dict[str, str]] = {kind: {} for kind in _LISTS}
+    for kind in ("borderFill", "charPr", "paraPr"):
+        for house_id in wanted.get(kind, ()):
+            source = next((e for e in house.iter(f"{{{HH}}}{kind}")
+                           if e.get("id") == house_id), None)
+            if source is None:
+                raise HwpxError("문서 모양을 찾지 못했습니다.")
+            made = copy.deepcopy(source)
+            for node in made.iter():
+                ref = node.get("borderFillIDRef")
+                if ref is not None and ref in remap["borderFill"]:
+                    node.set("borderFillIDRef", remap["borderFill"][ref])
+            if kind == "charPr" and (fonts := made.find(f"{{{HH}}}fontRef")) is not None:
+                for slot in _FONT_SLOTS:
+                    face = house_faces.get(slot, {}).get(str(fonts.get(slot)))
+                    if face:
+                        fonts.set(slot, _font_id(head, slot.upper(), face))
+            remap[kind][house_id] = _define(head, kind, made)
+    return remap
+
+
+def _remapped(element: etree._Element, remap: dict[str, dict[str, str]]) -> etree._Element:
+    """`element` with every shape reference moved to the file's own ids."""
+    for node in element.iter():
+        for attr, kind in _REFS.items():
+            value = node.get(attr)
+            if value is not None and value in remap.get(kind, {}):
+                node.set(attr, remap[kind][value])
+    return element
+
+
+def _header(archive: zipfile.ZipFile, doc: _Doc) -> etree._Element:
+    """The file's `header.xml`, read once and written back with the sections."""
+    if _HEADER not in doc.roots:
+        try:
+            doc.roots[_HEADER] = etree.fromstring(archive.read(_HEADER), _PARSER)
+        except (KeyError, etree.XMLSyntaxError) as exc:
+            raise HwpxError("문서 머리(header.xml)를 읽지 못해 표를 넣을 수 없습니다.") from exc
+    return doc.roots[_HEADER]
 
 
 def _table_paragraph(rows: list[list[str]]) -> etree._Element:
@@ -569,8 +822,11 @@ def _write(archive: zipfile.ZipFile, doc: _Doc) -> bytes:
             target.writestr(
                 zipfile.ZipInfo("mimetype"), archive.read("mimetype"), zipfile.ZIP_STORED
             )
-        for name in names:
+        for name in [*names, *(n for n in doc.added if n not in names)]:
             if name == "mimetype":
+                continue
+            if name in doc.added:
+                target.writestr(zipfile.ZipInfo(name), doc.added[name], zipfile.ZIP_STORED)
                 continue
             if name in doc.roots:
                 body = etree.tostring(

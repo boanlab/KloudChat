@@ -400,8 +400,18 @@ export function SessionPage() {
       const completed = (fetched: boolean) => {
         if (!current) return
         // Gone row or missing transcript: not a new chat.
-        if (fetched && useStore.getState().sessions.some((row) => row.id === sessionId)) setFetchedId(sessionId)
-        else setFailedLoad({ id: sessionId, attempt: loadAttempt })
+        const state = useStore.getState()
+        const row = state.sessions.find((c) => c.id === sessionId)
+        if (fetched && row) {
+          setFetchedId(sessionId)
+          // The list's row may not name the chat's document (a Word or HWP file made in the
+          // chat is found by the transcript's fetch): it opens now, as the row's would have.
+          const media = (row.kind === 'image' || row.kind === 'av') && row.messageCount > 0
+          if (row.artifactId && !media && state.activeSessionId === sessionId &&
+            state.openArtifactId === null) {
+            state.openArtifact(row.artifactId)
+          }
+        } else setFailedLoad({ id: sessionId, attempt: loadAttempt })
       }
       void openSession(sessionId).then(completed, () => completed(false))
     }

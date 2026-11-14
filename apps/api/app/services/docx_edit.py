@@ -360,15 +360,46 @@ def _cell_text(cell: etree._Element) -> str:
     return "\n".join(_own_text(p) for p in _cell_paragraphs(cell)).strip("\n")
 
 
-def _set_cell(cell: etree._Element, text: str) -> None:
-    """The cell holds one paragraph, the first, with `text`; its cell properties stay."""
+def _pictured(paragraph: etree._Element) -> bool:
+    """The paragraph holds a picture or an object, not only text."""
+    return (paragraph.find(f".//{_w('drawing')}") is not None
+            or paragraph.find(f".//{_w('object')}") is not None
+            or paragraph.find(f".//{_w('pict')}") is not None)
+
+
+def _set_cell(cell: etree._Element, text: str, *, whole: bool = False) -> None:
+    """The cell's text made `text`, one line per text paragraph in order: a line that stays
+    keeps its runs, a changed one keeps the format around its change (`_rewrite`); lines past
+    the cell's paragraphs become new paragraphs like its last, and text paragraphs past the
+    lines go. Nested tables and paragraphs holding a picture are not among them and stay.
+    `whole`: the cell emptied to one paragraph with `text` (nested tables too), its cell
+    properties kept, asked for in so many words."""
     paragraphs = _cell_paragraphs(cell)
     if not paragraphs:
         raise DocxError("문단 없는 칸입니다.")
-    for block in _body_blocks(cell):
-        if block is not paragraphs[0]:
-            block.getparent().remove(block)
-    _set_text(paragraphs[0], text)
+    if whole:
+        for block in _body_blocks(cell):
+            if block is not paragraphs[0]:
+                block.getparent().remove(block)
+        _set_text(paragraphs[0], text)
+        return
+    lines = text.split("\n")
+    texts = [p for p in paragraphs if not _pictured(p)]
+    if not texts:
+        fresh = _new_paragraph(paragraphs[0], "")
+        paragraphs[0].addprevious(fresh)
+        texts = [fresh]
+    for paragraph, line in zip(texts, lines, strict=False):
+        _rewrite(paragraph, _keep_marker(_own_text(paragraph), line))
+    for paragraph in texts[len(lines):]:
+        # a cell ends in a paragraph, as Word requires: that one is emptied, not removed
+        if _body_blocks(cell)[-1] is paragraph:
+            _set_text(paragraph, "")
+        else:
+            paragraph.getparent().remove(paragraph)
+    last = texts[min(len(lines), len(texts)) - 1]
+    for line in reversed(lines[len(texts):]):
+        last.addnext(_new_paragraph(last, line))
 
 
 # ── reading ──
@@ -387,6 +418,8 @@ def _mark(doc: _Doc, paragraph: etree._Element) -> str:
         marks.append(f"heading {found.group(1)}")
     if paragraph.find(f"{_PPR}/{_w('numPr')}") is not None or name.startswith("List"):
         marks.append("list")
+    if paragraph.find(f".//{_w('drawing')}") is not None:
+        marks.append("picture")
     return f" ({', '.join(marks)})" if marks else ""
 
 
@@ -417,10 +450,11 @@ def outline(data: bytes) -> str:
         if block.tag == _P:
             index += 1
             text = _own_text(block)
-            if not text.strip():
+            pictured = block.find(f".//{_w('drawing')}") is not None
+            if not text.strip() and not pictured:
                 out.empty(index)
             else:
-                out.paragraph(index, text, _mark(doc, block))
+                out.paragraph(index, text if text.strip() else "(그림)", _mark(doc, block))
             continue
         tid = f"t{doc.tables.index(block) + 1}"
         merged = _merged(block)
@@ -558,8 +592,12 @@ def _text_arg(op: dict, name: str = "text") -> str:
     return office_edit.text_arg(op, name, DocxError)
 
 
-def apply(data: bytes, ops: list[dict]) -> Result:
-    """Every op or none: targets resolve against `data` before anything changes."""
+def apply(data: bytes, ops: list[dict],
+          pictures: dict[str, tuple[str, bytes]] | None = None) -> Result:
+    """Every op or none: targets resolve against `data` before anything changes. `pictures`:
+    the image files picture ops name (`file`), found by the tool."""
+    from app.services import docx_ops
+
     office_edit.check_ops(ops, DocxError)
     doc = _load(data)
     plan: list[tuple[dict, object]] = []
@@ -605,6 +643,8 @@ def apply(data: bytes, ops: list[dict]) -> Result:
         elif kind == "insert_table":
             rows = office_edit.table_arg(op, DocxError)
             plan.append((op, (_paragraph(doc, op.get("after"))[1], rows)))
+        elif kind in docx_ops.OPS:
+            plan.append((op, docx_ops.resolve(doc, op, pictures or {})))
         else:
             raise office_edit.unknown_op(kind, DocxError)
 
@@ -621,7 +661,7 @@ def apply(data: bytes, ops: list[dict]) -> Result:
             where = f"{op['at']}: " if op.get("at") else ""
             changes.append(f"{where}{blank} → 「{short(value)}」 ({count}곳)")
         elif kind == "set_cell":
-            _set_cell(target, _text_arg(op))
+            _set_cell(target, _text_arg(op), whole=op.get("whole") is True)
             changes.append(f"{op['table']} r{op['row']}c{op['col']} → 「{short(op['text'])}」")
         elif kind == "insert_paragraph":
             index, anchor = target
@@ -635,7 +675,7 @@ def apply(data: bytes, ops: list[dict]) -> Result:
             table, row = target
             fresh = copy.deepcopy(row)
             for cell in fresh.iterchildren(_TC):
-                _set_cell(cell, "")
+                _set_cell(cell, "", whole=True)
             # a copied heading row would repeat on every page; a revision mark is not new
             for name in ("tblHeader", "ins", "del", "trPrChange"):
                 for stale in fresh.findall(f"{_TRPR}/{_w(name)}"):
@@ -651,6 +691,8 @@ def apply(data: bytes, ops: list[dict]) -> Result:
             for made in reversed(_new_table(doc, rows)):
                 anchor.addnext(made)
             changes.append(f"{op['after']} 뒤에 표 추가 ({len(rows)}줄 × {len(rows[0])}칸)")
+        elif kind in docx_ops.OPS:
+            changes.append(docx_ops.run(doc, op, target))
     out = io.BytesIO()
     doc.document.save(out)
     return Result(out.getvalue(), changes)

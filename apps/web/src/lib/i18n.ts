@@ -3113,7 +3113,6 @@ const EN: Record<string, string> = {
   '편집하면 사본을 새 대화 옆 편집기에서 엽니다. 이 파일은 그대로 남습니다.': 'Editing opens a copy in the editor beside a new chat. This file stays as it is.',
   '이 파일은 모양대로 그리지 못해 글자만 보여 줍니다.': 'This file could not be drawn as it looks, so only its text is shown.',
   '휴대폰에서는 읽기만 합니다. 편집하면 대화에서 에이전트에게 고쳐 달라고 할 수 있습니다.': 'On a phone it is read only. After Edit you can ask the agent in the chat to change it.',
-  '앞 {n}쪽만 보여 줍니다. 나머지는 편집기나 내려받은 파일에서 보세요.': 'Only the first {n} pages are shown. See the rest in the editor or the downloaded file.',
   '한글 문서 미리보기': 'HWP document preview',
   'Word 문서 미리보기': 'Word document preview',
   'PowerPoint 미리보기': 'PowerPoint preview',
@@ -3509,6 +3508,13 @@ const EN: Record<string, string> = {
   '이 폭에서는 읽기만 합니다. 저장하지 않은 편집을 먼저 저장하거나 버리세요.':
     'Read only at this width. Save or discard your unsaved edits first.',
   '편집기가 {n}초 안에 열리지 않았습니다.': 'The editor did not open within {n} seconds.',
+  '한글 편집기를 불러오는 중…': 'Loading the HWP editor…',
+  '처음 열 때는 1분 가까이 걸릴 수 있습니다.': 'The first time it can take up to a minute.',
+  '한글 편집기를 여는 중…': 'Opening the HWP editor…',
+  'Word 편집기를 여는 중…': 'Opening the Word editor…',
+  'PowerPoint 편집기를 여는 중…': 'Opening the PowerPoint editor…',
+  '대화를 만드는 중…': 'Creating the chat…',
+  '빈 문서를 만드는 중…': 'Creating the blank document…',
   '이 대화에서 연 사본을 다시 열었습니다. 새 사본을 따로 만듭니다.':
     'The copy opened in this chat was reopened. This makes a separate new copy.',
   '새 사본으로 열기': 'Open a new copy',

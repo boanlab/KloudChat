@@ -1851,8 +1851,108 @@ every version and a restore keeps it, so no migration is needed.
 `GET /files/{id}/documents` lists the documents opened from a file, newest
 first, and the preview offers the newest whose chat still exists
 (「이어서 편집」) before 「새 사본으로 편집」 makes another. On a phone the
-preview, like the editors, only reads. The `.hwpx` 「문서로 열기」 in a chat
-(`POST /files/{id}/open-as-document`) opens a web report, stored as Markdown.
+preview, like the editors, only reads; an HWP preview lays out a sheet for every
+page and draws each as it is scrolled to (`components/hwp/lazyPages.ts`), so a long
+file is never cut at a page count. The old `POST /files/{id}/open-as-document`
+(an `.hwpx` turned into an HTML report session) answers 410 and names
+`POST /artifacts/hwp` with `fileId` instead.
+
+### Chat edits of the document open beside the chat
+
+All five document formats (웹 보고서, 한글, Word, 웹 슬라이드, PowerPoint) take chat edits
+the same way; only the file differs.
+
+**Which document.** Every turn carries the document open in the panel,
+`SendMessage.openArtifact` `{id, version}` (`useStore.openTarget`; a local draft is not
+sent). The server trusts it only when it is the person's and this conversation's
+(`_opened_document`). A report or slides conversation then makes it its document
+(`session.artifact_id`), so a revision lands on what the person sees. The office tools
+pick by `office_doc.target`: the document this turn already read or wrote, else the open
+one, else the conversation's only one of the kind; with several and none open the read
+tool says so and the model asks which (`*_read` takes `document`, a title). The
+server's pre-read and its chapter count (「3장」) read the same document, never "the
+newest of its kind".
+
+**Versions.** Every writer moves a document only from the version it read. JSON
+documents (web report, web deck) go through `artifact_versions.advance`, the
+conditional UPDATE the hand save (`workspace._next_version`) also uses. A chat revision
+pins the version `revise-load` read (`turn.base`); at `revise-save`
+(`save_stages.store_revision`), if a hand save landed meanwhile, the parts the revision
+changed are put onto the newer version when nobody touched them there
+(`artifact_versions.merge`, by part id, title and other keys as wholes); otherwise the
+revision is kept apart as a draft document 「… (수정안)」 beside the person's version and
+the reply says so. A whole rewrite (re-plan, regeneration, a report written again as
+HWP or Word) pins the version its turn started from (`_document_base`) and keeps its
+result as a draft on a conflict too. Office files move the same way in
+`office_doc.save`. 「되돌려 줘」 is a version restore, never a rewrite: `revise.asks_undo`
+routes it to `_undo_document` (web) and the `*_restore` tools bring an earlier office
+version back as the newest (conditional, history kept).
+
+**Office tools.** `*_read` (outline with ids), `*_edit` (ops, all or none, against the
+ids read), `*_write` (a new document beside the others; `replace: true` rewrites the
+open one only when asked and only after a read; a blank open document is written into),
+`*_restore`. The edit ops are text (`replace_text` keeps the runs around a change in
+both HWP and Word, `fill_blank` across runs, `set_cell` line by line keeping a cell's
+other paragraphs and nested tables, `whole: true` to empty it), structure
+(`insert_paragraph`, `delete_paragraph`, `move_paragraphs` for a chapter with its body,
+tables and their rows and columns, `merge_cells`, `split_cell`, `insert_table`), format
+(`set_style`, `format_text` on a span, `align`), pictures (`insert_picture`,
+`replace_picture` from an image the person attached or a tool made in the
+conversation, found by `tools/office._pictures`) and `page_setup` (orientation,
+margins, header, footer, page numbers) — `docx_ops.py`, `hwpx_ops.py`. In HWPX a shape is
+never changed in place, since paragraphs share its id: the changed copy, and every house
+shape a new table or picture brings, is defined in the file's own header under a fresh
+id or an equal definition there is reused (`hwpx_edit._define`, `_import_shapes`).
+PowerPoint adds `insert_table` (a real `a:tbl`, in place of a body box), table columns,
+pictures and `change_layout` (`pptx_ops.py`); its outline counts slides in order
+(「5장」 is `s5`, not a printed page number). The tool descriptions say what cannot be
+done (charts, text boxes, footnotes, a table of contents). After the turn
+`office_claims.note` holds the reply to what the tools saved: a claimed change with no
+saved version, or a claimed failure with one, gets a sentence saying what is so.
+
+**Web report and web deck edits** work like the office files. A report or slides
+conversation with a finished document runs an edit turn as its chat
+(`_web_edit_target`) with `report_read`/`report_edit` or `deck_read`/`deck_edit`
+(`tools/web_doc.py`, ops in `web_doc_edit.py`): the outline numbers sections and slides in
+order, and the ops change only what they name. A report takes span replacement, blank
+filling, one section rewritten, sections renamed, added, deleted or moved, Markdown table
+cells, rows and columns, the title, the head fields and the theme. A deck takes the same plus a
+slide's title, subtitle, body or speaker notes alone (a notes request changes only
+`slides[i].notes`), its list items, a real table, slide duplication and its design
+(`design.visualStyle`, `accent`, `font`, the slides surface's own fields). The tool saves
+from the version it read, as a hand save does. The writers keep what is not an edit in
+place: a new document, a new structure or a whole rewrite asked in so many words, an undo,
+a file hand-over, an answer to a waiting card. A shortening (「절반으로」, 「줄여」) that would
+drop a part's table or list whole, or cut far more than the share asked, is refused in both
+paths (`revise.shortening_loss`). Counts asked are held: 「5장 정도」 aims at 5, and a reply
+says when the slides or sections written differ from the count asked
+(`deck.count_note`, `save_stages.section_count_note`).
+
+**Web report and web deck revisions by the writers** run the `revise` flow on the loaded
+parts. By hand, with no model: a part moved (「위험 요인 장을 3번 장 뒤로」, `revise.part_move`;
+numbers name parts as titles do), two swapped, a theme colour (`revise.theme_accent`
+→ `design.accent`), the head fields 작성일·작성 부서·작성자 (`revise.title_block_fields`
+→ `titleBlock`). A question about the document or the conversation is answered from
+them (`revise_stages.answer_about`), not refused. A part the edit was not asked to
+touch that a rewrite left without figures it stated is put back as it was
+(`save_stages.keep_untouched`), unless the new figures are the ones the person typed.
+
+**What the person set holds.** Standing rules from the conversation
+(`context.standing_rules`: 「앞으로 …」 directives over every user turn, and the running
+memory's pinned items) reach every part rewritten (`revise_stages.standing_note`) and
+every office `*_read`. In a revision's material, attachments spend the budget newest
+first, and a file sent again under the same name replaces the older one.
+
+**Look.** HWP and Word documents written by the tools, blank ones made in a project and
+reports written as HWP take the project's theme and the conversation's (else the
+project's default) report template (`office_look`): Word builds on the template's
+`template.docx`; HWPX takes what it can carry from it (page margins, body face, heading
+colour), the theme's colour first. Reports written as Word number their lists with real
+numbering definitions, put the 목차 in a TOC field whose result is the headings listed
+(Word refreshes it on open; an editor that runs no field shows the list), and keep each
+chart a native, editable chart with its picture in an `mc:AlternateContent` Choice that
+only the in-app editor takes. HWPX numbers its lists with `hh:numbering`; it has no chart
+element, so its charts stay pictures.
 
 ### Unsaved office edits, phones, sharing
 

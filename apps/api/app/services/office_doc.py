@@ -63,25 +63,84 @@ def with_source(data: dict[str, Any], source_file_id: str | None) -> dict[str, A
     return {**data, SOURCE_KEY: source_file_id} if source_file_id else data
 
 
+async def session_documents(
+    db: AsyncSession, kind: Kind, user_id: str, session_id: str
+) -> list[Artifact]:
+    """The conversation's documents of this kind, newest first."""
+    if not session_id:
+        return []
+    return list(
+        (
+            await db.exec(
+                select(Artifact)
+                .where(
+                    Artifact.user_id == user_id,
+                    Artifact.session_id == session_id,
+                    Artifact.kind == kind.kind,
+                )
+                .order_by(col(Artifact.updated_at).desc())
+            )
+        ).all()
+    )
+
+
 async def session_document(
     db: AsyncSession, kind: Kind, user_id: str, session_id: str
 ) -> Artifact | None:
-    """The conversation's document of this kind: its newest."""
-    if not session_id:
-        return None
-    rows = (
-        await db.exec(
-            select(Artifact)
-            .where(
-                Artifact.user_id == user_id,
-                Artifact.session_id == session_id,
-                Artifact.kind == kind.kind,
-            )
-            .order_by(col(Artifact.updated_at).desc())
-            .limit(1)
-        )
-    ).all()
+    """The conversation's newest document of this kind: that the chat has one at all (its
+    tools join the turn). Which one a tool works on is `target`'s to say."""
+    rows = await session_documents(db, kind, user_id, session_id)
     return rows[0] if rows else None
+
+
+async def owned(
+    db: AsyncSession, artifact_id: str, *, user_id: str, session_id: str,
+    kind: Kind | None = None,
+) -> Artifact | None:
+    """`artifact_id` when it is this person's, in this conversation, and of `kind`."""
+    if not artifact_id:
+        return None
+    found = await db.get(Artifact, artifact_id)
+    if (
+        found is None
+        or found.user_id != user_id
+        or not session_id
+        or found.session_id != session_id
+        or (kind is not None and found.kind is not kind.kind)
+    ):
+        return None
+    return found
+
+
+@dataclass(frozen=True)
+class Target:
+    """The document a tool works on, or why there is none: `choices` when the conversation has
+    several of the kind and none is open beside it (the model asks which)."""
+
+    artifact: Artifact | None
+    choices: tuple[Artifact, ...] = ()
+
+
+async def target(
+    db: AsyncSession, kind: Kind, *, user_id: str, session_id: str,
+    worked_on: str = "", opened: str = "", named: str = "",
+) -> Target:
+    """Which document of this kind a chat edit works on, never "the newest of its kind":
+    the one this turn already read or wrote (`worked_on`), else the one open in the panel
+    (`opened`), else the one the model named after asking (`named`, an id or a title), else
+    the conversation's only one. Several and none of these: `choices`, to ask about."""
+    for artifact_id in (worked_on, opened):
+        if found := await owned(db, artifact_id, user_id=user_id, session_id=session_id,
+                                kind=kind):
+            return Target(found)
+    rows = await session_documents(db, kind, user_id, session_id)
+    if named := " ".join(str(named or "").split()):
+        picked = [a for a in rows if a.id == named or " ".join(a.title.split()) == named]
+        if len(picked) == 1:
+            return Target(picked[0])
+    if len(rows) == 1:
+        return Target(rows[0])
+    return Target(None, tuple(rows))
 
 
 def read(artifact: Artifact) -> bytes:
