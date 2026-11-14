@@ -7,7 +7,7 @@ import { ocrNote } from '@/lib/ocr'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
-import { fileSize, type FileOrigin } from './fileBox'
+import { fileSize, type FileBoxCounts, type FileBoxTab } from './fileBox'
 import { RelTime } from '@/components/ui/RelTime'
 
 /** The file's kind at a glance: picture, table, document, other. */
@@ -19,22 +19,30 @@ function FileGlyph({ row }: { row: FileRow }) {
   return <FileIcon {...props} />
 }
 
-/** 올린 파일 / 대화에서 만든 파일 tabs and the name search over them. */
-export function FileBoxFilter({
+/** 올린 파일 / 대화에서 만든 파일 (and, in the file box itself, 작업 문서) tabs and the search over them. */
+export function FileBoxFilter<T extends FileBoxTab>({
   counts,
   origin,
   onOrigin,
   query,
   onQuery,
+  working = false,
 }: {
-  /** Per origin, for the current search: the server counts every file, not just the page held. */
-  counts: Record<FileOrigin, number>
-  origin: FileOrigin
-  onOrigin: (next: FileOrigin) => void
+  /** Per tab, for the current search: the server counts every file, not just the page held. */
+  counts: FileBoxCounts
+  origin: T
+  onOrigin: (next: T) => void
   query: string
   onQuery: (next: string) => void
+  /** The 「작업 문서」 tab too: the file box page, not a picker. */
+  working?: boolean
 }) {
   const t = useT()
+  const tabs = [
+    { id: 'upload', label: t('올린 파일'), count: counts.upload },
+    { id: 'generated', label: t('대화에서 만든 파일'), count: counts.generated },
+    ...(working ? [{ id: 'working', label: t('작업 문서'), count: counts.working }] : []),
+  ] as { id: T; label: string; count?: number }[]
   return (
     <>
       <div className="relative mb-3 max-w-sm">
@@ -43,18 +51,11 @@ export function FileBoxFilter({
           value={query}
           onChange={(e) => onQuery(e.target.value)}
           aria-label={t('파일 검색')}
-          placeholder={t('파일 이름으로 찾기')}
+          placeholder={origin === 'working' ? t('문서 제목으로 찾기') : t('파일 이름으로 찾기')}
           className="pl-8"
         />
       </div>
-      <Tabs<FileOrigin>
-        value={origin}
-        onChange={onOrigin}
-        tabs={[
-          { id: 'upload', label: t('올린 파일'), count: counts.upload },
-          { id: 'generated', label: t('대화에서 만든 파일'), count: counts.generated },
-        ]}
-      />
+      <Tabs<T> value={origin} onChange={onOrigin} tabs={tabs} />
     </>
   )
 }

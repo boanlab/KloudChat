@@ -3202,7 +3202,20 @@ a project's or an agent's excepted (`delete_session_files`). Each file records h
 (`files.origin`: `upload`, or `generated` for a code run's output, an image, a chart, a
 figure, audio, video, an export); the file box (`/files` in the web app) lists the two
 apart, a page at a time (`GET /files/page?box=true`: agents' knowledge left out, `origin`,
-a name search `q`, a keyset `cursor`, with `total` and per-origin `counts`), and a composer's 「파일함에서 고르기」 attaches one again by id. Deleting
+a name search `q`, a keyset `cursor`, with `total` and per-origin `counts`, plus `working`
+in the whole box), and a composer's 「파일함에서 고르기」 attaches one again by id. A third tab,
+「작업 문서」 (`/files?tab=working`), lists the documents worked on as a whole — the HWP, Word
+and PowerPoint artifacts and the web reports and web slides — one row per artifact, its
+version count being its `version` (`GET /artifacts/working`: `kind` one kind or a comma list,
+a title search `q`, `sort` `updated`/`oldest`/`title`, a keyset `cursor` tied to its sort, with
+`total`, per-kind `counts` and each row's conversation and project names, someone else's or a
+deleted one left out). The rows are the artifacts themselves, not copies: they open in the
+editor they have in chat (`/s/{session}?artifact={id}`; an office document with no
+conversation joins a new chat, a web document with none opens on `/artifacts?open={id}`),
+download in their own format (the office file, Markdown, `.pptx`), and rename and delete
+through `PATCH`/`DELETE /artifacts/{id}`; deleting an office document also removes the file
+it keeps per version, after the commit. Uploaded office files stay in 올린 파일 as files; a
+copy opened from one for editing is the working document. Deleting
 the project drops the collection; `POST /projects/{id}/knowledge/reindex`
 backfills files uploaded before the index existed. The lexical shelf the tool
 also reads includes the project's files, so a passage the budget could not

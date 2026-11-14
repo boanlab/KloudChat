@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { filesApi, type FileRow, type OfficeKind } from '@/lib/api'
 
 export type FileOrigin = 'upload' | 'generated'
+/** The file box's tabs: files by origin, and the documents worked on (「작업 문서」). */
+export type FileBoxTab = FileOrigin | 'working'
+export type FileBoxCounts = Record<FileOrigin, number> & { working?: number }
 
 /** Rows per file-box page. */
 export const FILE_PAGE = 50
@@ -12,7 +15,7 @@ export const FILE_PAGE = 50
  */
 export function useFileBox(enabled = true, origin: FileOrigin = 'upload', query = '') {
   const [rows, setRows] = useState<FileRow[]>([])
-  const [counts, setCounts] = useState<Record<FileOrigin, number>>({ upload: 0, generated: 0 })
+  const [counts, setCounts] = useState<FileBoxCounts>({ upload: 0, generated: 0 })
   const [total, setTotal] = useState(0)
   const [next, setNext] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)

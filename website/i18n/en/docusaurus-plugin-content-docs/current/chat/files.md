@@ -31,14 +31,28 @@ The Reports and Slides screens do not carry over attachments from earlier reques
 
 ## Files
 
-**Files** in the left menu holds every file of your account, under two tabs.
+**Files** in the left menu holds every file of your account, under three tabs.
 
 - **Uploaded**: files you attached to conversations or uploaded to projects
 - **Made in conversations**: files made during a conversation, such as code-run outputs (CSV and the like), images and charts
+- **Working documents**: the HWP, Word and PowerPoint documents and the web reports and web slides you made in conversations or edited in an editor
 
 Each row shows the size, when it came, and which conversation or project it belongs to. Find files by name, download them, and delete one or a selection. Deleting a project file takes it out of the project too.
 
 To use the same material again in a new chat, report or deck, pick it under **+** → **Choose from Files** in the input box. Nothing is uploaded again, so there is no wait.
+
+### Working documents
+
+The **Working documents** tab is where you find the documents you were working on again. Each document is one row, however many versions it has, and the one you edited last comes first.
+
+- Each row shows the format (HWP document, Word document, PowerPoint document, web report, web slides), the number of versions (v3 and so on), when it was last edited, and the project and conversation it belongs to.
+- Show one format with the format chips, find documents by title, and sort them **Recently edited**, **Least recently edited** or **By title**.
+- Click the title or **Open in its editor** to open the same editor as from the chat, beside the document's conversation. An HWP, Word or PowerPoint document with no conversation opens beside a new chat and joins it. A web report or web slides with no conversation opens in the editing panel of the **Artifacts** screen.
+- **Go to the conversation** takes you to the conversation that made it.
+- **Download** saves the current version in its own format: HWP, Word and PowerPoint documents as the file itself, a web report as Markdown (.md), web slides as PowerPoint (.pptx). For other formats, use Download (export) on the document's screen.
+- **Rename** changes the title, and you can delete one document or a selection. Deleting a document removes its version history too; the conversation that made it stays.
+
+A working document is not a copy: it is the document itself. What you change in the editor shows here at once, and it is the same document as on the **Artifacts** screen. Opening an HWP, Word or PowerPoint file from the file box with **Edit** puts its copy under Working documents, and the uploaded file stays under **Uploaded**.
 
 When you delete a conversation you can tick **Also delete the conversation's files**. Left unticked, its files stay in Files. Project files are never deleted with a conversation.
 

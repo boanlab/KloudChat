@@ -62,17 +62,19 @@ async def test_the_file_box_pages_with_counts_and_leaves_agents_knowledge_out(wo
     # the file box: agents' knowledge out
     boxed, pages = await _walk(world.client, "/files/page", box="true", limit=50)
     assert "rules" not in {f["id"] for f in boxed} and len(boxed) == 11
-    assert pages[0]["total"] == 11 and pages[0]["counts"] == {"upload": 8, "generated": 3}
+    assert pages[0]["total"] == 11
+    assert pages[0]["counts"] == {"upload": 8, "generated": 3, "working": 0}
 
     made, pages = await _walk(world.client, "/files/page", box="true", origin="generated",
                               limit=2)
     assert [f["id"] for f in made] == [f"g{n:031d}" for n in (2, 1, 0)]
-    assert pages[0]["total"] == 3 and pages[0]["counts"] == {"upload": 8, "generated": 3}
+    assert pages[0]["total"] == 3
+    assert pages[0]["counts"] == {"upload": 8, "generated": 3, "working": 0}
 
     # name search, case and spacing aside; counts follow the search, origin aside
     found, pages = await _walk(world.client, "/files/page", box="true", q="  회의록 ",
                                origin="generated")
-    assert found == [] and pages[0]["counts"] == {"upload": 7, "generated": 0}
+    assert found == [] and pages[0]["counts"] == {"upload": 7, "generated": 0, "working": 0}
     literal = (await world.client.get("/files/page", params={"q": "100%_"})).json()
     assert literal["total"] == 0
     in_session = (await world.client.get("/files/page", params={"session_id": "s-1"})).json()

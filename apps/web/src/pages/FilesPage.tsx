@@ -1,9 +1,10 @@
 import { Download, Eye, FolderOpen, Trash2, Upload } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { FileBoxFilter, FileLine } from '@/components/files/FileBoxList'
 import { FilePreview } from '@/components/files/FilePreview'
-import { useFileBox, type FileOrigin } from '@/components/files/fileBox'
+import { useFileBox, type FileBoxTab } from '@/components/files/fileBox'
+import { WorkingDocs } from '@/components/files/WorkingDocs'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import { Button, Card, ConfirmDialog, EmptyState, PageHeader, ReloadNotice } from '@/components/ui'
@@ -16,18 +17,25 @@ import { useOcrProgress } from '@/lib/ocr'
 import { useT } from '@/lib/useT'
 import { ListSkeleton } from '@/components/ui/Skeleton'
 
-/** 파일함: every file of the account, those the person gave apart from those made in conversations. */
+/** 파일함: every file of the account, those the person gave apart from those made in
+ *  conversations, and the documents they work on (「작업 문서」, `?tab=working`). */
 export function FilesPage() {
   const t = useT()
-  const [origin, setOrigin] = useState<FileOrigin>('upload')
+  const [params, setParams] = useSearchParams()
+  const [tab, setTab] = useState<FileBoxTab>(params.get('tab') === 'working' ? 'working' : 'upload')
+  const origin = tab === 'working' ? 'upload' : tab
+  const working = tab === 'working'
   const [query, setQuery] = useState('')
   // The server pages, filters by origin and searches names over every file of the account.
   const box = useFileBox(true, origin, query)
+  // the 「작업 문서」 badge: the files page counts it, the tab's own list once it has answered
+  const [workingSeen, setWorkingSeen] = useState<{ q: string; n: number } | null>(null)
+  const noteWorking = useCallback((n: number) => setWorkingSeen({ q: query.trim(), n }), [query])
+  const counts = workingSeen && workingSeen.q === query.trim() ? { ...box.counts, working: workingSeen.n } : box.counts
   const [confirming, setConfirming] = useState<FileRow | null>(null)
   const [previewing, setPreviewing] = useState<FileRow | null>(null)
   const [error, setError] = useState<string | null>(null)
   // 「/files?open=<id>&t=<seconds>」: a link into a file (a video at a moment) opens its preview
-  const [params, setParams] = useSearchParams()
   const opening = params.get('open')
   const at = Number(params.get('t'))
   const start = opening && Number.isFinite(at) && at > 0 ? at : undefined
@@ -74,7 +82,7 @@ export function FilesPage() {
         const row = await filesApi.upload(file, {
           onProgress: (sent, total) => setUploading({ name: file.name, sent, total }),
         })
-        if (origin !== 'upload') setOrigin('upload')
+        if (tab !== 'upload') setTab('upload')
         box.addRow(row)
       } catch (err) {
         problems.push(`${file.name} — ${errorMessage(err, t('올리지 못했습니다.'))}`)
@@ -106,7 +114,7 @@ export function FilesPage() {
       <PageBody>
         <PageHeader
           title={t('파일함')}
-          description={t('올린 파일과 대화에서 만든 파일이 모두 여기 모입니다. 새 대화·보고서·슬라이드에서 「파일함에서 고르기」로 다시 붙일 수 있습니다.')}
+          description={t('올린 파일과 대화에서 만든 파일이 모두 여기 모입니다. 새 대화·보고서·슬라이드에서 「파일함에서 고르기」로 다시 붙일 수 있고, 작업하던 문서는 「작업 문서」에서 다시 엽니다.')}
           action={
             <>
               <input
@@ -142,9 +150,22 @@ export function FilesPage() {
             {notes.map((note) => <p key={note} role="status" data-testid="media-estimate" className="text-muted">{note}</p>)}
           </div>
         )}
-        <FileBoxFilter counts={box.counts} origin={origin} onOrigin={(next) => { setOrigin(next); pick.clear() }} query={query} onQuery={setQuery} />
-        {box.failed && <ReloadNotice onRetry={() => void box.load()} />}
-        {error && <p className="pt-3 text-base text-danger">{error}</p>}
+        <FileBoxFilter
+          working
+          counts={counts}
+          origin={tab}
+          onOrigin={(next) => {
+            setTab(next)
+            pick.clear()
+            setParams(next === 'working' ? { tab: 'working' } : {}, { replace: true })
+          }}
+          query={query}
+          onQuery={setQuery}
+        />
+        {working && <WorkingDocs query={query} onCount={noteWorking} />}
+        {!working && box.failed && <ReloadNotice onRetry={() => void box.load()} />}
+        {!working && error && <p className="pt-3 text-base text-danger">{error}</p>}
+        {!working && (
         <div className="pt-4">
           {box.loading ? (
             <ListSkeleton />
@@ -233,6 +254,7 @@ export function FilesPage() {
             </>
           )}
         </div>
+        )}
         <FilePreview row={previewing} onClose={closePreview} start={previewing?.id === opening ? start : undefined} />
         <ConfirmDialog
           open={!!confirming}
