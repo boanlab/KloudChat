@@ -22,6 +22,21 @@ const chatId = '82828282828282828282828282828282'
 const reportChatId = '83838383838383838383838383838383'
 const failedId = '84848484848484848484848484848484'
 const shots = process.env.SCREEN_SHOTS
+/** The whole page at once: the app scrolls inside its own panes, so the window grows to fit them. */
+async function wholePage(page: Page, path: string) {
+  const size = page.viewportSize()!
+  const height = await page.evaluate(() => Math.max(
+    document.documentElement.scrollHeight,
+    ...[...document.querySelectorAll('*')].filter((el) => {
+      const style = getComputedStyle(el)
+      return /(auto|scroll)/.test(style.overflowY) && el.scrollHeight > el.clientHeight + 4
+    }).map((el) => el.scrollHeight + el.getBoundingClientRect().top),
+  ))
+  await page.setViewportSize({ width: size.width, height: Math.min(Math.ceil(height) + 40, 5000) })
+  await page.waitForTimeout(300)
+  await page.screenshot({ path })
+  await page.setViewportSize(size)
+}
 
 /** A studio mind map the size of the walk's: 6 branches, 5 children each, 3 under each child. */
 const MINDMAP = [
@@ -168,9 +183,17 @@ async function fixture(page: Page, info: TestInfo, options: Options = {}) {
 
 const width = (page: Page) => page.viewportSize()?.width ?? 1440
 
-async function shot(page: Page, name: string) {
+/** The viewport, the whole page (`'full'`), or one element scrolled into view. */
+async function shot(page: Page, name: string, target?: Locator | 'full') {
   if (!shots) return
-  await page.screenshot({ path: `${shots}/${name}-${width(page)}.png` })
+  const path = `${shots}/${name}-${width(page)}.png`
+  if (target === 'full') return void (await wholePage(page, path))
+  if (target) {
+    await target.scrollIntoViewIfNeeded()
+    await page.waitForTimeout(300)
+    return void (await target.screenshot({ path }))
+  }
+  await page.screenshot({ path })
 }
 
 /** Nothing on the page is wider than the screen: no sideways scroll, no control cut at the edge. */
@@ -205,7 +228,7 @@ test('@phone a project conversation row reads its latest message, not 「내용 
   const made = page.getByText('클라우드 컴퓨팅 강의 노트 마인드맵').locator('xpath=ancestor::*[contains(@class,"cursor-pointer")][1]')
   await expect(made).toContainText('보고서')
   await expect(page.getByText('내용 없음')).toHaveCount(0)
-  await shot(page, 'project-work')
+  await shot(page, 'project-work', 'full')
   expect(state.unexpected).toEqual([])
 })
 
@@ -330,7 +353,7 @@ test('@phone a failed answer keeps its reason readable, the actions under it', a
       return reasonBox.height > 0 && retryBox.top >= reasonBox.bottom - 1
     })).toBe(true)
     await fitsTheScreen(page)
-    await shot(page, 'answer-failed')
+    await shot(page, 'answer-failed', 'full')
   }
 })
 
@@ -345,7 +368,7 @@ test('a failed answer keeps its actions beside a short reason on a wide screen',
     const retryBox = [...box.querySelectorAll('button')].find((b) => b.textContent?.includes('다시 시도'))!.getBoundingClientRect()
     return reasonBox.height > 0 && Math.abs(retryBox.top - reasonBox.top) < reasonBox.height
   })).toBe(true)
-  await shot(page, 'answer-failed')
+  await shot(page, 'answer-failed', 'full')
 })
 
 test('@phone a knowledge row keeps its name and size on one line, the actions under it', async ({ page }, info) => {
@@ -366,13 +389,13 @@ test('@phone a knowledge row keeps its name and size on one line, the actions un
     expect(under).toBeGreaterThanOrEqual(-1)
     await inside(actions, page)
     await fitsTheScreen(page)
-    await shot(page, 'knowledge-rows')
+    await shot(page, 'knowledge-rows', 'full')
     await row.getByRole('button', { name: '자료 안내' }).click()
     await expect(row.getByText('평가 영역별 배점은 어떻게 되나요?')).toBeVisible()
-    await shot(page, 'knowledge-guide')
+    await shot(page, 'knowledge-guide', row)
     await row.getByRole('button', { name: '읽은 내용 확인' }).click()
     await expect(row.getByTestId('knowledge-preview')).toBeVisible()
-    await shot(page, 'knowledge-read')
+    await shot(page, 'knowledge-read', row)
   }
 })
 
@@ -388,12 +411,12 @@ test('@phone the project boxes keep their text readable beside or above their bu
     const text = heading.locator('xpath=following-sibling::p[1]')
     expect((await text.boundingBox())!.width).toBeGreaterThan(phone * 0.6)
     await fitsTheScreen(page)
-    await shot(page, `project-bring-in-${lang}`)
+    await shot(page, `project-bring-in-${lang}`, heading.locator('xpath=ancestor::div[contains(@class,"border-dashed")][1]'))
     await page.getByRole('tab', { name: lang === 'en' ? /^Knowledge/ : /^지식/ }).click()
     const files = page.getByText(lang === 'en' ? 'Reference files' : '참고 파일', { exact: true })
     expect((await files.locator('xpath=..').boundingBox())!.width).toBeGreaterThan(phone * 0.4)
     await fitsTheScreen(page)
-    await shot(page, `project-knowledge-head-${lang}`)
+    await shot(page, `project-knowledge-head-${lang}`, files.locator('xpath=ancestor::div[contains(@class,"border-dashed")][1]'))
   }
 })
 
@@ -445,8 +468,7 @@ test('@phone the chips under a new report\'s composer stay inside the page gutte
     expect(edges.left).toBeGreaterThanOrEqual(15)
     expect(edges.right).toBeLessThanOrEqual(phone - 15)
     await fitsTheScreen(page)
-    await row.scrollIntoViewIfNeeded()
-    await page.waitForTimeout(400)
-    await shot(page, 'composer-chips')
+    await shot(page, 'composer-chips', row.locator('xpath=..'))
+    await shot(page, 'composer-chips-page', 'full')
   }
 })

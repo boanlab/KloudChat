@@ -344,9 +344,30 @@ test('admin is granted and revoked after a confirmation; a last-admin refusal is
 })
 
 const shots = process.env.SCREEN_SHOTS
-async function shot(page: Page, name: string) {
+/** The whole page at once: the app scrolls inside its own panes, so the window grows to fit them. */
+async function wholePage(page: Page, path: string) {
+  const size = page.viewportSize()!
+  const height = await page.evaluate(() => Math.max(
+    document.documentElement.scrollHeight,
+    ...[...document.querySelectorAll('*')].filter((el) => {
+      const style = getComputedStyle(el)
+      return /(auto|scroll)/.test(style.overflowY) && el.scrollHeight > el.clientHeight + 4
+    }).map((el) => el.scrollHeight + el.getBoundingClientRect().top),
+  ))
+  await page.setViewportSize({ width: size.width, height: Math.min(Math.ceil(height) + 40, 5000) })
+  await page.waitForTimeout(300)
+  await page.screenshot({ path })
+  await page.setViewportSize(size)
+}
+async function shot(page: Page, name: string, target?: import('@playwright/test').Locator | 'full') {
   if (!shots) return
-  await page.screenshot({ path: `${shots}/admin/${name}-${page.viewportSize()?.width ?? 1440}.png` })
+  const path = `${shots}/admin/${name}-${page.viewportSize()?.width ?? 1440}.png`
+  if (target === 'full') return void (await wholePage(page, path))
+  if (target) {
+    await target.scrollIntoViewIfNeeded()
+    return void (await target.screenshot({ path }))
+  }
+  await page.screenshot({ path })
 }
 
 test('switching tabs keeps the cards and the rows until the next tab answers', { tag: '@phone' }, async ({ page }, info) => {
@@ -431,7 +452,8 @@ test('on a phone each account is a card whose actions are in reach', { tag: '@ph
       expect(box.x + box.width).toBeLessThanOrEqual(width)
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
-    await shot(page, 'users-cards')
+    await shot(page, 'users-cards', 'full')
+    await shot(page, 'users-card', card)
     await card.getByRole('button', { name: `${target.name} 관리 메뉴` }).click()
     const item = page.getByRole('menuitem', { name: `${target.name} 키 관리` })
     await expect(item).toBeVisible()

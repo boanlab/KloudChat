@@ -5,9 +5,27 @@ import { mockApp } from './super-agent-fixture'
  *  effort column. */
 
 const shots = process.env.SCREEN_SHOTS
-async function shot(page: Page, name: string) {
+/** The whole page at once: the app scrolls inside its own panes, so the window grows to fit them. */
+async function wholePage(page: Page, path: string) {
+  const size = page.viewportSize()!
+  const height = await page.evaluate(() => Math.max(
+    document.documentElement.scrollHeight,
+    ...[...document.querySelectorAll('*')].filter((el) => {
+      const style = getComputedStyle(el)
+      return /(auto|scroll)/.test(style.overflowY) && el.scrollHeight > el.clientHeight + 4
+    }).map((el) => el.scrollHeight + el.getBoundingClientRect().top),
+  ))
+  await page.setViewportSize({ width: size.width, height: Math.min(Math.ceil(height) + 40, 5000) })
+  await page.waitForTimeout(300)
+  await page.screenshot({ path })
+  await page.setViewportSize(size)
+}
+async function shot(page: Page, name: string, target?: import('@playwright/test').Locator | 'full') {
   if (!shots) return
-  await page.screenshot({ path: `${shots}/admin/${name}-${page.viewportSize()?.width ?? 1440}.png` })
+  const path = `${shots}/admin/${name}-${page.viewportSize()?.width ?? 1440}.png`
+  if (target === 'full') return void (await wholePage(page, path))
+  if (target) return void (await target.screenshot({ path }))
+  await page.screenshot({ path })
 }
 
 test('a publication that does not exist says so, with the way back to the list', { tag: '@phone' }, async ({ page }) => {
@@ -38,6 +56,13 @@ test('every effort in the routing table reads whole', { tag: '@phone' }, async (
     return text > room + 0.5
   }).length)
   expect(clipped).toBe(0)
-  await efforts.first().scrollIntoViewIfNeeded()
-  await shot(page, 'routing-effort')
+  // nothing of the table outside the screen: a phone stacks each row as a card
+  const table = page.getByTestId('super-agent-table')
+  const width = page.viewportSize()!.width
+  const box = (await table.boundingBox())!
+  expect(box.x).toBeGreaterThanOrEqual(0)
+  expect(box.x + box.width).toBeLessThanOrEqual(width)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+  if (width < 640) await expect(table.locator('td span', { hasText: 'Super Agent (strict-local)' }).first()).toBeVisible()
+  await shot(page, 'routing-effort', 'full')
 })

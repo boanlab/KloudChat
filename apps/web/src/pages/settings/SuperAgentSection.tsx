@@ -115,10 +115,11 @@ export function SuperAgentSection() {
         </Select>
       </Field>
 
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[640px] text-sm">
+      {/* A phone stacks each row as a card with its own field names; wider screens keep the table. */}
+      <div className="overflow-x-auto max-sm:overflow-visible">
+        <table className="w-full min-w-[640px] text-sm max-sm:block max-sm:min-w-0" data-testid="super-agent-table">
           <caption className="sr-only">{t('작업 종류별 모델')}</caption>
-          <thead>
+          <thead className="max-sm:hidden">
             <tr className="text-left text-xs text-faint">
               <th scope="col" className="py-1.5 pr-2 font-medium">{t('작업 종류')}</th>
               <th scope="col" className="py-1.5 pr-2 font-medium">Super Agent</th>
@@ -126,16 +127,20 @@ export function SuperAgentSection() {
               <th scope="col" className="py-1.5 font-medium">{t('추론 강도')}</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="max-sm:block max-sm:space-y-2">
             {SUPER_CLASSES.map((name) => {
               const rule = rules[name] ?? defaults[name]
               if (!rule) return null
               const pool = name === 'document' ? documentModels : chatModels
               const label = t(SUPER_CLASS_LABEL[name])
               return (
-                <tr key={name} className="border-t border-line align-top">
-                  <th scope="row" className="py-2 pr-2 text-left font-medium">{label}</th>
-                  <td className="py-2 pr-2">
+                <tr
+                  key={name}
+                  className="border-t border-line align-top max-sm:block max-sm:space-y-2 max-sm:rounded-control max-sm:border max-sm:p-3"
+                >
+                  <th scope="row" className="py-2 pr-2 text-left font-medium max-sm:block max-sm:p-0">{label}</th>
+                  <td className="py-2 pr-2 max-sm:block max-sm:p-0">
+                    <span className="mb-1 hidden text-xs text-faint max-sm:block" aria-hidden>Super Agent</span>
                     <Select
                       aria-label={t('{class} · Super Agent 모델').replace('{class}', label)}
                       value={rule.model}
@@ -144,7 +149,8 @@ export function SuperAgentSection() {
                       {options(pool, rule.model)}
                     </Select>
                   </td>
-                  <td className="py-2 pr-2">
+                  <td className="py-2 pr-2 max-sm:block max-sm:p-0">
+                    <span className="mb-1 hidden text-xs text-faint max-sm:block" aria-hidden>Super Agent (strict-local)</span>
                     <Select
                       aria-label={t('{class} · strict-local 모델').replace('{class}', label)}
                       value={rule.strictModel}
@@ -153,7 +159,8 @@ export function SuperAgentSection() {
                       {options(strictOnly(pool), rule.strictModel)}
                     </Select>
                   </td>
-                  <td className="py-2">
+                  <td className="py-2 max-sm:block max-sm:p-0">
+                    <span className="mb-1 hidden text-xs text-faint max-sm:block" aria-hidden>{t('추론 강도')}</span>
                     {/* As wide as its longest label: a shared column width cut 「추론 높게」. */}
                     <Select
                       className="min-w-[10.5em]"
