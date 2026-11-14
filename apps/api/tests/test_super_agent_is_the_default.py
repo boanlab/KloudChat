@@ -120,6 +120,35 @@ async def test_a_fixed_or_personal_model_is_kept(world) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ROUTED)
+async def test_a_personal_super_agent_pick_beats_the_admin_default(world, kind) -> None:
+    world["values"] = {settings_store.ROUTING_KEYS[kind.value]: "manual"}
+    strict = _user(preferences={"modelByKind": {kind.value: "super_strict"}})
+    assert await start_mode.starting_mode(kind, strict) == (RoutingMode.super_strict, "")
+    plain = _user(preferences={"modelByKind": {kind.value: "super"}})
+    assert await start_mode.starting_mode(kind, plain) == (RoutingMode.super, "")
+    # a strict project still forces the strict-local entry
+    assert (await start_mode.starting_mode(kind, plain, project_id="p1"))[0] is (
+        RoutingMode.super_strict)
+    # a strict-local pick with nothing strict-local usable never answers outside
+    outside = _user(preferences={"modelByKind": {kind.value: "super_strict"}},
+                    allowed_models=["deepseek/deepseek-v4.1-flash"])
+    assert (await start_mode.starting_mode(kind, outside))[0] is RoutingMode.manual
+
+
+def test_super_agent_entries_are_picks_only_on_routed_surfaces() -> None:
+    from pydantic import ValidationError
+
+    from app.schemas.auth import Preferences
+
+    prefs = Preferences.model_validate(
+        {"modelByKind": {"chat": "super", "report": "super_strict", "slides": "local/x"}})
+    assert prefs.model_by_kind["report"] == "super_strict"
+    with pytest.raises(ValidationError):
+        Preferences.model_validate({"modelByKind": {"image": "super"}})
+
+
+@pytest.mark.asyncio
 async def test_the_admin_default_decides_per_surface(world) -> None:
     world["values"] = {
         settings_store.ROUTING_CHAT: "super_strict",

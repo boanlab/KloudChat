@@ -467,8 +467,8 @@ Chat, report and slides also offer **Super Agent** and **Super Agent (strict-loc
 listed first; Super Agent is the default for all three on a fresh installation
 (`system_settings` `routing.chat`, `routing.report`, `routing.slides`: `super`,
 `super_strict`, `manual`, or empty for report and slides to follow chat; unset means
-`super`). A new conversation starts in that mode unless the person picked a model for that
-surface on the home screen or its agent has its own model; a project conversation where
+`super`). A new conversation starts in that mode unless the person picked a model or a Super Agent
+entry for that surface (home screen or Settings › Preferences) or its agent has its own model; a project conversation where
 internal material stays strict-local starts on `super_strict`. With a Super Agent entry
 chosen, the model last chosen for the surface stays stored as the fallback a turn uses when
 the class table has nothing usable. Migration 0089 moved the three surfaces to Super Agent

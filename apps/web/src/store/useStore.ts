@@ -1,5 +1,5 @@
 import type { OpenArtifact, UploadProgress, WebSearchSetting } from '@/lib/api'
-import { startingMode } from '@/lib/superAgent'
+import { isSuperEntry, startingMode } from '@/lib/superAgent'
 import { withAccountPicks } from '@/lib/modelPicks'
 import { forgetStoredDraft, purgeStoredDrafts } from '@/lib/drafts'
 import { findUnsent, forgetUnsent, keepUnsent, purgeUnsent, unsentId } from '@/lib/unsentSessions'
@@ -382,8 +382,10 @@ interface State {
   running: Record<string, () => void>
   modelByKind: Record<SessionKind, string>
   setModel: (kind: SessionKind, id: string) => void
-  /** Forgets the home-screen pick for a surface: its new conversations start on Super Agent. */
+  /** Forgets the home-screen pick for a surface: its new conversations start on the admin default. */
   clearModelPick: (kind: SessionKind) => void
+  /** Picks a Super Agent entry as the surface's own start (chat, report, slides). */
+  pickSuperEntry: (kind: SessionKind, entry: 'super' | 'super_strict') => void
   /** One remembered model per av mode; `modelByKind.av` mirrors the current mode's. */
   avModelByMode: Record<AvMode, string>
   /** Changes one conversation's model; the surface default is left alone. */
@@ -800,7 +802,10 @@ function reconcileAvModels(
 const initialModelByKind: Record<SessionKind, string> = (() => {
   const blank = { chat: '', report: '', slides: '', image: '', av: '' }
   try {
-    return { ...blank, ...JSON.parse(localStorage.getItem(MODEL_STORAGE_KEY) || '{}') }
+    const picks = JSON.parse(localStorage.getItem(MODEL_STORAGE_KEY) || '{}') as Record<string, string>
+    // a Super Agent entry is a pick, not a model: the surface's model stays the fallback
+    const models = Object.fromEntries(Object.entries(picks).filter(([, id]) => !isSuperEntry(id)))
+    return { ...blank, ...models }
   } catch {
     return blank
   }
@@ -1579,6 +1584,17 @@ export const useStore = create<State>((set, get) => ({
         ...(byMode ? { avModelByMode: { ...s.avModelByMode, ...byMode } } : {}),
         ...(s.user ? { user: { ...s.user, preferences: { ...s.user.preferences, ...kept } } } : {}),
       }
+    }),
+  pickSuperEntry: (kind, entry) =>
+    set((s) => {
+      const picks = { ...readRememberedModels(s.user?.preferences.modelByKind), [kind]: entry }
+      try {
+        localStorage.setItem(MODEL_STORAGE_KEY, JSON.stringify(picks))
+      } catch {
+        // storage unavailable: the account keeps it
+      }
+      if (s.user) rememberOnAccount({ modelByKind: picks })
+      return s.user ? { user: { ...s.user, preferences: { ...s.user.preferences, modelByKind: picks } } } : {}
     }),
   clearModelPick: (kind) =>
     set((s) => {

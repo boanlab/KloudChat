@@ -144,7 +144,7 @@ export function ModelPicker({
     setModel,
     setSessionModel,
     setSessionRoutingMode,
-    clearModelPick,
+    pickSuperEntry,
     sessions,
     modelsLoading,
     litellmAvailable,
@@ -172,12 +172,8 @@ export function ModelPicker({
   const startingMode = !session && !sessionId && routedSurface
     ? startingRoutingMode({ superAgent, user, defaultRouting, agents }, kind)
     : undefined
-  // The personal default (설정 › 환경설정) offers the installation's Super Agent start: picking it
-  // forgets the personal model, so new conversations follow the installation again.
-  const installationStart = defaultRouting[kind as 'chat' | 'report' | 'slides'] ?? 'super'
-  const fieldLanes: RoutingMode[] | undefined = field
-    ? (routedSurface && isSuperMode(installationStart) ? [installationStart] : [])
-    : undefined
+  // The personal default (설정 › 환경설정) offers both Super Agent entries like any model.
+  const fieldLanes: RoutingMode[] | undefined = field && !routedSurface ? [] : undefined
   const laneMode = session?.routingMode ?? startingMode
   const superLane = routedSurface && isSuperMode(laneMode) ? laneMode : undefined
   const autoLane = superLane ?? (kind === 'chat' && session?.routingMode !== 'manual'
@@ -290,7 +286,7 @@ export function ModelPicker({
         selectionPending={selectionPending}
         onAuto={(mode) => {
           return persistSelection(() => {
-            if (field) return clearModelPick(kind)
+            if (field) return isSuperMode(mode) ? pickSuperEntry(kind, mode) : undefined
             if (onEnableAuto) return onEnableAuto(mode)
             if (sessionId) return setSessionRoutingMode(sessionId, mode)
           })

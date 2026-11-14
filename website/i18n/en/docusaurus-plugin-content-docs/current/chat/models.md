@@ -55,7 +55,7 @@ The **Reasoning** chip to the left of the model name sets how much the model thi
 
 ## Scope of a model selection
 
-- **Selecting on the home screen** saves the model to your account as the **default model** for that screen, such as Chat, Reports, or Slides. It applies when you sign in from another device, and you can also change it in Settings → Preferences. Picking Super Agent on the home screen again clears the saved model, and new conversations start on Super Agent again.
+- **Selecting on the home screen** saves the model to your account as the **default model** for that screen, such as Chat, Reports, or Slides. It applies when you sign in from another device, and you can also change it in Settings → Preferences. Super Agent and Super Agent (strict-local) can be picked like any model; new conversations then start on that entry.
 - **Selecting during a conversation** applies to that conversation only.
 - An agent conversation uses the model set on the agent. An agent with no model of its own (**Default model**) follows that screen's default model.
 - When the administrator limits which models an account may use, only the allowed models appear.

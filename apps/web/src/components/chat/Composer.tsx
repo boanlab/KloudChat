@@ -982,7 +982,7 @@ export function Composer({
     jobs,
     uploadFile,
     newSession,
-    clearModelPick,
+    pickSuperEntry,
     setSessionSkills,
     setSessionRoutingMode,
     setSessionReasoning,
@@ -2318,8 +2318,8 @@ export function Composer({
         try {
           let id = sessionId ?? reusableSessionId
           if (!id) {
-            // Super Agent picked on the home screen: new conversations start on the default again
-            if (isSuperMode(mode)) clearModelPick(kind)
+            // a Super Agent entry picked on the home screen is this surface's start from now on
+            if (isSuperMode(mode)) pickSuperEntry(kind, mode)
             id = await newSession(kind, { projectId, routingMode: mode })
             carriedComposer = heldComposer(id)
             setReusableSessionId(id)

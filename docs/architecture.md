@@ -2891,8 +2891,9 @@ API.
 `governance.super_agent_enabled`): the picker lists both entries first on chat, report and
 slides, each with its credit range, or as unavailable while a conversation is on an entry
 whose table has no model the account may use. A new conversation the caller sends without a
-`routing_mode` starts as `services/start_mode.py` decides: a model fixed by the caller, the
-conversation's agent or the person's home-screen pick keeps it `manual`; otherwise the
+`routing_mode` starts as `services/start_mode.py` decides: a model fixed by the caller or the
+conversation's agent keeps it `manual`; the person's own pick for the surface
+(`preferences.modelByKind`, a model id or the entry `super` / `super_strict`) comes next; otherwise the
 surface's start from 설정 › 시스템 › 모델 (`system_settings` `routing.chat`, `routing.report`,
 `routing.slides`; unset is `super`), with `super` moved to `super_strict` in a project where
 internal material stays strict-local, and to `manual` when neither entry has a usable model

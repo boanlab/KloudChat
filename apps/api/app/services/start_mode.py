@@ -3,10 +3,12 @@
 Super Agent is always offered (owner decision 2026-11-14) and is the default start for the
 three routed surfaces. The admin's per-surface default (설정 › 시스템 › 모델,
 `settings_store.ROUTING_CHAT`) may instead be `super_strict` or a fixed model (`manual`).
-A model fixed by the caller, by the conversation's agent or by the person's own home-screen
-pick keeps the conversation on that model. A project conversation where internal material
-stays strict-local starts on `super_strict`. When the chosen Super Agent entry has no model
-this person may use, the conversation starts on the surface's model instead (no dead entry).
+A model fixed by the caller or by the conversation's agent keeps the conversation on that
+model. The person's own pick for the surface (설정 › 환경설정 or the home screen) beats the
+admin default: a model id starts `manual` on it, a Super Agent entry starts on that entry.
+A project conversation where internal material stays strict-local starts on `super_strict`.
+When the chosen Super Agent entry has no model this person may use, the conversation starts
+on the surface's model instead (no dead entry); `super_strict` never widens to `super`.
 """
 
 from __future__ import annotations
@@ -73,7 +75,10 @@ async def starting_mode(
         return RoutingMode.manual, fixed_model
     if fixed_model:
         return RoutingMode.manual, fixed_model
-    if pick := personal_pick(user, kind):
+    pick = personal_pick(user, kind)
+    if pick in (RoutingMode.super.value, RoutingMode.super_strict.value):
+        return await usable_super(RoutingMode(pick), user, project_id=project_id), ""
+    if pick:
         return RoutingMode.manual, pick
     start = await surface_start(kind)
     if start == RoutingMode.manual:

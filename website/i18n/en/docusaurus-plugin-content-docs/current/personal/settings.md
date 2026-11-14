@@ -18,7 +18,7 @@ You can change your name (the password is on the **Security** tab). You can chec
 
 | Item | Description |
 |---|---|
-| Default model per screen | The model applied to new conversations on each screen, such as Chat, Reports, and Slides. It is saved to the account, so it applies the same way on every device. Left unset, the administrator's default applies, which is Super Agent for Chat, Reports and Slides. |
+| Default model per screen | The model applied to new conversations on each screen, such as Chat, Reports, and Slides. It is saved to the account, so it applies the same way on every device. Chat, Reports and Slides also offer Super Agent and Super Agent (strict-local). Left unset, the administrator's default applies, which starts as Super Agent. |
 | A request with personal data in it → What to do by default | Choose from asking every time, switching to strict-local, masking, and sending the original text (when the administrator allows it). [Privacy](../privacy) |
 | A request with personal data in it → strict-local image model | The model that draws a picture in a conversation or document with internal material when it must stay strict-local and the picked image model is external. Shown only when there is more than one strict-local image model. Unset, `strict-local/z-image-turbo` is used, or the first in the list when that model is not served. |
 | Response streaming | When it is off, the answer is shown all at once after it is complete. |

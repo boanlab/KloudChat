@@ -332,7 +332,7 @@ const EN: Record<string, string> = {
   '조사 서버의 현재 설정을 보여 줍니다.': 'Shows the research server\'s current settings.',
   '회의록 작성': 'Meeting minutes',
   '비교·결정 보고': 'Compare-and-decide report',
-  '발표 자료 구성': 'Presentation deck',
+  '슬라이드 구성': 'Slide deck',
   '규정 근거 답변': 'Answers from regulations',
   'YouTube 영상 전사·요약': 'YouTube transcript and summary',
   '원본': 'Original',

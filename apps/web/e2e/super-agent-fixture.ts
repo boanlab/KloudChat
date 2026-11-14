@@ -53,6 +53,8 @@ export type State = {
   creates: Record<string, unknown>[]
   patches: Record<string, unknown>[]
   governancePuts: Record<string, unknown>[]
+  /** PATCH /auth/me bodies, as sent. */
+  profilePatches: Record<string, unknown>[]
   failGovernance: boolean
 }
 
@@ -70,7 +72,7 @@ export async function mockApp(
   } = {},
 ) {
   await page.route('**/api/**', (r) => r.abort('blockedbyclient'))
-  const state: State = { sessions: [], turns: [], creates: [], patches: [], governancePuts: [], failGovernance: false }
+  const state: State = { sessions: [], turns: [], creates: [], patches: [], governancePuts: [], profilePatches: [], failGovernance: false }
   let governance: Record<string, unknown> = {
     piiMasking: false,
     externalDataGuard: false,
@@ -90,12 +92,19 @@ export async function mockApp(
     internalDataStrictLocal: true,
     outlineModelId: null,
   }
+  let me: Record<string, unknown> = {}
+  await page.route(/\/api\/auth\/me$/, async (r) => {
+    const patch = (r.request().postDataJSON() ?? {}) as { preferences?: Record<string, unknown> }
+    state.profilePatches.push(patch)
+    me = { ...me, preferences: { ...(me.preferences as object), ...(patch.preferences ?? {}) } }
+    await r.fulfill({ json: me })
+  })
   await page.route(/\/api\/auth\/refresh$/, (r) =>
     r.fulfill({
       json: {
         accessToken: 't',
         expiresIn: 3_600,
-        user: {
+        user: me = {
           id: 'user-1', email: 's@example.com', name: 'Super', role: 'admin', status: 'active',
           monthlyCredits: 10_000, creditsUsed: 0, cycleResetsAt: null, avatarColor: '#64748b',
           litellmKeyPreview: null, litellmKeyIssuedAt: null,

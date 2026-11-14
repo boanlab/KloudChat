@@ -5,11 +5,17 @@ export function isSuperMode(mode: RoutingMode | undefined): mode is 'super' | 's
   return mode === 'super' || mode === 'super_strict'
 }
 
+/** A surface pick that is a Super Agent picker entry rather than a model id. */
+export function isSuperEntry(pick: string | null | undefined): pick is 'super' | 'super_strict' {
+  return pick === 'super' || pick === 'super_strict'
+}
+
 /**
  * The mode a new conversation starts in (the server's `start_mode.starting_mode`): on chat,
- * report and slides, the admin's start for the surface (`defaultRouting`, Super Agent unless a
- * model was fixed there), unless the conversation's agent has its own model or the person
- * picked a model for that surface on the home screen (that pick is kept). A `super` start whose
+ * report and slides, the person's own pick for the surface (`homePick`: a model starts on that
+ * model, a Super Agent entry on that entry), else the admin's start for the surface
+ * (`defaultRouting`, Super Agent unless a model was fixed there); a conversation whose agent has
+ * its own model stays on it. A `super` start whose
  * entry has nothing this person may use falls to Super Agent (strict-local), then to the
  * surface's model; a `super_strict` start never widens to `super`. Before the catalogue answers
  * (`pending`) the start is taken as usable. Existing conversations keep their own mode; the
@@ -30,8 +36,9 @@ export function startingMode({
   defaultRouting?: ModelCatalogue['defaultRoutingByKind']
 }): RoutingMode {
   if (kind !== 'chat' && kind !== 'report' && kind !== 'slides') return 'manual'
-  if (agentModel || homePick) return 'manual'
-  const start = defaultRouting?.[kind] ?? 'super'
+  if (agentModel) return 'manual'
+  if (homePick && !isSuperEntry(homePick)) return 'manual'
+  const start = homePick && isSuperEntry(homePick) ? homePick : defaultRouting?.[kind] ?? 'super'
   if (start === 'manual') return 'manual'
   if (superAgent.pending) return start
   if (start === 'super' && superAgent.default.available) return 'super'

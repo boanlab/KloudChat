@@ -162,22 +162,40 @@ test('쓸 수 있는 모델이 표에 없으면 새 대화는 모델로 시작�
   expect(state.creates).toHaveLength(0)
 })
 
-test('개인 기본 모델도 고르지 않으면 Super Agent이고, 고른 모델을 Super Agent로 되돌릴 수 있다 @phone', async ({ page }) => {
-  await mockApp(page)
-  await page.goto('/settings/preferences')
-  const chat = page.getByRole('button', { name: /^챗: / })
-  await expect(chat).toHaveAttribute('aria-label', '챗: Super Agent')
-  await chat.click()
-  const entries = page.getByRole('menuitemradio')
-  await expect(entries.nth(0)).toContainText('Super Agent')
-  await expect(entries.nth(0)).toHaveAttribute('aria-checked', 'true')
-  // the personal default offers the installation's start only
-  await expect(page.getByRole('menuitemradio', { name: /Super Agent \(strict-local\)/ })).toHaveCount(0)
-  await page.getByRole('menuitemradio', { name: /Mock · Deep/ }).click()
-  await expect(chat).toHaveAttribute('aria-label', '챗: Mock · Deep')
-  await chat.click()
-  await page.getByRole('menuitemradio', { name: /^Super Agent/ }).click()
-  await expect(chat).toHaveAttribute('aria-label', '챗: Super Agent')
+for (const [label, kind] of [['챗', 'chat'], ['보고서', 'report'], ['슬라이드', 'slides']] as const) {
+  test(`${label} 개인 기본값으로 Super Agent 두 항목과 모델을 고를 수 있다 @phone`, async ({ page }) => {
+    const state = await mockApp(page)
+    await page.goto('/settings/preferences')
+    const field = page.getByRole('button', { name: new RegExp(`^${label}: `) })
+    // nothing picked: the installation's default, Super Agent
+    await expect(field).toHaveAttribute('aria-label', `${label}: Super Agent`)
+    await field.click()
+    const entries = page.getByRole('menuitemradio')
+    await expect(entries.nth(0)).toContainText('Super Agent')
+    await expect(entries.nth(0)).toHaveAttribute('aria-checked', 'true')
+    await expect(entries.nth(1)).toContainText('Super Agent (strict-local)')
+    await entries.nth(1).click()
+    await expect(field).toHaveAttribute('aria-label', `${label}: Super Agent (strict-local)`)
+    await expect.poll(() => state.profilePatches.at(-1)).toMatchObject({ preferences: { modelByKind: { [kind]: 'super_strict' } } })
+    await field.click()
+    await page.getByRole('menuitemradio', { name: /Mock · Deep/ }).click()
+    await expect(field).toHaveAttribute('aria-label', `${label}: Mock · Deep`)
+    await field.click()
+    await page.getByRole('menuitemradio', { name: /^Super Agent 사용 가능/ }).click()
+    await expect(field).toHaveAttribute('aria-label', `${label}: Super Agent`)
+    await expect.poll(() => state.profilePatches.at(-1)).toMatchObject({ preferences: { modelByKind: { [kind]: 'super' } } })
+  })
+}
+
+test('개인 기본값이 Super Agent (strict-local)이면 새 대화가 그 항목으로 시작한다', async ({ page }) => {
+  const state = await mockApp(page, 'manual', undefined, { report: 'super_strict' })
+  await page.goto('/new/report')
+  await expect(page.getByRole('button', { name: 'Super Agent (strict-local)', exact: true })).toBeVisible()
+  await setWebSearch(page, '끔')
+  await page.getByLabel('프롬프트 입력').fill('분기 보고')
+  await page.getByLabel('프롬프트 입력').press('Enter')
+  await expect.poll(() => state.creates.length).toBe(1)
+  expect(state.creates[0]).toMatchObject({ kind: 'report', routingMode: 'super_strict' })
 })
 
 test('개인 기본 모델은 계정에 저장한 선택을 보여 준다 @phone', async ({ page }) => {
