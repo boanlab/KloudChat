@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { setWebSearch } from './composer-tools'
-import { mockApp, now, sessionId } from './super-agent-fixture'
+import { mockApp, models, now, sessionId } from './super-agent-fixture'
 
 test('모델 선택기는 Auto 두 항목 대신 Super Agent 두 항목을 보여 주고 고르면 대화에 저장한다', async ({ page }) => {
   const state = await mockApp(page, 'manual')
@@ -86,6 +86,10 @@ test('개인정보로 내부 모델로 옮긴 답은 그 이유를 말한다', a
 test('관리자는 작업 종류별 표를 고치고, 거부는 성공으로 보이지 않는다', async ({ page }) => {
   const state = await mockApp(page)
   await page.goto('/admin/system/routing')
+  await expect(page.getByLabel('코드 · Super Agent 모델')).toBeVisible()
+  // Super Agent is always there: no switch to turn it on or off
+  await expect(page.getByRole('switch', { name: /Super Agent/ })).toHaveCount(0)
+  await expect(page.getByText(/Super Agent (켜기|끄기|보이기)/)).toHaveCount(0)
   await page.getByLabel('코드 · Super Agent 모델').selectOption('local/flash')
   await page.getByLabel('코드 · 추론 강도').selectOption('low')
   state.failGovernance = true
@@ -96,9 +100,136 @@ test('관리자는 작업 종류별 표를 고치고, 거부는 성공으로 보
   await page.getByRole('button', { name: 'Super Agent 설정 저장' }).click()
   await expect(page.getByText('저장했습니다.')).toBeVisible()
   expect(state.governancePuts.at(-1)).toMatchObject({
-    superAgentEnabled: true,
     superAgentRules: { code: { model: 'local/flash', effort: 'low' } },
   })
+  expect(state.governancePuts.at(-1)).not.toHaveProperty('superAgentEnabled')
   await page.getByRole('button', { name: '표를 기본값으로' }).click()
   await expect(page.getByLabel('코드 · Super Agent 모델')).toHaveValue('external/deep')
 })
+
+const KIND_LABEL = { chat: '챗은', report: '보고서는', slides: '슬라이드는' } as const
+
+for (const kind of ['chat', 'report', 'slides'] as const) {
+  test(`새 ${KIND_LABEL[kind]} Super Agent가 고른 채로 시작하고 선택기 맨 위에 둔다 @phone`, async ({ page }) => {
+    const state = await mockApp(page)
+    await page.goto(`/new/${kind}`)
+    const picker = page.getByRole('button', { name: 'Super Agent', exact: true })
+    await expect(picker).toBeVisible()
+    await picker.click()
+    const entries = page.getByRole('menuitemradio')
+    await expect(entries.nth(0)).toContainText('Super Agent')
+    await expect(entries.nth(0)).not.toContainText('strict-local')
+    await expect(entries.nth(0)).toHaveAttribute('aria-checked', 'true')
+    await expect(entries.nth(1)).toContainText('Super Agent (strict-local)')
+    await page.keyboard.press('Escape')
+    await setWebSearch(page, '끔')
+    await page.getByLabel('프롬프트 입력').fill('분기 보고')
+    await page.getByLabel('프롬프트 입력').press('Enter')
+    await expect.poll(() => state.creates.length).toBe(1)
+    expect(state.creates[0]).toMatchObject({ kind, routingMode: 'super' })
+  })
+}
+
+test('관리자가 고른 기본값대로 새 대화가 Super Agent (strict-local)이나 고정 모델로 시작한다', async ({ page }) => {
+  await mockApp(page, 'manual', undefined, undefined, { defaultRouting: { chat: 'super_strict', report: 'manual' } })
+  await page.goto('/new/chat')
+  await expect(page.getByRole('button', { name: 'Super Agent (strict-local)', exact: true })).toBeVisible()
+  await page.goto('/new/report')
+  await expect(page.getByRole('button', { name: /Mock · Flash/ })).toBeVisible()
+})
+
+test('쓸 수 있는 모델이 표에 없으면 새 대화는 모델로 시작하고 Super Agent 항목을 빈 채로 두지 않는다', async ({ page }) => {
+  const state = await mockApp(page)
+  await page.unroute(/\/api\/models$/)
+  await page.route(/\/api\/models$/, (r) =>
+    r.fulfill({
+      json: {
+        models, litellmAvailable: true, defaultChatModel: 'local/flash',
+        autoRouting: { enabled: false, available: false, reason: 'disabled', classifierModelId: null, economyModelIds: [],
+          qualityAvailable: false, qualityReason: 'disabled', qualityModelIds: [] },
+        superAgent: {
+          default: { available: false, reason: 'no_models', estimate: null },
+          strict: { available: false, reason: 'no_models', estimate: null },
+        },
+      },
+    }),
+  )
+  await page.goto('/new/chat')
+  const picker = page.getByRole('button', { name: /Mock · Flash/ })
+  await expect(picker).toBeVisible()
+  await picker.click()
+  await expect(page.getByRole('menuitemradio', { name: /Super Agent/ })).toHaveCount(0)
+  expect(state.creates).toHaveLength(0)
+})
+
+for (const [label, kind] of [['챗', 'chat'], ['보고서', 'report'], ['슬라이드', 'slides']] as const) {
+  test(`${label} 개인 기본값으로 Super Agent 두 항목과 모델을 고를 수 있다 @phone`, async ({ page }) => {
+    const state = await mockApp(page)
+    await page.goto('/settings/preferences')
+    const field = page.getByRole('button', { name: new RegExp(`^${label}: `) })
+    // nothing picked: the installation's default, Super Agent
+    await expect(field).toHaveAttribute('aria-label', `${label}: Super Agent`)
+    await field.click()
+    const entries = page.getByRole('menuitemradio')
+    await expect(entries.nth(0)).toContainText('Super Agent')
+    await expect(entries.nth(0)).toHaveAttribute('aria-checked', 'true')
+    await expect(entries.nth(1)).toContainText('Super Agent (strict-local)')
+    await entries.nth(1).click()
+    await expect(field).toHaveAttribute('aria-label', `${label}: Super Agent (strict-local)`)
+    await expect.poll(() => state.profilePatches.at(-1)).toMatchObject({ preferences: { modelByKind: { [kind]: 'super_strict' } } })
+    await field.click()
+    await page.getByRole('menuitemradio', { name: /Mock · Deep/ }).click()
+    await expect(field).toHaveAttribute('aria-label', `${label}: Mock · Deep`)
+    await field.click()
+    await page.getByRole('menuitemradio', { name: /^Super Agent 사용 가능/ }).click()
+    await expect(field).toHaveAttribute('aria-label', `${label}: Super Agent`)
+    await expect.poll(() => state.profilePatches.at(-1)).toMatchObject({ preferences: { modelByKind: { [kind]: 'super' } } })
+  })
+}
+
+test('개인 기본값이 Super Agent (strict-local)이면 새 대화가 그 항목으로 시작한다', async ({ page }) => {
+  const state = await mockApp(page, 'manual', undefined, { report: 'super_strict' })
+  await page.goto('/new/report')
+  await expect(page.getByRole('button', { name: 'Super Agent (strict-local)', exact: true })).toBeVisible()
+  await setWebSearch(page, '끔')
+  await page.getByLabel('프롬프트 입력').fill('분기 보고')
+  await page.getByLabel('프롬프트 입력').press('Enter')
+  await expect.poll(() => state.creates.length).toBe(1)
+  expect(state.creates[0]).toMatchObject({ kind: 'report', routingMode: 'super_strict' })
+})
+
+test('개인 기본 모델은 계정에 저장한 선택을 보여 준다 @phone', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('kchat-models', JSON.stringify({ chat: 'local/flash' })))
+  await mockApp(page, 'manual', undefined, { chat: 'external/deep', report: 'local/flash' })
+  await page.goto('/settings/preferences')
+  await expect(page.getByRole('button', { name: /^챗: / })).toHaveAttribute('aria-label', '챗: Mock · Deep')
+  await expect(page.getByRole('button', { name: /^보고서: / })).toHaveAttribute('aria-label', '보고서: Mock · Flash')
+  await expect(page.getByRole('button', { name: /^슬라이드: / })).toHaveAttribute('aria-label', '슬라이드: Super Agent')
+})
+
+const project = {
+  id: 'pppppppppppppppppppppppppppppppp', name: '내부 감사 프로젝트', description: '', emoji: '', instructions: '', skillIds: [],
+  designSystemId: null, renderTemplates: {}, strictLocalWebSearch: null, files: [], sessionIds: [],
+  createdAt: now, updatedAt: now,
+}
+
+for (const strict of [true, false]) {
+  test(`프로젝트의 새 보고서는 보내기 전부터 ${strict ? 'Super Agent (strict-local)' : 'Super Agent'}로 보인다 @phone`, async ({ page }) => {
+    const state = await mockApp(page, 'manual', undefined, { report: 'super' }, { projectStrict: strict })
+    await page.route(/\/api\/projects(?:\?.*)?$/, (r) => r.fulfill({ json: [project] }))
+    await page.route(/\/api\/projects\/p+$/, (r) => r.fulfill({ json: project }))
+    await page.goto(`/projects/${project.id}`)
+    await page.getByRole('button', { name: '새로 시작', exact: true }).click()
+    await page.getByRole('menuitem', { name: '보고서' }).click()
+    await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}$/)
+    const title = strict ? 'Super Agent (strict-local)' : 'Super Agent'
+    // before anything is sent: the chip already says where the material goes
+    await expect(page.getByRole('button', { name: title, exact: true })).toBeVisible()
+    expect(state.creates).toHaveLength(0)
+    await setWebSearch(page, '끔')
+    await page.getByLabel('프롬프트 입력').fill('감사 결과 보고')
+    await page.getByLabel('프롬프트 입력').press('Enter')
+    await expect.poll(() => state.creates.length).toBe(1)
+    expect(state.creates[0]).toMatchObject({ kind: 'report', projectId: project.id, routingMode: strict ? 'super_strict' : 'super' })
+  })
+}

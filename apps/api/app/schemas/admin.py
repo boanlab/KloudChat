@@ -150,7 +150,6 @@ class GovernanceIn(Wire):
     internal_data_strict_local: bool | None = None
     #: strict-local turns' web search: `ask` each time, `allow` (queries only) or `off`
     strict_local_web_search: Literal["ask", "allow", "off"] | None = None
-    super_agent_enabled: bool | None = None
     #: class → {model, strictModel, effort}; validated against the live catalogue
     super_agent_rules: dict[str, dict[str, str]] | None = Field(default=None, max_length=20)
     outline_model_id: str | None = Field(default=None, max_length=200)

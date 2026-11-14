@@ -847,7 +847,6 @@ async def get_governance(admin: AdminUser, db: DbSession):
         "adaptiveQualityEnabled": policy.adaptive_quality_enabled,
         "internalDataStrictLocal": policy.internal_data_strict_local,
         "strictLocalWebSearch": policy.strict_local_web_search or "ask",
-        "superAgentEnabled": policy.super_agent_enabled,
         "superAgentRules": super_agent.normalise_rules(policy.super_agent_rules),
         "superAgentDefaultRules": super_agent.DEFAULT_RULES,
         "adaptiveQualityModelIds": list(policy.adaptive_quality_model_ids or []),
