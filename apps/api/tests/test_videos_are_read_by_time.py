@@ -697,7 +697,7 @@ def test_the_migration_adds_and_drops_what_video_jobs_need_on_sqlite():
     spec = importlib.util.spec_from_file_location("m0087", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    assert (module.revision, module.down_revision) == ("0087", "0081")
+    assert (module.revision, module.down_revision) == ("0087", "0086")
     engine = sa.create_engine("sqlite://")
     with engine.begin() as conn:
         conn.execute(sa.text("CREATE TABLE users (id VARCHAR PRIMARY KEY)"))

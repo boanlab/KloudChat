@@ -12,7 +12,7 @@ No existing rows change: files uploaded before keep their text and no media job.
 drops the tables and columns (time-coded documents already written stay as file text).
 
 Revision ID: 0087
-Revises: 0081
+Revises: 0086
 Create Date: 2026-11-13
 """
 
@@ -27,7 +27,7 @@ from sqlalchemy.dialects import postgresql
 from alembic import op
 
 revision: str = "0087"
-down_revision: str | None = "0081"
+down_revision: str | None = "0086"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
