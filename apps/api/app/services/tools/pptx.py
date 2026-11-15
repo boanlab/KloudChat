@@ -159,7 +159,12 @@ async def _prepare(args: dict[str, Any], ctx: Any) -> dict[str, Any]:
     asked, and each slide's `image.file` (a picture the person attached, or a figure
     `pdf_figures` cut from a project paper) read into the slide."""
     args = {**args, "slides": _slides_of(args)}
-    if problem := count_problem(getattr(ctx, "request", "") or "", args):
+    asked = getattr(ctx, "request", "") or ""
+    # the person's own words come first; material the turn appended after them can hide the
+    # count from the instruction scope, so the opening paragraph is read on its own as well
+    opening = asked.strip().split("\n\n", 1)[0]
+    if problem := count_problem(asked, args) or (
+            count_problem(opening, args) if opening != asked.strip() else ""):
         raise ValueError(problem)
     wanted = [str((slide.get("image") or {}).get("file") or "").strip()
               for slide in args["slides"] if isinstance(slide.get("image"), dict)]

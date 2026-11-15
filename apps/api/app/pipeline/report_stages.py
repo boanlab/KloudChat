@@ -24,6 +24,7 @@ from app.services import (
     calc,
     check_skills,
     checks,
+    citations,
     coverage,
     date_rules,
     design,
@@ -354,8 +355,9 @@ class Assemble(Base):
             mat.trusted.append(Part(
                 "# 첨부·프로젝트 자료 인용 번호\n"
                 "End each sentence that uses a fact from an attached file or the project "
-                "material with that file's exact number below, never a web result's number. "
-                "Do not make up numbers that are not on the list.\n"
+                "material with that file's exact number below in brackets, like 「[1]」 — "
+                "never the file name or an arXiv id in brackets, and never a web result's "
+                "number. Do not make up numbers that are not on the list.\n"
                 + "\n".join(project_reference_lines),
                 "project"))
         mat.grounded = deck_rules.has_numbers(req.text, mat.document)
@@ -1423,6 +1425,9 @@ def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
     sections, doc_format = bundle.document.sections, bundle.spec.format
     prepass, sources = bundle.computed.prepass, bundle.material.sources
     document_context = bundle.material.document
+    # 「[2309.06180]」 keyed by a file name or arXiv id: the source's number, so every later
+    # check and the reference list see it
+    body = citations.numbered_by_name(body, sources)
     # cut by code: model rewording invents content
     earlier = [str(s.get("content") or "") for s in sections[:index]]
     if doc_format is not None and doc_format.id == "minutes":

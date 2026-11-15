@@ -79,7 +79,7 @@ def test_a_paper_s_first_page_gives_its_entry():
     assert injection["author"] == "Kai Greshake, Sahar Abdelnabi, Shailesh Mishra et al."
     assert injection["year"] == "2023"
     entry = report_export.citation_text({**vllm, "ordinal": 1}, "APA")
-    assert entry.startswith("Woosuk Kwon, Zhuohan Li, Siyuan Zhuang et al.. (2023). Efficient")
+    assert entry.startswith("Woosuk Kwon, Zhuohan Li, Siyuan Zhuang et al. (2023). Efficient")
     assert ".pdf" not in entry and "프로젝트 파일" not in entry
     # nothing read: no fields, the file name stands
     assert paper_meta.source_fields("[페이지 1]\n", "notes.pdf") == {}

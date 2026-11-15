@@ -107,9 +107,15 @@ def deck(
             entry.update(layout="chart", chart=chart, bullets=bullets)
         elif isinstance(image, dict) and image.get("data"):
             # a picture (a figure cropped from a paper, an attached image) with its caption
-            entry.update(layout="bullets", bullets=bullets,
-                         image={"data": image["data"], "caption": str(image.get("caption") or ""),
-                                "size": "large"})
+            picture = {"data": image["data"], "caption": str(image.get("caption") or ""),
+                       "size": "large"}
+            if bullets and _wide(image["data"]):
+                # a wide figure (a row of plots) beside text shrinks to a strip nobody can
+                # read: it takes the slide, and its lines go to the speaker notes
+                notes = "\n".join([entry["notes"], *bullets]).strip()
+                entry.update(layout="bullets", bullets=[], image=picture, notes=notes)
+            else:
+                entry.update(layout="bullets", bullets=bullets, image=picture)
         elif rows:
             entry.update(layout="table", rows=rows)
         else:
@@ -122,6 +128,20 @@ def deck(
         return on_form(form, title, made)
     # `to_pptx` leaves no master bullet under a plain line (`written_bullets_only`)
     return deck_export.to_pptx(title, made, tokens=tokens, template=template)
+
+
+def _wide(data: bytes) -> bool:
+    """A picture at least twice as wide as it is tall."""
+    import io
+
+    from PIL import Image
+
+    try:
+        with Image.open(io.BytesIO(data)) as picture:
+            width, height = picture.size
+    except Exception:  # noqa: BLE001 — an unreadable picture keeps the usual place
+        return False
+    return bool(height) and width / height >= 2.0
 
 
 async def project_look(

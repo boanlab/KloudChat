@@ -139,3 +139,29 @@ def test_pdf_text_keeps_the_text_layer_and_tidies_pdfium_marks():
     assert pdf_text._tidy("How￾\r\never it is .") == "However it is."
     pages = pdf_text.page_texts(_paper_pdf())
     assert "Serving systems waste memory on reserved slots." in pages[0]
+
+
+def test_a_count_with_its_parts_in_brackets_is_the_deck_size():
+    contents = {"slides": 15, "chart": 0, "table": 0, "picture": 4}
+    reply = "PowerPoint 15장(표지 + 본문 13장 + 토론 질문)을 만들었습니다. 그림 4개를 넣었습니다."
+    assert _reply_note(reply, contents) == ""
+
+
+async def test_the_count_is_read_from_the_opening_when_material_follows():
+    ctx = SimpleNamespace(
+        request="vLLM 논문 발표할 PowerPoint 12장 만들어 줘.\n\n# 자료\n본문 3장 …")
+    with pytest.raises(ValueError, match="12장"):
+        await tool._prepare({"title": "t", "slides": [{"title": str(i)} for i in range(14)]}, ctx)
+
+
+def test_a_wide_figure_takes_the_slide_and_its_lines_go_to_the_notes():
+    from PIL import Image
+
+    out = io.BytesIO()
+    Image.new("RGB", (1200, 400), "white").save(out, format="PNG")
+    data = _deck([{"title": "성능", "bullets": ["처리량 2~4배"],
+                   "image": {"data": out.getvalue(), "caption": "Figure 12"}}])
+    slide = Presentation(io.BytesIO(data)).slides[1]
+    assert "처리량 2~4배" in slide.notes_slide.notes_text_frame.text
+    picture = next(s for s in slide.shapes if s.shape_type == 13)
+    assert picture.width > Presentation(io.BytesIO(data)).slide_width * 0.6

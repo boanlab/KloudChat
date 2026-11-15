@@ -616,12 +616,61 @@ def one_reference_list(sections: list[dict], sources: list[dict] | None) -> list
             if _prose(s) else s for s in kept]
 
 
+#: a bracketed key that is no number: 「[2309.06180]」, 「[2309.06180.pdf]」, 「[arXiv:2401.09670]」
+_NAMED_CITE = re.compile(r"\[\s{0,2}([^\[\]\n]{3,80}?)\s{0,2}\]")
+_ARXIV_ID = re.compile(r"(\d{4}\.\d{4,5})(?:v\d{1,2})?")
+
+
+def _keys(source: dict) -> set[str]:
+    """What a writer may put in brackets for `source` instead of its number: its file name,
+    the name without the extension, its arXiv id."""
+    keys = set()
+    for raw in (source.get("fileName"), source.get("name"), source.get("title")):
+        name = str(raw or "").strip().lower()
+        if name:
+            keys.add(name)
+            keys.add(re.sub(r"\.(?:pdf|docx?|hwpx?|pptx?|xlsx?|md|txt)$", "", name))
+    for raw in (source.get("url"), source.get("fileName"), source.get("name")):
+        if found := _ARXIV_ID.search(str(raw or "")):
+            keys.add(found.group(1))
+            keys.add(f"arxiv:{found.group(1)}")
+    return {key for key in keys if len(key) >= 3}
+
+
+def numbered_by_name(text: str, sources: list[dict] | None) -> str:
+    """A citation the writer keyed by a file name or arXiv id (「[2309.06180]」) as the
+    source's number (「[1]」), so it is counted, ordered and listed like every other; a key
+    that names no source is left as written."""
+    if not text or not sources or "[" not in text:
+        return text
+    by_key: dict[str, int] = {}
+    for position, source in enumerate(sources, 1):
+        number = int(source.get("ordinal") or position)
+        for key in _keys(source):
+            by_key.setdefault(key, number)
+
+    def swap(match: re.Match) -> str:
+        key = match.group(1).strip().lower()
+        if key.isdigit():
+            return match.group(0)
+        number = by_key.get(key)
+        if number is None and (found := _ARXIV_ID.fullmatch(key.removeprefix("arxiv:").strip())):
+            number = by_key.get(found.group(1))
+        return f"[{number}]" if number is not None else match.group(0)
+
+    return _NAMED_CITE.sub(swap, text)
+
+
 def tidy(sections: list[dict], sources: list[dict] | None
          ) -> tuple[list[dict], list[dict]]:
     """Drop restated references, keep one list, name works, order citations."""
+    sections = [{**section, "content": numbered_by_name(str(section.get("content") or ""),
+                                                        sources)}
+                for section in sections]
     sections = drop_restated_references(one_reference_list(sections, sources), sources)
     return cite_order(name_works(sections, sources), list(sources or []))
 
 
 __all__ = ["cite_order", "cited", "credit_attachments", "drop_restated_references",
-           "name_works", "one_reference_list", "same_works", "source_texts", "tidy"]
+           "name_works", "numbered_by_name", "one_reference_list", "same_works", "source_texts",
+           "tidy"]

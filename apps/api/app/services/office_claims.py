@@ -49,7 +49,8 @@ def saved_by(ctx: Any) -> list[tuple[str, dict]]:
 _CHART = re.compile(r"차트|그래프|\bcharts?\b|\bgraphs?\b", re.I)
 _PICTURE = re.compile(r"그림|이미지|사진|도표|\bfigures?\b|\bimages?\b|\bpictures?\b", re.I)
 #: 「12장짜리」, 「PPT 8장을」: the slide count a sentence gives the deck
-_SLIDES = re.compile(r"(?<![\d.])(\d{1,2})\s{0,2}장(?:짜리|으로|을|를|의|이|입니다|\s|$)")
+_SLIDES = re.compile(
+    r"(?<![\d.])(\d{1,2})\s{0,2}장(?:짜리|으로|을|를|의|이|입니다|(?![가-힣]))")
 #: a sentence about a missing or not-yet part, not a claim that it is there
 _ABSENT = re.compile(r"없|않|못|대신|빠|넣으면|붙여|직접|필요하시면|보내 주시면")
 
@@ -69,9 +70,10 @@ def _held_note(reply: str, ctx: Any) -> str:
         wrong.append("차트가 없습니다")
     if not last.get("picture") and any(_PICTURE.search(x) for x in claimed):
         wrong.append("그림이 없습니다")
-    said = {int(m.group(1)) for x in claimed for m in _SLIDES.finditer(x)
-            if _CLAIMS.search(x) or "짜리" in x}
-    if said and last.get("slides") not in said:
+    # the deck's size is the first count a claiming sentence gives (「15장(표지 + 본문 13장)」)
+    said = [int(m.group(1)) for x in claimed if _CLAIMS.search(x) or "짜리" in x
+            for m in list(_SLIDES.finditer(x))[:1]]
+    if said and last.get("slides") != said[0]:
         wrong.append(f"슬라이드는 {last.get('slides')}장입니다")
     if not wrong:
         return ""
