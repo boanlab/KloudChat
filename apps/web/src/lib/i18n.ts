@@ -3451,6 +3451,8 @@ const EN: Record<string, string> = {
   '대화·프로젝트에 올린 파일이 여기에 모입니다.': 'Files you upload to conversations and projects gather here.',
   // 파일함 › 작업 문서
   '작업 문서': 'Working documents',
+  '앞 탭 보기': 'Show earlier tabs',
+  '다음 탭 보기': 'Show more tabs',
   '문서 제목으로 찾기': 'Find by document title',
   'PowerPoint': 'PowerPoint',
   '대화 없음': 'No conversation',

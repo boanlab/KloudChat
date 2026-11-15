@@ -239,3 +239,34 @@ test('on a phone 작업 문서 keeps each title whole and its controls under it 
   await expect(rows(page).first()).toContainText('직원 연수 공문')
   expect(unexpected).toEqual([])
 })
+
+test('on a phone the file box tabs show the ones off screen and bring 작업 문서 into view @phone', async ({ page }, info) => {
+  test.skip((page.viewportSize()?.width ?? 0) > 640, 'phone width')
+  const { unexpected } = await fixture(page, info)
+  for (const width of [390, 360]) {
+    await page.setViewportSize({ width, height: 844 })
+    await page.goto('/files')
+    const tab = page.getByRole('tab', { name: /^작업 문서/ })
+    await expect(tab).toBeAttached()
+    const inside = async () => {
+      const box = await tab.boundingBox()
+      return box !== null && box.x >= 0 && box.x + box.width <= width
+    }
+    if (!(await inside())) {
+      // cut off: the row says so with an arrow, which brings it into view
+      const more = page.getByTestId('tabs-more-right')
+      await expect(more).toBeVisible()
+      await more.click()
+      await expect.poll(inside).toBe(true)
+    }
+    await tab.click()
+    await expect(tab).toHaveAttribute('aria-selected', 'true')
+    await expect.poll(inside).toBe(true)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+    // opened straight on the tab: already in view
+    await page.goto('/files?tab=working')
+    await expect(tab).toHaveAttribute('aria-selected', 'true')
+    await expect.poll(inside).toBe(true)
+  }
+  expect(unexpected).toEqual([])
+})
