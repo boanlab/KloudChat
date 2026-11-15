@@ -281,7 +281,8 @@ class SessionCreate(Wire):
     project_id: str | None = None
     agent_id: str | None = None
     model: str | None = None
-    routing_mode: RoutingMode = RoutingMode.manual
+    #: omitted: the surface's start (`start_mode.starting_mode`), Super Agent by default
+    routing_mode: RoutingMode | None = None
     #: the reasoning chip picked before the first send
     reasoning_mode: Literal["auto", "fast", "deep"] | None = None
 

@@ -148,6 +148,7 @@ from app.services import (
     skill_specs,
     skill_turn,
     source_selection,
+    start_mode,
     starter,
     stop_signal,
     super_agent,
@@ -1224,14 +1225,6 @@ async def _project_super_mode(user: User) -> RoutingMode:
     if super_agent.estimate(rules, catalogue["models"], strict=True, allowed=allowed):
         return RoutingMode.super_strict
     return RoutingMode.super
-
-
-async def _require_super_agent() -> None:
-    """Super Agent entries need the admin's switch."""
-    if not (await governance.current()).super_agent_enabled:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="super_agent_disabled"
-        )
 
 
 def _cost_routing(
@@ -2950,17 +2943,25 @@ async def create_session(payload: SessionCreate, user: CurrentUser, db: DbSessio
     if payload.routing_mode in _AUTO_MODES:
         await _require_auto_quality_model(user, payload.model)
     routing_mode = payload.routing_mode
-    if routing_mode in _SUPER_MODES:
-        await _require_super_agent()
-        if routing_mode == RoutingMode.super and payload.project_id:
-            routing_mode = await _project_super_mode(user)
+    model = payload.model or ""
+    if routing_mode is None:
+        # nobody picked: the surface's start (Super Agent unless the admin fixed a model);
+        # an agent's own model keeps the conversation on it
+        if agent is not None and agent.model:
+            routing_mode = RoutingMode.manual
+        else:
+            routing_mode, model = await start_mode.starting_mode(
+                payload.kind, user, project_id=payload.project_id, fixed_model=model
+            )
+    elif routing_mode == RoutingMode.super and payload.project_id:
+        routing_mode = await _project_super_mode(user)
     session = ChatSession(
         **({"id": payload.id} if payload.id else {}),
         user_id=user.id,
         kind=payload.kind,
         project_id=payload.project_id,
         agent_id=payload.agent_id,
-        model=payload.model or "",
+        model=model,
         routing_mode=routing_mode,
         reasoning_mode=_stored_reasoning(payload.reasoning_mode),
         render_template_id=(await _agent_template_loaded(db, user, agent, payload.kind))
@@ -3198,12 +3199,20 @@ async def handoff_session(
         if earlier else []
     )
     by_id = {row.id: row for row in carried}
+    # the document starts as any new one would; an agent's own model keeps it on that model
+    handoff_mode = RoutingMode.manual
+    handoff_model = ""
+    if agent is None or not agent.model:
+        handoff_mode, handoff_model = await start_mode.starting_mode(
+            kind, user, project_id=source.project_id
+        )
     target = ChatSession(
         user_id=user.id,
         kind=kind,
         project_id=source.project_id,
         agent_id=source.agent_id,
-        routing_mode=RoutingMode.manual,
+        model=handoff_model,
+        routing_mode=handoff_mode,
         render_template_id=(await _agent_template_loaded(db, user, agent, kind))
         or await _project_render_template(db, source.project_id, kind),
     )
@@ -3495,8 +3504,6 @@ async def patch_session(session_id: str, payload: SessionPatch, user: CurrentUse
         changes["routing_mode"] = RoutingMode.manual
     if changes.get("routing_mode", session.routing_mode) in _AUTO_MODES:
         await _require_auto_quality_model(user, changes.get("model", session.model))
-    if changes.get("routing_mode") in _SUPER_MODES:
-        await _require_super_agent()
     if "render_template_id" in changes:
         if not await user_templates.usable(db, user.id, changes["render_template_id"]):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,

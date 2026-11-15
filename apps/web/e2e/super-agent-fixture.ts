@@ -53,6 +53,8 @@ export type State = {
   creates: Record<string, unknown>[]
   patches: Record<string, unknown>[]
   governancePuts: Record<string, unknown>[]
+  /** PATCH /auth/me bodies, as sent. */
+  profilePatches: Record<string, unknown>[]
   failGovernance: boolean
 }
 
@@ -61,10 +63,17 @@ export async function mockApp(
   initial: RoutingMode = 'manual',
   route?: SuperAgentRoute,
   modelByKind?: Record<string, string>,
-  options: { reasoning?: TurnReasoning; showUsage?: boolean; catalogue?: ReturnType<typeof model>[] } = {},
+  options: {
+    reasoning?: TurnReasoning
+    showUsage?: boolean
+    catalogue?: ReturnType<typeof model>[]
+    /** The catalogue's `defaultRoutingByKind` (설정 › 시스템 › 모델); absent: Super Agent. */
+    defaultRouting?: Record<string, 'super' | 'super_strict' | 'manual'>
+    projectStrict?: boolean
+  } = {},
 ) {
   await page.route('**/api/**', (r) => r.abort('blockedbyclient'))
-  const state: State = { sessions: [], turns: [], creates: [], patches: [], governancePuts: [], failGovernance: false }
+  const state: State = { sessions: [], turns: [], creates: [], patches: [], governancePuts: [], profilePatches: [], failGovernance: false }
   let governance: Record<string, unknown> = {
     piiMasking: false,
     externalDataGuard: false,
@@ -79,18 +88,24 @@ export async function mockApp(
     adaptiveEconomyModelIds: [],
     adaptiveQualityEnabled: false,
     adaptiveQualityModelIds: [],
-    superAgentEnabled: true,
     superAgentRules: defaultRules,
     superAgentDefaultRules: defaultRules,
     internalDataStrictLocal: true,
     outlineModelId: null,
   }
+  let me: Record<string, unknown> = {}
+  await page.route(/\/api\/auth\/me$/, async (r) => {
+    const patch = (r.request().postDataJSON() ?? {}) as { preferences?: Record<string, unknown> }
+    state.profilePatches.push(patch)
+    me = { ...me, preferences: { ...(me.preferences as object), ...(patch.preferences ?? {}) } }
+    await r.fulfill({ json: me })
+  })
   await page.route(/\/api\/auth\/refresh$/, (r) =>
     r.fulfill({
       json: {
         accessToken: 't',
         expiresIn: 3_600,
-        user: {
+        user: me = {
           id: 'user-1', email: 's@example.com', name: 'Super', role: 'admin', status: 'active',
           monthlyCredits: 10_000, creditsUsed: 0, cycleResetsAt: null, avatarColor: '#64748b',
           litellmKeyPreview: null, litellmKeyIssuedAt: null,
@@ -122,8 +137,10 @@ export async function mockApp(
           economyModelIds: ['local/flash'], qualityAvailable: true, qualityReason: null,
           qualityModelIds: ['external/deep'],
         },
+        ...(options.defaultRouting ? { defaultRoutingByKind: options.defaultRouting } : {}),
         superAgent: {
-          enabled: true,
+          // the default governance: a project keeps internal material strict-local
+          projectStrict: options.projectStrict ?? true,
           default: { available: true, reason: null, estimate: { min: 0, max: 440, models: [] } },
           strict: { available: true, reason: null, estimate: { min: 0, max: 0, models: [] } },
         },

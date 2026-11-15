@@ -115,26 +115,37 @@ test('the administrator decides which model does which job', { tag: '@phone' }, 
   // The report default follows the chat default until one is chosen.
   const report = card.getByRole('combobox', { name: /^보고서 기본 모델/ })
   await expect(report).toHaveValue('')
-  await expect(report.locator('option').first()).toHaveText('대화 기본 모델을 따름')
+  // Chat, report and slides list the two Super Agent entries first; report and slides may follow chat.
+  await expect(report.locator('option')).toHaveText([
+    'Super Agent', 'Super Agent (strict-local)', '챗 기본 모델을 따름', 'Qwen · 27B', 'Qwen · Flash', 'OpenAI · GPT',
+  ])
+  const chat = card.getByRole('combobox', { name: /^챗 기본 모델/ })
+  await expect(chat.locator('option')).toHaveText([
+    'Super Agent', 'Super Agent (strict-local)', 'Qwen · 27B', 'Qwen · Flash', 'OpenAI · GPT',
+  ])
+  await expect(card.getByRole('combobox', { name: /^슬라이드 기본 모델/ }).locator('option').first())
+    .toHaveText('Super Agent')
   // The picture default is always a named model: no empty choice.
-  await expect(card.getByRole('combobox', { name: /^그림 기본 모델/ }).locator('option')).toHaveText(['Google · Image'])
+  await expect(card.getByRole('combobox', { name: /^이미지 기본 모델/ }).locator('option')).toHaveText(['Google · Image'])
   // Side work that reads the conversation offers self-hosted models only.
   const title = card.getByRole('combobox', { name: /^제목·기억·요약 모델/ })
   await expect(title.locator('option')).toHaveText(['대화의 모델을 그대로 사용', 'Qwen · 27B', 'Qwen · Flash'])
   await expect(title).toHaveValue('local/qwen3.8-flash')
 
   await report.selectOption('local/qwen3.8-flash')
+  await chat.selectOption('super_strict')
   await card.getByRole('combobox', { name: /^코드 작성 대체 모델/ }).selectOption('')
   await card.getByRole('switch', { name: '자체 호스팅 모델이 답하기 전에 생각' }).click()
   await card.getByRole('button', { name: '저장' }).click()
   await expect(card.getByText('저장했습니다')).toBeVisible()
   expect(puts.at(-1)).toEqual({
-    modelChat: 'local/qwen3.8-27b', modelReport: 'local/qwen3.8-flash', modelSlides: 'local/qwen3.8-27b',
+    modelChat: 'super_strict', modelReport: 'local/qwen3.8-flash', modelSlides: 'local/qwen3.8-27b',
     modelImage: 'google/img', modelAudio: '', modelVideo: '', modelTitle: 'local/qwen3.8-flash',
     modelCode: 'local/qwen3.8-27b', modelCodeFallback: '', thinkingSelfHosted: '1', thinkingExternal: '0',
   })
   await expect(card.getByRole('switch', { name: '자체 호스팅 모델이 답하기 전에 생각' }))
     .toHaveAttribute('aria-checked', 'true')
+  await expect(chat).toHaveValue('super_strict')
 
   // The card fits a phone width.
   const box = await card.boundingBox()

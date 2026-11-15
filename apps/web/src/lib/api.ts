@@ -478,6 +478,8 @@ export interface ModelCatalogue {
   defaultAvModelByMode?: Partial<Record<'audio' | 'video', string>>
   /** Strict-local picture model when the person picked none; empty when none is served. */
   strictImageDefault?: string
+  /** How a new chat, report or slides conversation starts (설정 › 시스템 › 모델); absent: `super`. */
+  defaultRoutingByKind?: Partial<Record<'chat' | 'report' | 'slides', 'super' | 'super_strict' | 'manual'>>
   autoRouting: {
     enabled: boolean
     available: boolean
@@ -489,18 +491,21 @@ export interface ModelCatalogue {
     qualityReason: 'disabled' | 'classifier_unavailable' | 'no_quality_models' | null
     qualityModelIds: string[]
   }
-  /** The picker's Super Agent entries; absent from an older server. */
+  /** The picker's Super Agent entries, always offered; absent from an older server. */
   superAgent?: {
-    enabled: boolean
     default: SuperAgentOffer
     strict: SuperAgentOffer
+    /** A project conversation starts its `super` start on `super_strict` (internal material). */
+    projectStrict?: boolean
+    /** Client-side only: the catalogue has not answered yet. */
+    pending?: boolean
   }
 }
 
 /** One Super Agent entry: offered or why not, and a typical answer's credits across the table. */
 export interface SuperAgentOffer {
   available: boolean
-  reason: 'disabled' | 'no_models' | null
+  reason: 'no_models' | null
   estimate: { min: number; max: number; models: string[] } | null
 }
 
@@ -585,6 +590,7 @@ export interface SystemSettings {
     visionChoices: { id: string; label: string }[]
   }
   /** As in force; an empty string is a choice (follow the default or session model). Absent from older servers. */
+  /** Chat, report and slides: `super`, `super_strict`, a model id, or "" (follow chat). */
   modelRoles?: {
     chat: string
     report: string
@@ -988,8 +994,6 @@ export interface GovernancePolicy {
   adaptiveEconomyModelIds: string[]
   adaptiveQualityEnabled: boolean
   adaptiveQualityModelIds: string[]
-  /** Super Agent entries offered in the picker. */
-  superAgentEnabled: boolean
   /** Class → model, strict-local model and effort, the admin's changes merged over the defaults. */
   superAgentRules: Record<string, SuperAgentRule>
   /** The built-in table (read-only), for 「기본값으로」. */

@@ -1,5 +1,6 @@
 import type { OpenArtifact, UploadProgress, WebSearchSetting } from '@/lib/api'
-import { startingMode } from '@/lib/superAgent'
+import { isSuperEntry, startingMode } from '@/lib/superAgent'
+import { withAccountPicks } from '@/lib/modelPicks'
 import { forgetStoredDraft, purgeStoredDrafts } from '@/lib/drafts'
 import { findUnsent, forgetUnsent, keepUnsent, purgeUnsent, unsentId } from '@/lib/unsentSessions'
 import { create } from 'zustand'
@@ -156,11 +157,14 @@ function queueSessionPersistence(sessionId: string, persist: () => Promise<void>
 
 const noop = () => {}
 
-/** Before the catalogue answers (or from an older server): no Super Agent entry. */
+/** An entry an older server does not offer. */
+const NO_SUPER_OFFER = { available: false, reason: 'no_models' as const, estimate: null }
+
+/** Before the catalogue answers: entries not known yet. */
 const NO_SUPER_AGENT: NonNullable<ModelCatalogue['superAgent']> = {
-  enabled: false,
-  default: { available: false, reason: 'disabled', estimate: null },
-  strict: { available: false, reason: 'disabled', estimate: null },
+  default: { available: false, reason: null, estimate: null },
+  strict: { available: false, reason: null, estimate: null },
+  pending: true,
 }
 
 /** Marks a session as having a turn in flight, with the abort for that turn. */
@@ -366,8 +370,10 @@ interface State {
   /** Strict-local picture model the server uses when the person picked none. */
   strictImageDefault: string
   autoRouting: ModelCatalogue['autoRouting']
-  /** Super Agent entries; both unavailable until the catalogue says otherwise. */
+  /** Super Agent entries; `pending` until the catalogue answers. */
   superAgent: NonNullable<ModelCatalogue['superAgent']>
+  /** How a new chat, report or slides conversation starts (설정 › 시스템 › 모델). */
+  defaultRouting: NonNullable<ModelCatalogue['defaultRoutingByKind']>
   loadModels: () => Promise<void>
 
   // ── session / generation ──────────────────────────────────────────────
@@ -376,8 +382,10 @@ interface State {
   running: Record<string, () => void>
   modelByKind: Record<SessionKind, string>
   setModel: (kind: SessionKind, id: string) => void
-  /** Forgets the home-screen pick for a surface: its new conversations start on Super Agent. */
+  /** Forgets the home-screen pick for a surface: its new conversations start on the admin default. */
   clearModelPick: (kind: SessionKind) => void
+  /** Picks a Super Agent entry as the surface's own start (chat, report, slides). */
+  pickSuperEntry: (kind: SessionKind, entry: 'super' | 'super_strict') => void
   /** One remembered model per av mode; `modelByKind.av` mirrors the current mode's. */
   avModelByMode: Record<AvMode, string>
   /** Changes one conversation's model; the surface default is left alone. */
@@ -794,7 +802,10 @@ function reconcileAvModels(
 const initialModelByKind: Record<SessionKind, string> = (() => {
   const blank = { chat: '', report: '', slides: '', image: '', av: '' }
   try {
-    return { ...blank, ...JSON.parse(localStorage.getItem(MODEL_STORAGE_KEY) || '{}') }
+    const picks = JSON.parse(localStorage.getItem(MODEL_STORAGE_KEY) || '{}') as Record<string, string>
+    // a Super Agent entry is a pick, not a model: the surface's model stays the fallback
+    const models = Object.fromEntries(Object.entries(picks).filter(([, id]) => !isSuperEntry(id)))
+    return { ...blank, ...models }
   } catch {
     return blank
   }
@@ -1010,15 +1021,20 @@ function turnReasoning(get: Get, sessionId: string): ReasoningMode {
 
 /** The mode a new conversation starts in (`startingMode`), from this store's state. */
 export function startingRoutingMode(
-  s: Pick<State, 'superAgent' | 'user'>,
+  s: Pick<State, 'superAgent' | 'user' | 'defaultRouting' | 'agents'>,
   kind: SessionKind,
   agentId?: string | null,
+  projectId?: string | null,
 ): Session['routingMode'] {
+  const agent = agentId ? s.agents.find((a) => a.id === agentId) : undefined
   return startingMode({
     kind,
-    agentId,
+    // an agent not loaded yet is taken to fix its model: the server decides
+    agentModel: agentId ? (agent ? agent.model : 'unknown') : null,
     superAgent: s.superAgent,
     homePick: s.user?.preferences.modelByKind?.[kind],
+    defaultRouting: s.defaultRouting,
+    projectId,
   })
 }
 
@@ -1351,6 +1367,7 @@ export const useStore = create<State>((set, get) => ({
   litellmAvailable: true,
   strictImageDefault: '',
   superAgent: NO_SUPER_AGENT,
+  defaultRouting: {},
   autoRouting: {
     enabled: false,
     available: false,
@@ -1478,6 +1495,7 @@ export const useStore = create<State>((set, get) => ({
         strictImageDefault,
         autoRouting,
         superAgent,
+        defaultRoutingByKind,
       } = await modelsApi.list()
       set((s) => ({
         models: live,
@@ -1488,7 +1506,11 @@ export const useStore = create<State>((set, get) => ({
         ),
         litellmAvailable,
         strictImageDefault: strictImageDefault ?? '',
-        superAgent: superAgent ?? NO_SUPER_AGENT,
+        // an older server without the entries: none to offer
+        superAgent: superAgent
+          ? { default: superAgent.default, strict: superAgent.strict, projectStrict: superAgent.projectStrict ?? false }
+          : { default: NO_SUPER_OFFER, strict: NO_SUPER_OFFER },
+        defaultRouting: defaultRoutingByKind ?? {},
         autoRouting: autoRouting ?? {
           enabled: false,
           available: false,
@@ -1564,6 +1586,17 @@ export const useStore = create<State>((set, get) => ({
         ...(byMode ? { avModelByMode: { ...s.avModelByMode, ...byMode } } : {}),
         ...(s.user ? { user: { ...s.user, preferences: { ...s.user.preferences, ...kept } } } : {}),
       }
+    }),
+  pickSuperEntry: (kind, entry) =>
+    set((s) => {
+      const picks = { ...readRememberedModels(s.user?.preferences.modelByKind), [kind]: entry }
+      try {
+        localStorage.setItem(MODEL_STORAGE_KEY, JSON.stringify(picks))
+      } catch {
+        // storage unavailable: the account keeps it
+      }
+      if (s.user) rememberOnAccount({ modelByKind: picks })
+      return s.user ? { user: { ...s.user, preferences: { ...s.user.preferences, modelByKind: picks } } } : {}
     }),
   clearModelPick: (kind) =>
     set((s) => {
@@ -1781,7 +1814,7 @@ export const useStore = create<State>((set, get) => ({
       id: unsentId(), kind, title: tr('새 작업'), projectId, agentId, pipelineId: null,
       // A session model outranks the agent's, so an agent that pins one gets none here.
       model: agent?.model ? '' : (state.modelByKind[kind] ?? ''),
-      routingMode: routingMode ?? startingRoutingMode(state, kind, agentId),
+      routingMode: routingMode ?? startingRoutingMode(state, kind, agentId, projectId),
       // the home screen's chip goes with the conversation it starts
       reasoningMode: state.reasoningPick[kind] && state.reasoningPick[kind] !== 'auto'
         ? state.reasoningPick[kind] : null,
@@ -3125,6 +3158,13 @@ export const useStore = create<State>((set, get) => ({
     applyUserChange(set, get, adminApi.resetPassword(id, password)),
   replaceLitellmKey: (id, key) => applyUserChange(set, get, adminApi.replaceLitellmKey(id, key)),
 }))
+
+useStore.subscribe((s, prev) => {
+  const picks = s.user?.preferences.modelByKind
+  if (picks === prev.user?.preferences.modelByKind && s.models === prev.models) return
+  const next = withAccountPicks(s.modelByKind, s.models, picks)
+  if (next !== s.modelByKind) useStore.setState({ modelByKind: next })
+})
 
 /**
  * Admin mutations return the updated row; a self-edit also updates `user`. A change that can

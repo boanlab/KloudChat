@@ -1,6 +1,6 @@
 import { Gauge, RotateCcw, TriangleAlert } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { Button, Card, Field, Select, Switch } from '@/components/ui'
+import { Button, Card, Field, Select } from '@/components/ui'
 import { errorCode, errorMessage, type SuperAgentRule } from '@/lib/api'
 import { SUPER_CLASSES, SUPER_CLASS_LABEL, SUPER_EFFORT_LABEL } from '@/lib/superAgent'
 import { useStore } from '@/store/useStore'
@@ -20,11 +20,10 @@ const SUPER_REFUSALS: Record<string, string> = {
 
 const EFFORTS = Object.keys(SUPER_EFFORT_LABEL) as SuperAgentRule['effort'][]
 
-/** The Super Agent switch, its classifier and the class → model table (설정 › 시스템 › 라우팅). */
+/** Super Agent's classifier and the class → model table (설정 › 시스템 › 라우팅); no switch. */
 export function SuperAgentSection() {
   const t = useT()
   const { governance, loadGovernance, saveGovernance, models, loadModels, superAgent } = useStore()
-  const [enabled, setEnabled] = useState(false)
   const [classifierModelId, setClassifierModelId] = useState('')
   const [rules, setRules] = useState<Record<string, SuperAgentRule>>({})
   const [busy, setBusy] = useState(false)
@@ -45,7 +44,6 @@ export function SuperAgentSection() {
 
   useEffect(() => {
     if (!governance || dirty.current) return
-    setEnabled(governance.superAgentEnabled ?? false)
     setClassifierModelId(governance.adaptiveClassifierModelId ?? '')
     setRules(governance.superAgentRules ?? {})
   }, [governance])
@@ -89,14 +87,6 @@ export function SuperAgentSection() {
             {t('질문마다 작업 종류를 먼저 규칙으로 가리고, 애매할 때만 분류 모델에 짧게 물어 아래 표의 모델과 추론 강도로 답합니다. 개인정보나 내부 자료가 있으면 strict-local 열의 모델을 씁니다.')}
           </p>
         </div>
-        <Switch
-          checked={enabled}
-          onChange={(value) => {
-            setEnabled(value)
-            touched()
-          }}
-          label={t('모델 선택기에 Super Agent 보이기')}
-        />
       </div>
 
       <Field
@@ -175,7 +165,7 @@ export function SuperAgentSection() {
         {t('다시 해 달라거나 더 자세히 해 달라는 요청과 비었거나 실패한 답 뒤에는 「다시 요청·빈 답 뒤」 줄의 모델로 올리고, 그 모델이 빈 답을 다시 씁니다. 같은 문서의 수정은 처음 쓴 모델을 유지합니다.')}
       </p>
 
-      {enabled && classifiers.length === 0 && (
+      {classifiers.length === 0 && (
         <p className="flex items-start gap-2 rounded-control border border-warn/30 bg-warn/5 px-3 py-2 text-sm text-warn">
           <TriangleAlert size={14} className="mt-0.5 shrink-0" />
           {t('무료 strict-local 분류 모델이 없어 애매한 질문은 규칙의 기본값으로 보냅니다.')}
@@ -197,7 +187,6 @@ export function SuperAgentSection() {
             setError(null)
             try {
               await saveGovernance({
-                superAgentEnabled: enabled,
                 superAgentRules: rules,
                 ...(classifierModelId !== (governance?.adaptiveClassifierModelId ?? '')
                   ? { adaptiveClassifierModelId: classifierModelId || null }
@@ -231,7 +220,7 @@ export function SuperAgentSection() {
           {t('표를 기본값으로')}
         </Button>
         {saved && <span className="text-sm text-success">{t('저장했습니다.')}</span>}
-        {!saved && superAgent.enabled && !superAgent.default.available && (
+        {!saved && !superAgent.pending && !superAgent.default.available && (
           <span className="text-sm text-warn">
             {t('표의 모델 중 지금 쓸 수 있는 것이 없어 Super Agent를 제공하지 못합니다.')}
           </span>

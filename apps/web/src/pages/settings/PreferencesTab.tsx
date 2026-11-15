@@ -123,7 +123,7 @@ export function PreferencesTab() {
         </label>
         {strictImages.length > 1 && (
           <label className="block max-w-xl space-y-1.5">
-            <span className="text-base font-medium">{t('strict-local 그림 모델')}</span>
+            <span className="text-base font-medium">{t('strict-local 이미지 모델')}</span>
             <Select
               value={strictImage}
               onChange={(event) => set({ strictImageModel: event.target.value })}
@@ -135,7 +135,7 @@ export function PreferencesTab() {
               ))}
             </Select>
             <span className="block text-sm text-faint">
-              {t('내부 자료가 있는 대화나 문서의 그림을 strict-local로 그려야 할 때, 고른 그림 모델이 외부 모델이면 이 모델로 그립니다.')}
+              {t('내부 자료가 있는 대화나 문서의 그림을 strict-local로 그려야 할 때, 고른 이미지 모델이 외부 모델이면 이 모델로 그립니다.')}
             </span>
           </label>
         )}

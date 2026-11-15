@@ -805,7 +805,7 @@ export function AdminUsersPage() {
             className="mt-1"
           />
           <span>
-            {t('올린 파일과 만든 그림·클립도 디스크에서 지웁니다')}
+            {t('올린 파일과 만든 이미지·클립도 디스크에서 지웁니다')}
             <span className="block text-xs text-faint">
               {t('끄면 파일은 남고, 디스크가 차면 저장소 정리가 오래된 것부터 지웁니다.')}
             </span>

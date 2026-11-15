@@ -61,11 +61,6 @@ class Governance(SQLModel, table=True):
         default_factory=lambda: _ids(settings.adaptive_quality_models_default),
         sa_column=Column(JSONB, nullable=False, server_default=text("'[]'::jsonb")),
     )
-    #: the picker's Super Agent entries (`super_agent`)
-    super_agent_enabled: bool = Field(
-        default_factory=lambda: settings.super_agent_default,
-        sa_column=Column(Boolean, nullable=False, server_default=text("true")),
-    )
     #: admin changes to `super_agent.DEFAULT_RULES`: class → {model, strictModel, effort}
     super_agent_rules: dict = Field(
         default_factory=dict,

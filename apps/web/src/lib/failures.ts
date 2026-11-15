@@ -28,7 +28,7 @@ const REFUSALS: Record<string, string> = {
   model_not_allowed: '이 계정에 허용되지 않은 모델입니다. 모델을 바꿔 다시 시도하세요.',
   no_models_available: '지금 사용할 수 있는 모델이 없습니다. 관리자에게 문의하세요.',
   default_image_model_unset:
-    '그림 기본 모델이 정해지지 않았습니다. 모델을 직접 고르거나, 관리자가 설정 › 모델에서 그림 기본 모델을 고르면 쓸 수 있습니다.',
+    '이미지 기본 모델이 정해지지 않았습니다. 모델을 직접 고르거나, 관리자가 설정 › 모델에서 이미지 기본 모델을 고르면 쓸 수 있습니다.',
   default_audio_model_unset:
     '오디오 기본 모델이 정해지지 않았습니다. 모델을 직접 고르거나, 관리자가 설정 › 모델에서 오디오 기본 모델을 고르면 쓸 수 있습니다.',
   internal_data_requires_strict_local:
@@ -39,7 +39,6 @@ const REFUSALS: Record<string, string> = {
     '최신 정보를 검증할 수 없어 요청을 진행하지 않았습니다. 검증 가능한 자료를 제공하거나 검색이 허용된 환경에서 다시 시도하세요.',
   calculation_tool_unavailable:
     '현재 모델이나 에이전트에서 허용된 계산 도구를 사용할 수 없습니다. 도구를 지원하는 모델로 바꾸거나 계산기를 허용한 에이전트로 다시 시도하세요.',
-  super_agent_disabled: '관리자가 Super Agent를 켜지 않았습니다. 모델을 직접 고르세요.',
   strict_local_unavailable:
     '지금 쓸 수 있는 strict-local 모델이 없어 Super Agent (strict-local)이 답하지 못했습니다. 잠시 후 다시 시도하세요.',
   insufficient_credits: '이번 달 크레딧이 부족합니다.',

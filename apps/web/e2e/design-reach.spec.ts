@@ -42,7 +42,7 @@ test('디자인이 닿는 곳을 프로젝트 화면과 빈 대화 화면이 똑
   for (const [surface, says] of [
     ['챗', '이 대화의 말투를 이 디자인에 맞춥니다'],
     ['슬라이드', '슬라이드의 말투와 색, 서체를 이 디자인에 맞춥니다'],
-    ['이미지', '그림의 색과 스타일을 이 디자인에 맞춥니다'],
+    ['이미지', '이미지의 색과 스타일을 이 테마에 맞춥니다'],
   ] as const) {
     await page.goto(`/projects/${projectId}`)
     await page.getByRole('button', { name: '새로 시작', exact: true }).click()
