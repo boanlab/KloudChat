@@ -101,11 +101,71 @@ def missing(items: list[Item], text: str) -> list[Item]:
     return [item for item in items if item.name and not reached(item, text, flat)]
 
 
+#: 「1~3강」 「13-16주차」: a heading that groups a range of units
+_RANGE = re.compile(r"(?<![0-9])(\d{1,3})\s{0,2}(?:강|주차|차시|회차|장|단원)?\s{0,2}"
+                    r"[~∼〜\-–]\s{0,2}(\d{1,3})\s{0,2}(강|주차|차시|회차|장|단원)")
+
+
+def _in_range(item: Item, heading: str) -> bool:
+    found = re.fullmatch(r"(\d{1,3})(강|주차|차시|회차|장|단원)", item.label)
+    if not found:
+        return False
+    number, unit = int(found.group(1)), found.group(2)
+    return any(m.group(3) == unit and int(m.group(1)) <= number <= int(m.group(2))
+               for m in _RANGE.finditer(heading))
+
+
+def outline_gaps(items: list[Item], headings: list[str]) -> list[Item]:
+    """Items no 목차 heading reaches — by name, title or label, or inside a heading's range
+    of units (「1~3강 …」 reaches 2강)."""
+    joined = "\n".join(headings)
+    flat = _flat(joined)
+    return [item for item in items if item.name and not reached(item, joined, flat)
+            and not any(_in_range(item, heading) for heading in headings)]
+
+
 def note(left_out: list[Item], total: int) -> str:
     """The line an answer ends with when it reached fewer files than it was asked about."""
     names = ", ".join(item.shown for item in left_out)
     return (f"※ 자료 {total}건 중 {len(left_out)}건은 이 답에서 다루지 못했습니다: {names}. "
             "필요하면 그 자료를 지정해 다시 요청해 주세요.")
+
+
+def distinct(items: list[Item]) -> list[Item]:
+    """One item per file name: the same file uploaded again (a video attached in several
+    of the project's chats) is one thing to cover, not one section per copy."""
+    seen: set[str] = set()
+    out = []
+    for item in items:
+        if item.name in seen:
+            continue
+        seen.add(item.name)
+        out.append(item)
+    return out
+
+
+#: 「1~7강」 「3-5주차」 or a lone 「8강」 the request names
+_NAMED_UNITS = re.compile(r"(?<![0-9])(\d{1,3})\s{0,2}(?:(?:강|주차|차시|회차|장|단원)\s{0,2})?"
+                          r"(?:[~∼〜\-–]\s{0,2}(\d{1,3})\s{0,2})?(강|주차|차시|회차|장|단원)")
+
+
+def asked_of(items: list[Item], request: str) -> list[Item]:
+    """The items a request scopes itself to: 「1~7강을 강별로 … 8강의 문제」 is about 1~8강,
+    not every file of the project. A request naming no unit, or units no item is labelled
+    with, is about all of them."""
+    named: set[tuple[int, str]] = set()
+    for m in _NAMED_UNITS.finditer(request or ""):
+        first, last, unit = int(m.group(1)), int(m.group(2) or m.group(1)), m.group(3)
+        if last - first <= 200:
+            named |= {(n, unit) for n in range(min(first, last), max(first, last) + 1)}
+    if not named:
+        return items
+
+    def label_of(item: Item) -> tuple[int, str] | None:
+        found = re.fullmatch(r"(\d{1,3})(강|주차|차시|회차|장|단원)", item.label or "")
+        return (int(found.group(1)), found.group(2)) if found else None
+    scoped = [item for item in items if label_of(item) in named]
+    return scoped or items
 
 
 def items_of(files: list) -> list[Item]:
@@ -114,7 +174,10 @@ def items_of(files: list) -> list[Item]:
     for stored in files:
         digest = file_digest.digest_for(stored)
         out.append(Item(stored.name, digest.label, digest.title))
-    return out
+    return distinct(out)
 
 
-__all__ = ["Item", "asks_each", "items_of", "missing", "note", "reached"]
+__all__ = [
+    "Item", "asked_of", "asks_each", "distinct", "items_of", "missing", "note", "outline_gaps",
+    "reached",
+]

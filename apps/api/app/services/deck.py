@@ -1774,6 +1774,9 @@ def count_note(request: str, written: int, *, english: bool = False) -> str:
     if not requested_slides(request) and abs(written - wanted) <= 1:
         # 「5장 정도」 met within one
         return ""
+    if (span := slide_range(request)) and span[0] <= written <= span[1]:
+        # 「10장 안팎」 (8~12) met anywhere inside it
+        return ""
     if english:
         return (f"You asked for {wanted} slides; this deck has {written}. Say which to add or "
                 "take out to change it.")
@@ -4807,6 +4810,8 @@ async def write(
     )
     # after all retries: listed parts stay separate
     plan = keep_enumerated(plan, request, wanted)
+    # a quiz the request asked for has a slide, whatever the planner left out
+    plan = keep_asked_quiz(plan, request, wanted or (slide_range(request) or (0, 0))[1] or None)
     plan = structure_as_drawable(plan, request)
 
     # after structural changes: agenda must not exceed an exact total
@@ -7111,6 +7116,28 @@ def _covers(title: str, item: str) -> bool:
         return True
     words = set(item.split())
     return bool(words) and words <= set(title.split())
+
+
+#: a slide that holds the quiz
+_QUIZ_TITLE = re.compile(r"퀴즈|문항|확인\s?문제|형성\s?평가|평가\s?문제|quiz", re.I)
+
+
+def keep_asked_quiz(plan: list[dict], request: str, most: int | None) -> list[dict]:
+    """A quiz the request asks for (「마지막에 퀴즈 한 장」) gets its slide: before a closing
+    slide, else last. Within `most` (the exact count or the range's top) by dropping a divider
+    or the agenda first; left as planned when only content would have to go."""
+    from app.services.context import lead_instruction
+
+    if not plan or not _ASKS_QUIZ.search(lead_instruction(request or "")):
+        return plan
+    if any(_QUIZ_TITLE.search(str(slide.get("title") or "")) for slide in plan):
+        return plan
+    quiz = {"title": "퀴즈" if re.search(r"[가-힣]", request) else "Quiz", "layout": "bullets"}
+    at = len(plan) - 1 if len(plan) > 1 and plan[-1].get("layout") == "closing" else len(plan)
+    out = [*plan[:at], quiz, *plan[at:]]
+    if most and len(out) > most:
+        out = fit_count(out, most)
+    return out if not most or len(out) <= most else plan
 
 
 def keep_enumerated(plan: list[dict], request: str, wanted: int | None) -> list[dict]:

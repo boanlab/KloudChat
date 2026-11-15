@@ -197,6 +197,10 @@ def web_facts(judge: str, api_key: str) -> Check:
     return check
 
 
+#: lines of one assessment item at most: stem, options, answer, explanation, scoring
+_ITEM_LINES = 14
+
+
 def _items(doc: Doc) -> list[tuple[int, str]]:
     from app.services import report
 
@@ -206,7 +210,10 @@ def _items(doc: Doc) -> list[tuple[int, str]]:
         lines = content.split("\n")
         starts = report._question_lines(content)
         for k, start in enumerate(starts):
-            end = starts[k + 1] if k + 1 < len(starts) else min(len(lines), start + 14)
+            # an item is its question and what follows it, never the pages up to a far-off
+            # next question (the judge read two other lectures as the item's material)
+            end = min(starts[k + 1] if k + 1 < len(starts) else len(lines), start + _ITEM_LINES)
+            end = next((i for i in range(start + 1, end) if report.opens_piece(lines[i])), end)
             block = "\n".join(lines[start:end]).strip()
             if block:
                 out.append((index, block))
