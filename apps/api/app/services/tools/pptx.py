@@ -418,8 +418,13 @@ TOOLS = tools_for(Toolset(
                                         "type": "object",
                                         "properties": {
                                             "name": {"type": "string"},
-                                            "values": {"type": "array",
-                                                       "items": {"type": ["number", "null"]}},
+                                            # no item type: a forced call is decoded
+                                            # against this schema, and a type list there
+                                            # left some models writing `slides: []`
+                                            "values": {
+                                                "type": "array",
+                                                "description": "수, 자료에 아직 없는 값은 null",
+                                            },
                                         },
                                         "required": ["name", "values"],
                                     },
