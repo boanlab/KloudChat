@@ -283,12 +283,16 @@ def fill_table(form_table, report_table) -> bool:
 
 
 
-def _split(elements: list, heads: set[str]) -> tuple[list, list[tuple[Any, list]]]:
-    """(before the first heading of `heads`, [(heading, its elements)])."""
+def _split(elements: list, heads: set[str],
+           names: set[str] | None = None) -> tuple[list, list[tuple[Any, list]]]:
+    """(before the first heading of `heads`, [(heading, its elements)]); `names`: a short
+    paragraph of one of these names is a heading too (a writer's bold sub-heading)."""
     before: list = []
     out: list[tuple[Any, list]] = []
     for element in elements:
-        if element.tag == _q("p") and _style_of(element) in heads and _text(element).strip():
+        text = _text(element).strip() if element.tag == _q("p") else ""
+        named = bool(names) and 0 < len(text) <= 40 and name_key(text) in names
+        if element.tag == _q("p") and (_style_of(element) in heads or named) and text:
             out.append((element, []))
         elif out:
             out[-1][1].append(element)
@@ -319,7 +323,7 @@ def _merge_chapter(form_content: list, report_content: list, twos: set[str],
     _, form_subs = _split(form_rest, twos)
     if not form_subs:
         return merged
-    lead, subs = _split(merged, twos)
+    lead, subs = _split(merged, twos, {name_key(_text(h)) for h, _ in form_subs})
     if not subs:
         return merged
     out = list(lead)

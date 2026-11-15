@@ -94,3 +94,17 @@ def test_an_amount_is_written_in_the_unit_of_its_column():
     assert docx_form.in_unit("12,000", "만원") == "12,000"
     assert docx_form.in_unit("1.8억 원", "") == "1.8억 원"
     assert docx_form.in_unit("착수", "만원") == "착수"
+
+
+def test_a_sub_heading_the_writer_set_in_bold_text_still_goes_under_the_forms_heading():
+    data = _form()
+    profile = form_profile.profile("서식.docx", data)
+    made, followed = docx_form.write(
+        data, "신사업", [{"heading": "사업 개요", "content": "**추진 배경**\n흩어져 있다.\n\n"
+                                                            "**사업 목표**\n12곳 시범"}],
+        profile=profile, name="서식.docx")
+    shown = [(p.style.name, p.text) for p in Document(io.BytesIO(made)).paragraphs
+             if p.text.strip()]
+    at = shown.index(("Heading 2", "추진 배경"))
+    assert shown[at + 1][1] == "흩어져 있다." and shown[at + 2] == ("Heading 2", "사업 목표")
+    assert followed.subheadings == ["추진 배경", "사업 목표"]
