@@ -77,11 +77,18 @@ class FileOut(Wire):
     media_done: int = 0
     media_total: int = 0
     media_duration: float = 0.0
+    #: `form`: a saved 기본 양식 파일 copy; null: any other file
+    role: str | None = None
+    #: what an Office file offers as a form (`form_profile.summary`); null: not Office
+    form: dict | None = None
     created_at: datetime
 
     @classmethod
     def of(cls, f: StoredFile) -> FileOut:
+        from app.services import form_profile
+
         out = cls.model_validate(f, from_attributes=True)
+        out.form = form_profile.summary(f.form_profile)
         out.preview = f.text[:280]
         out.indexed = f.indexed_at is not None
         out.media_duration = float((f.media or {}).get("duration") or 0.0)
@@ -108,6 +115,12 @@ class ProjectOut(Wire):
     design_system_id: str | None = None
     #: surface → template id for new sessions
     render_templates: JsonMap = Field(default_factory=dict)
+    #: 기본 양식 파일: output kind → saved form copy id
+    form_files: JsonMap = Field(default_factory=dict)
+    #: the saved form copies themselves, for the settings card
+    form_rows: list[FileOut] = Field(default_factory=list)
+    #: 디자인 지침
+    design_brief: str = ""
     #: strict-local web search for this project; null follows the admin (`search_consent`)
     strict_local_web_search: str | None = None
     files: list[FileOut] = Field(default_factory=list)
@@ -121,10 +134,13 @@ class ProjectOut(Wire):
         p: Project,
         files: list[StoredFile] | None = None,
         session_ids: list[str] | None = None,
+        forms: list[StoredFile] | None = None,
     ) -> ProjectOut:
         out = cls.model_validate(p, from_attributes=True)
         out.skill_ids = list(p.skill_ids or [])
         out.render_templates = dict(p.render_templates or {})
+        out.form_files = dict(p.form_files or {})
+        out.form_rows = [FileOut.of(f) for f in (forms or [])]
         out.files = [FileOut.of(f) for f in (files or [])]
         out.session_ids = list(session_ids or [])
         return out
@@ -138,6 +154,8 @@ class ProjectIn(Wire):
     skill_ids: list[str] | None = None
     design_system_id: str | None = None
     render_templates: dict[str, str] | None = None
+    form_files: dict[str, str | None] | None = None
+    design_brief: str = Field(default="", max_length=2000)
 
 
 class ProjectPatch(Wire):
@@ -149,6 +167,9 @@ class ProjectPatch(Wire):
     #: explicit null clears; omitted unchanged (`exclude_unset`)
     design_system_id: str | None = None
     render_templates: dict[str, str] | None = None
+    #: output kind → saved form copy id; a null value clears that kind
+    form_files: dict[str, str | None] | None = None
+    design_brief: str | None = Field(default=None, max_length=2000)
     #: explicit null follows the admin; never looser than the admin's (`search_consent`)
     strict_local_web_search: Literal["ask", "allow", "off"] | None = None
 
@@ -579,6 +600,10 @@ class AgentOut(Wire):
     design_system_id: str | None = None
     #: lets viewers without row access find their same-name design
     design_name: str = ""
+    #: 기본 양식 파일 over the project's: output kind → saved form copy id
+    form_files: JsonMap = Field(default_factory=dict)
+    #: 디자인 지침 over the project's
+    design_brief: str = ""
     #: 담당 부서·연락처, said verbatim
     contact: str = ""
     guide: str = ""
@@ -702,6 +727,9 @@ class AgentIn(Wire):
     #: `doc_formats` id when 서식 fixes none
     doc_format: str | None = Field(default=None, max_length=40)
     design_system_id: str | None = Field(default=None, max_length=64)
+    #: output kind → saved form copy id (`POST /forms`)
+    form_files: dict[str, str | None] | None = None
+    design_brief: str = Field(default="", max_length=2000)
     #: 담당 부서·연락처 (「학사지원팀 02-760-1234, haksa@example.ac.kr」), said verbatim
     contact: str = Field(default="", max_length=300)
     guide: str = Field(default="", max_length=2000)

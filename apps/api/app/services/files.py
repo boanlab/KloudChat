@@ -129,6 +129,8 @@ _ZIP_SUFFIXES = {
     ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     ".hwpx": "application/hwp+zip",
+    ".potx": "application/vnd.openxmlformats-officedocument.presentationml.template",
+    ".dotx": "application/vnd.openxmlformats-officedocument.wordprocessingml.template",
 }
 _OLE_SUFFIXES = {
     ".hwp": "application/x-hwp",
@@ -784,9 +786,9 @@ def _extract_text(name: str, mime: str, data: bytes) -> str:
 
     if suffix == ".pdf" or mime == "application/pdf":
         return _from_pdf(data)
-    if suffix == ".docx":
+    if suffix in (".docx", ".dotx"):
         return _from_docx(data)
-    if suffix == ".pptx":
+    if suffix in (".pptx", ".potx"):
         return _from_pptx(data)
     if suffix == ".xlsx":
         return _from_xlsx(data)

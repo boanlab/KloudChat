@@ -15,7 +15,9 @@ _REPO = Path(__file__).resolve().parents[3]
 _WEB = _REPO / "apps/web/src"
 _APP = Path(__file__).resolve().parents[1] / "app"
 
-_OLD = re.compile(r"양식|디자인|워크플로|작동 단계|결과물|추천|서식 보정|새로 만들기")
+#: 「양식」 (a form file to write on) and 「디자인 지침」 are the words again since the 2026-11-15
+#: decision to replace templates and themes with form files and a design brief.
+_OLD = re.compile(r"워크플로|작동 단계|결과물|추천|서식 보정|새로 만들기")
 
 #: (file suffix, text the line carries) → why the word may stand there.
 _ALLOWED = {
@@ -78,9 +80,10 @@ def test_the_in_app_guide_uses_the_current_words():
 
 
 def test_the_check_catches_a_replaced_word():
-    assert _OLD.search("{t('양식 고르기')}")
+    assert _OLD.search("{t('워크플로 고르기')}")
     assert _OLD.search("{t('이 프로젝트에서 새로 만들기')}")
     assert _OLD.search("{t('아직 결과물이 없습니다')}")
     assert not _OLD.search("{t('아직 아티팩트가 없습니다')}")
     assert not _OLD.search("{t('서식')}")
-    assert not _OLD.search(_without_comments("x() // 예전 양식"))
+    assert not _OLD.search(_without_comments("x() // 예전 워크플로"))
+    assert not _OLD.search("{t('기본 양식 파일')}")

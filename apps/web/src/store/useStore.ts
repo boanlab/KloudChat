@@ -1,4 +1,4 @@
-import type { OpenArtifact, UploadProgress, WebSearchSetting } from '@/lib/api'
+import type { FormKind, FormRole, OpenArtifact, UploadProgress, WebSearchSetting } from '@/lib/api'
 import { startingMode } from '@/lib/superAgent'
 import { withAccountPicks } from '@/lib/modelPicks'
 import { forgetStoredDraft, purgeStoredDrafts } from '@/lib/drafts'
@@ -71,6 +71,7 @@ import type {
   MemoryEntry,
   Message,
   ModelInfo,
+  MessageAttachment,
   Project,
   ProjectFile,
   PendingPlan,
@@ -250,6 +251,10 @@ type SendOptions = {
   attachments?: string[]
   /** Their names, for the optimistic bubble. */
   attachmentNames?: string[]
+  /** The role picked on an attachment's chip: 양식 (`form`) or 자료 (`material`). */
+  attachmentRoles?: Record<string, FormRole>
+  /** Output kinds whose saved (project or agent) 양식 is taken off in this conversation. */
+  savedFormsOff?: FormKind[]
   /** Skills selected for this turn only. */
   activatedSkillIds?: string[]
   /** Sent with the turn (the session may not exist yet); the server makes it sticky. */
@@ -1993,6 +1998,8 @@ export const useStore = create<State>((set, get) => ({
       webSearch: opts.webSearch,
       attachments: opts.attachments,
       attachmentNames: opts.attachmentNames,
+      attachmentRoles: opts.attachmentRoles,
+      savedFormsOff: opts.savedFormsOff,
       activatedSkillIds: opts.activatedSkillIds,
       renderTemplateId: opts.renderTemplateId,
       approve: opts.approve,
@@ -2054,6 +2061,8 @@ export const useStore = create<State>((set, get) => ({
             includeFigures: opts.includeFigures,
             outputFormat: opts.outputFormat,
             attachments: opts.attachments,
+            attachmentRoles: opts.attachmentRoles,
+            savedFormsOff: opts.savedFormsOff,
             plan: opts.plan,
             renderTemplateId: opts.renderTemplateId,
             retryOf: opts.searchConsent ? retryOf : undefined,
@@ -2079,6 +2088,8 @@ export const useStore = create<State>((set, get) => ({
             // PowerPoint picked: the server makes the file this turn fills.
             outputFormat: opts.outputFormat,
             attachments: opts.attachments,
+            attachmentRoles: opts.attachmentRoles,
+            savedFormsOff: opts.savedFormsOff,
             plan: opts.plan,
             renderTemplateId: opts.renderTemplateId,
             retryOf: opts.searchConsent ? retryOf : undefined,
@@ -2109,6 +2120,8 @@ export const useStore = create<State>((set, get) => ({
         webSearch: opts.webSearch,
         attachments: opts.attachments,
         attachmentNames: opts.attachmentNames,
+        attachmentRoles: opts.attachmentRoles,
+        savedFormsOff: opts.savedFormsOff,
         activatedSkillIds: opts.activatedSkillIds,
         privacyAction: opts.privacyAction,
         privacyDecisionToken: opts.privacyDecisionToken,
@@ -3512,7 +3525,7 @@ function toMessage(raw: MessageRow): Message {
     attachments: raw.attachments?.map((a) =>
       typeof a === 'string'
         ? { name: a, size: '', type: '' }
-        : (a as { id?: string; name: string; size: number | string; type: string }),
+        : (a as MessageAttachment),
     ),
     usage: raw.usage ?? undefined,
     startedFrom: raw.startedFrom ?? undefined,
@@ -3548,6 +3561,7 @@ function toSession(raw: SessionRow, keepMessages?: Message[]): Session {
     artifactId: raw.artifactId,
     pending: raw.pending ?? null,
     renderTemplateId: raw.renderTemplateId ?? null,
+    formFiles: raw.formFiles ?? null,
     skillIds: raw.skillIds ?? [],
     pinned: raw.pinned,
     createdAt: raw.createdAt,
@@ -3600,6 +3614,9 @@ function toProject(p: ProjectRow): Project {
     skillIds: p.skillIds,
     designSystemId: p.designSystemId ?? null,
     renderTemplates: p.renderTemplates ?? {},
+    formFiles: Object.fromEntries(Object.entries(p.formFiles ?? {}).filter(([, v]) => !!v)) as Project['formFiles'],
+    formRows: p.formRows ?? [],
+    designBrief: p.designBrief ?? '',
     strictLocalWebSearch: p.strictLocalWebSearch ?? null,
     updatedAt: p.updatedAt,
   }
@@ -3825,6 +3842,8 @@ async function streamTurn(
     webSearch?: WebSearchSetting
     attachments?: string[]
     attachmentNames?: string[]
+    attachmentRoles?: Record<string, FormRole>
+    savedFormsOff?: FormKind[]
     activatedSkillIds?: string[]
     privacyAction?: PrivacyAction
     privacyDecisionToken?: string
@@ -3918,6 +3937,8 @@ async function streamTurn(
         model: opts.model,
         webSearch: opts.webSearch,
         attachments: opts.attachments,
+        attachmentRoles: opts.attachmentRoles,
+        savedFormsOff: opts.savedFormsOff,
         activatedSkillIds: opts.activatedSkillIds,
         privacyAction: opts.privacyAction,
         privacyDecisionToken: opts.privacyDecisionToken,
@@ -4197,6 +4218,8 @@ async function streamReport(
     plan?: Record<string, unknown>
     /** Resent with the approval: the server assembles context fresh per request. */
     attachments?: string[]
+    attachmentRoles?: Record<string, FormRole>
+    savedFormsOff?: FormKind[]
     renderTemplateId?: string
     /** 「이 단계부터 다시」: streams the rerun instead of a turn, into the document already open. */
     rerun?: { runId: string; fromStage: string; label: string; answers?: Record<string, string> }
@@ -4295,6 +4318,8 @@ async function streamReport(
         includeFigures: gate.includeFigures,
         outputFormat: gate.outputFormat,
         attachments: gate.attachments,
+        attachmentRoles: gate.attachmentRoles,
+        savedFormsOff: gate.savedFormsOff,
         plan: gate.plan,
         openArtifact: opened,
         retryOf: gate.retryOf,
@@ -4514,6 +4539,8 @@ async function streamDeck(
     plan?: Record<string, unknown>
     /** Resent with the approval: the server assembles context fresh per request. */
     attachments?: string[]
+    attachmentRoles?: Record<string, FormRole>
+    savedFormsOff?: FormKind[]
     renderTemplateId?: string
     /** 「이 단계부터 다시」: streams the rerun instead of a turn, into the document already open. */
     /** `pptx`: a PowerPoint file the server makes for this turn; web slides send none. */
@@ -4606,6 +4633,8 @@ async function streamDeck(
         includeFigures: gate.includeFigures,
         ...(gate.outputFormat ? { outputFormat: gate.outputFormat } : {}),
         attachments: gate.attachments,
+        attachmentRoles: gate.attachmentRoles,
+        savedFormsOff: gate.savedFormsOff,
         plan: gate.plan,
         openArtifact: opened,
         retryOf: gate.retryOf,

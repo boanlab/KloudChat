@@ -44,6 +44,10 @@ class Project(SQLModel, table=True):
     design_system_id: str | None = Field(default=None, foreign_key="design_systems.id")
     #: surface → template id; not FKs (unknown id → built-in track); null ≡ {}
     render_templates: dict | None = Field(default=None, sa_column=_json(nullable=True))
+    #: 기본 양식 파일: output kind (`pptx`, `docx`, `hwpx`) → saved form copy (`files.role`)
+    form_files: dict | None = Field(default=None, sa_column=_json(nullable=True))
+    #: 디자인 지침: the look in words when no form decides (`services/style_spec.py`)
+    design_brief: str = Field(default="")
     #: index collection for project knowledge and uploads; unguessable
     index_key: str | None = Field(default=None)
     #: web search in this project's strict-local turns, stricter than or as the admin's
@@ -91,6 +95,11 @@ class StoredFile(SQLModel, table=True):
     #: how the file came: 「upload」 (the person gave it) or 「generated」 (made in a conversation:
     #: a code run's output, an image, a chart, an export)
     origin: str = Field(default="upload", max_length=12)
+    #: `form`: a copy saved as a project's or agent's 기본 양식 파일, kept out of the file box and
+    #: never read as material; null: any other file
+    role: str | None = Field(default=None, max_length=12)
+    #: what an Office upload offers as a form (`services/form_profile.py`); null: not Office
+    form_profile: dict | None = Field(default=None, sa_column=_json(nullable=True))
     name: str
     size: int = Field(default=0)
     mime: str = Field(default="")
@@ -424,6 +433,10 @@ class Agent(SQLModel, table=True):
     doc_format: str | None = Field(default=None)
     #: beats project's; not a FK (same-name user design used instead)
     design_system_id: str | None = Field(default=None)
+    #: 기본 양식 파일 over the project's: output kind → saved form copy
+    form_files: dict | None = Field(default=None, sa_column=_json(nullable=True))
+    #: 디자인 지침 over the project's
+    design_brief: str = Field(default="")
     #: user pipeline replacing shipped flow
     pipeline_id: str | None = Field(default=None)
     #: official agent whose process this one runs (`services/bases.py`); null: plain/own flow

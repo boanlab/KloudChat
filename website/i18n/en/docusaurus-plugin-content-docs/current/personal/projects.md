@@ -31,6 +31,10 @@ Project knowledge is delivered automatically to every conversation in the projec
 
 Describe rules that apply to every conversation, such as "answer in polite language" or "give English terms alongside". They take precedence over personalization settings.
 
+## Default form files
+
+Upload a PowerPoint form, or pick one from the file box, under **Default form files** beside the project details, and every PowerPoint file made in the project follows it. Forms are kept apart from the project's knowledge and are not read as material. An old Hangul file (`.hwp`) cannot be a form: in Hangul, use **Save As › Hangul standard document (*.hwpx)** and upload that.
+
 ## Deleting a project
 
 Deleting a project deletes its instructions and knowledge files. Conversations are detached from the project and kept, and artifacts and memory also remain.

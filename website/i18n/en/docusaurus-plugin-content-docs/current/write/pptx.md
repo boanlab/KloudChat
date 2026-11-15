@@ -23,6 +23,14 @@ A deck KloudChat writes from scratch is made on the [Slides](slides) screen by d
 - You can add, duplicate, move and delete slides: "add a schedule slide after slide 3", "duplicate slide 2", "delete the last slide". A slide added to a company template or a received file follows that file's layouts and look.
 - While the agent edits, the editor is locked; when it saves a version, the editor loads it. The cursor stays in the chat box you were typing in.
 
+## Writing on a form
+
+- Attach a PowerPoint file such as a company presentation form (`.pptx`, `.potx`) and KloudChat reads it and marks its chip **Form** or **Material**. If it guessed wrong, switch it on the chip. When it cannot tell, the chip says **Form?**, and a request such as "use this form" decides.
+- With a form attached, the slides are written as a PowerPoint file that follows the form's slide master, layouts, theme fonts and theme colours. The cover goes on the form's title layout, bullets into its body placeholders, and tables, charts and diagrams inside the layout's body area. The form's sample slides are left out.
+- A form's text is not read as material. An earlier deck used as a form lends its look, not its content.
+- Set a **Default form file** on a project and every PowerPoint file made in it follows that form. A new slides conversation shows a **Project form** chip beside the format chip; ✕ leaves it off for that conversation. A form attached in the conversation takes precedence.
+- The made file's card gets a **Followed the form** line. Open it to see the layouts used and any slide placed on another layout because the form has none for it.
+
 ## Editing by hand and saving
 
 - Double-click text on a slide to edit it. Select characters and change bold, size or colour, or press Ctrl+B, Ctrl+I or Ctrl+U. With only a caret, a format applies to the word it stands in.

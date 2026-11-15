@@ -5,6 +5,7 @@ import { DownloadMenu, ReuseItems, type DownloadCheck } from '@/components/artif
 import { exportChecks } from '@/components/artifacts/artifactExport'
 import { reusable } from '@/lib/reuse'
 import { useT } from '@/lib/useT'
+import { FollowedFormLine } from '@/components/chat/FormChips'
 import { useStore } from '@/store/useStore'
 import { artifactIcon, artifactLabel, sizeLine } from '@/lib/resultMeta'
 import type { Artifact, ArtifactKind } from '@/types'
@@ -63,7 +64,9 @@ export function ResultCard({ artifact, version }: { artifact: Artifact; version?
     onClick: () =>
       openArtifactAt(artifact.id, typeof check.target === 'number' ? { slide: check.target } : { pane: 'review' }),
   }))
+  const followedForm = artifact.kind === 'pptx' ? artifact.form : undefined
   return (
+    <>
     <CardFace kind={artifact.kind} title={artifact.title || t('제목 없음')} meta={meta}>
       <Button
         size="sm"
@@ -94,6 +97,12 @@ export function ResultCard({ artifact, version }: { artifact: Artifact; version?
         </Dropdown>
       )}
     </CardFace>
+    {followedForm && (
+      <div className="w-full max-w-xl">
+        <FollowedFormLine form={followedForm} />
+      </div>
+    )}
+    </>
   )
 }
 
