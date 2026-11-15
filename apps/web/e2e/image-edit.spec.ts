@@ -298,7 +298,7 @@ test('파일함의 그림도 고칠 수 있다: 만든 그림은 그 대화에�
   await expect(page.getByTestId('image-edit-chip')).toContainText('사진.png')
 
   await page.goto('/files')
-  await page.getByRole('tab', { name: /대화에서 만든 파일/ }).click()
+  await page.getByRole('tab', { name: /만든 파일/ }).click()
   const madeHere = page.getByRole('button', { name: '배경만 파랗게.png 고치기' })
   await expect(madeHere).toBeVisible()
   await madeHere.click()
