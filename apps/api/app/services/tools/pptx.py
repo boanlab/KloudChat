@@ -231,8 +231,12 @@ async def _prepare(args: dict[str, Any], ctx: Any) -> dict[str, Any]:
         log.info("pptx_write slides unreadable: %s of %d chars; arguments %s", type(raw).__name__,
                  len(str(raw or "")), {key: (type(value).__name__, len(str(value)))
                                        for key, value in args.items()})
-        raise ValueError("slides는 [{title, bullets: [...]}, …] 꼴의 배열이어야 합니다(한 장 "
-                         "이상). 문자열이나 다른 키 아래에 넣지 마세요.")
+        # an empty list is what a tool-call parser hands over when the model's array was not
+        # valid JSON (an unquoted 「집계 중」 among numbers, a trailing comma)
+        raise ValueError("slides가 빈 배열로 왔습니다. 보낸 배열이 올바른 JSON이 아니면 이렇게 "
+                         "됩니다: 글자는 모두 큰따옴표로 감싸고, 차트의 없는 값은 null로(「집계 "
+                         "중」 같은 글자를 수 자리에 쓰지 말고), 끝에 쉼표를 남기지 말고 "
+                         "[{title, bullets: [...]}, …] 꼴로 다시 보내세요.")
     asked = getattr(ctx, "asked", "") or getattr(ctx, "request", "") or ""
     # the person's own words come first; material the turn appended after them can hide the
     # count from the instruction scope, so the opening paragraph is read on its own as well
