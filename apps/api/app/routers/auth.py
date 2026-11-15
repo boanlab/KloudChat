@@ -725,7 +725,7 @@ async def auth_config(db: DbSession):
         "privacy": {
             "externalDataGuard": policy.external_data_guard,
             # internal material (an uploaded picture to edit, too) stays on strict-local models
-            "internalDataStrictLocal": bool(policy.internal_data_strict_local),
+            "internalDataStrictLocal": bool(getattr(policy, "internal_data_strict_local", False)),
             "allowUserRawExternal": (policy.allow_user_raw_external and not policy.pii_masking),
             # a project's setting may only be stricter (`search_consent.project_choices`)
             "strictLocalWebSearch": getattr(policy, "strict_local_web_search", None) or "ask",
