@@ -1736,7 +1736,12 @@ export function Composer({
       (NAMES_HWP.test(text) || NAMES_DOCX.test(text) || NAMES_PPTX.test(text)))
     const movable =
       kind === 'chat' && !session?.pipelineId && !sessionAgent?.pipelineId && !officeHere
-    const detected = movable ? handoffSurface(text) : null
+    // A form attached in chat makes the document it is a form for: a PowerPoint form a deck,
+    // a Word or 한글 form a report.
+    const chatForm = readableAttachments.find((file) =>
+      followable(file) && formRoleOf(file, liveFormRoles.current[file.id]) === 'form')
+    const formSurface = chatForm ? (chatForm.form?.kind === 'pptx' ? 'slides' : 'report') : null
+    const detected = movable ? formSurface ?? handoffSurface(text) : null
     const agentHandoff =
       movable && sessionId && sessionAgent
         ? agentHandoffSurface(text, sessionAgent.kinds, agentDocumentNames(sessionAgent))
@@ -1764,6 +1769,7 @@ export function Composer({
     if (carried && sessionId) {
       void handOff(sessionId, carried, text, {
         attachments: sentAttachments,
+        attachmentRoles: rolesFor(sentAttachments),
         webSearch: sentWebSearch,
         activatedSkillIds: skillsFor(carried),
         onSession: (id) => navigate(`/s/${id}`),

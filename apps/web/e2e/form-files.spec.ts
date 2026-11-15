@@ -280,6 +280,23 @@ test('a Word form attached in a report conversation makes the report a Word file
   expect(sends[0].body.outputFormat).toBe('docx')
 })
 
+test('a form attached in chat makes the document it is a form for', { tag: '@phone' }, async ({ page }, info) => {
+  const { sends, created } = await formsFixture(page, info)
+  await page.goto('/')
+  await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
+  await openTool(page, '파일함에서 고르기')
+  const dialog = page.getByRole('dialog', { name: '파일함에서 고르기' })
+  await dialog.getByLabel('신청서_별지1호.hwpx 고르기').check()
+  await dialog.getByRole('button', { name: '1개 붙이기' }).click()
+  await expect(page.getByTestId('form-role')).toHaveAttribute('data-role', 'form')
+  // 「채워 줘」 alone orders no document; the form chip does
+  await page.getByLabel('프롬프트 입력').fill('이 신청서를 채워 줘.')
+  await page.getByLabel('프롬프트 입력').press('Enter')
+  await expect.poll(() => sends.length).toBe(1)
+  expect(created.at(-1)?.kind).toBe('report')
+  expect(sends[0].body.attachments).toEqual(['f5'.padEnd(32, '5')])
+})
+
 test('a Word report says which form it followed and what it filled', { tag: '@phone' }, async ({ page }, info) => {
   await formsFixture(page, info)
   await page.goto(`/s/${'c8'.padEnd(32, '8')}`)

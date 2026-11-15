@@ -413,7 +413,7 @@ interface State {
     fromSessionId: string,
     kind: 'report' | 'slides',
     text: string,
-    opts?: Pick<SendOptions, 'webSearch' | 'onSession' | 'activatedSkillIds' | 'outputFormat'> & {
+    opts?: Pick<SendOptions, 'webSearch' | 'onSession' | 'activatedSkillIds' | 'outputFormat' | 'attachmentRoles'> & {
       attachments?: FileRow[]
     },
   ) => Promise<string>
@@ -1885,6 +1885,7 @@ export const useStore = create<State>((set, get) => ({
       webSearch: opts.webSearch,
       attachments: files.map((file) => file.id),
       attachmentNames: files.map((file) => file.name),
+      attachmentRoles: opts.attachmentRoles,
       activatedSkillIds: opts.activatedSkillIds,
       // The file asked for on the hand-off, as the server settled it; the first turn carries it.
       outputFormat: result.outputFormat ?? opts.outputFormat,
