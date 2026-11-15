@@ -51,7 +51,7 @@ export function DeleteFilesChoice({
             : t('대화의 파일 {n}개도 함께 지우기').replace('{n}', String(count))}
         </span>
         <span className="block text-muted">
-          {t('올린 파일과 대화에서 만든 파일입니다. 지우지 않으면 파일함에 남습니다. 프로젝트 파일은 지우지 않습니다.')}
+          {t('체크하지 않으면 파일함에 남고, 프로젝트 파일은 지우지 않습니다.')}
         </span>
       </span>
     </label>

@@ -143,7 +143,7 @@ export function FilesPage() {
       <PageBody>
         <PageHeader
           title={t('파일함')}
-          description={t('작업 문서, 만든 파일, 올린 파일이 모입니다.')}
+          description={t('작업 문서와 올린 파일·만든 파일을 모아 둡니다.')}
           action={
             <>
               <input
@@ -207,7 +207,7 @@ export function FilesPage() {
                   ? t('이름의 다른 부분으로 찾아보세요.')
                   : origin === 'upload'
                     ? t('대화·프로젝트에 올린 파일이 여기 모입니다.')
-                    : t('대화에서 만든 이미지·오디오·동영상과 파일이 여기 모입니다.')
+                    : t('대화에서 만든 이미지·오디오·동영상·파일입니다.')
               }
             />
           ) : (
@@ -218,7 +218,7 @@ export function FilesPage() {
                 onToggleAll={pick.toggleAll}
                 onClear={pick.clear}
                 title={t('파일')}
-                note={t('프로젝트 파일이면 프로젝트에서도 빠집니다. 그 파일을 쓴 대화의 기록은 남습니다.')}
+                note={t('프로젝트 파일이면 프로젝트에서도 빠집니다.')}
                 onDelete={async () => {
                   await remove(pick.ids)
                   pick.clear()
@@ -325,7 +325,7 @@ export function FilesPage() {
           onClose={() => setConfirming(null)}
           onConfirm={() => confirming && void remove([confirming.id])}
           title={t('{name} 삭제').replace('{name}', confirming?.name ?? '')}
-          description={t('되돌릴 수 없습니다. 프로젝트 파일이면 프로젝트에서도 빠집니다. 그 파일을 쓴 대화의 기록은 남습니다.')}
+          description={t('되돌릴 수 없습니다. 프로젝트 파일이면 프로젝트에서도 빠집니다.')}
         />
       </PageBody>
     </>

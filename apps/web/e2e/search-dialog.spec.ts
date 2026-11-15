@@ -87,7 +87,7 @@ async function searchFixture(page: Page, testInfo: TestInfo) {
 }
 
 const dialog = (page: Page) => page.getByRole('dialog', { name: '검색' })
-const box = (page: Page) => dialog(page).getByRole('combobox', { name: '대화와 아티팩트 검색' })
+const box = (page: Page) => dialog(page).getByRole('combobox', { name: '대화·문서·아티팩트 검색' })
 const options = (page: Page) => dialog(page).getByRole('option')
 
 test('⌘K opens the dialog: recent conversations, then grouped, marked results by content', async ({ page }, testInfo) => {
@@ -155,7 +155,7 @@ test('⌘K opens the dialog: recent conversations, then grouped, marked results 
 
   await page.keyboard.press('ControlOrMeta+k')
   await box(page).fill('없는말')
-  await expect(dialog(page).getByText('「없는말」와 맞는 대화나 아티팩트가 없습니다')).toBeVisible()
+  await expect(dialog(page).getByText('「없는말」와 맞는 결과가 없습니다')).toBeVisible()
   expect(state.problems).toEqual([])
 })
 

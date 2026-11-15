@@ -202,7 +202,7 @@ export function WorkingDocs({ query, onCount }: { query: string; onCount: (n: nu
             description={
               query.trim() || kind
                 ? t('제목의 다른 부분이나 다른 형식으로 찾아보세요.')
-                : t('보고서와 슬라이드가 형식과 상관없이 여기 모입니다.')
+                : t('보고서와 슬라이드가 형식에 상관없이 모입니다.')
             }
           />
         ) : (
@@ -213,7 +213,7 @@ export function WorkingDocs({ query, onCount }: { query: string; onCount: (n: nu
               onToggleAll={pick.toggleAll}
               onClear={pick.clear}
               title={t('문서')}
-              note={t('버전 기록도 함께 사라집니다. 문서를 만든 대화는 그대로 남습니다.')}
+              note={t('버전 기록도 함께 지워집니다.')}
               onDelete={async () => {
                 await remove(pick.ids)
                 pick.clear()
@@ -385,7 +385,7 @@ export function WorkingDocs({ query, onCount }: { query: string; onCount: (n: nu
         onClose={() => setConfirming(null)}
         onConfirm={() => confirming && void remove([confirming.id])}
         title={t('{name} 삭제').replace('{name}', confirming?.title ?? '')}
-        description={t('되돌릴 수 없습니다. 버전 기록도 함께 사라집니다. 문서를 만든 대화는 그대로 남습니다.')}
+        description={t('되돌릴 수 없습니다. 버전 기록도 함께 지워집니다.')}
       />
     </div>
   )

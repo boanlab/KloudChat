@@ -169,7 +169,7 @@ export function ArtifactsPage() {
       <PageBody>
         <PageHeader
           title={t('아티팩트')}
-          description={t('대화에서 만든 HTML·코드 파일·차트·도식입니다.')}
+          description={t('대화에서 만든 HTML·코드·차트·도식입니다.')}
         />
 
         <div className="mb-3 max-w-sm">
@@ -201,7 +201,7 @@ export function ArtifactsPage() {
             <EmptyState
               icon={<Layers size={18} />}
               title={filtered ? t('찾는 아티팩트가 없습니다') : t('아직 아티팩트가 없습니다')}
-              description={filtered ? t('다른 제목이나 종류로 찾아보세요.') : t('대화에서 만든 페이지·코드 파일·차트·도식이 여기 모입니다.')}
+              description={filtered ? t('다른 제목이나 종류로 찾아보세요.') : t('대화에서 만든 HTML·코드·차트·도식이 여기 모입니다.')}
               action={
                 filtered ? undefined : (
                   <Button variant="primary" onClick={() => navigate('/')}>

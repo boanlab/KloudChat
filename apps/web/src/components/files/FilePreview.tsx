@@ -111,7 +111,7 @@ export function FilePreview({ row, onClose, start }: { row: FileRow | null; onCl
     const id = row.id
     filesApi.text(id)
       .then(({ text, truncated }) => setShown({
-        kind: 'text', text, truncated, note: t('이 파일은 모양대로 그리지 못해 글자만 보여 줍니다.'),
+        kind: 'text', text, truncated, note: t('모양은 그리지 못해 글자만 보여 줍니다.'),
       }))
       .catch((err) => setShown({ kind: 'failed', message: errorMessage(err, t('미리보기를 불러오지 못했습니다.')) }))
   }
@@ -153,13 +153,13 @@ export function FilePreview({ row, onClose, start }: { row: FileRow | null; onCl
           {!error && office && (
             <p className="mr-auto min-w-0 flex-1 basis-60 text-sm text-muted" data-testid="file-edit-note">
               {latest
-                ? t('이 파일로 만든 문서가 있습니다: {title} · v{version} · {when}')
+                ? t('이 파일로 만든 문서: {title} · v{version} · {when}')
                   .replace('{title}', latest.title)
                   .replace('{version}', String(latest.version))
                   .replace('{when}', relativeTime(latest.updatedAt))
                 : phone
-                  ? t('휴대폰에서는 읽기만 합니다. 편집하면 대화에서 에이전트에게 고쳐 달라고 할 수 있습니다.')
-                  : t('편집하면 사본을 새 대화 옆 편집기에서 엽니다. 이 파일은 그대로 남습니다.')}
+                  ? t('휴대폰에서는 읽기만 합니다. 고치려면 대화에서 에이전트에게 부탁하세요.')
+                  : t('편집하면 사본이 새 대화의 편집기에서 열립니다. 이 파일은 그대로입니다.')}
             </p>
           )}
           <Button
@@ -235,7 +235,7 @@ export function FilePreview({ row, onClose, start }: { row: FileRow | null; onCl
                 {shown.truncated && <p className="pt-3 text-sm text-faint">{t('앞부분만 보여 줍니다. 전체는 내려받아 보세요.')}</p>}
               </>
             ) : (
-              <p className="py-12 text-center text-base text-muted">{t('이 파일은 미리볼 내용이 없습니다. 내려받아 열어 보세요.')}</p>
+              <p className="py-12 text-center text-base text-muted">{t('미리볼 내용이 없습니다. 내려받아 여세요.')}</p>
             )}
           </div>
         )}

@@ -179,7 +179,7 @@ export function KeyboardShortcuts() {
           if (location.pathname.startsWith('/s/')) navigate('/', { replace: true })
         }}
         title={t('{name} 삭제').replace('{name}', active?.title ?? t('이 대화'))}
-        description={t('되돌릴 수 없습니다. 이 대화의 아티팩트와 공유 링크도 지워집니다.')}
+        description={t('되돌릴 수 없습니다. 이 대화의 문서·아티팩트와 공유 링크도 지워집니다.')}
       >
         <DeleteFilesChoice checked={withFiles} onChange={setWithFiles} count={fileCount ?? 0} />
       </ConfirmDialog>

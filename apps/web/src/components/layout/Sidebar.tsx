@@ -407,7 +407,7 @@ export function Sidebar() {
         }}
         onConfirm={() => confirming && void deleteSession(confirming.id, { files: withFiles && !!fileCount })}
         title={t('{name} 삭제').replace('{name}', confirming?.title ?? '')}
-        description={t('되돌릴 수 없습니다. 이 대화의 아티팩트와 공유 링크도 지워집니다.')}
+        description={t('되돌릴 수 없습니다. 이 대화의 문서·아티팩트와 공유 링크도 지워집니다.')}
       >
         <DeleteFilesChoice checked={withFiles} onChange={setWithFiles} count={fileCount ?? 0} />
       </ConfirmDialog>

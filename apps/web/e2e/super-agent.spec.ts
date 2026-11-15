@@ -320,9 +320,9 @@ test('strict-local로 시작하는 새 대화는 그 이유를 모델 선택기 
   await page.getByRole('menuitem', { name: '챗' }).click()
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}$/)
   const hint = page.getByTestId('strict-start-hint')
-  await expect(hint).toHaveText('이 프로젝트는 기관 정책상 strict-local로 시작합니다')
+  await expect(hint).toHaveText('기관 정책에 따라 strict-local로 시작합니다')
   const trigger = page.getByRole('button', { name: 'Super Agent (strict-local)', exact: true }).first()
-  await expect(trigger).toHaveAccessibleDescription('이 프로젝트는 기관 정책상 strict-local로 시작합니다')
+  await expect(trigger).toHaveAccessibleDescription('기관 정책에 따라 strict-local로 시작합니다')
   // outside the project the same account starts on Super Agent, with no line
   await page.goto('/new/chat')
   await expect(page.getByRole('button', { name: 'Super Agent', exact: true }).first()).toBeVisible()
