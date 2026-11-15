@@ -12,9 +12,9 @@ Skills the administrator shares with everyone. They show under **Official skills
 
 | Skill | Screen | What it does |
 |---|---|---|
-| Meeting minutes (회의록 작성) | Report | Keeps decisions, action items (task · owner · due date · source · note) and open items from a transcript, notes and follow-up mails. Writes in the **회의록** template. A meeting length, period, time of day, question, guess, next-meeting agenda or promise to tell more later the material does not give, an open point the memo never left open (「담당자가 지정되지 않았습니다」, 「배포 방법은 확인 필요」), advice (「…하는 것이 좋습니다」), what follows an undone task (「미제출 시 …」), a next-meeting agenda table, a claim that everything is set beside a 미정 row, and an action row nobody was given, go back for one fix; what remains is taken out or marked 「(확인 필요)」. A 「오전」 put before the memo's bare 「10시」 is dropped by code. A note on how the minutes were written (「날짜를 해석하는 기준일은」) also goes back for a fix and is taken out if it stays. A day, time, place or attendance the memo gives but the minutes call missing (「자료에 없음」, 「미정」) is filled from the memo or the claim removed, an empty 회의명, 장소 or 참석자 in the head takes the memo's value (else a blank such as 「[장소]」). Minutes written in English get an English head: Meeting, Date, Location, Attendees, Prepared by, with blanks such as 「[Location]」. A deadline the memo gives as 「다음 회의에서」 or a week is not called missing, an agreement the memo never states (「참석자들이 동의」) is taken out or marked, and a row written twice is kept once. The meeting held is told in the past tense, and prose calling a deadline open that the action table dates from the memo takes the table's date. A date whose memo weekday the calendar disagrees with is flagged once, where it first appears (「(화, 확인 필요: 달력상 수요일)」). |
-| Bullet-style briefing (개조식 보고) | Report | Turns notes and mails into a one-page □ ○ - ㆍ briefing a superior can decide from. **개조식 보고서** template, one page by default. |
-| Compare-and-decide report (비교·결정 보고) | Report | Weighs 2–5 options on exactly the criteria asked and recommends one. **비교·분석 보고서** template. |
+| Meeting minutes (회의록 작성) | Report | Keeps decisions, action items (task · owner · due date · source · note) and open items from a transcript, notes and follow-up mails. Writes in the **회의록** format. A meeting length, period, time of day, question, guess, next-meeting agenda or promise to tell more later the material does not give, an open point the memo never left open (「담당자가 지정되지 않았습니다」, 「배포 방법은 확인 필요」), advice (「…하는 것이 좋습니다」), what follows an undone task (「미제출 시 …」), a next-meeting agenda table, a claim that everything is set beside a 미정 row, and an action row nobody was given, go back for one fix; what remains is taken out or marked 「(확인 필요)」. A 「오전」 put before the memo's bare 「10시」 is dropped by code. A note on how the minutes were written (「날짜를 해석하는 기준일은」) also goes back for a fix and is taken out if it stays. A day, time, place or attendance the memo gives but the minutes call missing (「자료에 없음」, 「미정」) is filled from the memo or the claim removed, an empty 회의명, 장소 or 참석자 in the head takes the memo's value (else a blank such as 「[장소]」). Minutes written in English get an English head: Meeting, Date, Location, Attendees, Prepared by, with blanks such as 「[Location]」. A deadline the memo gives as 「다음 회의에서」 or a week is not called missing, an agreement the memo never states (「참석자들이 동의」) is taken out or marked, and a row written twice is kept once. The meeting held is told in the past tense, and prose calling a deadline open that the action table dates from the memo takes the table's date. A date whose memo weekday the calendar disagrees with is flagged once, where it first appears (「(화, 확인 필요: 달력상 수요일)」). |
+| Bullet-style briefing (개조식 보고) | Report | Turns notes and mails into a one-page □ ○ - ㆍ briefing a superior can decide from. **개조식 보고서** format, one page by default. |
+| Compare-and-decide report (비교·결정 보고) | Report | Weighs 2–5 options on exactly the criteria asked and recommends one. **비교·분석 보고서** format. |
 | Official document draft (공문·기안 초안) | Report | Drafts plans, result reports, approval drafts and notices. No web search; pictures only when asked. |
 | Slide deck (슬라이드 구성) | Slides | One claim per slide, the conclusion first. |
 | Extract and tally (자료 추출·집계) | Chat | Reads Excel and CSV with code, pulls columns, totals by item into tables and charts, and records the rows it removed or changed. |
@@ -30,12 +30,12 @@ Skills the administrator shares with everyone. They show under **Official skills
 
 There are also Date calculation (with the **시간** (time) connector it reads today's date from there), Quote calculation, Excel cleanup, PDF table → Excel, Grounding check, Ask for missing information, Calculation and unit check and Mask personal information.
 
-A skill brings its template, checks and missing-information questions. Turn on **Meeting minutes** on the report screen, for instance, and the template becomes **회의록** (if you picked another template, it writes in that one), it asks for the meeting date and attendees before writing, and checks sources and format afterwards. A skill you turn on stays on for the rest of the conversation, approving the outline included.
+A skill brings its document format, checks and missing-information questions. Turn on **Meeting minutes** on the report screen, for instance, and it writes in the **회의록** format, asks for the meeting date and attendees before writing, and checks sources and format afterwards. A skill you turn on stays on for the rest of the conversation, approving the outline included.
 
 ## Using a skill in a conversation
 
 1. Choose **Report** on the home screen.
-2. In the composer choose **+** → **Skills** → **회의록 작성**. The template chip shows **회의록**.
+2. In the composer choose **+** → **Skills** → **회의록 작성**.
 3. Paste the meeting notes or transcript and send 「정식 회의록으로 만들어 줘」.
 
 Skills turned on in chat also go along when you ask for a document there and it moves to a report or deck. Skills that need tools cannot run on that screen and are left out, with a notice naming them.
@@ -51,11 +51,11 @@ Use **개조식 보고** (「과장님께 올릴 1쪽 보고로」) and **비교
 
 ## Before the meeting: the agenda
 
-The **회의 안건** (Meeting agenda) template is the minutes' counterpart. On the report screen choose the **Template** chip → **회의 안건** (or say 「회의 안건」 or 「안건지」 in the request) and send the items and their owners. It writes the same head as the minutes (meeting, date and time, place, attendees, author), an agenda table (order · item · owner · time · goal), points to review per item, pre-reads and the decisions needed. The goal is one of 보고 (information), 논의 (discussion) or 결정 (decision); an owner the material does not name is 「미정」 with one line saying what to confirm. Without a meeting date or attendees in the material, it asks before writing.
+The **회의 안건** (Meeting agenda) format is the minutes' counterpart. On the report screen say 「회의 안건」 or 「안건지」 in the request and send the items and their owners. It writes the same head as the minutes (meeting, date and time, place, attendees, author), an agenda table (order · item · owner · time · goal), points to review per item, pre-reads and the decisions needed. The goal is one of 보고 (information), 논의 (discussion) or 결정 (decision); an owner the material does not name is 「미정」 with one line saying what to confirm. Without a meeting date or attendees in the material, it asks before writing.
 
 ## Building an agent from skills
 
-In **Customize** → **Agents** → **Add** → **Create an agent**, skills you add with **+ Add a skill (store included)** under **Skills and tools** › **Skills** and set to **Always** are on in every conversation with that agent (up to six). The list shows your skills and the store's; **Install and add** copies a store skill into your skills. To start from one skill, press **Make an agent from this skill** on its page. Setting a skill that works only on reports or slides to **Always** sets the agent's first screen to that screen. Each skill's template, checks and missing-information questions come with it; a template or detailed settings set on the agent itself come first. A skill set to **When needed** is not added every turn; the model pulls it in when it needs it. With **Choose** only the listed skills are used, and only these can be picked in the composer ([An agent's skills](agents#an-agents-skills)).
+In **Customize** → **Agents** → **Add** → **Create an agent**, skills you add with **+ Add a skill (store included)** under **Skills and tools** › **Skills** and set to **Always** are on in every conversation with that agent (up to six). The list shows your skills and the store's; **Install and add** copies a store skill into your skills. To start from one skill, press **Make an agent from this skill** on its page. Setting a skill that works only on reports or slides to **Always** sets the agent's first screen to that screen. Each skill's document format, checks and missing-information questions come with it; a document format or detailed settings set on the agent itself come first. A skill set to **When needed** is not added every turn; the model pulls it in when it needs it. With **Choose** only the listed skills are used, and only these can be picked in the composer ([An agent's skills](agents#an-agents-skills)).
 
 ## A minutes agent
 
@@ -65,12 +65,12 @@ In **Customize** → **Agents** → **Add** → **Create an agent**, skills you 
 | Instructions | 작성자는 「기획팀 [이름]」으로 적는다. 실행 항목은 담당 팀 순서로 정렬한다. (Only your team's specifics; the skill knows how to write minutes) |
 | Always | 회의록 작성 |
 | Extra work | Prepare before writing · Review after writing · Finish (export a file when done: HWPX) |
-| Template & theme › Theme | 문서용 명조 |
+| Format & design › Design brief | 본문은 명조, 제목은 고딕. 강조색은 남색 하나만. (serif body, sans-serif headings, navy as the only accent) |
 | Advanced › Screens | Report |
 
 ## A briefing agent
 
-**개조식 보고** set to Always, theme **문서용 명조**, screen **Report**. Put only what never changes in the instructions, such as the addressee (「시설과장님」) and the approval line.
+**개조식 보고** set to Always, design brief 「본문은 명조」 (serif body), screen **Report**. Put only what never changes in the instructions, such as the addressee (「시설과장님」) and the approval line.
 
 ## A purchase review agent
 
@@ -94,4 +94,4 @@ In **Customize** → **Agents** → **Add** → **Create an agent**, skills you 
 
 ## Making the same as your own skill
 
-You can make a skill like the official ones yourself. In **Customize** → **Skills** → **Add**, write the steps, and under **Server checks** choose **Template to write in**, **Checks it brings**, the strictness, **Web search** and **Pictures**, and **Missing-information questions**. In an uploaded SKILL.md, put `template`, `checks`, `check_options`, `questions` and `process` in the front matter.
+You can make a skill like the official ones yourself. In **Customize** → **Skills** → **Add**, write the steps, and under **Server checks** choose **Checks it brings**, the strictness, **Web search** and **Pictures**, and **Missing-information questions**. In an uploaded SKILL.md, put `checks`, `check_options`, `questions` and `process` in the front matter.

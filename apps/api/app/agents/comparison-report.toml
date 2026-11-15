@@ -11,9 +11,13 @@ former_names = ["비교·분석 보고서"]
 description = "대안 2~5개를 같은 기준으로 견주고 하나를 골라야 하는 보고서가 필요할 때(제품·업체·입지·운영 방식)"
 kinds = ["report"]
 surface = "report"
-template = "doc-comparison"
 doc_format = "comparison"
-design = "기본"
+# 디자인 지침 (`design_brief`): the look in words, as a person's agent sets it
+design_brief = """
+- 이모지를 쓰지 않는다.
+- '혁신적', '차별화된', '최적의' 같은 채움말 대신 확인할 수 있는 사실을 쓴다.
+- 쓸 내용이 없으면 분량을 채우지 말고 그 항목을 줄인다.
+"""
 # An empty list denies every tool (report surfaces run the server hooks instead).
 tools = []
 skills = []

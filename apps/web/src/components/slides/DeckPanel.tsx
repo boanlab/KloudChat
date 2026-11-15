@@ -2706,7 +2706,7 @@ export function DeckPanel({
   )
   const designMenu = (close: () => void) => (
     <>
-      <div className="kc-mlabel">{t('테마')}</div>
+      <div className="kc-mlabel">{t('모양')}</div>
       {LOOK_CHOICES.map(({ id, label, why }) => (
         <button key={id} type="button" role="menuitemradio" aria-checked={visualStyle === id}
           className={'kc-item' + (visualStyle === id ? ' on' : '')} title={t(why)}

@@ -6,7 +6,7 @@ title: Agents and skills
 
 An agent is an assistant with a role, instructions, tools, and material already configured. You make your own for work you do often, such as English conversation practice, meeting minutes, or paper review, or import one a colleague has published.
 
-Field-by-field examples are in [Agent and template examples](agent-examples).
+Field-by-field examples are in [Agent examples](agent-examples).
 
 ![The agent selection menu](/img/guide/at-menu.png)
 
@@ -35,9 +35,9 @@ The form runs from top to bottom like this:
 1. The **name**, the **one-line description** and the **instructions** (the role and rules the agent always follows). Instructions for one surface only go under a line `[채팅에서]` (chat), `[보고서에서]` (report) or `[슬라이드에서]` (slides); what comes before the first such line applies everywhere.
 2. **How it works** (진행 과정): Answer directly · Start from a base process · Set it up yourself (advanced) (see "How it works" below).
 3. **Extra work**: the bundle checkboxes (see "Bundles"). Set it up yourself has none; you build steps instead.
-4. **Detailed settings — The process's calculations, checks and outline**: shown only for an agent that writes reports (see "Detailed settings and your own templates").
+4. **Detailed settings — The process's calculations, checks and outline**: shown only for an agent that writes reports (see "Detailed settings and templates I made").
 5. **Missing-information questions**: what to ask before writing when the material lacks it; up to four at a time while "Ask for missing information first" is on. A * marks a field you must fill.
-6. Under **More settings**: **Template & theme**, **Conversation start**, **Sources**, **Skills and tools**, **Advanced** and **Share** (see "Template & theme and sources").
+6. Under **More settings**: **Format & design**, **Conversation start**, **Sources**, **Skills and tools**, **Advanced** and **Share** (see "Format & design and sources").
 
 A new agent is saved only when you press **Create**. The instructions go with every conversation of that agent, so write only the role and rules it should always follow. An agent works when you open a conversation and ask; it never runs by itself on a schedule such as weekly, nor re-summarises its sources.
 
@@ -83,15 +83,15 @@ A bundle groups a few things an agent does before and after writing. Each bundle
 
 - **Get a file**: with **Finish** ticked, a separate **Export a file when done** checkbox shows under it; tick it and pick the format beside it (HWPX for 공문-type documents, else DOCX). The base processes come with Finish ticked and export off. Export works only in a process that writes a document.
 - On the report screen, date and amount calculations, format checks and fix-and-check-again always happen in report writing ("Always done"). The chat screen has no format checks and no export.
-- Base processes are built from the same bundles: Minutes is Prepare + Review + Finish (export off). The **회의록 작성** skill and **Minutes** template carry those checks.
+- Base processes are built from the same bundles: Minutes is Prepare + Review + Finish (export off). The **회의록 작성** skill and the **Minutes** document format carry those checks.
 - **Your own bundles**: **Customize** → **Agents** → **Add** → **Create a bundle**, or **Save this order as a bundle** in a custom order. They appear under Extra work in all your agents; edit and share them from **Manage bundles**.
 - Sharing works like skills (Only me · Everyone). A bundle or custom order that exports files, has another model review or calls another agent reaches others only once an administrator approves it under **Process review**; base processes and built-in bundles are shared at once.
 
-## Template & theme and sources
+## Format & design and sources
 
 These sit under **More settings** in the create-agent form.
 
-- **Template & theme**: pick the **template** (the structure of a report or deck) and the **theme** (colours, typeface, writing style). **New template** under the template makes your own; **Manage themes** under the theme opens Settings › Themes. An agent started from a base process uses the base's template when the template is left empty ("The base's template"), and that template sets the document format. The **Document format** field shows only for a report-writing agent on Answer directly or Set it up yourself.
+- **Format & design**: **Default form files** (PowerPoint and Word forms) and the **Design brief** (colours, fonts, how tables are drawn and density, in words). Output is written on the form file when there is one, else to the design brief. The agent's come before the project's, and a form attached in the conversation comes first. A report-writing agent on Answer directly or Set it up yourself also shows the **Document format** field. Left on **From the request**, the format is picked from the request; pick one and the report's head fields, section rules and the blanks to ask about are fixed to it.
 - **Conversation start**: **How to use** (shown on the conversation's first screen) and **Conversation starters** (one per line, up to six).
 - **Sources**: files and web addresses the agent searches and cites (**Attach file**, **Add URL**). They are not sent whole with every conversation; the agent looks things up when needed. A URL stores the page as it was when added and does not follow later changes. Sources are not re-read or re-summarised on a schedule, and an agent never runs by itself at set times; it works when you open a conversation and ask.
 - **Skills and tools** and **Advanced** (screens, first screen, model, output language, web search default, variety, colour, use memory). Adding a screen while no first screen is chosen makes it the first screen. Setting a skill that works only on reports or slides to **Always** (회의록 작성, 개조식 보고, …) sets the first screen to that screen when none is chosen, and a line under the skills says where each one works. **Share**: **Only me** or **Everyone**, and when shared, **Let others take and edit it** or **Let others take it but keep the content private**.
@@ -104,9 +104,9 @@ These are under **Advanced** in the agent form.
 - **Web search default**: whether the composer's web search starts on **Auto**, **Always** or **Off** in a new conversation with this agent. You can change it per turn in the composer. With **Off**, a question about current facts is not searched first (asking "search for it" still searches). A turn sent through the API without a web search setting uses this value.
 - **Use memory**: when off, your memories are not added to this agent's conversations, and those conversations create no automatic memories or shared notes.
 
-## Detailed settings and your own templates
+## Detailed settings and templates I made
 
-An agent that writes reports can turn on **Set for this agent** under **Detailed settings — The process's calculations, checks and outline** below the process and change what its template sets, starting from the template's values. Turned off, the template's (or document format's) settings apply as they are.
+An agent that writes reports can turn on **Set for this agent** under **Detailed settings — The process's calculations, checks and outline** below the process and change what its document format sets, starting from the format's values. Turned off, the calculations, checks and structure the document format sets apply as they are.
 
 - **Calculate before writing**: built-in calculations such as dates, quote totals, staffing, total cost per option, must-haves and weighted scores, career periods; and the **date basis** (the material's date or the meeting day).
 - **How it writes**: no web search, figures only when asked, a fixed outline.
@@ -115,7 +115,7 @@ An agent that writes reports can turn on **Set for this agent** under **Detailed
 - **Calculation checks**, **Judged checks**, **Value fixes**, **Fill in what is missing**: built-in checks and repair steps attached by name.
 - **When the material disagrees**: left empty, the writing says which value it used and why.
 
-Make your own document template with **New template** under **Template & theme** › Template (or in the template gallery). **Start from a built-in template** fills in all of its settings: the document format's head fields, numbering, head layout, bullet style and closing, the instructions, genre rule, checklist, missing-information questions, checks and detailed settings. An uploaded DOCX/HWPX sample document is read by the writing model as reference. The theme's colours and fonts draw it. Shared with **Everyone**, others can pick it; only its maker edits it. Your templates appear under **My templates** in the template gallery.
+**Customize** › **Agents** lists the document templates you made under **Templates I made**. **Move to an agent** carries a template's document format, questions, checks and process into a new agent; the template itself stays. To make something new, make it as an agent from the start and set the document's look with a form file or the design brief under **Format & design**.
 
 ## An agent's skills
 
@@ -141,7 +141,7 @@ Make your own document template with **New template** under **Template & theme**
 Keep a conversation that went well as an agent. **Save as agent** in the **⋯** menu of an artifact card, or of the report or slides panel, opens the create-agent screen filled in. Nothing is made until you press **Save**.
 
 - The **instructions** start with "Settled in this conversation" (the reader, the length, what to always include …). Only your own messages are read, by the model the conversation used. A strict-local conversation is summarised only by its strict-local model and nothing leaves. The other fields fill in first; the instructions are added when the summary is done. If it cannot be made, the banner says so and offers **Retry**.
-- The conversation's template, theme, skills, base process and bundles are filled in, and you choose whether to save the conversation's files as sources.
+- The conversation's skills, base process and bundles are filled in, and you choose whether to save the conversation's files as sources.
 - A privately shared agent's instructions are never copied.
 
 ## Workspace store
@@ -154,7 +154,7 @@ Keep a conversation that went well as an agent. **Save as agent** in the **⋯**
 
 ## Skills
 
-A skill is a working method kept on in a conversation: select up to three from **+** → **Skills** (again to turn one off). Unpicked skills are used too (see "Skills used when needed"). An **official skill** is added to your skills when picked. A skill brings its template, checks and questions.
+A skill is a working method kept on in a conversation: select up to three from **+** → **Skills** (again to turn one off). Unpicked skills are used too (see "Skills used when needed"). An **official skill** is added to your skills when picked. A skill brings its document format, checks and questions.
 
 ![The Skills screen](/img/guide/skills.png)
 
@@ -176,7 +176,7 @@ On the Report and Slides screens you can pick a skill that needs tools when the 
 
 ## Built-in skills
 
-Built-in skills are skills the administrator account made and shared with everyone. They appear under **Explore** in **Customize** › **Skills** as **By: Official**; **Add** puts a copy in your list (**Original: Official**). A copy follows the administrator's newer versions while you leave it unedited, and stays yours once you edit it. The checks agents and templates use (grounding check, asking for missing information and so on) run without adding anything.
+Built-in skills are skills the administrator account made and shared with everyone. They appear under **Explore** in **Customize** › **Skills** as **By: Official**; **Add** puts a copy in your list (**Original: Official**). A copy follows the administrator's newer versions while you leave it unedited, and stays yours once you edit it. The checks agents and document formats use (grounding check, asking for missing information and so on) run without adding anything.
 
 The lists show the thirteen work skills (including Translation, Press release, Make an Excel file and Make a chart) under [Official skills](skill-recipes#official-skills) and **Grounding check** (근거 대조), **Ask for missing information** (빠진 정보 묻기), **Calculation and unit check** (계산·단위 검증), **Date calculation** (날짜 계산), **Quote calculation** (견적 계산), **Excel cleanup** (엑셀 정리), **PDF table → Excel** (PDF 표 → 엑셀) and **Mask personal information** (개인정보 가리기).
 

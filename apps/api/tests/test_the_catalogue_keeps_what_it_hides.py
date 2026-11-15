@@ -150,29 +150,22 @@ def test_the_presentation_theme_is_hidden_and_kept():
 
 
 @pytest.mark.asyncio
-async def test_a_persons_own_copy_of_the_hidden_theme_stays_listed(db):
-    """Only the catalogue owner's row is unlisted; a member's own seeded copy shows in
-    their list, and a new account is not given one."""
-    owner = User(email="owner@example.com", name="Owner", password_hash="x", role=UserRole.admin)
-    db.add(owner)
-    await db.commit()
-    await starter.seed_designs(db, owner.id)
+async def test_a_persons_own_theme_stays_listed_and_no_account_is_given_one(db):
+    """A member's own theme row stays theirs (hidden, not deleted); themes are retired, so a new
+    account is not given any (2026-11-15)."""
     old = User(email="old@example.com", name="Old", password_hash="x")
     db.add(old)
     await db.commit()
-    # An account seeded before the theme was hidden.
     db.add(DesignSystem(owner_id=old.id, name="발표용 청록", tokens={"accent": "#0f766e"}))
     await db.commit()
     listed = {row.name: row.listed for row in await ws.list_designs(old, db)}
     assert listed == {"발표용 청록": True}
-    owned = {row.name: row.listed for row in await ws.list_designs(owner, db)}
-    assert owned == {"기본": True, "문서용 명조": True, "발표용 청록": False}
     new = User(email="new@example.com", name="New", password_hash="x")
     db.add(new)
     await db.commit()
-    await starter.seed_designs(db, new.id)
+    assert await starter.seed_designs(db, new.id) == 0
     await db.commit()
-    assert {row.name for row in await ws.list_designs(new, db)} == {"기본", "문서용 명조"}
+    assert await ws.list_designs(new, db) == []
 
 
 # ── skills: the store and a person's own list ──────────────────────────

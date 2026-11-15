@@ -10,7 +10,7 @@ from typing import Any
 
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.models.chat import ChatSession, SessionKind
+from app.models.chat import ChatSession
 from app.models.user import User
 from app.models.workspace import Artifact, ArtifactKind, Project
 from app.services import deck_export, form_marks, office_doc, pptx_edit
@@ -143,11 +143,10 @@ async def project_look(
             chosen = await workspace_context.design_for_project(db, user, project)
     except workspace_context.WorkspaceContextError:
         chosen = None
-    tokens = design.tokens_of(chosen) if chosen is not None else None
-    picked = template_id or (
-        design_templates.default_for(project.render_templates, SessionKind.slides)
-        if project is not None else None
-    )
+    tokens = design.tokens_of(chosen) if chosen is not None and chosen.tokens else None
+    # a project's default template is no longer read (2026-11-15: forms instead); a template an
+    # older conversation picked still gives its base
+    picked = template_id
     found = design_templates.rendering(picked) if picked else None
     template = (found.pptx_template or "") if found is not None else ""
     return tokens, template

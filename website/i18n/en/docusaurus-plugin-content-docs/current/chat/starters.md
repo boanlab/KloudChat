@@ -1,31 +1,38 @@
 ---
-title: Templates and themes
+title: Format and design
 ---
 
-# Templates and themes
+# Format and design
 
-A template is the structure of an artifact; a theme is its look. Work you do often belongs to [agents](agents.md). Neither is a Customize tab: you pick each where it is used.
+The structure of reports and slides is chosen automatically from the request; their look comes from form files and the design brief. There is no picker for either. Work you do often belongs to [agents](agents.md).
 
-| Feature | Role | Where to pick it | Scope |
+| Feature | Role | Where it is set | Scope |
 |---|---|---|---|
-| **Template** | The structure of the artifact (structure rules, typesetting, check items). There are built-in templates and your own. | The **Template** chip above the prompt box (in a conversation that already has messages, **+** → **Pick a template**); **Template & theme** › **Template** in the agent settings | That conversation (clear it with × on the chip), or the conversations that agent opens |
-| **Theme** | A setting that bundles colors, typefaces, and writing style. | **Template & theme** › **Theme** in the agent settings, **Edit › Theme** in the report or slides panel, the project settings | That agent's or project's artifacts |
+| **Structure** | The document format of a report (head fields, outline, missing-information questions, checks) and the purpose pattern of a deck. | Picked automatically from the words of the request. An agent can fix it with **Format & design** › **Document format**. | That conversation, or the conversations that agent opens |
+| **Form file** | A PowerPoint or Word file that reports and slides are written on. | Attached in the conversation; **Default form files** of a project or agent | That conversation, or that project's or agent's conversations |
+| **Design brief** | Colors, fonts, how tables are drawn and density, written in words. | **Design brief** of a project or agent | That project's or agent's artifacts |
+| **Look** | The style, accent color and typeface of one document. | **Look** in the report or slides panel | That document |
 
-## Templates
+## Structure
 
-A template defines the structure rules and the typesetting of reports and slides. Select one and the **What this template checks** list appears. You edit a document in a template by rewriting it one block at a time, and you can export it as PDF, DOCX/PPTX, HWPX, HTML, or text. Create your own document template with **New template** in the template gallery or the agent settings ([Agents and skills](agents.md)). The **Template** chip on Home shows the name of the chosen template (or **Default**) and opens this gallery; press × to start without a template. The project's default template is preselected. Images, audio and video have no templates.
+A report is written in the document format that fits the request (minutes, agenda, results report, bullet-style briefing, comparison report and so on), and that format brings the questions to ask before writing (missing-information questions) and the checks run afterwards. A deck takes a purpose pattern (internal briefing, case presentation, review presentation, proposal presentation, lecture material) from the words of the request. Just say the purpose in the request, as in "Organize this as meeting minutes" or "as a review presentation". Images, audio and video have no structure.
 
-The built-in templates in the picker are seven documents (**Internal approval draft (간이기안문)**, **Implementation plan (draft)**, **Results report**, **Bullet-style briefing (개조식)**, **Comparison report**, **Meeting minutes**, **Meeting agenda**) and the **Briefing deck**. They write straight into the organization's format and show that format's check results when done. Conversations and agents that use a hidden template keep writing and exporting with it.
+## Form files
 
-## Themes
+Attach a company or organization PowerPoint (`.pptx`, `.potx`) or Word (`.docx`, `.dotx`) form in the conversation and the attachment chip shows **Form** or **Material**; when it is unclear, **Form?**. Change it on the chip. A form's own text is not read as material. The card of the file written shows a **Followed the form** line; expand it to see what was kept from the form, the layouts used, the chapters and any chapters added. See [PowerPoint documents](../write/pptx.md#writing-on-a-form) and [Word documents](../write/docx.md#writing-on-a-form) for details.
 
-Manage them in **Settings** → **Themes** (also opened by **Manage themes** in the agent settings). Themes other people shared appear under **Shared themes** on the same tab.
+- An old Hangul file (`.hwp`) cannot be a form. In Hangul, use **File › Save As › Hangul standard document (*.hwpx)**.
+- A form kept in a project's **Default form files** appears as a **Project form** chip beside the format chip in new report and slides conversations; ✕ removes it for that conversation only.
+- Agents have **Default form files** too. The agent's form comes before the project's, and a form attached in the conversation comes first.
 
-![The theme screen](/img/guide/designs.png)
+## Design brief
 
-- Set the name, the accent color, the body color, the secondary color, the typeface (sans-serif or serif), the writing style rules, the image style, and the rules to apply alongside them.
-- **Import from a document** extracts a draft from an existing hwpx, docx, or pdf file, or from a web address. It calls the model once, and you can review the content before saving.
-- The writing style applies to conversations too. The writing style, colors and typefaces apply to every report format (web, HWP, Word) and every slides format (web, PowerPoint). The image style applies to images. Nothing applies to audio and video.
-- Theme settings are copied into an artifact when it is generated. Changing the theme later does not change artifacts that already exist.
-- An administrator can distribute a read-only shared theme with **Provide to all users**.
-- Of the built-in themes, the pickers show **Default** (기본) and **Document serif** (문서용 명조).
+Write the **design brief** of a project or agent in words, for example: "Navy as the only accent color. Serif body, sans-serif headings. Shade only the header row of tables, no vertical lines." What is read from it shows as **Read as** chips. The agent's brief comes before the project's, and when there is a form file the brief fills only what the form leaves open. [Projects](../personal/projects.md#design-brief)
+
+## Look
+
+Once a report or deck is written, **Look** in the panel changes the style, accent color and typeface of that one document. Other documents are not affected. [Editing documents](../write/editor.md)
+
+## Templates I made
+
+**Customize** › **Agents** lists the document templates you made under **Templates I made**. **Move to an agent** carries a template's document format, questions, checks and process into a new agent; the template itself stays.

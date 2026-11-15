@@ -20,7 +20,7 @@ import {
   Textarea,
   useMenuClose,
 } from '@/components/ui'
-import { ApiError, downloadFile, errorMessage, templateText } from '@/lib/api'
+import { ApiError, downloadFile, errorMessage } from '@/lib/api'
 import { currentLang } from '@/lib/i18n'
 import { PROJECT_EMOJIS, kindMeta, kindOrder } from '@/lib/kinds'
 import { memoryTypeLabel } from '@/lib/memoryTypes'
@@ -44,7 +44,7 @@ import { ProjectFormFiles } from '@/components/projects/ProjectFormFiles'
 import { isListed } from '@/lib/listed'
 import { KNOWLEDGE_ACCEPT, knowledgeKinds, knowledgeRefusal } from '@/lib/knowledgeFiles'
 import { RelTime } from '@/components/ui/RelTime'
-import { TemplateMiniature } from '@/components/chat/DesignGallery'
+import { ProjectDesignBrief } from '@/components/projects/ProjectDesignBrief'
 import { SHELF_NAMES, withNames } from '@/lib/shelfNames'
 import { AddTextModal } from '@/components/shelf/AddTextModal'
 import { NotesTab } from '@/components/shelf/NotesTab'
@@ -86,8 +86,6 @@ export function ProjectDetailPage() {
     projects,
     sessions,
     skills,
-    designs,
-    designTemplates,
     enabledKinds,
     memories,
     updateProject,
@@ -185,11 +183,8 @@ export function ProjectDetailPage() {
     skills.some((skill) => skill.id === id && skill.enabled),
   )
   const projectMemories = memories.filter((m) => m.scope === project.id)
-  const selectedDesign = designs.find((d) => d.id === project.designSystemId)
   // Document-shaped templates only.
   const english = currentLang() === 'en'
-  const formats = designTemplates.filter((row) => row.kind === 'deck' || row.kind === 'document')
-  const formatSurfaces = kindOrder.filter((kind) => formats.some((row) => row.surface === kind))
   const totalTokens = project.files.reduce((sum, f) => sum + f.tokens, 0)
 
   const unindexed = project.files.some((f) => f.indexed === false && !f.error && !isReading(f))
@@ -515,110 +510,12 @@ export function ProjectDetailPage() {
           />
         </Card>
 
-        <Card className="space-y-3 p-4">
-          <div>
-            <p className="text-base font-medium">{t('테마')}</p>
-            <p className="text-sm text-muted">
-              {t('말투·색·서체는 모든 보고서 형식(웹 보고서·한글·Word)과 모든 슬라이드 형식(웹 슬라이드·PowerPoint)에 적용되고, 말투는 대화에도 적용됩니다. 이미지에는 스타일이 적용되고, 오디오·동영상에는 적용되지 않습니다.')}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {selectedDesign && (
-              <span
-                aria-hidden
-                className="size-5 shrink-0 rounded-control border border-line"
-                style={{ background: selectedDesign.tokens.accent }}
-              />
-            )}
-            <select
-              aria-label={t('테마')}
-              value={project.designSystemId ?? ''}
-              onChange={(e) =>
-                void updateProject(project.id, { designSystemId: e.target.value || null })
-              }
-              className="h-9 w-full rounded-control border border-line bg-panel px-3 text-base focus:border-accent focus:outline-none"
-            >
-              <option value="">{t('사용 안 함 — 기본 모양')}</option>
-              {designs.filter((d) => isListed(d) || d.id === project.designSystemId).map((d) => (
-                <option key={d.id} value={d.id}>
-                  {t(d.name)}
-                </option>
-              ))}
-            </select>
-          </div>
-          {selectedDesign && (
-            // A small specimen: the accent, ink and muted colours on the theme's typeface.
-            <div
-              className="flex items-center gap-3 rounded-control border border-line bg-white px-3 py-2"
-              data-testid="theme-specimen"
-              style={{ fontFamily: selectedDesign.tokens.font === 'serif' ? 'var(--font-serif, serif)' : undefined }}
-            >
-              <span className="h-8 w-1 shrink-0 rounded-full" style={{ background: selectedDesign.tokens.accent }} aria-hidden />
-              <div className="min-w-0">
-                <p className="truncate text-base font-semibold" style={{ color: selectedDesign.tokens.ink }}>
-                  {t(selectedDesign.name)}
-                </p>
-                <p className="truncate text-xs" style={{ color: selectedDesign.tokens.muted }}>
-                  {selectedDesign.tokens.font === 'serif' ? t('명조 계열 서체') : t('고딕 계열 서체')}
-                </p>
-              </div>
-            </div>
-          )}
-          {selectedDesign?.description && (
-            <p className="text-sm text-faint">{selectedDesign.description}</p>
-          )}
-        </Card>
+        <ProjectFormFiles project={project} />
+
+        <ProjectDesignBrief project={project} />
 
         <ProjectSearchConsent project={project} />
 
-        <ProjectFormFiles project={project} />
-
-        {formatSurfaces.length > 0 && (
-          <Card className="space-y-3 p-4">
-            <div>
-              <p className="text-base font-medium">{t('기본 템플릿')}</p>
-              <p className="text-sm text-muted">
-                {t('이 프로젝트에서 새로 시작하는 보고서(웹 보고서·한글·Word)와 슬라이드(웹 슬라이드·PowerPoint)가 어떤 템플릿으로 나올지 정합니다. 어느 형식으로 내보내도 같은 템플릿을 따르며, 대화마다 다시 고를 수 있습니다.')}
-              </p>
-            </div>
-            {formatSurfaces.map((kind) => {
-              const chosen = formats.find((row) => row.id === project.renderTemplates[kind])
-              return (
-              <div key={kind} className="space-y-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="shrink-0 text-base text-muted">
-                  {kind === 'report' ? t('보고서 (웹·한글·Word)') : kind === 'slides' ? t('슬라이드 (웹·PowerPoint)') : t(kindMeta[kind].label)}
-                </span>
-                <select
-                  aria-label={t('{kind} 템플릿').replace('{kind}', t(kindMeta[kind].label))}
-                  value={project.renderTemplates[kind] ?? ''}
-                  onChange={(e) =>
-                    void updateProject(project.id, {
-                      // Sent whole; empty value removes the surface.
-                      renderTemplates: {
-                        ...project.renderTemplates,
-                        [kind]: e.target.value,
-                      },
-                    })
-                  }
-                  className="h-9 w-full rounded-control border border-line bg-panel px-3 text-base focus:border-accent focus:outline-none"
-                >
-                  <option value="">{t('사용 안 함 — 기본 템플릿')}</option>
-                  {formats
-                    .filter((row) => row.surface === kind && (isListed(row) || row.id === project.renderTemplates[kind]))
-                    .map((row) => (
-                      <option key={row.id} value={row.id}>
-                        {templateText(row, english).name}
-                      </option>
-                    ))}
-                </select>
-              </div>
-              {chosen && <TemplateMiniature row={chosen} english={english} />}
-              </div>
-              )
-            })}
-          </Card>
-        )}
         </aside>
 
         <div className="order-1 min-w-0">

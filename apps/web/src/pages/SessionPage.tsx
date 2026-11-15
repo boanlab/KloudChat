@@ -32,15 +32,15 @@ const FOLLOW_GAP_PX = 120
 /** 「맨 아래로」 threshold, px. */
 const AWAY_GAP_PX = 320
 
-/** Theme effect per surface; audio and video unaffected. */
+/** What the 디자인 지침 reaches per surface; audio and video unaffected. */
 const DESIGN_REACHES: Partial<Record<SessionKind, string>> = {
-  chat: '이 대화의 말투를 이 테마에 맞춥니다',
-  report: '보고서의 말투와 색, 서체를 이 테마에 맞춥니다',
-  slides: '슬라이드의 말투와 색, 서체를 이 테마에 맞춥니다',
-  image: '이미지의 색과 스타일을 이 테마에 맞춥니다',
+  chat: '이 대화의 말투를 디자인 지침에 맞춥니다',
+  report: '보고서의 말투와 색, 서체를 디자인 지침에 맞춥니다',
+  slides: '슬라이드의 말투와 색, 서체를 디자인 지침에 맞춥니다',
+  image: '이미지의 색과 스타일을 디자인 지침에 맞춥니다',
 }
 
-/** Agent, project and theme of an empty session; the template chip lives in the composer. */
+/** Agent, project and 디자인 지침 of an empty session. */
 function StartingFrom({
   sessionId,
   kind,
@@ -55,15 +55,11 @@ function StartingFrom({
   const found = useStore((s) => s.agents.find((a) => a.id === session?.agentId))
   const agent = withoutAgent ? undefined : found
   const project = useStore((s) => s.projects.find((p) => p.id === session?.projectId))
-  // Agent's theme (or the viewer's own of that name), else the project's: the server's order.
-  const design = useStore((s) =>
-    s.designs.find((d) => d.id === found?.designSystemId) ??
-    (found?.designName ? s.designs.find((d) => d.name === found.designName) : undefined) ??
-    s.designs.find((d) => d.id === project?.designSystemId),
-  )
+  // The agent's 디자인 지침, else the project's: the server reads both, the agent's first.
+  const brief = (found?.designBrief || project?.designBrief || '').trim()
   const designReach = DESIGN_REACHES[kind]
 
-  if (!agent && !project && !(design && designReach)) return null
+  if (!agent && !project && !(brief && designReach)) return null
 
   const rows = [
     agent && {
@@ -82,14 +78,14 @@ function StartingFrom({
       says: project.description,
       colour: undefined,
     },
-    design &&
+    brief &&
       designReach && {
         key: 'design',
         icon: <Palette size={13} />,
         label: t(designReach),
-        name: design.name,
-        says: design.description,
-        colour: design.tokens.accent,
+        name: t('디자인 지침'),
+        says: brief.split('\n')[0].slice(0, 120),
+        colour: undefined,
       },
   ].filter(Boolean) as {
     key: string

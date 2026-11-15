@@ -1,6 +1,5 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { shellRead } from './shell-mocks'
-import { openTemplates, toolNames } from './composer-tools'
 
 test.use({ serviceWorkers: 'block' })
 // A phone folds ▦ and the option chips behind 「더보기」; the desktop composer is what is checked.
@@ -106,30 +105,6 @@ async function fixture(page: Page, testInfo: TestInfo, diagram: 'drawn' | 'undra
 async function shot(page: Page, name: string) {
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/${name}.png` })
 }
-
-test('보고서에는 서식 고르기가 있고, 이미지·오디오/동영상에는 없다', async ({ page }, testInfo) => {
-  await fixture(page, testInfo)
-  await page.goto('/new/report')
-  await openTemplates(page)
-  const dialog = page.getByRole('dialog')
-  await expect(dialog.getByText('회의록', { exact: true })).toBeVisible()
-  // No media blanks promised.
-  await expect(dialog.getByText('빈칸')).toHaveCount(0)
-  // Settle the open animation for the picture.
-  await page.waitForTimeout(400)
-  await shot(page, 'report-gallery')
-  await dialog.getByRole('button', { name: '이 템플릿으로 시작' }).click()
-  await expect(page.getByRole('button', { name: '회의록 템플릿 해제' })).toBeVisible()
-
-  await page.goto('/new/image')
-  await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
-  expect(await toolNames(page)).not.toContain('템플릿 고르기')
-  await shot(page, 'image-composer')
-
-  await page.goto('/new/av')
-  await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
-  expect(await toolNames(page)).not.toContain('템플릿 고르기')
-})
 
 test('흐름도 칩은 서버의 도형 그림으로 가고 이미지 모델을 부르지 않는다', async ({ page }, testInfo) => {
   const seen = await fixture(page, testInfo)

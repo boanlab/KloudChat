@@ -37,11 +37,12 @@ picture, a clip — is an **artifact**, kept in its own gallery and exportable:
 | Deck — made as web slides or a PowerPoint file | PDF, PPTX, Markdown |
 | Chart | PNG, SVG, CSV |
 
-**Structure and look are separate choices.** A **template** fixes a document's
-structure (sections, title block, numbering — minutes, bullet-style briefing, comparison,
-official draft, briefing deck and so on), and code keeps the model inside it. A
-**theme** fixes the look — colour, type, voice — and the same theme dresses a
-report, a deck and a cover image alike. Flowcharts and structure diagrams in
+**Your form, or a structure from the request.** Attach a company PowerPoint or
+Word form (양식) and the deck or report is written on it — its layouts, styles, header,
+cover and numbering kept. Without one, the request picks the structure (minutes,
+briefing, comparison, official draft, briefing deck and so on), code keeps the model
+inside it, and a project's or agent's 디자인 지침 (design brief, in words) sets colour,
+type and voice for reports, decks and cover images alike. Flowcharts and structure diagrams in
 reports and decks are laid out by code and drawn with python-pptx: native
 shapes in the `.pptx`, the same drawing as a picture in the report.
 
@@ -57,10 +58,10 @@ done. Facts missing from the material are asked for before writing, or left as
 product ships — minutes, bullet-style briefings (개조식), compare-and-decide
 reports, official drafts, decks, spreadsheet tallies, answers from regulations,
 YouTube summaries, deep research — comes as official skills a person switches
-on in a conversation. A skill brings its own template, checks,
+on in a conversation. A skill brings its own checks,
 missing-information questions and process settings, and a person can make one
 just like it. An agent fixes its instructions, model, knowledge files, the
-skills it keeps on, templates and **How it works** process, plus the bundles of
+skills it keeps on, its document format, form files, 디자인 지침 and **How it works** process, plus the bundles of
 extra steps around the writing (prepare · review · finish). Other skills are
 scripts and checks that change the result (calculation check, date and quote
 calculation, spreadsheet clean-up, PDF tables, source check, PII masking…). An
@@ -257,7 +258,7 @@ without a translation fall back to Korean. The user guide is published at
 | `/history` | Conversation history — selective and bulk deletion |
 | `/usage` | Your own usage, by day, model and surface |
 | `/issues` | Questions and reports you sent, with the answers |
-| `/settings` · `/settings/{preferences,personalization,memory,themes,keys,access}` | Profile and password / defaults / about-me and response style / memories / themes / API keys / sign-ins |
+| `/settings` · `/settings/{preferences,personalization,memory,keys,access}` | Profile and password / defaults / about-me and response style / memories / API keys / sign-ins |
 | `/agent-setup` · `/api-setup` | Coding-agent and API connection guides |
 | `/share/:token` | A read-only shared link |
 | `/admin/…` | See [What an administrator controls](#what-an-administrator-controls) |

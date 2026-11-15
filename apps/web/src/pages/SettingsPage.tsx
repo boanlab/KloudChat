@@ -11,7 +11,6 @@ import { KeysTab } from './settings/KeysTab'
 import { PersonalizationTab } from './settings/PersonalizationTab'
 import { PreferencesTab } from './settings/PreferencesTab'
 import { ProfileTab } from './settings/ProfileTab'
-import { ThemesTab } from './settings/ThemesTab'
 import { MemoryPage } from './MemoryPage'
 import { useT } from '@/lib/useT'
 
@@ -20,7 +19,6 @@ const tabs = [
   { to: '/settings/preferences', label: '환경설정', end: false },
   { to: '/settings/personalization', label: '개인 맞춤 설정', end: false },
   { to: '/settings/memory', label: '메모리', end: false },
-  { to: '/settings/themes', label: '테마', end: false },
   { to: '/settings/keys', label: 'API 키', end: false },
   { to: '/settings/access', label: '보안', end: false },
 ]
@@ -82,7 +80,8 @@ export function SettingsPage() {
           <Route path="preferences" element={<PreferencesTab />} />
           <Route path="personalization" element={<PersonalizationTab />} />
           <Route path="memory" element={<MemoryPage embedded />} />
-          <Route path="themes" element={<ThemesTab />} />
+          {/* themes retired (2026-11-15): a project's or agent's 디자인 지침 instead */}
+          <Route path="themes" element={<Navigate to="/settings" replace />} />
           <Route path="keys" element={<KeysTab />} />
           <Route path="access" element={<AccessTab />} />
           <Route path="*" element={<Navigate to="/settings" replace />} />

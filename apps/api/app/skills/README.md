@@ -7,15 +7,16 @@ the server imports the same file through `services/skill_scripts.py`, so both co
 ## Check skills
 
 A package with `stage` in its front matter is a check the server runs itself, around writing,
-for every agent or template that attaches it — the model is not left to call it.
+for every agent, skill or document pattern that attaches it — the model is not left to call it.
 
 | field   | meaning                                                                 |
 |---------|-------------------------------------------------------------------------|
 | `stage` | `pre` (before writing: what to ask) or `post` (after writing: what to fix) |
 | `entry` | the script under `scripts/` the server imports                          |
 
-Attach a check by key: `checks = ["gap-check", "grounding-check"]` in `app/agents/<key>.toml`, or
-`check_skills = [...]` in a template's `template.toml` (`checks` there is already the checklist).
+Attach a check by key: `checks = ["gap-check", "grounding-check"]` in `app/agents/<key>.toml`; a
+report's purpose format brings its own (`check_skills` in the format's `template.toml`, read by
+`services/patterns.py`).
 `services/check_skills.py` resolves the attached keys and runs them; the pipelines run them as
 `check` stages (`app/pipeline/check_stages.py`: `check:gaps`, `check:grounding`,
 `check:answer-grounding`; docs/architecture.md § Pipelines). `copy-check` runs as a stage of its
@@ -69,16 +70,15 @@ of shipped agents):
 
 | field           | meaning                                                                    |
 |-----------------|----------------------------------------------------------------------------|
-| `template`      | the template a report or deck writes into when none is picked             |
 | `checks`        | check skills attached while it is on (keys of packages with `stage`)      |
 | `check_options` | trace strictness while it is on (`tool_numbers`, `titles`)                |
-| `questions`     | missing-information questions, as `[[questions]]` in a `template.toml`    |
+| `questions`     | missing-information questions, as `[[questions]]`                         |
 | `process`       | process settings (`search`, `draws`, …), under an agent's own             |
 
 The same fields are set in the skill form and in an uploaded SKILL.md.
 
 A skill's `process` lists (`prepass`, `checks`, `stages`, …) join the 서식's instead of replacing
-them, so `date-calc` on a report adds its pre-pass to whatever the template already runs; its
+them, so `date-calc` on a report adds its pre-pass to whatever the format already runs; its
 single values (`search`, `deep_search`, `code_calc`, `draws`, …) sit under the agent's own.
 `code_calc` (set by `calc-check`) runs the code calculation pass on a report or deck even when
 the request names no calculation.

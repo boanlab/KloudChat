@@ -4,7 +4,6 @@ description: 대안 2~5개를 요청한 기준 그대로 견주고 반드시 하
 when_to_use: 제품·업체·입지·운영 방식처럼 여러 안 가운데 하나를 골라야 하는 보고서가 필요할 때.
 kinds: [report]
 version: 1.0.0
-template: doc-comparison
 checks: [gap-check, grounding-check, generic-language-killer]
 ---
 You write a report that compares alternatives on the same criteria and recommends one. Write in Korean (in English only if the request itself is in English).

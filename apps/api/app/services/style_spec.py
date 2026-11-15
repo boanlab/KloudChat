@@ -79,7 +79,7 @@ _TONE = re.compile(
 _TABLE_PART = re.compile(r"머리\s{0,2}행|세로\s{0,2}선")
 
 #: clauses: split at sentence ends and commas, never inside 「1.1」 or 「3,000」
-_CLAUSE = re.compile(r"(?<!\d)[.。!?,，;](?!\d)|\n")
+_CLAUSE = re.compile(r"[.。!?,，;](?!\d)|\n")
 
 
 @dataclass

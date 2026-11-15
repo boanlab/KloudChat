@@ -26,7 +26,8 @@ const fileRow = (id: string, name: string, extra: Record<string, unknown> = {}) 
 const saved = fileRow(savedId, '발표_기본.pptx', { role: 'form', form: pptxSummary() })
 const project = (formFiles: Record<string, string> = { pptx: savedId }) => ({
   id: projectId, name: '2027 지원사업 신청', description: '', emoji: '📁', instructions: '', skillIds: [],
-  designSystemId: null, renderTemplates: {}, formFiles, formRows: formFiles.pptx ? [saved] : [], designBrief: '',
+  designSystemId: null, renderTemplates: {}, formFiles, formRows: formFiles.pptx ? [saved] : [],
+  designBrief: '강조색 #334155.\n본문은 명조.\n제목은 명사구로 쓴다.\n\n(테마에서 옮김)',
   strictLocalWebSearch: null, files: [], sessionIds: [slidesId], createdAt: at, updatedAt: at,
 })
 
@@ -55,6 +56,7 @@ async function formsFixture(page: Page, info: Parameters<Parameters<typeof test>
   })
   let current = project()
   const patches: Record<string, unknown>[] = []
+  const converted: string[] = []
   const deck = {
     id: deckId, kind: 'pptx', title: '2027 사업계획 발표', version: 1, sessionId: slidesId, projectId,
     createdAt: at, updatedAt: at, partial: false,
@@ -127,6 +129,16 @@ async function formsFixture(page: Page, info: Parameters<Parameters<typeof test>
       current = project(slots)
       return route.fulfill({ json: current })
     }
+    if (method === 'POST' && path === '/design-brief/read') {
+      return route.fulfill({ json: { spec: { accent: '#334155', body_face: 'serif' }, tone: [] } })
+    }
+    if (method === 'GET' && path === '/user-templates') {
+      return route.fulfill({ json: { mine: [{ id: 'ut-1', name: '우리 회의록', description: '팀 회의록', mine: true }], shared: [] } })
+    }
+    if (method === 'POST' && path === '/user-templates/ut-1/to-agent') {
+      converted.push(path)
+      return route.fulfill({ status: 201, json: { id: 'a9'.padEnd(32, '0'), name: '우리 회의록' } })
+    }
     if (method === 'POST' && path === '/forms/from-file') {
       return route.fulfill({ status: 201, json: saved })
     }
@@ -142,7 +154,7 @@ async function formsFixture(page: Page, info: Parameters<Parameters<typeof test>
     }
     return route.fallback()
   })
-  return { ...fixture, patches }
+  return { ...fixture, patches, converted }
 }
 
 test('a PowerPoint attached as a form is followed and the project form steps aside', { tag: '@phone' }, async ({ page }, info) => {
@@ -261,4 +273,29 @@ test('a Word report says which form it followed and what it filled', { tag: '@ph
   await expect(line).toContainText('「4. 위험 요인」 장은')
   await line.scrollIntoViewIfNeeded()
   await shot(page, 'answer-word-followed', info)
+})
+
+test('a project writes its look as a design brief and sees what is read from it', { tag: '@phone' }, async ({ page }, info) => {
+  await formsFixture(page, info)
+  await page.goto(`/projects/${projectId}`)
+  const card = page.getByTestId('project-design-brief')
+  await card.scrollIntoViewIfNeeded()
+  await expect(card.getByTestId('brief-from-theme')).toBeVisible()
+  await expect(card.getByTestId('brief-reading')).toContainText('강조 #334155')
+  await expect(card.getByTestId('brief-reading')).toContainText('본문 명조')
+  // no theme or default template cards are left
+  await expect(page.getByText('기본 템플릿')).toHaveCount(0)
+  await shot(page, 'project-design-brief', info)
+})
+
+test('templates a person made become agents on request', { tag: '@phone' }, async ({ page }, info) => {
+  const { converted } = await formsFixture(page, info)
+  await page.goto('/customize?tab=agents')
+  const card = page.getByTestId('old-templates')
+  await expect(card).toContainText('우리 회의록')
+  await card.scrollIntoViewIfNeeded()
+  await shot(page, 'old-templates', info)
+  await card.getByRole('button', { name: '우리 회의록 템플릿을 에이전트로 옮기기' }).click()
+  await expect.poll(() => converted.length).toBe(1)
+  await expect(page).toHaveURL(/\/customize\/agents\/a9/)
 })

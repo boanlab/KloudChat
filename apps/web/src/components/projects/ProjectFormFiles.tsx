@@ -1,9 +1,9 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { FileStack, FolderOpen, Loader2, Upload, X } from 'lucide-react'
 import { Button, Card } from '@/components/ui'
 import { FileBoxPicker } from '@/components/files/FileBoxPicker'
 import { FOLLOWED_KINDS } from '@/components/chat/FormChips'
-import { errorCode, formsApi, type FileRow, type FormKind } from '@/lib/api'
+import { errorCode, filesApi, formsApi, type FileRow, type FormKind } from '@/lib/api'
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 import type { Project } from '@/types'
@@ -46,14 +46,36 @@ function summary(row: FileRow, t: (key: string) => string): string {
   return ''
 }
 
-/** 기본 양식 파일: the form each output kind of this project's documents is written on. */
-export function ProjectFormFiles({ project }: { project: Project }) {
+/** The saved form per output kind, with upload, file-box pick and remove. `onSet` stores the
+ *  choice (a project saves at once, an agent's form with the agent). */
+export function FormFilesField({
+  value,
+  rows,
+  onSet,
+}: {
+  value: Partial<Record<FormKind, string | null>>
+  /** Saved form rows already at hand; others are fetched by id. */
+  rows?: FileRow[]
+  onSet: (kind: FormKind, row: FileRow | null) => Promise<void> | void
+}) {
   const t = useT()
-  const updateProject = useStore((s) => s.updateProject)
   const [busy, setBusy] = useState<FormKind | null>(null)
   const [error, setError] = useState('')
   const [picking, setPicking] = useState<FormKind | null>(null)
+  const [known, setKnown] = useState<FileRow[]>(rows ?? [])
   const inputs = useRef<Partial<Record<FormKind, HTMLInputElement | null>>>({})
+  useEffect(() => {
+    if (rows) setKnown((current) => [...rows, ...current.filter((row) => !rows.some((r) => r.id === row.id))])
+  }, [rows])
+  useEffect(() => {
+    // a saved form not at hand (an agent's): read its row for the name and summary
+    for (const id of Object.values(value)) {
+      if (id && !known.some((row) => row.id === id)) {
+        void filesApi.get(id).then((row) => setKnown((current) => [...current, row])).catch(() => {})
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value])
 
   const save = async (kind: FormKind, made: Promise<FileRow>) => {
     setBusy(kind)
@@ -64,7 +86,8 @@ export function ProjectFormFiles({ project }: { project: Project }) {
         setError(t(REFUSALS.form_kind_mismatch))
         return
       }
-      await updateProject(project.id, { formFiles: { [kind]: row.id } })
+      setKnown((current) => [row, ...current])
+      await onSet(kind, row)
     } catch (err) {
       const code = errorCode(err)
       setError(t(REFUSALS[code ?? ''] ?? '양식을 저장하지 못했습니다. 다시 시도하세요.'))
@@ -75,15 +98,9 @@ export function ProjectFormFiles({ project }: { project: Project }) {
 
   const slots = SLOTS.filter((slot) => FOLLOWED_KINDS.includes(slot.kind))
   return (
-    <Card className="space-y-3 p-4" data-testid="project-form-files">
-      <div>
-        <p className="text-base font-medium">{t('기본 양식 파일')}</p>
-        <p className="text-sm text-muted">
-          {t('이 프로젝트에서 만드는 파일이 따를 양식입니다. 대화에 다른 양식을 첨부하면 그 대화에서는 첨부한 것이 우선합니다.')}
-        </p>
-      </div>
+    <div className="space-y-3">
       {slots.map((slot) => {
-        const row = project.formRows?.find((file) => file.id === project.formFiles?.[slot.kind])
+        const row = known.find((file) => file.id === value[slot.kind])
         return (
           <div key={slot.kind} className="space-y-1.5" data-testid={`form-slot-${slot.kind}`}>
             <p className="text-sm font-medium text-muted">{slot.label}</p>
@@ -99,7 +116,7 @@ export function ProjectFormFiles({ project }: { project: Project }) {
                   variant="ghost"
                   className="size-8 px-0"
                   aria-label={t('{name} 양식 빼기').replace('{name}', row.name)}
-                  onClick={() => void updateProject(project.id, { formFiles: { [slot.kind]: null } as never })}
+                  onClick={() => void onSet(slot.kind, null)}
                 >
                   <X size={14} />
                 </Button>
@@ -152,6 +169,29 @@ export function ProjectFormFiles({ project }: { project: Project }) {
           const kind = picking
           setPicking(null)
           if (kind && rows[0]) void save(kind, formsApi.fromFile(rows[0].id))
+        }}
+      />
+    </div>
+  )
+}
+
+/** 기본 양식 파일: the form each output kind of this project's documents is written on. */
+export function ProjectFormFiles({ project }: { project: Project }) {
+  const t = useT()
+  const updateProject = useStore((s) => s.updateProject)
+  return (
+    <Card className="space-y-3 p-4" data-testid="project-form-files">
+      <div>
+        <p className="text-base font-medium">{t('기본 양식 파일')}</p>
+        <p className="text-sm text-muted">
+          {t('이 프로젝트에서 만드는 파일이 따를 양식입니다. 대화에 다른 양식을 첨부하면 그 대화에서는 첨부한 것이 우선합니다.')}
+        </p>
+      </div>
+      <FormFilesField
+        value={project.formFiles ?? {}}
+        rows={project.formRows}
+        onSet={async (kind, row) => {
+          await updateProject(project.id, { formFiles: { [kind]: row ? row.id : null } as never })
         }}
       />
     </Card>

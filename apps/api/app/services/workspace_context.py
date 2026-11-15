@@ -231,8 +231,21 @@ def _with_prompt(agent: Agent, prompt: str) -> Agent:
 
 async def _load_design_system(
     db: AsyncSession, user: User, project: Project | None, agent: Agent | None = None
+):
+    """The design the writers read: the 디자인 지침 of the agent and the project
+    (`design_brief.BriefDesign`, the agent's first); None when neither has one. Themes are no
+    longer read (2026-11-15: their text moved into 디자인 지침, migration 0091)."""
+    from app.services import design_brief
+
+    project_brief = project.design_brief if project is not None and project.user_id == user.id \
+        else ""
+    return design_brief.of(agent.design_brief if agent is not None else "", project_brief)
+
+
+async def _load_theme(
+    db: AsyncSession, user: User, project: Project | None, agent: Agent | None = None
 ) -> DesignSystem | None:
-    """Agent's bound design, else project's; unseen bound design → user's same-named one."""
+    """Agent's bound theme, else project's (kept for old rows; no writer reads it)."""
     if agent is not None and agent.design_system_id:
         row = await db.get(DesignSystem, agent.design_system_id)
         if row is not None and (row.owner_id == user.id or row.shared):
@@ -1357,7 +1370,9 @@ async def assemble(
         doc_format=(
             agent.doc_format if agent is not None and kind is SessionKind.report else None
         ),
-        design_tokens=design_service.tokens_of(design) if design is not None else None,
+        # a 지침 that names no colour, face or look sets no tokens: the writer's own choice
+        design_tokens=design_service.tokens_of(design)
+        if design is not None and design.tokens else None,
         loaded_memories=memory_names,
         total_memories=memory_total,
         attachments=attached_files,

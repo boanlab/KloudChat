@@ -10,7 +10,7 @@ A project is a workspace that binds materials, instructions, and conversations t
 
 ## Creating
 
-Go to the sidebar → **Projects** → New project, then enter a name, a description, and **project instructions**. After creation, the detail screen lets you set the icon, the theme, and the **default template** for each screen. The default template rows are **Report (web · HWP · Word)** and **Slides (web · PowerPoint)**, each with a thumbnail preview. The theme (tone, colors, fonts) applies to every report and slides format, the image gets the style, and audio and video get nothing.
+Go to the sidebar → **Projects** → New project, then enter a name, a description, and **project instructions**. After creation, the detail screen lets you set the icon, the **default form files**, and the **design brief**. You do not pick a structure for reports and slides: it is chosen automatically from the request.
 
 ## Tabs
 
@@ -34,6 +34,12 @@ Describe rules that apply to every conversation, such as "answer in polite langu
 ## Default form files
 
 Upload a PowerPoint or Word form, or pick one from the file box, under **Default form files** beside the project details, and every PowerPoint file and every report written as a Word file in the project follows it. Forms are kept apart from the project's knowledge and are not read as material. An old Hangul file (`.hwp`) cannot be a form: in Hangul, use **Save As › Hangul standard document (*.hwpx)** and upload that.
+
+A new report or slides conversation opened in this project shows a **Project form** chip beside the format chip; ✕ removes it for that conversation only. A form attached to the conversation takes precedence.
+
+## Design brief
+
+The **design brief** is a single text field that describes, in words, how the project's reports and slides look: colors, fonts, how tables are drawn, how much goes on a page. For example: "Navy as the only accent color. Serif body, sans-serif headings. Shade only the header row of tables, no vertical lines." The values read from it appear below the field as **Read as** chips. Text marked (테마에서 옮김) can be edited like any other guidance. When there is a form file, the brief fills only what the form leaves open.
 
 ## Deleting a project
 

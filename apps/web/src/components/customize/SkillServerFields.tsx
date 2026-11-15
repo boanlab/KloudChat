@@ -6,7 +6,6 @@ import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 import type { SkillScript, SkillServer } from '@/types'
 import { GapQuestionsEditor } from '@/components/agents/GapQuestionsEditor'
-import { useStore } from '@/store/useStore'
 import { Block } from './AgentForm'
 
 let cached: Promise<SkillServerCatalogue> | null = null
@@ -234,7 +233,7 @@ export function SkillServerFields({
   )
 }
 
-/** What the skill brings to a turn it is on, as an agent's own fields do: 템플릿, 검사, 빠진 정보 질문, 진행 설정. */
+/** What the skill brings to a turn it is on, as an agent's own fields do: 검사, 빠진 정보 질문, 진행 설정. */
 function DocumentFields({
   value,
   set,
@@ -245,7 +244,6 @@ function DocumentFields({
   catalogue: SkillServerCatalogue
 }) {
   const t = useT()
-  const templates = useStore((s) => s.designTemplates).filter((row) => row.surface === 'report' || row.surface === 'slides')
   const process = value.process ?? {}
   const setProcess = (patch: Partial<NonNullable<SkillServer['process']>>) => {
     const next: Record<string, unknown> = { ...process, ...patch }
@@ -254,16 +252,6 @@ function DocumentFields({
   }
   return (
     <div className="space-y-4 border-t border-line pt-4" data-testid="skill-document-fields">
-      <Field label={t('쓸 템플릿')} hint={t('보고서·발표에서 이 스킬을 켜고 템플릿을 고르지 않았으면 이 템플릿에 씁니다.')}>
-        <Select value={value.template ?? ''} onChange={(e) => set({ template: e.target.value })} data-testid="skill-template">
-          <option value="">{t('정하지 않음')}</option>
-          {templates.map((row) => (
-            <option key={row.id} value={row.id}>
-              {t(row.name)}
-            </option>
-          ))}
-        </Select>
-      </Field>
       {catalogue.checks && (
         <Block label={t('켜면 붙는 검사')} hint={t('이 스킬을 켠 대화에서 서버가 쓰기 전·후에 돌립니다.')}>
           <RefList refs={catalogue.checks} value={value.checks ?? []} onChange={(checks) => set({ checks })} testId="skill-checks" />
@@ -284,7 +272,7 @@ function DocumentFields({
             onChange={(e) => setProcess({ search: e.target.value === '' ? undefined : e.target.value === 'on' })}
             data-testid="skill-search"
           >
-            <option value="">{t('템플릿 설정을 따름')}</option>
+            <option value="">{t('문서 형식 설정을 따름')}</option>
             <option value="on">{t('쓰기 전에 찾아봄')}</option>
             <option value="off">{t('찾지 않음(자료만)')}</option>
           </Select>
@@ -295,7 +283,7 @@ function DocumentFields({
             onChange={(e) => setProcess({ draws: (e.target.value || undefined) as 'auto' | 'when-asked' | undefined })}
             data-testid="skill-draws"
           >
-            <option value="">{t('템플릿 설정을 따름')}</option>
+            <option value="">{t('문서 형식 설정을 따름')}</option>
             <option value="auto">{t('알맞으면 넣음')}</option>
             <option value="when-asked">{t('요청할 때만')}</option>
           </Select>

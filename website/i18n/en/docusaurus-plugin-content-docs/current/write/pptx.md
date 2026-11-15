@@ -4,7 +4,7 @@ title: PowerPoint documents
 
 # PowerPoint documents
 
-Open a PowerPoint editor beside the conversation and fill or edit a PowerPoint file (`.pptx`), such as a deck you received or your company's template, by chat. You can also edit the same file directly in the editor.
+Open a PowerPoint editor beside the conversation and fill or edit a PowerPoint file (`.pptx`), such as a deck you received or your company's form, by chat. You can also edit the same file directly in the editor.
 
 A deck KloudChat writes from scratch is made on the [Slides](slides) screen by default, and it downloads as PPTX too. This page is for when the PowerPoint file itself has to be worked on.
 
@@ -20,7 +20,7 @@ A deck KloudChat writes from scratch is made on the [Slides](slides) screen by d
 - Ask, for example, "Make a five-slide business plan report in PowerPoint", and a deck with a cover and a slide per item (bullets or a table) appears in the editor.
 - Facts you did not give, such as the department, dates, figures or who is responsible, are not invented: they stay as bracket blanks like `[담당자]` or `[YYYY. MM. DD.]`.
 - When you give the facts, the agent reads the file and fills those blanks and lines, table cells and speaker notes. Bullets, levels, character formatting and cell colours stay as they were; only what changed is rewritten.
-- You can add, duplicate, move and delete slides: "add a schedule slide after slide 3", "duplicate slide 2", "delete the last slide". A slide added to a company template or a received file follows that file's layouts and look.
+- You can add, duplicate, move and delete slides: "add a schedule slide after slide 3", "duplicate slide 2", "delete the last slide". A slide added to a company form or a received file follows that file's layouts and look.
 - While the agent edits, the editor is locked; when it saves a version, the editor loads it. The cursor stays in the chat box you were typing in.
 
 ## Writing on a form

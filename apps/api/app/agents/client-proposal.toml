@@ -9,9 +9,13 @@ name = "고객 맞춤 제안서"
 description = "고객사의 RFP·미팅 메모·메일로 그 고객에게 낼 제안서(견적 포함) 초안이 필요할 때"
 kinds = ["report"]
 surface = "report"
-template = "doc-client-proposal"
 doc_format = "client_proposal"
-design = "기본"
+# 디자인 지침 (`design_brief`): the look in words, as a person's agent sets it
+design_brief = """
+- 이모지를 쓰지 않는다.
+- '혁신적', '차별화된', '최적의' 같은 채움말 대신 확인할 수 있는 사실을 쓴다.
+- 쓸 내용이 없으면 분량을 채우지 말고 그 항목을 줄인다.
+"""
 # An empty list denies every tool (report surfaces run the server hooks instead).
 tools = []
 skills = []

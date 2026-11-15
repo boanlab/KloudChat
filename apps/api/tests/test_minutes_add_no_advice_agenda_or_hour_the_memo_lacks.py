@@ -55,7 +55,8 @@ async def test_a_report_only_skill_kept_for_when_needed_runs_on_the_report(db): 
     assert [r.id for r in rows] == [minutes.id]
     assert await workspace_context.agent_skill_rows(db, user.id, agent, "chat") == []
     found = await skill_turn.brought(db, user, session, agent, [])
-    assert found.template == "doc-minutes"
+    # the skill's checks come with it; the 회의록 pattern comes from the format
+    assert "generic-language-killer" in found.checks
 
 
 def test_an_open_flag_the_memo_never_raises_goes_and_a_deadline_flag_stays():

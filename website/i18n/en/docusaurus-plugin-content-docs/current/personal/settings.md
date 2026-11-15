@@ -4,7 +4,7 @@ title: Settings
 
 # Settings
 
-**Settings**, in the account menu, has seven tabs: Profile, Preferences, Personalization, Memory, Themes, API keys and Security.
+**Settings**, in the account menu, has six tabs: Profile, Preferences, Personalization, Memory, API keys and Security.
 
 ## Profile
 
@@ -26,7 +26,7 @@ You can change your name (the password is on the **Security** tab). You can chec
 | Hold Space to dictate | Hold `Space` in an empty composer and speak; on release the words are typed into the box, not sent. Shown only when speech transcription is connected, and off by default. |
 | Token and credit display | Sets whether usage is shown at the bottom of the answer. |
 
-The theme and the language are switched with the buttons at the top right of the screen, not in this tab.
+Light or dark appearance (system, light, dark) and the language are switched with the buttons at the top right of the screen, not in this tab.
 
 ## Text size
 
@@ -45,9 +45,9 @@ The settings apply from the next conversation onward. If an agent or a project h
 
 See and edit what is remembered across conversations. See [Memory](memory.md) for details.
 
-## Themes
+## Document look
 
-A theme is a document's or deck's colours, typeface and writing rules. Make and edit them under **My themes**; **Import from a document** reads a draft from an existing hwpx, docx or pdf. **Shared themes** lists the ones others shared. You pick a theme under **Template & theme** › **Theme** in the agent settings (**Manage themes** beside it opens this tab) and in the report or slides panel's **Edit › Theme**. [Templates and themes](../chat/starters.md)
+Settings has no tab for the look of documents. Set the colours, fonts and table style of reports and slides in words in the **design brief** of a [project](projects.md#design-brief) or an agent, or attach a company form file. The look of a single document is changed with **Look** in the report or slides panel.
 
 ## API keys
 

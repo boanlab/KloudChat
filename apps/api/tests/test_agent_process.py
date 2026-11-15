@@ -94,8 +94,8 @@ def test_the_bases_are_the_offered_agents_with_their_steps_and_bundles():
         assert 1 <= len(base.steps) <= 5
     minutes = bases.get("minutes")
     assert minutes.steps[1] == ("question", "회의 날짜처럼 빠진 정보가 있으면 먼저 물어봅니다")
-    assert (minutes.surface, minutes.doc_format, minutes.template) == (
-        "report", "minutes", "doc-minutes")
+    # templates retired (2026-11-15): the format carries its pattern
+    assert (minutes.surface, minutes.doc_format, minutes.template) == ("report", "minutes", None)
     # 회의록 = 준비 + 검토 (its 형식 검사 checks owners and deadlines) + 마무리 without export.
     assert [b["bundle"] for b in minutes.bundles] == ["prepare", "review", "finish"]
     assert "할 일의 담당자·기한 확인" in minutes.format_checks and minutes.asks
@@ -204,7 +204,7 @@ async def test_a_base_sets_the_bindings_and_ticks_make_and_drop_its_own_pipeline
         assert out["bundles"][2]["items"] == {"plain": True, "export": ""}
         row = await db.get(Agent, made.id)
         assert (row.base_key, row.surface, row.doc_format, row.render_template_id) == (
-            "minutes", "report", "minutes", "doc-minutes")
+            "minutes", "report", "minutes", None)
         # Exactly what the official agent holds: its checks, on the row.
         assert row.check_skills == starter.agent_spec("minutes")["checks"]
         assert row.bundles == starter.agent_spec("minutes")["bundles"]

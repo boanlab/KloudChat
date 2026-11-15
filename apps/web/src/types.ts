@@ -1339,6 +1339,10 @@ export interface Agent {
   docFormat: string | null
   /** Theme; wins over the project's. */
   designSystemId: string | null
+  /** 디자인 지침 over the project's. */
+  designBrief?: string
+  /** 기본 양식 파일 over the project's: output kind → saved form copy id. */
+  formFiles?: Partial<Record<'pptx' | 'docx' | 'hwpx', string | null>>
   /** That design's name, for a viewer who cannot see the row. */
   designName?: string
   temperature: number

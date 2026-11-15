@@ -14,7 +14,7 @@ from app.models.publishing import Publication
 from app.models.user import User, UserRole
 from app.models.workspace import Agent, DesignSystem, Memory, Skill, StoredFile, Visibility
 from app.routers import workspace as ws
-from app.services import design_templates, doc_formats, starter, workspace_context
+from app.services import doc_formats, starter, style_spec, workspace_context
 from app.services.tools import registry
 
 _SHIPPED = {
@@ -35,16 +35,17 @@ _RETIRED = {"career-docs", "client-proposal"}
 _FORMER = {"gaejo-report": ["개조식 보고서", "요약·정리"], "minutes": ["기록 정리"],
            "comparison-report": ["비교·분석 보고서"], "data-analysis": ["데이터 분석"],
            "document": ["문서 작성"]}
+#: surface, format, and the accent its 디자인 지침 names (None: none, the writer's own choice)
 _BINDINGS = {
-    "regulation-guide": ("chat", None, None, "기본"),
-    "client-proposal": ("report", "doc-client-proposal", "client_proposal", "기본"),
-    "gaejo-report": ("report", "doc-gaejo-report", "gaejo", "문서용 명조"),
-    "document": ("report", None, None, "기본"),
-    "minutes": ("report", "doc-minutes", "minutes", "문서용 명조"),
-    "data-analysis": ("chat", None, None, "기본"),
-    "slides": ("slides", None, None, "발표용 청록"),
-    "career-docs": ("chat", "doc-career-history", "career_history", "기본"),
-    "comparison-report": ("report", "doc-comparison", "comparison", "기본"),
+    "regulation-guide": ("chat", None, None),
+    "client-proposal": ("report", "client_proposal", None),
+    "gaejo-report": ("report", "gaejo", "#334155"),
+    "document": ("report", None, None),
+    "minutes": ("report", "minutes", "#334155"),
+    "data-analysis": ("chat", None, None),
+    "slides": ("slides", None, "#0F766E"),
+    "career-docs": ("chat", "career_history", None),
+    "comparison-report": ("report", "comparison", None),
 }
 _TOOLS = {
     "regulation-guide": ["search_knowledge", "calculate", "run_skill_script"],
@@ -88,19 +89,14 @@ def test_each_agent_names_its_tools_and_they_exist(key):
 @pytest.mark.parametrize("key", list(_SHIPPED))
 def test_each_agents_bindings_agree_with_its_kinds_templates_and_formats(key):
     spec = _BY_KEY[key]
-    surface, template_id, format_id, design = _BINDINGS[key]
-    assert (spec["surface"], spec.get("template"), spec.get("doc_format"), spec["design"]) == (
-        surface, template_id, format_id, design
-    )
+    surface, format_id, accent = _BINDINGS[key]
+    # templates and themes are no agent's any more: a format and a 디자인 지침 in words
+    assert "template" not in spec and "design" not in spec
+    assert (spec["surface"], spec.get("doc_format")) == (surface, format_id)
     assert spec["surface"] in spec["kinds"]
-    if template_id:
-        template = design_templates.get(template_id)
-        assert template is not None and template.kind in design_templates.HTML_KINDS
-        assert template.surface.value in spec["kinds"]
-        assert doc_formats.TEMPLATE_FORMATS[template_id] == format_id
+    assert style_spec.parse(spec["design_brief"]).accent == accent
     if format_id:
         assert format_id in doc_formats.BY_ID and "report" in spec["kinds"]
-    assert design in {row["name"] for row in starter._DESIGNS}
     skills = {row["key"]: row for row in starter._SKILLS}
     for skill_key in spec["skills"]:
         skill = skills[skill_key]
@@ -181,30 +177,27 @@ async def test_the_seeder_makes_the_six_agents_for_the_catalogue_owner(db):
     }
     # A retired agent is never seeded afresh.
     assert set(rows) == set(_OFFERED)
-    designs = {
-        row.id: row.name
-        for row in (await db.exec(select(DesignSystem))).all()
-    }
     skills = {row.id: row.catalog_key for row in (await db.exec(select(Skill))).all()}
     for key, agent in rows.items():
         assert not agent.retired
         spec = _BY_KEY[key]
-        surface, template_id, format_id, design = _BINDINGS[key]
+        surface, format_id, accent = _BINDINGS[key]
         assert agent.owner_id == admin.id
         assert agent.visibility is Visibility.org
         assert agent.name == _SHIPPED[key]
         assert agent.tools == _TOOLS.get(key, [])
         assert (agent.surface, agent.render_template_id, agent.doc_format) == (
-            surface, template_id, format_id
+            surface, None, format_id
         )
-        assert designs[agent.design_system_id] == design
+        assert agent.design_system_id is None
+        assert style_spec.parse(agent.design_brief).accent == accent
         assert [skills[i] for i in agent.skill_ids] == spec["skills"]
         assert agent.system_prompt == spec["system_prompt"]
         # What the agent API would accept for these values.
         await ws._validate_agent_bindings(db, admin, {
             "kinds": agent.kinds, "surface": agent.surface,
-            "render_template_id": agent.render_template_id, "doc_format": agent.doc_format,
-            "design_system_id": agent.design_system_id,
+            "render_template_id": None, "doc_format": agent.doc_format,
+            "design_system_id": None,
         })
     assert rows["minutes"].slug == "회의록-2" and own.slug == "회의록"
     # Idempotent.
@@ -235,27 +228,14 @@ async def test_a_career_docs_report_session_gets_the_report_part_of_the_prompt(d
 
 
 @pytest.mark.asyncio
-async def test_a_user_running_a_seeded_agent_wears_their_own_design_of_that_name(db, monkeypatch):
+async def test_a_user_running_a_seeded_agent_takes_its_design_brief(db, monkeypatch):
     admin = await _admin(db)
     await starter.sync_catalog(db, admin)
     user = User(email="lineup-user@example.com", name="User", password_hash="x")
-    bare = User(email="lineup-bare@example.com", name="Bare", password_hash="x")
-    db.add_all([user, bare])
-    await db.commit()
-    await starter.seed_designs(db, user.id)
+    db.add(user)
     await db.commit()
     agent = (await db.exec(select(Agent).where(Agent.catalog_key == "gaejo-report"))).one()
-    own = (
-        await db.exec(
-            select(DesignSystem).where(
-                DesignSystem.owner_id == user.id, DesignSystem.name == "문서용 명조"
-            )
-        )
-    ).one()
-    assert agent.design_system_id != own.id
-
-    # The shared original and a copy installed before it was withdrawn both resolve to the
-    # user's own row.
+    # the shared original and a copy installed before it was withdrawn read the same 지침
     with monkeypatch.context() as before:
         before.setattr(starter, "withdrawn_agents", frozenset)
         copy = await ws.install_agent(agent.id, user, db)
@@ -264,15 +244,10 @@ async def test_a_user_running_a_seeded_agent_wears_their_own_design_of_that_name
         db.add(session)
         await db.commit()
         design = await workspace_context.design_for(db, user, session)
-        assert design is not None and design.id == own.id
-    listed = {row.id: row for row in await ws.list_agents(user, db)}
-    assert agent.id not in listed and listed[copy.id].design_name == "문서용 명조"
-
-    # Someone holding no design of that name gets none.
-    session = ChatSession(user_id=bare.id, agent_id=agent.id, kind=SessionKind.report)
-    db.add(session)
-    await db.commit()
-    assert await workspace_context.design_for(db, bare, session) is None
+        assert design is not None and design.tokens["accent"] == "#334155"
+        assert design.tokens["font"] == "serif"
+    # no theme rows are made for anyone
+    assert not (await db.exec(select(DesignSystem))).all()
 
 
 @pytest.mark.asyncio

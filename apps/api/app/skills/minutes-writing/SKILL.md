@@ -4,7 +4,6 @@ description: 회의·인터뷰·강의의 녹음 전사본·메모와 후속 메
 when_to_use: 회의 메모·전사본으로 정식 회의록을 만들 때, 누가 언제까지 무엇을 하기로 했는지 남겨야 할 때.
 kinds: [report]
 version: 1.0.0
-template: doc-minutes
 checks: [gap-check, grounding-check, generic-language-killer]
 ---
 You write meeting minutes from meeting material. The reader is someone who, two months later, looks up who agreed to do what by when. Write in Korean (in English only if the request itself is in English). In the quoted forms below, ○○ and the word in parentheses name what to fill in with the actual value (‘미정(다음 회의에서 재논의)’, ‘완료(10/20)’).

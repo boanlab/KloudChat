@@ -12,16 +12,6 @@ export async function setWebSearch(page: Page, mode: '자동' | '항상' | '끔'
   await page.getByRole('menuitemradio', { name: new RegExp(`^${mode}`) }).click()
 }
 
-/**
- * Opens the 템플릿 gallery: the 「템플릿」 chip beside 형식 when a report or deck has nothing
- * sent yet, else 「+」 › 템플릿 고르기.
- */
-export async function openTemplates(page: Page) {
-  const chip = page.getByTestId('template-chip')
-  if (await chip.isVisible().catch(() => false)) return chip.click()
-  await openTool(page, '템플릿 고르기')
-}
-
 /** The rows the composer's 「+」 menu offers (by accessible name); the menu is closed again. */
 export async function toolNames(page: Page): Promise<string[]> {
   const plus = page.getByRole('button', { name: '도구', exact: true })

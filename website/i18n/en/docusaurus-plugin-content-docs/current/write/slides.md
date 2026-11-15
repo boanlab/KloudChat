@@ -6,7 +6,7 @@ title: Writing slides
 
 On the home screen, select **Slides** and enter the presentation topic and the audience. The procedure is the same as for a report. It runs through clarifying questions, the **structure check**, the **Add pictures?** card, and then writing slide by slide.
 
-Choose **Web slides** or **PowerPoint** with the **Format** chip above the prompt box (the same in a new conversation, one started from a project or an agent, or one reopened from history). When you pick PowerPoint, a **Start blank** button appears, and the turn makes a PowerPoint file and fills it using the slides template you picked and the project theme. You edit the file in the [PowerPoint editor](pptx). The **Template** chip shows the name of the chosen template (or **Default**) and opens the template gallery; press × to start without a template. Opening `/new/slides?format=pptx` preselects the format. What follows describes web slides.
+Choose **Web slides** or **PowerPoint** with the **Format** chip above the prompt box (the same in a new conversation, one started from a project or an agent, or one reopened from history). When you pick PowerPoint, a **Start blank** button appears, and the turn makes a PowerPoint file and fills it. You edit the file in the [PowerPoint editor](pptx). Attach a PowerPoint form (`.pptx`, `.potx`), or keep one in the project's or agent's **Default form files**, and the deck is made on that form ([Writing on a form](pptx#writing-on-a-form)). A project form shows as a **Project form** chip beside the format chip; ✕ removes it for this conversation only. The deck's purpose pattern (internal briefing, case presentation, review presentation, proposal presentation, lecture material) is chosen automatically from the words of the request. Opening `/new/slides?format=pptx` preselects the format. What follows describes web slides.
 
 ![A finished slide deck](/img/guide/slides.png)
 
@@ -15,7 +15,7 @@ Choose **Web slides** or **PowerPoint** with the **Format** chip above the promp
 - Slide titles and their order
 - **How will this be used?**: presenting with narration, or handing over the material only
 
-The theme of web slides is not chosen on the structure card. After writing, choose it in the panel from editorial, minimal, poster, split, dark, steel, warm, pastel, forest, academic, and monochrome.
+The look of web slides is not chosen on the structure card. After writing, choose it in the panel from editorial, minimal, poster, split, dark, steel, warm, pastel, forest, academic, and monochrome.
 
 ## Setting the number of slides
 
@@ -31,9 +31,9 @@ If the deck runs to more than 6 slides, a table of contents is inserted as the s
 
 The model chooses the type that suits the content. It uses cover, table of contents, item list, table (comparison), metrics (key figures), chart (when the material contains figures), diagram (flow and structure), and closing. You can set them in your request, for example "use a table for the comparison" or "include a flow chart". The server draws diagrams as shapes, and a PPTX export carries them as editable PowerPoint shapes. A slide whose title names a structure, a relationship or a flow ("Overall structure", "Object relationships", "Request flow") gets a diagram even when the request never says "diagram", and a relationship is drawn as lines named with each relation rather than as a chain of arrows. After the deck is made, "turn slide 4 into a structure diagram" redraws that slide as one. A deck written in English gets English diagram labels and captions.
 
-## Changing the theme
+## Changing the look
 
-In the panel's **Edit › Theme** tab you can change the theme and the accent color, and run **Redo this slide**. If a theme is linked to the project, the deck follows its colors and typefaces.
+In the panel's **Look** menu you can change the look and the accent color, and run **Redo this slide**. If the project or agent has a [design brief](../personal/projects.md#design-brief), the deck follows its colors and typefaces.
 
 ## Presentation mode
 
@@ -41,7 +41,7 @@ Switch to full screen from **Slide show** in the ribbon. Move between slides wit
 
 ## Export
 
-In **File → Export**, choose PowerPoint (PPTX), PDF (for presenting), or text (with notes). If there are slides at overflow risk, slides whose evidence needs checking, or unresolved review notes, it tells you before exporting. **Copy the script** copies the slide body text and the speaker notes at once. The dark impression applies to PPTX only, and PDF is output on a light background. To fill and edit a received `.pptx` or a company template as it is, use [PowerPoint documents](pptx).
+In **File → Export**, choose PowerPoint (PPTX), PDF (for presenting), or text (with notes). If there are slides at overflow risk, slides whose evidence needs checking, or unresolved review notes, it tells you before exporting. **Copy the script** copies the slide body text and the speaker notes at once. The dark impression applies to PPTX only, and PDF is output on a light background. To fill and edit a received `.pptx` or a company form as it is, use [PowerPoint documents](pptx).
 
 ## Revising
 

@@ -51,7 +51,7 @@ export function InheritedQuestions({ rows, labels }: { rows: GapQuestion[]; labe
   if (rows.length === 0) return null
   return (
     <div className="space-y-1.5" data-testid="gap-inherited">
-      <p className="text-sm font-medium text-muted">{t('템플릿·기본 과정이 묻는 질문')}</p>
+      <p className="text-sm font-medium text-muted">{t('문서 형식·기본 과정이 묻는 질문')}</p>
       <ul className="space-y-1">
         {rows.map((q) => (
           <li key={q.id} className="rounded-control border border-line bg-elevated px-3 py-2">
