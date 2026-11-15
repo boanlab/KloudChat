@@ -463,7 +463,8 @@ class Outline(Base):
         # keeps its fixed shape
         instructed = report.instructed_sections(
             "\n".join(workspace_context.standing_of(req.trusted)))
-        fixed = report.given_outline(request) or (
+        # a Word form's chapters, then a pasted outline, then the agent's order
+        fixed = list(req.form_outline) or report.given_outline(request) or (
             (instructed or list(bundle.spec.settings.outline)) if not wanted else []
         )
         if fixed:

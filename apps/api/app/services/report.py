@@ -3817,6 +3817,8 @@ async def write(
     template_id: str | None = None,
     #: agent's `doc_formats` id when the 서식 fixes none
     format_id: str | None = None,
+    #: the Word form's chapters (`form_files.outline`): the fixed 목차
+    form_outline: list[str] | None = None,
     design_tokens: dict[str, str] | None = None,
     #: agent's 진행 과정 설정, over its 서식's
     process: dict[str, Any] | None = None,
@@ -3848,7 +3850,8 @@ async def write(
         untrusted_context=untrusted_context, outline_model=outline_model,
         approved_plan=approved_plan, may_ask=may_ask, figures_plan=figures_plan,
         image_model=image_model, auto_image_model=auto_image_model, web_search=web_search,
-        project_sources=project_sources, template_id=template_id, format_id=format_id, design_tokens=design_tokens,
+        project_sources=project_sources, template_id=template_id, format_id=format_id,
+        form_outline=list(form_outline or []), design_tokens=design_tokens,
         check_keys=check_keys, turn=dict(turn or {}), session_id=session_id,
         derived=list(derived_context or []), tool_outputs=list(tool_outputs or []),
         check_options=dict(check_options or {}), skill_specs=dict(skill_specs or {}),

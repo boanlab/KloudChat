@@ -1083,6 +1083,8 @@ export interface DocxArtifact extends ArtifactBase {
   size: number
   /** Body text, for search and cards. */
   text?: string
+  /** The Word form (양식) this version was written on (`form_marks`). */
+  form?: FollowedForm
 }
 
 /** A PowerPoint deck: the file itself is fetched per version (`artifactsApi.documentFile`). */

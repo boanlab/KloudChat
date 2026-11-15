@@ -35,6 +35,8 @@ class Request:
     project_sources: list[dict[str, Any]] | None = None
     template_id: str | None = None
     format_id: str | None = None
+    #: chapters of the Word form the report is written on (`form_files.outline`): the 목차
+    form_outline: list[str] = field(default_factory=list)
     design_tokens: dict[str, str] | None = None
     check_keys: tuple[str, ...] | None = None
     #: `check_skills.options_for` trace strictness

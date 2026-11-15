@@ -1051,13 +1051,21 @@ export function Composer({
     (fresh && !projectTemplateOff ? designTemplates.find((row) => row.surface === kind && row.id === project?.renderTemplates?.[kind]) : undefined) ??
     null
   blankTemplate.current = shownTemplate?.surface === 'slides' ? shownTemplate.id : undefined
-  // An attached PowerPoint form makes the deck a PowerPoint file written on it.
-  const attachedForm = attachments.find((file) =>
-    followable(file) && file.form?.kind === 'pptx' && formRoleOf(file, formRoles[file.id]) === 'form')
-  const savedForm = kind === 'slides' && !attachedForm && !session?.formFiles?.pptx
-    ? project?.formRows?.find((row) => row.id === project?.formFiles?.pptx)
+  // An attached form makes the document that kind of file, written on it: a deck a
+  // PowerPoint file, a report a Word file.
+  const formKind: FormKind | null = kind === 'slides' ? 'pptx' : kind === 'report' ? 'docx' : null
+  const attachedForm = formKind ? attachments.find((file) =>
+    followable(file) && file.form?.kind === formKind && formRoleOf(file, formRoles[file.id]) === 'form') : undefined
+  const formOutput = attachedForm ? (formKind === 'pptx' ? 'pptx' : 'docx') : null
+  // The saved form the document follows: a deck's always, a report's when it is a Word file.
+  const savedKind: FormKind | null = kind === 'slides' ? 'pptx'
+    : kind === 'report' && (formOutput ?? output ?? detectedOutput) === 'docx' ? 'docx' : null
+  const savedForm = savedKind && !attachedForm && !session?.formFiles?.[savedKind]
+    ? project?.formRows?.find((row) => row.id === project?.formFiles?.[savedKind])
     : undefined
-  const savedFormOff = savedFormsOff ? savedFormsOff.includes('pptx') : session?.formFiles?.pptx === ''
+  const savedFormOff = savedKind
+    ? savedFormsOff ? savedFormsOff.includes(savedKind) : session?.formFiles?.[savedKind] === ''
+    : false
   // Same gate as the gallery button.
   const hasTemplates =
     offersTemplates(kind) && designTemplates.some((row) => row.surface === kind)
@@ -1853,8 +1861,8 @@ export function Composer({
       // a file picked beside the surface chips; else the server reads the request
       // PowerPoint for a deck is the same send: the server makes the blank file the turn fills.
       outputFormat: !fresh ? undefined
-        : kind === 'report' ? (output as ReportOutput | null) ?? undefined
-          : kind === 'slides' && (attachedForm || (output ?? detectedOutput) === 'pptx') ? 'pptx' : undefined,
+        : kind === 'report' ? (formOutput as ReportOutput | null) ?? (output as ReportOutput | null) ?? undefined
+          : kind === 'slides' && (formOutput || (output ?? detectedOutput) === 'pptx') ? 'pptx' : undefined,
       // Sending from /new/:kind creates a session; the URL has to follow it.
       onSession: (id) => {
         landedSessionId = id
@@ -2706,9 +2714,7 @@ export function Composer({
           <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-2.5 py-2">
             <OutputOptions
               surface={outputSurface}
-              shown={outputSurface === 'slides' && attachedForm
-                ? 'pptx'
-                : output ?? detectedOutput ?? (outputSurface === 'report' ? 'web' : 'deck')}
+              shown={formOutput ?? output ?? detectedOutput ?? (outputSurface === 'report' ? 'web' : 'deck')}
               onPick={onPickOutput}
               onBlank={onBlankDocument}
               opening={openingDocument}
@@ -2750,9 +2756,10 @@ export function Composer({
             {savedForm && (
               <SavedFormChip
                 name={savedForm.name}
+                kind={savedKind ?? 'pptx'}
                 source="project"
                 off={savedFormOff}
-                onOff={(off) => setSavedFormsOff(off ? ['pptx'] : [])}
+                onOff={(off) => setSavedFormsOff(off && savedKind ? [savedKind] : [])}
               />
             )}
           </div>

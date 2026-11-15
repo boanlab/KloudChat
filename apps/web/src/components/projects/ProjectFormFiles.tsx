@@ -35,6 +35,14 @@ function summary(row: FileRow, t: (key: string) => string): string {
       form.size,
     ].filter(Boolean).join(' · ')
   }
+  if (form.kind === 'docx') {
+    return [
+      form.sections ? t('장 {n}개').replace('{n}', String(form.sections)) : t('장 제목 스타일 없음'),
+      form.header && t('머리글'),
+      form.cover && t('표지'),
+      form.fields ? t('채울 칸 {n}개').replace('{n}', String(form.fields)) : '',
+    ].filter(Boolean).join(' · ')
+  }
   return ''
 }
 
@@ -109,7 +117,13 @@ export function ProjectFormFiles({ project }: { project: Project }) {
                 {busy === slot.kind ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
                 {row ? t('바꾸기') : t('올리기')}
               </Button>
-              <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => setPicking(slot.kind)}>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={busy !== null}
+                aria-label={t('{kind} 양식을 파일함에서 고르기').replace('{kind}', slot.label)}
+                onClick={() => setPicking(slot.kind)}
+              >
                 <FolderOpen size={13} />
                 {t('파일함에서 고르기')}
               </Button>

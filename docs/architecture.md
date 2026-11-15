@@ -1850,8 +1850,8 @@ the slide.
 ### Form files (양식)
 
 A form file is an Office file whose look and slots a document is written into, as opposed to
-material that is read. It replaces templates for the look of PowerPoint output (Word and HWPX
-follow in later steps).
+material that is read. It replaces templates for the look of PowerPoint and Word output (HWPX follows in a later
+step).
 
 - **Profile on upload.** `services/form_profile.py` reads an Office upload once by code and
   stores `files.form_profile`: a PowerPoint's slide size, theme fonts and colours, and every
@@ -1876,6 +1876,16 @@ follow in later steps).
   the theme. The form's sample slides go and its slide size stays. Used by the PowerPoint tools
   (`pptx_write`, the blank deck a slides conversation starts) and by a web deck's `.pptx`
   download.
+- **Writing on a Word form.** `services/docx_form.py` sets the form's body aside and writes the
+  report into the emptied form with `report_export.to_docx(form_mode=True)` (the form's styles,
+  page and type; a house style the form lacks is added on the form's look, and the house
+  headings take the form's heading styles). The form's body comes back: the cover before the
+  first chapter is kept with its label cells filled from the report head, and under each form
+  chapter (heading 1) the report's chapter of the same name replaces the guidance. A chapter
+  the form lacks is added in the form's heading style, its typed number running on. The
+  planner takes the form's chapters as the fixed 목차 (`Request.form_outline`), and the writer
+  is told the form is not a source (`form_files.writer_note`). `report_office.file_bytes` uses it
+  for a report stored as a Word file.
 - **The mark.** `services/form_marks.py` writes what was followed (form, source, layouts used,
   stand-ins) into the file's custom properties; `pptx_doc.describe` puts it on the artifact,
   and the answer's card shows 「양식을 따름」 from it.

@@ -364,6 +364,15 @@ async def _web_edit_target(db: AsyncSession, session: ChatSession,
     return found
 
 
+def _form_kinds_of(kind: SessionKind, output: str | None, request: str) -> tuple[str, ...]:
+    """The form kinds a turn's document can follow: a deck's PowerPoint, a Word report's."""
+    if kind is SessionKind.slides:
+        return ("pptx",)
+    if kind is SessionKind.report and _report_output(output or "", request) == "docx":
+        return ("docx",)
+    return ()
+
+
 async def _turn_forms(db: AsyncSession, user: User, session: ChatSession,
                       payload: SendMessage) -> form_files.TurnForms:
     """This turn's attached forms: the attachments' roles (the chip's, else the file's profile
@@ -4522,7 +4531,10 @@ async def _store_office_report(
     save made while the turn wrote (the version moved past `base`) is not overwritten: the
     file is kept apart as a new document and `drafted` says so."""
     service = hwp_doc if kind is ArtifactKind.hwp else docx_doc
-    blob = await report_office.write(kind, title, data)
+    # a Word report follows the conversation's Word form (`docx_form`)
+    form = await form_files.for_session(db, session, "docx") \
+        if kind is ArtifactKind.docx else None
+    blob = await report_office.write(kind, title, data, form=form)
     current = await db.get(Artifact, session.artifact_id) if session.artifact_id else None
     if current is not None and current.kind is kind and current.session_id == session.id:
         expected = (base or {}).get("version") if (base or {}).get("artifactId") == current.id \
@@ -5058,6 +5070,10 @@ async def _send_message(
                 and "pptx" in turn_forms.forms and turn_forms.forms["pptx"].source == "attached"):
             # a PowerPoint form makes the deck a PowerPoint file
             payload = payload.model_copy(update={"output_format": "pptx"})
+        if (session.kind is SessionKind.report and payload.output_format is None
+                and "docx" in turn_forms.forms and turn_forms.forms["docx"].source == "attached"):
+            # a Word form makes the report a Word file
+            payload = payload.model_copy(update={"output_format": "docx"})
     if published is None and payload.output_format == "pptx" and not session.pending:
         await _pptx_surface(db, user, session)
     #: the surface this turn runs as: a report written as an HWP or Word file is worked on from
@@ -6138,9 +6154,9 @@ async def _send_message(
             privacy_resolution.routing if privacy_resolution else document_routing
         )
     else:
-        if turn_forms is not None and kind is SessionKind.slides:
-            # the saved form the deck follows, named on the question
-            for form_kind in form_files.FOLLOWED:
+        if turn_forms is not None and kind in (SessionKind.slides, SessionKind.report):
+            # the saved form the document follows, named on the question
+            for form_kind in _form_kinds_of(kind, payload.output_format, content):
                 saved = await form_files.for_session(db, session, form_kind, agent=agent_row)
                 if saved is not None and saved.choice.source != "attached":
                     turn_forms.forms.setdefault(form_kind, saved.choice)
@@ -9440,6 +9456,16 @@ async def _run_report(
     )
     # the document as this turn found it: what it writes is saved only onto that version
     turn["base"] = await _document_base(session_id) if writing else {}
+    #: a Word report on a Word form: the form's chapters are its 목차
+    form_outline: list[str] = []
+    if office == "docx":
+        async with SessionLocal() as form_db:
+            form_session = await form_db.get(ChatSession, session_id)
+            form = await form_files.for_session(form_db, form_session, "docx") \
+                if form_session is not None else None
+        if form is not None:
+            form_outline = form_files.outline(form)
+            trusted_context = [*(trusted_context or []), form_files.writer_note(form)]
     #: stream output, for writers that don't store their own result
     told: dict[str, Any] = {}
 
@@ -9468,6 +9494,7 @@ async def _run_report(
             project_sources=project_sources,
             template_id=template.id if template else None,
             format_id=format_id,
+            form_outline=form_outline,
             design_tokens=design_tokens,
             check_keys=check_keys,
             check_options=check_options,

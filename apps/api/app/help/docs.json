@@ -1026,7 +1026,7 @@
 "path": "personal/projects",
 "title": "프로젝트",
 "heading": "기본 양식 파일",
-"text": "프로젝트 정보 옆의 **기본 양식 파일**에 PowerPoint 양식을 올리거나 파일함에서 고르면, 이 프로젝트에서 만드는 PowerPoint 파일이 그 양식을 따릅니다. 양식은 프로젝트 지식과 따로 보관되어 자료로 읽히지 않습니다. 예전 한글 형식(`.hwp`)은 양식으로 쓸 수 없으니 한글에서 **다른 이름으로 저장 › 한글 표준 문서 (*.hwpx)**로 저장해 올립니다."
+"text": "프로젝트 정보 옆의 **기본 양식 파일**에 PowerPoint·Word 양식을 올리거나 파일함에서 고르면, 이 프로젝트에서 만드는 PowerPoint 파일과 Word로 쓰는 보고서가 그 양식을 따릅니다. 양식은 프로젝트 지식과 따로 보관되어 자료로 읽히지 않습니다. 예전 한글 형식(`.hwp`)은 양식으로 쓸 수 없으니 한글에서 **다른 이름으로 저장 › 한글 표준 문서 (*.hwpx)**로 저장해 올립니다."
 },
 {
 "lang": "ko",
@@ -1356,6 +1356,13 @@
 "title": "Word 문서",
 "heading": "챗으로 쓰고 고치기",
 "text": "- \"직원 연수 참석을 요청하는 공문을 Word로 작성해 주세요\"처럼 요청하면 공문 형식(수신·발신·시행일 표, 제목, 1. 가. 항목, 끝.)의 문서가 편집기에 나타납니다.\n- 요청에 없는 기관명, 날짜, 장소 같은 사실은 지어내지 않고 `[기관명]`, `[YYYY. MM. DD.]`처럼 대괄호 빈칸으로 남깁니다.\n- 사실을 알려 주면 에이전트가 문서를 읽고 빈칸과 해당 줄을 채웁니다. 문단 스타일, 번호 매기기, 글자 모양, 표 칸의 서식은 그대로 유지됩니다. Word가 한 줄을 여러 조각으로 나눠 저장한 경우에도 빈칸을 찾아 채웁니다.\n- 머리글·바닥글에 있는 빈칸도 채웁니다. 쪽 번호 같은 필드는 그대로 둡니다.\n- 답변 위의 처리 과정에는 \"문서 확인 2회 · 문서 편집 2회\"처럼 문서를 읽고 고친 횟수가 표시됩니다.\n- 에이전트가 문서를 고치는 동안 편집기는 잠기고, 고친 판이 저장되면 편집기가 그 판을 불러옵니다."
+},
+{
+"lang": "ko",
+"path": "write/docx",
+"title": "Word 문서",
+"heading": "양식에 맞춰 쓰기",
+"text": "- 회사나 기관의 Word 양식(`.docx`, `.dotx`)을 보고서 대화에 첨부하면 첨부 칩에 **양식**으로 표시되고, 보고서는 Word 파일로 그 양식 위에 쓰입니다. 판단이 틀리면 칩에서 **자료**로 바꿉니다.\n- 양식의 스타일·번호·머리글과 바닥글·쪽 설정·표지가 그대로 남습니다. 양식의 장 제목(제목 1)이 보고서의 목차가 되고, 각 장의 내용은 양식의 같은 이름 장 아래에 들어갑니다. 장 아래의 「※ 작성요령」 같은 안내 글은 지웁니다.\n- 표지의 「사업명」, 「기관명」, 「작성일」 같은 칸은 보고서 머리의 값으로 채웁니다. 모르는 값은 빈칸으로 남습니다.\n- 양식에 없는 장을 써야 하면 양식의 장 제목 모양으로 끝에 덧붙이고, **양식을 따름** 줄에 그렇게 했다고 적습니다. 장 제목 스타일이 없는 양식은 양식 뒤에 보고서를 이어 씁니다.\n- 프로젝트의 **기본 양식 파일**에 Word 양식을 두면, 그 프로젝트에서 Word로 쓰는 보고서가 늘 그 양식을 따릅니다."
 },
 {
 "lang": "ko",
@@ -2692,7 +2699,7 @@
 "path": "personal/projects",
 "title": "Projects",
 "heading": "Default form files",
-"text": "Upload a PowerPoint form, or pick one from the file box, under **Default form files** beside the project details, and every PowerPoint file made in the project follows it. Forms are kept apart from the project's knowledge and are not read as material. An old Hangul file (`.hwp`) cannot be a form: in Hangul, use **Save As › Hangul standard document (*.hwpx)** and upload that."
+"text": "Upload a PowerPoint or Word form, or pick one from the file box, under **Default form files** beside the project details, and every PowerPoint file and every report written as a Word file in the project follows it. Forms are kept apart from the project's knowledge and are not read as material. An old Hangul file (`.hwp`) cannot be a form: in Hangul, use **Save As › Hangul standard document (*.hwpx)** and upload that."
 },
 {
 "lang": "en",
@@ -3022,6 +3029,13 @@
 "title": "Word documents",
 "heading": "Writing and editing by chat",
 "text": "- Ask, for example, \"Write an official letter in Word asking staff to attend a training\", and a document in the official-letter layout (recipient/sender/date table, title, numbered items, 끝.) appears in the editor.\n- Facts you did not give, such as the organisation, dates or place, are not invented: they stay as bracket blanks like `[기관명]` or `[YYYY. MM. DD.]`.\n- When you give the facts, the agent reads the document and fills those blanks and lines. Paragraph styles, numbering, character formatting and table cell formatting stay as they were. A blank is found even when Word stored the line in several pieces.\n- Blanks in headers and footers are filled too; fields such as page numbers are left as they are.\n- The steps above the answer show how often the document was read and edited, for example \"Check document 2 calls · Edit document 2 calls\".\n- While the agent edits, the editor is locked; when it saves a version, the editor loads it."
+},
+{
+"lang": "en",
+"path": "write/docx",
+"title": "Word documents",
+"heading": "Writing on a form",
+"text": "- Attach a company or agency Word form (`.docx`, `.dotx`) in a report conversation and its chip says **Form**: the report is written as a Word file on that form. If it guessed wrong, switch the chip to **Material**.\n- The form's styles, numbering, header and footer, page setup and cover stay. Its chapter headings (Heading 1) become the report's outline, and each chapter is written under the form's chapter of the same name. Guidance under a chapter, such as \"※ 작성요령\", is removed.\n- Cover cells such as \"사업명\", \"기관명\" and \"작성일\" take the report head's values; an unknown value stays blank.\n- A chapter the form has no place for is added at the end in the form's chapter heading style, and the **Followed the form** line says so. A form with no chapter heading style gets the report after its own content.\n- Put a Word form in the project's **Default form files** and every report written as a Word file in that project follows it."
 },
 {
 "lang": "en",

@@ -6,7 +6,7 @@ import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 
 /** Output kinds whose writer follows a form so far (`form_files.FOLLOWED`). */
-export const FOLLOWED_KINDS: readonly FormKind[] = ['pptx']
+export const FOLLOWED_KINDS: readonly FormKind[] = ['pptx', 'docx']
 
 /** Whether a file can be followed as a form at all. */
 export function followable(file: FileRow): boolean {
@@ -68,11 +68,13 @@ export function FormRoleToggle({
 /** The project's (or agent's) saved form for this output, with ✕ to leave it off for this conversation. */
 export function SavedFormChip({
   name,
+  kind,
   source,
   off,
   onOff,
 }: {
   name: string
+  kind: FormKind
   source: 'project' | 'agent'
   off: boolean
   onOff: (off: boolean) => void
@@ -98,7 +100,9 @@ export function SavedFormChip({
     <span
       data-testid="saved-form-chip"
       className="flex h-8 max-w-[18rem] items-center gap-1.5 rounded-control border border-accent/40 bg-accent-soft pl-2.5 pr-1 text-sm text-accent"
-      title={t('이 대화의 PowerPoint 파일은 이 양식에 맞춰 씁니다')}
+      title={kind === 'docx'
+        ? t('이 대화의 Word 파일은 이 양식에 맞춰 씁니다')
+        : t('이 대화의 PowerPoint 파일은 이 양식에 맞춰 씁니다')}
     >
       <FileStack size={13} />
       <span className="text-xs">{from}</span>
@@ -144,7 +148,31 @@ export function FollowedFormLine({ form }: { form: FollowedForm }) {
         <span className="min-w-0 truncate">· {form.name} ({t(SOURCES[form.source])})</span>
         <ChevronDown size={13} className={cn('ml-auto shrink-0 transition-transform', open && 'rotate-180')} />
       </button>
-      {open && (
+      {open && form.kind === 'docx' && (
+        <ul className="mt-1.5 list-disc space-y-0.5 pl-5">
+          <li>{t('스타일·번호·머리글/바닥글·표지: 양식 그대로')}</li>
+          {(followed.chapters ?? []).length > 0 && (
+            <li>{t('양식의 장에 맞춰 씀: {list}').replace('{list}', (followed.chapters ?? []).join(', '))}</li>
+          )}
+          {(followed.filled ?? []).length > 0 && (
+            <li>{t('표지 칸 채움: {list}').replace('{list}', (followed.filled ?? []).join(', '))}</li>
+          )}
+          {(followed.guidanceRemoved ?? 0) > 0 && (
+            <li>{t('작성요령 {n}줄 지움').replace('{n}', String(followed.guidanceRemoved))}</li>
+          )}
+          {(followed.added ?? []).map((name) => (
+            <li key={`added-${name}`} className="text-warn">
+              {t('양식에 없는 「{name}」 장은 양식의 장 제목 모양으로 덧붙임').replace('{name}', name)}
+            </li>
+          ))}
+          {(followed.unwritten ?? []).map((name) => (
+            <li key={`unwritten-${name}`} className="text-warn">
+              {t('「{name}」 장은 쓸 내용이 없어 제목만 남김').replace('{name}', name)}
+            </li>
+          ))}
+        </ul>
+      )}
+      {open && form.kind !== 'docx' && (
         <ul className="mt-1.5 list-disc space-y-0.5 pl-5">
           <li>{t('슬라이드 마스터·테마 글꼴·테마 색: 양식 그대로')}{followed.size ? ` (${followed.size})` : ''}</li>
           {layouts.length > 0 && (
