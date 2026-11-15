@@ -113,16 +113,18 @@ function useHomeAfterApproval(status: string | undefined) {
   }, [status, navigate])
 }
 
-/** Sign-in lands where this account may go, not on the previous user's address. */
-function useLandingAfterSignIn(authenticated: boolean, role: string | undefined) {
+/** Sign-in lands where this account may go, not on the previous user's address. Restoring a
+ *  session on load is not a sign-in: an admin address typed by a member shows 접근 제한. */
+function useLandingAfterSignIn(authenticated: boolean, authLoading: boolean, role: string | undefined) {
   const navigate = useNavigate()
-  const was = useRef(authenticated)
+  // The login screen was on show: signed out and not still restoring.
+  const was = useRef(!authenticated && !authLoading)
   useEffect(() => {
-    const signedIn = !was.current && authenticated
-    was.current = authenticated
+    const signedIn = was.current && authenticated
+    was.current = !authenticated && !authLoading
     if (!signedIn || !role) return
     if (window.location.pathname.startsWith('/admin') && role !== 'admin') navigate('/', { replace: true })
-  }, [authenticated, role, navigate])
+  }, [authenticated, authLoading, role, navigate])
 }
 
 /** Share link; a members-only link offers 로그인 in place, same address. */
@@ -180,7 +182,7 @@ function Authenticated() {
   const role = useStore((s) => s.user?.role)
   useAllowanceRefresh()
   useHomeAfterApproval(status)
-  useLandingAfterSignIn(authenticated, role)
+  useLandingAfterSignIn(authenticated, authLoading, role)
 
   if (authLoading) return <Spinner />
 

@@ -269,7 +269,7 @@ export function HistoryPage() {
       <PageBody>
       <h1 className="text-2xl font-semibold tracking-tight" data-history-top="">{t('대화 기록')}</h1>
       <p className="mt-1 text-base text-muted" data-history-total="">
-        {everyone === null
+        {!everyone
           ? t('삭제한 대화는 되돌릴 수 없고, 그 대화에서 만든 아티팩트도 함께 지워집니다.')
           : t('대화 {n}개가 있습니다. 삭제한 대화는 되돌릴 수 없고, 그 대화에서 만든 아티팩트도 함께 지워집니다.').replace(
               '{n}',
@@ -277,7 +277,9 @@ export function HistoryPage() {
             )}
       </p>
 
-      <div className="mt-5 flex flex-wrap items-center gap-2">
+      {/* No conversation at all: nothing to search, pick or delete; the empty state says what to do. */}
+      {!(everyone === 0 && !urlQuery && !needle) && (
+      <div className="mt-5 flex flex-wrap items-center gap-2" data-history-tools="">
         <div className="relative min-w-0 flex-1 max-sm:basis-full">
           <Search size={14} className="absolute top-1/2 left-3 -translate-y-1/2 text-faint" />
           <Input
@@ -315,6 +317,7 @@ export function HistoryPage() {
           {t('모든 대화 삭제')}
         </Button>
       </div>
+      )}
 
       {done !== null && (
         <p className="mt-3 rounded-control border border-line bg-elevated px-3 py-2 text-base text-muted">

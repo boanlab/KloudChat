@@ -1,5 +1,7 @@
 /** Mermaid rendering shared by the web and page views, so the stored digest matches. */
 
+import { pictureSource } from './mindmap'
+
 /** The diagram as an SVG string, or `null` if mermaid would not draw it. `look` is the surface's theme. */
 async function draw(source: string, look: object): Promise<string | null> {
   try {
@@ -286,7 +288,8 @@ function flipped(source: string): string | null {
 }
 
 /** `draw`, turning a far-too-tall drawing and keeping the closer fit. */
-export async function drawFitting(source: string, look: object, frame: Frame): Promise<string | null> {
+export async function drawFitting(drawn: string, look: object, frame: Frame): Promise<string | null> {
+  const source = pictureSource(drawn)
   const first = await draw(source, look)
   if (!first) return null
   const size = measure(first)
@@ -362,10 +365,11 @@ export function frameElement(drawn: SVGSVGElement, frame: Frame): SVGSVGElement 
 /** `drawInto` with `drawFitting`'s rule: both drawn off-screen, the closer moved into `node`. */
 export async function drawIntoFitting(
   node: HTMLElement,
-  source: string,
+  drawn: string,
   look: object,
   frame: Frame,
 ): Promise<SVGSVGElement | null> {
+  const source = pictureSource(drawn)
   const scratch = document.createElement('div')
   scratch.style.cssText = 'position:absolute;left:-99999px;top:0;width:1200px'
   document.body.appendChild(scratch)

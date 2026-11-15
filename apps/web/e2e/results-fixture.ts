@@ -26,9 +26,11 @@ export const reportTitle = audit.title
 export const deckTitle = deckFixture.title
 
 /** The report's sections plus one numeric claim with no citation, so the pre-export check has something to say. */
-function reportData() {
-  const sections = audit.data.sections.map((section, index) =>
-    index === 0 ? { ...section, content: `${section.content}\n\n도입 기업의 매출이 30% 늘었다.` } : section)
+function reportData(replaced?: { heading?: string; content: string }[]) {
+  const sections = replaced
+    ? replaced.map((section, index) => ({ ...audit.data.sections[0], id: `s${index}`, diagrams: {}, ...section }))
+    : audit.data.sections.map((section, index) =>
+      index === 0 ? { ...section, content: `${section.content}\n\n도입 기업의 매출이 30% 늘었다.` } : section)
   return { ...audit.data, kind: 'report', title: audit.title, sections }
 }
 
@@ -45,13 +47,15 @@ function message(id: string, role: 'user' | 'assistant', content: string, extra:
     artifactIds: null, failure: null, createdAt: role === 'user' ? at : later, ...extra }
 }
 
-export async function resultsFixture(page: Page, testInfo: TestInfo, options: { reportVersion?: number; deckOverflow?: { slideId: string; index: number; what: string[] }[] } = {}) {
+export async function resultsFixture(page: Page, testInfo: TestInfo, options: { reportVersion?: number; deckOverflow?: { slideId: string; index: number; what: string[] }[];
+  /** The report's sections in place of the audit fixture's. */
+  reportSections?: { heading?: string; content: string }[] } = {}) {
   const origin = new URL(String(testInfo.project.use.baseURL)).origin
   const recorded: Recorded = { exports: [], uploads: [], unexpected: [], problems: [] }
   page.on('pageerror', (error) => recorded.problems.push(`pageerror: ${error.message}`))
   const report = {
     id: reportId, title: audit.title, kind: 'report', version: options.reportVersion ?? 1, partial: false,
-    sessionId: reportSession, projectId: null, createdAt: at, updatedAt: later, data: reportData(),
+    sessionId: reportSession, projectId: null, createdAt: at, updatedAt: later, data: reportData(options.reportSections),
   }
   const deck = {
     id: deckId, title: deckFixture.title, kind: 'deck', version: 1, partial: false,

@@ -36,12 +36,12 @@ import {
 import { useFileDrop } from '@/lib/useFileDrop'
 import { useStore } from '@/store/useStore'
 import { startFailure } from '@/lib/failures'
-import type { MemoryEntry } from '@/types'
+import type { MemoryEntry, Session } from '@/types'
 import { useMarkUnsaved } from '@/lib/unsaved'
 import { useT } from '@/lib/useT'
 import { ProjectSearchConsent } from '@/components/projects/ProjectSearchConsent'
 import { isListed } from '@/lib/listed'
-import { KNOWLEDGE_ACCEPT, knowledgeRefusal } from '@/lib/knowledgeFiles'
+import { KNOWLEDGE_ACCEPT, knowledgeKinds, knowledgeRefusal } from '@/lib/knowledgeFiles'
 import { RelTime } from '@/components/ui/RelTime'
 import { TemplateMiniature } from '@/components/chat/DesignGallery'
 import { SHELF_NAMES, withNames } from '@/lib/shelfNames'
@@ -635,8 +635,8 @@ export function ProjectDetailPage() {
         <div className="pt-4">
           {tab === 'sessions' && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between rounded-card border border-dashed border-line-strong px-4 py-3">
-                <div>
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-dashed border-line-strong px-4 py-3">
+                <div className="min-w-[min(100%,16rem)] flex-1">
                   <p className="text-base font-medium">{t('기존 대화 편입')}</p>
                   <p className="text-sm text-muted">
                     {t('다른 곳에서 시작한 대화를 이 프로젝트로 옮깁니다. 지침·지식·메모리를 그때부터 함께 받습니다.')}
@@ -698,11 +698,15 @@ export function ProjectDetailPage() {
                         <KindIcon size={15} className="shrink-0" style={{ color: meta.color }} />
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-base font-medium">{c.title}</p>
-                          <p className="mt-0.5 truncate text-sm text-muted">
-                            {c.messages.at(-1)?.content.slice(0, 90) ?? t('내용 없음')}
+                          <p className="mt-0.5 truncate text-sm text-muted" data-testid="project-session-line">
+                            {/* A phone has no room for the time beside the row: it leads this line. */}
+                            <span className="text-faint sm:hidden">
+                              <RelTime iso={c.updatedAt} /> ·{' '}
+                            </span>
+                            {sessionLine(c, t)}
                           </p>
                         </div>
-                        <span className="shrink-0 text-xs text-faint">
+                        <span className="shrink-0 text-xs text-faint max-sm:hidden">
                           <RelTime iso={c.updatedAt} />
                         </span>
                         <Button
@@ -733,8 +737,8 @@ export function ProjectDetailPage() {
                   {t('여기에 놓으면 참고 파일로 추가됩니다')}
                 </div>
               )}
-              <div className="flex items-center justify-between rounded-card border border-dashed border-line-strong px-4 py-3">
-                <div>
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-dashed border-line-strong px-4 py-3">
+                <div className="min-w-[min(100%,12rem)] flex-1">
                   <p className="text-base font-medium">{t('참고 파일')}</p>
                   <p className="text-sm text-muted">
                     {t('총 {n} 토큰').replace('{n}', formatTokens(totalTokens))} · {t('컨텍스트의 약')}{' '}
@@ -809,14 +813,18 @@ export function ProjectDetailPage() {
                 <EmptyState
                   icon={<FileText size={18} />}
                   title={t('참고 파일이 없습니다')}
-                  description={t('PDF, 마크다운, CSV를 올려 두면 이 프로젝트의 모든 대화에서 참조합니다.')}
+                  description={t('{kinds} 파일을 올려 두면 이 프로젝트의 모든 대화에서 참조합니다.').replace(
+                    '{kinds}',
+                    knowledgeKinds(english ? 'en' : 'ko'),
+                  )}
                 />
               ) : (
                 project.files.map((f) => (
                   <Card key={f.id} className="px-4 py-2.5" data-knowledge={f.id}>
-                    <div className="flex items-center gap-3">
+                    {/* On a phone the name keeps the first line; the actions wrap under it. */}
+                    <div className="flex items-center gap-x-3 gap-y-1 max-sm:flex-wrap">
                     {f.sourceUrl ? <Link2 size={15} className="shrink-0 text-accent" /> : <FileText size={15} className="shrink-0 text-faint" />}
-                    <span className="min-w-0 flex-1">
+                    <span className="min-w-0 flex-1 max-sm:basis-[calc(100%-15px-0.75rem)]" data-testid="knowledge-name">
                       <button
                         onClick={() => f.sourceUrl
                           ? window.open(f.sourceUrl, '_blank', 'noopener,noreferrer')
@@ -851,6 +859,7 @@ export function ProjectDetailPage() {
                         ) : null
                       })()}
                     </span>
+                    <span className="flex shrink-0 items-center gap-1 max-sm:ml-auto" data-testid="knowledge-actions">
                     {/* Un-indexed rows: word search only. */}
                     {f.indexed === false && !f.error && !isReading(f) && (
                       <span
@@ -885,6 +894,7 @@ export function ProjectDetailPage() {
                     >
                       <Trash2 size={14} />
                     </Button>
+                    </span>
                     </div>
                     {guideFile === f.id && (
                       <div className="mt-2 border-t border-line pt-2">
@@ -1081,6 +1091,24 @@ export function ProjectDetailPage() {
 }
 
 /** Why a page could not be kept, and what instead; inside the dialog. */
+/** A project conversation's second line: its latest message, else what it made, else its kind. */
+function sessionLine(session: Session, t: (text: string) => string): string {
+  const said = session.preview
+    ?.replace(/\s*\[\d+(?:[,\s]+\d+)*\]/g, '')
+    .replace(/(^|\s)(?:#{1,6}|[-*>]|\d+\.)\s+/g, '$1')
+    .replace(/[*_`~]+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (said) return said.slice(0, 90)
+  const made = session.made
+  if (made) {
+    const noun = { image: '그림 {n}장', video: '영상 {n}개', narration: '내레이션 {n}개', music: '음악 {n}곡' }[made.kind]
+    return t(noun).replace('{n}', String(made.count))
+  }
+  if (session.messageCount > 0) return t('메시지 {n}개').replace('{n}', String(session.messageCount))
+  return t(kindMeta[session.kind].label)
+}
+
 function urlFailure(err: unknown, t: (text: string) => string): string {
   const detail = err instanceof ApiError ? err.detail : ''
   if (detail === '주소의 호스트를 찾을 수 없습니다.') {

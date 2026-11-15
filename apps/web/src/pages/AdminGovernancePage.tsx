@@ -1,5 +1,6 @@
 import { ArrowDown, ArrowUp, GripVertical, ShieldCheck, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import { Badge, Button, Card, Input, PageHeader, Select, Switch, Tabs } from '@/components/ui'
@@ -178,7 +179,9 @@ export function AdminGovernancePage() {
   const t = useT()
   const { governance, loadGovernance, setGovernance, models } = useStore()
   const [auditTotal, setAuditTotal] = useState<number>()
-  const [tab, setTab] = useState<'policy' | 'log'>('policy')
+  // `?tab=log&account=…`: a user's detail view links to the trail filtered to that account.
+  const [params] = useSearchParams()
+  const [tab, setTab] = useState<'policy' | 'log'>(() => (params.get('tab') === 'log' ? 'log' : 'policy'))
   const [category, setCategory] = useState('')
   const [swept, setSwept] = useState<number | null>(null)
 
@@ -430,7 +433,7 @@ export function AdminGovernancePage() {
             )}
           </div>
         ) : (
-          <AuditLog onTotal={setAuditTotal} />
+          <AuditLog onTotal={setAuditTotal} account={params.get('account') ?? ''} />
         )}
 
         <p className="mt-3 flex items-center gap-1.5 text-sm text-faint">
