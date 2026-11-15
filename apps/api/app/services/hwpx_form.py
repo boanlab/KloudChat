@@ -97,6 +97,35 @@ def _span(cell: etree._Element) -> tuple[int, int]:
         return 1, 1
 
 
+#: hwpunit a line of 10 pt text takes with its spacing, and the cell's margins
+_LINE, _PAD, _CHAR = 1700, 600, 900
+
+
+def fit_row(cell: etree._Element) -> None:
+    """The row of a cell grown, when it must be, to hold the cell's text (a value added under a
+    label): the row heights of a form are minimums, never lowered here."""
+    size = cell.find(f"{{{hwpx_edit.HP}}}cellSz")
+    if size is None:
+        return
+    try:
+        width = int(size.get("width"))
+    except (TypeError, ValueError):
+        return
+    per_line = max(1, (width - 300) // _CHAR)
+    lines = sum(max(1, -(-len(line.strip()) // per_line)) for line in _lines(cell))
+    needed = lines * _LINE + _PAD
+    row = cell.getparent()
+    for other in (row.iterchildren(hwpx_edit._TC) if row is not None else [cell]):
+        if _span(other)[0] != 1:
+            continue
+        box = other.find(f"{{{hwpx_edit.HP}}}cellSz")
+        try:
+            if box is not None and int(box.get("height")) < needed:
+                box.set("height", str(needed))
+        except (TypeError, ValueError):
+            continue
+
+
 def _key(table: str, row: int, col: int) -> str:
     return f"{table}:{row}:{col}"
 

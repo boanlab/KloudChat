@@ -668,6 +668,8 @@ def apply(data: bytes, ops: list[dict],
             changes.append(f"{where}{blank} → 「{short(value)}」 ({count}곳)")
         elif kind == "set_cell":
             _set_cell(target, _text_arg(op), whole=op.get("whole") is True)
+            if guard is not None:
+                hwpx_form.fit_row(target)
             changes.append(f"{op['table']} r{op['row']}c{op['col']} → 「{short(op['text'])}」")
         elif kind == "insert_paragraph":
             index, anchor = target

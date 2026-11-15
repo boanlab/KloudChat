@@ -215,3 +215,15 @@ def test_a_cell_of_several_fixed_lines_keeps_its_long_lines_too():
         hwpx_edit.apply(marked, [{
             "op": "set_cell", "table": "t1", "row": 5, "col": 0,
             "text": "대학(Name) : 정보대학"}])
+
+
+def test_a_row_grows_to_hold_what_is_written_in_it_and_never_shrinks():
+    done = hwpx_edit.apply(_marked(), [
+        {"op": "set_cell", "table": "t1", "row": 0, "col": 1, "text": "가\n나\n다\n라"},
+        {"op": "set_cell", "table": "t1", "row": 3, "col": 0, "text": "목적 내용"}])
+    _, doc = hwpx_edit._load(done.data)
+    table = hwpx_edit._table(doc, "t1")
+    first = hwpx_edit._cell(table, 0, 1).find(f"{{{hwpx_edit.HP}}}cellSz")
+    tall = hwpx_edit._cell(table, 3, 0).find(f"{{{hwpx_edit.HP}}}cellSz")
+    assert int(first.get("height")) >= 4 * 1700
+    assert int(tall.get("height")) == 9000
