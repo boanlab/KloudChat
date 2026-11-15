@@ -1,0 +1,141 @@
+"""A PowerPoint written for a request holds what was asked and what the reply says it holds:
+a native chart built from the given numbers (a missing value a gap, not 0), the slide count
+asked for, tables that fit the slide, a paper's own figures cut from its PDF, and a reply
+held to what the saved file contains."""
+
+from __future__ import annotations
+
+import io
+from types import SimpleNamespace
+
+import pytest
+from pptx import Presentation
+
+from app.services import deck_export, office_claims, pdf_figures, pdf_text, pptx_edit
+from app.services.tools import pptx as tool
+
+SALES = {
+    "title": "분기별 제품 매출",
+    "chart": {"kind": "bar", "unit": "백만 원", "categories": ["1분기", "2분기", "3분기"],
+              "series": [{"name": "StarVault", "values": [1820, 1950, 2080]},
+                         {"name": "컨설팅", "values": [610, 580, None]}]},
+    "bullets": ["3분기 컨설팅은 집계 중"],
+}
+
+
+def _deck(slides, **more):
+    return tool._build({"title": "2026년 분기 실적", "slides": slides, **more})[1]
+
+
+def test_a_chart_slide_is_a_native_chart_with_a_gap_for_a_missing_value():
+    data = _deck([SALES])
+    assert pptx_edit.contents(data) == {"slides": 2, "chart": 1, "table": 0, "picture": 0}
+    chart = next(shape.chart for shape in Presentation(io.BytesIO(data)).slides[1].shapes
+                 if getattr(shape, "has_chart", False) and shape.has_chart)
+    consulting = list(chart.plots[0].series)[1]
+    assert list(consulting.values)[:2] == [610, 580]
+    # the third quarter is not drawn as 0
+    assert list(consulting.values)[2] is None
+    assert "3분기 컨설팅은 집계 중" in pptx_edit.plain_text(data)
+
+
+def test_slides_sent_as_a_json_string_are_read():
+    import json
+
+    assert pptx_edit.contents(tool._build(
+        {"title": "t", "slides": json.dumps([{"title": "a", "bullets": ["b"]}])})[1])["slides"] == 2
+
+
+def test_a_chart_with_no_numbers_is_refused():
+    with pytest.raises(ValueError, match="수가 없습니다"):
+        _deck([{"title": "x", "chart": {"categories": ["a", "b"],
+                                        "series": [{"name": "s", "values": ["집계 중", None]}]}}])
+
+
+def test_the_slide_count_asked_counts_the_whole_file():
+    eight = {"title": "t", "slides": [{"title": str(i)} for i in range(7)]}
+    assert tool.count_problem("분기 실적 PowerPoint 8장 만들어 줘", eight) == ""
+    nine = {**eight, "closing": "감사합니다"}
+    problem = tool.count_problem("분기 실적 PowerPoint 8장 만들어 줘", nine)
+    assert "9장" in problem and "slides를 6개" in problem
+    assert tool.count_problem("10~12장으로 만들어 줘", eight) != ""
+    assert tool.count_problem("발표 자료 만들어 줘", eight) == ""
+
+
+def test_a_table_too_tall_for_the_slide_is_refused_and_a_short_one_fits():
+    long_cell = "요청별로 최대 길이만큼 미리 연속 메모리를 잡아 두는 방식이라 내부 단편화가 크다"
+    rows = [["항목", "A", "B", "C"]] + [[f"행 {i}", long_cell, long_cell + " (B)",
+                                        long_cell + " (C)"] for i in range(7)]
+    with pytest.raises(ValueError, match="넘칩니다"):
+        _deck([{"title": "비교", "rows": rows}])
+    width, height = deck_export.table_room()
+    size, heights, fits = deck_export.table_fit(rows[:3], width, height)
+    assert fits and sum(heights) <= height and size >= 12
+
+
+def _reply_note(reply: str, contents: dict) -> str:
+    ctx = SimpleNamespace(pptx={"saved": [{"version": 2, "changes": ["작성"],
+                                           "contents": contents}]})
+    return office_claims.note(reply, ctx, {"pptx"})
+
+
+def test_a_reply_claiming_a_chart_the_file_lacks_is_corrected():
+    plain = {"slides": 8, "chart": 0, "table": 1, "picture": 0}
+    note = _reply_note("8장을 만들었습니다. 분기별 제품 매출 차트를 넣었습니다.", plain)
+    assert "차트가 없습니다" in note
+    assert _reply_note("8장을 만들었습니다. 분기별 제품 매출 차트를 넣었습니다.",
+                       {**plain, "chart": 1}) == ""
+    # saying it could not is no claim
+    assert "차트" not in _reply_note("8장을 만들었습니다. 차트는 넣지 못했습니다.", plain)
+
+
+def test_a_reply_giving_the_wrong_slide_count_is_corrected():
+    note = _reply_note("12장짜리 발표 자료를 만들었습니다.",
+                       {"slides": 11, "chart": 0, "table": 0, "picture": 0})
+    assert "11장" in note
+
+
+def _paper_pdf() -> bytes:
+    from reportlab.lib.pagesizes import letter
+    from reportlab.pdfgen import canvas
+
+    out = io.BytesIO()
+    pdf = canvas.Canvas(out, pagesize=letter)
+    pdf.setFont("Helvetica", 10)
+    pdf.drawString(72, 740, "1 Introduction")
+    pdf.drawString(72, 726, "Serving systems waste memory on reserved slots.")
+    # the figure: bars drawn as paths, then its caption under it
+    for i, height in enumerate((60, 120, 90)):
+        pdf.rect(100 + i * 60, 520, 40, height, stroke=1, fill=1)
+    pdf.line(90, 518, 300, 518)
+    pdf.drawString(72, 500, "Figure 2. Memory waste in serving systems.")
+    pdf.drawString(72, 470, "The text goes on under the figure.")
+    pdf.showPage()
+    pdf.save()
+    return out.getvalue()
+
+
+def test_a_figure_is_found_by_its_caption_and_cut_out():
+    data = _paper_pdf()
+    found = pdf_figures.find(data)
+    assert [(f.label, f.page) for f in found] == [("Figure 2", 1)]
+    figure = found[0]
+    assert figure.caption.startswith("Figure 2. Memory waste")
+    left, bottom, right, top = figure.box
+    # the bars, not the body text above or the caption below
+    assert 510 <= bottom <= 520 and 640 <= top < 726 and left < 100 and right > 260
+    png = pdf_figures.cut(data, figure)
+    assert png.startswith(b"\x89PNG")
+
+
+def test_a_figure_picture_goes_on_its_slide_with_the_caption():
+    png = pdf_figures.cut(_paper_pdf(), pdf_figures.find(_paper_pdf())[0])
+    data = _deck([{"title": "메모리 낭비", "image": {"data": png,
+                                                  "caption": "Figure 2 (Kwon et al., 2023)"}}])
+    assert pptx_edit.contents(data)["picture"] == 1
+
+
+def test_pdf_text_keeps_the_text_layer_and_tidies_pdfium_marks():
+    assert pdf_text._tidy("How￾\r\never it is .") == "However it is."
+    pages = pdf_text.page_texts(_paper_pdf())
+    assert "Serving systems waste memory on reserved slots." in pages[0]

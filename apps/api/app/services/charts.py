@@ -16,6 +16,17 @@ _GRID = "E5E5E5"
 _AXIS = "C8C8C8"
 
 
+def _series_colour(accent, position: int):
+    """The `position`-th series colour: the accent, then lighter and darker shades of it, so
+    three or more series stay apart (a third series once took the second's shade)."""
+    from pptx.dml.color import RGBColor
+
+    white, black = RGBColor(0xFF, 0xFF, 0xFF), RGBColor(0x1F, 0x1F, 0x1F)
+    steps = ((None, 0.0), (white, 0.55), (black, 0.4), (white, 0.8), (black, 0.65))
+    onto, share = steps[position % len(steps)]
+    return accent if onto is None else mix(accent, onto, share)
+
+
 def apply(chart, *, kind: str, unit: str, accent, muted, faces: tuple[str, str]) -> None:
     """Style a chart: zero-floored axis, light grid, accent series, document faces."""
     from pptx.dml.color import RGBColor
@@ -51,7 +62,7 @@ def apply(chart, *, kind: str, unit: str, accent, muted, faces: tuple[str, str])
     _text(category_axis.tick_labels.font, muted, 12, faces)
 
     for position, series in enumerate(chart.plots[0].series):
-        colour = accent if position == 0 else mix(accent, RGBColor(0xFF, 0xFF, 0xFF), 0.55)
+        colour = _series_colour(accent, position)
         if kind == "line":
             series.format.line.color.rgb = colour
             series.format.line.width = Pt(2.5)

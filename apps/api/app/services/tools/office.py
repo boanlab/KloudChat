@@ -75,6 +75,13 @@ class Toolset:
     #: a kind whose look is resolved its own way (PowerPoint's slides template): awaited with
     #: (db, ctx) before `build`, its result given to `build` as the look
     look_for: Callable[[Any, Any], Any] | None = None
+    #: a kind that checks or completes `*_write`'s arguments against the turn first (the
+    #: slide count asked for, the pictures named): awaited with (args, ctx), returns the
+    #: arguments to build from; a `ValueError` goes back to the model
+    prepare: Callable[[dict[str, Any], Any], Any] | None = None
+    #: what a written file holds, counted from it (`pptx_edit.contents`): told to the model
+    #: and kept for holding the reply to it (`office_claims`)
+    contents: Callable[[bytes], dict[str, int]] | None = None
 
 
 #: ops that put a picture in: their `file` names one of the person's image files
@@ -124,6 +131,14 @@ async def _pictures(db: Any, ctx: ToolContext, ops: list) -> dict[str, tuple[str
                 except OSError:
                     continue
     return out
+
+
+def held_line(counts: dict[str, int]) -> str:
+    """「파일 안: 슬라이드 9장, 차트 1개, 표 2개, 그림 0개」: what the saved file holds, which
+    is all a reply may say it holds."""
+    return (f"파일 안(저장된 파일에서 센 것): 슬라이드 {counts.get('slides', 0)}장, "
+            f"차트 {counts.get('chart', 0)}개, 표 {counts.get('table', 0)}개, "
+            f"그림 {counts.get('picture', 0)}개. 답에는 이 파일에 있는 것만 있다고 말하세요.")
 
 
 def _trace(artifact_id: str, version: int) -> dict[str, Any]:
@@ -301,8 +316,13 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool, Tool]:
                 )
         state(ctx).update(id=saved.id, version=saved.version, changed=True)
         # what was saved, for holding the reply to it (`office_claims`)
-        state(ctx).setdefault("saved", []).append(
-            {"version": saved.version, "changes": list(result.changes)})
+        record: dict[str, Any] = {"version": saved.version, "changes": list(result.changes)}
+        if kit.contents is not None:
+            try:
+                record["contents"] = kit.contents(result.data)
+            except Exception:  # noqa: BLE001 — the count is a check; the edit is saved
+                record["contents"] = None
+        state(ctx).setdefault("saved", []).append(record)
         lines = "\n".join(f"- {line}" for line in result.changes)
         content = f"v{saved.version}로 저장했습니다. 바뀐 곳:\n{lines}"
         if any(isinstance(op, dict) and op.get("op") in kit.renumbers for op in ops):
@@ -324,6 +344,8 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool, Tool]:
             if kit.look_for is not None:
                 async with kit.session() as db:
                     look = await kit.look_for(db, ctx)
+            if kit.prepare is not None:
+                args = await kit.prepare(args, ctx)
             title, data = (kit.build(args, look) if kit.build
                            else _paragraph_write(kit, args, look))
         except ValueError as exc:
@@ -379,12 +401,20 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool, Tool]:
                 said = f"「{title}」을 새 문서로 만들어 편집기에 띄웠습니다." + (
                     " 이 대화의 다른 문서는 그대로 두었습니다." if kept else "")
         state(ctx).update(id=saved.id, version=saved.version, changed=True)
-        state(ctx).setdefault("saved", []).append(
-            {"version": saved.version, "changes": [f"「{title}」 작성"]})
+        record: dict[str, Any] = {"version": saved.version, "changes": [f"「{title}」 작성"]}
+        held = ""
+        if kit.contents is not None:
+            try:
+                record["contents"] = kit.contents(data)
+            except Exception:  # noqa: BLE001 — the count is a check; the file is saved
+                record["contents"] = None
+            if record["contents"]:
+                held = "\n" + held_line(record["contents"])
+        state(ctx).setdefault("saved", []).append(record)
         left = kit.edit.blanks(data)
         return ToolResult(
             content=(
-                f"{said} 남은 빈칸: "
+                f"{said}{held}\n남은 빈칸: "
                 + (", ".join(left) if left else "없음")
                 + f"\n고칠 때는 {p}_read로 번호를 읽은 뒤 {p}_edit을 쓰세요."
             ),

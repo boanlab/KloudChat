@@ -806,6 +806,65 @@ def _pptx_chart(
     )
 
 
+#: a cell's left and right margin (pt), as `_build_pptx` sets it
+_CELL_MARGIN = 9 * _K
+
+
+def _cell_lines(text: str, size: float, bold: bool, width: float) -> int:
+    """Lines `text` takes in a cell `width` pt wide at `size` pt, wrapped at spaces (a word
+    longer than the line breaks where it must, as PowerPoint does)."""
+    room = max(width - 2 * _CELL_MARGIN, size)
+    count = 0
+    for paragraph in str(text).split("\n"):
+        line = 0.0
+        lines = 1
+        for word in paragraph.split(" "):
+            span = figure_text.width(word + " ", size, bold=bold)
+            if line and line + span > room:
+                lines += 1
+                line = 0.0
+            while span > room:
+                lines += 1
+                span -= room
+            line += span
+        count += lines
+    return count
+
+
+def table_fit(rows: list[list[str]], width: float, room: float) -> tuple[float, list[float], bool]:
+    """`(cell size pt, row heights pt, fits)` for a table `width` pt wide in `room` pt of
+    height: the house size for its row count, stepped down to the floor while the wrapped rows
+    are taller than the room. Rows grow with their text, so a table set by row count alone ran
+    past the footer once its cells wrapped."""
+    if not rows:
+        return 0.0, [], True
+    count = max(len(row) for row in rows)
+    widths = [width * share for share in deck_type.column_shares(rows)] or [width]
+    size = deck_type.table_size(len(rows)) * _K
+    floor = float(deck_type.FLOOR_PT)
+    while True:
+        pad = deck_type.table_pad(len(rows)) * _K
+        leading = size * deck_type.LEADING["table"]
+        heights = []
+        for r, row in enumerate(rows):
+            shared = r > 0 and deck_type.shared_value(row, count) is not None
+            lines = 1
+            for c, text in enumerate(row[:count]):
+                if shared and c > 1:
+                    break
+                span = sum(widths[1:]) if shared and c == 1 else widths[min(c, len(widths) - 1)]
+                lines = max(lines, _cell_lines(str(text), size, r == 0 or c == 0, span))
+            heights.append(lines * leading + 2 * pad)
+        if sum(heights) <= room or size <= floor:
+            return size, heights, sum(heights) <= room
+        size = max(floor, size - 1.0)
+
+
+def table_room() -> tuple[float, float]:
+    """`(width, height)` pt a table has on a plain content slide."""
+    return _W - 144, _BODY_BOTTOM - _BODY_TOP
+
+
 def _cell_rule(cell, colour: RGBColor, points: float) -> None:
     """Bottom rule as `a:lnB`, inserted first in `a:tcPr` (schema order, else repair prompt)."""
     from pptx.oxml import parse_xml
@@ -986,28 +1045,32 @@ def _chart_of(slide: dict) -> dict | None:
     if not isinstance(chart, dict):
         return None
     categories = [str(c) for c in (chart.get("categories") or [])]
-    series: list[tuple[str, list[float]]] = []
+    series: list[tuple[str, list[float | None]]] = []
     for item in chart.get("series") or []:
         if not isinstance(item, dict):
             continue
-        values: list[float] = []
+        values: list[float | None] = []
         for raw in item.get("values") or []:
             try:
-                values.append(float(raw))
+                values.append(float(str(raw).replace(",", "")) if raw is not None else None)
             except (TypeError, ValueError):
-                break
-        if values:
+                # 「집계 중」, null: a value the source does not have yet is a gap, not the
+                # end of the series (the categories after it keep their values)
+                values.append(None)
+        while values and values[-1] is None:
+            values.pop()
+        if any(v is not None for v in values):
             series.append((str(item.get("name") or ""), values))
     if not categories or not series:
         return None
-    width = min(len(categories), min(len(values) for _, values in series))
+    width = min(len(categories), max(len(values) for _, values in series))
     if width < 2:
         return None
     return {
         "kind": "line" if str(chart.get("kind")) == "line" else "bar",
         "unit": str(chart.get("unit") or ""),
         "categories": categories[:width],
-        "series": [(name, values[:width]) for name, values in series],
+        "series": [(name, (values + [None] * width)[:width]) for name, values in series],
     }
 
 
@@ -2728,7 +2791,7 @@ def _pdf_chart_more(
         return
 
     if kind in ("pie", "donut"):
-        values = [max(0.0, v) for v in chart["series"][0][1]]
+        values = [max(0.0, v or 0.0) for v in chart["series"][0][1]]
         total = sum(values)
         if total <= 0:
             return
@@ -2790,7 +2853,7 @@ def _pdf_chart_more(
 
     series = chart["series"]
     if kind == "hbar":
-        values = [value for _, items in series for value in items]
+        values = [value for _, items in series for value in items if value is not None]
         if max(values + [0]) <= 0:
             return
         ceiling = _nice_ceiling(max(values))
@@ -2825,6 +2888,9 @@ def _pdf_chart_more(
                     pdf.drawRightString(left + label_w, row_top - step / 2 + 2 - 11 * offset, line)
             for series_index, (_name, items) in enumerate(series):
                 value = items[position]
+                if value is None:
+                    # a gap the source has no value for yet: no bar, no label
+                    continue
                 y = row_top - step * 0.2 - thick * (series_index + 1)
                 pdf.setFillColorRGB(*_shade(accent, series_index))
                 pdf.rect(plot_left, y, plot_w * max(0.0, value) / ceiling, thick, stroke=0, fill=1)
@@ -2840,7 +2906,8 @@ def _pdf_chart_more(
         return
 
     # stacked
-    sums = [sum(max(0.0, items[i]) for _, items in series) for i in range(len(categories))]
+    sums = [sum(max(0.0, items[i] or 0.0) for _, items in series)
+            for i in range(len(categories))]
     if max(sums + [0]) <= 0:
         return
     ceiling = _nice_ceiling(max(sums))
@@ -2864,7 +2931,7 @@ def _pdf_chart_more(
         x = left + step * (position + 0.5) - bar / 2
         y = plot_bottom
         for series_index, (_name, items) in enumerate(series):
-            value = max(0.0, items[position])
+            value = max(0.0, items[position] or 0.0)
             segment = plot_height * value / ceiling
             pdf.setFillColorRGB(*_shade(accent, series_index))
             pdf.rect(x, y, bar, segment, stroke=0, fill=1)
@@ -3548,32 +3615,46 @@ def _build_pptx(
                     measure=measure,
                     compact=compact,
                 )
-            elif chart and chart["kind"] in _MORE_CHARTS:
-                _pptx_chart_more(
-                    slide,
-                    chart,
-                    accent=accent,
-                    muted=muted,
-                    ink=ink,
-                    ground=ground,
-                    width=text_width,
-                    faces=faces,
-                    left=text_left,
-                    top=body_top,
-                    room=room,
-                )
             elif chart:
-                _pptx_chart(
-                    slide,
-                    chart,
-                    accent=accent,
-                    muted=muted,
-                    width=text_width,
-                    faces=faces,
-                    left=text_left,
-                    top=body_top,
-                    room=room,
-                )
+                # lines that go with the chart (「3분기 컨설팅은 집계 중」) under it, not lost
+                notes = [str(b) for b in bullets[:3] if str(b).strip()]
+                note_size = float(deck_type.FLOOR_PT) + 2
+                note_room = len(notes) * note_size * 1.5 + (8 if notes else 0)
+                chart_room = max(room - note_room, room * 0.6)
+                if chart["kind"] in _MORE_CHARTS:
+                    _pptx_chart_more(
+                        slide,
+                        chart,
+                        accent=accent,
+                        muted=muted,
+                        ink=ink,
+                        ground=ground,
+                        width=text_width,
+                        faces=faces,
+                        left=text_left,
+                        top=body_top,
+                        room=chart_room,
+                    )
+                else:
+                    _pptx_chart(
+                        slide,
+                        chart,
+                        accent=accent,
+                        muted=muted,
+                        width=text_width,
+                        faces=faces,
+                        left=text_left,
+                        top=body_top,
+                        room=chart_room,
+                    )
+                if notes:
+                    box = _textbox(slide, left=text_left, top=body_top + chart_room + 8,
+                                   width=text_width, height=room - chart_room - 8)
+                    for position, line in enumerate(notes):
+                        paragraph = box.paragraphs[0] if position == 0 else box.add_paragraph()
+                        run = paragraph.add_run()
+                        run.text = line
+                        paint(run, size=note_size, colour=muted)
             elif metrics and layout == "big-number":
                 figure, label = metrics[0]
                 box = _textbox(
@@ -3655,22 +3736,23 @@ def _build_pptx(
                     run.text = label
                     paint(run, size=_u("metricLabel"), colour=muted)
             elif rows:
-                row_height = deck_type.table_row_height(len(rows)) * _K
+                # sized by what the cells hold, not the row count alone: wrapped rows grow
+                cell_size, row_heights, _fits = table_fit(
+                    rows, text_width, _BODY_BOTTOM - body_top)
                 shape = slide.shapes.add_table(
                     len(rows),
                     max(len(row) for row in rows),
                     Emu(int(text_left * _EMU_PER_PT)),
                     Emu(int(body_top * _EMU_PER_PT)),
                     Emu(int(text_width * _EMU_PER_PT)),
-                    Emu(int(row_height * len(rows) * _EMU_PER_PT)),
+                    Emu(int(sum(row_heights) * _EMU_PER_PT)),
                 )
                 table = shape.table
                 # column shares by widest cell, same as the panel
                 for column_index, share in enumerate(deck_type.column_shares(rows)):
                     table.columns[column_index].width = Emu(int(text_width * share * _EMU_PER_PT))
-                for table_row in table.rows:
-                    table_row.height = Emu(int(row_height * _EMU_PER_PT))
-                cell_size = deck_type.table_size(len(rows)) * _K
+                for table_row, height in zip(table.rows, row_heights, strict=True):
+                    table_row.height = Emu(int(height * _EMU_PER_PT))
                 cell_pad = deck_type.table_pad(len(rows)) * _K
                 # off: avoids theme's banded style
                 table.first_row = False
@@ -4145,7 +4227,7 @@ def _pdf_chart(
     if height < 60 or width < 100:
         return
 
-    values = [value for _, series in chart["series"] for value in series]
+    values = [value for _, series in chart["series"] for value in series if value is not None]
     if max(values + [0]) <= 0:
         return
     ceiling = _nice_ceiling(max(values))
@@ -4173,6 +4255,7 @@ def _pdf_chart(
             points = [
                 (left + step * (position + 0.5), bottom + height * (value / ceiling))
                 for position, value in enumerate(series)
+                if value is not None
             ]
             for position, (x, y) in enumerate(points):
                 path.moveTo(x, y) if position == 0 else path.lineTo(x, y)
@@ -4186,6 +4269,8 @@ def _pdf_chart(
             span = step * 0.6 / count
             pdf.setFillColorRGB(*colour)
             for position, value in enumerate(series):
+                if value is None:
+                    continue
                 x = left + step * (position + 0.5) - (step * 0.6) / 2 + span * series_index
                 pdf.rect(x, bottom, span, height * (value / ceiling), stroke=0, fill=1)
 

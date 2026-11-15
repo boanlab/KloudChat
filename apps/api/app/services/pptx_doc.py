@@ -95,17 +95,25 @@ def deck(
     made: list[dict[str, Any]] = [{"layout": "title", "title": title, "body": subtitle}]
     for slide in slides[:MAX_WRITE]:
         rows = [[str(cell) for cell in row] for row in slide.get("rows") or [] if row]
+        bullets = [str(b) for b in slide.get("bullets") or [] if str(b).strip()]
         entry: dict[str, Any] = {
             "title": str(slide.get("title") or ""),
             "notes": str(slide.get("notes") or ""),
         }
-        if rows:
+        chart = slide.get("chart")
+        image = slide.get("image")
+        if isinstance(chart, dict) and chart.get("series"):
+            # a native chart (its worksheet editable in PowerPoint), bullets beside it
+            entry.update(layout="chart", chart=chart, bullets=bullets)
+        elif isinstance(image, dict) and image.get("data"):
+            # a picture (a figure cropped from a paper, an attached image) with its caption
+            entry.update(layout="bullets", bullets=bullets,
+                         image={"data": image["data"], "caption": str(image.get("caption") or ""),
+                                "size": "large"})
+        elif rows:
             entry.update(layout="table", rows=rows)
         else:
-            entry.update(
-                layout="bullets",
-                bullets=[str(b) for b in slide.get("bullets") or [] if str(b).strip()],
-            )
+            entry.update(layout="bullets", bullets=bullets)
         made.append(entry)
     if closing.strip():
         made.append({"layout": "closing", "title": closing.strip(), "body": ""})

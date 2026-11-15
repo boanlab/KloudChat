@@ -2056,7 +2056,8 @@ async def run_turn(
             stream_kwargs["presence_penalty"] = loop_penalty
         if preflight_tool and not preflight_completed and not closing and not pending_reads:
             stream_kwargs["force_tool"] = preflight_tool
-        elif force_tool and not preflight_tool and hop == 0:
+        elif force_tool and not preflight_tool and hop == len(preset_calls):
+            # the first hop the model writes: after the server's own preset reads, if any
             stream_kwargs["force_tool"] = force_tool
         elif (
             preflight_tool

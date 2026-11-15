@@ -3,10 +3,11 @@ new deck (`office.py`), against the saved file (services/pptx_edit.py)."""
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from app.core.db import SessionLocal
-from app.services import pptx_doc, pptx_ops
+from app.services import deck_export, pptx_doc, pptx_ops
 from app.services import pptx_edit as edits
 from app.services.tools.office import Toolset, tools_for
 
@@ -45,16 +46,50 @@ async def _look(db: Any, ctx: Any) -> tuple[dict | None, str, Any] | None:
     return tokens, template, form
 
 
+def _slides_of(args: dict[str, Any]) -> list[dict[str, Any]]:
+    """`slides` as a list of objects; some models send the array as a JSON string."""
+    raw = args.get("slides")
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except ValueError:
+            raw = None
+    return [s for s in raw if isinstance(s, dict)] if isinstance(raw, list) else []
+
+
+def _chart_problem(index: int, chart: Any) -> str:
+    """Why `chart` cannot be drawn, or ``."""
+    if not isinstance(chart, dict):
+        return f"slides[{index}].chart는 객체입니다."
+    categories = chart.get("categories")
+    series = chart.get("series")
+    if not isinstance(categories, list) or len(categories) < 2:
+        return (f"slides[{index}].chart.categories에 항목이 두 개 이상 있어야 합니다"
+                "(예: 1분기, 2분기).")
+    if not isinstance(series, list) or not series or not all(
+            isinstance(item, dict) and isinstance(item.get("values"), list) for item in series):
+        return f"slides[{index}].chart.series는 [{{name, values: [수, …]}}, …] 꼴입니다."
+    for item in series:
+        if len(item["values"]) > len(categories):
+            return (f"slides[{index}].chart의 「{item.get('name')}」 값이 categories보다 "
+                    "많습니다.")
+        numbers = [v for v in item["values"] if isinstance(v, int | float)]
+        if not numbers:
+            return (f"slides[{index}].chart의 「{item.get('name')}」에 수가 없습니다. 자료에 "
+                    "있는 값만 넣고, 아직 없는 값(집계 중)은 null로 두세요.")
+    return ""
+
+
 def _build(args: dict[str, Any], look: Any = None) -> tuple[str, bytes]:
     """A new deck from the arguments, in `look` (`_look`: theme tokens and template) when
     `pptx_doc.deck` takes one."""
     title = " ".join(str(args.get("title") or "").split())[:120]
-    raw = args.get("slides")
-    slides = [s for s in raw if isinstance(s, dict)] if isinstance(raw, list) else []
+    slides = _slides_of(args)
     if not title or not slides:
         raise ValueError("title과 slides(한 장 이상)가 있어야 합니다.")
     if len(slides) > pptx_doc.MAX_WRITE:
         raise ValueError(f"slides는 {pptx_doc.MAX_WRITE}장까지입니다.")
+    width, height = deck_export.table_room()
     for index, slide in enumerate(slides, 1):
         if not str(slide.get("title") or "").strip():
             raise ValueError(f"slides[{index}]에 title이 없습니다.")
@@ -63,6 +98,17 @@ def _build(args: dict[str, Any], look: Any = None) -> tuple[str, bytes]:
             isinstance(rows, list) and all(isinstance(r, list) for r in rows)
         ):
             raise ValueError(f"slides[{index}].rows는 [[머리 칸, …], [값, …]] 꼴입니다.")
+        if slide.get("chart") is not None and (problem := _chart_problem(index, slide["chart"])):
+            raise ValueError(problem)
+        if rows and not slide.get("chart"):
+            cells = [[str(cell) for cell in row] for row in rows if row]
+            _size, _heights, fits = deck_export.table_fit(cells, width, height)
+            if not fits:
+                # a table that runs past the slide even at the smallest type: the writer
+                # splits it or shortens its cells, within the slide count asked
+                raise ValueError(
+                    f"slides[{index}]의 표가 가장 작은 글자로도 슬라이드를 넘칩니다"
+                    f"({len(cells)}행). 칸의 글을 짧게 줄이거나(한 칸 한두 줄) 행을 줄이세요.")
     subtitle = " ".join(str(args.get("subtitle") or "").split())[:200]
     closing = " ".join(str(args.get("closing") or "").split())[:80]
     if isinstance(look, tuple) and _takes_look():
@@ -71,6 +117,71 @@ def _build(args: dict[str, Any], look: Any = None) -> tuple[str, bytes]:
         return title, pptx_doc.deck(title, subtitle, slides, closing, tokens=tokens,
                                     template=template or "", **extra)
     return title, pptx_doc.deck(title, subtitle, slides, closing)
+
+
+def _total(args: dict[str, Any]) -> int:
+    """Slides the file will have: the cover, one per entry, and the closing slide if any."""
+    closing = 1 if str(args.get("closing") or "").strip() else 0
+    return 1 + len(_slides_of(args)) + closing
+
+
+def count_problem(request: str, args: dict[str, Any]) -> str:
+    """Why the deck the arguments make is not the size the person asked (「8장」, 「10~12장」,
+    「5장 정도」), counting every slide in the file (cover and closing too, as the person and
+    PowerPoint count them), or ``."""
+    from app.services import deck
+
+    total = _total(args)
+    closing = 1 if str(args.get("closing") or "").strip() else 0
+    exact = deck.requested_slides(request)
+    span = None if exact else deck.slide_range(request)
+    about = None if exact or span else deck.about_slides(request)
+    if exact and total != exact:
+        want = f"{exact}장"
+        body = exact - 1 - closing
+    elif span and not span[0] <= total <= span[1]:
+        want = f"{span[0]}~{span[1]}장"
+        body = max(span[0], min(total, span[1])) - 1 - closing
+    elif about and abs(total - about) > 1:
+        want = f"{about}장 정도"
+        body = about - 1 - closing
+    else:
+        return ""
+    return (f"요청은 슬라이드 {want}인데 이 인자로는 파일이 {total}장(표지 1"
+            + (f" + 본문 {total - 1 - closing} + 마지막 장 1" if closing
+               else f" + 본문 {total - 1}")
+            + f")이 됩니다. 표지와 마지막 장도 장 수에 들어갑니다: slides를 {max(body, 1)}개로 "
+            "맞춰 다시 쓰세요.")
+
+
+async def _prepare(args: dict[str, Any], ctx: Any) -> dict[str, Any]:
+    """The arguments checked against the turn and completed: the slide count the person
+    asked, and each slide's `image.file` (a picture the person attached, or a figure
+    `pdf_figures` cut from a project paper) read into the slide."""
+    args = {**args, "slides": _slides_of(args)}
+    if problem := count_problem(getattr(ctx, "request", "") or "", args):
+        raise ValueError(problem)
+    wanted = [str((slide.get("image") or {}).get("file") or "").strip()
+              for slide in args["slides"] if isinstance(slide.get("image"), dict)]
+    wanted = [name for name in wanted if name]
+    if not wanted:
+        return args
+    from app.services.tools.office import _pictures
+
+    async with SessionLocal() as db:
+        found = await _pictures(db, ctx, [{"op": "insert_picture", "file": name}
+                                          for name in wanted])
+    slides = []
+    for index, slide in enumerate(args["slides"], 1):
+        image = slide.get("image")
+        if isinstance(image, dict) and (name := str(image.get("file") or "").strip()):
+            if name not in found:
+                raise ValueError(
+                    f"slides[{index}].image.file 「{name}」 그림을 찾지 못했습니다. 이 대화에 "
+                    "올린 그림이나 pdf_figures가 만든 그림의 이름(또는 id)을 쓰세요.")
+            slide = {**slide, "image": {**image, "data": found[name][1]}}
+        slides.append(slide)
+    return {**args, "slides": slides}
 
 
 def _takes_look() -> bool:
@@ -119,8 +230,9 @@ TOOLS = tools_for(Toolset(
         "{slide, file, replace?} and replace_picture {id:'s2.4', file} with `file` an image "
         "the person attached or a tool made in this conversation (its name or id); "
         "change_layout {slide, layout} moves a slide to another layout pptx_read lists, its "
-        "content kept. Charts and SmartArt cannot be edited, and a chart cannot be made: say "
-        "so. Put only facts the person gave; anything still unknown stays a bracket blank "
+        "content kept. Charts and SmartArt cannot be edited here; a new chart is made by "
+        "writing the deck again with pptx_write (replace: true) with a slide's `chart`. Put "
+        "only facts the person gave; anything still unknown stays a bracket blank "
         "like 「[담당자]」."
     ),
     edit_items={
@@ -155,10 +267,24 @@ TOOLS = tools_for(Toolset(
         "or {title, rows: [[header, …], [value, …]]} for a table, with optional notes "
         "(speaker notes); `closing` adds a last slide with that line. Use it only when the "
         "person asks for a new PowerPoint file; to change the open deck use pptx_read and "
-        "pptx_edit. Bullets are short lines, three to five a slide. Never invent names, dates, "
-        "places or numbers: write a bracket blank named for what goes there, such as "
-        "「[담당자]」, 「[YYYY. MM. DD.]」, 「[매출액]」, instead; and add no slides the request "
-        "does not call for."
+        "pptx_edit. Bullets are short lines, three to five a slide. "
+        "A chart goes IN the file as {title, chart: {kind: 'bar'|'line'|'stacked'|'hbar'|"
+        "'pie', unit, categories: ['1분기', …], series: [{name, values: [1820, …]}]}, "
+        "bullets?}: a native, editable PowerPoint chart. When the person asks for a chart and "
+        "gave data (a spreadsheet, a CSV, a table in the material), build it from those exact "
+        "numbers; a value the source does not have yet (「집계 중」, 미확정) is null, never 0 or "
+        "an estimate, and a bullet says why it is missing. create_chart draws a separate chart "
+        "beside the chat, NOT in this file. A picture goes in as {title, image: {file, "
+        "caption}, bullets?} with `file` the name or id of an image in this conversation (one "
+        "the person attached, or a figure pdf_figures cut from a project paper); caption it "
+        "with the source's own caption (「Figure 2. … (Kwon et al., 2023)」). "
+        "The slide count the person asked is the whole file: the cover and the closing slide "
+        "count (「8장」 = cover + 7, or cover + 6 + closing). Tables: at most about six rows of "
+        "short cells a slide; split a longer one over two slides. The tool reports what the "
+        "saved file holds (slides, charts, tables, pictures): say only that. Never invent names, "
+        "dates, places or numbers: write a bracket blank named for what goes there, such as "
+        "「[담당자]」, 「[YYYY. MM. DD.]」, 「[매출액]」, instead; never invent results, workloads "
+        "or figures a paper does not have; and add no slides the request does not call for."
     ),
     write_params={
         "type": "object",
@@ -177,6 +303,34 @@ TOOLS = tools_for(Toolset(
                             "items": {"type": "array", "items": {"type": "string"}},
                         },
                         "notes": {"type": "string"},
+                        "chart": {
+                            "type": "object",
+                            "properties": {
+                                "kind": {"type": "string",
+                                         "enum": ["bar", "line", "stacked", "hbar", "pie"]},
+                                "unit": {"type": "string"},
+                                "categories": {"type": "array", "items": {"type": "string"}},
+                                "series": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "name": {"type": "string"},
+                                            "values": {"type": "array",
+                                                       "items": {"type": ["number", "null"]}},
+                                        },
+                                        "required": ["name", "values"],
+                                    },
+                                },
+                            },
+                            "required": ["categories", "series"],
+                        },
+                        "image": {
+                            "type": "object",
+                            "properties": {"file": {"type": "string"},
+                                           "caption": {"type": "string"}},
+                            "required": ["file"],
+                        },
                     },
                     "required": ["title"],
                 },
@@ -187,6 +341,8 @@ TOOLS = tools_for(Toolset(
     },
     build=_build,
     look_for=_look,
+    prepare=_prepare,
+    contents=edits.contents,
 ))
 PPTX_READ, PPTX_EDIT, PPTX_WRITE, PPTX_RESTORE = TOOLS
 pptx_read, pptx_edit, pptx_write, pptx_restore = (tool.run for tool in TOOLS)
