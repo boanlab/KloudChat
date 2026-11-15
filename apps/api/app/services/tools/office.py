@@ -84,6 +84,8 @@ class Toolset:
     #: what a written file holds, counted from it (`pptx_edit.contents`): told to the model
     #: and kept for holding the reply to it (`office_claims`)
     contents: Callable[[bytes], dict[str, int]] | None = None
+    #: `Tool.draft` of `*_write`: what of its arguments is worth saving as a draft
+    draft: Callable[[dict[str, Any]], dict[str, Any] | None] | None = None
 
 
 #: ops that put a picture in: their `file` names one of the person's image files
@@ -356,6 +358,8 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool, Tool]:
             if kit.prepare is not None:
                 args = await kit.prepare(args, ctx)
                 notes = list(args.pop("__notes__", None) or [])
+            # set by the server only (`agent.run_turn`), never by the model's schema
+            drafted = args.pop("__draft__", False) is True
             title, data = (kit.build(args, look) if kit.build
                            else _paragraph_write(kit, args, look))
         except ValueError as exc:
@@ -414,6 +418,13 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool, Tool]:
                     " 이 대화의 다른 문서는 그대로 두었습니다." if kept else "")
         state(ctx).update(id=saved.id, version=saved.version, changed=True)
         record: dict[str, Any] = {"version": saved.version, "changes": [f"「{title}」 작성"]}
+        if drafted:
+            # the server saved the model's last arguments in its place: a draft, said as one
+            record["draft"] = True
+            record["changes"] = [f"「{title}」 초안 저장"]
+            said = "[초안] " + said
+            notes.insert(0, "이 파일은 서버가 마지막 호출의 내용으로 저장한 초안입니다: "
+                         "완성본이라고 말하지 말고, 답에 초안이라고 밝히세요.")
         held = ""
         if kit.contents is not None:
             try:
@@ -626,6 +637,7 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool, Tool]:
             "required": ["title", "body"],
         }),
         run=write,
+        draft=kit.draft,
         label="문서 쓰는 중",
         title="문서 작성",
         read_only=False,

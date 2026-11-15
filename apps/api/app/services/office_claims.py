@@ -86,7 +86,23 @@ def note(reply: str, ctx: Any, offered: set[str]) -> str:
     if not offered:
         return ""
     held = _held_note(reply, ctx) if "pptx" in offered else ""
-    return _saved_note(reply, ctx, offered) + held
+    return _saved_note(reply, ctx, offered) + held + _draft_note(reply, ctx)
+
+
+#: a reply that calls the file a draft
+_SAYS_DRAFT = re.compile(r"초안|임시|미완성|\bdraft\b", re.I)
+
+
+def _draft_note(reply: str, ctx: Any) -> str:
+    """A file the server saved from the model's last arguments (a draft, `agent.run_turn`) is
+    never left looking finished: a reply that does not call it a draft gets the sentence."""
+    drafts = [record for kind, record in saved_by(ctx) if record.get("draft")]
+    if not drafts or _SAYS_DRAFT.search(reply or ""):
+        return ""
+    held = drafts[-1].get("contents") if isinstance(drafts[-1].get("contents"), dict) else {}
+    size = f" 슬라이드 {held.get('slides')}장," if held.get("slides") else ""
+    return ("\n\n(확인: 이 파일은 도구 호출이 반복해서 실패해 서버가 마지막 내용으로 저장한 "
+            f"초안입니다.{size} 완성본이 아니니 확인하고 고쳐 주세요.)")
 
 
 def _saved_note(reply: str, ctx: Any, offered: set[str]) -> str:

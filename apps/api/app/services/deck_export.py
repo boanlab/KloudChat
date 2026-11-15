@@ -3305,17 +3305,23 @@ def _build_pptx(
             and (bullets or rows or metrics or chart or body or pattern_words)
             and str((data.get("image") or {}).get("position") or "") == "left"
         )
+        # a wide figure with a few lines (`image.strip`, set by `pptx_doc.deck`): the lines
+        # form a strip under a full-width picture instead of a column that shrinks it
+        strip = bool(picture and bullets and not (rows or metrics or chart or body)
+                     and (data.get("image") or {}).get("strip"))
+        strip_height = 0.0
         # picture beside text narrows it; alone, centred
         text_width = (
             _W
             - 144
             - (
                 picture_span + 24
-                if picture and (bullets or rows or metrics or chart or body or pattern_words)
+                if picture and not strip
+                and (bullets or rows or metrics or chart or body or pattern_words)
                 else 0
             )
         )
-        text_left = 72 + (picture_span + 24 if picture_left else 0)
+        text_left = 72 + (picture_span + 24 if picture_left and not strip else 0)
 
         #: Past the accent block on a split cover.
         cover_left = 72 + 336 if look.cover == "split" else 72
@@ -3796,27 +3802,38 @@ def _build_pptx(
                         )
             elif bullets:
                 # no column flow in PowerPoint: separate boxes
-                columns = _columns_of(data, bullets, layout)
+                columns = [bullets] if strip else _columns_of(data, bullets, layout)
                 span = (text_width - (24 * (len(columns) - 1))) / len(columns)
                 size = _u("bodyNarrow") if len(columns) > 1 else _u("body")
                 drawn = max(deck_type.FLOOR_PT, size * typescale[0])
                 line_pt = drawn * look.leading
                 gap_pt = drawn * deck_type.BULLET_GAP
                 bullet_at = 0
+                list_top, list_room = body_top, room
+                if strip:
+                    # the strip takes what its lines need at the bottom of the body; the
+                    # picture gets the rest (`strip_height`), never less than 60%
+                    strip_lines = sum(len(_wrap(text, measure, drawn, span - 26) or [""])
+                                      for text in bullets)
+                    strip_height = min(strip_lines * line_pt + (len(bullets) - 1) * gap_pt + 8,
+                                       room * 0.4)
+                    list_top, list_room = _BODY_BOTTOM - strip_height, strip_height
+                else:
+                    list_top, list_room = body_top, room
                 for column in columns:
                     # PowerPoint draws them at this size whatever their length: lines past the
                     # box run over the footer, so the slide is reported (`overflowing_slides`)
                     lines = sum(len(_wrap(text, measure, drawn, span - 26) or [""])
                                 for text in column)
-                    if lines * line_pt + max(0, len(column) - 1) * gap_pt > room + 0.5:
+                    if lines * line_pt + max(0, len(column) - 1) * gap_pt > list_room + 0.5:
                         _overflowed("\n".join(column))
                 for column_index, column in enumerate(columns):
                     listing = _textbox(
                         slide,
                         left=text_left + column_index * (span + 24),
-                        top=body_top,
+                        top=list_top,
                         width=span,
-                        height=room,
+                        height=list_room,
                         placeholder=("body", 1) if column_index == 0 else None,
                     )
                     for position, text in enumerate(column):
@@ -3853,28 +3870,44 @@ def _build_pptx(
         if picture:
             image_bytes, image_caption = picture
             image_caption = _unless_title(image_caption, data)
-            alone = not (bullets or rows or metrics or chart or body or pattern_words)
+            alone = strip or not (bullets or rows or metrics or chart or body or pattern_words)
+            # a strip of lines under the figure takes the bottom of the body
+            pic_room = room - (strip_height + 10 if strip else 0.0)
+            region_w = (_W - 260) if alone else picture_span
+            region_left = 72.0 if alone else (72.0 if picture_left else 72.0 + text_width + 24)
             # the caption's lines come out of the picture's room, not the footer's: a caption
             # under a picture that took the whole height ran over the footer
-            caption_width = (_W - 260) if alone else picture_span
             caption_size = max(deck_type.FLOOR_PT, _u("caption") * typescale[0])
-            # measured at the narrower width a tall picture leaves its caption
-            caption_lines = (len(_wrap(image_caption, measure, caption_size,
-                                       max(caption_width * 0.6, 120)) or [""])
-                             if image_caption else 0)
-            caption_room = caption_lines * caption_size * 1.3 + 8 if caption_lines else 0.0
-            box = ((_W - 260) if alone else picture_span, max(room - caption_room, room * 0.5))
             fill = str((data.get("image") or {}).get("fit") or "") == "cover"
-            if fill:
-                _, _, crop_left, crop_top, crop_right, crop_bottom = _fill(image_bytes, box=box)
-                width, height = box
-            else:
-                width, height = _fit(image_bytes, box=box)
-                crop_left = crop_top = crop_right = crop_bottom = 0.0
-            left = (72 if picture_left else 72 + text_width + 24) if not alone else (_W - width) / 2
-            top = body_top + max(0.0, (room - caption_room - height) / 2)
+            caption_room = 0.0
+            for _round in range(4):
+                box = (region_w, max(pic_room - caption_room, pic_room * 0.5))
+                if fill:
+                    _, _, crop_left, crop_top, crop_right, crop_bottom = _fill(image_bytes, box=box)
+                    width, height = box
+                else:
+                    width, height = _fit(image_bytes, box=box)
+                    crop_left = crop_top = crop_right = crop_bottom = 0.0
+                if not image_caption:
+                    break
+                # the caption box is as wide as the figure it sits under (the whole of the
+                # column), measured at that width: a tall figure leaves a narrow caption that
+                # wraps to more lines, which then shrink the figure again until it settles
+                caption_width = max(width, region_w)
+                lines = len(_wrap(image_caption, measure, caption_size, caption_width - 8) or [""])
+                needed = lines * caption_size * 1.3 + 8
+                if needed <= caption_room + 0.5:
+                    break
+                caption_room = max(caption_room, needed)
+            caption_width = max(width, region_w)
+            left = (_W - width) / 2 if alone else region_left
+            top = body_top + max(0.0, (pic_room - caption_room - height) / 2)
+            caption_left = min(max(left + width / 2 - caption_width / 2, region_left),
+                               region_left + region_w - caption_width)
+            if alone:
+                caption_left = (_W - caption_width) / 2
             # the caption's line under the figure only when there is a caption
-            figure_room = room - max(30.0, caption_room) if image_caption else room
+            figure_room = pic_room - max(30.0, caption_room) if image_caption else pic_room
             if (data.get("image") or {}).get("diagram") and native_figure(
                 slide, data,
                 left=(72 if picture_left else 72 + text_width + 24) if not alone else 72.0,
@@ -3885,6 +3918,7 @@ def _build_pptx(
                 left = (72 if picture_left else 72 + text_width + 24) if not alone else 72.0
                 top = body_top
                 fill = False
+                caption_left = left if not alone else (_W - caption_width) / 2
                 picture_drawn = True
             else:
                 picture_drawn = False
@@ -3906,7 +3940,7 @@ def _build_pptx(
             except _Drawn:
                 if image_caption:
                     frame = _textbox(
-                        slide, left=left, top=top + height + 6, width=max(width, 120),
+                        slide, left=caption_left, top=top + height + 6, width=caption_width,
                         height=max(24.0, caption_room - 6),
                     )
                     run = frame.paragraphs[0].add_run()
@@ -3917,7 +3951,7 @@ def _build_pptx(
             else:
                 if image_caption:
                     frame = _textbox(
-                        slide, left=left, top=top + height + 6, width=max(width, 120),
+                        slide, left=caption_left, top=top + height + 6, width=caption_width,
                         height=max(24.0, caption_room - 6),
                     )
                     run = frame.paragraphs[0].add_run()
