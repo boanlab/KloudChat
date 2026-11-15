@@ -109,7 +109,7 @@ test('「내부 자료 작업」 줄은 빈 열을 작업 종류의 모델 그�
   const superColumn = page.getByLabel('내부 자료 작업 · Super Agent 모델')
   await expect(superColumn).toHaveValue('')
   await expect(superColumn.locator('option:checked')).toHaveText('작업 종류의 모델 그대로')
-  await expect(page.getByLabel('내부 자료 작업 · strict-local 모델')).toHaveValue('strict-local/flash')
+  await expect(page.getByLabel('내부 자료 작업 · strict-local 모델')).toHaveValue('')
   await superColumn.selectOption('external/deep')
   await page.getByRole('button', { name: 'Super Agent 설정 저장' }).click()
   await expect(page.getByText('저장했습니다.')).toBeVisible()

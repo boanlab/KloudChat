@@ -118,13 +118,13 @@ DEFAULT_RULES: dict[str, dict[str, str]] = {
         "strictModel": "strict-local/qwen3.8-27b",
         "effort": "default",
     },
-    # strict turns over attached, project or agent files: self-hosted DeepSeek V4 Flash with
-    # thinking on answered them 8.6 of 10 against thinking flash's 6.9 (8.8 vs 7.7 on 100-136k
-    # characters), slower (first answer text ~50 s vs ~6 s). `model` empty: a `super` turn
-    # keeps its class's row (owner decision 2026-11-14)
+    # turns over attached, project or agent files: both columns empty, so they keep their
+    # class's row. Self-hosted DeepSeek V4 Flash judged 8.6 vs thinking flash 6.9 on the first
+    # run but 7.6 vs 7.7 on the re-run (8.2 with its reasoning passed back), at ~50 s more to
+    # the first text; the owner kept them on flash (2026-11-15). An admin may fill the row.
     "material": {
         "model": "",
-        "strictModel": "strict-local/deepseek-v4-flash",
+        "strictModel": "",
         "effort": "high",
     },
     # a thinking flash answer came back empty 3 times in 14; DeepSeek with reasoning on

@@ -1,6 +1,7 @@
-"""Strict-local turns over internal material, and 「다시」 turns, go to self-hosted DeepSeek V4
-Flash; when it fails mid-turn Qwen3.8 Flash carries the same turn on, and a model that failed
-lately is not picked (owner decision 2026-11-14)."""
+"""「다시」 turns in strict-local go to self-hosted DeepSeek V4 Flash (owner decision 2026-11-14);
+turns over internal material keep their class's row unless the admin fills the `material` row
+(2026-11-15). When a strict writer other than flash fails mid-turn Qwen3.8 Flash carries the
+same turn on, and a model that failed lately is not picked."""
 
 from __future__ import annotations
 
@@ -18,8 +19,11 @@ from app.services import agent, model_health
 from app.services import super_agent as sa
 from app.services.tools.base import Tool, ToolContext, ToolResult
 
-STRICT_DS = _model("strict-local/deepseek-v4-flash", boundary="self_hosted", strict=True,
-                   privacy_only=True)
+STRICT_DS = {**_model("strict-local/deepseek-v4-flash", boundary="self_hosted", strict=True,
+                      privacy_only=True), "contextWindow": 258_048}
+#: the admin filled the material row's strict column
+FILLED = Governance(external_data_guard=True, adaptive_classifier_model_id=STRICT_FLASH["id"],
+                    super_agent_rules={"material": {"strictModel": STRICT_DS["id"]}})
 MATERIAL_ASK = "첨부한 3분기 실적 자료에서 매출이 줄어든 이유를 근거와 함께 정리해 줘"
 
 
@@ -42,9 +46,10 @@ def _material(monkeypatch, present: bool = True) -> None:
 # ── the table ────────────────────────────────────────────────────────────────
 
 
-def test_the_table_sends_strict_material_and_escalation_to_deepseek() -> None:
+def test_the_table_sends_strict_escalation_to_deepseek_and_keeps_material_rows() -> None:
     rules = sa.DEFAULT_RULES
-    assert rules["material"] == {"model": "", "strictModel": STRICT_DS["id"], "effort": "high"}
+    # both columns empty: a turn over material keeps its class's row (owner decision 11-15)
+    assert rules["material"] == {"model": "", "strictModel": "", "effort": "high"}
     assert rules["escalation"]["strictModel"] == STRICT_DS["id"]
     assert rules["escalation"]["effort"] == "high"
     # every other strict row is unchanged
@@ -58,12 +63,18 @@ def test_an_admin_may_empty_or_fill_the_material_row_but_no_other() -> None:
                                 "chat": {"model": ""}})
     assert rules["material"]["strictModel"] == "" and rules["material"]["model"] == DEEPSEEK["id"]
     assert rules["chat"]["model"] == sa.DEFAULT_RULES["chat"]["model"]
-    assert sa.stored_rules({"material": {"strictModel": ""}}) == {"material": {"strictModel": ""}}
+    # only changes from the built-in table are stored; emptying the default stores nothing
+    assert sa.stored_rules({"material": {"strictModel": STRICT_DS["id"]}}) == {
+        "material": {"strictModel": STRICT_DS["id"]}}
+    assert sa.stored_rules({"material": {"strictModel": ""}}) == {}
 
 
 def test_steer_moves_material_turns_only_in_a_column_the_row_fills() -> None:
-    rules = sa.normalise_rules({})
     reasoning = sa.Decision("reasoning", "rule", "reasoning_markers")
+    # the defaults move nothing
+    assert sa.steer(sa.normalise_rules({}), reasoning, sa.AUTO, material=True, strict=True) == (
+        "reasoning", "high")
+    rules = sa.normalise_rules(FILLED.super_agent_rules)
     assert sa.steer(rules, reasoning, sa.AUTO, material=True, strict=True) == ("material", "high")
     # super column empty: the class's own row
     assert sa.steer(rules, reasoning, sa.AUTO, material=True, strict=False) == (
@@ -90,9 +101,19 @@ def test_the_strict_fallback_is_flash_for_any_other_writer() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_strict_material_turn_goes_to_deepseek_with_flash_behind_it(monkeypatch) -> None:
+async def test_a_strict_material_turn_stays_on_flash_by_default(monkeypatch) -> None:
     _material(monkeypatch)
     out = await _turn(monkeypatch, MATERIAL_ASK, mode="super_strict")
+    assert out["calls"][0]["model"] == STRICT_FLASH["id"]
+    assert out["calls"][0]["fallback_model"] is None
+    assert "row" not in out["route"]
+
+
+@pytest.mark.asyncio
+async def test_a_filled_material_row_sends_strict_material_to_its_model_with_flash_behind(
+        monkeypatch) -> None:
+    _material(monkeypatch)
+    out = await _turn(monkeypatch, MATERIAL_ASK, mode="super_strict", policy=FILLED)
     call = out["calls"][0]
     assert call["model"] == STRICT_DS["id"]
     assert call["reasoning"][STRICT_DS["id"]] == {"chat_template_kwargs": {"thinking": True}}
@@ -140,7 +161,7 @@ async def test_asking_again_in_strict_escalates_to_deepseek(monkeypatch) -> None
 async def test_a_failed_deepseek_is_not_picked_while_it_is_down(monkeypatch) -> None:
     _material(monkeypatch)
     model_health.mark_failed(STRICT_DS["id"], "upstream_unreachable: ConnectError")
-    out = await _turn(monkeypatch, MATERIAL_ASK, mode="super_strict")
+    out = await _turn(monkeypatch, MATERIAL_ASK, mode="super_strict", policy=FILLED)
     assert out["calls"][0]["model"] == STRICT_FLASH["id"]
     assert out["calls"][0]["fallback_model"] is None
     assert out["route"]["skipped"] == STRICT_DS["id"] and out["route"]["pick"] == "fallback"
@@ -155,11 +176,23 @@ async def test_super_turns_outside_strict_are_unchanged(monkeypatch) -> None:
     assert out["calls"][0]["model"] == DEEPSEEK["id"]
     assert out["calls"][0]["fallback_model"] is None
     assert "row" not in out["route"]
-    # internal material kept inside: the strict column, so DeepSeek inside
+    # internal material kept inside: the strict column's class row, flash
     out = await _turn(monkeypatch, MATERIAL_ASK, policy=Governance(
         external_data_guard=True, internal_data_strict_local=True), project="p1")
-    assert out["calls"][0]["model"] == STRICT_DS["id"]
+    assert out["calls"][0]["model"] == STRICT_FLASH["id"]
     assert out["route"]["strictReason"] == "internal_data"
+
+
+@pytest.mark.asyncio
+async def test_a_strict_turn_past_flashs_window_still_reaches_deepseek(monkeypatch) -> None:
+    # the material row empty: the size rule alone moves a turn flash cannot hold
+    _material(monkeypatch)
+    long_paste = "회의록 원문입니다. 매출과 비용 항목을 정리했습니다.\n" * 6_000
+    out = await _turn(monkeypatch, long_paste + "\n위 회의록에서 결정 사항만 정리해 줘",
+                      mode="super_strict")
+    assert out["calls"][0]["model"] == STRICT_DS["id"]
+    assert out["route"]["pick"] == "any" and "row" not in out["route"]
+    assert out["calls"][0]["fallback_model"] == STRICT_FLASH["id"]
 
 
 # ── the fallback inside one turn ─────────────────────────────────────────────
@@ -336,7 +369,8 @@ async def test_the_answer_says_which_model_carried_it_and_bills_both(monkeypatch
         yield {"type": "usage", "inputTokens": 10, "outputTokens": 5,
                f"model:{model_id}:inputTokens": 7, f"model:{model_id}:outputTokens": 3}
 
-    out = await _turn(monkeypatch, MATERIAL_ASK, mode="super_strict", answer_stub=answer)
+    out = await _turn(monkeypatch, MATERIAL_ASK, mode="super_strict", policy=FILLED,
+                      answer_stub=answer)
     route = out["route"]
     assert route["selectedModel"] == STRICT_DS["id"]
     assert route["fallbackModel"] == STRICT_FLASH["id"] and route["fallbackReason"] == "timeout"
