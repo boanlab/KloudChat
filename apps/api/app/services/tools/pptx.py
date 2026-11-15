@@ -47,6 +47,10 @@ async def _look(db: Any, ctx: Any) -> tuple[dict | None, str, Any] | None:
     return tokens, template, form
 
 
+#: what `_prepare` tells the model beside the saved file (`office.write`)
+NOTES = "__notes__"
+
+
 def _slides_of(args: dict[str, Any]) -> list[dict[str, Any]]:
     """`slides` as a list of objects; some models send the array as a JSON string."""
     raw = args.get("slides")
@@ -204,16 +208,22 @@ async def _prepare(args: dict[str, Any], ctx: Any) -> dict[str, Any]:
         found = await _pictures(db, ctx, [{"op": "insert_picture", "file": name}
                                           for name in wanted])
     slides = []
+    missing = []
     for index, slide in enumerate(args["slides"], 1):
         image = slide.get("image")
         if isinstance(image, dict) and (name := str(image.get("file") or "").strip()):
             if name not in found:
-                raise ValueError(
-                    f"slides[{index}].image.file 「{name}」 그림을 찾지 못했습니다. 이 대화에 "
-                    "올린 그림이나 pdf_figures가 만든 그림의 이름(또는 id)을 쓰세요.")
-            slide = {**slide, "image": {**image, "data": found[name][1]}}
+                # the slide is written without it (one unknown picture must not lose the
+                # deck), and the result says which picture is not in the file
+                missing.append(f"slides[{index}] 「{name}」")
+                slide = {key: value for key, value in slide.items() if key != "image"}
+            else:
+                slide = {**slide, "image": {**image, "data": found[name][1]}}
         slides.append(slide)
-    return {**args, "slides": slides}
+    notes = ([f"그림을 찾지 못해 넣지 않은 곳: {', '.join(missing)}. 이 그림들은 파일에 "
+              "없으니 넣었다고 말하지 마세요(pdf_figures로 잘라 온 그림 이름만 쓸 수 있습니다)."]
+             if missing else [])
+    return {**args, "slides": slides, NOTES: notes}
 
 
 def _takes_look() -> bool:

@@ -344,8 +344,10 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool, Tool]:
             if kit.look_for is not None:
                 async with kit.session() as db:
                     look = await kit.look_for(db, ctx)
+            notes: list[str] = []
             if kit.prepare is not None:
                 args = await kit.prepare(args, ctx)
+                notes = list(args.pop("__notes__", None) or [])
             title, data = (kit.build(args, look) if kit.build
                            else _paragraph_write(kit, args, look))
         except ValueError as exc:
@@ -416,7 +418,7 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool, Tool]:
         left = kit.edit.blanks(data)
         return ToolResult(
             content=(
-                f"{said}{held}\n남은 빈칸: "
+                f"{said}{held}" + "".join(f"\n{note}" for note in notes) + "\n남은 빈칸: "
                 + (", ".join(left) if left else "없음")
                 + f"\n고칠 때는 {p}_read로 번호를 읽은 뒤 {p}_edit을 쓰세요."
             ),

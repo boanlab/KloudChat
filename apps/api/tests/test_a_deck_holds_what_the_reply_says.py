@@ -176,3 +176,17 @@ async def test_chart_values_sent_as_strings_are_numbers_and_words_are_gaps():
     values = [item["values"] for item in args["slides"][0]["chart"]["series"]]
     assert values == [[610.0, 580.0, None], [1820.0, 1950.0, 2080.0]]
     assert pptx_edit.contents(tool._build(args)[1])["chart"] == 1
+
+
+async def test_a_picture_that_is_not_there_is_left_out_and_said(monkeypatch):
+    from app.services.tools import office
+
+    async def none_found(db, ctx, ops):
+        return {}
+
+    monkeypatch.setattr(office, "_pictures", none_found)
+    ctx = SimpleNamespace(request="발표 자료 2장", user_id="u", session_id="s")
+    args = await tool._prepare({"title": "t", "slides": [
+        {"title": "그림", "bullets": ["설명"], "image": {"file": "2309.06180-Figure8.png"}}]}, ctx)
+    assert "image" not in args["slides"][0]
+    assert "Figure8" in args[tool.NOTES][0]
