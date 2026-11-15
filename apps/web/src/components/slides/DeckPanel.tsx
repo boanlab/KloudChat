@@ -55,6 +55,7 @@ import { useDeckDocument } from '@/components/slides/useDeckDocument'
 import { DocumentAsk, DocumentHeader, DocumentLock, DocumentNotice, DocumentReadOnlyNote } from '@/components/document/DocumentChrome'
 import { fontFamilyFor } from '@/components/report/docType'
 import { PAIRED, heldCount, pairFields, pairedLayout, relayout } from '@/components/slides/relayout'
+import { randomId } from '@/lib/cryptoFallback'
 
 /** Whether a slide has content in any field; mirrors `deck.has_content` on the server. */
 function hasContent(slide: Slide): boolean {
@@ -2446,7 +2447,7 @@ export function DeckPanel({
     const body = reviewDraft.trim()
     if (!slide || !body) return
     const next = [...reviewComments, {
-      id: crypto.randomUUID(),
+      id: randomId(),
       slideId: slide.id,
       body,
       status: 'open' as const,
