@@ -1008,6 +1008,27 @@ def strip_budget_notes(text: str) -> str:
     return joined + ("\n" if text.endswith("\n") else "")
 
 
+#: a fenced block in a document section: its fence, then its lines
+_FENCED = re.compile(r"(?m)^[ \t]{0,3}(`{3,})[^\n`]{0,20}\n((?:(?!^[ \t]{0,3}`{3,}).*\n){0,3}?)"
+                     r"[ \t]{0,3}\1[ \t]*$\n?")
+
+
+def _stray_fences(text: str) -> str:
+    """A fence left in a document with nothing in it, or only an unfinished note of the
+    writer's own (「(이전 생각:」, 「Draft:」): dropped. A fence that holds code or real lines
+    stays."""
+    def keep(match: re.Match) -> str:
+        lines = [line.strip() for line in match.group(2).splitlines() if line.strip()]
+        if not lines:
+            return ""
+        if (len(lines) == 1 and len(lines[0]) <= 40 and lines[0].endswith((":", "："))
+                and not re.search(r"[=;{}<>]|\b(?:def|return|import|class)\b", lines[0])):
+            return ""
+        return match.group(0)
+
+    return _FENCED.sub(keep, text) if "``" in text else text
+
+
 def strip_work_notes(text: str, *, request: str = "", document: bool = False) -> str:
     """`text` minus the writer's work notes: plan narration (English or Korean), a worksheet's
     labels and notes, check verdicts, lone 「check」 lines and 「[질문]」 stubs. Headings,
@@ -1016,7 +1037,7 @@ def strip_work_notes(text: str, *, request: str = "", document: bool = False) ->
     if not text or not text.strip():
         return text
     if document:
-        text = strip_budget_notes(strip_plan_preface(strip_plan_blocks(text)))
+        text = strip_budget_notes(strip_plan_preface(strip_plan_blocks(_stray_fences(text))))
     korean = _latin_share(request) < 0.5 if request.strip() else _latin_share(text) < 0.5
     asked_check = bool(_ASKED_CHECK.search(request or ""))
     asked_edit = bool(_ASKED_EDIT.search(request or ""))
