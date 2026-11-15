@@ -23,15 +23,15 @@ from app.models.workspace import Project, StoredFile
 from app.services import digest_jobs
 from app.services import files as file_service
 
-_HANGUL = re.compile(r"[가-힣]")
+_HANGUL = re.compile(r"[가-힣]+")
 
 
 def glued(text: str) -> bool:
-    """Korean text with far fewer spaces than Korean prose has (about one per 3–4 letters)."""
-    letters = len(_HANGUL.findall(text))
-    if letters < 200:
-        return False
-    return text.count(" ") < letters / 12
+    """Korean text whose Hangul runs are far longer than words: prose averages two to three
+    letters between spaces or marks, run-together text six or more."""
+    runs = _HANGUL.findall(text)
+    letters = sum(len(run) for run in runs)
+    return letters >= 150 and letters / len(runs) > 5
 
 
 async def main(apply: bool, project_id: str | None) -> None:
