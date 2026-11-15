@@ -7,6 +7,7 @@ import { Button, PageHeader } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { AccessTab } from './settings/AccessTab'
+import { ConnectionsTab } from './settings/ConnectionsTab'
 import { KeysTab } from './settings/KeysTab'
 import { PersonalizationTab } from './settings/PersonalizationTab'
 import { PreferencesTab } from './settings/PreferencesTab'
@@ -19,6 +20,7 @@ const tabs = [
   { to: '/settings/preferences', label: '환경설정', end: false },
   { to: '/settings/personalization', label: '개인 맞춤 설정', end: false },
   { to: '/settings/memory', label: '메모리', end: false },
+  { to: '/settings/connections', label: '연결', end: false },
   { to: '/settings/keys', label: 'API 키', end: false },
   { to: '/settings/access', label: '보안', end: false },
 ]
@@ -82,6 +84,7 @@ export function SettingsPage() {
           <Route path="memory" element={<MemoryPage embedded />} />
           {/* themes retired (2026-11-15): a project's or agent's 디자인 지침 instead */}
           <Route path="themes" element={<Navigate to="/settings" replace />} />
+          <Route path="connections" element={<ConnectionsTab />} />
           <Route path="keys" element={<KeysTab />} />
           <Route path="access" element={<AccessTab />} />
           <Route path="*" element={<Navigate to="/settings" replace />} />

@@ -209,6 +209,7 @@ from app.services.credits import (
     record_searches,
     settle,
 )
+from app.services.integrations import tools as integration_tools_service
 from app.services.tools import sandbox_tools
 from app.services.tools.base import Tool, ToolContext, openai_snapshot
 from app.services.tools.builtin import MAX_GIVEN_LINKS
@@ -1693,6 +1694,7 @@ async def _super_route(
     tool_bound: bool,
     pictures: bool = False,
     reasoning_mode: str = super_agent.AUTO,
+    integrations: bool = False,
 ) -> tuple[dict, dict[str, Any], str]:
     """Super Agent turn: `(model, route note, effort)`.
 
@@ -1720,9 +1722,9 @@ async def _super_route(
         {"current_input": content, "conversation_history": [m.content for m in history]},
         legacy=policy.pii_masking,
     )
-    internal = policy.internal_data_strict_local and _internal_data_present(
+    internal = policy.internal_data_strict_local and (integrations or _internal_data_present(
         session, None, attachments, history
-    )
+    ))
     strict = mode == super_agent.SUPER_STRICT or bool(personal) or internal
     #: a column where the material row names a model: whether this turn works over files
     material = bool(
@@ -1893,7 +1895,8 @@ def _internal_data_present(
         if getattr(message, "attachments", None):
             return True
         routing = getattr(message, "routing", None)
-        if isinstance(routing, dict) and routing.get("action") == "internal_strict_local":
+        if isinstance(routing, dict) and (routing.get("action") == "internal_strict_local"
+                                          or routing.get("integrationMaterial")):
             return True
     return any(block.source in _INTERNAL_SOURCES for block in blocks or [])
 
@@ -5642,6 +5645,15 @@ async def _send_message(
                 status_code=status.HTTP_409_CONFLICT, detail="search_consent_stale"
             )
 
+    #: the person's calendar, Drive or Slack tools this turn is about: their content is
+    #: internal material (`integrations.tools`); never a published agent's
+    integration_tools: list[Tool] = (
+        await integration_tools_service.turn_tools(
+            db, user, " ".join([content, *(m.content for m in history[-4:]
+                                           if m.role is Role.user)]),
+            agent_tools)
+        if published is None and kind is SessionKind.chat else []
+    )
     #: the Super Agent route note for this turn (its effort is `super_route["effort"]`)
     super_route: dict[str, Any] | None = None
     if super_turn:
@@ -5657,8 +5669,10 @@ async def _send_message(
             kind=kind,
             web_search=payload.web_search,
             attachments=payload.attachments,
-            tool_bound=bool(payload.activated_skill_ids or session.agent_id),
+            tool_bound=bool(payload.activated_skill_ids or session.agent_id
+                            or integration_tools),
             reasoning_mode=reasoning_mode,
+            integrations=bool(integration_tools),
         )
         requested_model = model
 
@@ -5861,6 +5875,20 @@ async def _send_message(
                 ),
                 key=lambda tool: (tool.name, tool.source),
             )
+        if integration_tools:
+            # an agent with its own tool list gets only the ones it lists
+            offered = [t for t in integration_tools
+                       if agent_tools is None or t.name in agent_tools]
+            taken = {t.name for t in candidate_tools} | {t.name for t in strict_tools}
+            offered = [t for t in offered if t.name not in taken]
+            if not requested_is_strict:
+                candidate_tools = sorted([*candidate_tools, *offered],
+                                         key=lambda tool: (tool.name, tool.source))
+            if strict_candidate_available:
+                # the provider's data comes in; nothing of the turn goes out but a write the
+                # person confirms on its card
+                strict_tools = sorted([*strict_tools, *offered],
+                                      key=lambda tool: (tool.name, tool.source))
         if own_scripts:
             # own scripts join shipped ones in `run_skill_script`
             candidate_tools = sandbox_tools.with_own_scripts(candidate_tools, own_scripts)
@@ -6053,7 +6081,8 @@ async def _send_message(
             explicit_action=payload.privacy_action,
             decision_token=payload.privacy_decision_token,
             chosen_model_id=payload.privacy_model_id,
-            internal_data=published is not None or _internal_data_present(
+            internal_data=published is not None or bool(integration_tools)
+            or _internal_data_present(
                 session, workspace.blocks, payload.attachments, history
             ),
             force_strict_local=published is not None,
@@ -6068,6 +6097,10 @@ async def _send_message(
             )
             return resolved
         privacy_resolution = resolved
+        if integration_tools:
+            # the conversation now holds the person's Drive or Slack material: later turns
+            # stay internal even without the words (`_internal_data_present`)
+            resolved.routing = {**resolved.routing, "integrationMaterial": True}
         if revoked_model is not None:
             # `actualModelChanged` compares against the requested model
             resolved.routing = {
@@ -6089,6 +6122,10 @@ async def _send_message(
         # privacy routing can't add tool support
         if requested_model.get("supportsTools") and model.get("supportsTools"):
             tools = strict_tools if strict_local else candidate_tools
+        if integration_tools and not strict_local and policy.internal_data_strict_local:
+            # internal material stays on strict-local models: an outside model gets none
+            names = {t.name for t in integration_tools}
+            tools = [t for t in tools if t.name not in names]
         masker = governance.mask_legacy if policy.pii_masking else governance.mask
         # egress-masked user-side values; the stored answer masks exactly these (and secrets)
         protected_values = _protected_values(privacy_sources, legacy=policy.pii_masking)

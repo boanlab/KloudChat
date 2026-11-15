@@ -150,6 +150,13 @@
 "lang": "ko",
 "path": "admin/system",
 "title": "시스템 설정",
+"heading": "연동",
+"text": "Google 드라이브와 Slack을 켭니다. 설치 하나에 제공자마다 OAuth 클라이언트 하나를 관리자가 만들어 넣고, 사람마다 **설정 › 연결**에서 자기 계정을 연결합니다. 화면에 보이는 **리디렉션 URI**를 클라이언트 설정에 그대로 넣습니다(메일 탭의 서비스 주소로 만듭니다). Google은 `drive.file` 범위만 써서 개인 계정도 Google 심사 없이 연결됩니다. Picker API 키와 프로젝트 번호가 있어야 드라이브 가져오기가 켜집니다. 끄면 모든 사람의 연결을 끊습니다. **연결한 사람**에서 누가 연결했는지 볼 수 있고 토큰은 보이지 않습니다. 콘솔 설정 순서는 저장소의 `docs/integrations.md`를 참고하십시오."
+},
+{
+"lang": "ko",
+"path": "admin/system",
+"title": "시스템 설정",
 "heading": "시스템 탭 외의 관리 항목",
 "text": "- **사용량** 화면: 기간별 차트(7·30·90일 또는 **직접 지정**한 날짜 범위), 모델·화면·사용자별(정렬·검색), CSV 내보내기, 저장 공간(디스크 사용량, 고아 파일 정리, 가득 차면 오래된 것부터 자동 정리).\n- **스토어**: 관리자 계정이 공개한 에이전트에는 **공식** 배지가 붙고, 스킬은 공개한 사람의 이름이 붙습니다. 기본 스킬은 처음 관리자 계정의 스킬로, 모두에게 공개된 채 시작합니다. 관리자는 **사용자 지정** › **스킬**에서 다른 스킬처럼 고치거나 공개를 끌 수 있고, 고친 스킬은 새 버전으로 덮어쓰지 않습니다(고치지 않은 스킬과 사용자의 고치지 않은 사본은 새 버전을 따라갑니다). 목록에서 숨긴 기본 스킬(부품으로만 남긴 것)은 관리자에게 **숨김 포함**을 켰을 때만 보입니다.\n- **성능 모니터링** 화면: 모델별 첫 토큰·전체 응답 지연과 오류율, 진행 중 턴, API 복제본·호스트·GPU 지표를 보고 기준을 넘은 항목을 주의·과부하로 표시합니다. 첫 화면은 판정, 핵심 수치, GPU 노드·모델 서버 표를 한 화면에 모은 대시보드이고, 수치나 표의 행을 누르면 호스트·모델별 추이나 노드·서버 하나의 세부 화면으로 갑니다. 기준값은 API 환경변수 `PERF_*`로 바꿉니다.\n- 신뢰할 프록시 범위와 파일 크기 한도처럼 배포에 딸린 값은 화면이 아닌 환경변수로 설정합니다. 어떤 값이 어디에 속하는지는 저장소의 `docs/configuration.md` 의 「배포 설정과 제품 설정」을 참고하십시오."
 },
@@ -1075,7 +1082,7 @@
 "path": "personal/settings",
 "title": "설정",
 "heading": "",
-"text": "계정 메뉴 → **설정**에서 여섯 개 탭을 제공합니다: 프로필, 환경설정, 개인 맞춤 설정, 메모리, API 키, 보안."
+"text": "계정 메뉴 → **설정**에서 일곱 개 탭을 제공합니다: 프로필, 환경설정, 개인 맞춤 설정, 메모리, 연결, API 키, 보안."
 },
 {
 "lang": "ko",
@@ -1118,6 +1125,13 @@
 "title": "설정",
 "heading": "문서 모양",
 "text": "설정에는 문서 모양을 정하는 탭이 없습니다. 보고서와 슬라이드의 색·글꼴·표 모양은 프로젝트나 에이전트의 **디자인 지침**에 말로 적거나, 회사 양식 파일을 첨부해 맞춥니다. 문서 하나의 모양은 보고서·슬라이드 패널의 **모양**에서 바꿉니다."
+},
+{
+"lang": "ko",
+"path": "personal/settings",
+"title": "설정",
+"heading": "연결",
+"text": "내 Google 드라이브와 Slack 계정을 연결합니다. 관리자가 켠 서비스만 보이고, 연결은 내 계정에만 쓰입니다(개인 gmail.com 계정도 됩니다).\n\n- **Google 드라이브**: 입력창의 **+ › 드라이브에서 가져오기**나 프로젝트 **지식 › 드라이브**에서 Google 파일 선택 창으로 고른 파일만 앱이 엽니다. 드라이브의 다른 파일은 보지 않습니다. 가져온 파일의 새로 고침 단추는 드라이브에서 바뀐 내용을 다시 가져옵니다.\n- **드라이브에 저장**처럼 밖으로 쓰는 일은 답 아래 확인 카드에서 **확인**을 눌러야 보냅니다.\n- 드라이브 내용은 내부 자료로 다룹니다. 관리자가 내부 자료를 strict-local로 두면 내부 모델만 읽습니다.\n- **연결 해제**는 권한을 되돌리고 저장한 토큰을 지웁니다. 가져온 파일은 남습니다."
 },
 {
 "lang": "ko",
@@ -1853,6 +1867,13 @@
 "title": "System settings",
 "heading": "Connector catalogue",
 "text": "The MCP servers people can install from **Customize** › **Connectors**. **Add entry** takes a name, slug, transport (run a command over stdio, HTTP or SSE), the command or address, environment variables and surfaces. Write tool addresses as placeholders such as `${TOOLS_STT_URL}`. Pick a **variable that gets the gateway key** and `TOOLS_GATEWAY_KEY` is added only while that variable is the chosen tool's address (this is how YouTube transcription calls speech-to-text). Stored values are never shown again; type one only to replace it. Servers that run as a command are added here. List the commands members may register themselves under **Commands members may register themselves** (사용자가 직접 등록할 수 있는 실행 명령), one per line: a member's command runs only when it matches a line argument for argument, and it cannot take environment variables. A command not on the list is not run, even one registered earlier; it reports an error instead. Turn off **Show in the list** (목록에 보이기) and the entry leaves the members' list but can still be installed, and what is installed keeps working (the admin list marks it Hidden). Turn off **Enabled** and nobody can install it anew. Turn on **Built in** (기본 제공) and the entry is installed at once for every active member, and for everyone who signs up or is approved later (the admin list marks it Built in). Members can switch a built-in connector off but cannot remove it. An entry that needs each person's credentials cannot be built in. Time, YouTube transcription and Deep research are built in."
+},
+{
+"lang": "en",
+"path": "admin/system",
+"title": "System settings",
+"heading": "Integrations",
+"text": "Turns on Google Drive and Slack. The administrator creates one OAuth client per provider for the installation and enters it here; each person connects their own account under **Settings › Connections**. Put the **Redirect URI** shown here into the client settings as it is (it is built from the service address on the Mail tab). Google uses only the `drive.file` scope, so personal accounts connect without a Google review. Drive import needs the Picker API key and the project number. Turning a provider off disconnects everyone. **People connected** shows who connected, never a token. For the console steps see `docs/integrations.md` in the repository."
 },
 {
 "lang": "en",
@@ -2783,7 +2804,7 @@
 "path": "personal/settings",
 "title": "Settings",
 "heading": "",
-"text": "**Settings**, in the account menu, has six tabs: Profile, Preferences, Personalization, Memory, API keys and Security."
+"text": "**Settings**, in the account menu, has seven tabs: Profile, Preferences, Personalization, Memory, Connections, API keys and Security."
 },
 {
 "lang": "en",
@@ -2826,6 +2847,13 @@
 "title": "Settings",
 "heading": "Document look",
 "text": "Settings has no tab for the look of documents. Set the colours, fonts and table style of reports and slides in words in the **design brief** of a project or an agent, or attach a company form file. The look of a single document is changed with **Look** in the report or slides panel."
+},
+{
+"lang": "en",
+"path": "personal/settings",
+"title": "Settings",
+"heading": "Connections",
+"text": "Connect your own Google Drive and Slack accounts. Only services the administrator turned on appear, and a connection is used for your account only (a personal gmail.com account works too).\n\n- **Google Drive**: the app opens only the files you pick in Google's file picker, from **+ › Import from Drive** in the composer or **Knowledge › Drive** in a project. It never sees the rest of your Drive. The refresh button on an imported file brings in what changed in Drive.\n- Anything written outside, such as **Save to Drive**, is sent only after you press **Confirm** on the card under the answer.\n- Drive content is internal material: where the administrator keeps internal material strict-local, only internal models read it.\n- **Disconnect** revokes the grant and deletes the stored tokens. Imported files stay."
 },
 {
 "lang": "en",

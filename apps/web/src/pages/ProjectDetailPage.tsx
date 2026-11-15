@@ -1,4 +1,4 @@
-import { ArrowLeft, Brain, CircleAlert, ExternalLink, FileText, Link2, Loader2, MoreHorizontal, Pencil, Plus, RefreshCw, Sparkles, Trash2, Upload, X } from 'lucide-react'
+import { ArrowLeft, Brain, CircleAlert, ExternalLink, FileText, HardDrive, Link2, Loader2, MoreHorizontal, Pencil, Plus, RefreshCw, Sparkles, Trash2, Upload, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
@@ -21,6 +21,7 @@ import {
   useMenuClose,
 } from '@/components/ui'
 import { ApiError, downloadFile, errorMessage } from '@/lib/api'
+import { importFromDrive, isDriveLink, pickFailure } from '@/lib/googlePicker'
 import { currentLang } from '@/lib/i18n'
 import { PROJECT_EMOJIS, kindMeta, kindOrder } from '@/lib/kinds'
 import { memoryTypeLabel } from '@/lib/memoryTypes'
@@ -102,6 +103,9 @@ export function ProjectDetailPage() {
     reindexProject,
     addProjectFile,
     setDraft,
+    drivePicker,
+    addProjectDriveFiles,
+    syncDriveFile,
   } = useStore()
   const project = projects.find((p) => p.id === projectId)
   // Scanned files read in the background; rows follow the pages.
@@ -118,6 +122,32 @@ export function ProjectDetailPage() {
   } | null>(null)
   const [memoryDraft, setMemoryDraft] = useState<MemoryEntry | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [driveBusy, setDriveBusy] = useState<string | null>(null)
+  const fromDrive = async () => {
+    if (!project) return
+    setDriveBusy('import')
+    try {
+      const { files, refused } = await importFromDrive({ projectId: project.id })
+      if (files.length) addProjectDriveFiles(project.id, files)
+      if (refused) setNotice(t('드라이브 파일 {n}개는 가져오지 못했습니다.').replace('{n}', String(refused)))
+    } catch (err) {
+      setNotice(t(pickFailure(err)))
+    } finally {
+      setDriveBusy(null)
+    }
+  }
+  const resync = async (fileId: string) => {
+    if (!project) return
+    setDriveBusy(fileId)
+    try {
+      const changed = await syncDriveFile(project.id, fileId)
+      setNotice(changed ? t('드라이브의 새 내용으로 바꿨습니다.') : t('드라이브에서 바뀐 내용이 없습니다.'))
+    } catch (err) {
+      setNotice(t(pickFailure(err)))
+    } finally {
+      setDriveBusy(null)
+    }
+  }
   const [uploadProgress, setUploadProgress] = useState<{ name: string; sent: number; total: number } | null>(null)
   const [mediaNotes, setMediaNotes] = useState<string[]>([])
   /** The video file open in the player. */
@@ -667,6 +697,12 @@ export function ProjectDetailPage() {
                     <Link2 size={14} />
                     {t('웹 자료')}
                   </Button>
+                  {drivePicker && (
+                    <Button size="sm" disabled={driveBusy === 'import'} onClick={() => void fromDrive()}>
+                      <HardDrive size={14} />
+                      {t('드라이브')}
+                    </Button>
+                  )}
                   <Button size="sm" disabled={uploading} onClick={() => fileInput.current?.click()}>
                     <Upload size={14} className={uploading ? 'animate-pulse' : undefined} />
                     {uploading ? t('업로드 중') : t('파일 추가')}
@@ -735,7 +771,7 @@ export function ProjectDetailPage() {
                         {f.name}
                       </button>
                       <span className="block text-xs text-faint">
-                        {f.sourceUrl ? t('웹페이지 스냅샷') : f.size} · {t('{n} 토큰').replace('{n}', formatTokens(f.tokens))} · <RelTime iso={f.addedAt} />
+                        {isDriveLink(f.sourceUrl) ? t('Google 드라이브') : f.sourceUrl ? t('웹페이지 스냅샷') : f.size} · {t('{n} 토큰').replace('{n}', formatTokens(f.tokens))} · <RelTime iso={f.addedAt} />
                       </span>
                       {f.error && (
                         <span className="block text-xs text-warn">
@@ -783,6 +819,18 @@ export function ProjectDetailPage() {
                     {f.preview && (
                       <Button variant="ghost" size="sm" onClick={() => setExpandedFile((id) => id === f.id ? null : f.id)}>
                         {expandedFile === f.id ? t('미리보기 닫기') : t('읽은 내용 확인')}
+                      </Button>
+                    )}
+                    {isDriveLink(f.sourceUrl) && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={t('{name} 드라이브에서 다시 가져오기').replace('{name}', f.name)}
+                        title={t('드라이브에서 다시 가져오기')}
+                        disabled={driveBusy === f.id}
+                        onClick={() => void resync(f.id)}
+                      >
+                        <RefreshCw size={14} className={driveBusy === f.id ? 'animate-spin' : undefined} />
                       </Button>
                     )}
                     {f.sourceUrl && <a href={f.sourceUrl} target="_blank" rel="noreferrer" aria-label={t('{name} 원문 열기').replace('{name}', f.name)} className="text-faint hover:text-accent"><ExternalLink size={14} /></a>}

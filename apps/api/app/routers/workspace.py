@@ -679,17 +679,31 @@ async def upload_file(
     data = await upload_bytes(file)
     if project_id:
         await _own(db, Project, "user_id", user, project_id)
+    stored = await store_bytes(db, user.id, file.filename or "file", file.content_type, data,
+                               project_id=project_id, session_id=session_id)
+    return FileOut.of(stored)
 
-    stored = StoredFile(
-        user_id=user.id,
-        project_id=project_id,
-        session_id=session_id,
-        name=file_service.safe_name(file.filename or "file"),
-        size=len(data),
-        # Content-Type is a claim; bytes decide
-        mime=file_service.detected_mime(file.filename or "file", file.content_type, data),
-    )
-    stored.storage_key = file_service.write_blob(user.id, stored.id, stored.name, data)
+
+async def store_bytes(db: DbSession, user_id: str, name: str, declared: str | None,
+                      data: bytes, *, project_id: str | None = None,
+                      session_id: str | None = None, source_url: str | None = None,
+                      stored: StoredFile | None = None) -> StoredFile:
+    """A file stored as an upload is: text read, scanned pages and media queued, project
+    material digested and indexed. `stored`: an existing row whose bytes are replaced (a
+    file synced again from Drive)."""
+    if stored is None:
+        stored = StoredFile(user_id=user_id, project_id=project_id, session_id=session_id,
+                            name=file_service.safe_name(name or "file"), source_url=source_url)
+    else:
+        old_key = stored.storage_key
+        stored.name = file_service.safe_name(name or stored.name)
+        stored.error = None
+        if old_key:
+            file_service.delete_blob(old_key)
+    stored.size = len(data)
+    # Content-Type is a claim; bytes decide
+    stored.mime = file_service.detected_mime(name or "file", declared, data)
+    stored.storage_key = file_service.write_blob(user_id, stored.id, stored.name, data)
 
     # audio/video: said and shown, by time, in the background (`video_jobs`)
     watching = video_jobs.mark(stored)
@@ -719,15 +733,15 @@ async def upload_file(
         video_jobs.wake()
     # indexed for `search_knowledge`; never blocks the upload
     if stored.text.strip():
-        if project_id:
-            project = await db.get(Project, project_id)
+        if stored.project_id:
+            project = await db.get(Project, stored.project_id)
             if project is not None:
-                await _index_document(db, user.id, await _project_shelf_key(db, project), stored)
-        elif session_id:
-            session = await db.get(ChatSession, session_id)
-            if session is not None and session.user_id == user.id:
-                await _index_document(db, user.id, await _session_shelf_key(db, session), stored)
-    return FileOut.of(stored)
+                await _index_document(db, user_id, await _project_shelf_key(db, project), stored)
+        elif stored.session_id:
+            session = await db.get(ChatSession, stored.session_id)
+            if session is not None and session.user_id == user_id:
+                await _index_document(db, user_id, await _session_shelf_key(db, session), stored)
+    return stored
 
 
 async def reindex_session_files(db: DbSession, user_id: str, session: ChatSession) -> int:
