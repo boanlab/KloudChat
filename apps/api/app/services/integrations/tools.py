@@ -15,7 +15,7 @@ import re
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.models.user import User
-from app.services.integrations import accounts, config, drive
+from app.services.integrations import accounts, config, drive, slack
 from app.services.tools.base import Tool
 
 #: a request about the person's Google Drive files
@@ -24,16 +24,18 @@ _DRIVE = re.compile(
     r"google\s?(?:drive|docs|sheets|slides)|docs\.google\.com|drive\.google\.com",
     re.I,
 )
+#: a request about the person's Slack
+_SLACK = re.compile(r"슬랙|slack", re.I)
 #: tool names by provider
 NAMES: dict[str, tuple[str, ...]] = {
     config.GOOGLE: (drive.SEARCH, drive.READ, drive.IMPORT, drive.EXPORT),
-    config.SLACK: (),
+    config.SLACK: (slack.LIST, slack.READ, slack.POST),
 }
 ALL_NAMES = frozenset(name for names in NAMES.values() for name in names)
 #: provider → its cue
 _CUES: dict[str, tuple[re.Pattern[str], ...]] = {
     config.GOOGLE: (_DRIVE,),
-    config.SLACK: (),
+    config.SLACK: (_SLACK,),
 }
 
 #: picker blurbs; the model reads `Tool.description`
@@ -42,6 +44,9 @@ BLURBS: dict[str, str] = {
     drive.READ: "드라이브 파일의 글을 읽습니다.",
     drive.IMPORT: "드라이브 파일을 프로젝트 자료로 넣습니다.",
     drive.EXPORT: "확인을 받은 뒤 문서를 내 드라이브에 저장합니다.",
+    slack.LIST: "내가 속한 Slack 채널을 봅니다.",
+    slack.READ: "Slack 채널의 최근 대화를 읽습니다.",
+    slack.POST: "확인을 받은 뒤 Slack에 메시지를 보냅니다.",
 }
 
 
@@ -64,7 +69,7 @@ async def granted_features(db: AsyncSession, user: User) -> dict[str, set[str]]:
 def provider_tools(provider: str, features: set[str]) -> list[Tool]:
     if provider == config.GOOGLE:
         return drive.tools(features)
-    return []
+    return slack.tools(features)
 
 
 async def turn_tools(db: AsyncSession, user: User, text: str,

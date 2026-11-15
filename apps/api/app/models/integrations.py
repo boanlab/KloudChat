@@ -139,8 +139,40 @@ class SlackWorkspace(SQLModel, table=True):
     bot_user_id: str = Field(default="", max_length=40)
     scopes: list | None = Field(default=None, sa_column=_json(nullable=True))
     installed_by: str | None = Field(default=None, max_length=32)
+    #: the administrator marked it the organisation's own: its channels are the internal
+    #: audience for published agents; any other workspace counts as outside
+    internal: bool = Field(default=False)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
     updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
+
+
+class SlackBotChannel(SQLModel, table=True):
+    """A Slack channel whose @mentions a published agent answers, in a thread."""
+
+    __tablename__ = "slack_bot_channels"
+    __table_args__ = (UniqueConstraint("team_id", "channel_id", name="ux_slack_bot_channels"),)
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    team_id: str = Field(max_length=40)
+    channel_id: str = Field(max_length=40)
+    channel_name: str = Field(default="", max_length=200)
+    publication_id: str = Field(foreign_key="publications.id", index=True, ondelete="CASCADE")
+    added_by: str = Field(foreign_key="users.id", ondelete="CASCADE")
+    #: shared with another organisation (Slack Connect): an outside audience
+    shared: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
+
+
+class SlackThread(SQLModel, table=True):
+    """The bot conversation a Slack thread continues."""
+
+    __tablename__ = "slack_threads"
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    #: `team:channel:thread_ts`
+    key: str = Field(max_length=120, unique=True, index=True)
+    session_id: str = Field(max_length=32)
+    created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
 
 
 __all__ = [
@@ -150,5 +182,7 @@ __all__ = [
     "IntegrationAction",
     "IntegrationImport",
     "Provider",
+    "SlackBotChannel",
+    "SlackThread",
     "SlackWorkspace",
 ]

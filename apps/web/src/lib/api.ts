@@ -676,7 +676,7 @@ export const authConfig = {
       /** One file's upload ceiling; absent from older servers. */
       upload?: { maxMb: number; maxMediaMb?: number; mediaReading?: boolean; maxMediaMinutes?: number }
       /** Connections the administrator turned on; absent from older servers. */
-      integrations?: { drivePicker: boolean; slack: boolean }
+      integrations?: { drivePicker: boolean; slack: boolean; slackBot?: boolean }
     }>('/auth/config').then((config) => {
       // Every date on screen follows it, whichever screen asked first.
       setServiceTimeZone(config.timeZone)
@@ -3953,7 +3953,7 @@ export interface AdminIntegration {
   signingSecretSet?: boolean
   installScopes?: string[]
   eventsUrl?: string
-  workspaces?: { teamId: string; name: string; installedAt: string }[]
+  workspaces?: { teamId: string; name: string; installedAt: string; internal?: boolean }[]
 }
 
 export interface AdminIntegrationAccount {
@@ -3964,6 +3964,24 @@ export interface AdminIntegrationAccount {
   status: string
   connectedAt: string
   lastUsedAt: string | null
+}
+
+export interface SlackChannel {
+  id: string
+  name: string
+  private: boolean
+  /** Shared with another organisation (Slack Connect). */
+  shared: boolean
+}
+
+export interface SlackBotChannelRow {
+  id: string
+  channelId: string
+  name: string
+  shared: boolean
+  createdAt: string
+  /** Why the bot does not answer there now; null when it does. */
+  blocked: 'bot_paused' | 'outside_not_approved' | null
 }
 
 export const integrationsApi = {
@@ -3991,6 +4009,17 @@ export const integrationsApi = {
     call<AdminIntegration>(`/admin/integrations/${provider}`, { method: 'PUT', body: JSON.stringify(patch) }),
   adminAccounts: (provider: IntegrationProvider) =>
     call<AdminIntegrationAccount[]>(`/admin/integrations/${provider}/accounts`),
+  slackChannels: () => call<SlackChannel[]>('/integrations/slack/channels'),
+  slackNotify: (on: boolean, channel: string) =>
+    call<Record<string, unknown>>('/integrations/slack/notify', { method: 'PUT', body: JSON.stringify({ on, channel }) }),
+  slackBotChannels: (publicationId: string) =>
+    call<SlackBotChannelRow[]>(`/integrations/slack/bots/${publicationId}/channels`),
+  slackBotLink: (publicationId: string, channel: string) =>
+    call<SlackBotChannelRow>(`/integrations/slack/bots/${publicationId}/channels`, body({ channel })),
+  slackBotUnlink: (publicationId: string, linkId: string) =>
+    call<void>(`/integrations/slack/bots/${publicationId}/channels/${linkId}`, { method: 'DELETE' }),
+  adminMarkSlack: (teamId: string, internal: boolean) =>
+    call<AdminIntegration>(`/admin/integrations/slack/workspaces/${teamId}`, { method: 'PUT', body: JSON.stringify({ internal }) }),
   adminUninstallSlack: (teamId: string) =>
     call<AdminIntegration>(`/admin/integrations/slack/workspaces/${teamId}`, { method: 'DELETE' }),
 }

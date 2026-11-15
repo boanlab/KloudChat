@@ -111,6 +111,10 @@ async def world(monkeypatch):
     monkeypatch.setattr(settings_store, "all_values", all_values)
     monkeypatch.setattr(common, "SessionLocal", maker)
     monkeypatch.setattr(actions, "SessionLocal", maker)
+    from app.services.integrations import slack_bot, slack_notify
+
+    monkeypatch.setattr(slack_notify, "SessionLocal", maker)
+    monkeypatch.setattr(slack_bot, "SessionLocal", maker)
     provider = Provider()
     http.use_transport(httpx.MockTransport(provider.handle))
 

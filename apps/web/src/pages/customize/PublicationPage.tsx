@@ -5,6 +5,8 @@ import { Markdown } from '@/components/chat/Markdown'
 import { HubTopBar } from '@/components/customize/DetailLayout'
 import { PageBody } from '@/components/layout/AppShell'
 import { AdminReadsCard, ApiTab, ChannelsCard } from '@/components/publishing/BotChannels'
+import { SlackBotCard } from '@/components/publishing/SlackBotCard'
+import { useStore } from '@/store/useStore'
 import { PublicationSettingsForm } from '@/components/publishing/PublicationSettingsForm'
 import { ScopePicker } from '@/components/publishing/ScopePicker'
 import { Badge, Button, Card, ConfirmDialog, EmptyState, Field, Input, LoadingState, ReloadNotice, ResourceStatus, Select, Tabs } from '@/components/ui'
@@ -78,6 +80,7 @@ export function PublicationPage() {
   const raw = params.get('tab') as Tab | null
   const tab: Tab = raw && TABS.includes(raw) ? raw : 'overview'
   const [pub, setPub] = useState<Publication | null>(null)
+  const slackBot = useStore((s) => s.slackBot)
   const [missing, setMissing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -231,6 +234,7 @@ export function PublicationPage() {
             <div className="space-y-4">
               <ScopeCard key={pub.updatedAt} pub={pub} busy={busy} onSave={(visibility, credits) => run(() => publicationsApi.setScope(pub.id, visibility, credits))} />
               <ChannelsCard key={`channels-${pub.updatedAt}`} pub={pub} onChange={setPub} />
+              {slackBot && <SlackBotCard publicationId={pub.id} />}
               <Card className="space-y-2 p-4">
                 <p className="text-sm text-faint">{t('주소')}</p>
                 <div className="flex min-w-0 flex-wrap items-center gap-2">

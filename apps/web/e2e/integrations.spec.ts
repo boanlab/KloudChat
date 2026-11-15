@@ -16,6 +16,8 @@ const model = 'strict-local/qwen3.8-flash'
 const shots = process.env.INTEGRATIONS_SCREENSHOT_DIR
 
 type State = {
+  notify: Record<string, unknown>
+  slackAction: Record<string, unknown>
   connected: boolean
   posts: { method: string; path: string; body: unknown }[]
   unexpected: string[]
@@ -40,8 +42,14 @@ function fileRow(id: string, name: string, extra: Record<string, unknown> = {}) 
   }
 }
 
-async function mock(page: Page): Promise<State> {
+async function mock(page: Page, { slackRow = false }: { slackRow?: boolean } = {}): Promise<State> {
   const state: State = {
+    notify: { on: false, channel: '' },
+    slackAction: {
+      id: 'act-slack', provider: 'slack', kind: 'slack.post_message', status: 'pending',
+      payload: { channel: 'C111111', channelName: '운영위', text: '회의록을 올렸습니다. 확인 부탁드립니다.' },
+      editable: ['channel', 'channelName', 'text'], result: null, error: '', createdAt: now, decidedAt: null,
+    },
     connected: false, posts: [], unexpected: [], projectFiles: [],
     action: {
       id: actionId, provider: 'google', kind: 'drive.export', status: 'pending',
@@ -111,7 +119,25 @@ async function mock(page: Page): Promise<State> {
       { provider: 'google', features: ['drive', 'drive_export'],
         connection: state.connected ? { status: 'connected', label: 'member@gmail.com', features: ['drive', 'drive_export'],
           connectedAt: now, lastUsedAt: null, prefs: {} } : null },
+      ...(slackRow ? [{ provider: 'slack', features: ['read', 'post', 'notify', 'bot'],
+        connection: { status: 'connected', label: '단국 · @jn', features: ['read', 'post', 'notify'],
+          connectedAt: now, lastUsedAt: now, prefs: { notify: state.notify } } }] : []),
     ])
+    if (path === '/integrations/slack/channels') return json([
+      { id: 'C111111', name: '운영위', private: false, shared: false },
+      { id: 'G222222', name: '예산-비공개', private: true, shared: false },
+    ])
+    if (path === '/integrations/slack/notify' && method === 'PUT') {
+      state.notify = { ...(request.postDataJSON() as object), name: '' }
+      return json({ notify: state.notify })
+    }
+    if (path === '/integrations/actions/act-slack' && method === 'GET') return json(state.slackAction)
+    if (path === '/integrations/actions/act-slack/confirm' && method === 'POST') {
+      const edits = (request.postDataJSON() as { edits?: Record<string, unknown> | null }).edits ?? {}
+      state.slackAction = { ...state.slackAction, status: 'done', payload: { ...(state.slackAction.payload as object), ...edits },
+        result: { id: '1.2', url: 'https://dankook.slack.com/archives/G222222/p12', label: '#예산-비공개' } }
+      return json(state.slackAction)
+    }
     if (path.startsWith('/admin/') && method !== 'GET') state.posts.push({ method, path, body: request.postDataJSON() })
     if (path === '/integrations/google/connect' && method === 'POST') {
       // the provider's consent screen, mocked: it sends the browser straight back
@@ -161,6 +187,11 @@ async function mock(page: Page): Promise<State> {
       const { messages: _m, ...summary } = session
       return json([summary])
     }
+    if (path === '/sessions/slack-post' && method === 'GET') return json({ ...session, id: 'slack-post', title: 'Slack 공지',
+      messages: [{ ...question, content: '운영위 채널에 회의록 올렸다고 슬랙으로 알려 줘' }, { ...answer, content: '운영위 채널에 보낼 메시지를 카드에 띄웠습니다.',
+        steps: [{ id: 'h0_0', type: 'tool', label: 'Slack 메시지 제안', status: 'done', detail: '확인을 기다립니다',
+          confirm: { actionId: 'act-slack', kind: 'slack.post_message', provider: 'slack' } }] }] })
+    if (path === '/sessions/slack-post/messages' && method === 'GET') return json([])
     if (path === `/sessions/${sessionId}` && method === 'GET') return json(session)
     if (path === `/sessions/${sessionId}/messages` && method === 'GET') return json(session.messages)
     if (path === '/projects' && method === 'GET') return json([project()])
@@ -219,6 +250,8 @@ test('드라이브 저장은 카드에서 확인해야 보내고, 고른 형식�
   await expect(card.getByText('11월 운영위 결과 보고')).toBeVisible()
   // nothing sent while it waits
   expect(state.posts).toEqual([])
+  // the default is the format the tool call named (the answer says .docx)
+  await expect(card.getByLabel('파일 형식')).toHaveValue('docx')
   await card.getByLabel('파일 형식').selectOption('pdf')
   await shot(page, `drive-card-${phoneName(page)}`)
   await card.getByRole('button', { name: '드라이브에 저장' }).click()
@@ -269,4 +302,33 @@ test('관리자 연동 화면은 비밀값을 보이지 않고, 끄기 전에 �
   } finally {
     asAdmin = false
   }
+})
+
+test('Slack 메시지는 카드에서 채널과 내용을 고친 뒤 보낸다 @phone', async ({ page }) => {
+  const state = await mock(page, { slackRow: true })
+  await page.goto('/s/slack-post')
+  const card = page.getByTestId('action-card')
+  await expect(card.getByText('Slack에 이 메시지를 보낼까요?')).toBeVisible()
+  await expect(card.getByLabel('보낼 내용')).toHaveValue('회의록을 올렸습니다. 확인 부탁드립니다.')
+  expect(state.posts).toEqual([])
+  await card.getByLabel('보낼 채널').selectOption('G222222')
+  await card.getByLabel('보낼 내용').fill('회의록을 올렸습니다.')
+  await shot(page, `slack-card-${phoneName(page)}`)
+  await card.getByRole('button', { name: 'Slack에 보내기' }).click()
+  await expect(card.getByText('보냈습니다.')).toBeVisible()
+  expect(state.posts).toEqual([{ method: 'POST', path: '/integrations/actions/act-slack/confirm',
+    body: { edits: { channel: 'G222222', channelName: '예산-비공개', text: '회의록을 올렸습니다.' } } }])
+  expect(state.unexpected).toEqual([])
+})
+
+test('Slack 알림을 켜고 받을 곳을 고른다 @phone', async ({ page }) => {
+  const state = await mock(page, { slackRow: true })
+  await page.goto('/settings/connections')
+  const box = page.getByTestId('slack-notify')
+  await box.getByRole('switch', { name: '긴 작업이 끝나면 Slack으로 알림' }).click()
+  await box.getByLabel('알림 받을 곳').selectOption('C111111')
+  await expect.poll(() => state.posts.length).toBe(2)
+  expect(state.posts.map((p) => p.body)).toEqual([{ on: true, channel: '' }, { on: true, channel: 'C111111' }])
+  await shot(page, `slack-connection-${phoneName(page)}`)
+  expect(state.unexpected).toEqual([])
 })

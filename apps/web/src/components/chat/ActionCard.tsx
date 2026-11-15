@@ -1,7 +1,7 @@
 import { CircleCheck, CloudUpload, ExternalLink, Send, TriangleAlert } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
-import { Button, Select } from '@/components/ui'
-import { errorMessage, integrationsApi, type IntegrationAction } from '@/lib/api'
+import { Button, Select, Textarea } from '@/components/ui'
+import { errorMessage, integrationsApi, type IntegrationAction, type SlackChannel } from '@/lib/api'
 import { useT } from '@/lib/useT'
 
 /** What a failed write says, by the server's code. */
@@ -24,6 +24,7 @@ export function ActionCard({ actionId }: { actionId: string }) {
   const [edits, setEdits] = useState<Record<string, unknown>>({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [channels, setChannels] = useState<SlackChannel[] | null>(null)
 
   useEffect(() => {
     let live = true
@@ -35,6 +36,18 @@ export function ActionCard({ actionId }: { actionId: string }) {
       live = false
     }
   }, [actionId, t])
+  const slackPending = action?.kind === 'slack.post_message' && action.status === 'pending'
+  useEffect(() => {
+    if (!slackPending) return
+    let live = true
+    integrationsApi
+      .slackChannels()
+      .then((rows) => live && setChannels(rows))
+      .catch(() => live && setChannels([]))
+    return () => {
+      live = false
+    }
+  }, [slackPending])
 
   const decide = async (yes: boolean) => {
     setBusy(true)
@@ -84,7 +97,38 @@ export function ActionCard({ actionId }: { actionId: string }) {
     )
   } else {
     icon = <Send size={16} className="mt-0.5 shrink-0 text-accent" />
-    title = t('이 내용으로 보낼까요?')
+    title = t('Slack에 이 메시지를 보낼까요?')
+    yes = t('Slack에 보내기')
+    const channel = String(edits.channel ?? p.channel ?? '')
+    const text = String(edits.text ?? p.text ?? '')
+    const pick = (id: string) => {
+      const found = channels?.find((c) => c.id === id)
+      setEdits({ ...edits, channel: id, channelName: found?.name ?? '' })
+    }
+    body =
+      action.status === 'pending' ? (
+        <div className="mt-2 space-y-1.5">
+          <Select aria-label={t('보낼 채널')} value={channel} onChange={(e) => pick(e.target.value)} className="w-auto max-w-full">
+            {!channel && <option value="">{t('채널 고르기')}</option>}
+            {channel && !channels?.some((c) => c.id === channel) && <option value={channel}>#{String(p.channelName || channel)}</option>}
+            {(channels ?? []).map((c) => (
+              <option key={c.id} value={c.id}>
+                #{c.name}
+              </option>
+            ))}
+          </Select>
+          <Textarea
+            aria-label={t('보낼 내용')}
+            value={text}
+            rows={Math.min(8, Math.max(2, text.split('\n').length))}
+            onChange={(e) => setEdits({ ...edits, text: e.target.value })}
+          />
+        </div>
+      ) : (
+        <p className="mt-1.5 text-sm text-muted">
+          #{String(p.channelName || p.channel)} · {String(p.text).slice(0, 140)}
+        </p>
+      )
   }
 
   return (
@@ -100,7 +144,12 @@ export function ActionCard({ actionId }: { actionId: string }) {
       {body}
       {action.status === 'pending' && (
         <div className="mt-2.5 flex flex-wrap gap-1.5">
-          <Button size="sm" variant="primary" disabled={busy} onClick={() => void decide(true)}>
+          <Button
+            size="sm"
+            variant="primary"
+            disabled={busy || (action.kind === 'slack.post_message' && !String(edits.channel ?? p.channel ?? ''))}
+            onClick={() => void decide(true)}
+          >
             {yes}
           </Button>
           <Button size="sm" variant="ghost" disabled={busy} onClick={() => void decide(false)}>
