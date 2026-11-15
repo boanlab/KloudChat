@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { setWebSearch } from './composer-tools'
-import { mockApp, models, now, sessionId } from './super-agent-fixture'
+import { mockApp, model, models, now, sessionId } from './super-agent-fixture'
 
 test('모델 선택기는 Auto 두 항목 대신 Super Agent 두 항목을 보여 주고 고르면 대화에 저장한다', async ({ page }) => {
   const state = await mockApp(page, 'manual')
@@ -247,4 +247,56 @@ test('「내부 자료 작업」 줄은 빈 열을 작업 종류의 모델 그�
   expect(state.governancePuts.at(-1)).toMatchObject({
     superAgentRules: { material: { model: 'external/deep' } },
   })
+})
+
+for (const [entry, stored, shown] of [
+  [/Super Agent \(strict-local\)/, 'super_strict', 'Super Agent (strict-local)'],
+  [/Mock · Deep/, 'external/deep', 'Mock · Deep'],
+] as const) {
+  test(`홈에서 Super Agent를 고른 뒤 ${shown}을 고르면 서버에 남은 값을 다른 기기의 설정도 보여 준다 @phone`, async ({ page, browser }) => {
+    const state = await mockApp(page, 'manual', undefined, { chat: 'local/flash' })
+    await page.goto('/')
+    // Super Agent first: the home screen keeps an unsent conversation for it
+    await page.getByRole('button', { name: /Mock · Flash/ }).click()
+    await page.getByRole('menuitemradio', { name: /^Super Agent 사용 가능/ }).click()
+    await expect(page.getByRole('button', { name: 'Super Agent', exact: true })).toBeVisible()
+    await expect.poll(() => state.profilePatches.at(-1)).toMatchObject({ preferences: { modelByKind: { chat: 'super' } } })
+    await page.getByRole('button', { name: 'Super Agent', exact: true }).click()
+    await page.getByRole('menuitemradio', { name: entry }).first().click()
+    await expect.poll(() => state.profilePatches.at(-1)).toMatchObject({ preferences: { modelByKind: { chat: stored } } })
+    const kept = (state.profilePatches.at(-1) as { preferences: { modelByKind: Record<string, string> } }).preferences.modelByKind
+    // this browser's settings, after a reload
+    await page.goto('/settings/preferences')
+    await expect(page.getByRole('button', { name: /^챗: / })).toHaveAttribute('aria-label', `챗: ${shown}`)
+    // another device: a fresh browser that has only what the server stored
+    const other = await browser.newContext({ baseURL: test.info().project.use.baseURL, viewport: page.viewportSize() ?? undefined })
+    const elsewhere = await other.newPage()
+    await mockApp(elsewhere, 'manual', undefined, kept)
+    await elsewhere.goto('/settings/preferences')
+    await expect(elsewhere.getByRole('button', { name: /^챗: / })).toHaveAttribute('aria-label', `챗: ${shown}`)
+    await elsewhere.goto('/new/chat')
+    await expect(elsewhere.getByRole('button', { name: shown === 'Mock · Deep' ? /Mock · Deep/ : shown, exact: shown !== 'Mock · Deep' }).first()).toBeVisible()
+    await other.close()
+  })
+}
+
+test('in a narrow column the composer shortens the model name inside its row', async ({ page }) => {
+  test.skip((page.viewportSize()?.width ?? 0) < 640, 'desktop layout')
+  const long = model('local/long', 'Qwen · Qwen3.8 27b (local) with a long deployment name', 'hybrid')
+  await mockApp(page, 'manual', undefined, { chat: 'local/long' }, { catalogue: [long, ...models] })
+  // as narrow as the chat column beside an open document
+  await page.setViewportSize({ width: 720, height: 900 })
+  await page.goto('/new/chat')
+  const picker = page.getByRole('button', { name: /Qwen · Qwen3\.8 27b/ })
+  await expect(picker).toBeVisible()
+  const send = page.getByRole('button', { name: '전송', exact: true })
+  const [pick, sent, box] = [await picker.boundingBox(), await send.boundingBox(),
+    await page.getByLabel('프롬프트 입력').evaluate((el) => {
+      let node: HTMLElement | null = el as HTMLElement
+      while (node && !node.className.toString().includes('border')) node = node.parentElement
+      const r = (node ?? el).getBoundingClientRect()
+      return { x: r.x, width: r.width }
+    })]
+  expect(pick!.x + pick!.width).toBeLessThanOrEqual(sent!.x + 0.5)
+  expect(sent!.x + sent!.width).toBeLessThanOrEqual(box.x + box.width + 0.5)
 })

@@ -1,5 +1,5 @@
 import type { OpenArtifact, UploadProgress, WebSearchSetting } from '@/lib/api'
-import { isSuperEntry, startingMode } from '@/lib/superAgent'
+import { startingMode } from '@/lib/superAgent'
 import { withAccountPicks } from '@/lib/modelPicks'
 import { forgetStoredDraft, purgeStoredDrafts } from '@/lib/drafts'
 import { findUnsent, forgetUnsent, keepUnsent, purgeUnsent, unsentId } from '@/lib/unsentSessions'
@@ -733,26 +733,22 @@ function sameFilter(filter: ArtifactFilter): ArtifactFilter {
   return { ...(kind ? { kind } : {}), ...(q ? { q } : {}) }
 }
 
-const MODEL_STORAGE_KEY = 'kchat-models'
-
-/** The picks this browser kept, under the account's own where it has any. */
-function readRememberedModels(
-  account: Partial<Record<SessionKind, string>> = {},
-): Partial<Record<SessionKind, string>> | null {
-  let local: Partial<Record<SessionKind, string>> = {}
-  try {
-    const raw = localStorage.getItem(MODEL_STORAGE_KEY)
-    local = raw ? (JSON.parse(raw) as Partial<Record<SessionKind, string>>) : {}
-  } catch {
-    local = {}
-  }
-  const merged = { ...local, ...account }
-  return Object.keys(merged).length ? merged : null
+/**
+ * The model picks of the signed-in account: one source of truth on every device. The server copy
+ * (`preferences.modelByKind`) is what the settings page, the composer's start chip and the
+ * server's start rule all read; this browser keeps none of its own.
+ */
+function accountPicks(
+  account: Partial<Record<SessionKind, string>> | undefined,
+): Partial<Record<SessionKind, string>> {
+  return { ...(account ?? {}) }
 }
 
-/** Keeps the picks on the account; a failure leaves the browser copy, which still works here. */
+/** Keeps the picks on the account, the one copy every device reads. */
+let accountWrites: Promise<unknown> = Promise.resolve()
 function rememberOnAccount(patch: Partial<Preferences>) {
-  void auth.updateMe({ preferences: patch }).catch(() => {})
+  // one after another, so two quick picks reach the server in the order they were made
+  accountWrites = accountWrites.then(() => auth.updateMe({ preferences: patch })).catch(() => {})
 }
 
 type AvMode = 'audio' | 'video'
@@ -799,17 +795,7 @@ function reconcileAvModels(
   return next
 }
 
-const initialModelByKind: Record<SessionKind, string> = (() => {
-  const blank = { chat: '', report: '', slides: '', image: '', av: '' }
-  try {
-    const picks = JSON.parse(localStorage.getItem(MODEL_STORAGE_KEY) || '{}') as Record<string, string>
-    // a Super Agent entry is a pick, not a model: the surface's model stays the fallback
-    const models = Object.fromEntries(Object.entries(picks).filter(([, id]) => !isSuperEntry(id)))
-    return { ...blank, ...models }
-  } catch {
-    return blank
-  }
-})()
+const initialModelByKind: Record<SessionKind, string> = { chat: '', report: '', slides: '', image: '', av: '' }
 
 // `system` is stored as-is, never the resolved colour, so the OS setting keeps applying.
 const darkQuery = window.matchMedia('(prefers-color-scheme: dark)')
@@ -971,14 +957,16 @@ function reconcileDefaults(
   account: Partial<Record<SessionKind, string>> = {},
 ): Record<SessionKind, string> {
   const next = { ...current }
-  const remembered = readRememberedModels(account)
+  const remembered = accountPicks(account)
   for (const kind of Object.keys(next) as SessionKind[]) {
-    const kept = remembered?.[kind]
+    const kept = remembered[kind]
     if (kept && available.some((m) => m.id === kept && m.kinds.includes(kind))) {
       next[kind] = kept
       continue
     }
-    if (available.some((m) => m.id === next[kind] && m.kinds.includes(kind))) continue
+    // no pick of the account's own: the surface follows the admin's default, not a model left over
+    // av follows the mode's own remembered model (`avModelByMode`), set when the mode changes
+    if (kind === 'av' && available.some((m) => m.id === next.av && m.kinds.includes('av'))) continue
     const usable = available
       .filter((m) => m.kinds.includes(kind))
       // Catalogue order; a strict-local model only when nothing else serves the surface.
@@ -1535,12 +1523,6 @@ export const useStore = create<State>((set, get) => ({
           s.user?.preferences.modelByKind,
         ),
       }))
-      // An account without picks adopts this browser's once; then the account copy leads.
-      const prefs = get().user?.preferences
-      if (prefs && !Object.keys(prefs.modelByKind ?? {}).length) {
-        const local = readRememberedModels()
-        if (local) rememberOnAccount({ modelByKind: local, avModelByMode: readRememberedAvModels() })
-      }
     } catch {
       // Keep what is loaded. `litellmAvailable` describes the list, not this request.
       set((s) => ({
@@ -1573,8 +1555,7 @@ export const useStore = create<State>((set, get) => ({
     set((s) => {
       const next = { ...s.modelByKind, [kind]: id }
       // Only picks are remembered: a surface left on its default keeps following the admin's.
-      const picks = { ...readRememberedModels(s.user?.preferences.modelByKind), [kind]: id }
-      localStorage.setItem(MODEL_STORAGE_KEY, JSON.stringify(picks))
+      const picks = { ...accountPicks(s.user?.preferences.modelByKind), [kind]: id }
       // An av pick is also remembered for its own mode.
       const modality = kind === 'av' ? s.models.find((m) => m.id === id)?.modality : undefined
       const byMode =
@@ -1593,25 +1574,15 @@ export const useStore = create<State>((set, get) => ({
     }),
   pickSuperEntry: (kind, entry) =>
     set((s) => {
-      const picks = { ...readRememberedModels(s.user?.preferences.modelByKind), [kind]: entry }
-      try {
-        localStorage.setItem(MODEL_STORAGE_KEY, JSON.stringify(picks))
-      } catch {
-        // storage unavailable: the account keeps it
-      }
+      const picks = { ...accountPicks(s.user?.preferences.modelByKind), [kind]: entry }
       if (s.user) rememberOnAccount({ modelByKind: picks })
       return s.user ? { user: { ...s.user, preferences: { ...s.user.preferences, modelByKind: picks } } } : {}
     }),
   clearModelPick: (kind) =>
     set((s) => {
-      const picks = { ...readRememberedModels(s.user?.preferences.modelByKind) }
+      const picks = accountPicks(s.user?.preferences.modelByKind)
       if (!(kind in picks)) return {}
       delete picks[kind]
-      try {
-        localStorage.setItem(MODEL_STORAGE_KEY, JSON.stringify(picks))
-      } catch {
-        // storage unavailable: the account keeps it
-      }
       if (s.user) rememberOnAccount({ modelByKind: picks })
       return s.user ? { user: { ...s.user, preferences: { ...s.user.preferences, modelByKind: picks } } } : {}
     }),

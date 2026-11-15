@@ -113,6 +113,8 @@ export async function mockApp(
           preferences: {
             streamResponses: true, autoMemory: false, showUsage: options.showUsage ?? false, privacyDefaultAction: 'ask',
             ...(modelByKind ? { modelByKind } : {}),
+            // what this "server" stored since: a reload reads it back
+            ...((me.preferences as object | undefined) ?? {}),
           },
           allowedModels: [], createdAt: now, lastActiveAt: now,
         },

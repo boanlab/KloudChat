@@ -119,6 +119,7 @@ export function ModelPicker({
   projectId,
   onEnableAuto,
   onBusyChange,
+  homePick = false,
 }: {
   kind: SessionKind
   /** When set, the picker reads and writes this session's model. */
@@ -135,6 +136,8 @@ export function ModelPicker({
   onEnableAuto?: (mode: RoutingMode) => void | Promise<void>
   /** Reports an in-flight selection so a turn does not race it. */
   onBusyChange?: (busy: boolean) => void
+  /** The home screen's composer (its session, if any, is unsent): a pick is the person's start too. */
+  homePick?: boolean
 }) {
   const t = useT()
   const field = variant === 'field'
@@ -297,8 +300,10 @@ export function ModelPicker({
         onPick={(id) => {
           // Keyed off `sessionId`, not the session row: the list can lag behind the URL.
           return persistSelection(() => {
+            // the home screen's unsent conversation: the pick is also this surface's start
+            if (homePick) setModel(kind, id)
             if (sessionId) return setSessionModel(sessionId, id)
-            setModel(kind, id)
+            if (!homePick) setModel(kind, id)
           })
         }}
       />

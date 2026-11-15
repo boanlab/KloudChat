@@ -1006,6 +1006,11 @@ export function Composer({
   const project = projects.find((p) => p.id === projectId)
   const effectiveSessionId = sessionId ?? reusableSessionId
   const session = sessions.find((candidate) => candidate.id === effectiveSessionId)
+  // Nothing sent yet and no agent: what is picked here is the person's start for this surface too
+  // (the home screen turns into such a conversation as soon as a Super Agent entry is picked).
+  const startPick = !session
+    ? !sessionId
+    : !session.agentId && session.messages.length === 0 && !session.messageCount
   // Nothing sent yet (the home screen, /new/:kind, a project's start, any empty session):
   // the same 형식·템플릿 chips and first-send options as the home screen.
   const opened = sessionId ? sessions.find((candidate) => candidate.id === sessionId) : undefined
@@ -2314,6 +2319,7 @@ export function Composer({
       sessionId={sessionId ?? reusableSessionId}
       projectId={projectId}
       modality={kind === 'av' ? (avOptions.mode === 'video' ? 'video' : 'audio') : undefined}
+      homePick={startPick}
       onEnableAuto={async (mode) => {
         setChatError(null)
         try {
@@ -2326,6 +2332,8 @@ export function Composer({
             setReusableSessionId(id)
             navigate(`/s/${id}`, { replace: true })
           } else {
+            // the home screen's unsent conversation: a Super Agent entry is the start from now on too
+            if (startPick && isSuperMode(mode)) pickSuperEntry(kind, mode)
             await setSessionRoutingMode(id, mode)
           }
         } catch (error) {
@@ -2815,7 +2823,8 @@ export function Composer({
             <div className="ml-auto flex min-w-0 items-center gap-1">
               {contextGauge}
               {reasoningChip}
-              {modelPicker}
+              {/* A narrow column (a document open beside it): the model's name shortens inside the box. */}
+              <span className="flex min-w-0 shrink [&>fieldset>div]:min-w-0 [&>fieldset>div]:max-w-full [&>fieldset>div]:shrink [&_button]:max-w-full" data-testid="composer-model-slot">{modelPicker}</span>
               {sendButton}
             </div>
           </div>
