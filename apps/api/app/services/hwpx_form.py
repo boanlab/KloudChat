@@ -60,11 +60,16 @@ def free_line(text: str) -> bool:
             or bool(_GUIDANCE.search(t)))
 
 
-def fixed_line(text: str) -> bool:
-    """A line the form says itself: short and neither free nor a bracket blank alone."""
+#: a short line naming what goes there (「지자체명」, 「제목」), not a sentence the form says
+_PLACEHOLDER = re.compile(r"^[가-힣A-Za-z ]{1,10}(?:명|제목)$")
+
+
+def fixed_line(text: str, *, body: bool = False) -> bool:
+    """A line the form says itself: short and neither free nor a bracket blank alone. A
+    body paragraph naming what goes there (「지자체명」) is a placeholder, not fixed."""
     t = (text or "").strip()
-    return (not free_line(t) and len(re.sub(r"\s+", "", t)) <= _FIXED_MAX
-            and not BLANK.fullmatch(t))
+    return (not free_line(t) and not (body and _PLACEHOLDER.fullmatch(t))
+            and len(re.sub(r"\s+", "", t)) <= _FIXED_MAX and not BLANK.fullmatch(t))
 
 
 def _lines(cell: etree._Element) -> list[str]:
@@ -155,7 +160,7 @@ def snapshot(doc: Any) -> dict[str, Any]:
             if roomy:
                 rooms.append(_key(table.id, r, c))
     paras = [t for t in (hwpx_edit._own_text(p).strip() for p in doc.paragraphs)
-             if fixed_line(t)][:_MAX_PARAS]
+             if fixed_line(t, body=True)][:_MAX_PARAS]
     return {"cells": cells, "paras": paras, "rooms": rooms[:_MAX_CELLS]}
 
 
@@ -315,9 +320,9 @@ class Guard:
             return "\n".join(kept)
         if len(fixed) > 1:
             raise Skip(
-                f"{table} r{row}c{col}: 이 칸은 「{' / '.join(f[:14] for f in fixed)}」 줄이 있어 "
-                "그 줄을 그대로 두고 줄마다 아래에 내용을 쓴 칸 전체를 보내야 합니다. "
-                "넣지 않았습니다.")
+                f"{table} r{row}c{col}: 이 칸은 서식의 줄이 여럿이라 그 줄을 그대로 두고 칸 전체를 "
+                "보내야 합니다(줄은 \\n으로 이음). 서식의 줄: "
+                + " \\n ".join(f"「{f}」" for f in fixed) + ". 넣지 않았습니다.")
         extra = [ln for ln in mine if _compact(ln) != want[0]]
         self.notes.append(f"{table} r{row}c{col}: 칸의 「{fixed[0][:14]}」 줄은 두고 그 아래에 "
                           "넣었습니다.")
