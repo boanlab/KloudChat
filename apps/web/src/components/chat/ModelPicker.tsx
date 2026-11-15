@@ -7,6 +7,7 @@ import {
   Plug,
   ShieldCheck,
   TriangleAlert,
+  WandSparkles,
   Wrench,
 } from 'lucide-react'
 import { useState } from 'react'
@@ -541,6 +542,12 @@ function ModelMenu({
               )}
               {m.supportsVision && <Eye size={11} />}
               {m.supportsTools && <Wrench size={11} />}
+              {m.modality === 'image' && m.editsImages && (
+                <span className="flex items-center gap-0.5 whitespace-nowrap" data-testid="model-edits-images" title={t('이미지를 고칠 수 있는 모델입니다')}>
+                  <WandSparkles size={11} />
+                  {t('고치기 가능')}
+                </span>
+              )}
             </span>
           </span>
         </button>

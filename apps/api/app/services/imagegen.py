@@ -1,4 +1,5 @@
-"""Image generation via chat/completions; aspect via image_config and prompt."""
+"""Image generation via chat/completions; aspect via image_config and prompt. An edit sends
+the source picture as an image content part beside the instruction."""
 
 from __future__ import annotations
 
@@ -226,6 +227,81 @@ def modalities_for(model_id: str) -> list[str]:
     return ["image"]
 
 
+#: Picture models that change a given picture as told, checked on 2026-11-15 with one edit call
+#: each through the gateway (a red square with a white disc, "make only the background blue").
+#: OpenRouter lists image input for all five external models; Recraft V4.1 took the picture but
+#: kept the background red and refuses `image_config` on edits, so it is left out. The
+#: self-hosted shims draw from the text alone (Z-Image drew an unrelated icon). Read only when
+#: the gateway's `model_info` does not say (`kchat_edits_images`).
+EDITING_MODELS = frozenset(
+    {
+        "google/gemini-3-pro-image",
+        "openai/gpt-5.4-image-2",
+        "bytedance-seed/seedream-5-0-flash",
+        "x-ai/grok-imagine-image-2.0",
+    }
+)
+
+
+def edits_images(model_id: str, info: dict[str, Any] | None = None) -> bool:
+    """Whether this picture model can change a given picture: the gateway's `kchat_edits_images`
+    when declared, else `EDITING_MODELS`; strict-local models only when declared."""
+    declared = (info or {}).get("kchat_edits_images")
+    if isinstance(declared, bool):
+        return declared
+    return model_id in EDITING_MODELS
+
+
+#: the longest side a source picture is sent at; larger ones are scaled down first
+SOURCE_MAX_SIDE = 2048
+#: what the models take as an input picture; any other format goes as PNG
+_SOURCE_MIMES = {"PNG": "image/png", "JPEG": "image/jpeg", "WEBP": "image/webp"}
+
+
+@dataclass(slots=True)
+class SourceImage:
+    """The picture an edit starts from, ready to send."""
+
+    data: bytes
+    mime: str
+    width: int
+    height: int
+
+    @property
+    def data_url(self) -> str:
+        return f"data:{self.mime};base64,{base64.b64encode(self.data).decode()}"
+
+
+def source_image(data: bytes) -> SourceImage:
+    """The stored picture as sent: scaled to `SOURCE_MAX_SIDE`, PNG unless PNG/JPEG/WebP."""
+    try:
+        with Image.open(io.BytesIO(data)) as image:
+            image.load()
+            kind = image.format or ""
+            width, height = image.size
+            if kind in _SOURCE_MIMES and max(width, height) <= SOURCE_MAX_SIDE:
+                return SourceImage(data, _SOURCE_MIMES[kind], width, height)
+            picture = image.convert("RGBA" if image.mode in ("RGBA", "LA", "P") else "RGB")
+            picture.thumbnail((SOURCE_MAX_SIDE, SOURCE_MAX_SIDE))
+            out = io.BytesIO()
+            picture.save(out, "PNG")
+            return SourceImage(out.getvalue(), "image/png", picture.width, picture.height)
+    except Exception as exc:  # noqa: BLE001 — any decode failure: not a picture to edit
+        raise ImageError("고칠 이미지를 읽지 못했습니다.") from exc
+
+
+def edit_prompt(instruction: str, *, design: str = "") -> str:
+    """The instruction as sent with the source picture; the stored prompt stays as typed."""
+    parts = [
+        f"Edit the attached image: {instruction.strip().rstrip('.').strip()}",
+        "Change only what this asks; keep everything else in the attached image — "
+        "composition, subjects, colours, lighting and any text — as it is",
+    ]
+    if design.strip():
+        parts.append(design.strip())
+    return ". ".join(parts)
+
+
 #: composer ratios; 16:9 default
 OFFERED_ASPECTS: tuple[str, ...] = ("16:9", "9:16", "4:3", "1:1")
 
@@ -376,15 +452,28 @@ _RATIOS = {"1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "4:5", "5:4", "21:
 
 
 async def generate(
-    *, base_url: str, api_key: str, model: str, prompt: str, aspect: str = ""
+    *,
+    base_url: str,
+    api_key: str,
+    model: str,
+    prompt: str,
+    aspect: str = "",
+    source: SourceImage | None = None,
 ) -> GeneratedImage:
-    """One picture, or ImageError."""
+    """One picture, or ImageError. With `source`, the picture goes beside the prompt as an image
+    content part and keeps its own shape (no `image_config`: Recraft refuses it on edits)."""
+    content: str | list[dict[str, Any]] = prompt
+    if source is not None:
+        content = [
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": source.data_url}},
+        ]
     payload: dict = {
         "model": model,
         "modalities": modalities_for(model),
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": [{"role": "user", "content": content}],
     }
-    if aspect in _RATIOS:
+    if aspect in _RATIOS and source is None:
         payload["image_config"] = {"aspect_ratio": aspect}
     timeout = _SELF_HOSTED_TIMEOUT if model.lower().startswith(_SELF_HOSTED) else _TIMEOUT
     try:
@@ -438,4 +527,15 @@ def store(user_id: str, image: GeneratedImage) -> tuple[str, str]:
     return file_id, key
 
 
-__all__ = ["GeneratedImage", "ImageError", "compose_prompt", "generate", "store"]
+__all__ = [
+    "EDITING_MODELS",
+    "GeneratedImage",
+    "ImageError",
+    "SourceImage",
+    "compose_prompt",
+    "edit_prompt",
+    "edits_images",
+    "generate",
+    "source_image",
+    "store",
+]

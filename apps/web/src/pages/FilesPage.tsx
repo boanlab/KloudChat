@@ -1,6 +1,6 @@
 import { Download, Eye, FolderOpen, Trash2, Upload } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { FILE_SORT_FIELDS, FileBoxFilter, FileColumns, FileLine } from '@/components/files/FileBoxList'
 import { PhoneSort, useUrlSort } from '@/components/files/ListSort'
 import { FilePreview } from '@/components/files/FilePreview'
@@ -17,6 +17,9 @@ import { mediaPreflight } from '@/lib/media'
 import { useOcrProgress } from '@/lib/ocr'
 import { useT } from '@/lib/useT'
 import { ListSkeleton } from '@/components/ui/Skeleton'
+import { ImageEditAction } from '@/components/media/ImageEditAction'
+import { fileSrc, isPicture, type ImageEditSource } from '@/lib/imageEdit'
+import { useStore } from '@/store/useStore'
 
 /** 파일함: every file of the account, those the person gave apart from those made in
  *  conversations, and the documents they work on (「작업 문서」, `?tab=working`). */
@@ -58,6 +61,19 @@ export function FilesPage() {
   }
   const shown = box.rows
   const pick = useBulkSelect(shown)
+  const navigate = useNavigate()
+  const newSession = useStore((s) => s.newSession)
+  const setImageEdit = useStore((s) => s.setImageEdit)
+  // 「이미지 고치기」: in the conversation the picture came from, else a new image conversation
+  const editIn = async (row: FileRow, source: ImageEditSource) => {
+    try {
+      const id = row.sessionId ?? (await newSession('image'))
+      setImageEdit({ ...source, sessionId: id })
+      navigate(`/s/${id}`)
+    } catch (err) {
+      setError(errorMessage(err, t('이미지를 고치지 못했습니다.')))
+    }
+  }
   // scans and videos still being read follow their reading here too
   useOcrProgress(shown, box.updateRow)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -221,6 +237,20 @@ export function FilesPage() {
                     }
                     actions={
                       <>
+                        {isPicture(row.name, row.mime) && (
+                          <ImageEditAction
+                            sessionId={row.sessionId}
+                            iconOnly
+                            source={{
+                              artifactId: null,
+                              fileId: row.id,
+                              src: fileSrc(row.id),
+                              name: row.name,
+                              origin: row.origin === 'generated' ? 'generated' : 'upload',
+                            }}
+                            onStart={(source) => void editIn(row, source)}
+                          />
+                        )}
                         <Button
                           variant="ghost"
                           size="icon"

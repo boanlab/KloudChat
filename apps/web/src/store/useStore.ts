@@ -106,6 +106,7 @@ import { counters } from '@/lib/usage'
 import { setMaxUploadMb, setMediaUpload } from '@/lib/uploadLimit'
 import { LeaveCancelled, leaveOffice, officeDirty, saveOpenOffice } from '@/lib/officeGuard'
 import { searchCardOf } from '@/lib/privacy'
+import { imageModelId, type ImageEditSource } from '@/lib/imageEdit'
 
 /** Store-side translation (no hooks here); only strings that reach the screen. */
 const tr = (text: string) => translate(currentLang(), text)
@@ -317,6 +318,13 @@ interface State {
   dictationEnabled: boolean
   /** The admin's web search in strict-local turns: ask first, queries only, or never. */
   strictLocalWebSearch: SearchConsentMode
+  /** The admin keeps internal material (attachments, uploaded pictures) on strict-local models. */
+  internalDataStrictLocal: boolean
+  /** 「이미지 고치기」: the picture its conversation's composer is about to change. */
+  imageEdit: ImageEditSource | null
+  setImageEdit: (source: ImageEditSource | null) => void
+  /** Changes `source` as `prompt` says: a new version beside it, the source kept. */
+  editImage: (sessionId: string, prompt: string, source: ImageEditSource) => Promise<void>
   bootstrap: () => Promise<void>
   login: (email: string, password: string) => Promise<void>
   signup: (email: string, password: string, name: string) => Promise<void>
@@ -2550,9 +2558,49 @@ export const useStore = create<State>((set, get) => ({
       dictationEnabled: Boolean(c.dictationEnabled),
       passwordMinLength: c.password?.minLength ?? DEFAULT_PASSWORD_MIN,
       strictLocalWebSearch: c.privacy?.strictLocalWebSearch ?? 'ask',
+      internalDataStrictLocal: Boolean(c.privacy?.internalDataStrictLocal),
     })
   },
   strictLocalWebSearch: 'ask',
+  internalDataStrictLocal: false,
+  imageEdit: null,
+  setImageEdit: (source) => set({ imageEdit: source }),
+  editImage: async (sessionId, prompt, source) => {
+    let id: string
+    try {
+      id = await get().ensureSession(sessionId)
+    } catch (err) {
+      set({ mediaError: errorMessage(err, tr('이미지를 고치지 못했습니다.')) })
+      return
+    }
+    const { promptId, answerId } = beginMediaTurn(set, id, prompt, true)
+    beginRun(set, id)
+    try {
+      const session = get().sessions.find((c) => c.id === id)
+      const rows = await sessionsApi.images(id, {
+        prompt,
+        model: imageModelId(session, get().modelByKind) || undefined,
+        aspect: '1:1',
+        style: '',
+        count: 1,
+        raw: true,
+        ...(source.artifactId
+          ? { sourceArtifactId: source.artifactId }
+          : { sourceFileId: source.fileId ?? undefined }),
+      })
+      set((s) => ({
+        artifacts: [...rows.map(toArtifact), ...s.artifacts],
+        imageEdit: s.imageEdit?.sessionId === sessionId ? null : s.imageEdit,
+      }))
+      finishMediaTurn(set, id, answerId, rows.map((row) => row.id), rows.length < 1)
+      await get().loadSessions()
+      await get().openSession(id)
+    } catch (err) {
+      failMediaTurn(set, id, promptId, answerId, mediaFailure(err, tr('이미지를 고치지 못했습니다.'), tr))
+    } finally {
+      endRun(set, id)
+    }
+  },
   passwordMinLength: DEFAULT_PASSWORD_MIN,
   enabledKinds: ['chat', 'report', 'slides'],
   avOptions: {

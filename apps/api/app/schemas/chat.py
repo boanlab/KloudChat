@@ -66,6 +66,10 @@ class ImageRequest(Wire):
     figure: bool = False
     labels: str = Field(default="auto", max_length=8)
     raw: bool = False
+    #: an edit: the picture to change — an image artifact, or an image file (an attachment, a
+    #: file-box picture); the prompt is then the instruction and a new version is made
+    source_artifact_id: str | None = Field(default=None, max_length=64)
+    source_file_id: str | None = Field(default=None, max_length=64)
 
 
 class FigureSuggestRequest(Wire):

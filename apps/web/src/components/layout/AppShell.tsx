@@ -52,7 +52,7 @@ function ToastBar() {
     <div
       role="status"
       data-testid="toast"
-      className="animate-fade-up absolute bottom-16 left-1/2 z-50 flex max-w-[92vw] -translate-x-1/2 items-center gap-3 rounded-card border border-line bg-panel px-4 py-2.5 text-base shadow-float"
+      className="animate-fade-up absolute bottom-16 left-1/2 z-50 flex w-max max-w-[92vw] -translate-x-1/2 items-center gap-3 rounded-card border border-line bg-panel px-4 py-2.5 text-base shadow-float"
     >
       <span className="min-w-0">{toast.text}</span>
       {toast.action && (

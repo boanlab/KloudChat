@@ -3826,6 +3826,8 @@ async def generate_images(
     """Makes pictures as artifacts, charged from reported usage."""
     session = await _owned(db, user, session_id)
     catalogue = await model_service.list_models()
+    if payload.source_artifact_id or payload.source_file_id:
+        return await _edit_image(session, payload, user, db, catalogue, request)
     boundary = await _media_gate(db, user, request, session, catalogue["models"],
                                  payload.prompt, asked=payload.model)
     if payload.style == "차트":
@@ -3975,6 +3977,198 @@ async def generate_images(
             status_code=status.HTTP_502_BAD_GATEWAY, detail=failure or "image_failed"
         )
     return [ArtifactOut.of(a) for a in made]
+
+
+_IMAGE_FILE = re.compile(r"/files/([A-Za-z0-9_-]+)/content$")
+
+
+def _image_file_id(artifact: Artifact) -> str | None:
+    """The stored file an image artifact shows (`data.src`)."""
+    match = _IMAGE_FILE.search(str((artifact.data or {}).get("src") or ""))
+    return match.group(1) if match else None
+
+
+async def _edit_source(
+    db: DbSession, user: User, payload: ImageRequest
+) -> tuple[StoredFile, Artifact | None]:
+    """The picture an edit starts from, this account's own: its file, and the image artifact
+    that shows it when there is one (a picture made here, found from the file box too)."""
+    artifact: Artifact | None = None
+    file_id = payload.source_file_id
+    if payload.source_artifact_id:
+        artifact = await db.get(Artifact, payload.source_artifact_id)
+        if artifact is None or artifact.user_id != user.id or artifact.kind != ArtifactKind.image:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="image_source_not_found")
+        file_id = _image_file_id(artifact)
+    stored = await db.get(StoredFile, file_id) if file_id else None
+    if stored is None or stored.user_id != user.id or not (stored.mime or "").startswith("image/"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="image_source_not_found")
+    if artifact is None and stored.origin == "generated" and stored.session_id:
+        shown = (
+            await db.exec(
+                select(Artifact).where(
+                    Artifact.user_id == user.id,
+                    Artifact.kind == ArtifactKind.image,
+                    Artifact.session_id == stored.session_id,
+                )
+            )
+        ).all()
+        artifact = next((a for a in shown if _image_file_id(a) == stored.id), None)
+    return stored, artifact
+
+
+async def _next_version(db: DbSession, session: ChatSession, lineage: str) -> int:
+    """The number the next picture of `lineage` gets; the source is 1 when it has none."""
+    rows = (
+        await db.exec(
+            select(Artifact).where(
+                Artifact.session_id == session.id, Artifact.kind == ArtifactKind.image
+            )
+        )
+    ).all()
+    numbers = [
+        int((a.data or {}).get("editVersion") or 1)
+        for a in rows
+        if (a.data or {}).get("lineage") == lineage or a.id == lineage
+    ]
+    return max([1, *numbers]) + 1
+
+
+async def _edit_image(
+    session: ChatSession,
+    payload: ImageRequest,
+    user: User,
+    db: DbSession,
+    catalogue: dict,
+    request: Request,
+) -> list[ArtifactOut]:
+    """Changes a given picture as told: a new image artifact linked to its source (`editOf`,
+    `lineage`, `editVersion`); the source is kept. Only models that edit (`editsImages`) draw it.
+
+    The source picture leaves for the model as an attachment would: a picture the person gave
+    (an upload, or one made from it) is internal material, kept inside under the
+    internal-material rule; a strict-local conversation keeps it inside too. No self-hosted model
+    edits, so both are refused with their reason.
+    """
+    stored, source = await _edit_source(db, user, payload)
+    boundary = await _media_gate(db, user, request, session, catalogue["models"],
+                                 payload.prompt, asked=payload.model)
+    internal = stored.origin != "generated" or bool((source.data or {}).get("internalSource")
+                                                     if source is not None else False)
+    policy = await _require_egress_policy()
+    if internal and not boundary.strict and policy.internal_data_strict_local:
+        boundary = _MediaBoundary(True, payload.prompt, "internal_data", [])
+    models = catalogue["models"]
+    asked = payload.model or (session.model if session.kind == SessionKind.image else "") or ""
+    asked_model = model_service.find(models, asked)
+    editors = [m for m in models if m.get("editsImages")]
+    model = _media_model(
+        user, editors, kind="image", boundary=boundary, asked=asked,
+        default=(catalogue.get("defaultModelByKind") or {}).get("image"),
+    )
+    if model is None or (
+        asked_model is not None and "image" in asked_model.get("kinds", [])
+        and not asked_model.get("editsImages")
+    ):
+        if boundary.strict:
+            await _audit_media_boundary(user, request, session, boundary, refused=True)
+            raise HTTPException(status.HTTP_409_CONFLICT, detail="image_edit_strict_local")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="image_model_cannot_edit")
+    await _audit_media_boundary(user, request, session, boundary)
+    if not has_headroom(user, model):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="insufficient_credits"
+        )
+    try:
+        picture = imagegen.source_image(file_service.read_blob(stored.storage_key))
+    except (OSError, imagegen.ImageError) as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, detail="image_source_unreadable"
+        ) from exc
+    await litellm_service.ensure_key(user)
+    if db.is_modified(user):
+        db.add(user)
+        await db.commit()
+    base_url, api_key = await litellm_service.credentials_for(user)
+    composed = imagegen.edit_prompt(boundary.text)
+    lineage = (
+        str((source.data or {}).get("lineage") or source.id) if source is not None
+        else f"file:{stored.id}"
+    )
+    try:
+        image = await imagegen.generate(
+            base_url=base_url, api_key=api_key, model=model["id"], prompt=composed,
+            source=picture,
+        )
+    except imagegen.ImageError as exc:
+        _record_media(db, session, payload.prompt, [], model=model["id"], failed=True)
+        await db.commit()
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    file_id, key = imagegen.store(user.id, image)
+    db.add(
+        StoredFile(
+            id=file_id,
+            user_id=user.id,
+            origin="generated",
+            session_id=session.id,
+            name=f"{payload.prompt[:40] or 'image'}.png",
+            mime=image.mime,
+            size=len(image.data),
+            storage_key=key,
+            tokens=0,
+        )
+    )
+    source_data = (source.data or {}) if source is not None else {}
+    artifact = Artifact(
+        user_id=user.id,
+        session_id=session.id,
+        project_id=session.project_id,
+        kind=ArtifactKind.image,
+        title=payload.prompt[:200] or "이미지",
+        data={
+            "kind": "image",
+            "jobId": None,
+            "prompt": payload.prompt,
+            "aspect": source_data.get("actualAspect") or source_data.get("aspect") or image.aspect,
+            "actualAspect": image.aspect,
+            "width": image.width,
+            "height": image.height,
+            "style": "",
+            "labels": "",
+            "composedPrompt": composed,
+            "seed": 0,
+            "model": model["id"],
+            "src": f"{settings.api_prefix}/files/{file_id}/content",
+            # the picture it was made from, kept as it was
+            "editOf": {
+                "artifactId": source.id if source is not None else None,
+                "fileId": stored.id,
+                "src": f"{settings.api_prefix}/files/{stored.id}/content",
+                "name": stored.name,
+            },
+            "lineage": lineage,
+            # not `version`: the artifact's own revision counter has that name
+            "editVersion": await _next_version(db, session, lineage),
+            "internalSource": internal,
+        },
+    )
+    db.add(artifact)
+    charged = charge_for_image(model, image.input_tokens, image.output_tokens, image.cost_usd)
+    if charged:
+        settle(
+            db,
+            user,
+            charged,
+            reason="image.edit",
+            session_id=session.id,
+            model=model["id"],
+            surface=session.kind.value,
+        )
+    _record_media(db, session, payload.prompt, [artifact], model=model["id"], credits=charged)
+    await db.commit()
+    await db.refresh(artifact)
+    return [ArtifactOut.of(artifact)]
 
 
 async def _draw_chart(

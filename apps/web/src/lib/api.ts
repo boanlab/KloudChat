@@ -658,6 +658,8 @@ export const authConfig = {
       privacy: {
         externalDataGuard: boolean
         allowUserRawExternal: boolean
+        /** Internal material (attachments, uploaded pictures) stays on strict-local models. */
+        internalDataStrictLocal?: boolean
         /** The admin's strict-local web-search setting; absent from older servers. */
         strictLocalWebSearch?: SearchConsentMode
       }
@@ -1322,6 +1324,9 @@ export const sessionsApi = {
       raw?: boolean
       /** Asked for from inside a document: comes back as a figure, not a picture of a whole slide. */
       figure?: boolean
+      /** An edit of this picture (an image artifact, or an image file); `prompt` is the instruction. */
+      sourceArtifactId?: string
+      sourceFileId?: string
     },
   ) => call<ArtifactRow[]>(`/sessions/${sessionId}/images`, body(payload)),
   /** Flowchart drawn server-side with the .pptx shapes; stored as an image artifact. */

@@ -40,7 +40,9 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 me_router = APIRouter(prefix="/me", tags=["usage"])
 
 #: ledger reasons without a turn; one request per row
-MEDIA_REASONS = ("image.generate", "image.chart", "audio.generate", "video.generate")
+MEDIA_REASONS = (
+    "image.generate", "image.edit", "image.chart", "audio.generate", "video.generate",
+)
 
 #: free work in `units` (seconds, chunks, pages); one request per row
 UNIT_REASONS = (

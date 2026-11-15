@@ -22,7 +22,7 @@ import {
 } from 'lucide-react'
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { FileRow, FormKind, FormRole, OfficeKind, PrivacyDecision, WebSearchSetting } from '@/lib/api'
-import { ApiError, transcriptionsApi } from '@/lib/api'
+import { ApiError, fileUrl, transcriptionsApi } from '@/lib/api'
 import { startWavRecording, type WavRecorder } from '@/lib/wavRecorder'
 import { FormRoleToggle, SavedFormChip, followable, formRoleOf } from '@/components/chat/FormChips'
 import { FileBoxPicker } from '@/components/files/FileBoxPicker'
@@ -999,10 +999,18 @@ export function Composer({
     mediaError,
     clearMediaError,
     user,
+    imageEdit,
+    setImageEdit,
+    editImage,
   } = useStore()
 
   const project = projects.find((p) => p.id === projectId)
   const effectiveSessionId = sessionId ?? reusableSessionId
+  // 「이미지 고치기」 put a picture here: the next send changes it (`editImage`)
+  const editSource = imageEdit && sessionId && imageEdit.sessionId === sessionId && !editing ? imageEdit : null
+  useEffect(() => {
+    if (editSource) ref.current?.focus()
+  }, [editSource])
   const session = sessions.find((candidate) => candidate.id === effectiveSessionId)
   // Nothing sent yet and no agent: what is picked here is the person's start for this surface too
   // (the home screen turns into such a conversation as soon as a Super Agent entry is picked).
@@ -1689,6 +1697,11 @@ export function Composer({
     } else {
       holdingStart.current = true
       setStartPending(true)
+    }
+    if (editSource && sessionId) {
+      // Not streamed, like a picture: `editImage` writes both halves from one call.
+      void editImage(sessionId, text, editSource).finally(startSettled)
+      return
     }
     if (kind === 'av' && avOptions.mode === 'video') {
       // Video is a job; the card tracks it.
@@ -2422,6 +2435,19 @@ export function Composer({
             </Button>
           </div>
         )}
+        {editSource && (
+          <div className="flex items-center gap-2 border-b border-line px-3 py-2 text-sm" data-testid="image-edit-chip">
+            <img src={fileUrl(editSource.src)} alt="" className="size-9 shrink-0 rounded-[4px] border border-line object-cover" />
+            <span className="min-w-0 flex-1 truncate">
+              <span className="font-medium">{t('고칠 이미지')}</span>
+              <span className="text-faint"> · {editSource.name}</span>
+            </span>
+            <Button size="icon" variant="ghost" title={t('고치기 취소')} aria-label={t('고치기 취소')}
+              onClick={() => setImageEdit(null)}>
+              <X size={14} />
+            </Button>
+          </div>
+        )}
         {(project ||
           attachments.length > 0 ||
           pasted.length > 0 ||
@@ -2719,6 +2745,8 @@ export function Composer({
                 ? t('듣고 있습니다. 스페이스를 떼면 받아 적습니다')
                 : transcribing
                   ? t('받아쓰는 중…')
+                  : editSource
+                    ? t('어떻게 고칠지 적으세요. 예: 배경을 밤하늘로 바꿔 줘')
                   : pending
                     ? pending.stage === 'clarify'
                       ? t('답을 적거나, 위에서 고르세요')
