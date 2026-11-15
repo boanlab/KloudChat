@@ -11,9 +11,15 @@ former_names = ["기록 정리"]
 description = "회의·인터뷰·강의의 녹음·자동 전사본·메모(+후속 메일)로 결정·할 일·미결이 남는 기록(회의록)을 만들 때"
 kinds = ["report"]
 surface = "report"
-template = "doc-minutes"
 doc_format = "minutes"
-design = "문서용 명조"
+# 디자인 지침 (`design_brief`): the look in words, as a person's agent sets it
+design_brief = """
+강조색 #334155. 글자색 #111827. 본문은 명조.
+제목은 명사구로 쓴다. 한 문장에 한 사실만 담고, 수식어를 덜어낸다.
+- 이모지를 쓰지 않는다.
+- 강조는 한 가지 방법으로만 한다. 굵게·따옴표·밑줄을 겹쳐 쓰지 않는다.
+그림 스타일: muted documentary photography, low saturation, natural light
+"""
 # An empty list denies every tool (report surfaces run the server hooks instead).
 tools = []
 skills = []

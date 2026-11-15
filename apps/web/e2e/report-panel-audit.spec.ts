@@ -321,14 +321,6 @@ test('errors: every failure says so in place, aligned, and can be left', async (
     })
     return Math.abs(box.top - box.bottom) <= 3
   })
-  // Template change failure.
-  await panel(page).locator('header').getByRole('button', { name: '문서 템플릿 고르기' }).click()
-  await page.locator('[role="menu"]:visible').getByText('고객 제안서').click()
-  await page.waitForTimeout(800)
-  await shot('template-failed')
-  // No 서식 on the document: the button keeps its generic label, not the one that failed.
-  await check('template failure keeps the old template name', async () =>
-    !((await panel(page).locator('header').getByRole('button', { name: '문서 템플릿 고르기' }).textContent())?.includes('고객 제안서') ?? true))
   // Export failure (the mock answers 404), from the header's 내려받기.
   await panel(page).locator('header').getByRole('button', { name: '내려받기' }).click()
   await page.locator('[role="menu"]:visible').getByText('Word 문서').click()
@@ -336,7 +328,7 @@ test('errors: every failure says so in place, aligned, and can be left', async (
   await shot('export-failed')
   await check('export failure is shown, not an earlier message', async () => {
     const text = await panel(page).locator('[role="alert"]').first().textContent()
-    return Boolean(text && !text.includes('템플릿을 바꾸지'))
+    return Boolean(text && !text.includes('색을 바꾸지'))
   })
   await check('error banner can be dismissed', async () => {
     await panel(page).locator('[role="alert"]').getByRole('button', { name: '닫기' }).click()

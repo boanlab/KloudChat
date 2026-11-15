@@ -1,4 +1,3 @@
-import type { DesignTemplateRow } from '@/lib/api'
 import { DOC_FORMATS } from '@/components/report/docFormats'
 import type { Agent } from '@/types'
 
@@ -150,15 +149,10 @@ export function agentHandoffSurface(
 
 /** Names an agent's bound documents go by, per surface: template and format. */
 export function agentDocumentNames(
-  agent: Pick<Agent, 'renderTemplateId' | 'docFormat'>,
-  templates: readonly Pick<DesignTemplateRow, 'id' | 'surface' | 'name' | 'nameEn'>[],
+  agent: Pick<Agent, 'docFormat'>,
 ): Partial<Record<'report' | 'slides', string[]>> {
   const names: Partial<Record<'report' | 'slides', string[]>> = {}
-  const template = templates.find((row) => row.id === agent.renderTemplateId)
-  if (template && (template.surface === 'report' || template.surface === 'slides')) {
-    names[template.surface] = [template.name, template.nameEn]
-  }
   const format = DOC_FORMATS.find((row) => row.id === agent.docFormat)
-  if (format) names.report = [...(names.report ?? []), format.label]
+  if (format) names.report = [format.label]
   return names
 }

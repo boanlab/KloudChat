@@ -30,6 +30,7 @@ import {
   type SortKey,
 } from '@/components/customize/hubItems'
 import { ItemCard } from '@/components/customize/ItemCard'
+import { OldTemplates } from '@/components/customize/OldTemplates'
 import { useItemActions } from '@/components/customize/tryItem'
 import { Button, Dropdown, EmptyState, Input, LoadingState, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui'
 import { BulkBar, useBulkSelect } from '@/components/ui/BulkSelect'
@@ -556,6 +557,7 @@ function Hub() {
         ) : (
           <Grid>{filtered.map((item) => card(item, 'mine'))}</Grid>
         )}
+        {tab === 'agents' && <OldTemplates />}
         {tab === 'agents' && (
           // 묶음 live with the agents that tick them.
           <Link

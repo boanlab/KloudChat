@@ -334,7 +334,7 @@ export function DocumentEditor({
       .style(templateId, tokens)
       .then((row) => live && setStyle(row))
       // Stored untranslated; `t` is new per render.
-      .catch((err) => live && setError(errorMessage(err, '템플릿을 불러오지 못했습니다.')))
+      .catch((err) => live && setError(errorMessage(err, '문서 모양을 불러오지 못했습니다.')))
     return () => {
       live = false
     }

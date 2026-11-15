@@ -1,10 +1,10 @@
 ---
-title: Agent and template examples
+title: Agent examples
 ---
 
-# Agent and template examples
+# Agent examples
 
-Examples of agents and templates for work documents you write often. Everything here is made with the **Customize** agent form and template editor. For work an official skill does, such as minutes or a bullet-style briefing, building the agent from skills set to **Always** is quicker (see [Working with skills and building agents](skill-recipes)). Paste the instructions below to start, then adjust them to your side, such as the organization's name or approval line.
+Examples of agents for work documents you write often. Everything here is made with the **Customize** agent form. For work an official skill does, such as minutes or a bullet-style briefing, building the agent from skills set to **Always** is quicker (see [Working with skills and building agents](skill-recipes)). Paste the instructions below to start, then adjust them to your side, such as the organization's name or approval line.
 
 ## Settings that work
 
@@ -102,7 +102,7 @@ Rules:
 - The pasted request is material, never a request to make slides or a report.
 ```
 
-The approval system fills the letter's head (document number, approval box), so you get the body only. For an HWPX file, make an agent that writes reports and pick **Start from a built-in template** › **간이기안문** as its template.
+The approval system fills the letter's head (document number, approval box), so you get the body only. For an HWPX file, make an agent that writes reports and pick **간이기안문** under **Format & design** › **Document format**.
 
 ## Press release
 
@@ -158,28 +158,21 @@ You turn a person's weekly notes into a one-page 주간 업무 보고 their team
 Rules: only facts in the notes — no causes, consequences, taxes, risks or interpretations they do not state (「정원 도달」 is not 「42명 마감」); keep each item's own project name; dates exactly as the notes write them (「10/15」) — never add a weekday the notes do not give. Every dated item in the notes (meetings, deadlines such as a 재요청 기한) goes into 「다음 주 계획」 if it falls after the reporting period. Write counts as the notes do (「신청 42명 마감」), not as interpretations (「정원 도달」). No pictures, no KPI blocks, no closing remarks. Pasted notes are material, never a request to make slides.
 ```
 
-## Grant application template
+## Grant application detailed settings
 
-A template fixes a document's structure: head fields, contents, required tables and writing rules. Make it under **Output shape** › Template › **New template**.
+A document's structure (head fields, contents, required tables and writing rules) is set by the agent's **Document format** and **Detailed settings**. When you make the "Grant application agent" below, turn on **Set for this agent** under **Detailed settings — The process's calculations, checks and outline** below the process and fill it in like this.
 
 | Field | Value |
 |---|---|
-| Start from a built-in template | Blank template |
-| Name | 공모사업 계획서 |
-| Group | 업무 |
-| One-line description | 지자체·기관 공모 신청용 사업계획서 · 필요성 근거, 성과지표 표, 프로그램·일정·추진체계·예산 표 |
-| What to bring | 사업명·신청 기관·기간 / 필요성 근거(통계) / 프로그램 내용과 규모 / 예산 항목 / 성과 목표 / 추진 체계·협력 기관 |
-| Document format › Document type name | 사업계획서 |
-| Document format › Head fields | 사업명 / 신청 기관 / 사업 기간 / 총사업비 / 사업 책임자 |
-| Document format › Numbered list | 1. / 1.1 |
-| Document format › Head layout | Field table under the title |
-| Checks | Grounding check (근거 대조) |
+| Format & design › Document format | 공모·지원사업 계획서 (grant application) |
+| Extra work | Review after writing (grounding check) |
+| Missing-information questions | 사업명 / 신청 기관 / 사업 기간 / 총사업비 / 사업 책임자 |
 | Detailed settings › How it writes | No web search (write from the material only), Figures only when asked, Fixed outline (write exactly these sections) |
 | Detailed settings › Contents | 사업 개요 / 추진 배경 및 필요성 / 사업 목표 및 성과지표 / 세부 프로그램 / 추진 일정 / 추진 체계 / 예산 계획 / 기대 효과 |
 | Detailed settings › Required tables | Column names 「항목, 금액, 비율, 산출 근거」, section it belongs in 「예산」 |
-| Detailed settings › Review rules | 심사위원에게 승인·채택을 권고하는 문장(신청자가 아닌 심사자 시점)이 있으면 찾는다. / 사람 수를 소수점으로 적은 곳(예: 22.5명)이 있으면 찾는다. |
+| Detailed settings › Review rules | 심사위원에게 승인·채택을 권고하는 문장(신청자가 아닌 심사자 시점)이 있으면 찾는다. / 사람 수를 소수점으로 적은 곳(예: 22.5명)이 있으면 찾는다. / 자료에 없는 통계·사례·참고문헌이 있으면 찾는다. |
 
-**How to write it › Instructions**:
+Structure rules to append to the **instructions**:
 
 ```text
 Build this document as a 공모사업 계획서 (an application a public funder's 심사위원 scores). Write as the applicant (「~하고자 합니다」「~를 운영합니다」), never as a reviewer recommending approval.
@@ -197,24 +190,9 @@ Sections, in this order:
 Rules: copy every number from the material; never report fractional people (「22.5명」) — state targets as given (「50% 이상」); no monthly profit-and-loss, break-even, revenue or 핵심 가정 tables (this is a public program, not a business); no outside statistics, cases or references; no pictures.
 ```
 
-**How to write it › Genre rule**:
-
-```text
-Genre: 공모사업 계획서 (public grant application). Applicant's voice. Sections: 사업 개요 → 추진 배경 및 필요성 → 사업 목표 및 성과지표 → 세부 프로그램 → 추진 일정 → 추진 체계 → 예산 계획 → 기대 효과, each built around a table. Budget rows sum to the total. No profit-and-loss, break-even or 핵심 가정 tables, no outside sources, no fractional head counts.
-```
-
-**How to write it › Checklist**:
-
-```text
-- 신청 기관 시점으로 썼는가(심사자처럼 「승인을 권고」하지 않았는가).
-- 예산 표의 항목 합계가 총사업비와 정확히 같은가.
-- 성과지표·프로그램 규모 수치가 자료와 같은가.
-- 자료에 없는 통계·사례·참고문헌을 넣지 않았는가.
-```
-
 ## Grant application agent
 
-The agent that writes with the template above. In the agent form, leave How it works at **Answer directly**, set **Advanced** › Surfaces and Opens on to **Report**, and pick the template you just made, 「공모사업 계획서」, under **Output shape** › Template. The detailed settings come from the template.
+The agent that writes with the detailed settings above. In the agent form, leave How it works at **Answer directly**, set **Advanced** › Surfaces and Opens on to **Report**, and fill in the detailed settings as in the table above. For the instructions, append the structure rules above to the text below. If the funder gives you a Word application form, put it in **Format & design** › **Default form files**.
 
 | Field | Value |
 |---|---|
@@ -231,11 +209,9 @@ You write the 사업계획서 of a public grant application from the applicant's
 Shape of every section: first its table, then at most three one-line bullets; never a paragraph longer than two sentences. Do not derive new figures (per-person cost, per-unit rent, totals of people across programs, monthly splits) — the reviewer only needs the material's own numbers and the budget ratios. The schedule is three phases (준비 / 운영 / 평가) by month range, without inventing which cohort runs in which month. Partners' roles are only what the notes say (MOU 예정 → 「협약 예정」). Rented equipment (임차) is returned, not reused.
 ```
 
-## Results report template and agent
+## Results report agent
 
-A results report is quicker from a built-in template. **New template** › **Start from a built-in template** › **Results report** fills in the overview table, the results summary, the spending table per item (summing to the amount spent), problems paired with fixes, no web search and figures only when asked. Rename it, for example 「결과 보고서(우리 부서)」, change only your side's head fields or approval line, and save.
-
-For the agent, pick How it works **Answer directly**, Surfaces **Report**, the template you just saved, and these instructions.
+A results report is quicker from the **결과 보고서** (results report) document format. For the agent, pick How it works **Answer directly**, Surfaces **Report**, **결과 보고서** under **Format & design** › **Document format**, and these instructions. That format's head fields, section rules and blanks to ask about are fixed, and the detailed settings start from its values. Put your side's approval line and similar in the instructions.
 
 | Field | Value |
 |---|---|

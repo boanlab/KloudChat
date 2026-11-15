@@ -21,7 +21,6 @@ const ROUTES: [RegExp, string][] = [
   [/^\/settings\/preferences/, '환경설정'],
   [/^\/settings\/personalization/, '개인 맞춤 설정'],
   [/^\/settings\/memory/, '메모리'],
-  [/^\/settings\/themes/, '테마'],
   [/^\/settings\/keys/, 'API 키'],
   [/^\/settings\/access/, '보안'],
   [/^\/settings/, '설정'],

@@ -867,8 +867,8 @@ export function ReportPanel({
   const [view, setView] = useState<'web' | 'page'>(report.templateId ? 'page' : 'web')
   // View before 「편집」, restored on leaving that tab.
   const viewBeforeEdit = useRef<'web' | 'page'>('web')
-  // Template decides exported styles; none → shared seed (`_document`), as on the server.
-  const [templateId, setTemplateId] = useState(report.templateId || '_document')
+  // An older report's template still draws its page view; others the shared seed (`_document`).
+  const templateId = report.templateId || '_document'
   const [templateSaving, setTemplateSaving] = useState(false)
   const [visualStyle, setVisualStyle] = useState(report.design?.visualStyle ?? 'editorial')
   const [documentAccent, setDocumentAccent] = useState(report.design?.accent ?? '#1e3a8a')
@@ -981,30 +981,6 @@ export function ReportPanel({
     return restructureSections(next, t('{n}번째 절 지움').replace('{n}', String(at + 1)))
   }
 
-  const chooseTemplate = async (id: string) => {
-    if (id === templateId) return
-    const was = templateId
-    setTemplateId(id)
-    setTemplateSaving(true)
-    setSaveError(null)
-    try {
-      const latest = await artifactsApi.get(report.id).catch(() => null)
-      const row = await artifactsApi.update(report.id, {
-        data: documentBody({ ...report, templateId: id }),
-        summary: t('템플릿 바꾸기'),
-        expectedVersion: latest?.version ?? report.version,
-      })
-      report.templateId = id
-      report.version = row.version
-      useStore.getState().noteArtifactVersion(report.id, row.version)
-    } catch (err) {
-      setTemplateId(was)
-      setSaveError(errorMessage(err, t('템플릿을 바꾸지 못했습니다.')))
-    } finally {
-      setTemplateSaving(false)
-    }
-  }
-
   const chooseVisualStyle = async (next: NonNullable<ReportArtifact['design']>['visualStyle']) => {
     if (!next || next === visualStyle) return
     setTemplateSaving(true)
@@ -1019,7 +995,7 @@ export function ReportPanel({
         ...(current?.logo ? { logo: current.logo } : {}), visualStyle: next,
       }
       const row = await artifactsApi.update(report.id, {
-        data: documentBody({ ...report, design }), summary: t('문서 테마 변경'), expectedVersion: latest.version,
+        data: documentBody({ ...report, design }), summary: t('문서 모양 변경'), expectedVersion: latest.version,
       })
       report.design = design
       report.version = row.version
@@ -1028,7 +1004,7 @@ export function ReportPanel({
       setView('page')
       setTick((value) => value + 1)
     } catch (err) {
-      setSaveError(errorMessage(err, t('테마를 바꾸지 못했습니다.')))
+      setSaveError(errorMessage(err, t('모양을 바꾸지 못했습니다.')))
     } finally {
       setTemplateSaving(false)
     }
@@ -1060,15 +1036,7 @@ export function ReportPanel({
       setTemplateSaving(false)
     }
   }
-  const { designTemplates, ensureDesignTemplates, send } = useStore()
-  // Only template-catalogue fetch on the report surface.
-  useEffect(() => {
-    void ensureDesignTemplates()
-  }, [ensureDesignTemplates])
-  const documentTemplates = useMemo(
-    () => designTemplates.filter((row) => row.kind === 'document'),
-    [designTemplates],
-  )
+  const { send } = useStore()
   // Purpose head and heading numbers, web view.
   const webBlock = cleanTitleBlock(report.titleBlock)
   const webNumbers = sectionNumbers(report.sections, webBlock?.numbering ?? 'none', webBlock?.lists)
@@ -1542,7 +1510,7 @@ export function ReportPanel({
                     type="button"
                     aria-label={t('페이지뷰')}
                     aria-pressed={view === 'page'}
-                    title={t('템플릿이 적용된 A4 문서로 봅니다')}
+                    title={t('A4 문서로 봅니다')}
                     onClick={showPage}
                     className={cn('flex h-7 items-center gap-1 rounded-sm px-2 text-xs font-medium', view === 'page' ? 'bg-elevated text-fg' : 'text-muted hover:text-fg')}
                   >
@@ -1635,12 +1603,12 @@ export function ReportPanel({
           )}
           {ribbon === 'insert' && <RibbonGroup label={t('만든 그림')}><AddSectionImage report={report} /></RibbonGroup>}
           {ribbon === 'layout' && (
-            <RibbonGroup label={t('테마')}>
+            <RibbonGroup label={t('모양')}>
             <Dropdown
               trigger={() => (
-                <Button size="sm" disabled={templateSaving} aria-label={t('문서 테마 고르기')} title={t(DOC_LOOKS.find((c) => c.id === visualStyle)?.why ?? '')}>
+                <Button size="sm" disabled={templateSaving} aria-label={t('문서 모양 고르기')} title={t(DOC_LOOKS.find((c) => c.id === visualStyle)?.why ?? '')}>
                   <DocLookSwatch look={visualStyle} accent={documentAccent} />
-                  <RibbonCaption>{t('테마')}</RibbonCaption>
+                  <RibbonCaption>{t('모양')}</RibbonCaption>
                   {t(DOC_LOOKS.find((c) => c.id === visualStyle)?.label ?? visualStyle)}
                   <ChevronDown size={13} className="text-muted" />
                 </Button>
@@ -1680,36 +1648,6 @@ export function ReportPanel({
                 <input type="color" value={documentAccent} onChange={(event) => void chooseDocumentAccent(event.target.value)} className="size-4 cursor-pointer border-0 bg-transparent p-0" aria-label={tColour('직접 고르기')} />
                 {tColour('직접 고르기')}
               </label>
-            </Dropdown></RibbonGroup>
-          )}
-          {ribbon === 'layout' && (
-            <RibbonGroup label={t('템플릿')}>
-            <Dropdown
-              trigger={() => (
-                <Button size="sm" variant="secondary" disabled={templateSaving} aria-label={t('문서 템플릿 고르기')}>
-                  {templateSaving && <Loader2 size={13} className="animate-spin" />}
-                  <RibbonCaption>{t('템플릿')}</RibbonCaption>
-                  {documentTemplates.find((row) => row.id === templateId)?.name ?? t('기본')}
-                  <ChevronDown size={13} className="text-muted" />
-                </Button>
-              )}
-            >
-              <MenuLabel>{t('내보내면 이 템플릿으로 나갑니다')}</MenuLabel>
-              {documentTemplates.map((row) => (
-                <MenuItem
-                  key={row.id}
-                  checked={row.id === templateId}
-                  // Pending edits are saved when a form is chosen, not when the menu opens.
-                  onClick={() => void afterSaving(() => chooseTemplate(row.id))}
-                >
-                  <span className="flex flex-col">
-                    <span>{row.name}</span>
-                    {row.description && (
-                      <span className="max-w-[18rem] truncate text-xs text-muted" title={row.description}>{row.description}</span>
-                    )}
-                  </span>
-                </MenuItem>
-              ))}
             </Dropdown></RibbonGroup>
           )}
           {ribbon === 'layout' && <RibbonGroup label={t('페이지')}><Button

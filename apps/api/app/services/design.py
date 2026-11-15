@@ -115,6 +115,9 @@ def prompt_block(design, kind: SessionKind) -> str:
     """Trusted context block for one turn, or ""."""
     if design is None:
         return ""
+    if getattr(design, "is_brief", False):
+        # 디자인 지침 (`design_brief`): the person's words, as written
+        return f"# 디자인 지침\n{design.body}"
     body = (design.body or "").strip()
     craft = craft_block(design.craft, kind)
     if not body and not craft:

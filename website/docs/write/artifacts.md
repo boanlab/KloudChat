@@ -26,9 +26,8 @@ title: 아티팩트
 | 웹 보고서 | PDF, Word(DOCX), 한글(HWPX), 마크다운 원문, 인쇄 |
 | 웹 슬라이드 | PowerPoint(PPTX), PDF, 텍스트(노트 포함) |
 | 한글·Word·PowerPoint 문서 | 편집기의 **내려받기**(HWPX·HWP, DOCX, PPTX) |
-| 템플릿을 적용한 문서 | PDF, DOCX/PPTX, HWPX, HTML, 텍스트 |
 
-PDF는 테마를 그대로 반영하고, DOCX와 PPTX는 편집 가능한 구조를 우선하므로 템플릿의 시각적 요소가 일부 달라질 수 있습니다.
+PDF는 고른 모양을 그대로 반영하고, DOCX와 PPTX는 편집 가능한 구조를 우선하므로 화면의 시각적 요소가 일부 달라질 수 있습니다. 회사 양식 위에 쓴 Word·PowerPoint 파일은 양식의 모양을 그대로 따릅니다.
 
 ## 갤러리
 

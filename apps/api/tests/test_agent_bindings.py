@@ -127,6 +127,7 @@ def _proposal_agent(design_id: str | None = None, **overrides) -> AgentIn:
         "render_template_id": "doc-comparison",
         "doc_format": "comparison",
         "design_system_id": design_id,
+        "design_brief": "강조색 #1F3A5F. 본문은 고딕." if design_id else "",
         "tools": [],
     }
     fields.update(overrides)
@@ -147,10 +148,11 @@ async def test_a_session_started_from_an_agent_takes_its_bindings(db):
         design.id,
     )
 
-    # No kind named: the agent's surface and 서식.
+    # No kind named: the agent's surface; its template no longer starts the conversation
+    # (2026-11-15), its format and 디자인 지침 carry it
     session = await sessions_router.create_session(SessionCreate(agent_id=out.id), author, db)
     assert session.kind is SessionKind.report
-    assert session.render_template_id == "doc-comparison"
+    assert session.render_template_id is None
 
     row = await db.get(ChatSession, session.id)
     context = await workspace_context.assemble(db, author, row)
@@ -162,15 +164,12 @@ async def test_a_session_started_from_an_agent_takes_its_bindings(db):
 
 
 @pytest.mark.asyncio
-async def test_the_agents_template_and_design_beat_the_projects(db):
+async def test_the_agents_design_brief_beats_the_projects(db):
     author, _, design = await _people(db)
-    mine = DesignSystem(owner_id=author.id, name="문서용 명조", tokens={"accent": "#334155"})
     project = Project(
-        user_id=author.id, name="영업", render_templates={"report": "doc-minutes"}
+        user_id=author.id, name="영업", render_templates={"report": "doc-minutes"},
+        design_brief="강조색 #334155. 본문은 명조.",
     )
-    db.add_all([mine, project])
-    await db.commit()
-    project.design_system_id = mine.id
     db.add(project)
     await db.commit()
     agent = await ws.create_agent(_proposal_agent(design.id), author, db)
@@ -178,15 +177,15 @@ async def test_the_agents_template_and_design_beat_the_projects(db):
     session = await sessions_router.create_session(
         SessionCreate(agent_id=agent.id, project_id=project.id), author, db
     )
-    assert session.render_template_id == "doc-comparison"
+    assert session.render_template_id is None
     context = await workspace_context.assemble(db, author, await db.get(ChatSession, session.id))
     assert context.design_tokens["accent"] == "#1f3a5f"
 
-    # Without the agent the project's 서식 and design stay.
+    # Without the agent the project's 디자인 지침 stays; its default template starts nothing.
     plain = await sessions_router.create_session(
         SessionCreate(kind=SessionKind.report, project_id=project.id), author, db
     )
-    assert plain.render_template_id == "doc-minutes"
+    assert plain.render_template_id is None
     context = await workspace_context.assemble(db, author, await db.get(ChatSession, plain.id))
     assert context.design_tokens["accent"] == "#334155"
 
@@ -220,11 +219,10 @@ async def test_a_kind_the_caller_names_wins_and_a_template_of_another_surface_is
         SessionCreate(agent_id=agent.id, kind=SessionKind.report), author, db
     )
     assert report.kind is SessionKind.report
-    assert report.render_template_id == "doc-gaejo-report"
+    # templates start nothing (2026-11-15): the request's words decide the format
+    assert report.render_template_id is None
     context = await workspace_context.assemble(db, author, await db.get(ChatSession, report.id))
-    # The 서식 fixes the format; the agent named none.
     assert context.doc_format is None
-    assert doc_formats.detect("", report.render_template_id).id == "gaejo"
 
 
 @pytest.mark.parametrize(
@@ -330,16 +328,18 @@ async def test_a_copy_keeps_the_binding(db):
     )
     session = await sessions_router.create_session(SessionCreate(agent_id=copy.id), taker, db)
     assert session.kind is SessionKind.report
-    assert session.render_template_id == "doc-comparison"
+    assert session.render_template_id is None
     context = await workspace_context.assemble(db, taker, await db.get(ChatSession, session.id))
+    # the 디자인 지침 travels with the copy
     assert context.design_tokens["accent"] == "#1f3a5f"
 
 
 @pytest.mark.asyncio
-async def test_a_design_the_taker_cannot_see_is_ignored_not_an_error(db):
+async def test_a_theme_is_never_read_only_the_design_brief(db):
     author, taker, design = await _people(db)
+    # bound to a theme, no 디자인 지침: nothing of the theme reaches the writer
     original = await ws.create_agent(
-        _proposal_agent(design.id, visibility=Visibility.org), author, db
+        _proposal_agent(design.id, visibility=Visibility.org, design_brief=""), author, db
     )
     copy = await ws.install_agent(original.id, taker, db)
     session = await sessions_router.create_session(SessionCreate(agent_id=copy.id), taker, db)
@@ -401,7 +401,7 @@ async def test_an_agent_chat_hands_off_to_its_report_keeping_the_agent_and_the_t
     out = await sessions_router.handoff_session(chat.id, HandoffIn(kind="report"), author, db)
     assert out.session.kind is SessionKind.report
     assert out.session.agent_id == agent.id
-    assert out.session.render_template_id == "doc-gaejo-report"
+    assert out.session.render_template_id is None
     transcript, carried = out.attachments
     assert transcript.name == "대화 기록.txt"
     stored = await db.get(StoredFile, transcript.id)

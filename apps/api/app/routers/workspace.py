@@ -97,7 +97,6 @@ from app.services import (
     audit,
     critique,
     deck_export,
-    design_extract,
     design_templates,
     diagram_render,
     digest_jobs,
@@ -2824,6 +2823,8 @@ async def install_agent(agent_id: str, user: CurrentUser, db: DbSession):
         kinds=list(origin.kinds or []),
         # same bindings; invisible design ignored at run time, not dropped
         **{name: getattr(origin, name) for name in _AGENT_BINDINGS},
+        # the 디자인 지침 travels; the original's saved forms are its owner's files and stay
+        design_brief=origin.design_brief,
         temperature=origin.temperature,
         output_language=origin.output_language,
         web_search_default=origin.web_search_default,
@@ -3331,107 +3332,30 @@ async def list_designs(user: CurrentUser, db: DbSession):
     return [DesignSystemOut.of(d, owner_id=user.id, catalog_owner=owner) for d in rows]
 
 
+def _themes_retired() -> HTTPException:
+    """Themes are retired (2026-11-15): their look is a project's or agent's 디자인 지침."""
+    return HTTPException(status_code=status.HTTP_410_GONE, detail="themes_retired")
+
+
 @router.post("/designs/extract", response_model=DesignExtractOut)
-async def extract_design(
-    payload: DesignExtractIn, user: CurrentUser, db: DbSession, request: Request
-):
-    """Design system proposal from file or URL; not stored. Charged."""
-    if bool(payload.file_id) == bool(payload.url):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="file_or_url")
-
-    if payload.file_id:
-        stored = await db.get(StoredFile, payload.file_id)
-        if stored is None or stored.user_id != user.id:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="file_not_found")
-        source, read_from = stored.text, stored.name
-        if not source.strip():
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="file_unreadable"
-            )
-    else:
-        backends = await settings_store.tools_config()
-        if not backends.fetch:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="fetch_unavailable"
-            )
-        if reason := await netguard.refusal(payload.url or ""):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=reason)
-        source = await builtin_tools.scrape(backends.fetch, payload.url or "")
-        read_from = payload.url or ""
-        if not source.strip():
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="url_unreadable"
-            )
-
-    catalogue = await model_service.list_models()
-    model = await _edit_model(
-        db, user, request, None, catalogue,
-        kind="chat", follow_session=False, own_file=bool(payload.file_id),
-        text=source if payload.file_id else "",
-    )
-    if not has_headroom(user, model):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="insufficient_credits"
-        )
-
-    await litellm_service.ensure_key(user)
-    if db.is_modified(user):
-        db.add(user)
-        await db.commit()
-    _, api_key = await litellm_service.credentials_for(user)
-
-    try:
-        draft, usage = await design_extract.extract(
-            source=source, model=model["id"], api_key=api_key
-        )
-    except design_extract.ExtractError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
-        ) from exc
-    except Exception as exc:  # noqa: BLE001 — reason, not a 500
-        log.warning("design extraction failed: %s", exc)
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY, detail="extract_failed"
-        ) from exc
-
-    credits = charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
-    settle(db, user, credits, reason="design.extract", model=model["id"])
-    await db.commit()
-    return DesignExtractOut(**draft, source=read_from, credits=credits)
+async def extract_design(payload: DesignExtractIn, user: CurrentUser):
+    """Retired: a document's look is followed by attaching it as a form."""
+    del payload, user
+    raise _themes_retired()
 
 
 @router.post("/designs", response_model=DesignSystemOut, status_code=status.HTTP_201_CREATED)
-async def create_design(payload: DesignSystemIn, user: CurrentUser, db: DbSession):
-    data = payload.model_dump()
-    _may_share(user, bool(data.get("shared")))
-    data["tokens"] = design_service.normalise_tokens(data.get("tokens"))
-    data["craft"] = design_service.craft_keys(data.get("craft"))
-    row = DesignSystem(owner_id=user.id, **data)
-    db.add(row)
-    await db.commit()
-    await db.refresh(row)
-    return DesignSystemOut.of(row, owner_id=user.id,
-                              catalog_owner=await starter.catalog_owner_id(db))
+async def create_design(payload: DesignSystemIn, user: CurrentUser):
+    """Retired: write the look as 디자인 지침 on the project or agent."""
+    del payload, user
+    raise _themes_retired()
 
 
 @router.patch("/designs/{design_id}", response_model=DesignSystemOut)
-async def patch_design(design_id: str, payload: DesignSystemIn, user: CurrentUser, db: DbSession):
-    row = await _own(db, DesignSystem, "owner_id", user, design_id)
-    fields = payload.model_dump(exclude_unset=True)
-    if "shared" in fields:
-        _may_share(user, bool(fields["shared"]))
-    if "tokens" in fields:
-        fields["tokens"] = design_service.normalise_tokens(fields["tokens"])
-    if "craft" in fields:
-        fields["craft"] = design_service.craft_keys(fields["craft"])
-    for field, value in fields.items():
-        setattr(row, field, value)
-    row.updated_at = utcnow()
-    db.add(row)
-    await db.commit()
-    await db.refresh(row)
-    return DesignSystemOut.of(row, owner_id=user.id,
-                              catalog_owner=await starter.catalog_owner_id(db))
+async def patch_design(design_id: str, payload: DesignSystemIn, user: CurrentUser):
+    """Retired: write the look as 디자인 지침 on the project or agent."""
+    del design_id, payload, user
+    raise _themes_retired()
 
 
 @router.delete("/designs/{design_id}", status_code=status.HTTP_204_NO_CONTENT)

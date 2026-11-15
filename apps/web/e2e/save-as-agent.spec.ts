@@ -38,7 +38,7 @@ test('the form is prefilled from the conversation and nothing is saved before �
   expect(state.unexpected).toEqual([])
 })
 
-/** A conversation made with an official agent; the draft names the person's own theme. */
+/** A conversation made with an official agent; its draft's old theme is not carried. */
 const officialDraft = {
   ...agentDraft, name: '회의록 에이전트', base: 'minutes', designSystemId: 'd1', renderTemplateId: null,
   systemPrompt: '이 대화에서 정한 것:\n- 결정과 할 일을 표로 둔다.', decided: ['결정과 할 일을 표로 둔다.'], files: [],
@@ -52,20 +52,22 @@ test('a conversation with an official agent saves as an agent', async ({ page },
   await expect(form.getByRole('textbox', { name: '지시' })).toHaveValue(/^이 대화에서 정한 것:/)
   await form.getByRole('button', { name: '만들기' }).click()
   await expect(page).toHaveURL(/\/customize\/agents\/a9999999999999999999999999999999$/)
-  expect(state.calls.find((c) => c.method === 'POST' && c.path === '/agents')?.body).toMatchObject({ designSystemId: 'd1' })
+  const sent = state.calls.find((c) => c.method === 'POST' && c.path === '/agents')?.body as Record<string, unknown>
+  expect(sent).toMatchObject({ name: '회의록 에이전트' })
+  expect(sent.designSystemId).toBeUndefined()
   expect(state.problems).toEqual([])
 })
 
 test('a refused save says which field to fix', async ({ page }, testInfo) => {
-  await hubFixture(page, testInfo, { draft: { ...officialDraft, designSystemId: 'not-mine' } })
+  await hubFixture(page, testInfo, { draft: { ...officialDraft, docFormat: 'not-a-format' } })
   await page.goto('/customize/agents/new?from=session:c0000000000000000000000000000000')
   const form = page.getByTestId('agent-form')
   await expect(form.getByRole('textbox', { name: '이름' })).toHaveValue('회의록 에이전트', { timeout: 15_000 })
   await form.getByRole('button', { name: '만들기' }).click()
-  await expect(page.getByText('테마를 찾을 수 없습니다. 템플릿·테마에서 테마를 다시 고르세요.')).toBeVisible()
+  await expect(page.getByText('문서 형식을 찾을 수 없습니다. 형식·디자인에서 다시 고르세요.')).toBeVisible()
   // The refusal opens the group that holds the field.
   await expect(page.getByTestId('agent-output-group')).toHaveAttribute('open', '')
-  await expect(page.getByText('design_system_not_found')).toHaveCount(0)
+  await expect(page.getByText('doc_format_unknown')).toHaveCount(0)
 })
 
 /** A distillation that timed out says so, with 다시 시도; it never claims a filled 지시. */

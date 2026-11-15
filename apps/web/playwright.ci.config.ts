@@ -131,7 +131,7 @@ const groups: Record<string, Group> = {
   // the video options a model can make; cancelling a clip job
   'media-jobs': { files: ['av-options.spec.ts', 'job-cancel.spec.ts'], projects: { desktop } },
   // a shared deck or report keeps its design; a document template previews as pages
-  'shared-look': { files: ['shared-design.spec.ts', 'template-preview-pages.spec.ts'], projects: { default: desktop } },
+  'shared-look': { files: ['shared-design.spec.ts'], projects: { default: desktop } },
   issues: { files: ['issue-reports.spec.ts'], projects: { desktop } },
   session: { files: ['session-renewal.spec.ts'], projects: { desktop } },
   'serving-guards': { files: ['serving-guards.spec.ts'], projects: { desktop } },
@@ -141,10 +141,8 @@ const groups: Record<string, Group> = {
       'customize-forms.spec.ts',
       'customize-try.spec.ts',
       'customize-shots.spec.ts',
-      'customize-templates.spec.ts',
       'skill-upload.spec.ts',
       'skill-scripts-and-gaps.spec.ts',
-      'templates-settings.spec.ts',
     ],
     projects: { desktop, phone: pixel },
   },

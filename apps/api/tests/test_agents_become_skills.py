@@ -14,8 +14,8 @@ from app.models.user import User, UserRole
 from app.models.workspace import Agent, Connector, Skill, Visibility
 from app.schemas.workspace import ConnectorOut
 from app.services import (
-    design_templates,
     gap_questions,
+    patterns,
     publishing,
     skill_packages,
     skill_specs,
@@ -56,12 +56,11 @@ def test_the_skill_carries_what_the_agent_did(agent, key):
         # what the agent's own surface reads (a `[채팅에서]` part is for chat)
         surface = SessionKind(spec["surface"])
         assert workspace_context.surface_body(package.body, surface) == spec["system_prompt"]
-    # where it writes: the agent's surface first, and its template
+    # where it writes: the agent's surface first; no template (the format's pattern instead)
     assert package.kinds[0] == spec["surface"]
-    assert made.template == (spec.get("template") or "")
-    # the checks its 묶음 compiled to (the template's own come with the template)
-    template = design_templates.get(made.template) if made.template else None
-    held = {*made.checks, *(template.check_skills if template else ())}
+    assert made.template == ""
+    # the checks its 묶음 compiled to (the format's own come with its pattern)
+    held = {*made.checks, *patterns.check_skills(spec.get("doc_format"))}
     assert set(spec["checks"]) - {"answer-hold", "contact-note", "pii-mask"} <= held
     assert set(made.check_options) == set(spec["check_options"])
     # its own 빠진 정보 질문 and 진행 설정
@@ -73,10 +72,8 @@ def test_the_skill_carries_what_the_agent_did(agent, key):
 def test_a_packages_document_fields_name_real_things(key):
     package = skill_packages.package_for(key)
     made = skill_specs.of_package(package)
-    if made.template:
-        template = design_templates.get(made.template)
-        assert template is not None
-        assert {"document": "report", "deck": "slides"}[template.kind] in package.kinds
+    # no shipped skill writes into a template (2026-11-15: patterns by format instead)
+    assert not made.template
     assert set(made.checks) <= set(skill_specs.check_keys())
     assert len(made.questions) == len(package.questions)
     assert gap_questions.clean(list(made.questions)) == list(made.questions)
@@ -165,7 +162,7 @@ async def _people(db):
 
 
 @pytest.mark.asyncio
-async def test_an_agent_built_from_skills_keeps_them_on_and_they_bring_their_template(db):
+async def test_an_agent_built_from_skills_keeps_them_on_and_they_bring_their_checks(db):
     admin, member, other = await _people(db)
     shipped = skill_packages.package_for("minutes-writing")
     official = Skill(owner_id=admin.id, name=shipped.name, body=shipped.body,
@@ -197,13 +194,9 @@ async def test_an_agent_built_from_skills_keeps_them_on_and_they_bring_their_tem
     db.add(session)
     await db.commit()
     found = await skill_turn.brought(db, member, session, agent, [])
-    assert found.template == "doc-minutes"
-    assert {"gap-check", "grounding-check", "generic-language-killer"} <= set(found.checks)
-    assert await skill_turn.template_for(db, member, session, found) == "doc-minutes"
-    # the person's pick (or the agent's own template) wins
-    session.render_template_id = "doc-result-report"
-    assert await skill_turn.template_for(db, member, session, found) is None
-
+    # the skill brings its checks; the 회의록 format's pattern brings the rest
+    assert not found.template
+    assert "generic-language-killer" in found.checks
 
 @pytest.mark.asyncio
 async def test_a_bot_answers_with_the_skills_its_agent_is_built_from(db):

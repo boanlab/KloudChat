@@ -1767,6 +1767,29 @@ export const formsApi = {
   fromFile: (fileId: string) => call<FileRow>('/forms/from-file', body({ fileId })),
 }
 
+/** What a 디자인 지침 sets, as the writers read it (`style_spec`). */
+export interface BriefReading {
+  spec: {
+    accent?: string
+    ink?: string
+    heading_face?: string
+    body_face?: string
+    table?: { header_fill?: boolean; vertical_rules?: boolean; zebra?: boolean; colour?: string }
+    density?: 'compact' | 'normal' | 'airy'
+    max_bullets?: number
+    visual_style?: string
+    numbering?: string
+    page_size?: string
+    orientation?: 'portrait' | 'landscape'
+    ratio?: string
+  }
+  tone: string[]
+}
+
+export const designBriefApi = {
+  read: (text: string) => call<BriefReading>('/design-brief/read', body({ text })),
+}
+
 export const projectsApi = {
   /** Several at once. Ids this account does not own are skipped. */
   removeMany: (ids: string[]) =>
@@ -2389,6 +2412,10 @@ export interface AgentRow {
   renderTemplateId: string | null
   docFormat: string | null
   designSystemId: string | null
+  /** 디자인 지침 over the project's. */
+  designBrief?: string
+  /** 기본 양식 파일: output kind → saved form copy id. */
+  formFiles?: Partial<Record<FormKind, string | null>>
   /** That design's name; the viewer's own design of this name stands in for one they cannot see. */
   designName?: string
   /** How to use it, shown on the empty screen. */
@@ -3699,36 +3726,13 @@ export const historyApi = {
 }
 
 /** The editor's payload for a person's template. */
-export type UserTemplateIn = Omit<UserTemplate, 'id' | 'formName' | 'hasForm' | 'mine' | 'ownerName' | 'updatedAt'>
-
-const templateBody = (t: UserTemplateIn) => JSON.stringify({ ...t, process: t.process as Partial<ProcessSettings> })
-
-/** A person's own templates (`/user-templates`). */
+/** A person's own templates (retired 2026-11-15): listed, deleted, or made into an agent. */
 export const userTemplatesApi = {
   list: () => call<{ mine: UserTemplate[]; shared: UserTemplate[] }>('/user-templates'),
   catalogue: () => call<TemplateCatalogue>('/user-templates/catalogue'),
-  /** A shipped document template as the editor's fields (snake_case, as the server stores). */
-  start: (templateId: string) => call<Record<string, unknown>>(`/user-templates/start/${encodeURIComponent(templateId)}`),
-  get: (id: string) => call<UserTemplate>(`/user-templates/${encodeURIComponent(id)}`),
-  create: (t: UserTemplateIn) => call<UserTemplate>('/user-templates', { method: 'POST', body: templateBody(t) }),
-  update: (id: string, t: UserTemplateIn) =>
-    call<UserTemplate>(`/user-templates/${encodeURIComponent(id)}`, { method: 'PUT', body: templateBody(t) }),
   remove: (id: string) => call<void>(`/user-templates/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  uploadForm: async (id: string, file: File) => {
-    const form = new FormData()
-    form.append('file', file)
-    const res = await authedFetch(`${BASE_URL}/user-templates/${encodeURIComponent(id)}/form`, {
-      method: 'POST',
-      body: form,
-    })
-    if (!res.ok) {
-      const detail = await readDetail(res)
-      if (res.status === 401) throw new UnauthorizedError(detail)
-      throw new ApiError(res.status, detail)
-    }
-    return (await res.json()) as UserTemplate
-  },
-  removeForm: (id: string) => call<UserTemplate>(`/user-templates/${encodeURIComponent(id)}/form`, { method: 'DELETE' }),
+  /** A new agent of the person's from their template: format, questions, checks and process kept. */
+  toAgent: (id: string) => call<AgentRow>(`/user-templates/${encodeURIComponent(id)}/to-agent`, { method: 'POST' }),
 }
 
 /** The connector catalogue administrators keep (관리 › 커넥터 카탈로그). */

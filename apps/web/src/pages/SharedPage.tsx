@@ -43,7 +43,7 @@ function StartedWithPanel({ context }: { context: SharedContext }) {
       key: 'format',
       icon: <LayoutGrid size={13} />,
       name: (english && context.format.nameEn) || context.format.name,
-      label: t('아티팩트가 이 템플릿으로 나옵니다'),
+      label: t('아티팩트가 이 형식으로 나옵니다'),
     },
   ].filter(Boolean) as { key: string; icon: React.ReactNode; name: string; label: string }[]
 

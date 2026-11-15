@@ -1,6 +1,5 @@
 import { ChevronRight, Globe, Lock } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
 import { AgentKnowledge } from '@/components/agents/AgentKnowledge'
 import { GapQuestionsEditor, InheritedQuestions } from '@/components/agents/GapQuestionsEditor'
 import { gapFieldId, gapProblems, type GapProblem } from '@/lib/gapQuestions'
@@ -9,8 +8,7 @@ import { fullSettings, ProcessSettingsEditor } from '@/components/agents/Process
 import { DOC_FORMATS, RETIRED_FORMATS } from '@/components/report/docFormats'
 import { Button, Field, Input, ResourceStatus, Select, Textarea } from '@/components/ui'
 import { agentSaveError, type AgentErrorPlace } from '@/lib/agentErrors'
-import { agentsApi, errorCode, errorMessage, processApi, templateText } from '@/lib/api'
-import { currentLang } from '@/lib/i18n'
+import { agentsApi, errorCode, errorMessage, processApi } from '@/lib/api'
 import { processOf, processPayload, useProcessCatalogue, type ProcessDraft } from '@/lib/process'
 import { agentKinds, kindMeta, kindOrder, skillsOffSurface } from '@/lib/kinds'
 import { NAME_LIMIT } from '@/lib/limits'
@@ -21,19 +19,17 @@ import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { Agent, SessionKind, Skill, WebSearchMode } from '@/types'
 import { slugify } from './formModel'
-import { isListed } from '@/lib/listed'
+import { FormFilesField } from '@/components/projects/ProjectFormFiles'
+import { DesignBriefField } from '@/components/projects/ProjectDesignBrief'
 import { AgentSkillList, OffSurfaceNote, StartSurfaceNote, ToolPicker } from './Pickers'
 
 /** Draft with `kinds`, minus bindings those kinds don't offer. */
 function withinKinds(draft: Agent, kinds: SessionKind[]): Agent {
   const next = { ...draft, kinds }
   const offered = agentKinds(next)
-  const templates = useStore.getState().designTemplates
-  const template = templates.find((row) => row.id === draft.renderTemplateId)
   return {
     ...next,
     surface: next.surface && offered.includes(next.surface) ? next.surface : null,
-    renderTemplateId: template && !offered.includes(template.surface) ? null : next.renderTemplateId,
     docFormat: offered.includes('report') ? next.docFormat : null,
   }
 }
@@ -282,11 +278,8 @@ export function AgentForm({
   const loadSkillStore = useStore((s) => s.loadSkillStore)
   const installSkill = useStore((s) => s.installSkill)
   const availableTools = useStore((s) => s.availableTools)
-  const designs = useStore((s) => s.designs)
-  const designTemplates = useStore((s) => s.designTemplates)
   const upsertAgent = useStore((s) => s.upsertAgent)
   const loadWorkspace = useStore((s) => s.loadWorkspace)
-  const english = currentLang() === 'en'
 
   const [draft, setDraft] = useState<Agent>(initial)
   // The draft as of the last edit: a save waiting on an official skill's add reads it.
@@ -326,16 +319,6 @@ export function AgentForm({
   const slugTaken = agents.some((a) => a.id !== draft.id && a.slug === draftSlug)
   const offered = agentKinds(draft)
   const pickedBase = process.mode === 'base' ? catalogue?.bases.find((b) => b.key === process.base) : undefined
-  // A base fixes the surface: its templates offered too.
-  const templateSurfaces = pickedBase ? [...new Set([pickedBase.surface, ...offered])] : offered
-  // Hidden template or theme (`listed: false`) not offered; the agent's current one stays.
-  const boundTemplates = designTemplates.filter(
-    (row) =>
-      row.kind !== 'image' &&
-      templateSurfaces.includes(row.surface) &&
-      (isListed(row) || row.id === draft.renderTemplateId),
-  )
-  const pickableDesigns = designs.filter((d) => isListed(d) || d.id === draft.designSystemId)
   const surface: SessionKind = draft.surface ?? offered[0] ?? 'chat'
   // What an unpinned agent runs on here: the surface's model (the person's pick, else the admin's).
   const surfaceDefault = models.find((m) => m.id === modelByKind[surface])
@@ -674,7 +657,7 @@ export function AgentForm({
       {templateCatalogue && (offered.includes('report') || pickedBase?.surface === 'report') && (
         <Group
           title={t('세부 설정')}
-          hint={`${t('진행 과정의 계산·검사·목차')} · ${draft.processSettings ? t('이 에이전트에서 따로 정함') : t('템플릿 설정을 따름')}`}
+          hint={`${t('진행 과정의 계산·검사·목차')} · ${draft.processSettings ? t('이 에이전트에서 따로 정함') : t('문서 형식 설정을 따름')}`}
           testId="agent-settings-group"
         >
           <label className="flex items-start gap-2 text-base">
@@ -694,7 +677,7 @@ export function AgentForm({
             <span>
               {t('이 에이전트에서 따로 정하기')}
               <span className="block text-sm text-muted">
-                {t('끄면 템플릿(또는 문서 형식)이 정한 계산·검사·구조를 그대로 씁니다. 켜면 그 값에서 시작해 바꿉니다.')}
+                {t('끄면 문서 형식이 정한 계산·검사·구조를 그대로 씁니다. 켜면 그 값에서 시작해 바꿉니다.')}
               </span>
             </span>
           </label>
@@ -734,57 +717,35 @@ export function AgentForm({
         <p className="text-sm font-semibold text-faint">{t('더 설정하기')}</p>
 
         <Group
-          title={t('템플릿·테마')}
-          hint={offered.includes('report') && process.mode !== 'base' ? t('문서 형식도 여기서 고릅니다') : undefined}
+          title={t('형식·디자인')}
+          hint={t('양식 파일이 있으면 그 양식에, 없으면 디자인 지침에 맞춰 씁니다')}
           testId="agent-output-group"
         >
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-            <Field label={t('템플릿')} hint={t('보고서·슬라이드 대화가 이 템플릿으로 시작합니다.')}>
-              <Select value={draft.renderTemplateId ?? ''} onChange={(e) => edit({ ...draft, renderTemplateId: e.target.value || null })}>
-                <option value="">{process.mode === 'base' ? t('기본 과정의 템플릿') : t('정하지 않음')}</option>
-                {boundTemplates.map((row) => (
-                  <option key={row.id} value={row.id}>
-                    {`${t(kindMeta[row.surface].label)} · ${templateText(row, english).name}`}
+          {offered.includes('report') && process.mode !== 'base' && (
+            <Field label={t('문서 형식')} hint={t('보고서의 머리 항목·절 규칙과 물어볼 빈칸을 이 형식으로 고정합니다.')}>
+              <Select value={draft.docFormat ?? ''} onChange={(e) => edit({ ...draft, docFormat: e.target.value || null })}>
+                <option value="">{t('요청에 따라')}</option>
+                {formats.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {t(f.label)}
                   </option>
                 ))}
               </Select>
             </Field>
-              <Link to="/customize/templates/new" className="inline-block text-sm text-accent hover:underline" data-testid="new-template-link">
-                {t('새 템플릿')}
-              </Link>
-            </div>
-            <div className="space-y-1.5">
-              <Field label={t('테마')} hint={t('프로젝트의 테마보다 먼저 씁니다.')}>
-                <Select value={draft.designSystemId ?? ''} onChange={(e) => edit({ ...draft, designSystemId: e.target.value || null })}>
-                  <option value="">{t('정하지 않음')}</option>
-                  {pickableDesigns.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {t(d.name)}
-                    </option>
-                  ))}
-                  {draft.designSystemId && !designs.some((d) => d.id === draft.designSystemId) && (
-                    <option value={draft.designSystemId}>{t('다른 사람의 테마')}</option>
-                  )}
-                </Select>
-              </Field>
-              <Link to="/settings/themes" className="inline-block text-sm text-accent hover:underline">
-                {t('테마 관리')}
-              </Link>
-            </div>
-            {offered.includes('report') && process.mode !== 'base' && (
-              <Field label={t('문서 형식')} hint={t('템플릿이 형식을 정하지 않을 때 보고서의 머리 항목과 절 규칙을 이것으로 고정합니다.')}>
-                <Select value={draft.docFormat ?? ''} onChange={(e) => edit({ ...draft, docFormat: e.target.value || null })}>
-                  <option value="">{t('요청에 따라')}</option>
-                  {formats.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {t(f.label)}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-            )}
-          </div>
+          )}
+          <Field label={t('기본 양식 파일')} hint={t('프로젝트의 양식보다 먼저 씁니다. 대화에 첨부한 양식이 가장 먼저입니다.')}>
+            <FormFilesField
+              value={draft.formFiles ?? {}}
+              onSet={(kind, row) => edit({ ...draft, formFiles: { ...(draft.formFiles ?? {}), [kind]: row ? row.id : null } })}
+            />
+          </Field>
+          <Field label={t('디자인 지침')} hint={t('프로젝트의 디자인 지침보다 먼저 씁니다.')}>
+            <DesignBriefField
+              value={draft.designBrief ?? ''}
+              onChange={(value) => edit({ ...draft, designBrief: value })}
+              label={t('디자인 지침')}
+            />
+          </Field>
         </Group>
 
         <Group title={t('대화 시작')} hint={t('사용법, 시작 문장, 담당 부서·연락처')}>

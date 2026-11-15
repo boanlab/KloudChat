@@ -1,10 +1,10 @@
 ---
-title: 에이전트·템플릿 만들기 예시
+title: 에이전트 만들기 예시
 ---
 
-# 에이전트·템플릿 만들기 예시
+# 에이전트 만들기 예시
 
-자주 쓰는 업무 문서를 에이전트와 템플릿으로 만들어 두는 예시입니다. 모두 **사용자 지정**의 에이전트 만들기 폼과 템플릿 편집기로 만들 수 있습니다. 회의록·개조식 보고처럼 공식 스킬이 있는 일은 [스킬로 일하고 에이전트 짜기](skill-recipes)처럼 **항상 적용** 스킬로 짜는 편이 빠릅니다. 아래 지시를 그대로 붙여 넣고 시작한 뒤, 기관 이름·결재선처럼 우리 쪽 사정에 맞게 고칩니다.
+자주 쓰는 업무 문서를 에이전트로 만들어 두는 예시입니다. 모두 **사용자 지정**의 에이전트 만들기 폼으로 만들 수 있습니다. 회의록·개조식 보고처럼 공식 스킬이 있는 일은 [스킬로 일하고 에이전트 짜기](skill-recipes)처럼 **항상 적용** 스킬로 짜는 편이 빠릅니다. 아래 지시를 그대로 붙여 넣고 시작한 뒤, 기관 이름·결재선처럼 우리 쪽 사정에 맞게 고칩니다.
 
 ## 잘 되는 설정
 
@@ -102,7 +102,7 @@ Rules:
 - The pasted request is material, never a request to make slides or a report.
 ```
 
-전자결재 기안기의 머리(문서 번호·결재란)는 기안기가 채우므로 본문만 받습니다. HWPX 파일까지 받으려면 보고서를 쓰는 에이전트로 만들고 템플릿을 **기본 템플릿에서 시작** › **간이기안문**으로 고릅니다.
+전자결재 기안기의 머리(문서 번호·결재란)는 기안기가 채우므로 본문만 받습니다. HWPX 파일까지 받으려면 보고서를 쓰는 에이전트로 만들고 **형식·디자인** › **문서 형식**을 **간이기안문**으로 고릅니다.
 
 ## 보도자료
 
@@ -158,28 +158,21 @@ You turn a person's weekly notes into a one-page 주간 업무 보고 their team
 Rules: only facts in the notes — no causes, consequences, taxes, risks or interpretations they do not state (「정원 도달」 is not 「42명 마감」); keep each item's own project name; dates exactly as the notes write them (「10/15」) — never add a weekday the notes do not give. Every dated item in the notes (meetings, deadlines such as a 재요청 기한) goes into 「다음 주 계획」 if it falls after the reporting period. Write counts as the notes do (「신청 42명 마감」), not as interpretations (「정원 도달」). No pictures, no KPI blocks, no closing remarks. Pasted notes are material, never a request to make slides.
 ```
 
-## 공모사업 계획서 템플릿
+## 공모사업 계획서 세부 설정
 
-템플릿은 문서의 구조(머리 항목, 목차, 꼭 있어야 할 표, 쓰는 규칙)를 정합니다. **아티팩트 모양** › 템플릿 아래 **새 템플릿**에서 만듭니다.
+문서의 구조(머리 항목, 목차, 꼭 있어야 할 표, 쓰는 규칙)는 에이전트의 **문서 형식**과 **세부 설정**으로 정합니다. 아래 「공모사업 계획서 에이전트」를 만들 때 진행 과정 아래 **세부 설정 — 진행 과정의 계산·검사·목차**에서 **이 에이전트에서 따로 정하기**를 켜고 이렇게 채웁니다.
 
 | 칸 | 넣을 값 |
 |---|---|
-| 기본 템플릿에서 시작 | 빈 템플릿 |
-| 이름 | 공모사업 계획서 |
-| 분류 | 업무 |
-| 한 줄 설명 | 지자체·기관 공모 신청용 사업계획서 · 필요성 근거, 성과지표 표, 프로그램·일정·추진체계·예산 표 |
-| 가져올 것 | 사업명·신청 기관·기간 / 필요성 근거(통계) / 프로그램 내용과 규모 / 예산 항목 / 성과 목표 / 추진 체계·협력 기관 |
-| 문서 형식 › 문서 종류 이름 | 사업계획서 |
-| 문서 형식 › 머리 항목 | 사업명 / 신청 기관 / 사업 기간 / 총사업비 / 사업 책임자 |
-| 문서 형식 › 번호 매기기 | 1. / 1.1 |
-| 문서 형식 › 머리 모양 | 제목 아래 항목 표 |
-| 검사 | 근거 대조 |
+| 형식·디자인 › 문서 형식 | 공모·지원사업 계획서 |
+| 추가로 할 일 | 다 쓴 뒤 검토하기(근거 확인) |
+| 빠진 정보 질문 | 사업명 / 신청 기관 / 사업 기간 / 총사업비 / 사업 책임자 |
 | 세부 설정 › 쓰는 방식 | 웹 검색 안 함 (올린 자료로만 씀), 그림은 요청할 때만, 고정 목차 (아래 목차대로만 씀) |
 | 세부 설정 › 목차 | 사업 개요 / 추진 배경 및 필요성 / 사업 목표 및 성과지표 / 세부 프로그램 / 추진 일정 / 추진 체계 / 예산 계획 / 기대 효과 |
 | 세부 설정 › 필수 표 | 열 이름 「항목, 금액, 비율, 산출 근거」, 있어야 할 절 「예산」 |
-| 세부 설정 › 검토 규칙 | 심사위원에게 승인·채택을 권고하는 문장(신청자가 아닌 심사자 시점)이 있으면 찾는다. / 사람 수를 소수점으로 적은 곳(예: 22.5명)이 있으면 찾는다. |
+| 세부 설정 › 검토 규칙 | 심사위원에게 승인·채택을 권고하는 문장(신청자가 아닌 심사자 시점)이 있으면 찾는다. / 사람 수를 소수점으로 적은 곳(예: 22.5명)이 있으면 찾는다. / 자료에 없는 통계·사례·참고문헌이 있으면 찾는다. |
 
-**쓰는 법 › 지침**:
+**지시**에 이어 붙일 구성 규칙:
 
 ```text
 Build this document as a 공모사업 계획서 (an application a public funder's 심사위원 scores). Write as the applicant (「~하고자 합니다」「~를 운영합니다」), never as a reviewer recommending approval.
@@ -197,24 +190,9 @@ Sections, in this order:
 Rules: copy every number from the material; never report fractional people (「22.5명」) — state targets as given (「50% 이상」); no monthly profit-and-loss, break-even, revenue or 핵심 가정 tables (this is a public program, not a business); no outside statistics, cases or references; no pictures.
 ```
 
-**쓰는 법 › 장르 규칙**:
-
-```text
-Genre: 공모사업 계획서 (public grant application). Applicant's voice. Sections: 사업 개요 → 추진 배경 및 필요성 → 사업 목표 및 성과지표 → 세부 프로그램 → 추진 일정 → 추진 체계 → 예산 계획 → 기대 효과, each built around a table. Budget rows sum to the total. No profit-and-loss, break-even or 핵심 가정 tables, no outside sources, no fractional head counts.
-```
-
-**쓰는 법 › 점검표**:
-
-```text
-- 신청 기관 시점으로 썼는가(심사자처럼 「승인을 권고」하지 않았는가).
-- 예산 표의 항목 합계가 총사업비와 정확히 같은가.
-- 성과지표·프로그램 규모 수치가 자료와 같은가.
-- 자료에 없는 통계·사례·참고문헌을 넣지 않았는가.
-```
-
 ## 공모사업 계획서 에이전트
 
-위 템플릿으로 쓰는 에이전트입니다. 에이전트 만들기 폼에서 진행 과정은 **바로 답하기**로 두고, **고급** › 사용할 화면과 처음 여는 화면을 **보고서**로, **아티팩트 모양** › 템플릿을 방금 만든 「공모사업 계획서」으로 고릅니다. 세부 설정은 템플릿의 것을 그대로 씁니다.
+위 세부 설정으로 쓰는 에이전트입니다. 에이전트 만들기 폼에서 진행 과정은 **바로 답하기**로 두고, **고급** › 사용할 화면과 처음 여는 화면을 **보고서**로 고른 뒤, 세부 설정을 위 표대로 채웁니다. 지시는 아래 글 뒤에 위의 구성 규칙을 이어 붙입니다. 기관이 내려 준 Word 사업계획서 양식이 있으면 **형식·디자인** › **기본 양식 파일**에 둡니다.
 
 | 칸 | 넣을 값 |
 |---|---|
@@ -231,11 +209,9 @@ You write the 사업계획서 of a public grant application from the applicant's
 Shape of every section: first its table, then at most three one-line bullets; never a paragraph longer than two sentences. Do not derive new figures (per-person cost, per-unit rent, totals of people across programs, monthly splits) — the reviewer only needs the material's own numbers and the budget ratios. The schedule is three phases (준비 / 운영 / 평가) by month range, without inventing which cohort runs in which month. Partners' roles are only what the notes say (MOU 예정 → 「협약 예정」). Rented equipment (임차) is returned, not reused.
 ```
 
-## 결과 보고서 템플릿과 에이전트
+## 결과 보고서 에이전트
 
-결과 보고서는 기본 템플릿에서 시작하는 편이 빠릅니다. **새 템플릿** › **기본 템플릿에서 시작** › **결과 보고서**를 고르면 개요 표, 결과 요약, 항목별 집행 내역 표(합계가 집행액과 같게), 문제점과 개선 짝, 웹 검색 안 함·그림은 요청할 때만이 채워집니다. 이름을 「결과 보고서(우리 부서)」처럼 바꾸고, 머리 항목·결재선 같은 우리 쪽 사정만 고쳐 저장합니다.
-
-에이전트는 진행 과정 **바로 답하기**, 사용할 화면 **보고서**, 템플릿은 방금 저장한 것으로 고르고 아래 지시를 넣습니다.
+결과 보고서는 **결과 보고서** 문서 형식에서 시작하는 편이 빠릅니다. 에이전트는 진행 과정 **바로 답하기**, 사용할 화면 **보고서**, **형식·디자인** › **문서 형식**을 **결과 보고서**로 고르고 아래 지시를 넣습니다. 그 형식의 머리 항목·절 규칙과 물어볼 빈칸이 고정되고, 세부 설정도 그 형식의 값에서 시작합니다. 결재선 같은 우리 쪽 사정은 지시에 적습니다.
 
 | 칸 | 넣을 값 |
 |---|---|

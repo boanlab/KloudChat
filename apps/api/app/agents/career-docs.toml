@@ -9,9 +9,13 @@ name = "자기소개서·경력기술서"
 description = "채용공고와 내 경험 자료로 글자 수 제한에 맞는 자기소개서 문항 답(채팅)이나 경력기술서(보고서)가 필요할 때"
 kinds = ["chat", "report"]
 surface = "chat"
-template = "doc-career-history"
 doc_format = "career_history"
-design = "기본"
+# 디자인 지침 (`design_brief`): the look in words, as a person's agent sets it
+design_brief = """
+- 이모지를 쓰지 않는다.
+- '혁신적', '차별화된', '최적의' 같은 채움말 대신 확인할 수 있는 사실을 쓴다.
+- 쓸 내용이 없으면 분량을 채우지 말고 그 항목을 줄인다.
+"""
 # An empty list denies every tool (report surfaces run the server hooks instead).
 tools = ["run_skill_script", "calculate"]
 skills = ["text-fit"]

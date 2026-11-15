@@ -37,8 +37,6 @@ const AgentDetailPage = lazy(() =>
   import('@/pages/customize/AgentDetailPage').then((m) => ({ default: m.AgentDetailPage })),
 )
 const AgentCreatePage = lazy(() => import('@/pages/customize/CreatePages').then((m) => ({ default: m.AgentCreatePage })))
-const TemplateEditPage = lazy(() => import('@/pages/customize/TemplateEditPage').then((m) => ({ default: m.TemplateEditPage })))
-const TemplatesPage = lazy(() => import('@/pages/customize/TemplateEditPage').then((m) => ({ default: m.TemplatesPage })))
 const SkillDetailPage = lazy(() =>
   import('@/pages/customize/SkillDetailPage').then((m) => ({ default: m.SkillDetailPage })),
 )
@@ -208,9 +206,8 @@ function Authenticated() {
           <Route path="files" element={<FilesPage />} />
           <Route path="customize" element={<CustomizePage />} />
           <Route path="customize/agents/new" element={<AgentCreatePage />} />
-          <Route path="customize/templates" element={<TemplatesPage />} />
-          <Route path="customize/templates/new" element={<TemplateEditPage />} />
-          <Route path="customize/templates/:templateId" element={<TemplateEditPage />} />
+          {/* templates retired (2026-11-15): a person's old ones are turned into agents there */}
+          <Route path="customize/templates/*" element={<Navigate to="/customize?tab=agents" replace />} />
           <Route path="customize/agents/:agentId" element={<AgentDetailPage />} />
           <Route path="customize/agents/:agentId/chain" element={<ChainPage />} />
           <Route path="customize/skills/new" element={<SkillCreatePage />} />
@@ -221,7 +218,7 @@ function Authenticated() {
           {/* Members' bots are agents in 사용자 지정; old links land on the shared group. */}
           <Route path="bots" element={<Navigate to={SHARED_AGENTS_PATH} replace />} />
           <Route path="customize/workflows/:pipelineId" element={<ToHub tab="agents" />} />
-          <Route path="designs" element={<Navigate to="/settings/themes" replace />} />
+          <Route path="designs" element={<Navigate to="/settings" replace />} />
           <Route path="agents" element={<ToHub tab="agents" />} />
           <Route path="skills" element={<ToHub tab="skills" />} />
           <Route path="pipelines" element={<ToHub tab="agents" />} />

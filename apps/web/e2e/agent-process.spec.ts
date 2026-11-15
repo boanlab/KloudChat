@@ -129,7 +129,8 @@ test('설정 › 메모리 holds what the hub\'s 메모리 tab held', async ({ p
   await tabs.getByRole('link', { name: '메모리' }).click()
   await expect(page).toHaveURL(/\/settings\/memory$/)
   await expect(page.getByRole('button', { name: '새 메모리' })).toBeVisible()
-  await expect(tabs.getByRole('link', { name: '테마' })).toBeVisible()
+  // themes are a project's or agent's 디자인 지침 now: no settings tab
+  await expect(tabs.getByRole('link', { name: '테마' })).toHaveCount(0)
   expect(state.problems).toEqual([])
 })
 
@@ -386,27 +387,17 @@ test('the process\'s detailed settings are not called 진행 과정 설정', asy
   await shot(page, 'n5-settings-group', page.getByTestId('agent-process').locator('..'))
 })
 
-test('after choosing a base, the new agent\'s template list holds every template of that screen', async ({ page }, testInfo) => {
+test('the agent form sets a document format, a form file and a design brief, no template', async ({ page }, testInfo) => {
   await hubFixture(page, testInfo)
-  const row = (id: string, surface: string, name: string, kind = 'document') => ({
-    id, kind, surface, name, nameEn: name, category: '보고', categoryEn: 'Report', description: '', descriptionEn: '',
-    fills: [], fillsEn: [], checks: [], hasPreview: false, slideCount: 0,
-  })
-  const report = [row('doc-gaejo-report', 'report', '개조식 보고서'), row('doc-minutes', 'report', '회의록'),
-    row('doc-result-report', 'report', '결과 보고서'), row('doc-comparison', 'report', '비교·분석 보고서'),
-    row('u-1', 'report', '내 주간 보고')]
-  await page.route('**/api/design-templates', (route) =>
-    route.fulfill({ json: [...report, row('deck-briefing', 'slides', '사내 브리핑', 'deck'), row('img-1', 'image', '그림', 'image')] }))
   const form = await openForm(page)
   const output = page.getByTestId('agent-output-group')
   await output.locator('summary').click()
-  const select = output.getByRole('combobox', { name: /^템플릿/ })
-  // 바로 답하기 on the chat screen: nothing to write in.
-  await expect(select.locator('option')).toHaveText(['정하지 않음'])
+  await expect(output.getByRole('combobox', { name: /^템플릿/ })).toHaveCount(0)
+  await expect(output.getByRole('textbox', { name: '디자인 지침' })).toBeVisible()
+  await expect(output.getByText('기본 양식 파일')).toBeVisible()
+  // a report agent names its document format
   await form.getByRole('radio', { name: /기본 과정에서 시작/ }).check()
-  await expect(select.locator('option')).toHaveText(['기본 과정의 템플릿', ...report.map((r) => `보고서 · ${r.name}`)])
-  await select.selectOption('doc-result-report')
-  await expect(select).toHaveValue('doc-result-report')
+  await expect(output.getByRole('textbox', { name: '디자인 지침' })).toBeVisible()
 })
 
 test('ticking the export by hand after choosing a base picks the format the 지시 names', async ({ page }, testInfo) => {

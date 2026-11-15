@@ -174,7 +174,7 @@ export function FollowedFormLine({ form }: { form: FollowedForm }) {
       )}
       {open && form.kind !== 'docx' && (
         <ul className="mt-1.5 list-disc space-y-0.5 pl-5">
-          <li>{t('슬라이드 마스터·테마 글꼴·테마 색: 양식 그대로')}{followed.size ? ` (${followed.size})` : ''}</li>
+          <li>{t('슬라이드 마스터·글꼴·색: 양식 그대로')}{followed.size ? ` (${followed.size})` : ''}</li>
           {layouts.length > 0 && (
             <li>
               {t('쓴 레이아웃: {list}').replace(

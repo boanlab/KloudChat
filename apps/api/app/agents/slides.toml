@@ -11,7 +11,12 @@ name = "발표 자료"
 description = "보고서·메모·자료로 발표용 슬라이드(PPTX로 내려받기)가 필요할 때"
 kinds = ["slides"]
 surface = "slides"
-design = "발표용 청록"
+# 디자인 지침 (`design_brief`): the look in words, as a person's agent sets it
+design_brief = """
+강조색 #0F766E. 글자색 #0F172A. 본문은 고딕.
+청중이 소리 내어 읽을 문장으로 쓴다. 한 장에 주장 하나.
+그림 스타일: bold high-contrast graphic, large negative space, teal accent
+"""
 tools = []
 skills = []
 # No 묶음: a deck is planned, shown and made in one flow of its own.

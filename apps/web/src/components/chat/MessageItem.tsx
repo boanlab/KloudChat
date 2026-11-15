@@ -27,10 +27,9 @@ import { Badge, Button } from '@/components/ui'
 import { MediaResult } from '@/components/media/MediaResult'
 import { ResultCard } from './ResultCard'
 import {
-  artifactsApi, downloadFile, errorMessage, filesApi, templateText, type OfficeKind,
+  artifactsApi, downloadFile, errorMessage, filesApi, type OfficeKind,
 } from '@/lib/api'
 import { useIssues } from '@/lib/issues'
-import { currentLang } from '@/lib/i18n'
 import { FINDING_LABEL, maskingCategories, requestProtection, searchCardOf } from '@/lib/privacy'
 import { cn, fileSize, formatTokens, isMedia } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -253,7 +252,6 @@ function MessageItemInner({
   const retryMediaTurn = useStore((s) => s.retryMediaTurn)
   const models = useStore((s) => s.models)
   const user = useStore((s) => s.user)
-  const designTemplates = useStore((s) => s.designTemplates)
   const sessionKind = useStore((s) => s.sessions.find((c) => c.id === sessionId)?.kind)
   // The question card sits in this message's waiting stage when its run is the one waiting.
   const waitingPending = useStore((s) => {
@@ -267,9 +265,6 @@ function MessageItemInner({
   })
   const editMessage = useStore((s) => s.editMessage)
   const editBlocked = useStore((s) => !!s.running[sessionId] || s.messageEditBusy)
-  const renderTemplateId = useStore(
-    (s) => s.sessions.find((c) => c.id === sessionId)?.renderTemplateId,
-  )
   // The user row this answer was for; the retry needs its id.
   const askedAbove = useStore((s) => {
     const list = s.sessions.find((c) => c.id === sessionId)?.messages ?? []
@@ -431,8 +426,7 @@ function MessageItemInner({
   )
 
   if (message.role === 'user') {
-    // The template comes off the session (sticky); the starting point is stored on the turn.
-    const shape = designTemplates.find((row) => row.id === renderTemplateId)
+    // The starting point is stored on the turn.
     const failed = turnFailureNotice(message, madeHere, t)
     const startedFrom = message.startedFrom
     // Stored copy masked on any finding; the bubble holds the typed original until reopen.
@@ -453,11 +447,7 @@ function MessageItemInner({
         <div className="max-w-[80%] space-y-2">
           {startedFrom && (
             <p className="text-right text-xs text-faint">
-              {shape
-                ? t('시작점 {name} · 템플릿 {title}')
-                    .replace('{name}', startedFrom.title)
-                    .replace('{title}', templateText(shape, currentLang() === 'en').name)
-                : t('시작점 {name}').replace('{name}', startedFrom.title)}
+              {t('시작점 {name}').replace('{name}', startedFrom.title)}
             </p>
           )}
           {message.attachments?.map((a) => {

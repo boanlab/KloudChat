@@ -26,9 +26,8 @@ Web reports and web slides open in the [artifact editor](editor) (the ribbon). H
 | Web report | PDF, Word (DOCX), Hangul (HWPX), the Markdown source, print |
 | Web slides | PowerPoint (PPTX), PDF, text (with notes) |
 | HWP, Word and PowerPoint documents | **Download** in the editor (HWPX or HWP, DOCX, PPTX) |
-| A document with a template applied | PDF, DOCX/PPTX, HWPX, HTML, text |
 
-PDF reproduces the theme as it is, and DOCX and PPTX put an editable structure first, so some visual elements of the template may differ.
+PDF reproduces the chosen look as it is, and DOCX and PPTX put an editable structure first, so some visual elements on screen may differ. A Word or PowerPoint file written on a company form keeps the form's look.
 
 ## Gallery
 

@@ -814,13 +814,10 @@ def test_a_default_the_catalogue_cannot_place_is_the_built_in_track(defaults):
     assert dt.default_for(defaults, SessionKind.report) is None
 
 
-async def test_a_new_session_begins_in_its_projects_format():
-    """A new session takes its project's format for that surface only."""
+async def test_a_projects_default_template_starts_nothing():
+    """Templates are retired (2026-11-15): a project's stored default starts no conversation."""
     db = _Rows({"p1": _project(render_templates={"report": "doc-minutes"})})
-
-    started = await sessions_router._project_render_template(db, "p1", SessionKind.report)
-    assert started == "doc-minutes"
-    assert await sessions_router._project_render_template(db, "p1", SessionKind.slides) is None
+    assert await sessions_router._project_render_template(db, "p1", SessionKind.report) is None
 
 
 async def test_work_outside_a_project_is_not_a_lookup():
@@ -828,12 +825,8 @@ async def test_work_outside_a_project_is_not_a_lookup():
     assert none is None
 
 
-async def test_the_composer_still_decides_this_conversation():
-    """The project seeds the session; the composer's choice still resolves on its own."""
-    db = _Rows({"p1": _project(render_templates={"report": "doc-minutes"})})
-
-    seeded = await sessions_router._project_render_template(db, "p1", SessionKind.report)
-    assert seeded == "doc-minutes"
+async def test_an_older_conversations_template_still_resolves():
+    """A template an older conversation holds still renders; no new one is taken."""
     resolved = sessions_router._resolved_template_id("doc-comparison", SessionKind.report)
     assert resolved == "doc-comparison"
 

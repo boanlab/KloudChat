@@ -14,7 +14,7 @@ The ribbon consists of **Home · Edit · Insert · Layout · Review · View · F
 
 ### Home
 
-Switch between **Web view** and **Page view** (actual A4 pages), and change the document theme (editorial, magazine, minimal), the accent color, and the **Template**. In web view, **Source** lets you edit the whole Markdown.
+Switch between **Web view** and **Page view** (actual A4 pages). In web view, **Source** lets you edit the whole Markdown.
 
 ### Edit
 
@@ -29,7 +29,7 @@ In **Add a picture**, set the section to insert into, how the picture is produce
 
 ### Layout
 
-It provides **Page setup** (header, footer, page numbers).
+**Look** (editorial, magazine, minimal) and **Accent** change this document's look, and **Page setup** sets the header, footer and page numbers. The look of a whole project goes in its [design brief](../personal/projects.md#design-brief).
 
 ### View
 
@@ -45,7 +45,7 @@ The ribbon consists of **Home · Edit · Insert · Review · View · Slide show 
 
 ### Home
 
-Choose the slide theme from editorial, minimal, poster, split, dark, steel, warm, pastel, forest, academic, and monochrome, change the accent color, and run **Redo this slide**.
+In the **Look** menu, choose the slide look from editorial, minimal, poster, split, dark, steel, warm, pastel, forest, academic, and monochrome, change the accent color, and run **Redo this slide**.
 
 ### Edit
 
@@ -84,7 +84,3 @@ Exports to PowerPoint (PPTX), PDF, and text (with notes), and supports copying t
 A snapshot is saved every time you save, rewrite, or restore. In the ribbon, open **Review → Version history** to see the content of an earlier version, compare the additions, deletions, and edits, and then roll back.
 
 If the same document was edited in another window, it asks you to choose between **Load the latest version** and **Copy my edits**.
-
-## Editing limits on documents with a template applied
-
-Reports and slides with a template applied support block-level rewriting only, and Markdown source editing is not provided. The export formats are PDF, DOCX/PPTX, HWPX, HTML, and text.

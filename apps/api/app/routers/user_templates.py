@@ -1,8 +1,10 @@
-"""User templates: stored as plain text only (no HTML/CSS); owner-only edits."""
+"""User templates: stored as plain text only (no HTML/CSS); owner-only edits.
+
+Retired on 2026-11-15 (forms and 디자인 지침 instead): templates are read, deleted and turned
+into agents (`POST /user-templates/{id}/to-agent`), no longer made or changed (410)."""
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
@@ -91,14 +93,15 @@ async def start_from(template_id: str, user: CurrentUser):
     return user_templates.draft_of(template)
 
 
+def _retired() -> HTTPException:
+    return HTTPException(status_code=status.HTTP_410_GONE, detail="templates_retired")
+
+
 @router.post("/user-templates", status_code=status.HTTP_201_CREATED)
-async def create_template(payload: TemplateIn, user: CurrentUser, db: DbSession):
-    row = UserTemplate(owner_id=user.id, **_cleaned(payload))
-    db.add(row)
-    await db.commit()
-    await db.refresh(row)
-    await user_templates.ensure(db, [user_templates.template_id(row)])
-    return user_templates.wire(row, viewer_id=user.id)
+async def create_template(payload: TemplateIn, user: CurrentUser):
+    """Retired: a new template is a new agent."""
+    del payload, user
+    raise _retired()
 
 
 @router.get("/user-templates/{template_id}")
@@ -110,17 +113,10 @@ async def get_template(template_id: str, user: CurrentUser, db: DbSession):
 
 
 @router.put("/user-templates/{template_id}")
-async def update_template(template_id: str, payload: TemplateIn, user: CurrentUser,
-                          db: DbSession):
-    row = await _owned(db, user, template_id)
-    for key, value in _cleaned(payload).items():
-        setattr(row, key, value)
-    row.updated_at = utcnow()
-    db.add(row)
-    await db.commit()
-    await db.refresh(row)
-    await user_templates.ensure(db, [user_templates.template_id(row)])
-    return user_templates.wire(row, viewer_id=user.id)
+async def update_template(template_id: str, payload: TemplateIn, user: CurrentUser):
+    """Retired: turn the template into an agent and change that."""
+    del template_id, payload, user
+    raise _retired()
 
 
 @router.delete("/user-templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -139,33 +135,10 @@ async def delete_template(template_id: str, user: CurrentUser, db: DbSession,
 
 
 @router.post("/user-templates/{template_id}/form")
-async def upload_form(template_id: str, user: CurrentUser, db: DbSession,
-                      file: UploadFile = File(...)):
-    """Source form (DOCX/HWPX) text kept as writer reference."""
-    from app.services import files as file_service
-
-    row = await _owned(db, user, template_id)
-    name = Path(file.filename or "form").name[:200]
-    if Path(name).suffix.lower() not in _FORM_TYPES:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                            detail="template_form_type")
-    data = await file.read(_FORM_BYTES + 1)
-    if len(data) > _FORM_BYTES:
-        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                            detail="template_form_too_large")
-    try:
-        text = file_service.extract_text(name, file.content_type or "", data)
-    except Exception as exc:  # noqa: BLE001 — unreadable form refused
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                            detail="template_form_unreadable") from exc
-    row.form_name = user_templates.plain(name, 200)
-    row.form_text = user_templates.plain(text, 20000, lines=True)
-    row.updated_at = utcnow()
-    db.add(row)
-    await db.commit()
-    await db.refresh(row)
-    await user_templates.ensure(db, [user_templates.template_id(row)])
-    return user_templates.wire(row, viewer_id=user.id)
+async def upload_form(template_id: str, user: CurrentUser, file: UploadFile = File(...)):
+    """Retired: a form file is attached in a conversation or saved on a project or agent."""
+    del template_id, user, file
+    raise _retired()
 
 
 @router.delete("/user-templates/{template_id}/form")
@@ -180,3 +153,64 @@ async def remove_form(template_id: str, user: CurrentUser, db: DbSession):
 
 
 __all__ = ["router"]
+
+
+def agent_fields(row: UserTemplate) -> dict[str, Any]:
+    """An agent's fields from a person's template: its format, questions, checks, process and
+    look carried over; its writing rules, genre and checklist become the agent's instructions."""
+    from app.services import doc_formats
+
+    fmt = dict(row.doc_format or {})
+    label = str(fmt.get("label") or "").strip()
+    format_id = next((f.id for f in doc_formats.FORMATS if label and f.label == label
+                      and f.id not in doc_formats.RETIRED), None)
+    parts = [f"# {row.name}"]
+    if row.description.strip():
+        parts.append(row.description.strip())
+    if row.instructions.strip():
+        parts.append("## 쓰는 법\n" + row.instructions.strip())
+    if row.genre.strip():
+        parts.append("## 문서의 결\n" + row.genre.strip())
+    if format_id is None and fmt:
+        head = ", ".join(str(f) for f in fmt.get("fields") or [] if str(f).strip())
+        lines = [f"- 문서 이름: {label}"] if label else []
+        if head:
+            lines.append(f"- 머리에 적을 칸: {head}")
+        if fmt.get("numbering"):
+            lines.append(f"- 번호: {fmt['numbering']}")
+        if lines:
+            parts.append("## 문서 형식\n" + "\n".join(lines))
+    if row.checklist.strip():
+        parts.append("## 다 쓴 뒤 확인할 것\n" + row.checklist.strip())
+    brief = {"serif": "본문은 명조.", "gothic": "본문은 고딕."}.get(row.body_face, "")
+    return {
+        "name": row.name[:120], "description": row.description,
+        "system_prompt": "\n\n".join(parts)[:24_000],
+        "kinds": ["report"], "surface": "report", "doc_format": format_id,
+        "gap_questions": [dict(q) for q in row.questions or []] or None,
+        "process_settings": dict(row.process) if row.process else None,
+        "check_skills": list(row.check_skills or []) or None,
+        "check_options": {key: True for key in row.check_options or []} or None,
+        "starters": [row.example_prompt.strip()] if row.example_prompt.strip() else [],
+        "design_brief": brief,
+    }
+
+
+@router.post("/user-templates/{template_id}/to-agent", status_code=status.HTTP_201_CREATED)
+async def template_to_agent(template_id: str, user: CurrentUser, db: DbSession):
+    """A person's own template as a new agent of theirs (the template is kept)."""
+    from app.routers.workspace import _slug
+    from app.schemas.workspace import AgentOut
+
+    row = await _owned(db, user, template_id)
+    fields = agent_fields(row)
+    taken = set((await db.exec(select(Agent.slug).where(Agent.owner_id == user.id))).all())
+    slug = base = _slug(fields["name"])
+    n = 2
+    while slug in taken:
+        slug, n = f"{base}-{n}", n + 1
+    agent = Agent(owner_id=user.id, slug=slug, **fields)
+    db.add(agent)
+    await db.commit()
+    await db.refresh(agent)
+    return AgentOut.of(agent)

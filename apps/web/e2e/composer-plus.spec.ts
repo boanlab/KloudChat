@@ -35,23 +35,14 @@ test('「+」 holds the tools; nothing else sits beside the input', async ({ pag
   expect(unexpected).toEqual([])
 })
 
-test('템플릿 고르기 is offered on report and slides only', async ({ page }, info) => {
+test('no surface offers a template picker: structure comes from the request', async ({ page }, info) => {
   const { unexpected } = await composerFixture(page, info)
-  for (const [kind, offered] of [['chat', false], ['report', true], ['slides', true], ['image', false]] as const) {
+  for (const kind of ['chat', 'report', 'slides', 'image']) {
     await page.goto(`/new/${kind}`)
     await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
-    expect((await toolNames(page)).includes('템플릿 고르기'), kind).toBe(offered)
+    expect((await toolNames(page)).includes('템플릿 고르기'), kind).toBe(false)
+    await expect(page.getByTestId('template-chip')).toHaveCount(0)
   }
-  await page.goto('/new/report')
-  await openTool(page, '템플릿 고르기')
-  const dialog = page.getByRole('dialog', { name: '템플릿 고르기' })
-  await expect(dialog).toBeVisible()
-  await dialog.getByRole('button', { name: '이 템플릿으로 시작' }).first().click()
-  // The pick shows as a chip with its own ×.
-  const remove = page.getByRole('button', { name: '비교 보고서 템플릿 해제' })
-  await expect(remove).toBeVisible()
-  await remove.click()
-  await expect(remove).toHaveCount(0)
   expect(unexpected).toEqual([])
 })
 

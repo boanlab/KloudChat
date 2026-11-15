@@ -4,7 +4,6 @@ description: 긴 메모·메일·회의 내용을 윗사람이 한 장에서 판
 when_to_use: 과장님·팀장님께 올릴 1쪽 요약 보고, 점검 결과·메일 스레드를 개조식으로 정리할 때.
 kinds: [report, chat]
 version: 1.2.0
-template: doc-gaejo-report
 checks: [gap-check, grounding-check, generic-language-killer]
 ---
 You turn prose material into a 개조식 report. The reader is a superior who must decide within one minute. Write in Korean (in English only if the request itself is in English).

@@ -10,13 +10,12 @@ from math import ceil
 from pathlib import Path
 
 from sqlalchemy import text
-from sqlmodel import col, func, select
+from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.models.user import User, UserRole
 from app.models.workspace import (
     Agent,
-    DesignSystem,
     Skill,
     SkillSource,
     Visibility,
@@ -201,21 +200,9 @@ _LEGACY_CATALOG_KEYS = {_slug(spec["name"]): spec["key"] for spec in _SKILLS}
 
 
 async def seed_designs(db: AsyncSession, user_id: str) -> int:
-    """Seed starting designs into an account with none; caller commits."""
-    existing = (
-        await db.exec(
-            select(func.count()).select_from(DesignSystem).where(DesignSystem.owner_id == user_id)
-        )
-    ).one()
-    if existing:
-        return 0
-    # unlisted themes only to the catalogue owner (official agents still use them)
-    owner = await catalog_owner_id(db)
-    specs = [spec for spec in _DESIGNS
-             if spec.get("listed") is not False or owner is None or owner == user_id]
-    for spec in specs:
-        db.add(DesignSystem(owner_id=user_id, **{k: v for k, v in spec.items() if k != "listed"}))
-    return len(specs)
+    """Themes are retired (2026-11-15: 디자인 지침 instead): a new account gets none."""
+    del db, user_id
+    return 0
 
 
 def catalog_owner_query():
@@ -367,10 +354,6 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
         made += 1
 
     agents_by_catalog = {a.catalog_key: a for a in existing_agents if a.catalog_key}
-    designs: dict[str, str] = {}
-    if any(spec.get("design") for spec in _AGENTS):
-        rows = await db.exec(select(DesignSystem).where(col(DesignSystem.owner_id) == owner_id))
-        designs = {row.name: row.id for row in rows.all()}
     slugs = {a.slug for a in existing_agents}
     for spec in _AGENTS:
         key = spec["key"]
@@ -422,7 +405,8 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
             agent.system_prompt = spec["system_prompt"]
             agent.kinds = spec["kinds"]
             agent.surface = spec.get("surface")
-            agent.render_template_id = spec.get("template")
+            # templates retired (2026-11-15): the format carries the pattern
+            agent.render_template_id = None
             agent.doc_format = spec.get("doc_format")
             agent.guide = spec.get("guide", "")
             agent.starters = list(spec.get("starters", []))
@@ -434,9 +418,9 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
             agent.temperature = spec.get("temperature", 0.5)
             agent.color = spec.get("color", "#5b53e8")
             agent.retired = False
-            # owner's later design pick kept
-            if agent.design_system_id is None:
-                agent.design_system_id = designs.get(spec.get("design", ""))
+            # the shipped 디자인 지침, unless the owner wrote their own
+            if not (agent.design_brief or "").strip():
+                agent.design_brief = str(spec.get("design_brief") or "").strip()
             db.add(agent)
             continue
         # same-name owner agent: shipped one steps aside
@@ -454,9 +438,8 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
                 system_prompt=spec["system_prompt"],
                 kinds=spec["kinds"],
                 surface=spec.get("surface"),
-                render_template_id=spec.get("template"),
                 doc_format=spec.get("doc_format"),
-                design_system_id=designs.get(spec.get("design", "")),
+                design_brief=str(spec.get("design_brief") or "").strip(),
                 guide=spec.get("guide", ""),
                 starters=list(spec.get("starters", [])),
                 skill_ids=[ids[k] for k in spec.get("skills", []) if k in ids],

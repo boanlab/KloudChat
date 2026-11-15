@@ -3413,20 +3413,18 @@ async def _template_skills(
 async def _project_render_template(
     db: DbSession, project_id: str | None, kind: SessionKind
 ) -> str | None:
-    """Project's default template for this kind; copied so later project changes don't apply."""
-    if not project_id:
-        return None
-    project = await db.get(Project, project_id)
-    return design_templates.default_for(project.render_templates, kind) if project else None
+    """A project's default template no longer starts a conversation (2026-11-15: templates
+    retired; a project gives its 기본 양식 파일 and 디자인 지침 instead)."""
+    del db, project_id, kind
+    return None
 
 
 async def _agent_template_loaded(db: DbSession, user: User, agent: WorkspaceAgent | None,
                                  kind: SessionKind) -> str | None:
-    """`agent_template` with a person's template first, when usable by the caller."""
-    if agent is not None and agent.render_template_id and not await user_templates.usable(
-            db, user.id, agent.render_template_id):
-        return None
-    return agent_template(agent, kind)
+    """An agent's template no longer starts a conversation (2026-11-15: templates retired;
+    the agent's format, questions and checks are its own fields, migration 0091)."""
+    del db, user, agent, kind
+    return None
 
 
 def agent_template(agent: WorkspaceAgent | None, kind: SessionKind) -> str | None:
@@ -3553,12 +3551,14 @@ async def agent_draft(session_id: str, user: CurrentUser, db: DbSession, distill
         base = bases.get(guess, drafts=is_admin) if guess else None
     await user_templates.load(db, user.id, [session.render_template_id])
     template = design_templates.choosable(session.render_template_id)
-    design_id = agent.design_system_id if agent is not None else None
-    if design_id is None and session.project_id:
+    # the look travels as words: the agent's 디자인 지침, else the project's (themes are retired)
+    brief = (agent.design_brief or "").strip() if readable and agent is not None else ""
+    if not brief and session.project_id:
         project = await db.get(Project, session.project_id)
-        design_id = project.design_system_id if project is not None else None
-    # validated as `POST /agents`: unusable theme → own same-name theme, else none
-    design_id = await _usable_design(db, user, design_id)
+        brief = (project.design_brief or "").strip() \
+            if project is not None and project.user_id == user.id else ""
+    doc_format = (agent.doc_format if agent is not None else None) or \
+        doc_formats.TEMPLATE_FORMATS.get(session.render_template_id or "")
     own_skills = set((await db.exec(select(Skill.id).where(Skill.owner_id == user.id))).all())
     files = (await db.exec(select(StoredFile).where(
         StoredFile.session_id == session.id, StoredFile.user_id == user.id,
@@ -3574,9 +3574,10 @@ async def agent_draft(session_id: str, user: CurrentUser, db: DbSession, distill
         "decided": lines,
         "kinds": [session.kind.value],
         "surface": session.kind.value,
-        "renderTemplateId": template.id if template is not None and
-        template.surface is session.kind else None,
-        "designSystemId": design_id,
+        "renderTemplateId": None,
+        "designSystemId": None,
+        "docFormat": doc_format if session.kind is SessionKind.report else None,
+        "designBrief": brief,
         "skillIds": [s for s in (session.skill_ids or []) if s in own_skills],
         "mode": "base" if base is not None else "direct",
         "base": base.key if base is not None else None,
@@ -5233,13 +5234,10 @@ async def _send_message(
         and published is None
     )
 
-    # refused before any write, never dropped
-    if payload.render_template_id is not None:
-        if not await user_templates.usable(db, user.id, payload.render_template_id):
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                                detail="design_template_not_found")
-        session.render_template_id = _resolved_template_id(
-            payload.render_template_id, kind, keep=session.render_template_id)
+    # templates are retired (2026-11-15): a pick starts nothing; `""` still clears an older
+    # conversation's
+    if payload.render_template_id == "":
+        session.render_template_id = None
     await user_templates.load(db, user.id, [session.render_template_id])
 
     # one answer or document at a time per process (else Q,Q,A,A); a stopped turn lets the
@@ -5402,8 +5400,6 @@ async def _send_message(
     # what the turn's skills bring besides their words (template, checks, questions, settings)
     skills_bring = skill_turn.Brought() if published is not None else await skill_turn.brought(
         db, user, session, agent_row, active_skill_ids)
-    if (picked_template := await skill_turn.template_for(db, user, session, skills_bring)):
-        session.render_template_id = picked_template
     if kind is SessionKind.chat and requested_model.get("supportsTools"):
         shelf, shelf_key = await _knowledge_shelf(db, user, session, agent_row)
         agent_material = bool(shelf) and await _has_agent_material(db, user, session)

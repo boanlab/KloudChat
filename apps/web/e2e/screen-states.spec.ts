@@ -1,6 +1,5 @@
 import { readFile } from 'node:fs/promises'
 import { expect, test, type Locator, type Page, type TestInfo } from '@playwright/test'
-import { openTemplates } from './composer-tools'
 import { openSession, panel, reportSession, resultsFixture } from './results-fixture'
 import { shellRead } from './shell-mocks'
 
@@ -314,27 +313,6 @@ test('a large mind map reads as a tree in the studio reader, its branches openin
   await map.getByText('세부 항목 6-5-3', { exact: true }).scrollIntoViewIfNeeded()
   await shot(page, 'mindmap-reader-open')
   expect(state.unexpected).toEqual([])
-})
-
-test('@phone the template picker fits a phone, its search on its own line', async ({ page }, info) => {
-  await fixture(page, info)
-  for (const phone of [390, 360]) {
-    await page.setViewportSize({ width: phone, height: 844 })
-    await page.goto('/new/report')
-    await openTemplates(page)
-    const dialog = page.getByRole('dialog')
-    await expect(dialog.getByText('어떤 템플릿으로 받을까요?')).toBeVisible({ timeout: 15_000 })
-    await inside(dialog, page)
-    await inside(dialog.getByLabel('템플릿 검색'), page)
-    await inside(dialog.getByRole('heading', { name: '템플릿 고르기' }), page)
-    await fitsTheScreen(page)
-    await shot(page, 'template-picker')
-    await dialog.getByLabel('템플릿 검색').fill('회의')
-    await expect(dialog.getByText('회의록', { exact: true })).toBeVisible()
-    await fitsTheScreen(page)
-    await shot(page, 'template-picker-search')
-    await page.keyboard.press('Escape')
-  }
 })
 
 test('@phone a failed answer keeps its reason readable, the actions under it', async ({ page }, info) => {

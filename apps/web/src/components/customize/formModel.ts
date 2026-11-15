@@ -23,6 +23,8 @@ export function emptyAgent(model: string): Agent {
     renderTemplateId: null,
     docFormat: null,
     designSystemId: null,
+    designBrief: '',
+    formFiles: {},
     visibility: 'private',
     ownerId: '',
     ownerName: '',

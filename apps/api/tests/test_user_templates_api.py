@@ -22,9 +22,7 @@ from app.models.workspace import (
     UserTemplate,
 )
 from app.routers import user_templates as router
-from app.routers import workspace as ws
-from app.schemas.workspace import AgentIn
-from app.services import design_templates, doc_formats, process_settings, user_templates
+from app.services import design_templates, user_templates
 
 
 @pytest.fixture
@@ -60,86 +58,61 @@ def _payload(**over) -> router.TemplateIn:
     return router.TemplateIn(**{**draft, **over})
 
 
-async def test_doc_minutes_recreated_in_the_editor_is_the_same_template(db):
+async def _stored(db, owner: User, **over) -> UserTemplate:
+    """A template as people made them before the editor was retired."""
+    row = UserTemplate(owner_id=owner.id, **{
+        **user_templates.clean(_payload(name="우리 회의록").model_dump()), **over})
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return row
+
+
+async def test_templates_are_no_longer_made_or_changed(db):
     me, _ = await _people(db)
-    made = await router.create_template(_payload(name="우리 회의록"), me, db)
-    template = design_templates.get(made["id"])
-    shipped = design_templates.get("doc-minutes")
-    fmt, want = template.doc_format_def, doc_formats.BY_ID["minutes"]
-    assert (fmt.fields, fmt.numbering, fmt.head, fmt.lists, fmt.closing) == (
-        want.fields, want.numbering, want.head, want.lists, want.closing)
-    assert template.questions == shipped.questions
-    assert process_settings.resolve(template_id=template.id, format_id=None) \
-        == process_settings.for_format("minutes")
-    assert process_settings.resolve(template_id=template.id, format_id=None).outline \
-        == process_settings.for_format("minutes").outline
-    assert (template.instructions, template.checklist, template.check_skills) == (
-        shipped.instructions, shipped.checklist, shipped.check_skills)
-    assert doc_formats.detect("", template.id) is fmt
-    # Drawn in the shared seed: no HTML or CSS of its own.
-    assert template.seed == design_templates.rendering("_document").seed
+    row = await _stored(db, me)
+    for call in (
+        router.create_template(_payload(name="새 것"), me),
+        router.update_template(user_templates.template_id(row), _payload(name="고침"), me),
+        router.upload_form(user_templates.template_id(row), me, file=None),
+    ):
+        with pytest.raises(HTTPException) as refused:
+            await call
+        assert refused.value.status_code == 410 and refused.value.detail == "templates_retired"
 
 
-async def test_what_a_person_writes_stays_text_and_bounded(db):
-    me, _ = await _people(db)
-    made = await router.create_template(_payload(
-        name="<script>alert(1)</script>‮이름", description="a\x00b",
-        instructions="지침​입니다\r\n둘째 줄"), me, db)
-    template = design_templates.get(made["id"])
-    assert "‮" not in template.name and "\x00" not in template.description
-    assert template.instructions == "지침입니다\n둘째 줄"
-    # A name is shown as text by the client; the page never carries it as markup.
-    assert "<script>" not in design_templates.render(
-        template, title="제목", tokens={}, body="<p>본문</p>")
-    with pytest.raises(HTTPException) as caught:
-        await router.create_template(_payload(process={"checks": ["rm -rf"]}), me, db)
-    assert caught.value.detail == "process_check"
-    with pytest.raises(HTTPException) as caught:
-        await router.create_template(_payload(doc_format={"numbering": "evil"}), me, db)
-    assert caught.value.detail == "template_numbering"
-
-
-async def test_only_the_owner_edits_and_a_shared_one_is_picked_by_others(db):
+async def test_a_template_becomes_an_agent_with_its_format_questions_checks_and_process(db):
     me, other = await _people(db)
-    made = await router.create_template(_payload(name="팀 회의록"), me, db)
-    with pytest.raises(HTTPException):
-        await router.update_template(made["id"], _payload(name="뺏기"), other, db)
-    with pytest.raises(HTTPException):
-        await router.get_template(made["id"], other, db)
-    # Not shared: another person cannot bind an agent to it.
-    with pytest.raises(HTTPException):
-        await ws.create_agent(AgentIn(name="x", kinds=["report"],
-                                      render_template_id=made["id"]), other, db)
-    await router.update_template(made["id"], _payload(name="팀 회의록", visibility="org"), me, db)
-    seen = await router.list_templates(other, db)
-    assert [t["id"] for t in seen["shared"]] == [made["id"]] and seen["mine"] == []
-    assert seen["shared"][0]["instructions"] == ""  # only the owner reads the instructions
-    agent = await ws.create_agent(AgentIn(name="x", kinds=["report"],
-                                          render_template_id=made["id"]), other, db)
-    assert agent.render_template_id == made["id"]
-    listed = await ws.list_design_templates(other, db)
-    assert any(t.id == made["id"] and t.user and not t.mine for t in listed)
-    # Deleted: the agents that wrote in it go back to none.
-    await router.delete_template(made["id"], me, db)
-    assert (await db.get(Agent, agent.id)).render_template_id is None
-    assert design_templates.get(made["id"]) is None
+    row = await _stored(db, me, body_face="serif", example_prompt="회의 메모를 정리해 줘.")
+    listed = await router.list_templates(me, db)
+    assert [t["name"] for t in listed["mine"]] == ["우리 회의록"]
+
+    made = await router.template_to_agent(user_templates.template_id(row), me, db)
+    agent = await db.get(Agent, made.id)
+    shipped = design_templates.get("doc-minutes")
+    assert (agent.owner_id, agent.kinds, agent.surface) == (me.id, ["report"], "report")
+    assert agent.doc_format == "minutes"
+    assert [q["id"] for q in agent.gap_questions] == [q["id"] for q in shipped.questions]
+    assert agent.check_skills == list(shipped.check_skills)
+    assert agent.process_settings == row.process
+    assert agent.design_brief == "본문은 명조."
+    assert agent.starters == ["회의 메모를 정리해 줘."]
+    assert shipped.instructions.strip()[:40] in agent.system_prompt
+    # the template stays; a second conversion gets its own handle
+    again = await router.template_to_agent(user_templates.template_id(row), me, db)
+    assert again.slug != made.slug and await db.get(UserTemplate, row.id) is not None
+    # only the owner converts
+    with pytest.raises(HTTPException) as refused:
+        await router.template_to_agent(user_templates.template_id(row), other, db)
+    assert refused.value.status_code == 404
 
 
-async def test_a_form_file_is_reference_text_only(db, tmp_path):
-    from io import BytesIO
-
-    from fastapi import UploadFile
-
+async def test_a_template_of_its_own_format_carries_it_in_the_instructions(db):
     me, _ = await _people(db)
-    made = await router.create_template(_payload(name="양식 있음"), me, db)
-    form = design_templates.get("doc-minutes").form_file
-    upload = UploadFile(file=BytesIO(open(form, "rb").read()), filename="회의록 양식.docx")
-    out = await router.upload_form(made["id"], me, db, file=upload)
-    assert out["hasForm"] and out["formName"] == "회의록 양식.docx"
-    template = design_templates.get(made["id"])
-    assert design_templates.form_text(template) == template.form_reference != ""
-    # Never the export base: the shared seed's.
-    assert template.docx_template == design_templates.rendering("_document").docx_template
-    with pytest.raises(HTTPException):
-        await router.upload_form(made["id"], me, db, file=UploadFile(
-            file=BytesIO(b"x"), filename="evil.exe"))
+    row = await _stored(db, me, doc_format={"label": "현장 점검표", "fields": ["점검일", "점검자"],
+                                            "numbering": "korean"})
+    made = await router.template_to_agent(user_templates.template_id(row), me, db)
+    agent = await db.get(Agent, made.id)
+    assert agent.doc_format is None
+    assert "문서 이름: 현장 점검표" in agent.system_prompt
+    assert "점검일, 점검자" in agent.system_prompt

@@ -9,7 +9,6 @@ import {
   ChevronRight,
   Gauge,
   Globe,
-  LayoutGrid,
   Mic,
   Paperclip,
   Pencil,
@@ -25,18 +24,16 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode 
 import type { FileRow, FormKind, FormRole, OfficeKind, PrivacyDecision, WebSearchSetting } from '@/lib/api'
 import { ApiError, transcriptionsApi } from '@/lib/api'
 import { startWavRecording, type WavRecorder } from '@/lib/wavRecorder'
-import { DesignGalleryModal, offersTemplates } from '@/components/chat/DesignGallery'
 import { FormRoleToggle, SavedFormChip, followable, formRoleOf } from '@/components/chat/FormChips'
 import { FileBoxPicker } from '@/components/files/FileBoxPicker'
 import { warmStudio } from '@/components/hwp/warmStudio'
-import { errorCode, errorMessage, PrivacyDecisionError, templateText } from '@/lib/api'
+import { errorCode, errorMessage, PrivacyDecisionError } from '@/lib/api'
 import { refusedBeforeWrite, refusalSentence, startFailure, withRetryWait } from '@/lib/failures'
 import {
   agentDocumentNames, agentHandoffSurface, handoffSurface, NAMES_DOCX, NAMES_HWP, NAMES_PPTX,
   officeReportRequest, reportFileKind,
 } from '@/lib/documentRequest'
 import { DICTATION_EVENT, isMac } from '@/lib/shortcuts'
-import { currentLang } from '@/lib/i18n'
 import { readStoredDraft, writeStoredDraft } from '@/lib/drafts'
 import { FINDING_LABEL } from '@/lib/privacy'
 import { useMediaQuery } from '@/lib/useMediaQuery'
@@ -564,10 +561,8 @@ export function Composer({
       if (kind === 'report' || kind === 'slides') setOutputPick(kind, value)
     })
   const ownBlank = useBlankDocument(projectId)
-  // The slides template shown on the chip, for a blank PowerPoint start (set below).
-  const blankTemplate = useRef<string | undefined>(undefined)
   const chatEnabled = useStore((s) => s.enabledKinds.includes('chat'))
-  const onBlankDocument = onBlankProp ?? (chatEnabled ? (file: OfficeKind) => void ownBlank.start(file, blankTemplate.current) : undefined)
+  const onBlankDocument = onBlankProp ?? (chatEnabled ? (file: OfficeKind) => void ownBlank.start(file) : undefined)
   const openingDocument = onBlankProp ? openingProp : ownBlank.opening
   const openingStage = onBlankProp ? openingStageProp : ownBlank.stage
   const isMedia = kind === 'image' || kind === 'av'
@@ -697,22 +692,13 @@ export function Composer({
   const [privacyRetrying, setPrivacyRetrying] = useState(false)
   // The safe model picked on the privacy card, for that card's decision only.
   const [safeChoice, setSafeChoice] = useState<{ token: string; id: string } | null>(null)
-  // The project's default template taken off on this start.
-  const [projectTemplateOff, setProjectTemplateOff] = useState(false)
   const safePick =
     pendingPrivacy && safeChoice?.token === pendingPrivacy.decision.decisionToken ? safeChoice.id : undefined
   const [modelSelectionPending, setModelSelectionPending] = useState(false)
   const [chatError, setChatError] = useState<string | null>(null)
-  // A form a picked template brought with it; taken once and cleared.
+  // A file put on the composer from elsewhere (an artifact reused as material); taken once.
   const pendingAttachment = useStore((s) =>
     s.pendingAttachmentTo === null || s.pendingAttachmentTo === draftKey ? s.pendingAttachment : null)
-  const pendingTemplate = useStore((s) => s.pendingTemplate)
-  const setPendingTemplate = useStore((s) => s.setPendingTemplate)
-  const livePendingTemplate = useRef(pendingTemplate)
-  livePendingTemplate.current = pendingTemplate
-  const designTemplates = useStore((s) => s.designTemplates)
-  const ensureDesignTemplates = useStore((s) => s.ensureDesignTemplates)
-  const [galleryOpen, setGalleryOpen] = useState(false)
   const [fileBoxOpen, setFileBoxOpen] = useState(false)
   // A phone opens 「+」 as a bottom sheet.
   const phone = useMediaQuery('(pointer: coarse) and (max-width: 64rem), (max-width: 40rem)')
@@ -734,7 +720,6 @@ export function Composer({
     // Only a view change moves focus.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plusView])
-  const setSessionTemplate = useStore((s) => s.setSessionTemplate)
   const handOff = useStore((s) => s.handOff)
   const setPendingAttachment = useStore((s) => s.setPendingAttachment)
   const composerRestore = useStore((s) => s.composerRestore)
@@ -1025,7 +1010,7 @@ export function Composer({
     ? !sessionId
     : !session.agentId && session.messages.length === 0 && !session.messageCount
   // Nothing sent yet (the home screen, /new/:kind, a project's start, any empty session):
-  // the same 형식·템플릿 chips and first-send options as the home screen.
+  // the same 형식 chips and first-send options as the home screen.
   const opened = sessionId ? sessions.find((candidate) => candidate.id === sessionId) : undefined
   const fresh =
     !sessionId ||
@@ -1043,14 +1028,6 @@ export function Composer({
   // A generation awaiting an answer or approval (document surfaces only).
   const pending = session?.pending ?? null
   const sessionAgent = agents.find((agent) => agent.id === session?.agentId)
-  // Picked template, else the session's; derived, the server keeps it sticky.
-  const shownTemplate =
-    (pendingTemplate?.surface === kind ? pendingTemplate : null) ??
-    designTemplates.find((row) => row.id === session?.renderTemplateId) ??
-    // A project's default template for this surface, before anything is sent (unless taken off).
-    (fresh && !projectTemplateOff ? designTemplates.find((row) => row.surface === kind && row.id === project?.renderTemplates?.[kind]) : undefined) ??
-    null
-  blankTemplate.current = shownTemplate?.surface === 'slides' ? shownTemplate.id : undefined
   // An attached form makes the document that kind of file, written on it: a deck a
   // PowerPoint file, a report a Word file.
   const formKind: FormKind | null = kind === 'slides' ? 'pptx' : kind === 'report' ? 'docx' : null
@@ -1066,9 +1043,6 @@ export function Composer({
   const savedFormOff = savedKind
     ? savedFormsOff ? savedFormsOff.includes(savedKind) : session?.formFiles?.[savedKind] === ''
     : false
-  // Same gate as the gallery button.
-  const hasTemplates =
-    offersTemplates(kind) && designTemplates.some((row) => row.surface === kind)
   // Past the empty screen, which has its own gallery button.
   const started = (session?.messages.length ?? 0) > 0
   // A conversation with an agent opens on the agent's web search default; the person still changes it per turn.
@@ -1761,7 +1735,7 @@ export function Composer({
     const detected = movable ? handoffSurface(text) : null
     const agentHandoff =
       movable && sessionId && sessionAgent
-        ? agentHandoffSurface(text, sessionAgent.kinds, agentDocumentNames(sessionAgent, designTemplates))
+        ? agentHandoffSurface(text, sessionAgent.kinds, agentDocumentNames(sessionAgent))
         : null
     const generalHandoff = detected && !session?.agentId ? detected : null
     // Earlier turns go along as material (「대화 기록.txt」 plus files), so a deck can reuse values computed above.
@@ -1841,9 +1815,6 @@ export function Composer({
       ).finally(startSettled).catch(() => undefined)
       return
     }
-    // The pick is spent on this turn; the session row is the record from here.
-    const sentTemplate = pendingTemplate?.surface === kind ? pendingTemplate : null
-    setPendingTemplate(null)
     // The 형식 pick is spent the same way, and handed back if the send is refused.
     const sentPick = fresh && (kind === 'report' || kind === 'slides') ? output : null
     if (sentPick) setOutputPick(kind as 'report' | 'slides', null)
@@ -1857,7 +1828,6 @@ export function Composer({
       attachmentRoles: rolesFor(readableAttachments),
       ...(savedFormsOff ? { savedFormsOff } : {}),
       activatedSkillIds: sentSkillIds,
-      renderTemplateId: shownTemplate ? shownTemplate.id : undefined,
       // a file picked beside the surface chips; else the server reads the request
       // PowerPoint for a deck is the same send: the server makes the blank file the turn fills.
       outputFormat: !fresh ? undefined
@@ -1885,7 +1855,6 @@ export function Composer({
               : '',
         })
         // Session row rolled back with the refusal: hand the pick back unless a newer one exists.
-        if (sentTemplate && !livePendingTemplate.current) setPendingTemplate(sentTemplate)
         const surface = kind as 'report' | 'slides'
         if (sentPick && !useStore.getState().outputPick[surface]) setOutputPick(surface, sentPick)
       })
@@ -1907,19 +1876,13 @@ export function Composer({
     setPasted([])
   }, [sessionId, kind])
 
-  const toggleSkill = (id: string, selected: boolean, picked?: Skill) => {
+  const toggleSkill = (id: string, selected: boolean, _picked?: Skill) => {
     activeRestoreToken.current = null
     const next = selected
       ? activeSkills.filter((skill) => skill.id !== id).map((skill) => skill.id)
       : [...activeSkills.map((skill) => skill.id), id]
     liveActivatedSkillIds.current = next
     setActivatedSkillIds(next)
-    // A skill that writes into a template brings it when none is picked; the chip shows it.
-    const template = selected ? '' : (picked ?? usableSkills.find((skill) => skill.id === id))?.server?.template
-    if (template && !shownTemplate && offersTemplates(kind)) {
-      const row = designTemplates.find((candidate) => candidate.id === template && candidate.surface === kind)
-      if (row) setPendingTemplate(row)
-    }
     // Saved server-side in a conversation — except while editing, where cancel must undo it.
     if (sessionId && kind !== 'image' && kind !== 'av' && !editing) void setSessionSkills(sessionId, next)
   }
@@ -1948,13 +1911,12 @@ export function Composer({
     }
   }
   // Everything but dictation, model and send sits behind 「+」; active options show as chips.
-  const showTemplates = hasTemplates && (started || fresh) && !editing
   // Offered before any skill is added, so a new account can find them from here.
   const showSkills = !isMedia
   // On a phone the microphone moves into 「+」 unless it is recording.
   const micInMenu = phone && canRecord && !recording && !transcribing
   const hasTools =
-    !isMedia || showTemplates || showSkills || canWebSearch || usableConnectors.length > 0 ||
+    !isMedia || showSkills || canWebSearch || usableConnectors.length > 0 ||
     menuAgents.length > 0 || micInMenu
   const closePlus = () => {
     setPlusOpen(false)
@@ -1992,8 +1954,6 @@ export function Composer({
       onOpenChange={(open) => {
         if (!open) return closePlus()
         setPlusOpen(true)
-        // The startup list can miss (slow or failed load): fetched again so 「템플릿 고르기」 shows.
-        if (offersTemplates(kind) && designTemplates.length === 0) void ensureDesignTemplates()
       }}
       sheet={phone}
       label={t('도구')}
@@ -2002,7 +1962,7 @@ export function Composer({
         <button
           type="button"
           aria-label={t('도구')}
-          title={t('파일·템플릿·스킬·웹 검색·커넥터·에이전트')}
+          title={t('파일·스킬·웹 검색·커넥터·에이전트')}
           className={cn(
             'grid size-9 shrink-0 place-items-center rounded-full transition-colors hover:bg-elevated hover:text-fg',
             open ? 'bg-elevated text-fg' : 'text-muted',
@@ -2037,19 +1997,6 @@ export function Composer({
                 }}
               >
                 {t('파일함에서 고르기')}
-              </ToolItem>
-            )}
-            {showTemplates && (
-              <ToolItem
-                icon={<LayoutGrid size={15} />}
-                label={t('템플릿 고르기')}
-                hint={shownTemplate ? templateText(shownTemplate, currentLang() === 'en').name : undefined}
-                onClick={() => {
-                  closePlus()
-                  setGalleryOpen(true)
-                }}
-              >
-                {t('템플릿 고르기')}
               </ToolItem>
             )}
             {showSkills && (
@@ -2479,9 +2426,7 @@ export function Composer({
           webSearchChip ||
           sessionAgent ||
           activeSkills.length > 0 ||
-          autoBypassPreview ||
-          // Same rule as the chip below: the session's own shape survives a reload.
-          shownTemplate) && (
+          autoBypassPreview) && (
           <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-3 py-2">
             {autoBypassPreview && (
               <Badge tone="warn" className="max-w-full whitespace-normal!">
@@ -2530,31 +2475,6 @@ export function Composer({
               <Badge tone="accent">
                 <Boxes size={11} />
                 {project.emoji} {project.name}
-              </Badge>
-            )}
-            {shownTemplate && !(outputSurface && showTemplates) && (
-              <Badge tone="accent" title={t('이 대화의 템플릿')}>
-                <LayoutGrid size={11} />
-                {/* Named by its role: beside an agent of the same name (「@회의록」) it reads as the form. */}
-                {t('템플릿: {name}').replace('{name}', templateText(shownTemplate, currentLang() === 'en').name)}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPendingTemplate(null)
-                    // Sticky server-side once used, so clear the session row too.
-                    if (session?.renderTemplateId) {
-                      void setSessionTemplate(session.id, null)
-                    }
-                  }}
-                  disabled={!!editing}
-                  aria-label={t('{name} 템플릿 해제').replace(
-                    '{name}',
-                    templateText(shownTemplate, currentLang() === 'en').name,
-                  )}
-                  className={chipRemove}
-                >
-                  <X size={12} />
-                </button>
               </Badge>
             )}
             {activeSkills.map((skill) => (
@@ -2720,39 +2640,6 @@ export function Composer({
               opening={openingDocument}
               stage={openingStage}
             />
-            {showTemplates && (
-              // The template beside the format, in the same chip style; opens the gallery. Every
-              // format takes it: a PowerPoint deck is made from the picked slides template too.
-              <button
-                type="button"
-                onClick={() => setGalleryOpen(true)}
-                aria-label={shownTemplate
-                  ? t('템플릿: {name}').replace('{name}', templateText(shownTemplate, currentLang() === 'en').name)
-                  : t('템플릿 고르기')}
-                data-testid="template-chip"
-                className="flex h-8 max-w-[16rem] items-center gap-1.5 rounded-control border border-line px-2.5 text-sm text-muted transition-colors hover:bg-elevated hover:text-fg disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
-              >
-                <span className="text-faint">{t('템플릿')}</span>
-                <span className="truncate font-medium">
-                  {shownTemplate ? templateText(shownTemplate, currentLang() === 'en').name : t('기본값')}
-                </span>
-              </button>
-            )}
-            {showTemplates && shownTemplate && (
-              <button
-                type="button"
-                onClick={() => {
-                  setPendingTemplate(null)
-                  setProjectTemplateOff(true)
-                  if (session?.renderTemplateId) void setSessionTemplate(session.id, null)
-                }}
-                aria-label={t('{name} 템플릿 해제').replace('{name}', templateText(shownTemplate, currentLang() === 'en').name)}
-                title={t('템플릿 없이 시작')}
-                className="-ml-1 grid size-8 place-items-center rounded-control text-faint hover:bg-elevated hover:text-fg"
-              >
-                <X size={13} />
-              </button>
-            )}
             {savedForm && (
               <SavedFormChip
                 name={savedForm.name}
@@ -3093,13 +2980,6 @@ export function Composer({
           </>
         )}
       </Modal>
-
-      <DesignGalleryModal
-        kind={kind}
-        sessionId={sessionId}
-        open={galleryOpen}
-        onClose={() => setGalleryOpen(false)}
-      />
 
       <FileBoxPicker
         open={fileBoxOpen}

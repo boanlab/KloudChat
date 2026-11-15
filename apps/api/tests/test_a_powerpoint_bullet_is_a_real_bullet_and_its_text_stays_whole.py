@@ -290,7 +290,7 @@ def test_an_old_static_page_number_becomes_a_field():
     assert _numbers(pptx_edit.healed(out.getvalue())) == [[], ["2"]]
 
 
-async def test_a_deck_written_in_a_project_takes_its_design_system_and_slides_template():
+async def test_a_deck_written_in_a_project_takes_its_design_brief_and_a_picked_template():
     from pptx.opc.constants import RELATIONSHIP_TYPE as RT
 
     from app.models.chat import ChatSession, SessionKind
@@ -301,10 +301,12 @@ async def test_a_deck_written_in_a_project_takes_its_design_system_and_slides_te
     template_id = "deck-editorial"
     assert design_templates.default_for({"slides": template_id}, SessionKind.slides) == template_id
     rows = {
+        # its theme row and default template are no longer read (2026-11-15)
         Project: Project(id="p1", user_id="u1", name="사업", design_system_id="d1",
-                         render_templates={"slides": template_id}),
+                         render_templates={"slides": template_id},
+                         design_brief="강조색 #C0392B. 본문은 명조."),
         DesignSystem: DesignSystem(id="d1", owner_id="u1", name="회사",
-                                   tokens={"accent": "#C0392B", "font": "serif"}),
+                                   tokens={"accent": "#1E8449", "font": "gothic"}),
     }
 
     class Db:
@@ -315,6 +317,9 @@ async def test_a_deck_written_in_a_project_takes_its_design_system_and_slides_te
     session = ChatSession(id="s1", user_id="u1", title="t", project_id="p1")
     tokens, template = await pptx_doc.project_look(Db(), user, session)
     assert tokens["accent"].upper() == "#C0392B" and tokens["font"] == "serif"
+    assert template == ""
+    # an older conversation's picked template still gives its base
+    _, template = await pptx_doc.project_look(Db(), user, session, template_id=template_id)
     assert template == design_templates.rendering(template_id).pptx_template and template
 
     data = pptx_doc.deck("보고", "", [{"title": "배경", "bullets": ["하나"]}],
@@ -336,16 +341,17 @@ async def test_a_deck_written_in_a_project_takes_its_design_system_and_slides_te
     assert await pptx_doc.project_look(Db(), user, alone) == (None, "")
 
 
-async def test_a_blank_deck_made_in_a_project_wears_its_theme_and_the_picked_template():
+async def test_a_blank_deck_made_in_a_project_wears_its_brief_and_the_picked_template():
     from app.models.user import User
     from app.models.workspace import DesignSystem, Project
     from app.services import design_templates
 
     rows = {
         Project: Project(id="p1", user_id="u1", name="사업", design_system_id="d1",
-                         render_templates={"slides": "deck-editorial"}),
+                         render_templates={"slides": "deck-editorial"},
+                         design_brief="강조색 #1E8449."),
         DesignSystem: DesignSystem(id="d1", owner_id="u1", name="회사",
-                                   tokens={"accent": "#1E8449", "font": "gothic"}),
+                                   tokens={"accent": "#C0392B", "font": "serif"}),
     }
 
     class Db:
@@ -356,15 +362,16 @@ async def test_a_blank_deck_made_in_a_project_wears_its_theme_and_the_picked_tem
             raise AssertionError("no query expected")
 
     user = User(id="u1", email="u@example.test", name="u")
-    # no conversation yet: the project's theme and default template
+    # no conversation yet: the project's 디자인 지침; its default template starts nothing
     tokens, template = await pptx_doc.project_look(Db(), user, project_id="p1")
     assert tokens["accent"].upper() == "#1E8449"
-    assert template == design_templates.rendering("deck-editorial").pptx_template
+    assert template == ""
     # a template the person picked wins over the project's default
     picked = next(row.id for row in design_templates.all_templates()
                   if row.pptx_template and row.id != "deck-editorial")
     _, chosen = await pptx_doc.project_look(Db(), user, project_id="p1", template_id=picked)
     assert chosen == design_templates.rendering(picked).pptx_template
+    template = chosen
 
     data = pptx_doc.blank(tokens=tokens, template=template)
     prs = _prs(data)

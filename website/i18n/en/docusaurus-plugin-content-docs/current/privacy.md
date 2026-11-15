@@ -50,7 +50,7 @@ When the administrator turns on this policy, a request that carries attachments,
 
 Pictures, charts, figures and videos follow the same rule. In a project conversation, a conversation that had attachments, or a strict-local conversation, they are made only on a strict-local model whatever model was picked, and are not made when no strict-local model is available. When the picked image model is external, the **strict-local image model** in Settings → Preferences draws it.
 
-Document edits (rewriting a section, slide or block, a review, reading a theme from a file) follow the same rule. A document made in such a conversation is edited only on a strict-local model, and so is a document holding personal data: it is not masked, because masking would leave placeholders in the document. When no strict-local model is available, the edit is not made. A web fact-check sends the claims to outside search engines, so it is not run on such a document.
+Document edits (rewriting a section, slide or block, a review) follow the same rule. A document made in such a conversation is edited only on a strict-local model, and so is a document holding personal data: it is not masked, because masking would leave placeholders in the document. When no strict-local model is available, the edit is not made. A web fact-check sends the claims to outside search engines, so it is not run on such a document.
 
 ## strict-local models
 

@@ -125,17 +125,14 @@ async def for_project(db: Any, user: Any, project: Any, template_id: str = "") -
     """The look of a project's documents: its theme (design system) and its default report
     template, unless a conversation chose its own (`template_id`); None outside a project
     with neither."""
-    from app.models.chat import SessionKind
     from app.services import design as design_service
     from app.services import workspace_context
 
     design = await workspace_context._load_design_system(db, user, project) \
         if project is not None else None
-    tokens = design_service.tokens_of(design) if design is not None else None
+    tokens = design_service.tokens_of(design) if design is not None and design.tokens else None
+    # a project's default template is no longer read; an older conversation's pick still is
     chosen = template_id if design_templates.rendering(template_id) is not None else ""
-    if not chosen and project is not None:
-        chosen = design_templates.default_for(project.render_templates,
-                                              SessionKind.report) or ""
     if not tokens and not chosen:
         return None
     return Look(tokens=tokens, template_id=chosen)
