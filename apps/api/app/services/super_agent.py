@@ -26,7 +26,7 @@ from app.services import settings_store
 
 log = logging.getLogger(__name__)
 
-ROUTER_VERSION = "super-agent-2026-11-13.v1"
+ROUTER_VERSION = "super-agent-2026-11-15.v1"
 
 SUPER = "super"
 SUPER_STRICT = "super_strict"
@@ -46,6 +46,9 @@ CLASSES: tuple[str, ...] = (
     #: not a request's class: the row a turn over internal material (`material_turn`) moves
     #: to, in a column where the row names a model
     "material",
+    #: not a request's class: the row a complex document turn (`complexity`) moves to, in a
+    #: column where the row names a model
+    "complex_document",
     #: not a request's class: where a turn goes after 「다시」, 「더 자세히」 or a failed answer,
     #: and who rewrites an answer the class's model left empty
     "escalation",
@@ -127,6 +130,18 @@ DEFAULT_RULES: dict[str, dict[str, str]] = {
         "strictModel": "",
         "effort": "high",
     },
+    # complex document work (a form followed, many source files, tool-heavy decks, a long
+    # source) goes to DeepSeek V4 Flash (owner decision 2026-11-15): the 27B followed HWPX,
+    # Word and PowerPoint forms unreliably (labels overwritten, wrong cells, tool-limit hits).
+    # `local/` is self-hosted first and spills to the external twin only when the server is
+    # saturated (the gateway's own behaviour); the strict column never leaves. Slow is fine:
+    # the document row's model carries the turn on when this one fails or stays silent, and
+    # at most `settings.complex_document_slots` such turns run at once (`complex_turn`).
+    "complex_document": {
+        "model": "local/deepseek-v4-flash",
+        "strictModel": "strict-local/deepseek-v4-flash",
+        "effort": "high",
+    },
     # a thinking flash answer came back empty 3 times in 14; DeepSeek with reasoning on
     # never did (9 of 10 on those prompts); strict: self-hosted DeepSeek V4 Flash, 6.7 vs
     # flash's 6.2 on 「틀렸어, 다시」 turns (owner decision 2026-11-14)
@@ -139,7 +154,7 @@ DEFAULT_RULES: dict[str, dict[str, str]] = {
 
 #: Rows that move a turn rather than name a class's own model: an empty column leaves the
 #: turn on its class's row.
-OVERRIDE_ROWS = frozenset({"material"})
+OVERRIDE_ROWS = frozenset({"material", "complex_document"})
 
 #: Next picks when a rule's model is not served here (other installations, allowlists).
 _FALLBACKS: tuple[str, ...] = (
@@ -155,6 +170,8 @@ _STRICT_FALLBACKS: tuple[str, ...] = (
 ESCALATION_CLASS = "escalation"
 #: Row a turn over internal material moves to (`steer`).
 MATERIAL_CLASS = "material"
+#: Row a complex document turn moves to (`steer`).
+COMPLEX_CLASS = "complex_document"
 #: Classes the material row leaves alone: a thanks, a document, a retry.
 _MATERIAL_KEEPS = frozenset({"simple", "document", ESCALATION_CLASS})
 
@@ -171,6 +188,60 @@ CLASSIFIER_MIN_CONFIDENCE = 0.6
 LONG_CONTEXT_BYTES = 60_000
 #: Pasted material from which a request counts as long.
 LONG_MATERIAL_CHARS = 6_000
+
+# --- complex document turns -----------------------------------------------------------------
+# Every threshold of `complexity` lives here. A document turn (report or deck, including the
+# Word, HWP and PowerPoint files it is written as) is complex when ANY of these holds; a simple
+# one stays on the `document` row.
+#: A form (양식) is being followed: PowerPoint, Word or HWPX. The writer must keep the form's
+#: labels, cells and layout, which the 27B did unreliably.
+COMPLEX_FORM_KINDS = frozenset({"pptx", "docx", "hwpx"})
+#: Coverage: an each-item request (`coverage.asks_each`: 「각 강」, 「모든 자료」) over at least
+#: this many source files (the `Coverage` stage's own floor: it skips fewer than two) ...
+COMPLEX_COVERAGE_FILES = 2
+#: ... or this many source files whatever the request says: the writer must hold many files.
+COMPLEX_MANY_FILES = 6
+#: A source this long (characters; `LONG_CONTEXT_BYTES` at about 3 bytes a character) is a long
+#: context for the writer.
+COMPLEX_SOURCE_CHARS = LONG_CONTEXT_BYTES // 3
+#: Reason codes in the order the route names them (first match is the one shown).
+COMPLEX_REASONS: tuple[str, ...] = ("form", "coverage", "tools", "long_source")
+
+
+@dataclass(frozen=True, slots=True)
+class DocSignals:
+    """What the router reads about a document turn to tell a complex one."""
+
+    #: form kinds this turn's document follows (attached, or the agent's or project's saved one)
+    forms: tuple[str, ...] = ()
+    #: source files the writer works from (attached, project, agent), counted once each
+    sources: int = 0
+    #: characters of text in those files
+    source_chars: int = 0
+    #: the request asks about every item (`coverage.asks_each`)
+    asks_each: bool = False
+    #: a deck asked for a chart over an attached data table (a native chart from data)
+    chart_data: bool = False
+    #: a deck asked for a paper's own figures (`pdf_figures`)
+    paper_figures: bool = False
+
+
+def complexity(signals: DocSignals | None) -> list[str]:
+    """Reason codes (`COMPLEX_REASONS`) that make this document turn complex; empty for a
+    simple one. Signals the app already computes; no phrase list of its own."""
+    if signals is None:
+        return []
+    found: list[str] = []
+    if COMPLEX_FORM_KINDS.intersection(signals.forms):
+        found.append("form")
+    if ((signals.asks_each and signals.sources >= COMPLEX_COVERAGE_FILES)
+            or signals.sources >= COMPLEX_MANY_FILES):
+        found.append("coverage")
+    if signals.chart_data or signals.paper_figures:
+        found.append("tools")
+    if signals.source_chars >= COMPLEX_SOURCE_CHARS:
+        found.append("long_source")
+    return found
 
 
 def normalise_rules(raw: Any) -> dict[str, dict[str, str]]:
@@ -571,20 +642,55 @@ def strict_fallback(
     return None
 
 
+def complex_fallback(
+    rules: dict[str, dict[str, str]],
+    catalogue: list[dict[str, Any]],
+    writer: dict[str, Any],
+    *,
+    kind: str,
+    strict: bool,
+    allowed: set[str],
+    needs_tools: bool = False,
+    skip: frozenset[str] = frozenset(),
+) -> dict[str, Any] | None:
+    """The model that carries a complex document turn on, in the same turn, when its writer
+    fails, stays silent or waits too long for a slot: the `document` row's pick in the turn's
+    column (the 27B by default); None when that is the writer itself or nothing serves."""
+    wanted = rules["document"]["strictModel" if strict else "model"]
+    model = next((m for m in catalogue if m.get("id") == wanted), None)
+    if (model is None or model.get("id") == writer.get("id") or model.get("id") in skip
+            or not usable_for(model, kind=kind, strict=strict, allowed=allowed, context_bytes=0,
+                              needs_tools=needs_tools, needs_vision=False)):
+        return None
+    return model
+
+
 def effort_for(rules: dict[str, dict[str, str]], decision: Decision) -> str:
     rule = rules.get(decision.task_class) or rules["chat"]
     return rule.get("effort", "default")
 
 
 def steer(rules: dict[str, dict[str, str]], decision: Decision, mode: str, *,
-          material: bool = False, strict: bool = False) -> tuple[str, str]:
+          material: bool = False, strict: bool = False,
+          complex_doc: bool = False) -> tuple[str, str]:
     """`(row, effort)` the chip makes of the decided class: the table row whose model answers
     and the writer's effort. A turn over internal material (`material`) moves to the
     `material` row where that row names a model in the turn's column (`strict`), except a
     thanks, a document or a retry. `fast` moves a row that reasons to the everyday `chat` row
     (the turn's other needs, tools, vision, a long window, still narrow the pick); `deep` moves
     every chat class to the escalation row at effort high, and keeps a document's own writer
-    at its highest effort."""
+    at its highest effort.
+
+    A complex document turn (`complex_doc`) moves to the `complex_document` row where that row
+    names a model in the turn's column. The chip steers its effort only, never its model:
+    `fast` writes without thinking (the form still goes to the model that can follow it, not to
+    the 27B), `deep` at the highest level."""
+    if complex_doc and rules.get(COMPLEX_CLASS, {}).get("strictModel" if strict else "model"):
+        if mode == FAST:
+            return COMPLEX_CLASS, "none"
+        if mode == DEEP:
+            return COMPLEX_CLASS, HIGHEST
+        return COMPLEX_CLASS, rules[COMPLEX_CLASS].get("effort", "default")
     row, effort = decision.task_class, effort_for(rules, decision)
     if (material and row not in _MATERIAL_KEEPS
             and rules.get(MATERIAL_CLASS, {}).get("strictModel" if strict else "model")):
@@ -651,7 +757,7 @@ def estimate(
     resolves here."""
     seen: dict[str, int] = {}
     for task_class in CLASSES:
-        if task_class in ("document", MATERIAL_CLASS, ESCALATION_CLASS):
+        if task_class in ("document", MATERIAL_CLASS, COMPLEX_CLASS, ESCALATION_CLASS):
             continue
         model, _ = pick(rules, task_class, catalogue, kind="chat", strict=strict, allowed=allowed)
         if model is not None:
@@ -672,6 +778,7 @@ def route_metadata(
     classified: Classified | None = None,
     classifier_model: str | None = None,
     tools: str = "full",
+    complex_reasons: list[str] | None = None,
 ) -> dict[str, Any]:
     """Value-free route note stored on the turn (`routing.superAgent`)."""
     route: dict[str, Any] = {
@@ -687,6 +794,9 @@ def route_metadata(
     }
     if requested is not None and requested.get("id") != selected.get("id"):
         route["requestedModel"] = requested["id"]
+    if complex_reasons:
+        route["complexReason"] = complex_reasons[0]
+        route["complexSignals"] = list(complex_reasons)
     if classified is not None:
         route.update(
             classifierModel=classifier_model,
@@ -739,6 +849,13 @@ __all__ = [
     "steer",
     "DEFAULT_RULES",
     "EFFORTS",
+    "COMPLEX_CLASS",
+    "COMPLEX_COVERAGE_FILES",
+    "COMPLEX_FORM_KINDS",
+    "COMPLEX_MANY_FILES",
+    "COMPLEX_REASONS",
+    "COMPLEX_SOURCE_CHARS",
+    "DocSignals",
     "MATERIAL_CLASS",
     "MODES",
     "OVERRIDE_ROWS",
@@ -751,6 +868,8 @@ __all__ = [
     "classifier_payload",
     "classify",
     "classify_with_model",
+    "complex_fallback",
+    "complexity",
     "effort_for",
     "estimate",
     "normalise_rules",

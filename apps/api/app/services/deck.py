@@ -19,6 +19,7 @@ from app.models.chat import SessionKind
 from app.services import (
     calc,
     calc_check,
+    complex_turn,
     deck_type,
     design,
     diagram_render,
@@ -1566,9 +1567,10 @@ async def _complete(
     api_key: str,
     max_tokens: int,
 ) -> tuple[str, dict]:
-    """One non-streaming call → `(text, usage)`; retries 429, and a dropped connection once."""
-    return await model_retry.once_more(
-        lambda: _complete_once(model, messages, api_key, max_tokens), "deck call")
+    """One non-streaming call → `(text, usage)`; retries 429, and a dropped connection once;
+    a complex document turn's writer that fails is replaced by its fallback."""
+    return await complex_turn.run_call(model, lambda used: model_retry.once_more(
+        lambda: _complete_once(used, messages, api_key, max_tokens), "deck call"))
 
 
 async def _complete_once(

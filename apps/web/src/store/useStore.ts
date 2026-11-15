@@ -3476,6 +3476,7 @@ function toStep(raw: Record<string, unknown>): Step {
       raw.confirm && typeof raw.confirm === 'object' && typeof (raw.confirm as { actionId?: unknown }).actionId === 'string'
         ? (raw.confirm as Step['confirm'])
         : undefined,
+    queuePosition: typeof raw.queuePosition === 'number' ? raw.queuePosition : undefined,
   }
   // Stored labels are Korean; rebuilt here in the current language from the structured fields.
   return { ...step, ...retold(step) }
@@ -3492,6 +3493,10 @@ function named(names: string[], more: '외 {n}건' | '외 {n}개'): string {
 }
 
 function retold(step: Step): Partial<Step> {
+  if (step.queuePosition !== undefined) {
+    // a complex document turn in line for the in-house server's few slots
+    return { label: tr('대기 중 · {n}번째').replace('{n}', String(step.queuePosition)) }
+  }
   if (step.summarisedTurns !== undefined) {
     // Older rows carry only the label; the flag is authoritative when present.
     const summarised = step.summarised ?? !step.label.includes('생략')

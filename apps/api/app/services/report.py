@@ -22,6 +22,7 @@ from app.services import (
     asked_form,
     block_fences,
     captions,
+    complex_turn,
     design_templates,
     diagram_render,
     diagrams,
@@ -1371,6 +1372,18 @@ def _tiebreak_model(model: str) -> str:
 
 
 async def _complete(
+    model: str,
+    messages: list[dict[str, str]],
+    api_key: str,
+    max_tokens: int,
+) -> tuple[str, dict]:
+    """Non-streaming call returning `(text, usage)`; a complex document turn's writer that
+    fails is replaced by its fallback (`complex_turn.run_call`)."""
+    return await complex_turn.run_call(
+        model, lambda used: _complete_on(used, messages, api_key, max_tokens))
+
+
+async def _complete_on(
     model: str,
     messages: list[dict[str, str]],
     api_key: str,

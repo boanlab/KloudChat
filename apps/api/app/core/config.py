@@ -105,6 +105,16 @@ class Settings(BaseSettings):
     research_timeout_sec: float = 1800.0
     max_tool_hops: int = 8
     chat_stall_sec: int = 180
+    #: Complex document turns (`super_agent.complexity`) that may run at once on the self-hosted
+    #: DeepSeek, across all API replicas; the rest wait in line. The server holds 8 sequences and
+    #: chat shares them. 0 = no cap. Env: COMPLEX_DOCUMENT_SLOTS.
+    complex_document_slots: int = 2
+    #: Seconds a complex document turn waits for a slot before the `document` row's model writes
+    #: it instead. Env: COMPLEX_DOCUMENT_WAIT_SEC.
+    complex_document_wait_sec: float = 120.0
+    #: Seconds one whole-answer document call (a section, a slide batch) may take on the complex
+    #: row's model before the `document` row's model writes it instead.
+    complex_document_call_sec: float = 480.0
     #: At shutdown, how long running turns may still finish, counted from the stop signal;
     #: then they are stopped and stored as interrupted. Keep under the container's stop
     #: grace period (docker-compose.yml `stop_grace_period`) less about 20 s.

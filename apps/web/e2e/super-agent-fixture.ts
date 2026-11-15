@@ -44,6 +44,7 @@ const defaultRules = {
   reasoning: { model: 'external/deep', strictModel: 'strict-local/flash', effort: 'high' },
   document: { model: 'local/flash', strictModel: 'strict-local/flash', effort: 'default' },
   material: { model: '', strictModel: '', effort: 'high' },
+  complex_document: { model: 'local/flash', strictModel: 'strict-local/flash', effort: 'high' },
   escalation: { model: 'external/deep', strictModel: 'strict-local/flash', effort: 'high' },
 }
 
@@ -71,6 +72,8 @@ export async function mockApp(
     /** The catalogue's `defaultRoutingByKind` (설정 › 시스템 › 모델); absent: Super Agent. */
     defaultRouting?: Record<string, 'super' | 'super_strict' | 'manual'>
     projectStrict?: boolean
+    /** Step events the turn streams before its answer (as the server sends them). */
+    steps?: Record<string, unknown>[]
   } = {},
 ) {
   await page.route('**/api/**', (r) => r.abort('blockedbyclient'))
@@ -230,7 +233,7 @@ export async function mockApp(
       ...s,
       messages: [
         { id: 'u1', role: 'user', content: '안녕', attachments: [], steps: null, variants: null, usage: null, model: null, routing: null, createdAt: now },
-        { id: 'a1', role: 'assistant', content: '안녕하세요!', attachments: [], steps: null, variants: null, usage: { inputTokens: 3, outputTokens: 1, credits: 0 }, model: routing.actualModels[0], routing, createdAt: now },
+        { id: 'a1', role: 'assistant', content: '안녕하세요!', attachments: [], steps: options.steps?.length ? options.steps.map(({ category, ...step }) => ({ ...step, type: category, status: 'done' })) : null, variants: null, usage: { inputTokens: 3, outputTokens: 1, credits: 0 }, model: routing.actualModels[0], routing, createdAt: now },
       ],
       messageCount: 2,
     }))
@@ -239,6 +242,7 @@ export async function mockApp(
       headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' },
       body: [
         `data: ${JSON.stringify({ type: 'privacy_route', ...routing })}`,
+        ...(options.steps ?? []).map((step) => `data: ${JSON.stringify({ type: 'step', ...step })}`),
         'data: {"type":"delta","text":"안녕하세요!"}',
         'data: {"type":"usage","inputTokens":3,"outputTokens":1,"credits":0}',
         'data: {"type":"done"}',

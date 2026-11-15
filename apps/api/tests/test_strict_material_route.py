@@ -54,7 +54,8 @@ def test_the_table_sends_strict_escalation_to_deepseek_and_keeps_material_rows()
     assert rules["escalation"]["effort"] == "high"
     # every other strict row is unchanged
     assert {r["strictModel"] for k, r in rules.items()
-            if k not in ("material", "escalation", "document")} == {STRICT_FLASH["id"]}
+            if k not in ("material", "escalation", "document", "complex_document")} == {
+        STRICT_FLASH["id"]}
     assert "material" in sa.CLASSES and "material" in sa.OVERRIDE_ROWS
 
 

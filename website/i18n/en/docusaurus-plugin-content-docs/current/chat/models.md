@@ -38,6 +38,8 @@ Each entry shows the usual credits for one answer. Every answer shows "This answ
 
 In conversations answered by in-house models, answers after "again" or "that's wrong", and material too long for the default model, are written by a larger in-house model (DeepSeek V4 Flash). It thinks at length before it writes, so the first words usually take about a minute; meanwhile the processing row shows "Thinking it through". If it does not respond or shows nothing for 4 minutes, the in-house default model carries the same answer on, and the processing row says so. Nothing leaves the organisation either way.
 
+Reports and slides are written by the in-house default model when they are ordinary, but by DeepSeek V4 Flash when they follow a form (PowerPoint, Word, HWPX), must cover many files, include a chart from data or a paper's figures, or draw on a very long source. The processing row gives the reason, as in "This answer: DeepSeek V4 Flash · Complex document · follows a form". These jobs can take a few minutes before text appears ("Thinking it through"), and if two other documents are already running the processing row shows "Waiting · no. n in line". If the model does not respond or the wait is too long, the default model writes the same answer instead.
+
 ## The reasoning chip
 
 The **Reasoning** chip to the left of the model name sets how much the model thinks before it answers. It is available in Chat, Reports, and Slides.

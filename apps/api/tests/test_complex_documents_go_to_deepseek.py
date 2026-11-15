@@ -1,0 +1,660 @@
+"""Complex document turns go to DeepSeek V4 Flash (owner decision 2026-11-15): a form followed,
+many source files, a tool-heavy deck, a long source. Simple documents stay on the `document`
+row. The chip steers the effort, never the model; the `document` row's model carries a failed
+or silent turn on; a few slots cap how many run on the self-hosted server."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+
+import httpx
+import pytest
+from test_super_agent_turns import STRICT_27B, STRICT_FLASH, _model
+
+from app.models.chat import ChatSession, Message, RoutingMode, SessionKind
+from app.models.governance import Governance
+from app.models.user import User
+from app.routers import sessions
+from app.services import complex_turn, deck, model_health
+from app.services import super_agent as sa
+
+LOCAL_27B = _model("local/qwen3.8-27b", boundary="hybrid")
+LOCAL_DS = {**_model("local/deepseek-v4-flash", boundary="hybrid"), "contextWindow": 258_048}
+STRICT_DS = {**_model("strict-local/deepseek-v4-flash", boundary="self_hosted", strict=True,
+                      privacy_only=True), "contextWindow": 258_048}
+CATALOGUE = [LOCAL_27B, LOCAL_DS, STRICT_27B, STRICT_FLASH, STRICT_DS]
+USER = User(id="u-cx", email="cx@example.test", password_hash="h", name="Cx")
+POLICY = Governance(external_data_guard=True, internal_data_strict_local=False)
+
+FORM = sa.DocSignals(forms=("hwpx",))
+MANY = sa.DocSignals(sources=sa.COMPLEX_MANY_FILES)
+EACH = sa.DocSignals(sources=sa.COMPLEX_COVERAGE_FILES, asks_each=True)
+TOOLS = sa.DocSignals(chart_data=True)
+LONG = sa.DocSignals(source_chars=sa.COMPLEX_SOURCE_CHARS)
+
+
+@pytest.fixture(autouse=True)
+def _health(monkeypatch):
+    model_health.reset()
+    complex_turn.PLAN.set(None)
+    complex_turn._waiting.clear()
+    complex_turn._local_held.clear()
+    # the per-process cap (the shared one is Postgres advisory locks)
+    monkeypatch.setattr(complex_turn, "_postgres", lambda: False)
+    yield
+    model_health.reset()
+    complex_turn.PLAN.set(None)
+
+
+def _session(mode=RoutingMode.super, kind=SessionKind.report) -> ChatSession:
+    return ChatSession(id="s-cx", user_id=USER.id, kind=kind, model=LOCAL_27B["id"],
+                       routing_mode=mode)
+
+
+async def _route(doc, *, mode=RoutingMode.super, kind=SessionKind.report, chip=sa.AUTO,
+                 policy=POLICY, history=None, catalogue=None, request="보고서를 써 줘"):
+    out = await sessions._document_route(
+        db=None, user=USER, session=_session(mode, kind), policy=policy,
+        catalogue=catalogue or CATALOGUE, model=LOCAL_27B, blocks=[], attachments=None,
+        history=history or [], request=request, reasoning_mode=chip, doc=doc)
+    model, strict, note = out
+    return model, strict, (note or {}).get("superAgent") or {}
+
+
+# ── the table and the signals ────────────────────────────────────────────────
+
+
+def test_the_table_has_a_proper_complex_document_row() -> None:
+    rule = sa.DEFAULT_RULES["complex_document"]
+    assert rule == {"model": "local/deepseek-v4-flash",
+                    "strictModel": "strict-local/deepseek-v4-flash", "effort": "high"}
+    assert "complex_document" in sa.CLASSES and "complex_document" in sa.OVERRIDE_ROWS
+    # an admin may empty a column (the row then moves nothing there) or change the model
+    rules = sa.normalise_rules({"complex_document": {"model": "", "effort": "none"}})
+    assert rules["complex_document"]["model"] == ""
+    assert rules["complex_document"]["effort"] == "none"
+    assert sa.stored_rules({"complex_document": {"model": ""}}) == {
+        "complex_document": {"model": ""}}
+    # the document row is untouched: the 27B, the thinking default
+    assert sa.DEFAULT_RULES["document"] == {
+        "model": "local/qwen3.8-27b", "strictModel": "strict-local/qwen3.8-27b",
+        "effort": "default"}
+
+
+@pytest.mark.parametrize(("signals", "reasons"), [
+    (sa.DocSignals(forms=("hwpx",)), ["form"]),
+    (sa.DocSignals(forms=("docx",)), ["form"]),
+    (sa.DocSignals(forms=("pptx",)), ["form"]),
+    (sa.DocSignals(forms=("hwp",)), []),
+    (EACH, ["coverage"]),
+    (sa.DocSignals(sources=sa.COMPLEX_COVERAGE_FILES - 1, asks_each=True), []),
+    (sa.DocSignals(sources=sa.COMPLEX_MANY_FILES - 1), []),
+    (MANY, ["coverage"]),
+    (sa.DocSignals(chart_data=True), ["tools"]),
+    (sa.DocSignals(paper_figures=True), ["tools"]),
+    (sa.DocSignals(source_chars=sa.COMPLEX_SOURCE_CHARS - 1), []),
+    (LONG, ["long_source"]),
+    (sa.DocSignals(forms=("hwpx",), chart_data=True, source_chars=10**6),
+     ["form", "tools", "long_source"]),
+    (sa.DocSignals(), []),
+    (None, []),
+])
+def test_the_signals_that_make_a_document_complex(signals, reasons) -> None:
+    assert sa.complexity(signals) == reasons
+
+
+def test_the_thresholds_live_in_one_place() -> None:
+    assert sa.COMPLEX_COVERAGE_FILES == 2  # the Coverage stage's own floor
+    assert sa.COMPLEX_SOURCE_CHARS == sa.LONG_CONTEXT_BYTES // 3
+    assert sa.COMPLEX_REASONS == ("form", "coverage", "tools", "long_source")
+
+
+def test_steer_moves_complex_documents_and_the_chip_steers_effort_only() -> None:
+    rules = sa.normalise_rules({})
+    document = sa.Decision("document", "document", "document_surface")
+    steer = sa.steer
+    assert steer(rules, document, sa.AUTO, complex_doc=True) == ("complex_document", "high")
+    assert steer(rules, document, sa.FAST, complex_doc=True) == ("complex_document", "none")
+    assert steer(rules, document, sa.DEEP, complex_doc=True) == (
+        "complex_document", sa.HIGHEST)
+    # a simple document: the document row, as before
+    assert steer(rules, document, sa.AUTO) == ("document", "default")
+    assert steer(rules, document, sa.DEEP) == ("document", sa.HIGHEST)
+    # a column the row leaves empty moves nothing
+    empty = sa.normalise_rules({"complex_document": {"strictModel": ""}})
+    assert steer(empty, document, sa.AUTO, complex_doc=True, strict=True) == (
+        "document", "default")
+    assert steer(empty, document, sa.AUTO, complex_doc=True, strict=False) == (
+        "complex_document", "high")
+
+
+# ── routing through the document route ───────────────────────────────────────
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", [SessionKind.report, SessionKind.slides])
+@pytest.mark.parametrize("doc", [FORM, EACH, MANY, TOOLS, LONG])
+async def test_each_signal_sends_super_documents_to_deepseek(doc, kind) -> None:
+    model, strict, route = await _route(doc, kind=kind)
+    assert model["id"] == LOCAL_DS["id"] and not strict
+    assert route["row"] == "complex_document" and route["taskClass"] == "document"
+    assert route["effort"] == "high" and route["complexReason"] == sa.complexity(doc)[0]
+    assert route["complexSignals"] == sa.complexity(doc)
+
+
+@pytest.mark.asyncio
+async def test_the_strict_entry_goes_to_strict_deepseek() -> None:
+    model, strict, route = await _route(FORM, mode=RoutingMode.super_strict)
+    assert model["id"] == STRICT_DS["id"] and strict
+    assert route["mode"] == "super_strict" and route["row"] == "complex_document"
+
+
+@pytest.mark.asyncio
+async def test_a_simple_document_stays_on_the_27b() -> None:
+    for doc in (None, sa.DocSignals(), sa.DocSignals(sources=1, source_chars=900),
+                sa.DocSignals(sources=sa.COMPLEX_MANY_FILES - 1)):
+        model, _, route = await _route(doc)
+        assert model["id"] == LOCAL_27B["id"] and "row" not in route
+        assert "complexReason" not in route
+    model, _, _ = await _route(sa.DocSignals(), mode=RoutingMode.super_strict)
+    assert model["id"] == STRICT_27B["id"]
+
+
+@pytest.mark.asyncio
+async def test_a_model_picked_by_hand_is_left_alone() -> None:
+    model, _, note = await sessions._document_route(
+        db=None, user=USER, session=_session(RoutingMode.manual), policy=POLICY,
+        catalogue=CATALOGUE, model=LOCAL_27B, blocks=[], attachments=None, history=[],
+        request="양식대로 써 줘", doc=FORM)
+    assert model["id"] == LOCAL_27B["id"] and note is None
+
+
+@pytest.mark.asyncio
+async def test_the_chip_never_moves_a_complex_document_back_to_the_27b() -> None:
+    model, _, route = await _route(FORM, chip=sa.FAST)
+    assert model["id"] == LOCAL_DS["id"] and route["effort"] == "none"
+    assert route["reasoningMode"] == "fast"
+    assert sa.reasoning_fields(model["id"], "none") == {
+        "chat_template_kwargs": {"thinking": False}}
+    model, _, route = await _route(FORM, chip=sa.DEEP)
+    assert model["id"] == LOCAL_DS["id"] and route["effort"] == sa.HIGHEST
+    assert sa.reasoning_fields(model["id"], sa.HIGHEST) == {
+        "chat_template_kwargs": {"thinking": True}}
+
+
+@pytest.mark.asyncio
+async def test_a_revision_keeps_the_first_versions_writer_and_row() -> None:
+    first = Message(session_id="s-cx", role=sessions.Role.assistant, content="v1", routing={
+        "superAgent": {"selectedModel": LOCAL_DS["id"], "row": "complex_document",
+                       "complexSignals": ["form"], "taskClass": "document"}})
+    # the revision's own signals are empty, the first version was complex
+    model, _, route = await _route(sa.DocSignals(), history=[first])
+    assert model["id"] == LOCAL_DS["id"] and route["row"] == "complex_document"
+    assert route["pick"] == "sticky" and route["complexSignals"] == ["form"]
+    # a document the 27B wrote first stays on it even when the revision brings a form
+    simple = Message(session_id="s-cx", role=sessions.Role.assistant, content="v1", routing={
+        "superAgent": {"selectedModel": LOCAL_27B["id"], "taskClass": "document"}})
+    model, _, route = await _route(FORM, history=[simple])
+    assert model["id"] == LOCAL_27B["id"] and "row" not in route
+
+
+@pytest.mark.asyncio
+async def test_a_deepseek_that_failed_lately_is_passed_over_for_the_document_row() -> None:
+    model_health.mark_failed(LOCAL_DS["id"], "upstream_unreachable")
+    model, _, route = await _route(FORM)
+    # the document row's model, not the table's fallback list or the flash twin
+    assert model["id"] == LOCAL_27B["id"]
+    assert route["skipped"] == LOCAL_DS["id"] and "row" not in route
+    assert route["effort"] == "default"
+    model_health.reset()
+    # not served here: the same
+    model, _, route = await _route(FORM, catalogue=[LOCAL_27B, STRICT_27B])
+    assert model["id"] == LOCAL_27B["id"] and "complexReason" not in route
+
+
+@pytest.mark.asyncio
+async def test_an_admin_can_point_the_row_elsewhere_or_switch_it_off() -> None:
+    off = Governance(external_data_guard=True, internal_data_strict_local=False,
+                     super_agent_rules={"complex_document": {"model": "", "strictModel": ""}})
+    model, _, route = await _route(FORM, policy=off)
+    assert model["id"] == LOCAL_27B["id"] and "row" not in route
+    other = Governance(external_data_guard=True, internal_data_strict_local=False,
+                       super_agent_rules={"complex_document": {"model": LOCAL_27B["id"],
+                                                               "effort": "low"}})
+    model, _, route = await _route(FORM, policy=other)
+    assert model["id"] == LOCAL_27B["id"] and route["row"] == "complex_document"
+    assert route["effort"] == "low"
+
+
+# ── the fallback behind it ───────────────────────────────────────────────────
+
+
+def test_a_complex_documents_fallback_is_the_document_rows_model_in_its_boundary() -> None:
+    rules = sa.normalise_rules({})
+    found = sa.complex_fallback(rules, CATALOGUE, LOCAL_DS, kind="report", strict=False,
+                                allowed=set())
+    assert found["id"] == LOCAL_27B["id"]
+    found = sa.complex_fallback(rules, CATALOGUE, STRICT_DS, kind="report", strict=True,
+                                allowed=set())
+    assert found["id"] == STRICT_27B["id"]
+    # the writer is the document row's model already, or it failed lately: none
+    assert sa.complex_fallback(rules, CATALOGUE, LOCAL_27B, kind="report", strict=False,
+                               allowed=set()) is None
+    assert sa.complex_fallback(rules, CATALOGUE, LOCAL_DS, kind="report", strict=False,
+                               allowed=set(), skip=frozenset({LOCAL_27B["id"]})) is None
+
+
+def test_the_router_names_the_fallback_for_complex_turns_only() -> None:
+    route = {"row": "complex_document", "mode": "super"}
+    found = sessions._super_fallback(route, user=USER, catalogue=CATALOGUE, writer=LOCAL_DS,
+                                     strict_local=False, needs_tools=False, kind="report")
+    assert found["id"] == LOCAL_27B["id"]
+    strict = sessions._super_fallback({**route, "mode": "super_strict"}, user=USER,
+                                      catalogue=CATALOGUE, writer=STRICT_DS, strict_local=True,
+                                      needs_tools=True)
+    assert strict["id"] == STRICT_27B["id"]
+    # a plain turn outside strict-local has none, as before
+    assert sessions._super_fallback({"mode": "super"}, user=USER, catalogue=CATALOGUE,
+                                    writer=LOCAL_DS, strict_local=False,
+                                    needs_tools=True) is None
+
+
+def test_the_fallback_thinks_as_the_document_row_says() -> None:
+    fields = sessions._super_reasoning(STRICT_DS, "high", None, "default", STRICT_FLASH,
+                                       "default")
+    assert STRICT_DS["id"] in fields and STRICT_FLASH["id"] not in fields
+    fields = sessions._super_reasoning(STRICT_DS, "high", None, "default", STRICT_FLASH, None)
+    assert STRICT_FLASH["id"] in fields  # a plain fallback carries on at the writer's effort
+
+
+# ── slots ────────────────────────────────────────────────────────────────────
+
+
+async def _drain(plan, poll=0.01):
+    return [event async for event in complex_turn.wait_for_slot(plan, poll=poll)]
+
+
+@pytest.mark.asyncio
+async def test_two_slots_then_a_line_then_the_fallback(monkeypatch) -> None:
+    monkeypatch.setattr(complex_turn.settings, "complex_document_slots", 2)
+    monkeypatch.setattr(complex_turn.settings, "complex_document_wait_sec", 0.15)
+    first, second, third = (complex_turn.Plan(LOCAL_DS["id"], LOCAL_27B["id"], queued=True)
+                            for _ in range(3))
+    assert await _drain(first) == [] and await _drain(second) == []
+    assert first.slot is not None and second.slot is not None
+    events = await _drain(third)
+    # in line (「대기 중 · 1번째」), then no slot in time: the fallback writes
+    assert events[0]["label"] == "대기 중 · 1번째" and events[0]["status"] == "running"
+    assert events[0]["queuePosition"] == 1 and events[0]["id"] == "complex-queue"
+    assert third.use_fallback and third.reason == "queue" and third.slot is None
+    assert third.model_for(LOCAL_DS["id"]) == LOCAL_27B["id"]
+    assert not complex_turn._waiting
+
+
+@pytest.mark.asyncio
+async def test_a_released_slot_goes_to_the_next_turn(monkeypatch) -> None:
+    monkeypatch.setattr(complex_turn.settings, "complex_document_slots", 1)
+    monkeypatch.setattr(complex_turn.settings, "complex_document_wait_sec", 5.0)
+    holder = complex_turn.Plan(LOCAL_DS["id"], LOCAL_27B["id"], queued=True)
+    waiter = complex_turn.Plan(LOCAL_DS["id"], LOCAL_27B["id"], queued=True)
+    await _drain(holder)
+    task = asyncio.create_task(_drain(waiter))
+    await asyncio.sleep(0.05)
+    assert not task.done()
+    await complex_turn.release(holder)
+    events = await task
+    assert waiter.slot is not None and not waiter.use_fallback
+    assert events[0]["status"] == "running" and events[-1]["status"] == "done"
+    await complex_turn.release(waiter)
+    assert not complex_turn._local_held
+
+
+@pytest.mark.asyncio
+async def test_the_waiting_line_counts_turns_in_order(monkeypatch) -> None:
+    monkeypatch.setattr(complex_turn.settings, "complex_document_slots", 1)
+    monkeypatch.setattr(complex_turn.settings, "complex_document_wait_sec", 5.0)
+    holder = complex_turn.Plan(LOCAL_DS["id"], LOCAL_27B["id"], queued=True)
+    await _drain(holder)
+    plans = [complex_turn.Plan(LOCAL_DS["id"], LOCAL_27B["id"], queued=True) for _ in range(2)]
+    seen: list[list[int]] = [[], []]
+
+    async def wait(index):
+        async for event in complex_turn.wait_for_slot(plans[index], poll=0.01):
+            if "queuePosition" in event:
+                seen[index].append(event["queuePosition"])
+
+    tasks = [asyncio.create_task(wait(0))]
+    await asyncio.sleep(0.05)
+    tasks.append(asyncio.create_task(wait(1)))
+    await asyncio.sleep(0.05)
+    assert seen[0][0] == 1 and seen[1][0] == 2
+    for plan in (holder, *plans):
+        await complex_turn.release(plan)
+    await asyncio.gather(*tasks)
+
+
+@pytest.mark.asyncio
+async def test_no_cap_means_no_wait(monkeypatch) -> None:
+    monkeypatch.setattr(complex_turn.settings, "complex_document_slots", 0)
+    assert not complex_turn.capped()
+    plan = complex_turn.Plan(LOCAL_DS["id"], LOCAL_27B["id"], queued=True)
+    assert await _drain(plan) == [] and plan.slot is None
+
+
+def test_the_default_cap_is_two() -> None:
+    from app.core.config import Settings
+
+    assert Settings.model_fields["complex_document_slots"].default == 2
+
+
+@pytest.mark.asyncio
+async def test_the_stream_holds_its_slot_and_gives_it_back(monkeypatch) -> None:
+    monkeypatch.setattr(complex_turn.settings, "complex_document_slots", 1)
+    monkeypatch.setattr(complex_turn.settings, "complex_document_wait_sec", 5.0)
+    plan = complex_turn.Plan(LOCAL_DS["id"], LOCAL_27B["id"], queued=True)
+
+    async def events():
+        assert plan.slot is not None
+        yield 'data: {"type": "step", "id": "x"}\n\n'
+        yield 'data: {"type": "section", "content": "본문"}\n\n'
+        yield 'data: {"type": "done"}\n\n'
+
+    out = [json.loads(chunk.removeprefix("data: ")) async for chunk in
+           sessions._with_slot(plan, events())]
+    thinking = [e for e in out if e.get("id") == "writer-thinking"]
+    # 「깊이 생각하는 중」 runs until the first output, so the line never looks stuck
+    assert [e["status"] for e in thinking] == ["running", "done"]
+    assert out.index(thinking[1]) < next(i for i, e in enumerate(out)
+                                         if e.get("type") == "section") + 1
+    assert plan.slot is None and not complex_turn._local_held
+
+
+@pytest.mark.asyncio
+async def test_a_stream_that_dies_still_gives_the_slot_back(monkeypatch) -> None:
+    monkeypatch.setattr(complex_turn.settings, "complex_document_slots", 1)
+    plan = complex_turn.Plan(LOCAL_DS["id"], LOCAL_27B["id"], queued=True, surface="chat")
+
+    async def events():
+        yield 'data: {"type": "delta", "text": "a"}\n\n'
+        raise RuntimeError("boom")
+
+    with pytest.raises(RuntimeError):
+        _ = [c async for c in sessions._with_slot(plan, events())]
+    assert plan.slot is None and not complex_turn._local_held
+
+
+# ── whole-answer calls ───────────────────────────────────────────────────────
+
+
+def _plan(**kwargs) -> complex_turn.Plan:
+    plan = complex_turn.Plan(LOCAL_DS["id"], LOCAL_27B["id"], **kwargs)
+    complex_turn.PLAN.set(plan)
+    return plan
+
+
+@pytest.mark.asyncio
+async def test_a_failed_call_is_asked_again_on_the_fallback_and_the_rest_follow() -> None:
+    plan = _plan()
+    seen: list[str] = []
+
+    async def call(model: str):
+        seen.append(model)
+        if model == LOCAL_DS["id"]:
+            raise httpx.ConnectError("down")
+        return "본문", {}
+
+    assert (await complex_turn.run_call(LOCAL_DS["id"], call))[0] == "본문"
+    assert (await complex_turn.run_call(LOCAL_DS["id"], call))[0] == "본문"
+    # the second call goes straight to the fallback; the failed model is left out of picks
+    assert seen == [LOCAL_DS["id"], LOCAL_27B["id"], LOCAL_27B["id"]]
+    assert plan.use_fallback and plan.reason == "error"
+    assert LOCAL_DS["id"] in model_health.unhealthy()
+
+
+@pytest.mark.asyncio
+async def test_a_busy_gateway_and_a_silent_call_hand_over_too(monkeypatch) -> None:
+    plan = _plan()
+
+    async def busy(model: str):
+        if model == LOCAL_DS["id"]:
+            request = httpx.Request("POST", "http://x")
+            raise httpx.HTTPStatusError("503", request=request, response=httpx.Response(
+                503, text='{"error":"strict_local_unavailable"}', request=request))
+        return "ok", {}
+
+    assert (await complex_turn.run_call(LOCAL_DS["id"], busy))[0] == "ok"
+    assert plan.reason == "busy"
+    assert model_health._until[LOCAL_DS["id"]] - asyncio.get_running_loop().time() < 61
+
+    model_health.reset()
+    plan = _plan()
+    monkeypatch.setattr(complex_turn.settings, "complex_document_call_sec", 0.05)
+
+    async def silent(model: str):
+        if model == LOCAL_DS["id"]:
+            await asyncio.sleep(5)
+        return "늦지 않은 답", {}
+
+    assert (await complex_turn.run_call(LOCAL_DS["id"], silent))[0] == "늦지 않은 답"
+    assert plan.reason == "timeout"
+
+
+@pytest.mark.asyncio
+async def test_calls_that_are_not_the_complex_writers_are_left_alone() -> None:
+    _plan()
+    seen: list[str] = []
+
+    async def call(model: str):
+        seen.append(model)
+        raise ValueError("a bug of the call's own")
+
+    with pytest.raises(ValueError):
+        await complex_turn.run_call(LOCAL_DS["id"], call)  # not a server failure: no hand-over
+    assert seen == [LOCAL_DS["id"]]
+    seen.clear()
+    with pytest.raises(ValueError):
+        await complex_turn.run_call("other/model", call)
+    assert seen == ["other/model"]
+    complex_turn.PLAN.set(None)
+    with pytest.raises(ValueError):
+        await complex_turn.run_call(LOCAL_DS["id"], call)
+    assert not model_health.unhealthy()
+
+
+@pytest.mark.asyncio
+async def test_a_turn_that_lost_its_slot_writes_on_the_fallback_from_the_start() -> None:
+    _plan(use_fallback=True)
+    seen: list[str] = []
+
+    async def call(model: str):
+        seen.append(model)
+        return "x", {}
+
+    await complex_turn.run_call(LOCAL_DS["id"], call)
+    assert seen == [LOCAL_27B["id"]]
+
+
+@pytest.mark.asyncio
+async def test_the_deck_writer_goes_through_the_fallback(monkeypatch) -> None:
+    _plan()
+    seen: list[str] = []
+
+    async def once(model, messages, api_key, max_tokens):
+        seen.append(model)
+        if model == LOCAL_DS["id"]:
+            raise httpx.ConnectError("down")
+        return "슬라이드", {"inputTokens": 1, "outputTokens": 1}
+
+    monkeypatch.setattr(deck, "_complete_once", once)
+    monkeypatch.setattr(deck.model_retry, "PAUSE", 0.0)
+    text, _ = await deck._complete(LOCAL_DS["id"], [], "key", 100)
+    assert text == "슬라이드"
+    # a dropped connection is asked once more on the same model first (`model_retry`), then
+    # the fallback writes it
+    assert seen[-1] == LOCAL_27B["id"] and seen.count(LOCAL_DS["id"]) == 2
+
+
+# ── the signals read from the turn ───────────────────────────────────────────
+
+
+class _Rows:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def all(self):
+        return self._rows
+
+
+class _Db:
+    def __init__(self, rows=(), objects=None):
+        self.rows, self.objects = list(rows), objects or {}
+
+    async def get(self, kind, key):
+        return self.objects.get((kind, key))
+
+    async def exec(self, _statement):
+        return _Rows(self.rows)
+
+
+def _file(name, text="", mime="text/plain"):
+    from app.models.workspace import StoredFile
+
+    return StoredFile(user_id=USER.id, name=name, mime=mime, text=text, storage_key=name)
+
+
+async def _signals(monkeypatch, *, shelf=(), rows=(), request="보고서", kind=SessionKind.report,
+                   session=None, forms=None, output_format=None, objects=None):
+    async def knowledge(*_args, **_kwargs):
+        return list(shelf), ""
+
+    monkeypatch.setattr(sessions, "_knowledge_shelf", knowledge)
+    return await sessions._document_signals(
+        _Db(rows, objects), USER, session or _session(kind=kind), request=request,
+        attachments=[r.id for r in rows] or None, turn_forms=forms, output_format=output_format)
+
+
+@pytest.mark.asyncio
+async def test_signals_count_files_once_and_their_text(monkeypatch) -> None:
+    shelf = [("1강.pdf", "가" * 100, None), ("2강.pdf", "나" * 50, None)]
+    rows = [_file("2강.pdf", "나" * 50), _file("3강.pdf", "다" * 10),
+            _file("사진.png", "", "image/png")]
+    out = await _signals(monkeypatch, shelf=shelf, rows=rows, request="각 강의를 정리해 줘")
+    assert out.sources == 3 and out.source_chars == 160 and out.asks_each
+    assert sa.complexity(out) == ["coverage"]
+    quiet = await _signals(monkeypatch, shelf=shelf[:1], request="이 자료를 요약해 줘")
+    assert quiet.sources == 1 and not quiet.asks_each and sa.complexity(quiet) == []
+
+
+@pytest.mark.asyncio
+async def test_signals_read_the_form_the_document_follows(monkeypatch) -> None:
+    from app.services import form_files
+
+    forms = form_files.TurnForms(forms={"pptx": form_files.FormChoice(
+        "pptx", "f1", "양식.pptx", "attached")})
+    out = await _signals(monkeypatch, kind=SessionKind.slides, forms=forms)
+    assert out.forms == ("pptx",)
+    # a Word form on a web report (no Word file asked) is not followed by this turn
+    out = await _signals(monkeypatch, forms=forms)
+    assert out.forms == ()
+    # the conversation's kept form, for a report asked as a Word file
+    session = _session()
+    session.form_files = {"docx": "f2"}
+    out = await _signals(monkeypatch, session=session, output_format="docx")
+    assert out.forms == ("docx",)
+    # the person took the saved one off
+    session.form_files = {"docx": ""}
+    out = await _signals(monkeypatch, session=session, output_format="docx")
+    assert out.forms == ()
+
+
+@pytest.mark.asyncio
+async def test_signals_read_the_tool_heavy_deck_asks(monkeypatch) -> None:
+    table = _file("매출.xlsx", "", "application/vnd.ms-excel")
+    out = await _signals(monkeypatch, kind=SessionKind.slides, rows=[table],
+                         request="매출 데이터로 차트가 있는 발표 자료를 만들어 줘")
+    assert out.chart_data and not out.paper_figures
+    # a chart word without data, or the same ask on a report, is not a tool-heavy deck
+    out = await _signals(monkeypatch, kind=SessionKind.slides, request="차트가 있는 발표 자료")
+    assert not out.chart_data
+    out = await _signals(monkeypatch, rows=[table], request="차트가 있는 보고서")
+    assert not out.chart_data
+    paper = _file("paper.pdf", "본문", "application/pdf")
+    out = await _signals(monkeypatch, kind=SessionKind.slides, rows=[paper],
+                         request="이 논문의 그림을 넣은 발표 자료를 만들어 줘")
+    assert out.paper_figures and sa.complexity(out) == ["tools"]
+    out = await _signals(monkeypatch, kind=SessionKind.slides, rows=[paper],
+                         request="이 논문을 요약한 슬라이드")
+    assert not out.paper_figures
+
+
+@pytest.mark.asyncio
+async def test_slots_are_advisory_locks_shared_by_every_replica(monkeypatch) -> None:
+    """On Postgres a slot is a session-level advisory lock on a connection of its own: another
+    replica sees it taken, and a replica that dies lets go with its connection."""
+    import asyncpg
+
+    taken: dict[int, object] = {}
+    opened: list = []
+
+    class Conn:
+        def __init__(self) -> None:
+            self.closed = False
+
+        async def fetchval(self, _sql, key):
+            if key in taken and taken[key] is not self:
+                return False
+            taken[key] = self
+            return True
+
+        async def close(self, timeout=None):
+            self.closed = True
+            for key in [k for k, v in taken.items() if v is self]:
+                del taken[key]
+
+    async def connect(*_args, **_kwargs):
+        opened.append(Conn())
+        return opened[-1]
+
+    monkeypatch.setattr(complex_turn, "_postgres", lambda: True)
+    monkeypatch.setattr(asyncpg, "connect", connect)
+    monkeypatch.setattr(complex_turn.settings, "complex_document_slots", 2)
+    monkeypatch.setattr(complex_turn.settings, "complex_document_wait_sec", 0.05)
+    plans = [complex_turn.Plan(LOCAL_DS["id"], LOCAL_27B["id"], queued=True) for _ in range(3)]
+    for plan in plans[:2]:
+        await _drain(plan)
+    assert sorted(taken) == [complex_turn.LOCK_BASE, complex_turn.LOCK_BASE + 1]
+    await _drain(plans[2])
+    assert plans[2].use_fallback
+    # every failed try closed its connection: nothing is left open but the two slots
+    assert sum(not c.closed for c in opened) == 2
+    await complex_turn.release(plans[0])
+    assert sorted(taken) == [complex_turn.LOCK_BASE + 1]
+    retry = complex_turn.Plan(LOCAL_DS["id"], LOCAL_27B["id"], queued=True)
+    await _drain(retry)
+    assert retry.slot is not None and not retry.use_fallback
+
+
+@pytest.mark.asyncio
+async def test_a_report_written_as_an_office_file_routes_as_a_chat_turn_to_deepseek() -> None:
+    """HWPX, Word and PowerPoint files are worked on through the chat path: the same row, with
+    tools, and the document row's model behind it."""
+    session = _session()
+
+    async def route(doc, history=(), content="이 양식의 설계 위험을 분석해서 채워 줘"):
+        return await sessions._super_route(
+            db=None, user=USER, session=session, policy=POLICY, catalogue=CATALOGUE,
+            default=LOCAL_27B, history=list(history), content=content,
+            kind=SessionKind.chat, web_search=False, attachments=None, tool_bound=False,
+            doc=doc)
+
+    model, note, effort = await route(FORM)
+    assert model["id"] == LOCAL_DS["id"] and effort == "high"
+    assert note["row"] == "complex_document" and note["complexReason"] == "form"
+    fallback = sessions._super_fallback(note, user=USER, catalogue=CATALOGUE, writer=model,
+                                        strict_local=False, needs_tools=True,
+                                        rules_raw=POLICY.super_agent_rules, kind="chat")
+    assert fallback["id"] == LOCAL_27B["id"]
+    # no signals: the ordinary class route, none of this
+    model, note, _ = await route(sa.DocSignals())
+    assert "complexReason" not in note and note.get("row") != "complex_document"
