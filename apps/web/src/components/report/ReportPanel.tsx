@@ -172,7 +172,7 @@ function AddSectionImage({ report }: { report: ReportArtifact }) {
         open={target !== null}
         onClose={() => setTarget(null)}
         title={t('{name}에 그림 넣기').replace('{name}', chosen?.heading || t('이 절'))}
-        description={t('여기서 바로 만들거나 이미 만든 그림을 고를 수 있습니다. 링크가 아니라 파일 안에 담기므로 인쇄와 공유에서도 함께 보입니다.')}
+        description={t('새로 만들거나 이미 만든 이미지를 고릅니다.')}
         footer={
           <>
             <Button onClick={() => setTarget(null)} disabled={busy}>
@@ -377,7 +377,7 @@ function SourceList({
             <>
               <p className="text-base text-muted">{t('참고한 자료가 없습니다.')}</p>
               <p className="mt-1 text-sm text-faint">
-                {t('웹 검색을 켜고 다시 쓰면 찾은 자료가 여기 출처로 붙습니다. 검색 없이 쓴 글에는 붙일 출처가 없습니다.')}
+                {t('웹 검색을 켜고 다시 쓰면 출처가 여기에 붙습니다.')}
               </p>
             </>
           )}
@@ -1341,7 +1341,7 @@ export function ReportPanel({
         open={addingSource}
         onClose={() => setAddingSource(false)}
         title={t('참고 자료 추가')}
-        description={t('보고서에서 실제로 확인한 원문의 정보를 입력하세요. 추가한 뒤 본문에 표시된 번호를 붙이면 사용 위치도 연결됩니다.')}
+        description={t('실제로 확인한 원문의 정보를 적으세요. 본문에 번호를 붙이면 위치가 연결됩니다.')}
         footer={
           <>
             <Button onClick={() => setAddingSource(false)} disabled={citationSaving}>{t('취소')}</Button>

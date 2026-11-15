@@ -104,14 +104,14 @@ export function SuperAgentSection() {
         <div className="min-w-0 flex-1">
           <p className="text-base font-medium">Super Agent</p>
           <p className="text-sm text-muted">
-            {t('질문마다 작업 종류를 먼저 규칙으로 가리고, 애매할 때만 분류 모델에 짧게 물어 아래 표의 모델과 추론 강도로 답합니다. 개인정보나 내부 자료가 있으면 strict-local 열의 모델을 씁니다.')}
+            {t('질문의 작업 종류를 가려 아래 표의 모델과 추론 강도로 답합니다. 개인정보·내부 자료는 strict-local 열을 씁니다.')}
           </p>
         </div>
       </div>
 
       <Field
         label={t('분류 모델')}
-        hint={t('규칙으로 가리지 못한 질문만 보냅니다. 질문 한 개만 짧게 보내며, 외부 전환이 없는 무료 strict-local 모델만 쓸 수 있습니다.')}
+        hint={t('규칙으로 가리지 못한 질문만 묻습니다. 무료 strict-local 모델만 고를 수 있습니다.')}
       >
         <Select
           value={classifierModelId}
@@ -193,10 +193,10 @@ export function SuperAgentSection() {
         </table>
       </div>
       <p className="text-xs text-faint">
-        {t('다시 해 달라거나 더 자세히 해 달라는 요청과 비었거나 실패한 답 뒤에는 「다시 요청·빈 답 뒤」 줄의 모델로 올리고, 그 모델이 빈 답을 다시 씁니다. 같은 문서의 수정은 처음 쓴 모델을 유지합니다.')}
+        {t('다시·자세히 요청과 빈 답 뒤에는 「다시 요청·빈 답 뒤」 줄의 모델이 씁니다.')}
       </p>
       <p className="text-xs text-faint">
-        {t('첨부·프로젝트·에이전트 파일을 다루는 질문은 「내부 자료 작업」 줄에 모델이 있는 열에서 그 모델로 답합니다(간단한 질문·보고서·다시 요청은 그대로). 그 모델이 실패하거나 오래 아무것도 내지 않으면 같은 답 안에서 strict-local 기본 모델이 이어 씁니다.')}
+        {t('파일을 다루는 질문은 「내부 자료 작업」 줄의 모델이 답하고, 실패하면 strict-local 기본 모델이 잇습니다.')}
       </p>
 
       {classifiers.length === 0 && (

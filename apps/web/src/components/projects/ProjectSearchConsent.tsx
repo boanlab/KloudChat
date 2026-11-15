@@ -42,7 +42,7 @@ export function ProjectSearchConsent({ project }: { project: Project }) {
       <div>
         <p className="text-base font-medium">{t('strict-local 대화의 외부 검색')}</p>
         <p className="text-sm text-muted">
-          {t('프로젝트 자료가 들어간 대화는 strict-local로 답합니다. 외부 정보가 필요할 때 검색어만 보낼지 정합니다. 관리자 설정보다 엄격하게만 바꿀 수 있습니다.')}
+          {t('외부 정보가 필요할 때 검색어만 밖으로 보낼지 정합니다. 관리자 설정보다 엄격하게만 바꿀 수 있습니다.')}
         </p>
       </div>
       <Select

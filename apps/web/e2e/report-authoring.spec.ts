@@ -111,7 +111,7 @@ test.describe('보고서를 처음부터 끝까지 쓴다', () => {
     await expect(
       page
         .getByText('팩트체크')
-        .or(page.getByText('검색으로 확인할 수 있는 주장이 여기에는 없습니다')),
+        .or(page.getByText('검색으로 확인할 주장이 없습니다')),
     ).toBeVisible({ timeout: 180_000 })
   })
 

@@ -51,7 +51,7 @@ const ACTION_LABEL: Record<string, string> = {
 /** Approval effect by request. */
 const REQUEST_CONSEQUENCE: Record<'visibility' | 'channels' | 'version', string> = {
   visibility: '승인하면 아래 판이 로그인하지 않은 사람에게도 답합니다. 비용은 만든 사람의 크레딧에서 나가며, 하루 최대 {n}크레딧입니다.',
-  channels: '승인하면 요청한 채널이 열려, 봇 키를 가진 프로그램이나 승인한 사이트에서도 이 챗봇이 답합니다. 비용은 만든 사람의 크레딧에서 나가며, 하루 최대 {n}크레딧입니다.',
+  channels: '승인하면 요청한 채널에서도 답합니다. 비용은 만든 사람의 크레딧에서 나가며, 하루 최대 {n}크레딧입니다.',
   version: '승인하면 아래 판이 지금 공개 범위와 채널에서 답합니다. 승인 전까지는 지금 판이 답합니다.',
 }
 
@@ -137,7 +137,7 @@ function PublicationList() {
       <PageBody>
         <PageHeader
           title={t('공개 챗봇')}
-          description={t('구성원이 공개한 챗봇입니다. 로그인하지 않은 사람에게 여는 링크 공개·외부 공개는 여기서 승인해야 열립니다.')}
+          description={t('구성원이 공개한 챗봇입니다. 링크·외부 공개는 여기서 승인합니다.')}
         />
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <Tabs

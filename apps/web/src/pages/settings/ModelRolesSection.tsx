@@ -219,9 +219,9 @@ export function ModelRolesSection({
         <div className="min-w-0 flex-1">
           <p className="text-base font-medium">{t('작업별 모델')}</p>
           <p className="text-sm text-muted">
-            {t('사용자가 모델을 고르지 않았을 때 각 화면이 쓰는 모델과, 제목 짓기·코드 작성 같은 보조 작업을 맡을 모델을 정합니다. 사용자가 고른 모델이 있으면 그 모델이 우선합니다.')}
+            {t('화면별 기본 모델과 보조 작업 모델을 정합니다. 사용자가 고른 모델이 우선합니다.')}
             {' '}
-            {t('챗·보고서·슬라이드는 Super Agent가 기본이며, 질문마다 라우팅 표의 모델을 고릅니다. 모델을 고르면 새 대화가 그 모델로 시작합니다.')}
+            {t('챗·보고서·슬라이드는 Super Agent가 기본입니다. 모델을 고르면 새 대화가 그 모델로 시작합니다.')}
           </p>
         </div>
       </div>
@@ -250,7 +250,7 @@ export function ModelRolesSection({
         <div>
           <p className="text-base font-medium">{t('보조 작업 모델')}</p>
           <p className="text-sm text-muted">
-            {t('대화 내용을 읽는 작업이라 이 인스턴스가 직접 운영하는 모델만 고를 수 있습니다. strict-local 대화에서는 고른 모델의 strict-local 판이 맡고, 그런 판이 없으면 대화의 모델이 맡습니다.')}
+            {t('대화 내용을 읽으므로 이 인스턴스가 운영하는 모델만 고를 수 있습니다.')}
           </p>
         </div>
         <div className="grid gap-4 lg:grid-cols-3">

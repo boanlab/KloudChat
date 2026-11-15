@@ -46,7 +46,7 @@ export function MemoryPage({ embedded = false }: { embedded?: boolean } = {}) {
         <PageHeader
           embedded={embedded}
           title={t('메모리')}
-          description={t('대화에서 알게 된 사실을 하나씩 저장해 두면, 다음 대화에서 관련 있는 것만 골라 참고합니다.')}
+          description={t('저장한 사실 중 관련 있는 것을 다음 대화에서 참고합니다.')}
           action={
             <Button variant="primary" onClick={() => setDraft(emptyMemory())}>
               <Plus size={16} />
@@ -80,7 +80,7 @@ export function MemoryPage({ embedded = false }: { embedded?: boolean } = {}) {
             <EmptyState
               icon={<Brain size={18} />}
               title={t('저장된 메모리가 없습니다')}
-              description={t('반복해서 설명하게 되는 것을 하나 적어 두면, 다음 대화부터는 말하지 않아도 됩니다.')}
+              description={t('자주 설명하는 것을 적어 두면 다시 말하지 않아도 됩니다.')}
               action={
                 <Button variant="primary" onClick={() => setDraft(emptyMemory())}>
                   <Plus size={16} />
@@ -163,7 +163,7 @@ export function MemoryPage({ embedded = false }: { embedded?: boolean } = {}) {
         onClose={() => setConfirming(null)}
         onConfirm={() => confirming && deleteMemory(confirming.id)}
         title={t('{name} 삭제').replace('{name}', confirming?.name ?? '')}
-        description={t('지운 뒤 몇 초 동안은 화면 아래에서 되돌릴 수 있습니다. 그 뒤에는 완전히 지워지고, 다음 대화부터 이 내용을 참고하지 않습니다.')}
+        description={t('지운 뒤 몇 초 동안은 되돌릴 수 있습니다.')}
       />
 
       <MemoryEditor draft={draft} onDraft={setDraft} onClose={() => setDraft(null)} />

@@ -429,7 +429,7 @@ function Hub() {
       variant={showHidden ? 'secondary' : 'ghost'}
       aria-pressed={showHidden}
       data-testid="show-hidden"
-      title={t('목록에서 숨긴 스킬도 보여 줍니다. 숨긴 스킬도 이름으로 계속 쓸 수 있습니다.')}
+      title={t('숨긴 스킬도 보여 줍니다.')}
       onClick={() => update({ hidden: showHidden ? null : '1' })}
     >
       {showHidden ? <Check size={13} /> : null}
@@ -568,7 +568,7 @@ function Hub() {
             <Layers size={14} aria-hidden className="text-faint" />
             <span className="font-medium">{t('묶음')}</span>
             <span className="min-w-0 flex-1 truncate text-sm text-faint">
-              {t('에이전트 설정의 「추가로 할 일」에서 체크하는 할 일 묶음')}
+              {t('「추가로 할 일」에서 고르는 묶음')}
             </span>
             <ArrowRight size={14} aria-hidden className="text-faint" />
           </Link>

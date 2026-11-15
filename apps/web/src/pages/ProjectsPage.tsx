@@ -105,7 +105,7 @@ export function ProjectsPage() {
       <PageBody>
         <PageHeader
           title={t('프로젝트')}
-          description={t('지침과 참고 파일을 묶어 대화 맥락을 고정합니다. 프로젝트 안의 모든 대화가 같은 지침을 공유합니다.')}
+          description={t('지침과 자료를 묶어 여러 대화에서 함께 씁니다.')}
           action={
             <Button variant="primary" onClick={() => setOpen(true)}>
               <Plus size={16} />
@@ -122,7 +122,7 @@ export function ProjectsPage() {
           <EmptyState
             icon={<Boxes size={18} />}
             title={t('아직 프로젝트가 없습니다')}
-            description={t('반복되는 작업 맥락을 프로젝트로 묶어 두면 매번 설명하지 않아도 됩니다.')}
+            description={t('자주 하는 작업을 묶어 두면 매번 설명하지 않아도 됩니다.')}
             action={
               <Button variant="primary" onClick={() => setOpen(true)}>
                 <Plus size={16} />
@@ -247,7 +247,7 @@ export function ProjectsPage() {
         </Field>
         <Field
           label={t('프로젝트 지침')}
-          hint={t('모델에게 매번 함께 전달됩니다. 말투, 지켜야 할 것, 기본 전제를 적어 두세요.')}
+          hint={t('말투, 지킬 것, 기본 전제를 적으세요.')}
         >
           <Textarea
             rows={5}

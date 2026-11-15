@@ -78,7 +78,7 @@ test('추론을 조절할 수 없는 모델은 칩을 끄고 이유를 보여 �
   await page.goto(`/s/${sessionId}`)
   await expect(chip(page)).toHaveAttribute('data-reasoning', 'unsupported')
   await expect(chip(page)).toHaveAttribute('aria-disabled', 'true')
-  await expect(chip(page)).toHaveAttribute('title', /추론 강도를 바꿀 수 없어/)
+  await expect(chip(page)).toHaveAttribute('title', /추론 강도를 바꿀 수 없습니다/)
   // pressing it opens nothing: there is no choice to make
   await chip(page).click({ force: true })
   await expect(page.getByRole('menuitemcheckbox', { name: '깊게' })).toHaveCount(0)

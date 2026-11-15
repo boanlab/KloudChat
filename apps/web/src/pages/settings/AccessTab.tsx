@@ -99,7 +99,7 @@ function ActiveSessions() {
       <Heading title={t('로그인된 기기')} total={total} />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-base text-muted">
-          {t('이 계정이 지금 로그인되어 있는 브라우저입니다. 실습실이나 도서관 PC처럼 기억나지 않는 항목이 있으면 여기서 바로 종료하세요.')}
+          {t('지금 로그인된 브라우저입니다. 모르는 항목은 바로 종료하세요.')}
           {idleTimeoutMinutes > 0 && (
             <>
               {' '}
@@ -238,7 +238,7 @@ function AccessLog() {
     <section className="space-y-3" data-testid="access-log">
       <Heading title={t('접속 기록')} total={data?.total ?? null} />
       <p className="text-base text-muted">
-        {t('이 계정에 대한 접속과 보안 변경 기록입니다. 기억나지 않는 접속이 있으면 비밀번호를 바꾸세요.')}
+        {t('접속과 보안 변경 기록입니다. 모르는 접속이 있으면 비밀번호를 바꾸세요.')}
       </p>
       {error ? (
         <Card className="p-8 text-center text-base text-danger">{error}</Card>

@@ -167,7 +167,7 @@ export function SignupSection({
       {settings.modelRoles && (
         <Field
           label={t('새 계정의 월 크레딧')}
-          hint={t('가입하거나 승인될 때 주는 월 크레딧입니다. 약 {usd}달러에 해당하며, 승인할 때 계정마다 바꿀 수 있습니다.').replace(
+          hint={t('새 계정의 월 크레딧(약 {usd}달러)입니다. 승인할 때 바꿀 수 있습니다.').replace(
             '{usd}',
             (Number(credits.trim() || 0) / (settings.credits.perUsd || 1)).toLocaleString(undefined, {
               maximumFractionDigits: 2,

@@ -79,7 +79,7 @@ export function AdminSystemPage() {
       <PageBody>
         <PageHeader
           title={t('시스템')}
-          description={t('이 인스턴스 전체에 적용되는 설정입니다. 저장 즉시 적용되며 재시작이 필요하지 않습니다.')}
+          description={t('인스턴스 전체 설정입니다. 저장하면 바로 적용됩니다.')}
         />
 
         {/* Labels overflow a phone width, so a phone wraps them. Links to pages: a nav with aria-current, not tabs. */}
@@ -112,7 +112,7 @@ export function AdminSystemPage() {
             element={
               <Group
                 title={t('모델')}
-                description={t('어떤 모델이 어떤 일을 맡을지 정합니다. 서버 설정 파일(.env)의 값은 처음 설치할 때 한 번만 쓰이고, 여기서 저장한 값이 우선합니다.')}
+                description={t('어떤 모델이 어떤 일을 맡을지 정합니다.')}
               >
                 <ModelRolesSection settings={settings} onSaved={reload} failed={!!status.error} />
               </Group>
@@ -124,7 +124,7 @@ export function AdminSystemPage() {
               <div className="space-y-5">
                 <Group
                   title={t('모델 자동 라우팅')}
-                  description={t('질문마다 작업 종류에 맞는 모델과 추론 강도를 골라 비용과 품질을 함께 맞춥니다.')}
+                  description={t('질문마다 작업에 맞는 모델과 추론 강도를 고릅니다.')}
                 >
                   <SuperAgentSection />
                 </Group>
@@ -185,7 +185,7 @@ export function AdminSystemPage() {
             element={
               <Group
                 title={t('커넥터 카탈로그')}
-                description={t('사용자가 사용자 지정 › 커넥터에서 설치할 수 있는 MCP 서버입니다. 명령으로 실행하는 서버(stdio)는 여기서만 추가할 수 있습니다.')}
+                description={t('사용자가 설치할 수 있는 MCP 서버입니다. stdio 서버는 여기서만 추가합니다.')}
               >
                 <ConnectorCatalogSection />
               </Group>

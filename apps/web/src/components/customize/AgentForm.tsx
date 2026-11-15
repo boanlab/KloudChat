@@ -137,7 +137,7 @@ export function AgentSharing({ draft, onChange }: { draft: Agent; onChange: (nex
         })}
       </div>
       <p className="text-sm text-faint">
-        {t('공개하면 이 인스턴스에 로그인한 누구나 스토어에서 복사해 갈 수 있습니다. 원본은 계속 내 것입니다.')}
+        {t('공개하면 로그인한 누구나 스토어에서 복사해 갈 수 있습니다.')}
       </p>
       {draft.visibility === 'org' && !draft.sealed && (
         <div className="space-y-2">
@@ -194,7 +194,7 @@ function OutputLanguageField({ value, onChange }: { value: string; onChange: (ne
   return (
     <Field
       label={t('출력 언어')}
-      hint={t('모든 답과 문서를 이 언어로 씁니다. 사용자가 그 턴에 다른 언어를 직접 요청하면 그 요청을 따릅니다.')}
+      hint={t('다른 언어를 요청한 턴이 아니면 답과 문서를 이 언어로 씁니다.')}
     >
       <div className="space-y-1.5">
         <Select
@@ -609,7 +609,7 @@ export function AgentForm({
 
       <Field
         label={t('지시')}
-        hint={t('이 에이전트가 늘 따를 역할과 규칙입니다. [채팅에서] [보고서에서] 줄 아래에 쓴 것은 그 화면에서만 씁니다.')}
+        hint={t('늘 따를 역할과 규칙입니다. [채팅에서]·[보고서에서] 줄 아래는 그 화면에서만 씁니다.')}
       >
         <Textarea
           rows={7}
@@ -677,7 +677,7 @@ export function AgentForm({
             <span>
               {t('이 에이전트에서 따로 정하기')}
               <span className="block text-sm text-muted">
-                {t('끄면 문서 형식이 정한 계산·검사·구조를 그대로 씁니다. 켜면 그 값에서 시작해 바꿉니다.')}
+                {t('켜면 문서 형식의 계산·검사·구조를 이 에이전트에서 바꿉니다.')}
               </span>
             </span>
           </label>
@@ -693,7 +693,7 @@ export function AgentForm({
 
       <Group
         title={t('빠진 정보 질문')}
-        hint={t('쓰기 전에 자료에 없으면 물어볼 것. 「빠진 정보 먼저 묻기」가 켜져 있을 때 한 번에 네 개까지 묻습니다.')}
+        hint={t('자료에 없으면 쓰기 전에 물어볼 것입니다. 한 번에 네 개까지 묻습니다.')}
         testId="agent-gap-group"
         open={(draft.gapQuestions?.length ?? 0) > 0 || undefined}
       >
@@ -718,11 +718,11 @@ export function AgentForm({
 
         <Group
           title={t('형식·디자인')}
-          hint={t('양식 파일이 있으면 그 양식에, 없으면 디자인 지침에 맞춰 씁니다')}
+          hint={t('양식 파일이 없으면 디자인 지침에 맞춥니다')}
           testId="agent-output-group"
         >
           {offered.includes('report') && process.mode !== 'base' && (
-            <Field label={t('문서 형식')} hint={t('보고서의 머리 항목·절 규칙과 물어볼 빈칸을 이 형식으로 고정합니다.')}>
+            <Field label={t('문서 형식')} hint={t('보고서의 머리 항목·절 규칙·빈칸을 고정합니다.')}>
               <Select value={draft.docFormat ?? ''} onChange={(e) => edit({ ...draft, docFormat: e.target.value || null })}>
                 <option value="">{t('요청에 따라')}</option>
                 {formats.map((f) => (
@@ -733,7 +733,7 @@ export function AgentForm({
               </Select>
             </Field>
           )}
-          <Field label={t('기본 양식 파일')} hint={t('프로젝트의 양식보다 먼저 씁니다. 대화에 첨부한 양식이 가장 먼저입니다.')}>
+          <Field label={t('기본 양식 파일')} hint={t('프로젝트 양식보다 앞서고, 대화에 첨부한 양식보다는 뒤입니다.')}>
             <FormFilesField
               value={draft.formFiles ?? {}}
               onSet={(kind, row) => edit({ ...draft, formFiles: { ...(draft.formFiles ?? {}), [kind]: row ? row.id : null } })}
@@ -749,7 +749,7 @@ export function AgentForm({
         </Group>
 
         <Group title={t('대화 시작')} hint={t('사용법, 시작 문장, 담당 부서·연락처')}>
-          <Field label={t('사용법')} hint={t('대화를 열면 첫 화면에 보입니다. 무엇을 가져와야 하는지, 한 턴에 무슨 일이 일어나는지.')}>
+          <Field label={t('사용법')} hint={t('대화 첫 화면에 보이는 안내입니다.')}>
             <Textarea
               rows={3}
               value={draft.guide}
@@ -757,7 +757,7 @@ export function AgentForm({
               placeholder={t('예: 논문 PDF 를 첨부하고 어느 학회 기준인지 알려 주세요. 리뷰어 관점에서 검토합니다.')}
             />
           </Field>
-          <Field label={t('시작 문장')} hint={t('한 줄에 하나, 여섯 개까지. 첫 화면에 버튼으로 보이고 누르면 그대로 보냅니다.')}>
+          <Field label={t('시작 문장')} hint={t('한 줄에 하나, 여섯 개까지. 누르면 그대로 보냅니다.')}>
             <Textarea
               rows={4}
               value={draft.starters.join('\n')}
@@ -767,7 +767,7 @@ export function AgentForm({
           </Field>
           <Field
             label={t('담당 부서·연락처')}
-            hint={t('자료로 답할 수 없는 질문에 이 내용을 적힌 그대로 안내합니다. 비워 두면 「담당 부서에 문의해 주세요」라고 답합니다.')}
+            hint={t('자료로 답할 수 없을 때 이대로 안내합니다.')}
           >
             <Input
               value={draft.contact ?? ''}
@@ -807,7 +807,7 @@ export function AgentForm({
 
         <Group
           title={t('스킬과 도구')}
-          hint={t('항상 적용할 스킬로 에이전트를 짜고, 필요할 때 쓸 스킬과 도구를 좁힙니다')}
+          hint={t('늘 쓸 스킬과 필요할 때 쓸 스킬·도구')}
           testId="agent-tools-group"
           open={skillsOpen}
         >
@@ -924,7 +924,7 @@ export function AgentForm({
               value={draft.outputLanguage ?? 'auto'}
               onChange={(outputLanguage) => edit({ ...draft, outputLanguage: outputLanguage || 'auto' })}
             />
-            <Field label={t('웹 검색 기본값')} hint={t('이 에이전트와 새 대화를 열 때의 웹 검색입니다. 입력창에서 턴마다 바꿀 수 있습니다.')}>
+            <Field label={t('웹 검색 기본값')} hint={t('입력창에서 턴마다 바꿀 수 있습니다.')}>
               <Select
                 data-testid="agent-web-search-default"
                 value={draft.webSearchDefault ?? 'auto'}
@@ -977,7 +977,7 @@ export function AgentForm({
             <span>
               <span className="block">{t('메모리 사용')}</span>
               <span className="block text-sm text-faint">
-                {t('끄면 이 에이전트의 대화에는 내 메모리를 넣지 않고, 이 대화에서 새 메모리도 만들지 않습니다.')}
+                {t('끄면 내 메모리를 읽지도, 새로 만들지도 않습니다.')}
               </span>
             </span>
           </label>

@@ -27,7 +27,7 @@ export function SkillApprovals() {
     <section className="space-y-2 pt-8" aria-label={t('스킬 검토')} data-testid="skill-approvals">
       <h2 className="text-lg font-semibold">{t('스킬 검토')}</h2>
       <p className="text-sm text-muted">
-        {t('직접 올린 스크립트가 있는 스킬은 승인한 뒤에야 다른 사람이 복사해 씁니다. 스크립트는 코드 실행 샌드박스에서만 돕니다.')}
+        {t('직접 올린 스크립트가 있는 스킬은 승인해야 다른 사람이 씁니다.')}
       </p>
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       {rows !== null && rows.length === 0 ? (

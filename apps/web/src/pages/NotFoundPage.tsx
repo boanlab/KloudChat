@@ -29,7 +29,7 @@ export function NotFoundPage() {
           <div className="space-y-1">
             <h1 className="text-xl font-semibold">{t('이 주소에는 화면이 없습니다.')}</h1>
             <p className="max-w-sm text-base text-muted">
-              {t('주소가 바뀌었거나 잘못 입력된 링크입니다. 찾던 대화나 파일은 검색으로 찾을 수 있습니다.')}
+              {t('주소가 바뀌었거나 잘못된 링크입니다.')}
             </p>
             <p className="font-mono text-xs break-all text-faint">{pathname}</p>
           </div>

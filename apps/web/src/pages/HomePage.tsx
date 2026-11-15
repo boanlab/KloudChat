@@ -64,8 +64,8 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
             headingLevel="h1"
             description={
               canSwitch
-                ? t('이 워크스페이스에서 사용하지 않도록 설정되어 있습니다. 시스템 · 기능에서 켤 수 있습니다.')
-                : t('관리자가 이 워크스페이스에서 사용하지 않도록 설정했습니다. 필요하면 관리자에게 요청하세요.')
+                ? t('시스템 › 기능에서 켤 수 있습니다.')
+                : t('필요하면 관리자에게 켜 달라고 요청하세요.')
             }
             action={
               <div className="flex gap-2">

@@ -229,7 +229,7 @@ test('50 compact rows a page; page and words live in the address', { tag: '@phon
   const state = await historyFixture(page, testInfo)
   await page.goto('/history')
   await expect(page.getByRole('heading', { level: 1, name: '대화 기록' })).toBeVisible({ timeout: 15_000 })
-  await expect(page.locator('[data-history-total]')).toContainText('대화 120개가 있습니다')
+  await expect(page.locator('[data-history-total]')).toContainText('대화 120개')
   await expect(historyRows(page)).toHaveCount(50)
   await expect(page.locator('[data-history-range]')).toHaveText('120개 중 1–50')
   await expect(pager(page).getByRole('button', { name: '1쪽' })).toHaveAttribute('aria-current', 'page')

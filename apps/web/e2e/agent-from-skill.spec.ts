@@ -83,7 +83,7 @@ test('each skill is applied always or when needed, and an empty chosen list says
   const list = page.getByTestId('agent-skill-list')
   await list.getByRole('button', { name: '직접 고르기' }).click()
   await expect(list.getByTestId('skill-mode-hint')).toHaveText(
-    '「직접 고르기」에서 아무 스킬도 두지 않으면 이 에이전트는 스킬을 쓰지 않습니다. 입력창에서 골라도 쓰이지 않습니다.',
+    '스킬을 하나도 두지 않으면 입력창에서 골라도 쓰지 않습니다.',
   )
 
   for (const name of ['데이터 분석', '주간 현황 보고']) {

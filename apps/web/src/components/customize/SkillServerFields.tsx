@@ -132,7 +132,7 @@ export function SkillServerFields({
     <div className="space-y-4" data-testid="skill-server">
       <Block
         label={t('답 점검 스크립트')}
-        hint={t('이 스킬로 쓴 챗 답을 서버가 기본 제공 스크립트로 점검하고, 코드로 고칠 수 있는 것은 고칩니다.')}
+        hint={t('이 스킬로 쓴 챗 답을 서버가 점검하고 고칩니다.')}
       >
         <RefList refs={catalogue.postChecks} value={value.postCheck} onChange={(postCheck) => set({ postCheck })} testId="skill-post-check" />
       </Block>
@@ -209,12 +209,12 @@ export function SkillServerFields({
       </div>
       <Block
         label={t('스킬이 실행할 스크립트')}
-        hint={t('지침에서 run_skill_script 로 부르는 스크립트입니다. 직접 올린 스크립트는 코드 실행 샌드박스에서만 돕니다.')}
+        hint={t('지침에서 run_skill_script로 부르는 스크립트입니다.')}
       >
         <RefList refs={[...ownRefs, ...catalogue.scripts]} value={value.uses} onChange={(uses) => set({ uses })} testId="skill-uses" />
       </Block>
       {scripts.length > 0 && (
-        <Block label={t('직접 올린 스크립트')} hint={t('서버는 이 코드를 불러오지 않습니다. 샌드박스(30초·1GB·서버 파일 없음)에서만 실행합니다.')}>
+        <Block label={t('직접 올린 스크립트')} hint={t('샌드박스(30초·1GB)에서만 실행합니다.')}>
           <ul className="space-y-1.5">
             {scripts.map((s) => (
               <ScriptRow key={s.name} script={s} />
@@ -289,7 +289,7 @@ function DocumentFields({
           </Select>
         </Field>
       </div>
-      <Block label={t('빠진 정보 질문')} hint={t('「빠진 정보 묻기」 검사가 붙어 있을 때, 자료가 답하지 않으면 쓰기 전에 묻습니다.')}>
+      <Block label={t('빠진 정보 질문')} hint={t('자료가 답하지 않으면 쓰기 전에 묻습니다.')}>
         <GapQuestionsEditor
           value={value.questions ?? []}
           onChange={(questions) => set({ questions })}

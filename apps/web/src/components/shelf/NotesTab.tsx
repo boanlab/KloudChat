@@ -172,7 +172,7 @@ export function NotesTab({ projectId }: { projectId: string }) {
         <div>
           <p className="text-base font-medium">{t(SHELF_NAMES.notes)}</p>
           <p className="text-sm text-muted">
-            {withNames(t('답변이나 고른 대목을 {notes}에 모읍니다. 메모를 {sources}로 만들면 다음 질문부터 파일처럼 찾아 인용합니다.'), t)}
+            {withNames(t('답변이나 고른 대목을 모아 둡니다. {sources}로 만들면 다음 질문부터 인용합니다.'), t)}
           </p>
         </div>
         <Button size="sm" onClick={() => setDraft({ id: null, title: '', body: '', expected: null })}>

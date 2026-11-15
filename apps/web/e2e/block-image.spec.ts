@@ -198,7 +198,7 @@ test('그림이 없어도 넣을 자리는 보이고, 왜 없는지 말한다', 
   await page.getByRole('button', { name: '그림 넣기' }).click()
   await page.getByRole('menuitem', { name: /표지/ }).click()
 
-  await expect(page.getByText(/그림이 없습니다|그림을 만들 수 없습니다/)).toBeVisible({
+  await expect(page.getByText(/그림이 없습니다|그림을 만들 수 없습니다|이미지 기능이 꺼져 있습니다/)).toBeVisible({
     timeout: 10_000,
   })
 })

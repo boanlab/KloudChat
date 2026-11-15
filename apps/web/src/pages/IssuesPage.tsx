@@ -92,7 +92,7 @@ export function IssuesPage() {
         <div className="flex flex-wrap items-end justify-between gap-3 pb-5">
           <div className="min-w-0">
             <h1 className="text-2xl font-semibold tracking-tight">{t('문의·신고')}</h1>
-            <p className="mt-1 text-base text-muted">{t('보낸 오류 신고와 문의, 처리 상태와 관리자 답변입니다.')}</p>
+            <p className="mt-1 text-base text-muted">{t('보낸 신고·문의와 관리자 답변입니다.')}</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button onClick={() => openReport({ kind: 'other', sessionId })}>

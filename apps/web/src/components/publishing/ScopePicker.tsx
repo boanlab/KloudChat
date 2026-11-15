@@ -60,7 +60,7 @@ export function ScopePicker({
           <Field
             label={t('하루 최대 크레딧')}
             hint={
-              t('이 챗봇이 하루에 쓸 수 있는 내 크레딧입니다. 크레딧이 들지 않는 모델이면 질문 하나를 1크레딧으로 셉니다. 다 쓰면 그날은 멈추고 다음 날 다시 열립니다.') +
+              t('이 챗봇이 하루에 쓸 내 크레딧입니다. 다 쓰면 다음 날까지 멈춥니다.') +
               (creditsRemaining !== undefined ? ` ${t('남은 크레딧: {n}').replace('{n}', creditsRemaining.toLocaleString())}` : '')
             }
           >

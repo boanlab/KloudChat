@@ -488,7 +488,7 @@ function AddBlockImage({ artifact }: { artifact: CodeArtifact }) {
           '{name}',
           (target !== null && blocks[target]?.title) || '',
         )}
-        description={t('여기서 바로 만들거나 이미 만든 그림을 고를 수 있습니다. 링크가 아니라 파일 안에 담기므로 인쇄와 공유에서도 함께 보입니다.')}
+        description={t('새로 만들거나 이미 만든 이미지를 고릅니다.')}
         footer={
           <>
             <Button onClick={() => setTarget(null)} disabled={busy}>

@@ -296,7 +296,7 @@ function StageRow({
       {confirming && (
         <div role="group" aria-label={t('이 단계부터 다시')} className="mt-1.5 ml-7 max-sm:ml-0 rounded-control border border-line bg-panel px-3 py-2 text-sm">
           <p className="text-fg">
-            {t('「{stage}」 단계부터 다시 만듭니다. 이 작업 뒤에 직접 고친 내용은 새 판에 들어가지 않고, 지금 판은 버전 기록에 남습니다.').replace('{stage}', t(stageLabel(stage)))}
+            {t('「{stage}」 단계부터 다시 만듭니다. 그 뒤에 직접 고친 내용은 빠지고, 지금 판은 버전 기록에 남습니다.').replace('{stage}', t(stageLabel(stage)))}
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             <Button size="sm" variant="primary" autoFocus onClick={() => void rerun()}>

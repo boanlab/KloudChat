@@ -112,7 +112,7 @@ export function StudioTab({ projectId }: { projectId: string }) {
       <div className="rounded-card border border-dashed border-line-strong px-4 py-3">
         <p className="text-base font-medium">{t(SHELF_NAMES.studio)}</p>
         <p className="text-sm text-muted">
-          {withNames(t('고른 자료만으로 정리 문서·퀴즈·플래시카드를 만듭니다. 문장마다 어느 자료에서 왔는지 번호로 남기고, 번호를 누르면 원문 대목이 열립니다.'), t)}
+          {withNames(t('고른 자료로 정리 문서·퀴즈·플래시카드를 만듭니다.'), t)}
         </p>
         {strict === true && (
           <p className="mt-1 flex items-center gap-1.5 text-xs text-muted">

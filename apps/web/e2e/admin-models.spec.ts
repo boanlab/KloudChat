@@ -192,7 +192,7 @@ test('a new account’s monthly credits are set with signup', async ({ page }, i
   await page.goto('/admin/system/signup')
   const credits = page.getByRole('spinbutton', { name: /^새 계정의 월 크레딧/ })
   await expect(credits).toHaveValue('500000', { timeout: 15_000 })
-  await expect(page.getByText(/약 5달러에 해당/)).toBeVisible()
+  await expect(page.getByText(/월 크레딧\(약 5달러\)/)).toBeVisible()
   await credits.fill('1000000')
   await page.getByRole('button', { name: '저장' }).click()
   await expect.poll(() => puts.at(-1)?.defaultMonthlyCredits).toBe('1000000')

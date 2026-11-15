@@ -35,7 +35,7 @@ export function FactCheckResults({
   if (check.claims.length === 0) {
     return (
       <p className="mt-3 rounded-card border border-line bg-panel p-3 text-sm text-muted">
-        {t('검색으로 확인할 수 있는 주장이 여기에는 없습니다. 의견과 정의는 판정하지 않습니다.')}
+        {t('검색으로 확인할 주장이 없습니다.')}
       </p>
     )
   }

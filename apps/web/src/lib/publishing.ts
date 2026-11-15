@@ -75,9 +75,9 @@ export const VISIBILITY_LABEL: Record<BotVisibility, string> = {
 }
 
 export const VISIBILITY_HINT: Record<BotVisibility, string> = {
-  internal: '이 기관 구성원이 로그인해서 씁니다. 구성원의 「공유된 에이전트」와 「+ › 에이전트」에 보입니다. 바로 열립니다.',
-  link: '주소를 아는 사람은 누구나 로그인 없이 씁니다. 어떤 목록에도 나오지 않습니다. 관리자가 승인하면 열립니다.',
-  external: '누구나 로그인 없이 씁니다. 공개 챗봇 목록에 나오고 검색에도 잡힐 수 있습니다. 관리자가 승인하면 열립니다.',
+  internal: '구성원이 「공유된 에이전트」에서 찾아 씁니다. 바로 열립니다.',
+  link: '주소를 아는 누구나 로그인 없이 씁니다. 목록에는 나오지 않고, 승인 뒤 열립니다.',
+  external: '누구나 로그인 없이 씁니다. 공개 목록과 검색에 나오고, 승인 뒤 열립니다.',
 }
 
 /** The owner's view of a request: what is waiting, or why it was refused. */
@@ -169,9 +169,9 @@ export const CHANNEL_LABEL: Record<BotChannel, string> = {
 }
 
 export const CHANNEL_HINT: Record<BotChannel, string> = {
-  embed: '기관 홈페이지 같은 내 사이트에 대화창을 넣습니다. 외부 공개일 때 쓸 수 있고, 넣을 사이트 주소도 관리자가 승인합니다.',
-  api: '내 서비스나 프로그램에서 OpenAI 호환 방식으로 이 챗봇을 부릅니다. 링크·외부 공개일 때 쓸 수 있습니다.',
-  mcp: 'Claude 같은 AI 도구에 이 챗봇을 도구로 연결합니다. 링크·외부 공개일 때 쓸 수 있습니다.',
+  embed: '내 사이트에 대화창을 넣습니다. 외부 공개일 때 씁니다.',
+  api: '내 프로그램에서 OpenAI 호환 방식으로 부릅니다. 링크·외부 공개일 때 씁니다.',
+  mcp: 'AI 도구에 이 챗봇을 도구로 연결합니다. 링크·외부 공개일 때 씁니다.',
 }
 
 export const CHANNEL_ERROR: Record<string, string> = {

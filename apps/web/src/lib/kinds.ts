@@ -24,14 +24,14 @@ export const kindMeta: Record<
     label: '보고서',
     icon: FileText,
     color: '#0e8a5f',
-    tagline: '웹 보고서·한글·Word로 씁니다. 형식을 고르고 주제를 적으세요. 양식 파일을 붙이면 그 양식에 씁니다',
+    tagline: '웹 보고서·한글·Word로 씁니다. 양식 파일을 붙이면 그 양식에 맞춥니다',
     panelLabel: '보고서 열기',
   },
   slides: {
     label: '슬라이드',
     icon: Presentation,
     color: '#b4780a',
-    tagline: '웹 슬라이드·PowerPoint로 만듭니다. 형식을 고르고 주제를 적으세요. 양식 파일을 붙이면 그 양식에 씁니다',
+    tagline: '웹 슬라이드·PowerPoint로 만듭니다. 양식 파일을 붙이면 그 양식에 맞춥니다',
     panelLabel: '덱 열기',
   },
   image: {

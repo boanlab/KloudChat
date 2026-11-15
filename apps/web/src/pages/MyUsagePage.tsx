@@ -176,7 +176,7 @@ export function MyUsagePage() {
             <Card className="mt-4 p-4">
               <p className="text-base font-medium">{t('API 키')}</p>
               <p className="mt-0.5 text-sm text-muted">
-                {t('코딩 에이전트처럼 외부 도구가 이 키로 쓴 몫입니다. 위 사용량과 따로 집계되지만, 월 한도는 계정 하나에 걸려 있어 키를 여러 개 만들어도 같은 한도를 나눠 씁니다.')}
+                {t('외부 도구가 API 키로 쓴 양입니다. 월 한도는 계정과 함께 씁니다.')}
               </p>
               <ul className="mt-2 space-y-1.5">
                 {(data?.apiKeys ?? []).map((k) => (

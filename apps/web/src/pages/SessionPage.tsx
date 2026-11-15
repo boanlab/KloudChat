@@ -327,7 +327,7 @@ function Intro({
         />
         {agent?.process?.mode === 'custom' && agent.process.chain.length > 0 && (
           <p className="mt-2 text-sm text-muted" data-testid="chain-start-note">
-            {t('보내면 파이프라인 {n}단계가 차례로 돕니다: {chain}. 단계마다 한 일은 에이전트의 실행 기록에 남습니다.')
+            {t('보내면 {n}단계가 차례로 돕니다: {chain}')
               .replace('{n}', String(agent.process.chain.length))
               .replace('{chain}', agent.process.chain.map((c) => t(c)).join(' → '))}
           </p>

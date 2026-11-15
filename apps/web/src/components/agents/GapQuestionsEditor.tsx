@@ -228,7 +228,7 @@ export function GapQuestionsEditor({
               )}
               {d.type === 'judge' && (
                 <p className="self-end text-sm text-faint sm:col-span-1">
-                  {t('내부 모델이 자료에서 답을 그대로 인용해야 답한 것으로 봅니다. 내부 모델이 없으면 묻지 않습니다.')}
+                  {t('내부 모델이 자료에서 답을 인용하면 답한 것으로 봅니다.')}
                 </p>
               )}
             </div>

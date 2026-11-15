@@ -203,7 +203,7 @@ export function SkillForm({
           rows={current ? 14 : 16}
         />
         <p id={`${stepsId}-hint`} className="text-sm text-faint">
-          {t('모델이 이 순서대로 따릅니다. 한 줄에 한 단계씩 번호를 붙여 적습니다.')}
+          {t('한 줄에 한 단계씩 번호를 붙여 적습니다.')}
         </p>
       </div>
 

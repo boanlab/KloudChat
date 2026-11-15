@@ -173,15 +173,15 @@ export function PicturePicker({
           <p className="mt-1.5 flex items-center gap-1 text-xs text-faint">
             {suggested && <Sparkles size={11} className="shrink-0 text-accent" />}
             {suggested && chosen?.figure
-              ? t('「{name}」로 그립니다. 고쳐 쓰거나 지우고 직접 적어도 됩니다 — 만들기를 눌러야 크레딧이 듭니다.').replace(
+              ? t('「{name}」로 그립니다. 고쳐 써도 되며, 만들기를 눌러야 크레딧이 듭니다.').replace(
                   '{name}',
                   t(FIGURE_NAMES[chosen.figure] ?? '도식'),
                 )
               : suggested
                 ? t(
-                    '이 장을 읽고 넣을 만한 그림을 적어 두었습니다. 고쳐 쓰거나 지우고 직접 적어도 됩니다 — 만들기를 눌러야 크레딧이 듭니다.',
+                    '이 장에 맞는 이미지를 제안했습니다. 만들기를 눌러야 크레딧이 듭니다.',
                   )
-                : t('문서 안에 들어갈 삽화로 만듭니다 — 글자는 넣지 않습니다. 크레딧이 듭니다.')}
+                : t('글자 없는 삽화로 만듭니다. 크레딧이 듭니다.')}
           </p>
           {error && <p className="mt-2 text-base text-danger">{error}</p>}
         </div>
@@ -190,7 +190,7 @@ export function PicturePicker({
           <p className="text-base text-muted">
             {imageOn
               ? t('이 문서는 대화에 매여 있지 않아 여기서 그림을 만들 수 없습니다.')
-              : t('이미지 기능이 꺼져 있어 그림을 만들 수 없습니다. 관리자가 설정에서 켤 수 있습니다.')}
+              : t('이미지 기능이 꺼져 있습니다. 관리자가 설정에서 켤 수 있습니다.')}
           </p>
         </div>
       )}

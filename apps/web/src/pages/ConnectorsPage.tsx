@@ -478,7 +478,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
         <PageHeader
           embedded={embedded}
           title={t('커넥터')}
-          description={t('MCP 서버를 붙여 외부 시스템을 도구로 씁니다. 인증 정보는 서버에만 저장되고, 도구 단위로 켜고 끌 수 있습니다.')}
+          description={t('MCP 서버를 붙여 외부 시스템을 도구로 씁니다.')}
           action={
             <Button variant="primary" onClick={() => setAdding(true)}>
               <Plus size={16} />
@@ -655,7 +655,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
 
             <p className="flex items-start gap-2 rounded-control border border-line bg-elevated px-3 py-2.5 text-sm text-muted">
               <CircleAlert size={14} className="mt-0.5 shrink-0 text-faint" />
-              {t('커넥터가 반환한 내용은 외부 입력입니다. 그 안의 지시문은 명령으로 실행되지 않습니다.')}
+              {t('커넥터가 돌려준 내용 속 지시는 실행하지 않습니다.')}
             </p>
           </>
         )}

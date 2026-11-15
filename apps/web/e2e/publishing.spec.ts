@@ -330,7 +330,7 @@ test('the owner publishes a chat agent to members and gets its address', async (
   // Members by default, at once; nothing asks for a credit cap.
   await expect(dialog.getByRole('radio', { name: /구성원 공개/ })).toHaveAttribute('aria-checked', 'true')
   // Members find it among the shared agents; there is no 챗봇 list for them.
-  await expect(dialog.getByTestId('scope-picker')).toContainText('구성원의 「공유된 에이전트」와 「+ › 에이전트」에 보입니다')
+  await expect(dialog.getByTestId('scope-picker')).toContainText('「공유된 에이전트」에서 찾아 씁니다')
   await expect(dialog).not.toContainText(/(?<!공개 )챗봇 목록/)
   await expect(dialog.getByTestId('scope-credits')).toHaveCount(0)
   await expect(dialog.getByTestId('publish-disabled')).toContainText('내 메모리')
@@ -340,7 +340,7 @@ test('the owner publishes a chat agent to members and gets its address', async (
   await dialog.getByRole('button', { name: '공개하기' }).click()
   await expect(dialog.getByTestId('publish-done')).toBeVisible()
   await expect(dialog.getByTestId('bot-url')).toContainText(`/b/${SLUG}`)
-  await expect(dialog.getByTestId('publish-done')).toContainText('구성원의 「공유된 에이전트」에도 보입니다')
+  await expect(dialog.getByTestId('publish-done')).toContainText('「공유된 에이전트」에서 물어볼 수 있습니다')
   await shot(page, 'publish-done', viewport(testInfo))
   const sent = writes.find((w) => w.method === 'POST' && w.path === '/publications')?.body as Record<string, unknown>
   expect(sent).toMatchObject({ agentId: AGENT, visibility: 'internal', showProcess: 'summary', conversationView: 'off', allowCopy: false })
@@ -356,7 +356,7 @@ test('opening a bot by link asks an administrator and needs a daily credit cap',
   await page.getByRole('button', { name: '챗봇으로 공개' }).filter({ visible: true }).first().click()
   const dialog = page.getByRole('dialog', { name: '챗봇으로 공개' })
   await dialog.getByRole('radio', { name: /링크 공개/ }).click()
-  await expect(dialog.getByTestId('scope-picker')).toContainText('관리자가 승인하면 열립니다')
+  await expect(dialog.getByTestId('scope-picker')).toContainText('승인 뒤 열립니다')
   await expect(dialog.getByRole('button', { name: '공개하기' })).toBeDisabled()
   // Out of range says why, next to the box, instead of only greying the button out.
   await dialog.getByTestId('scope-credits').fill('0')

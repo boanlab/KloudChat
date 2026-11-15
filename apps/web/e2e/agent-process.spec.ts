@@ -211,7 +211,7 @@ test('바로 답하기 says it answers in the chat, and a file asked for in the 
   await form.getByRole('textbox', { name: '이름' }).fill('과장 보고 1쪽')
   await form.getByRole('textbox', { name: '지시' }).fill('과장님께 올릴 1쪽 요약을 쓴다. 다 쓰면 워드(DOCX) 파일로 준다.')
   const suggestion = page.getByTestId('file-suggestion')
-  await expect(suggestion).toContainText('바로 답하기는 대화로만 답하고 파일을 만들지 않습니다')
+  await expect(suggestion).toContainText('바로 답하기는 파일을 만들지 않습니다')
   await shot(page, 'n3-file-suggestion', page.getByTestId('agent-process'))
   await suggestion.getByRole('button', { name: /개조식 보고.*과정으로 바꾸기/ }).click()
   await expect(form.getByRole('radio', { name: /기본 과정에서 시작/ })).toBeChecked()

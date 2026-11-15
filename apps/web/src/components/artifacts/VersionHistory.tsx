@@ -250,7 +250,7 @@ export function VersionHistory({
         onClose={() => setPendingRestore(null)}
         title={t('v{n}으로 되돌릴까요?').replace('{n}', String(pendingRestore ?? ''))}
         description={hasUnsavedChanges
-          ? t('저장하지 않은 변경 내용은 사라집니다. 현재 저장본은 버전 기록에 남아 다시 복원할 수 있습니다.')
+          ? t('저장하지 않은 변경은 사라지고, 지금 저장본은 버전 기록에 남습니다.')
           : t('현재 저장본은 버전 기록에 남아 다시 복원할 수 있습니다.')}
         confirmLabel={t('이 버전으로 복원')}
         onConfirm={() => {

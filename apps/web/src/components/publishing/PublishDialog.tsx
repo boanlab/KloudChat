@@ -130,7 +130,7 @@ export function PublishDialog({
             <CheckCircle2 size={16} aria-hidden />
             {t('챗봇을 공개했습니다.')}
           </p>
-          <p className="text-base text-muted">{t('이 기관 구성원이 로그인해서 아래 주소로 물어볼 수 있습니다. 구성원의 「공유된 에이전트」에도 보입니다.')}</p>
+          <p className="text-base text-muted">{t('구성원이 아래 주소나 「공유된 에이전트」에서 물어볼 수 있습니다.')}</p>
           {done.reviewState === 'pending' && done.requestedVisibility && (
             <p className="flex items-start gap-2 text-base text-warn" data-testid="publish-requested">
               <Clock size={15} className="mt-0.5 shrink-0" aria-hidden />
@@ -199,10 +199,10 @@ export function PublishDialog({
               </ul>
             </div>
             <p className="text-sm text-muted">
-              {t('공개한 때의 지시·자료로 고정됩니다. 에이전트를 고친 뒤에는 「새 판으로 공개」해야 챗봇에 반영됩니다.')}
+              {t('공개한 때의 지시·자료로 고정됩니다. 고친 뒤에는 「새 판으로 공개」하세요.')}
             </p>
             {check.knowledge.length === 0 ? (
-              <p className="text-sm text-warn">{t('올린 자료가 없습니다. 자료가 없으면 챗봇이 찾아 답할 근거가 없습니다.')}</p>
+              <p className="text-sm text-warn">{t('올린 자료가 없어 챗봇이 근거로 쓸 것이 없습니다.')}</p>
             ) : (
               <ul className="space-y-1">
                 {check.knowledge.map((file) => (

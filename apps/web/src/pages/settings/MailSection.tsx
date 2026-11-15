@@ -207,7 +207,7 @@ export function MailSection({
 
         <Field
           label={t('서비스 주소')}
-          hint={t('재설정·가입 확인 메일에 담길 링크의 주소입니다. 사용자가 접속하는 주소를 넣으세요. 비어 있으면 메일은 나가도 링크를 만들 수 없습니다.')}
+          hint={t('메일 속 링크에 쓸, 사용자가 접속하는 주소입니다.')}
         >
           <div className="flex items-center gap-2">
             <Input

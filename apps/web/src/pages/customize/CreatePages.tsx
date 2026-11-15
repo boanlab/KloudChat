@@ -248,7 +248,7 @@ export function SkillCreatePage() {
         <div className="mx-auto max-w-3xl">
         <BackLink tab="skills" label="스킬" />
         <h1 className="mb-1 text-2xl font-semibold tracking-tight">{t('새 스킬')}</h1>
-        <p className="mb-6 text-base text-muted">{t('모델이 그대로 따를 절차를 적습니다. 입력창에서 이번 요청에 켜서 씁니다.')}</p>
+        <p className="mb-6 text-base text-muted">{t('모델이 따를 절차를 적습니다.')}</p>
         <SkillForm
           onSaved={(saved) => navigate(`/customize/skills/${saved.id}`, { replace: true })}
           onCancel={() => navigate('/customize?tab=skills')}

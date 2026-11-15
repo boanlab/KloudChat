@@ -200,7 +200,6 @@ export function AdminUsagePage() {
       <PageBody>
         <PageHeader
           title={t('사용량')}
-          description={t('실제 사용 기록을 집계한 값입니다. 아직 사용한 사람이 없으면 비어 있습니다.')}
           action={
             <div className="flex flex-wrap items-center gap-2">
               <div className="flex rounded-control border border-line p-0.5">

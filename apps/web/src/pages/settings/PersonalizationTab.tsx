@@ -42,13 +42,13 @@ export function PersonalizationTab() {
       <div>
         <h2 className="text-base font-semibold">{t('개인 맞춤 설정')}</h2>
         <p className="text-sm text-muted">
-          {t('여기 적은 것은 모든 대화의 맨 앞에 들어갑니다. 에이전트나 프로젝트의 지침이 있으면 그쪽이 우선합니다.')}
+          {t('모든 대화에 들어갑니다. 에이전트·프로젝트 지침이 우선합니다.')}
         </p>
       </div>
 
       <Field
         label={t('나에 대해 알아 두면 좋은 것')}
-        hint={t('하는 일, 전공, 관심사, 자주 쓰는 도구 — 답을 맞추는 데 참고합니다. 대화에서만 쓰이고 보고서·슬라이드에는 들어가지 않습니다.')}
+        hint={t('하는 일, 전공, 관심사, 자주 쓰는 도구. 대화에서만 씁니다.')}
       >
         <Textarea
           value={aboutMe}
