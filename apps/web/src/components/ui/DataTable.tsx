@@ -16,6 +16,7 @@ export function SortHeader({
   align = 'left',
   className,
   buttonClassName,
+  cell = 'th',
 }: {
   label: ReactNode
   columnKey: string
@@ -25,15 +26,18 @@ export function SortHeader({
   align?: 'left' | 'right'
   className?: string
   buttonClassName?: string
+  /** A `<th>`, or a `role="columnheader"` cell of a list laid out as a grid. */
+  cell?: 'th' | 'div'
 }) {
   const t = useT()
   const aria = ariaSort(sort, columnKey)
   const active = aria !== 'none'
   const Arrow = !active ? ArrowUpDown : aria === 'ascending' ? ArrowUp : ArrowDown
   const name = nodeText(label)
+  const Cell = cell
   return (
-    <th
-      scope="col"
+    <Cell
+      {...(cell === 'th' ? { scope: 'col' } : { role: 'columnheader' })}
       aria-sort={aria}
       className={cn('font-medium whitespace-nowrap', align === 'right' ? 'text-right' : 'text-left', className)}
     >
@@ -61,7 +65,7 @@ export function SortHeader({
           className={active ? undefined : 'opacity-40 group-hover/sort:opacity-80'}
         />
       </button>
-    </th>
+    </Cell>
   )
 }
 
