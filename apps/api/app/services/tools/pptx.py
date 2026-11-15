@@ -4,6 +4,7 @@ new deck (`office.py`), against the saved file (services/pptx_edit.py)."""
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from app.core.db import SessionLocal
@@ -57,6 +58,29 @@ def _slides_of(args: dict[str, Any]) -> list[dict[str, Any]]:
     return [s for s in raw if isinstance(s, dict)] if isinstance(raw, list) else []
 
 
+def _number(value: Any) -> float | None:
+    """A chart value as a number: 1820, 「1,820」, 「2,080백만」 → 2080.0; 「집계 중」, null →
+    None (a gap). Models send numbers as strings as often as not."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    found = re.fullmatch(r"\s*(-?[\d,]+(?:\.\d+)?)\s*[^\d\s]{0,6}\s*", str(value or ""))
+    if not found:
+        return None
+    try:
+        return float(found.group(1).replace(",", ""))
+    except ValueError:
+        return None
+
+
+def _chart_values(chart: dict) -> dict:
+    """`chart` with every value a number or None, so what is drawn is what was checked."""
+    series = [{**item, "values": [_number(v) for v in item.get("values") or []]}
+              for item in chart.get("series") or [] if isinstance(item, dict)]
+    return {**chart, "series": series}
+
+
 def _chart_problem(index: int, chart: Any) -> str:
     """Why `chart` cannot be drawn, or ``."""
     if not isinstance(chart, dict):
@@ -73,7 +97,7 @@ def _chart_problem(index: int, chart: Any) -> str:
         if len(item["values"]) > len(categories):
             return (f"slides[{index}].chart의 「{item.get('name')}」 값이 categories보다 "
                     "많습니다.")
-        numbers = [v for v in item["values"] if isinstance(v, int | float)]
+        numbers = [v for v in item["values"] if _number(v) is not None]
         if not numbers:
             return (f"slides[{index}].chart의 「{item.get('name')}」에 수가 없습니다. 자료에 "
                     "있는 값만 넣고, 아직 없는 값(집계 중)은 null로 두세요.")
@@ -158,7 +182,10 @@ async def _prepare(args: dict[str, Any], ctx: Any) -> dict[str, Any]:
     """The arguments checked against the turn and completed: the slide count the person
     asked, and each slide's `image.file` (a picture the person attached, or a figure
     `pdf_figures` cut from a project paper) read into the slide."""
-    args = {**args, "slides": _slides_of(args)}
+    slides = _slides_of(args)
+    args = {**args, "slides": [
+        {**slide, "chart": _chart_values(slide["chart"])}
+        if isinstance(slide.get("chart"), dict) else slide for slide in slides]}
     asked = getattr(ctx, "request", "") or ""
     # the person's own words come first; material the turn appended after them can hide the
     # count from the instruction scope, so the opening paragraph is read on its own as well

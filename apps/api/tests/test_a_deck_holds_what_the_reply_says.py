@@ -165,3 +165,14 @@ def test_a_wide_figure_takes_the_slide_and_its_lines_go_to_the_notes():
     assert "처리량 2~4배" in slide.notes_slide.notes_text_frame.text
     picture = next(s for s in slide.shapes if s.shape_type == 13)
     assert picture.width > Presentation(io.BytesIO(data)).slide_width * 0.6
+
+
+async def test_chart_values_sent_as_strings_are_numbers_and_words_are_gaps():
+    ctx = SimpleNamespace(request="분기 실적 PowerPoint 2장 만들어 줘")
+    slide = {"title": "매출", "chart": {"categories": ["1분기", "2분기", "3분기"], "series": [
+        {"name": "컨설팅", "values": ["610", "580", "집계 중"]},
+        {"name": "StarVault", "values": ["1,820", "1,950백만", 2080]}]}}
+    args = await tool._prepare({"title": "t", "slides": [slide]}, ctx)
+    values = [item["values"] for item in args["slides"][0]["chart"]["series"]]
+    assert values == [[610.0, 580.0, None], [1820.0, 1950.0, 2080.0]]
+    assert pptx_edit.contents(tool._build(args)[1])["chart"] == 1

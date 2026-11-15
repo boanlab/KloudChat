@@ -349,6 +349,8 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool, Tool]:
             title, data = (kit.build(args, look) if kit.build
                            else _paragraph_write(kit, args, look))
         except ValueError as exc:
+            # what the writer is told to change, kept for reading a turn that kept failing
+            log.info("%s_write refused: %s", p, str(exc)[:300])
             return ToolResult(content=str(exc), failed=True)
         except Exception as exc:  # noqa: BLE001 — a writer failure goes back to the model
             log.warning("%s_write failed: %s", p, exc, exc_info=True)
