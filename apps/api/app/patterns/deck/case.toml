@@ -1,16 +1,50 @@
-# 케이스 발표: status and alternatives to a recommendation in about fifteen minutes.
+# 케이스 발표: chosen from the request (`services/patterns.py`); never shown as a picker.
+order = 120
 name = "케이스 발표"
-words = "케이스|사례\\s{0,2}(?:발표|분석)|대안\\s{0,2}(?:검토|비교)|권고|의사\\s{0,2}결정|경영진\\s{0,2}보고"
-rules = """
-- The recommendation comes right after the first slide; the rest are its grounds.
+name_en = "Options to recommendation"
+words = '''케이스\s{0,2}(?:발표|스터디)|사례\s{0,2}(?:발표|분석)|대안\s{0,2}(?:검토|비교)|권고\s{0,2}안?|의사\s{0,2}결정\s{0,2}(?:자료|발표)|경영진\s{0,2}보고|(?<![A-Za-z])case study(?![A-Za-z])|(?<![A-Za-z])recommendation(?![A-Za-z])|(?<![A-Za-z])options? (?:analysis|review)(?![A-Za-z])|(?<![A-Za-z])decision (?:deck|memo)(?![A-Za-z])'''
+rules = """- The recommendation comes right after the first slide; the rest are its grounds.
 - A status slide carries one number and one line on what it means.
 - Alternatives go side by side on one slide, judged by the same criteria.
 - One thought per bullet, at most five bullets; do not write what the presenter will say.
 - The last slide asks the listeners what to decide.
 """
-checks = [
-  "권고가 앞쪽 장에 나오는가.",
-  "대안을 같은 기준으로 나란히 견주는 장이 있는가.",
-  "글머리가 다섯 줄을 넘지 않는가.",
-  "마지막 장이 무엇을 판단해 달라는 요청인가.",
-]
+checks = ["권고가 앞쪽 장에 나오는가.", "대안을 같은 기준으로 나란히 견주는 장이 있는가.", "글머리가 다섯 줄을 넘지 않는가.", "마지막 장이 무엇을 판단해 달라는 요청인가."]
+
+[[flow]]
+part = "권고"
+slides = "1"
+layouts = ["statement"]
+
+[[flow]]
+part = "현황"
+slides = "1-2"
+layouts = ["big-number", "metrics"]
+
+[[flow]]
+part = "대안"
+slides = "1-2"
+layouts = ["compare-2", "compare-3", "matrix"]
+
+[[flow]]
+part = "판단 기준"
+slides = "1"
+layouts = ["table", "checklist"]
+
+[[flow]]
+part = "위험"
+slides = "1"
+layouts = ["pros-cons", "bullets"]
+
+[[flow]]
+part = "요청"
+slides = "1"
+layouts = ["closing"]
+
+[[questions]]
+id = "criteria"
+label = "판단 기준"
+question = "대안을 무엇으로 비교할까요? (비용·기간·위험 등)"
+why = "대안 비교 장의 기준이 됩니다."
+placeholder = "[판단 기준]"
+detector = { type = "keyword", words = ["기준", "비용", "기간", "위험", "criteria", "cost"] }

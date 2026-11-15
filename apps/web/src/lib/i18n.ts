@@ -6,6 +6,8 @@ export type Lang = 'ko' | 'en'
 const EN: Record<string, string> = {
   ...EN_UI,
   // 양식 (form files)
+  '구조: {name} 패턴': 'Structure: {name}',
+  '함께 맞은 패턴: {list}': 'also matched: {list}',
   '디자인 지침 저장': 'Save the design brief',
   '이 대화의 한글 파일은 이 양식을 채워 씁니다': 'This conversation\'s Hangul files are written by filling this form',
   '표·칸·쪽 모양: 양식 그대로': 'Tables, cells and page: as in the form',

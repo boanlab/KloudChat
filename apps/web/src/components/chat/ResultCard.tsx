@@ -5,6 +5,7 @@ import { DownloadMenu, ReuseItems, type DownloadCheck } from '@/components/artif
 import { exportChecks } from '@/components/artifacts/artifactExport'
 import { reusable } from '@/lib/reuse'
 import { useT } from '@/lib/useT'
+import { currentLang } from '@/lib/i18n'
 import { FollowedFormLine } from '@/components/chat/FormChips'
 import { useStore } from '@/store/useStore'
 import { artifactIcon, artifactLabel, sizeLine } from '@/lib/resultMeta'
@@ -101,6 +102,13 @@ export function ResultCard({ artifact, version }: { artifact: Artifact; version?
       <div className="w-full max-w-xl">
         <FollowedFormLine form={followedForm} />
       </div>
+    )}
+    {artifact.kind === 'deck' && artifact.pattern && (
+      <p data-testid="structure-pattern" className="mt-1.5 max-w-xl text-xs text-faint">
+        {t('구조: {name} 패턴').replace('{name}', currentLang() === 'en' && artifact.pattern.nameEn ? artifact.pattern.nameEn : artifact.pattern.name)}
+        {(artifact.pattern.also ?? []).length > 0 &&
+          ` · ${t('함께 맞은 패턴: {list}').replace('{list}', (artifact.pattern.also ?? []).join(', '))}`}
+      </p>
     )}
     </>
   )

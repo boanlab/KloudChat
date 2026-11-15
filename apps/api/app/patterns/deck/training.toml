@@ -1,0 +1,55 @@
+# 교육·온보딩: chosen from the request (`services/patterns.py`); never shown as a picker.
+order = 100
+name = "교육·온보딩"
+name_en = "Training or onboarding"
+words = '''신입\s{0,2}(?:사원|교육|입사)|온보딩|(?:사내|직무|실무|안전|보안|직원)\s{0,2}교육|교육\s{0,2}(?:자료|과정)|연수|워크숍|오리엔테이션|튜토리얼|사용법\s{0,2}교육|(?<![A-Za-z])onboarding(?![A-Za-z])|(?<![A-Za-z])training(?![A-Za-z])|(?<![A-Za-z])workshop(?![A-Za-z])|(?<![A-Za-z])tutorial(?![A-Za-z])|(?<![A-Za-z])orientation(?![A-Za-z])|(?<![A-Za-z])how-?to session(?![A-Za-z])'''
+rules = """- Open with what the learner will be able to do after the session.
+- Each step the learner takes is one slide with the exact action (menu, command, form) as the material gives it.
+- Show the common mistakes and how to avoid them.
+- Put one or two check questions before the summary.
+- End with where to get help: a person, a channel or a document; a missing one is a bracket blank.
+"""
+checks = ["처음에 배울 것(학습 목표)이 있는가.", "따라 하기 장이 한 장에 한 단계인가.", "자주 하는 실수와 확인 문제가 있는가.", "도움받을 곳이 있는가."]
+
+[[flow]]
+part = "오늘 배울 것"
+slides = "1"
+layouts = ["objectives"]
+
+[[flow]]
+part = "왜 필요한가"
+slides = "1"
+layouts = ["bullets", "big-number"]
+
+[[flow]]
+part = "핵심 개념"
+slides = "1-3"
+layouts = ["definition", "cards-3"]
+
+[[flow]]
+part = "따라 하기"
+slides = "2-4"
+layouts = ["steps", "process", "numbered"]
+
+[[flow]]
+part = "자주 하는 실수"
+slides = "1"
+layouts = ["do-dont", "myth-fact"]
+
+[[flow]]
+part = "확인 문제"
+slides = "1"
+layouts = ["faq", "question"]
+
+[[flow]]
+part = "도움받을 곳·정리"
+slides = "1"
+layouts = ["takeaways", "checklist"]
+
+[[questions]]
+id = "learners"
+label = "대상"
+question = "누가 듣는 교육인가요? (부서·경력)"
+why = "용어 풀이와 예시를 그 사람들에 맞춥니다."
+placeholder = "[교육 대상]"
+detector = { type = "regex", pattern = '''(?:신입|대상|부서|팀|직원|사원|학생|입사|경력)''' }

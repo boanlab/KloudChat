@@ -1,0 +1,69 @@
+# 투자 IR: chosen from the request (`services/patterns.py`); never shown as a picker.
+order = 40
+name = "투자 IR"
+name_en = "Investor deck"
+words = '''투자\s{0,2}(?:유치|설명회|제안)|IR\s{0,2}(?:자료|덱|발표)|피치\s{0,2}덱|시리즈\s{0,2}[A-Da-d]|시드\s{0,2}투자|투자자\s{0,2}(?:대상|미팅|발표)|데모\s{0,2}데이|(?<![A-Za-z])pitch deck(?![A-Za-z])|(?<![A-Za-z])investor (?:deck|presentation|pitch)(?![A-Za-z])|(?<![A-Za-z])series [A-D](?![A-Za-z])|(?<![A-Za-z])seed round(?![A-Za-z])|(?<![A-Za-z])fundraising(?![A-Za-z])'''
+rules = """- Follow the investor order: problem, solution, market, business model, traction, competition, team, financials, the ask.
+- Every market size and traction number comes from the material or a cited source; never an estimate presented as fact.
+- The ask slide states the amount, the round and what the money is for; a missing value is a bracket blank.
+- One message per slide, said in its title.
+"""
+checks = ["문제·해결·시장·모델·지표·경쟁·팀·재무·요청 순서를 따르는가.", "시장 규모와 지표마다 출처가 있는가.", "투자 요청 장에 금액·라운드·용도가 있는가.", "장 제목이 그 장의 주장인가."]
+
+[[flow]]
+part = "한 줄 소개"
+slides = "1"
+layouts = ["title", "statement"]
+
+[[flow]]
+part = "문제"
+slides = "1"
+layouts = ["problem-solution", "big-number"]
+
+[[flow]]
+part = "해결책·제품"
+slides = "1-2"
+layouts = ["feature-grid", "before-after"]
+
+[[flow]]
+part = "시장 규모"
+slides = "1"
+layouts = ["funnel", "metrics"]
+
+[[flow]]
+part = "비즈니스 모델"
+slides = "1"
+layouts = ["process", "tiles"]
+
+[[flow]]
+part = "견인 지표"
+slides = "1-2"
+layouts = ["kpi-grid", "chart"]
+
+[[flow]]
+part = "경쟁"
+slides = "1"
+layouts = ["matrix", "compare-3"]
+
+[[flow]]
+part = "팀"
+slides = "1"
+layouts = ["team"]
+
+[[flow]]
+part = "재무·투자 요청"
+slides = "1-2"
+layouts = ["table", "chart"]
+
+[[flow]]
+part = "자금 사용 계획"
+slides = "1"
+layouts = ["chart-donut", "bullets"]
+
+[[questions]]
+id = "ask_amount"
+label = "투자 요청"
+question = "이번에 받으려는 투자 규모와 단계(라운드)는요?"
+why = "요청 장에 들어갑니다."
+placeholder = "[투자 규모·라운드]"
+detector = { type = "regex", pattern = '''(?:\d[\d,.]{0,12}\s{0,2}(?:억|만|원|달러|USD|\$)|시리즈|시드|프리\s{0,2}A|round)''' }

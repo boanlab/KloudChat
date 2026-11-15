@@ -418,6 +418,12 @@ async def _turn_forms(db: AsyncSession, user: User, session: ChatSession,
     return turn
 
 
+#: a request that asks for a web search in its own words (「찾아서」, 「검색해」, 「최신」)
+_ASKS_SEARCH = re.compile(
+    r"검색|찾아\s{0,2}(?:서|보고|봐)|최신|요즘|동향|(?<![A-Za-z])(?:search|latest)(?![A-Za-z])",
+    re.I)
+
+
 async def _hwpx_form_surface(db: AsyncSession, user: User, session: ChatSession) -> None:
     """A report asked as an HWP file whose conversation follows a 한글 form: the form becomes
     the conversation's HWP document, and the turn fills it in place as the office chat
@@ -5740,11 +5746,15 @@ async def _send_message(
     pattern = patterns.report_format(
         content, session.render_template_id, workspace.doc_format) \
         if kind is SessionKind.report else None
+    # a deck's: the purpose the request names, with its questions
+    deck_purpose = patterns.deck_purpose(content) \
+        if session.kind is SessionKind.slides and not session.render_template_id else None
     # agent's own checks and strictness from its row
     check_keys = check_skills.attached(
         agent_checks=skills_bring.checks_with(
             agent_row.check_skills if agent_row is not None else None),
-        template_checks=render_template_checks(session, pattern), specs=specs)
+        template_checks=(("gap-check",) if deck_purpose is not None and deck_purpose.questions
+                         else render_template_checks(session, pattern)), specs=specs)
     if kind is not SessionKind.chat:
         # document writers run no tools: a turned-on check skill runs as the server's check
         check_keys = tuple(dict.fromkeys((*check_keys, *check_skills.attached(
@@ -5768,7 +5778,8 @@ async def _send_message(
     asking = skills_bring.questions_with(gap_questions.resolve(
         own=agent_row.gap_questions if agent_row is not None else None, base_key=agent_key,
         template_id=session.render_template_id if kind is SessionKind.report else None,
-        doc_format=pattern or workspace.doc_format)) \
+        doc_format=pattern or workspace.doc_format) + (
+            [dict(q) for q in deck_purpose.questions] if deck_purpose is not None else [])) \
         if check_skills.of_stage(check_keys, "pre", specs) \
         else []
     judge_model, judge_key = "", ""
@@ -6233,6 +6244,10 @@ async def _send_message(
     if model_tier.strong(model["id"]):
         # the step log says which setup the writer got (evaluation reads it)
         context_steps = [*context_steps, _setup_step(model["id"])]
+    if not revising and not session.render_template_id and (
+            shape := patterns.step(content, session.kind.value, pattern)):
+        # the structure pattern the request named, said on the timeline
+        context_steps = [*context_steps, shape]
 
     for stored in rows:
         stored.session_id = session.id
@@ -6882,6 +6897,10 @@ async def _send_message(
                 else _OFFICE_RULE)
         messages = _with_system_rule(messages, rule.format(
             p=office_target.kind.value, title=office_target.title))
+        if (office_target.kind is ArtifactKind.pptx and session.kind is SessionKind.slides
+                and deck_purpose is not None):
+            # a PowerPoint deck written here follows the deck pattern the request named
+            messages = _with_system_rule(messages, deck_purpose.note())
         if office_target.kind is ArtifactKind.hwp and (office_target.data or {}).get("form"):
             # the HWP document is the person's 한글 form: filled in place, never replaced
             from app.services import hwpx_form
@@ -8705,9 +8724,14 @@ async def _run_deck(
         trusted_context = [f"[서식: {template.name}]\n{template.instructions.strip()}"] + list(
             trusted_context or []
         )
-    elif (purpose := patterns.deck_purpose(request)) is not None:
-        # no template: the deck pattern the request names (브리핑, 제안, 강의…)
-        trusted_context = [purpose.note(), *(trusted_context or [])]
+    #: the deck pattern the request names (회의, 실적, 논문 발표…), and any other it also named
+    purposes = patterns.deck_purposes(request) if template is None else ()
+    if purposes:
+        # no template: the pattern's rules and usual flow reach the planner
+        trusted_context = [purposes[0].note(), *(trusted_context or [])]
+        if purposes[0].process.get("search") is False and not _ASKS_SEARCH.search(request):
+            # a deck made from the person's own numbers or meeting: no web search unless asked
+            web_search = False
     turn = {
         "user_id": user_id, "model": model, "outline_model": outline_model,
         "project_id": project_id, "routing": routing, "skills_event": skills_event,
@@ -8715,6 +8739,7 @@ async def _run_deck(
         "carry_note": carry_note, "traced": traced, "check_keys": list(check_keys),
         # the document as this turn found it (`_store_document`)
         "base": await _document_base(session_id),
+        "pattern": purposes[0].wire(purposes[1:]) if purposes else None,
         "writer": {
             "web_search": web_search, "figures_plan": figures_plan, "image_model": image_model,
             "auto_image_model": auto_image_model,
@@ -9043,6 +9068,8 @@ async def _deck_save(work: PipelineBundle) -> AsyncIterator[dict]:
                         **({"templateId": template.id} if template else {}),
                         # snapshot: later project changes mustn't repaint
                         **({"design": artifact_design} if artifact_design else {}),
+                        # the structure pattern the request named (`patterns.deck_purposes`)
+                        **({"pattern": turn["pattern"]} if turn.get("pattern") else {}),
                         "lint": lint.wire(lint.check(lint.from_slides(slides), slides=True)),
                         # every slide, unwritten included: gaps stay visible
                         "slides": slides,

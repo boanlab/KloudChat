@@ -1915,21 +1915,17 @@ Structure comes from the request, not from a picked template (`services/patterns
   now its check skills (`render_template_checks` falls back to `patterns.check_skills`). The
   format templates still hold these settings; `patterns` is where the turn asks for them by
   format.
-- **Decks.** The pattern is the deck's purpose: 사내 브리핑, 케이스 발표, 심사 발표, 제안 발표,
-  강의 자료 (`app/patterns/deck/*.toml`, each with the words that name it, its rules and its
-  checks). With no template picked, the purpose the request names reaches the deck planner as
-  trusted context (`[패턴: …]`). The slide shapes stay the planner's choice per slide.
-
-### Design briefs
-
-A project's and an agent's 디자인 지침 (`design_brief`) is the look in words, in place of a theme
-(`services/design_brief.py`). `workspace_context._load_design_system` makes a `BriefDesign` from
-the agent's text then the project's: the writers read it the way they read a theme. Its tokens
-come from what the text names (`style_spec.parse`: colours, faces, look; a text that names none
-gives no tokens, and the writer chooses as it does without a design); the whole text reaches the
-writer as a `# 디자인 지침` block; a 「그림 스타일:」 line becomes the image prompt's style. Shipped
-agents carry theirs in `app/agents/*.toml` (`design_brief`). The project page and the agent form
-show the values read back (`POST /design-brief/read`).
+- **Decks.** The pattern is the deck's purpose, one of 13 (`app/patterns/deck/*.toml`): 심사 발표,
+  연구·논문 발표, 수업 과제 발표, 투자 IR, 실적·성과 보고, 프로젝트 결과 보고, 제품·서비스 소개, 제안 발표,
+  정책·제도 안내, 교육·온보딩, 강의 자료, 케이스 발표, 회의·브리핑 자료. Each file holds the words that
+  name it (Korean and English, English words bounded by `(?<![A-Za-z])`), its rules, its usual
+  flow (parts, slide counts, the layouts that fit each), its gap questions, its checks and its
+  process (`search = false`: no web search unless the request asks). `patterns.deck_purposes`
+  reads the lead sentence, then the whole instruction (pasted material aside); when two match,
+  the lower `order` wins (narrower purposes first) and the turn's timeline step
+  (`patterns.step`, 「구조: … 패턴」) and the deck's `data.pattern` name both. With no template
+  picked, the purpose's note reaches the deck planner (and the office chat writing a PowerPoint
+  deck); its questions join the pre-writing card. A form file still decides the look.
 
 ### Web slides editor
 

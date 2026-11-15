@@ -1,17 +1,43 @@
-# 강의 자료: one step per slide, a concept followed by an example, read from the back row.
+# 강의 자료: chosen from the request (`services/patterns.py`); never shown as a picker.
+order = 110
 name = "강의 자료"
-words = "강의|수업|교육\\s{0,2}(?:자료|과정)|교안|세미나\\s{0,2}자료|워크숍|연수|오리엔테이션|튜토리얼"
-rules = """
-- One slide is one step; split a slide that has to say two things.
+name_en = "Lecture"
+words = '''강의\s{0,2}(?:자료|슬라이드|안)?|수업\s{0,2}(?:자료|슬라이드|용)|교안|\d{1,2}\s{0,2}주차|세미나\s{0,2}자료|(?<![A-Za-z])lecture(?![A-Za-z])|(?<![A-Za-z])course slides(?![A-Za-z])|(?<![A-Za-z])class slides(?![A-Za-z])|(?<![A-Za-z])week \d{1,2}(?![A-Za-z])'''
+rules = """- One slide is one step; split a slide that has to say two things.
 - A slide that states a concept is followed by an example from what the audience already knows.
 - Define a term before the slide where it is first used.
 - At most six lines per slide; a line that wraps is shortened.
 - Number only steps that happen in order.
 - End with what comes next: the next session or the assignment.
 """
-checks = [
-  "개념마다 예시가 붙어 있는가.",
-  "용어가 처음 쓰이기 전에 뜻이 나왔는가.",
-  "한 장에 여섯 줄을 넘지 않는가.",
-  "마지막 장이 다음 시간이나 과제로 이어지는가.",
-]
+checks = ["개념마다 예시가 붙어 있는가.", "용어가 처음 쓰이기 전에 뜻이 나왔는가.", "한 장에 여섯 줄을 넘지 않는가.", "마지막 장이 다음 시간이나 과제로 이어지는가."]
+
+[[flow]]
+part = "오늘의 주제와 목표"
+slides = "1"
+layouts = ["title", "objectives"]
+
+[[flow]]
+part = "지난 시간 연결"
+slides = "1"
+layouts = ["bullets"]
+
+[[flow]]
+part = "개념"
+slides = "2-5"
+layouts = ["definition", "bullets", "two-column"]
+
+[[flow]]
+part = "예시"
+slides = "2-4"
+layouts = ["cards-2", "table", "steps"]
+
+[[flow]]
+part = "요점 정리"
+slides = "1"
+layouts = ["takeaways"]
+
+[[flow]]
+part = "다음 시간·과제"
+slides = "1"
+layouts = ["checklist", "closing"]

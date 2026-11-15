@@ -1,0 +1,59 @@
+# 제품·서비스 소개: chosen from the request (`services/patterns.py`); never shown as a picker.
+order = 70
+name = "제품·서비스 소개"
+name_en = "Product or service pitch"
+words = '''(?:제품|서비스|솔루션|플랫폼)\s{0,2}(?:소개|설명|발표)|영업\s{0,2}(?:자료|제안|발표)|세일즈|고객사?\s{0,2}(?:대상|미팅|설명)|도입\s{0,2}제안|데모\s{0,2}발표|(?<![A-Za-z])product (?:intro|introduction|overview|demo|pitch)(?![A-Za-z])|(?<![A-Za-z])sales (?:deck|pitch)(?![A-Za-z])|(?<![A-Za-z])solution overview(?![A-Za-z])|(?<![A-Za-z])customer pitch(?![A-Za-z])'''
+rules = """- Speak to the customer's problem before the product's features.
+- Each feature is a benefit the customer gets, in their words.
+- Proof (effect, case, customer) comes from the material; a missing figure is a bracket blank, never a guess.
+- End with how to start: steps, price or contact, as given.
+"""
+checks = ["고객의 문제가 기능보다 앞에 있는가.", "기능마다 고객이 얻는 것이 적혀 있는가.", "효과·사례 수치가 자료에 있는 값인가.", "마지막에 도입 절차나 연락처가 있는가."]
+
+[[flow]]
+part = "한 줄 가치"
+slides = "1"
+layouts = ["title", "statement"]
+
+[[flow]]
+part = "고객의 문제"
+slides = "1"
+layouts = ["problem-solution", "question"]
+
+[[flow]]
+part = "제품이 하는 일"
+slides = "1-2"
+layouts = ["feature-grid", "cards-3"]
+
+[[flow]]
+part = "작동 방식"
+slides = "1"
+layouts = ["process", "steps"]
+
+[[flow]]
+part = "효과·사례"
+slides = "1-2"
+layouts = ["before-after", "kpi-grid"]
+
+[[flow]]
+part = "비교"
+slides = "1"
+layouts = ["compare-2", "matrix"]
+
+[[flow]]
+part = "도입 절차·가격"
+slides = "1"
+layouts = ["steps", "table"]
+
+[[flow]]
+part = "다음 단계"
+slides = "1"
+layouts = ["closing"]
+
+[[questions]]
+id = "audience"
+label = "대상 고객"
+question = "누구에게 보여 줄 자료인가요? (업종·직무)"
+why = "문제와 효과를 그 고객의 말로 씁니다."
+placeholder = "[대상 고객]"
+detector = { type = "regex", pattern = '''(?:고객|대상|업종|담당자|팀장|기관|병원|학교|회사|기업)''' }

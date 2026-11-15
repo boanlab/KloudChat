@@ -1,16 +1,60 @@
-# 제안 발표: problem → approach → evidence → request, for reviewers who approve or not.
+# 제안 발표: chosen from the request (`services/patterns.py`); never shown as a picker.
+order = 80
 name = "제안 발표"
-words = "제안|피치|pitch|투자\\s{0,2}(?:유치|설명)|사업\\s{0,2}(?:계획|설명)|공모|지원\\s{0,2}사업|IR\\b"
-rules = """
-- Order it problem → approach → evidence → request.
+name_en = "Proposal for approval"
+words = '''제안\s{0,2}(?:발표|설명|자료|서)|공모|지원\s{0,2}사업|사업\s{0,2}계획\s{0,2}(?:발표|서)?|정부\s{0,2}과제|과제\s{0,2}(?:제안|신청)|(?:승인|예산)\s{0,2}요청|(?<![A-Za-z])proposal(?![A-Za-z])|(?<![A-Za-z])grant (?:pitch|proposal)(?![A-Za-z])|(?<![A-Za-z])business plan(?![A-Za-z])|(?<![A-Za-z])funding request(?![A-Za-z])'''
+rules = """- Order it problem → approach → evidence → request.
 - Slide titles are noun phrases of at most 16 characters; read alone they show the skeleton (현황 / 무엇이 달라지는가 / 근거 / 요청).
 - Compare current and proposed side by side on the same items, and state honestly what works now.
 - Every value set as evidence says on the next line what was counted and when; never invent a figure.
 - The last slide is the request: what is needed, who decides, by when; gather cost, headcount and duration there.
 """
-checks = [
-  "문제가 해결책보다 먼저 서 있는가.",
-  "장 제목만 읽어도 제안의 뼈대가 서는가.",
-  "근거 값마다 무엇을 언제 센 것인지 있는가.",
-  "마지막 장이 누가, 무엇을, 언제까지 정할지 밝힌 요청인가.",
-]
+checks = ["문제가 해결책보다 먼저 서 있는가.", "장 제목만 읽어도 제안의 뼈대가 서는가.", "근거 값마다 무엇을 언제 센 것인지 있는가.", "마지막 장이 누가, 무엇을, 언제까지 정할지 밝힌 요청인가."]
+
+[[flow]]
+part = "무엇을 제안하는가"
+slides = "1"
+layouts = ["title"]
+
+[[flow]]
+part = "현황·문제"
+slides = "1-2"
+layouts = ["problem-solution", "big-number"]
+
+[[flow]]
+part = "제안 내용"
+slides = "1-2"
+layouts = ["before-after", "process"]
+
+[[flow]]
+part = "근거"
+slides = "1-2"
+layouts = ["kpi-grid", "table", "chart"]
+
+[[flow]]
+part = "추진 일정"
+slides = "1"
+layouts = ["roadmap", "milestones"]
+
+[[flow]]
+part = "예산·인력"
+slides = "1"
+layouts = ["table"]
+
+[[flow]]
+part = "기대 효과"
+slides = "1"
+layouts = ["metrics", "takeaways"]
+
+[[flow]]
+part = "요청"
+slides = "1"
+layouts = ["checklist", "closing"]
+
+[[questions]]
+id = "decider"
+label = "결정하는 곳"
+question = "이 제안을 누가(어느 기관·위원회가) 결정하나요?"
+why = "요청 장에 들어갑니다."
+placeholder = "[결정 기관]"
+detector = { type = "regex", pattern = '''(?:위원회|심사|기관|본부|이사회|결재|승인권자|발주)''' }
