@@ -6,7 +6,7 @@ import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 
 /** Output kinds whose writer follows a form so far (`form_files.FOLLOWED`). */
-export const FOLLOWED_KINDS: readonly FormKind[] = ['pptx', 'docx']
+export const FOLLOWED_KINDS: readonly FormKind[] = ['pptx', 'docx', 'hwpx']
 
 /** Whether a file can be followed as a form at all. */
 export function followable(file: FileRow): boolean {
@@ -102,7 +102,9 @@ export function SavedFormChip({
       className="flex h-8 max-w-[18rem] items-center gap-1.5 rounded-control border border-accent/40 bg-accent-soft pl-2.5 pr-1 text-sm text-accent"
       title={kind === 'docx'
         ? t('이 대화의 Word 파일은 이 양식에 맞춰 씁니다')
-        : t('이 대화의 PowerPoint 파일은 이 양식에 맞춰 씁니다')}
+        : kind === 'hwpx'
+          ? t('이 대화의 한글 파일은 이 양식을 채워 씁니다')
+          : t('이 대화의 PowerPoint 파일은 이 양식에 맞춰 씁니다')}
     >
       <FileStack size={13} />
       <span className="text-xs">{from}</span>
@@ -172,7 +174,20 @@ export function FollowedFormLine({ form }: { form: FollowedForm }) {
           ))}
         </ul>
       )}
-      {open && form.kind !== 'docx' && (
+      {open && form.kind === 'hwpx' && (
+        <ul className="mt-1.5 list-disc space-y-0.5 pl-5">
+          <li>{t('표·칸·쪽 모양: 양식 그대로')}</li>
+          <li>
+            {t('채운 칸 {filled}/{fields}')
+              .replace('{filled}', String(followed.cellsFilled ?? 0))
+              .replace('{fields}', String(followed.cells ?? 0))}
+          </li>
+          {(followed.cellsEmpty ?? []).length > 0 && (
+            <li className="text-warn">{t('아직 빈 칸: {list}').replace('{list}', (followed.cellsEmpty ?? []).join(', '))}</li>
+          )}
+        </ul>
+      )}
+      {open && form.kind === 'pptx' && (
         <ul className="mt-1.5 list-disc space-y-0.5 pl-5">
           <li>{t('슬라이드 마스터·글꼴·색: 양식 그대로')}{followed.size ? ` (${followed.size})` : ''}</li>
           {layouts.length > 0 && (

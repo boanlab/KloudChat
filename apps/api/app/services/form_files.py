@@ -20,7 +20,7 @@ from app.services import form_profile
 #: output kinds a form file shapes
 KINDS = ("pptx", "docx", "hwpx")
 #: kinds whose writer follows a form so far; another kind's file stays material
-FOLLOWED = ("pptx", "docx")
+FOLLOWED = ("pptx", "docx", "hwpx")
 
 Role = Literal["form", "material"]
 

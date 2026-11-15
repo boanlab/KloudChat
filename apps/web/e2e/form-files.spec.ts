@@ -48,6 +48,10 @@ async function formsFixture(page: Page, info: Parameters<Parameters<typeof test>
         mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         form: { kind: 'docx', verdict: 'material', score: 0.1 },
       }),
+      fileRow('f5'.padEnd(32, '5'), '신청서_별지1호.hwpx', {
+        mime: 'application/hwp+zip',
+        form: { kind: 'hwpx', verdict: 'form', score: 0.8, fields: 6, tables: 2 },
+      }),
       fileRow('f4'.padEnd(32, '4'), '사업계획서_서식.docx', {
         mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         form: { kind: 'docx', verdict: 'form', score: 0.85, headings: 3, sections: 5, header: true, cover: true, fields: 4 },
@@ -100,6 +104,16 @@ async function formsFixture(page: Page, info: Parameters<Parameters<typeof test>
       },
     },
   }
+  const hwpId = 'd7'.padEnd(32, '7')
+  const hangul = {
+    id: hwpId, kind: 'hwp', title: '신청서_별지1호', version: 2, sessionId: 'c7'.padEnd(32, '7'), projectId,
+    createdAt: at, updatedAt: at, partial: false,
+    data: {
+      format: 'hwpx', size: 21004, text: '사업명 설비 점검 통합 서비스',
+      form: { kind: 'hwpx', name: '신청서_별지1호.hwpx', source: 'attached', fileId: 'f5'.padEnd(32, '5'),
+        followed: { cells: 6, cellsFilled: 4, cellsEmpty: ['대표자', '연락처'] } },
+    },
+  }
   const reportSession = {
     ...slidesSession, id: reportId, kind: 'report', title: '사업계획서', artifactId: null,
     messages: [
@@ -110,6 +124,10 @@ async function formsFixture(page: Page, info: Parameters<Parameters<typeof test>
         ] },
       { id: 'm8'.padEnd(32, '2'), role: 'assistant', content: '사업계획서를 첨부한 Word 양식에 맞춰 썼습니다.',
         attachments: [], model: 'fixture/model', createdAt: at, artifactIds: [wordId], artifactVersion: 1 },
+      { id: 'm8'.padEnd(32, '3'), role: 'user', content: '이 신청서도 채워 줘.', createdAt: at,
+        attachments: [{ id: 'f5'.padEnd(32, '5'), name: '신청서_별지1호.hwpx', size: 21004, type: 'hwpx', role: 'form', formKind: 'hwpx' }] },
+      { id: 'm8'.padEnd(32, '4'), role: 'assistant', content: '신청서를 채웠습니다. 대표자와 연락처는 자료에 없어 [대표자], [연락처]로 남겼습니다.',
+        attachments: [], model: 'fixture/model', createdAt: at, artifactIds: [hwpId], artifactVersion: 2 },
     ],
   }
   await page.route('**/api/**', async (route) => {
@@ -142,7 +160,8 @@ async function formsFixture(page: Page, info: Parameters<Parameters<typeof test>
     if (method === 'POST' && path === '/forms/from-file') {
       return route.fulfill({ status: 201, json: saved })
     }
-    if (method === 'GET' && path === '/artifacts') return route.fulfill({ json: [deck, word] })
+    if (method === 'GET' && path === '/artifacts') return route.fulfill({ json: [deck, word, hangul] })
+    if (method === 'GET' && path === `/artifacts/${hwpId}`) return route.fulfill({ json: hangul })
     if (method === 'GET' && path === `/artifacts/${wordId}`) return route.fulfill({ json: word })
     if (method === 'GET' && path === `/sessions/${reportId}`) return route.fulfill({ json: reportSession })
     if (method === 'GET' && path === `/sessions/${reportId}/messages`) return route.fulfill({ json: reportSession.messages })
@@ -209,8 +228,7 @@ test('a project keeps one saved form per kind', { tag: '@phone' }, async ({ page
   await expect(card.getByTestId('form-slot-pptx')).toContainText('발표_기본.pptx')
   await expect(card.getByTestId('form-slot-pptx')).toContainText('레이아웃 9개')
   await expect(card.getByTestId('form-slot-docx')).toContainText('양식 없음')
-  // the 한글 slot comes with its writer
-  await expect(card.getByTestId('form-slot-hwpx')).toHaveCount(0)
+  await expect(card.getByTestId('form-slot-hwpx')).toContainText('양식 없음')
   await shot(page, 'project-forms', info)
   await card.getByRole('button', { name: '발표_기본.pptx 양식 빼기' }).click()
   await expect(card.getByTestId('form-slot-pptx')).toContainText('양식 없음')
@@ -252,6 +270,7 @@ test('a Word form attached in a report conversation makes the report a Word file
   await dialog.getByRole('button', { name: '2개 붙이기' }).click()
   const roles = page.getByTestId('form-role')
   await expect(roles).toHaveCount(2)
+  // a Word form, not the 한글 one, for this send
   await expect(roles.first()).toHaveAttribute('data-role', 'form')
   await expect(roles.nth(1)).toHaveAttribute('data-role', 'material')
   await page.getByLabel('프롬프트 입력').fill('초안으로 사업계획서를 써 줘.')
@@ -264,8 +283,8 @@ test('a Word form attached in a report conversation makes the report a Word file
 test('a Word report says which form it followed and what it filled', { tag: '@phone' }, async ({ page }, info) => {
   await formsFixture(page, info)
   await page.goto(`/s/${'c8'.padEnd(32, '8')}`)
-  await expect(page.getByTestId('attachment-form')).toHaveText('양식')
-  const line = page.getByTestId('followed-form')
+  await expect(page.getByTestId('attachment-form').first()).toHaveText('양식')
+  const line = page.getByTestId('followed-form').first()
   await expect(line).toContainText('사업계획서_서식.docx (첨부)')
   await line.getByRole('button').click()
   await expect(line).toContainText('양식의 장에 맞춰 씀: 1. 사업 개요, 2. 추진 계획, 3. 예산')
@@ -298,4 +317,29 @@ test('templates a person made become agents on request', { tag: '@phone' }, asyn
   await card.getByRole('button', { name: '우리 회의록 템플릿을 에이전트로 옮기기' }).click()
   await expect.poll(() => converted.length).toBe(1)
   await expect(page).toHaveURL(/\/customize\/agents\/a9/)
+})
+
+test('a 한글 form makes the report the form itself, filled, and says what is still empty', { tag: '@phone' }, async ({ page }, info) => {
+  const { sends } = await formsFixture(page, info)
+  await page.goto(`/projects/${projectId}`)
+  await page.getByRole('button', { name: '새로 시작' }).click()
+  await page.getByRole('menuitem', { name: '보고서' }).click()
+  await openTool(page, '파일함에서 고르기')
+  const dialog = page.getByRole('dialog', { name: '파일함에서 고르기' })
+  await dialog.getByLabel('신청서_별지1호.hwpx 고르기').check()
+  await dialog.getByRole('button', { name: '1개 붙이기' }).click()
+  await expect(page.getByTestId('form-role')).toHaveAttribute('data-role', 'form')
+  await page.getByLabel('프롬프트 입력').fill('초안 내용으로 이 신청서를 채워 줘.')
+  await page.getByLabel('프롬프트 입력').press('Enter')
+  await expect.poll(() => sends.length).toBe(1)
+  expect(sends[0].body.outputFormat).toBe('hwp')
+
+  await page.goto(`/s/${'c8'.padEnd(32, '8')}`)
+  const line = page.getByTestId('followed-form').last()
+  await expect(line).toContainText('신청서_별지1호.hwpx (첨부)')
+  await line.getByRole('button').click()
+  await expect(line).toContainText('채운 칸 4/6')
+  await expect(line).toContainText('아직 빈 칸: 대표자, 연락처')
+  await line.scrollIntoViewIfNeeded()
+  await shot(page, 'answer-hangul-followed', info)
 })

@@ -1859,8 +1859,7 @@ the slide.
 ### Form files (양식)
 
 A form file is an Office file whose look and slots a document is written into, as opposed to
-material that is read. It replaces templates for the look of PowerPoint and Word output (HWPX follows in a later
-step).
+material that is read. It replaces templates for the look of PowerPoint, Word and HWPX output.
 
 - **Profile on upload.** `services/form_profile.py` reads an Office upload once by code and
   stores `files.form_profile`: a PowerPoint's slide size, theme fonts and colours, and every
@@ -1895,8 +1894,14 @@ step).
   planner takes the form's chapters as the fixed 목차 (`Request.form_outline`), and the writer
   is told the form is not a source (`form_files.writer_note`). `report_office.file_bytes` uses it
   for a report stored as a Word file.
+- **Filling a 한글 form.** HWPX cannot be regenerated without losing its tables, so the form
+  itself becomes the conversation's HWP document (`sessions._hwpx_form_surface`, when a report is
+  asked as an HWP file and the conversation follows a 한글 form; `hwpx_form.start` marks it with
+  the form's value cells). The turn runs as the office chat, told to fill it in place with the
+  HWP tools and never to replace it (`hwpx_form.rule`); `hwp_doc.describe` counts the filled
+  value cells after each save (`hwpx_form.progress`).
 - **The mark.** `services/form_marks.py` writes what was followed (form, source, layouts used,
-  stand-ins) into the file's custom properties; `pptx_doc.describe` puts it on the artifact,
+  stand-ins) into the file's custom properties (an HWPX: the entry `KloudChat/form.json`); `pptx_doc.describe` puts it on the artifact,
   and the answer's card shows 「양식을 따름」 from it.
 
 ### Structural patterns

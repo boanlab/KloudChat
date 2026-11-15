@@ -64,7 +64,7 @@ export function ResultCard({ artifact, version }: { artifact: Artifact; version?
     onClick: () =>
       openArtifactAt(artifact.id, typeof check.target === 'number' ? { slide: check.target } : { pane: 'review' }),
   }))
-  const followedForm = artifact.kind === 'pptx' || artifact.kind === 'docx' ? artifact.form : undefined
+  const followedForm = artifact.kind === 'pptx' || artifact.kind === 'docx' || artifact.kind === 'hwp' ? artifact.form : undefined
   return (
     <>
     <CardFace kind={artifact.kind} title={artifact.title || t('제목 없음')} meta={meta}>

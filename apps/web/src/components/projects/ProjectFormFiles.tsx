@@ -43,6 +43,12 @@ function summary(row: FileRow, t: (key: string) => string): string {
       form.fields ? t('채울 칸 {n}개').replace('{n}', String(form.fields)) : '',
     ].filter(Boolean).join(' · ')
   }
+  if (form.kind === 'hwpx') {
+    return [
+      t('채울 칸 {n}개').replace('{n}', String(form.fields ?? 0)),
+      form.tables ? t('표 {n}개').replace('{n}', String(form.tables)) : '',
+    ].filter(Boolean).join(' · ')
+  }
   return ''
 }
 

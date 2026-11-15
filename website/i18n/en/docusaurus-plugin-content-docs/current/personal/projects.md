@@ -33,7 +33,7 @@ Describe rules that apply to every conversation, such as "answer in polite langu
 
 ## Default form files
 
-Upload a PowerPoint or Word form, or pick one from the file box, under **Default form files** beside the project details, and every PowerPoint file and every report written as a Word file in the project follows it. Forms are kept apart from the project's knowledge and are not read as material. An old Hangul file (`.hwp`) cannot be a form: in Hangul, use **Save As › Hangul standard document (*.hwpx)** and upload that.
+Upload a PowerPoint, Word or Hangul (HWPX) form, or pick one from the file box, under **Default form files** beside the project details, and every PowerPoint file and every report written as a Word or Hangul file in the project follows it. Forms are kept apart from the project's knowledge and are not read as material. An old Hangul file (`.hwp`) cannot be a form: in Hangul, use **Save As › Hangul standard document (*.hwpx)** and upload that.
 
 A new report or slides conversation opened in this project shows a **Project form** chip beside the format chip; ✕ removes it for that conversation only. A form attached to the conversation takes precedence.
 

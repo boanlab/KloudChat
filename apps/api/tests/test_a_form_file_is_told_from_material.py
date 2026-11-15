@@ -195,10 +195,8 @@ def test_the_chip_role_wins_over_the_profile():
     assert turn.form_for("pptx").file_id == filled.id
 
 
-def test_a_kind_no_writer_follows_yet_stays_material():
-    hangul = _row("신청서_별지1호.hwpx", _form_hwpx())
-    turn = form_files.choose([hangul], {hangul.id: "form"}, "이 양식에 채워 줘")
-    assert not turn.forms and turn.material == [hangul.id]
+def test_every_output_kind_with_a_writer_is_followed():
+    assert form_files.FOLLOWED == ("pptx", "docx", "hwpx")
 
 
 def test_the_requests_words_settle_an_unsure_file():

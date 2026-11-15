@@ -1433,6 +1433,10 @@ export interface FollowedForm {
     unwritten?: string[]
     filled?: string[]
     guidanceRemoved?: number
+    /** 한글: value cells of the form, how many are filled, labels still empty. */
+    cells?: number
+    cellsFilled?: number
+    cellsEmpty?: string[]
   }
 }
 

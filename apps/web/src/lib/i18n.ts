@@ -7,6 +7,11 @@ const EN: Record<string, string> = {
   ...EN_UI,
   // 양식 (form files)
   '디자인 지침 저장': 'Save the design brief',
+  '이 대화의 한글 파일은 이 양식을 채워 씁니다': 'This conversation\'s Hangul files are written by filling this form',
+  '표·칸·쪽 모양: 양식 그대로': 'Tables, cells and page: as in the form',
+  '채운 칸 {filled}/{fields}': 'Cells filled {filled}/{fields}',
+  '아직 빈 칸: {list}': 'Still empty: {list}',
+  '표 {n}개': '{n} tables',
   '형식·디자인': 'Format & design',
   '양식 파일이 있으면 그 양식에, 없으면 디자인 지침에 맞춰 씁니다': 'Written on the form file when there is one, else to the design brief',
   '보고서의 머리 항목·절 규칙과 물어볼 빈칸을 이 형식으로 고정합니다.': 'Fixes the report\'s head fields, section rules and the blanks to ask about to this format.',
