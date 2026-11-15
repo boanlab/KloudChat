@@ -195,8 +195,9 @@ async def _prepare(args: dict[str, Any], ctx: Any) -> dict[str, Any]:
         if isinstance(slide.get("chart"), dict) else slide for slide in slides]}
     if not args["slides"]:
         raw = args.get("slides")
-        log.info("pptx_write slides unreadable: %s of %d chars", type(raw).__name__,
-                 len(str(raw or "")))
+        log.info("pptx_write slides unreadable: %s of %d chars; arguments %s", type(raw).__name__,
+                 len(str(raw or "")), {key: (type(value).__name__, len(str(value)))
+                                       for key, value in args.items()})
         raise ValueError("slides는 [{title, bullets: [...]}, …] 꼴의 배열이어야 합니다(한 장 "
                          "이상). 문자열이나 다른 키 아래에 넣지 마세요.")
     asked = getattr(ctx, "asked", "") or getattr(ctx, "request", "") or ""
