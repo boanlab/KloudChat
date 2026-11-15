@@ -421,7 +421,7 @@ export function HistoryPage() {
         }}
         onConfirm={() => void removePicked()}
         title={t('대화 {n}개를 삭제할까요?').replace('{n}', String(picked.size))}
-        description={t('되돌릴 수 없습니다. 이 대화들의 아티팩트와 공유 링크도 지워집니다.')}
+        description={t('되돌릴 수 없습니다. 이 대화들의 문서·아티팩트와 공유 링크도 지워집니다.')}
       >
         <DeleteFilesChoice checked={withFiles} onChange={setWithFiles} count={null} />
       </ConfirmDialog>
@@ -438,7 +438,7 @@ export function HistoryPage() {
         <div className="flex items-start gap-2 rounded-card border border-danger/30 bg-danger/5 px-3 py-2.5 text-base text-danger">
           <TriangleAlert size={14} className="mt-0.5 shrink-0" />
           <span>
-            {t('되돌릴 수 없습니다. 이 대화들의 아티팩트와 공유 링크도 지워집니다.')}
+            {t('되돌릴 수 없습니다. 이 대화들의 문서·아티팩트와 공유 링크도 지워집니다.')}
           </span>
         </div>
         <div className="mt-3">
