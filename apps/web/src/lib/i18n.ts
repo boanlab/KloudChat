@@ -2279,8 +2279,6 @@ const EN: Record<string, string> = {
   '검색 결과가 없습니다': 'No results',
   '아직 대화가 없습니다': 'No conversations yet',
   '자료와 지침을 프로젝트에 모아 두면, 모든 화면이 같은 맥락 위에서 작동합니다. 만든 아티팩트는 아티팩트 화면에 쌓이고 문서로 내보낼 수 있습니다.': 'Gather files and instructions into a project and every surface works from the same context. What you make is kept as artifacts and exports as documents.',
-  '자료와 지침을 프로젝트에 모아 두면, 모든 화면이 같은 맥락 위에서 작동합니다. 보고서는 웹 보고서·한글·Word로, 슬라이드는 웹 슬라이드·PowerPoint로 만들고, 문서는 파일함에, 페이지·코드·차트는 아티팩트에 쌓입니다.':
-    'Gather files and instructions into a project and every surface works from the same context. Write reports as web reports, HWP or Word and decks as web slides or PowerPoint; documents are kept in Files, pages, code and charts in Artifacts.',
   '무엇이든 물어보세요': 'Ask anything',
   '만들고 싶은 이미지를 설명하세요': 'Describe the image you want',
   '만들고 싶은 영상이나 오디오를 설명하세요': 'Describe the video or audio you want',

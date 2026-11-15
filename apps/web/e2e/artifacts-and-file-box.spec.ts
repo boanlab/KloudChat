@@ -142,6 +142,9 @@ test('파일함 keeps documents, generated files and uploads apart, with their c
   await page.goto('/files?tab=made')
   await expect(page.getByRole('tab', { name: /^만든 파일\s*2/ })).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByTestId('file-row')).toHaveText([/고양이 사진\.png/, /회의 요약 낭독\.mp3/])
+  // sound and pictures show their own icons, not the document one
+  await expect(page.getByTestId('file-row').filter({ hasText: '낭독.mp3' }).locator('svg.lucide-file-audio')).toHaveCount(1)
+  await expect(page.getByTestId('file-row').filter({ hasText: '고양이 사진.png' }).locator('svg.lucide-file-image')).toHaveCount(1)
   await expect(page.getByRole('tab', { name: /^올린 파일\s*1/ })).toBeVisible()
   await expect(page.getByRole('tab', { name: /^대화에서 만든 파일/ })).toHaveCount(0)
   await shot(page, 'files-made-desktop-1440')

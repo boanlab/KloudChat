@@ -1,4 +1,4 @@
-import { FileImage, FileSpreadsheet, FileText, File as FileIcon, Loader2, Search } from 'lucide-react'
+import { FileAudio, FileImage, FileSpreadsheet, FileText, FileVideo, File as FileIcon, Loader2, Search } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Input, Tabs } from '@/components/ui'
@@ -15,6 +15,8 @@ import { ColumnHeader, type ListSortState, type SortField } from './ListSort'
 function FileGlyph({ row }: { row: FileRow }) {
   const props = { size: 16, className: 'shrink-0 text-accent' }
   if (row.mime.startsWith('image/')) return <FileImage {...props} />
+  if (row.mime.startsWith('audio/') || /\.(mp3|m4a|wav|ogg|oga|flac|aac|opus)$/i.test(row.name)) return <FileAudio {...props} />
+  if (row.mime.startsWith('video/') || /\.(mp4|mov|webm|mkv|m4v)$/i.test(row.name)) return <FileVideo {...props} />
   if (/csv|spreadsheet|excel/.test(row.mime) || /\.(csv|xlsx?)$/i.test(row.name)) return <FileSpreadsheet {...props} />
   if (row.mime.startsWith('text/') || /pdf|word|document|presentation/.test(row.mime)) return <FileText {...props} />
   return <FileIcon {...props} />
