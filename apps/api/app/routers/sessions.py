@@ -262,6 +262,30 @@ def _project_source(item: ContextFile) -> dict[str, Any]:
     }
 
 
+async def _with_paper_fields(db: AsyncSession, user_id: str,
+                             sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Project and attached PDFs as the works they are: title, authors, year and arXiv link
+    read from the stored text's first page (`paper_meta`), so a reference entry never names
+    a work by its file name (「2309.06180.pdf. 프로젝트 파일」)."""
+    from app.services import paper_meta
+
+    ids = [str(s["id"]) for s in sources if s.get("id") and not s.get("sourceUrl")
+           and str(s.get("name") or "").lower().endswith(".pdf")]
+    if not ids:
+        return sources
+    rows = (await db.exec(
+        select(StoredFile.id, func.substr(StoredFile.text, 1, 20_000))
+        .where(col(StoredFile.id).in_(ids), StoredFile.user_id == user_id))).all()
+    heads = {str(row[0]): str(row[1] or "") for row in rows}
+    out = []
+    for source in sources:
+        head = heads.get(str(source.get("id") or ""))
+        if head and (paper := paper_meta.source_fields(head, str(source.get("name") or ""))):
+            source = {**source, "paper": paper}
+        out.append(source)
+    return out
+
+
 def _strict_model(model: dict) -> bool:
     return model.get("dataBoundary") == "self_hosted" and model.get("strictLocal") is True
 
@@ -290,6 +314,8 @@ _STRICT_LOCAL_TOOL_NAMES = frozenset(
         "pptx_edit",
         "pptx_write",
         "pptx_restore",
+        # a project paper's own figures, cut in process
+        "pdf_figures",
     }
 )
 
@@ -435,6 +461,51 @@ async def _pptx_surface(db: AsyncSession, user: User, session: ChatSession) -> N
     db.add(session)
     await db.commit()
     await db.refresh(session)
+
+
+async def _drop_unwritten_blank(db: AsyncSession, session: ChatSession, ctx: Any) -> bool:
+    """The blank deck `_pptx_surface` opened for this turn, when every `pptx_write` failed:
+    removed, and the conversation holds no document again, so what the turn offers to open or
+    download is never an empty 「PowerPoint 문서」 standing in for the deck that was not made
+    (the reply says it was not). A deck someone wrote into, or a turn that never tried to
+    write, keeps it."""
+    if session.kind is not SessionKind.slides or not session.artifact_id:
+        return False
+    if not (getattr(ctx, "tool_calls", None) or {}).get("pptx_write"):
+        return False
+    if (getattr(ctx, "pptx", None) or {}).get("saved"):
+        return False
+    artifact = await db.get(Artifact, session.artifact_id)
+    if (artifact is None or artifact.kind is not ArtifactKind.pptx or artifact.version != 1
+            or _written(artifact)):
+        return False
+    blobs = await office_doc.kept_files(db, [artifact])
+    await db.exec(delete(ArtifactVersion).where(ArtifactVersion.artifact_id == artifact.id))
+    await db.delete(artifact)
+    session.artifact_id = None
+    db.add(session)
+    office_doc.drop_files(blobs)
+    return True
+
+
+#: a deck request that wants a paper's figures or tables: 「논문 그림이나 표도 넣어 줘」
+_ASKS_FIGURES = re.compile(
+    r"(?:논문|paper)[^\n]{0,40}(?:그림|도표|표|figure|table)|(?:그림|도표|figure)[^\n]{0,20}"
+    r"(?:넣|포함|보여|insert|include)", re.I)
+
+
+def _focus_pdf(knowledge: list) -> str | None:
+    """The project PDF the turn is about: the one the knowledge budget gave the most to,
+    when it got clearly more than any other (`workspace_context._fill_from_lead`)."""
+    pdfs = sorted((item for item in knowledge or []
+                   if str(getattr(item, "name", "")).lower().endswith(".pdf")
+                   and getattr(item, "kept_chars", 0) > 0),
+                  key=lambda item: -item.kept_chars)
+    if not pdfs:
+        return None
+    if len(pdfs) > 1 and pdfs[0].kept_chars < 2 * pdfs[1].kept_chars:
+        return None
+    return pdfs[0].name
 
 
 _CHAPTER = re.compile(r"^(p(\d+)) \(heading 1\): (.+)$")
@@ -6521,6 +6592,13 @@ async def _send_message(
         office_file = "" if session.artifact_id else _report_output(
             payload.output_format or str(pending.get("output") or ""),
             str(pending.get("request") or "") or typed_content)
+        report_sources = await _with_paper_fields(db, user.id, [
+            _project_source(item) for item in workspace.knowledge
+        ] + [
+            # attached files are sources with their own number, like project files
+            {"id": item.id, "name": item.name, "state": item.state, "attached": True}
+            for item in (*workspace.attachments, *workspace.carried)
+        ])
         return StreamingResponse(
             _survive_disconnect(_stoppable(
                 session.id,
@@ -6559,13 +6637,7 @@ async def _send_message(
                     skills_event=skills_event,
                     context_steps=context_steps,
                     outline_model=outline_model,
-                    project_sources=[
-                        _project_source(item) for item in workspace.knowledge
-                    ] + [
-                        # attached files are sources with their own number, like project files
-                        {"id": item.id, "name": item.name, "state": item.state, "attached": True}
-                        for item in (*workspace.attachments, *workspace.carried)
-                    ],
+                    project_sources=report_sources,
                     # strict-local: only the searches the person allowed
                     web_search=document_web if strict_local else effective_web_search,
                     office=office_file,
@@ -6799,6 +6871,12 @@ async def _send_message(
             # a blank document open and a document asked for: written into it, not into the
             # chat and not after a round of searches
             forced_tool = f"{office_target.kind.value}_write"
+    if (forced_tool == "pptx_write" and preset_call is None and not preflight_tool
+            and "pdf_figures" in tool_names and _ASKS_FIGURES.search(_ask_of(content))
+            and (paper := _focus_pdf(workspace.knowledge))):
+        # a deck about a paper with its figures: the paper's figures are cut first, so the
+        # write that follows can place them (and says nothing of figures it does not have)
+        preset_call = ("pdf_figures", {"file": paper})
     if office_target is not None and kind is SessionKind.chat:
         rule = (_WEB_RULE if office_target.kind in (ArtifactKind.report, ArtifactKind.deck)
                 else _OFFICE_RULE)
@@ -6893,7 +6971,8 @@ async def _send_message(
                 ),
                 force_tool=(
                     forced_tool
-                    if forced_tool and preset_call is None and forced_tool in tool_names
+                    if forced_tool and forced_tool in tool_names and (
+                        preset_call is None or preset_call[0] == "pdf_figures")
                     else None
                 ),
                 preflight_tool=preflight_tool,
@@ -7951,6 +8030,9 @@ async def _answer_turn(
     async with SessionLocal() as db:
         session = await db.get(ChatSession, session_id)
         user = await db.get(User, user_id)
+        if session is not None and published is None:
+            # every write failed: no blank deck stands in for the one not made
+            await _drop_unwritten_blank(db, session, ctx)
         if session is not None and user is not None:
             if content:
                 answer = Message(

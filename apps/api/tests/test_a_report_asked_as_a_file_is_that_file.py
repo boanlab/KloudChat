@@ -204,7 +204,8 @@ async def test_the_save_stores_the_file_and_a_rerun_makes_its_next_version(maker
         assert [a.kind for a in made] == [ArtifactKind.hwp]
         assert session.artifact_id == made[0].id and made[0].version == 1
         assert hwp_doc.file_format(hwp_doc.read(made[0])) == "hwpx"
-        assert "참고문헌" in made[0].data["text"]
+        # a work document in 한글 names its sources in a 「근거 자료」 list (`office_finish`)
+        assert "근거 자료" in made[0].data["text"] and "[1]" not in made[0].data["text"]
         assert [m.role for m in said] == [Role.assistant] and "한글 문서" in said[0].content
         assert await sessions._office_report(db, session) is not None
 

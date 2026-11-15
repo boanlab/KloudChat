@@ -548,7 +548,7 @@ def source_texts(sources: list[dict] | None, research_context: str,
     for i, source in enumerate(sources or [], 1):
         if not source.get("attached"):
             continue
-        name = str(source.get("title") or "")
+        name = str(source.get("fileName") or source.get("title") or "")
         at = joined.find(f"## {name}\n") if name else -1
         if at < 0:
             continue
@@ -557,12 +557,71 @@ def source_texts(sources: list[dict] | None, research_context: str,
     return out
 
 
+#: a writer's list entry with its number: 「[3] Kwon, W. …」, 「3. Kwon …」
+_LIST_NUMBER = re.compile(r"^\s{0,3}(?:\[(\d{1,3})\]|(\d{1,3})[.)])\s")
+
+
+def _entry_source(entry: str, sources: list[dict]) -> int | None:
+    """The server source a writer's list entry names (by title, file name, or first author
+    and year), as its number; None when it names none."""
+    key = _key(entry)
+    for index, source in enumerate(sources, 1):
+        number = int(source.get("ordinal") or index)
+        title = _key(str(source.get("title") or ""))
+        stem = _key(re.sub(r"\.[A-Za-z0-9]{2,5}$", "", str(source.get("fileName") or "")))
+        if (len(title) >= 8 and title[:30] in key) or (len(stem) >= 6 and stem in key) \
+                or _restates(entry, source):
+            return number
+    return None
+
+
+def one_reference_list(sections: list[dict], sources: list[dict] | None) -> list[dict]:
+    """With server sources, the document keeps one reference list — the one built from them
+    at export — so the writer's own 「참고문헌」 goes, and each 「[n]」 in the text that
+    numbered the writer's list is set to the source that entry names (an entry naming none
+    keeps its number)."""
+    sources = list(sources or [])
+    lists = [k for k, s in enumerate(sections)
+             if _REFERENCE_HEADING.search(str(s.get("heading") or ""))
+             and str(s.get("format") or "markdown") == "markdown"]
+    if not sources or not lists:
+        return sections
+    mapping: dict[int, int] = {}
+    for k in lists:
+        entries: list[list[str]] = []
+        for line in str(sections[k].get("content") or "").split("\n"):
+            if _LIST_NUMBER.match(line) or _ENTRY.match(line) or not entries:
+                entries.append([line])
+            else:
+                entries[-1].append(line)
+        for entry in entries:
+            if not (m := _LIST_NUMBER.match(entry[0])):
+                continue
+            written = int(m.group(1) or m.group(2))
+            # an entry naming no source keeps its number: the writer was given the server's
+            # numbers, and a number no source has is dropped by `cite_order`
+            if (named := _entry_source(" ".join(entry), sources)) is not None:
+                mapping.setdefault(written, named)
+    kept = [s for k, s in enumerate(sections) if k not in lists]
+    if not mapping or all(old == new for old, new in mapping.items()):
+        return kept
+
+    def renumber(piece: str) -> str:
+        def one(m: re.Match[str]) -> str:
+            return _written([mapping.get(n, n) for n in _numbers(m.group(1))])
+
+        return _CITATION.sub(one, piece)
+
+    return [{**s, "content": _outside_code(str(s.get("content") or ""), renumber)}
+            if _prose(s) else s for s in kept]
+
+
 def tidy(sections: list[dict], sources: list[dict] | None
          ) -> tuple[list[dict], list[dict]]:
-    """Drop restated references, name works, order citations."""
-    sections = drop_restated_references(sections, sources)
+    """Drop restated references, keep one list, name works, order citations."""
+    sections = drop_restated_references(one_reference_list(sections, sources), sources)
     return cite_order(name_works(sections, sources), list(sources or []))
 
 
 __all__ = ["cite_order", "cited", "credit_attachments", "drop_restated_references",
-           "name_works", "same_works", "source_texts", "tidy"]
+           "name_works", "one_reference_list", "same_works", "source_texts", "tidy"]

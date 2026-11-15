@@ -176,6 +176,12 @@ async def drawn(sections: list[dict], tokens: dict | None) -> list[dict]:
 def _sections(data: dict) -> list[dict]:
     """The report's sections as the exporters read them, references last."""
     sections = richtext.normalise(list(data.get("sections") or []))
+    if data.get("sourceList"):
+        # a work document names its sources in its own 「근거 자료」 list (`office_finish`);
+        # a 「[n]」 a later edit brought back is no number the file can resolve
+        from app.services import office_finish
+
+        return office_finish.without_citations(sections)
     return report_export.with_references(
         sections, list(data.get("sources") or []), str(data.get("citationStyle") or "APA")
     )

@@ -12,7 +12,7 @@ from app.pipeline import marks as doc_marks
 from app.pipeline import registry
 from app.pipeline.bundle import Bundle
 from app.pipeline.stage import Base, Context
-from app.services import captions, output_language
+from app.services import captions, office_finish, output_language
 
 log = logging.getLogger("app.routers.sessions")
 
@@ -373,6 +373,12 @@ class ReportSave(Base):
                     #: a hand save landed while this turn wrote: the result kept apart
                     drafted: list[str] = []
                     if office is not None:
+                        # the file goes to its reader: no 「(확인 필요)」 left standing, and a
+                        # work document names its sources instead of numbering them
+                        data = office_finish.for_file(
+                            data, format_id=str((title_block or {}).get("format") or ""),
+                            hwp=office is ArtifactKind.hwp,
+                            scholarly=report_service.scholarly_document(request))
                         # asked for as an HWP or Word file: that file is the document
                         artifact_id = await host._store_office_report(
                             db, session, office, user_id=user_id,
@@ -403,7 +409,7 @@ class ReportSave(Base):
                             rerun_note(turn)
                             or _written_note(len(written), title_block,
                                              english=captions.of_sections(written)
-                                             == captions.EN, office=office)),
+                                             == captions.EN, office=office, title=title)),
                             # the count asked, held to the count written
                             section_count_note(request, len(written))] if x),
                         usage={**usage, "credits": credits},
@@ -756,8 +762,28 @@ def section_count_note(request: str, written: int) -> str:
             "주시면 맞추겠습니다.")
 
 
+#: the document kind a title ends in: 「11월 2주차 주간 업무 보고서」 → 보고서
+_TITLE_KIND = re.compile(
+    r"(보고서|회의록|계획서|기획안|제안서|안내문|공문|보도자료|리포트|기안문|논문|요약서|검토서|"
+    r"안건지|명세서|매뉴얼|가이드|지침)\s{0,2}(?:\([^()]{0,10}\))?\s{0,2}$")
+
+
+def _genre_word(found: Any, title: str) -> str:
+    """The word naming what was made: the format's label when the title agrees with it (or
+    names no kind), else the kind the title ends in — a 「주간 업무 보고서」 is never called a
+    회의록 because a minutes word slipped into the format."""
+    label = found.label if found else ""
+    kind = _TITLE_KIND.search(" ".join((title or "").split()))
+    if not kind:
+        return label
+    word = kind.group(1)
+    if label and any(part and part in title for part in re.split(r"[·・\s]+", label)):
+        return label
+    return word
+
+
 def _written_note(count: int, title_block: dict | None, *, english: bool = False,
-                  office: Any = None) -> str:
+                  office: Any = None, title: str = "") -> str:
     """Finish line in the document's genre word (「5개 절로 회의록 작성을 마쳤습니다.」), in
     English for a document written in English; an office file says which file it is and that
     it is edited beside the chat."""
@@ -765,7 +791,7 @@ def _written_note(count: int, title_block: dict | None, *, english: bool = False
     from app.services import doc_formats
 
     found = doc_formats.BY_ID.get(str((title_block or {}).get("format") or ""))
-    genre = found.label if found else ""
+    genre = _genre_word(found, title)
     if english:
         named = doc_formats.EN_FORMAT_LABELS.get(found.id if found else "", "report").lower()
         said = f"Wrote the {named} in {count} section{'s' if count != 1 else ''}."

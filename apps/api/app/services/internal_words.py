@@ -716,6 +716,66 @@ def _plan_shaped(paragraph: str) -> bool:
     return 2 * sum(1 for x in sentences if PLAN_NOTE.search(x)) >= len(sentences)
 
 
+#: a label line of the writer's plan: 「Structured plan」, 「Purpose: …」, 「Structure (이 섹션
+#: 내부):」, 「Key facts to use (source → fact):」, 「Draft approach:」, 「작성 방향:」
+_PLAN_LABEL = re.compile(
+    r"^\s{0,4}(?:[-*•·]\s{1,3})?(?:\*\*|__)?\s?(?P<label>"
+    r"(?:Structured|Writing|Section|Overall|Draft(?:ing)?)\s{1,2}(?:plan|outline|approach)"
+    r"|Plan|Purpose|Goals?|Objectives?|Structure|Outline|Key\s{1,2}(?:facts|points|figures|data)"
+    r"(?:\s{1,2}to\s{1,2}use)?|(?:Facts|Sources|Data|Figures)\s{1,2}to\s{1,2}use|Approach|Tone"
+    r"|Style|Constraints?|Checklist|Notes?\s{1,2}to\s{1,2}self"
+    r"|작성\s?(?:계획|방향|방침|요령|전략)|구성\s?(?:계획|방안)|서술\s?방향|초안\s?(?:방향|계획)"
+    r"|(?:섹션|절|본문)\s?(?:구성|계획|설계)|(?:핵심|사용할|활용할)\s?(?:사실|자료|수치|근거)"
+    r"(?:\s?목록)?)"
+    r"\s?(?:[(（][^()（）\n]{0,40}[)）])?\s?(?:\*\*|__)?\s?(?:[:：](?P<value>.*))?$", re.I)
+#: an item telling the writer what a part of the section holds: 「본문: 회의 개요로 도입」,
+#: 「표 후 확인 필요 사항 1줄」, 「첫 문단: 결론부터」
+_PART_ORDER = re.compile(
+    r"^\s{0,8}(?:[-*•·]|\d{1,2}[.)])\s{1,3}(?:\*\*)?(?:"
+    r"(?:본문|도입|서론|결론|마무리|첫\s?(?:문단|단락)|둘째\s?(?:문단|단락)|마지막\s?(?:문단|단락)"
+    r"|(?:\d{1,2}|[한두세네])\s?(?:문단|단락)|문단|단락|표|섹션|절)\s?(?:\*\*)?\s?[:：]"
+    r"|표\s?(?:앞|뒤|후|아래|다음|위)(?:에)?\s)")
+_BULLET = re.compile(r"^\s{0,8}(?:[-*•·◦▪]|\d{1,2}[.)])\s")
+
+
+def strip_plan_blocks(text: str) -> str:
+    """`text` without the writer's plan or part-by-part instructions at its top: label lines
+    (「Purpose:」, 「Structure:」, 「Key facts to use:」, 「작성 방향:」) with the items under them,
+    or a run of items telling what each part will hold (「본문: …로 도입」, 「표 후 … 1줄」). A
+    plan is cut only when it is two labels or more (or two part items), and only when prose of
+    the document's own is left below it."""
+    if not text or not text.strip():
+        return text
+    lines = text.split("\n")
+    k = 0
+    while k < len(lines) and (not lines[k].strip() or lines[k].lstrip().startswith("#")):
+        k += 1
+    start, labels, parts = k, 0, 0
+    korean = _latin_share(text) < 0.5
+    while k < len(lines):
+        line = lines[k]
+        stripped = line.strip()
+        if not stripped:
+            k += 1
+            continue
+        if (label := _PLAN_LABEL.match(line)) and (
+                korean or not (label.group("value") or "").strip() or labels):
+            labels += 1
+        elif _PART_ORDER.match(line):
+            parts += 1
+        elif (labels or parts) and (_BULLET.match(line) or line[:1] in " \t"):
+            pass
+        else:
+            break
+        k += 1
+    if labels < 2 and parts < 2:
+        return text
+    rest = "\n".join(lines[k:]).strip("\n")
+    if len(_HANGUL.findall(rest)) + len(_LATIN.findall(rest)) < 40:
+        return text
+    return "\n".join([*lines[:start], rest]).strip("\n")
+
+
 def strip_plan_preface(text: str) -> str:
     """`text` without the writer's plan above it: the paragraphs ahead of the content (a
     numbered plan, a 「주의사항: 지시된 대로 …」 line), through the rule under them when one is
@@ -956,7 +1016,7 @@ def strip_work_notes(text: str, *, request: str = "", document: bool = False) ->
     if not text or not text.strip():
         return text
     if document:
-        text = strip_budget_notes(strip_plan_preface(text))
+        text = strip_budget_notes(strip_plan_preface(strip_plan_blocks(text)))
     korean = _latin_share(request) < 0.5 if request.strip() else _latin_share(text) < 0.5
     asked_check = bool(_ASKED_CHECK.search(request or ""))
     asked_edit = bool(_ASKED_EDIT.search(request or ""))
