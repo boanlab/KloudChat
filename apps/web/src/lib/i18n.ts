@@ -6,6 +6,18 @@ export type Lang = 'ko' | 'en'
 const EN: Record<string, string> = {
   ...EN_UI,
   // 양식 (form files)
+  '{kind} 양식을 파일함에서 고르기': 'Pick a {kind} form from the file box',
+  '이 대화의 Word 파일은 이 양식에 맞춰 씁니다': 'This conversation\'s Word files are written on this form',
+  '스타일·번호·머리글/바닥글·표지: 양식 그대로': 'Styles, numbering, header/footer and cover: as in the form',
+  '양식의 장에 맞춰 씀: {list}': 'Written under the form\'s chapters: {list}',
+  '표지 칸 채움: {list}': 'Cover cells filled: {list}',
+  '작성요령 {n}줄 지움': '{n} guidance lines removed',
+  '양식에 없는 「{name}」 장은 양식의 장 제목 모양으로 덧붙임': '“{name}” is not in the form, so it was added in the form\'s chapter heading style',
+  '「{name}」 장은 쓸 내용이 없어 제목만 남김': '“{name}” had nothing to write, so only its heading is kept',
+  '장 {n}개': '{n} chapters',
+  '장 제목 스타일 없음': 'No chapter heading style',
+  '머리글': 'Header',
+  '채울 칸 {n}개': '{n} cells to fill',
   '{name}을 어떻게 쓸까요': 'How should {name} be used?',
   '이 파일의 레이아웃·글꼴·색에 맞춰 씁니다': 'Write on this file\'s layouts, fonts and colours',
   '이 파일의 내용을 자료로 읽습니다': 'Read this file\'s content as material',

@@ -8,7 +8,7 @@ from typing import Any
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.models.workspace import Artifact, ArtifactKind
-from app.services import docx_edit, office_doc, office_look, report_export
+from app.services import docx_edit, form_marks, office_doc, office_look, report_export
 from app.services.office_doc import Conflict, read, read_version
 
 __all__ = ["Conflict", "read", "read_version"]
@@ -31,7 +31,11 @@ def describe(data: bytes, fmt: str) -> dict[str, Any]:
         text = docx_edit.plain_text(data)[:20000]
     except docx_edit.DocxError:
         text = ""
-    return {"format": fmt, "size": len(data), "text": text}
+    out = {"format": fmt, "size": len(data), "text": text}
+    if (form := form_marks.read(data)) is not None:
+        # the form this version was written on (`docx_form`), for the 「양식을 따름」 line
+        out["form"] = form
+    return out
 
 
 KIND = office_doc.Kind(ArtifactKind.docx, "docx", "Word 문서", file_format, describe)

@@ -1427,6 +1427,12 @@ export interface FollowedForm {
     size?: string
     fonts?: Record<string, string>
     standIns?: { slide: number; kind: string; layout: string }[]
+    /** Word: the form chapters written under, chapters added or left, cover cells filled. */
+    chapters?: string[]
+    added?: string[]
+    unwritten?: string[]
+    filled?: string[]
+    guidanceRemoved?: number
   }
 }
 

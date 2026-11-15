@@ -47,6 +47,10 @@ async function formsFixture(page: Page, info: Parameters<Parameters<typeof test>
         mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         form: { kind: 'docx', verdict: 'material', score: 0.1 },
       }),
+      fileRow('f4'.padEnd(32, '4'), '사업계획서_서식.docx', {
+        mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        form: { kind: 'docx', verdict: 'form', score: 0.85, headings: 3, sections: 5, header: true, cover: true, fields: 4 },
+      }),
     ],
   })
   let current = project()
@@ -80,6 +84,32 @@ async function formsFixture(page: Page, info: Parameters<Parameters<typeof test>
         attachments: [], model: 'fixture/model', createdAt: at, artifactIds: [deckId], artifactVersion: 1 },
     ],
   }
+  const reportId = 'c8'.padEnd(32, '8')
+  const wordId = 'd8'.padEnd(32, '8')
+  const word = {
+    id: wordId, kind: 'docx', title: '설비 점검 통합 서비스 사업계획서', version: 1, sessionId: reportId, projectId,
+    createdAt: at, updatedAt: at, partial: false,
+    data: {
+      format: 'docx', size: 40211, text: '사업계획서',
+      form: {
+        kind: 'docx', name: '사업계획서_서식.docx', source: 'attached', fileId: 'f4'.padEnd(32, '4'),
+        followed: { chapters: ['1. 사업 개요', '2. 추진 계획', '3. 예산'], added: ['4. 위험 요인'], unwritten: [],
+          filled: ['사업명', '기관명', '작성일'], guidanceRemoved: 3, header: true, footer: true, numbered: false },
+      },
+    },
+  }
+  const reportSession = {
+    ...slidesSession, id: reportId, kind: 'report', title: '사업계획서', artifactId: null,
+    messages: [
+      { id: 'm8'.padEnd(32, '1'), role: 'user', content: '초안으로 사업계획서를 써 줘.', createdAt: at,
+        attachments: [
+          { id: 'f4'.padEnd(32, '4'), name: '사업계획서_서식.docx', size: 30210, type: 'docx', role: 'form', formKind: 'docx' },
+          { id: 'f2'.padEnd(32, '2'), name: '사업계획서_초안_v3.docx', size: 20480, type: 'docx', role: 'material' },
+        ] },
+      { id: 'm8'.padEnd(32, '2'), role: 'assistant', content: '사업계획서를 첨부한 Word 양식에 맞춰 썼습니다.',
+        attachments: [], model: 'fixture/model', createdAt: at, artifactIds: [wordId], artifactVersion: 1 },
+    ],
+  }
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url())
     const path = url.pathname.slice(4)
@@ -100,12 +130,15 @@ async function formsFixture(page: Page, info: Parameters<Parameters<typeof test>
     if (method === 'POST' && path === '/forms/from-file') {
       return route.fulfill({ status: 201, json: saved })
     }
-    if (method === 'GET' && path === '/artifacts') return route.fulfill({ json: [deck] })
+    if (method === 'GET' && path === '/artifacts') return route.fulfill({ json: [deck, word] })
+    if (method === 'GET' && path === `/artifacts/${wordId}`) return route.fulfill({ json: word })
+    if (method === 'GET' && path === `/sessions/${reportId}`) return route.fulfill({ json: reportSession })
+    if (method === 'GET' && path === `/sessions/${reportId}/messages`) return route.fulfill({ json: reportSession.messages })
     if (method === 'GET' && path === `/artifacts/${deckId}`) return route.fulfill({ json: deck })
     if (method === 'GET' && path === `/sessions/${slidesId}`) return route.fulfill({ json: slidesSession })
     if (method === 'GET' && path === `/sessions/${slidesId}/messages`) return route.fulfill({ json: slidesSession.messages })
     if (method === 'GET' && path === '/sessions') {
-      return route.fulfill({ json: [{ ...slidesSession, messages: null }] })
+      return route.fulfill({ json: [{ ...slidesSession, messages: null }, { ...reportSession, messages: null }] })
     }
     return route.fallback()
   })
@@ -135,9 +168,11 @@ test('a PowerPoint attached as a form is followed and the project form steps asi
   await dialog.getByLabel('2027_사업계획_발표양식.pptx 고르기').check()
   await dialog.getByLabel('사업계획서_초안_v3.docx 고르기').check()
   await dialog.getByRole('button', { name: '2개 붙이기' }).click()
-  const role = page.getByTestId('form-role')
-  await expect(role).toHaveCount(1)
+  // both are Office files the writers follow: each chip says how it is read
+  await expect(page.getByTestId('form-role')).toHaveCount(2)
+  const role = page.getByTestId('form-role').first()
   await expect(role).toHaveAttribute('data-role', 'form')
+  await expect(page.getByTestId('form-role').nth(1)).toHaveAttribute('data-role', 'material')
   // a form that is attached outranks the saved one, and the deck becomes a PowerPoint file
   await expect(savedChip).toHaveCount(0)
   await page.getByLabel('프롬프트 입력').fill('초안 내용으로 심사 발표 자료 10장 만들어 줘. 표지는 양식 그대로.')
@@ -154,20 +189,21 @@ test('a PowerPoint attached as a form is followed and the project form steps asi
   expect(sends[0].body.outputFormat).toBe('pptx')
 })
 
-test('a project keeps one saved PowerPoint form', { tag: '@phone' }, async ({ page }, info) => {
+test('a project keeps one saved form per kind', { tag: '@phone' }, async ({ page }, info) => {
   const { patches } = await formsFixture(page, info)
   await page.goto(`/projects/${projectId}`)
   const card = page.getByTestId('project-form-files')
   await card.scrollIntoViewIfNeeded()
   await expect(card.getByTestId('form-slot-pptx')).toContainText('발표_기본.pptx')
   await expect(card.getByTestId('form-slot-pptx')).toContainText('레이아웃 9개')
-  // Word and 한글 slots come with their writers
-  await expect(card.getByTestId('form-slot-docx')).toHaveCount(0)
+  await expect(card.getByTestId('form-slot-docx')).toContainText('양식 없음')
+  // the 한글 slot comes with its writer
+  await expect(card.getByTestId('form-slot-hwpx')).toHaveCount(0)
   await shot(page, 'project-forms', info)
   await card.getByRole('button', { name: '발표_기본.pptx 양식 빼기' }).click()
   await expect(card.getByTestId('form-slot-pptx')).toContainText('양식 없음')
   expect(patches).toEqual([{ formFiles: { pptx: null } }])
-  await card.getByRole('button', { name: '파일함에서 고르기' }).click()
+  await card.getByRole('button', { name: 'PowerPoint 양식을 파일함에서 고르기' }).click()
   const dialog = page.getByRole('dialog', { name: '파일함에서 고르기' })
   await dialog.getByLabel('2027_사업계획_발표양식.pptx 고르기').check()
   await dialog.getByRole('button', { name: '1개 붙이기' }).click()
@@ -189,4 +225,40 @@ test('an answer says which form its file followed', { tag: '@phone' }, async ({ 
   await line.scrollIntoViewIfNeeded()
   await shot(page, 'answer-followed', info)
   expect(chatId).toBeTruthy()
+})
+
+test('a Word form attached in a report conversation makes the report a Word file on it', { tag: '@phone' }, async ({ page }, info) => {
+  const { sends } = await formsFixture(page, info)
+  await page.goto(`/projects/${projectId}`)
+  await page.getByRole('button', { name: '새로 시작' }).click()
+  await page.getByRole('menuitem', { name: '보고서' }).click()
+  await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
+  await openTool(page, '파일함에서 고르기')
+  const dialog = page.getByRole('dialog', { name: '파일함에서 고르기' })
+  await dialog.getByLabel('사업계획서_서식.docx 고르기').check()
+  await dialog.getByLabel('사업계획서_초안_v3.docx 고르기').check()
+  await dialog.getByRole('button', { name: '2개 붙이기' }).click()
+  const roles = page.getByTestId('form-role')
+  await expect(roles).toHaveCount(2)
+  await expect(roles.first()).toHaveAttribute('data-role', 'form')
+  await expect(roles.nth(1)).toHaveAttribute('data-role', 'material')
+  await page.getByLabel('프롬프트 입력').fill('초안으로 사업계획서를 써 줘.')
+  await shot(page, 'composer-word-form', info)
+  await page.getByLabel('프롬프트 입력').press('Enter')
+  await expect.poll(() => sends.length).toBe(1)
+  expect(sends[0].body.outputFormat).toBe('docx')
+})
+
+test('a Word report says which form it followed and what it filled', { tag: '@phone' }, async ({ page }, info) => {
+  await formsFixture(page, info)
+  await page.goto(`/s/${'c8'.padEnd(32, '8')}`)
+  await expect(page.getByTestId('attachment-form')).toHaveText('양식')
+  const line = page.getByTestId('followed-form')
+  await expect(line).toContainText('사업계획서_서식.docx (첨부)')
+  await line.getByRole('button').click()
+  await expect(line).toContainText('양식의 장에 맞춰 씀: 1. 사업 개요, 2. 추진 계획, 3. 예산')
+  await expect(line).toContainText('표지 칸 채움: 사업명, 기관명, 작성일')
+  await expect(line).toContainText('「4. 위험 요인」 장은')
+  await line.scrollIntoViewIfNeeded()
+  await shot(page, 'answer-word-followed', info)
 })

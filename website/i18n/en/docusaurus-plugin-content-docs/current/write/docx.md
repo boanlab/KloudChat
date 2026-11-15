@@ -23,6 +23,14 @@ Open a Word editor beside the conversation and write or edit a Word document (`.
 - The steps above the answer show how often the document was read and edited, for example "Check document 2 calls · Edit document 2 calls".
 - While the agent edits, the editor is locked; when it saves a version, the editor loads it.
 
+## Writing on a form
+
+- Attach a company or agency Word form (`.docx`, `.dotx`) in a report conversation and its chip says **Form**: the report is written as a Word file on that form. If it guessed wrong, switch the chip to **Material**.
+- The form's styles, numbering, header and footer, page setup and cover stay. Its chapter headings (Heading 1) become the report's outline, and each chapter is written under the form's chapter of the same name. Guidance under a chapter, such as "※ 작성요령", is removed.
+- Cover cells such as "사업명", "기관명" and "작성일" take the report head's values; an unknown value stays blank.
+- A chapter the form has no place for is added at the end in the form's chapter heading style, and the **Followed the form** line says so. A form with no chapter heading style gets the report after its own content.
+- Put a Word form in the project's **Default form files** and every report written as a Word file in that project follows it.
+
 ## Editing by hand and saving
 
 - After an edit in the editor, the header shows **Not saved**. **Save**, or Ctrl+S in the editor, stores it as a new version.

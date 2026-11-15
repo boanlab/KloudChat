@@ -182,9 +182,24 @@ def _sections(data: dict) -> list[dict]:
 
 
 def file_bytes(kind: ArtifactKind, title: str, data: dict[str, Any],
-               sections: list[dict] | None = None) -> bytes:
-    """The report (`Artifact.data` of a report) as an HWPX or Word file, as its export makes it."""
+               sections: list[dict] | None = None, *, form: Any = None) -> bytes:
+    """The report (`Artifact.data` of a report) as an HWPX or Word file, as its export makes it;
+    a Word file on the conversation's Word `form` (`form_files.Resolved`) when one is given."""
     sections = _sections(data) if sections is None else sections
+    if form is not None and kind is ArtifactKind.docx:
+        from app.services import docx_form, form_marks
+
+        try:
+            written, followed = docx_form.write(
+                form.data, title, sections, title_block=data.get("titleBlock") or None,
+                profile=form.profile, name=form.choice.name)
+        except docx_form.FormWriteError as exc:
+            log.warning("report not written on its Word form: %s", exc)
+        else:
+            return form_marks.mark(written, {
+                "kind": "docx", "name": form.choice.name, "source": form.choice.source,
+                "fileId": form.choice.file_id, "followed": followed.wire(),
+            })
     tokens = data.get("design") or None
     page_settings = data.get("pageSettings") or None
     title_block = data.get("titleBlock") or None
@@ -211,9 +226,11 @@ def file_bytes(kind: ArtifactKind, title: str, data: dict[str, Any],
     )
 
 
-async def write(kind: ArtifactKind, title: str, data: dict[str, Any]) -> bytes:
+async def write(kind: ArtifactKind, title: str, data: dict[str, Any], *,
+                form: Any = None) -> bytes:
     """`file_bytes` with the figures drawn first: nothing in the file waits for a browser."""
-    return file_bytes(kind, title, data, await drawn(_sections(data), data.get("design")))
+    return file_bytes(kind, title, data, await drawn(_sections(data), data.get("design")),
+                      form=form)
 
 
 __all__ = ["ASKS_DOCX", "ASKS_HWP", "FORMATS", "asked_file", "drawn", "file_bytes", "write"]

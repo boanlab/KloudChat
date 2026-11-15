@@ -196,9 +196,9 @@ def test_the_chip_role_wins_over_the_profile():
 
 
 def test_a_kind_no_writer_follows_yet_stays_material():
-    word = _row("신청서.docx", _form_docx())
-    turn = form_files.choose([word], {word.id: "form"}, "이 양식에 채워 줘")
-    assert not turn.forms and turn.material == [word.id]
+    hangul = _row("신청서_별지1호.hwpx", _form_hwpx())
+    turn = form_files.choose([hangul], {hangul.id: "form"}, "이 양식에 채워 줘")
+    assert not turn.forms and turn.material == [hangul.id]
 
 
 def test_the_requests_words_settle_an_unsure_file():
@@ -233,8 +233,7 @@ def test_an_attached_form_beats_the_agents_which_beats_the_projects():
         [attached], None, "만들어 줘", agent_forms={"pptx": agents},
         project_forms={"pptx": project_pptx, "docx": projects})
     assert turn.form_for("pptx").source == "attached"
-    # no writer follows a Word form yet
-    assert turn.form_for("docx") is None
+    assert turn.form_for("docx").source == "project"
     turn = form_files.choose([], None, "", agent_forms={"pptx": agents},
                              project_forms={"pptx": project_pptx})
     assert turn.form_for("pptx").file_id == agents.id

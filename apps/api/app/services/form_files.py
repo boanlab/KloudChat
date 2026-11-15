@@ -20,7 +20,7 @@ from app.services import form_profile
 #: output kinds a form file shapes
 KINDS = ("pptx", "docx", "hwpx")
 #: kinds whose writer follows a form so far; another kind's file stays material
-FOLLOWED = ("pptx",)
+FOLLOWED = ("pptx", "docx")
 
 Role = Literal["form", "material"]
 
@@ -334,3 +334,34 @@ def turn_meta(turn: TurnForms, meta: list[dict] | None) -> list[dict] | None:
         if file_id in by_id:
             by_id[file_id]["formNote"] = note
     return out or None
+
+
+def outline(form: Resolved) -> list[str]:
+    """A Word form's chapters (its heading-1 lines), their own numbers set aside: the 목차 a
+    report on it is planned with."""
+    from app.services.docx_form import _NUMBER
+
+    out: list[str] = []
+    for item in form.profile.get("skeleton") or []:
+        if item.get("level") == 1:
+            name = _NUMBER.sub("", str(item.get("text") or ""), count=1).strip()
+            if name and name not in out:
+                out.append(name)
+    return out[:20]
+
+
+def writer_note(form: Resolved) -> str:
+    """What the writer is told about the form the document is written on."""
+    chapters = outline(form)
+    lines = [
+        f"# 양식: {form.choice.name}",
+        "The document is written on the person's own form file. The server keeps the form's "
+        "cover, header, footer, styles and numbering, and puts each chapter you write under "
+        "the form's heading of the same name.",
+        "Write the chapters below, in this order, with these names. Do not number them and do "
+        "not add a title or a cover: the form has its own. Never copy the form's sample text "
+        "or guidance (「※ 작성요령」) into the document, and never take a fact from the form.",
+    ]
+    if chapters:
+        lines.append("Chapters: " + " / ".join(chapters))
+    return "\n".join(lines)

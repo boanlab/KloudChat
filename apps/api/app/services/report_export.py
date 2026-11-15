@@ -2207,16 +2207,19 @@ def to_docx(
     sections: list[dict],
     *,
     tokens: dict[str, str] | None = None,
-    template: str = "",
+    template: str | bytes = "",
     page_settings: dict | None = None,
     title_block: dict | None = None,
     body_from_design: bool = False,
     charts_as_pictures: bool = False,
     static_toc: bool = False,
+    form_mode: bool = False,
 ) -> bytes:
     """Word file of the report. For a file edited in an editor that runs no fields and draws
     no DrawingML chart: `charts_as_pictures` places a chart's stored raster (as the HWPX does),
-    `static_toc` writes the 목차 as the section headings instead of a TOC field."""
+    `static_toc` writes the 목차 as the section headings instead of a TOC field. `form_mode`
+    (`docx_form`): the body only, in the `template` form's own styles, page and type: no title
+    or head, no accent, no type scale of the house."""
     from docx import Document
     from docx.shared import Inches, Pt, RGBColor
 
@@ -2228,7 +2231,7 @@ def to_docx(
     #: colour only (a run typeface would override the template); none for black memos
     accent = (
         RGBColor.from_string(style["accent"].lstrip("#").upper())
-        if style and space is None
+        if style and space is None and not form_mode
         else None
     )
 
@@ -2242,23 +2245,29 @@ def to_docx(
     document = None
     if template:
         try:
-            document = Document(template)
+            document = Document(io.BytesIO(template) if isinstance(template, bytes)
+                                else template)
         except Exception as exc:  # noqa: BLE001 — a plain export beats none
-            log.warning("docx template unreadable (%s): %s", template, exc)
+            log.warning("docx template unreadable: %s", exc)
     document_is_plain = document is None
     if document is None:
         document = Document()
         _page_setup(document, _format_page(page_settings, title_block))
+    elif form_mode:
+        pass
     elif page_settings:
         _page_setup(document, _format_page(page_settings, title_block))
     elif own := doc_type.margins_for(fmt):
         _docx_margins(document, own)
-    visual_style = (style or {}).get("visualStyle") or "editorial"
+    visual_style = "form" if form_mode else (style or {}).get("visualStyle") or "editorial"
 
     def visualise_heading(paragraph, level: int) -> None:
         from docx.oxml import OxmlElement
         from docx.oxml.ns import qn
 
+        if visual_style == "form":
+            # a form's own heading styles
+            return
         if visual_style == "editorial":
             recolour(paragraph)
             if level == 0 and accent is not None:
@@ -2292,7 +2301,10 @@ def to_docx(
             paragraph._p.get_or_add_pPr().append(shade)
 
     numbers = _HeadingNumbers(head_block)
-    if head_block:
+    if form_mode:
+        # the form carries its own title, cover and head
+        pass
+    elif head_block:
         _docx_title_block(
             document, title, head_block, visualise_heading,
             accent=style["accent"] if style else None,
@@ -2312,8 +2324,9 @@ def to_docx(
         _korean_fonts(document)
     elif body_from_design:
         _docx_body_face(document, serif=bool(style and style.get("font") == "serif"))
-    # document scale applies to 서식 files too
-    _docx_type_scale(document, fmt)
+    # document scale applies to 서식 files too, not to a form's own
+    if not form_mode:
+        _docx_type_scale(document, fmt)
 
     footnotes = _Footnotes()
     numbering = _DocxNumbering(document)
