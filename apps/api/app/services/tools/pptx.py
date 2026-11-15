@@ -249,13 +249,10 @@ async def _prepare(args: dict[str, Any], ctx: Any) -> dict[str, Any]:
         notes.append(f"장 수가 요청과 다릅니다: 파일은 {_total(args)}장입니다. 답에 실제 장 "
                      "수를 그대로 말하세요.")
     if problem := _overflow_problem(args):
-        record = getattr(ctx, "pptx", None)
-        if not isinstance(record, dict) or not record.get("overflow_refused"):
-            if isinstance(record, dict):
-                record["overflow_refused"] = True
-            raise ValueError(problem)
-        notes.append("일부 슬라이드의 글이 자리를 넘칩니다: " + problem.split(":", 1)[0]
-                     + ". 답에 그 슬라이드를 줄여야 한다고 말하세요.")
+        # said, not refused: a long deck sent back for its length as well as its count ran a
+        # small model out of turns with no file at all; the writer may rewrite (replace: true)
+        notes.append(problem + " 다시 쓰려면 replace: true로 고쳐 쓰고, 아니면 답에 그 "
+                     "슬라이드를 줄여야 한다고 말하세요.")
     wanted = [str((slide.get("image") or {}).get("file") or "").strip()
               for slide in args["slides"] if isinstance(slide.get("image"), dict)]
     wanted = [name for name in wanted if name]

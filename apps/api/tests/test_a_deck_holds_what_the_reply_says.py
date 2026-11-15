@@ -214,15 +214,13 @@ async def test_unreadable_slides_say_so_before_any_count():
         await tool._prepare({"title": "t", "slides": "[{broken"}, ctx)
 
 
-async def test_text_past_its_place_is_sent_back_once_then_saved_with_a_note():
+async def test_text_past_its_place_is_saved_with_a_note():
     long = ("PagedAttention은 KV 캐시를 고정 크기 블록으로 나누고 블록 테이블로 논리 블록과 "
             "물리 블록을 잇는다")
     ctx = SimpleNamespace(asked="발표 자료 2장", pptx={})
     args = {"title": "t", "slides": [{"title": "넘치는 장", "bullets": [long] * 14}]}
-    with pytest.raises(ValueError, match="2장의 글이"):
-        await tool._prepare(args, ctx)
-    again = await tool._prepare(args, ctx)
-    assert any("넘칩니다" in note for note in again[tool.NOTES])
+    saved = await tool._prepare(args, ctx)
+    assert any("2장의 글이" in note for note in saved[tool.NOTES])
     fine = {"title": "t", "slides": [{"title": "알맞은 장", "bullets": ["짧은 줄", "또 한 줄"]}]}
     assert (await tool._prepare(fine, SimpleNamespace(asked="발표 자료 2장", pptx={})))[
         tool.NOTES] == []
