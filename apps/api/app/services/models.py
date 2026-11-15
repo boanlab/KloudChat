@@ -292,6 +292,8 @@ def _shape(entry: dict[str, Any]) -> dict[str, Any] | None:
         # credits per second by (resolution, audio)
         "creditPerSecond": _video_rates(model_id) if modality == "video" else {},
         "aspects": imagegen.aspects_for(model_id) if modality == "image" else [],
+        # changes a given picture (`imagegen.edits_images`); generation-only models do not
+        "editsImages": modality == "image" and imagegen.edits_images(model_id, info),
         "creditCost": credit_cost,
         "inputCreditCost": input_credit_cost,
         "contextWindow": context,
@@ -340,6 +342,7 @@ def _adapter_entries() -> list[dict[str, Any]]:
             "creditPerCall": 0,
             "creditPerImage": 0,
             "aspects": imagegen.aspects_for(m["id"]) if m["modality"] == "image" else [],
+            "editsImages": False,
         }
         for m in ADAPTER_MODELS
     ]

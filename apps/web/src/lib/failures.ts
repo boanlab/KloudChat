@@ -31,6 +31,10 @@ const REFUSALS: Record<string, string> = {
     '이미지 기본 모델이 정해지지 않았습니다. 모델을 직접 고르거나, 관리자가 설정 › 모델에서 이미지 기본 모델을 고르면 쓸 수 있습니다.',
   default_audio_model_unset:
     '오디오 기본 모델이 정해지지 않았습니다. 모델을 직접 고르거나, 관리자가 설정 › 모델에서 오디오 기본 모델을 고르면 쓸 수 있습니다.',
+  image_model_cannot_edit: '이 모델은 이미지를 고칠 수 없습니다. 고칠 수 있는 모델로 바꾸세요.',
+  image_edit_strict_local: '내부 자료라 외부 모델로 고칠 수 없습니다.',
+  image_source_not_found: '고칠 이미지를 찾을 수 없습니다.',
+  image_source_unreadable: '고칠 이미지를 읽지 못했습니다.',
   internal_data_requires_strict_local:
     '내부 자료나 개인정보가 있어 strict-local 모델로만 만들 수 있는데, 쓸 수 있는 strict-local 모델이 없습니다. 관리자에게 문의하세요.',
   factcheck_needs_web:

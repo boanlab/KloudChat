@@ -24,6 +24,8 @@ import { memo, useMemo, useState } from 'react'
 import type { VideoRef } from '@/lib/media'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Button } from '@/components/ui'
+import { ImageEditAction } from '@/components/media/ImageEditAction'
+import { fileSrc, isPicture } from '@/lib/imageEdit'
 import { MediaResult } from '@/components/media/MediaResult'
 import { ResultCard } from './ResultCard'
 import {
@@ -475,8 +477,16 @@ function MessageItemInner({
               : /\.hwpx?$/i.test(a.name) ? 'hwp'
                 : /\.docx$/i.test(a.name) ? 'docx'
                   : /\.pptx$/i.test(a.name) ? 'pptx' : null
+            const picture = !!a.id && !a.source && isPicture(a.name, a.type)
             return a.id ? (
-              <span key={a.id} className="ml-auto flex w-fit max-w-full items-center gap-1.5">
+              <span key={a.id} className="ml-auto flex w-fit max-w-full flex-wrap items-center justify-end gap-1.5">
+                {picture && (
+                  <ImageEditAction
+                    sessionId={sessionId}
+                    iconOnly
+                    source={{ artifactId: null, fileId: a.id, src: fileSrc(a.id!), name: a.name, origin: 'upload' }}
+                  />
+                )}
                 {editable && (
                   <Button
                     size="sm"

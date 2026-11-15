@@ -102,6 +102,8 @@ export interface ModelInfo {
   creditPerImage?: number
   /** Image only: the ratios a picture from it can have. The composer offers no other. */
   aspects?: string[]
+  /** Image only: changes a given picture as told (「이미지 고치기」); generation-only models do not. */
+  editsImages?: boolean
   /** Flat credits per call, for models billed per clip rather than per token. */
   creditPerCall?: number
   /** Which of the five surfaces may select this model. */
@@ -1032,6 +1034,14 @@ export interface ImageArtifact extends ArtifactBase {
   figure?: string
   source?: string
   caption?: string
+  /** An edit: the picture it was made from, kept as it was. */
+  editOf?: { artifactId: string | null; fileId: string; src: string; name?: string }
+  /** The first picture of an edit line (an artifact id, or `file:<id>`); every version shares it. */
+  lineage?: string
+  /** Version number in its line; the source is 1. (`version` is the artifact's own revision.) */
+  editVersion?: number
+  /** Made from a picture the person gave: internal material for the privacy rules. */
+  internalSource?: boolean
 }
 
 /** `waveform` is a coarse amplitude envelope (0–1, ~64 buckets). */

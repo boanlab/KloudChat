@@ -29,6 +29,23 @@ Video is a job because it is the only kind that cannot finish inside its
 request. Queueing the others would add a polling loop for someone already
 waiting.
 
+**Image edits are the same call with the picture attached.** `POST /sessions/{id}/images` with
+`sourceArtifactId` (an image artifact) or `sourceFileId` (an attachment or file-box picture)
+sends the stored picture, scaled to 2048 px at most, as an `image_url` content part beside the
+instruction (`imagegen.generate(source=…)`), without `image_config` so the picture keeps its
+shape. Only catalogue models with `editsImages` draw an edit: the gateway's
+`model_info.kchat_edits_images` when declared, else `imagegen.EDITING_MODELS`, the models checked
+with one real edit call each (Gemini 3 Pro Image, GPT-5.4 Image 2, Seedream 5.0 Flash, Grok
+Imagine Image 2.0; Recraft V4.1 takes a picture but did not follow the instruction, and the
+self-hosted shims draw from text only). The source picture is egress like an attachment: a
+strict-local conversation, or an uploaded picture (or one made from it) under
+`internal_data_strict_local`, keeps it inside, and since no strict-local model edits the call is
+refused with `image_edit_strict_local`; a picked model that only draws gets
+`image_model_cannot_edit`. The result is a new image artifact whose `data.editOf` names the
+source (kept as it was), `data.lineage` the line's first picture and `data.editVersion` its
+number; the charge is a picture's, in the ledger as `image.edit`. No model behind the gateway's
+chat endpoint takes a mask, so there is no region edit.
+
 ---
 
 ## 2. System composition

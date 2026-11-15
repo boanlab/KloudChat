@@ -130,6 +130,8 @@ const groups: Record<string, Group> = {
   'skill-runtime': { files: ['skill-runtime.spec.ts'], projects: { desktop } },
   // the video options a model can make; cancelling a clip job
   'media-jobs': { files: ['av-options.spec.ts', 'job-cancel.spec.ts'], projects: { desktop } },
+  // 이미지 고치기: the action, its off state and reason, 전후 비교 and versions; desktop and phone
+  'image-edit': { files: ['image-edit.spec.ts'], projects: { desktop, phone: touchPhone } },
   // a shared deck or report keeps its design; a document template previews as pages
   'shared-look': { files: ['shared-design.spec.ts'], projects: { default: desktop } },
   issues: { files: ['issue-reports.spec.ts'], projects: { desktop } },

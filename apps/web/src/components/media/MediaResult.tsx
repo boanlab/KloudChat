@@ -1,5 +1,5 @@
-import { Code2, Download, PencilLine, RefreshCw } from 'lucide-react'
-import { useRef } from 'react'
+import { Code2, Columns2, Download, PencilLine, RefreshCw } from 'lucide-react'
+import { useRef, useState } from 'react'
 import { Button, ButtonLink } from '@/components/ui'
 import { fileUrl } from '@/lib/api'
 import { copyText } from '@/lib/clipboard'
@@ -7,6 +7,9 @@ import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { AudioArtifact, ImageArtifact, VideoArtifact } from '@/types'
 import { useT } from '@/lib/useT'
+import { ImageEditAction } from '@/components/media/ImageEditAction'
+import { BeforeAfter, ImageVersions } from '@/components/media/ImageVersions'
+import type { ImageEditSource } from '@/lib/imageEdit'
 
 const aspectClass: Record<string, string> = {
   '1:1': 'aspect-square',
@@ -50,7 +53,10 @@ export function MediaResult({
   const t = useT()
   const { models, openArtifact } = useStore()
   const generateImages = useStore((s) => s.generateImages)
+  const editImage = useStore((s) => s.editImage)
+  const setImageEdit = useStore((s) => s.setImageEdit)
   const setComposerRestore = useStore((s) => s.setComposerRestore)
+  const [comparing, setComparing] = useState(false)
   // Edited composed prompt; ref keeps the textarea uncontrolled.
   const edited = useRef('')
   const images = artifacts.filter((a): a is ImageArtifact => a.kind === 'image')
@@ -63,10 +69,29 @@ export function MediaResult({
     <p className="mt-1.5 text-xs text-faint">{[...parts, charge].filter(Boolean).join(' · ')}</p>
   )
 
+  // An edit's own source: 다시 만들기 and 프롬프트 고치기 change the same picture again.
+  const first = images[0] as ImageArtifact | undefined
+  const editedFrom: ImageEditSource | null =
+    sessionId && first?.editOf
+      ? {
+          sessionId,
+          artifactId: first.editOf.artifactId,
+          fileId: first.editOf.fileId,
+          src: first.editOf.src,
+          name: first.editOf.name || first.prompt,
+          origin: first.internalSource ? 'upload' : 'generated',
+          internal: first.internalSource,
+        }
+      : null
+  const showCompare = comparing && images.length === 1 && !!first?.editOf
+
   return (
     <div className="space-y-3">
       {images.length > 0 && (
         <div>
+          {showCompare ? (
+            <BeforeAfter image={first!} />
+          ) : (
           <div
             className={cn(
               'grid gap-2',
@@ -96,6 +121,7 @@ export function MediaResult({
               </button>
             ))}
           </div>
+          )}
           {/* Figures: caption and mermaid source. */}
           {images.some((img) => img.source) && (
             <div className="mt-2 max-w-md space-y-1">
@@ -142,7 +168,11 @@ export function MediaResult({
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => void generateImages(sessionId, images[0].prompt)}
+                  onClick={() =>
+                    void (editedFrom
+                      ? editImage(sessionId, images[0].prompt, editedFrom)
+                      : generateImages(sessionId, images[0].prompt))
+                  }
                 >
                   <RefreshCw size={13} />
                   {t('다시 만들기')}
@@ -150,7 +180,8 @@ export function MediaResult({
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() =>
+                  onClick={() => {
+                    if (editedFrom) setImageEdit(editedFrom)
                     // Composer's only outside entry: the refused-turn restore channel.
                     setComposerRestore({
                       sessionId,
@@ -159,20 +190,50 @@ export function MediaResult({
                       activatedSkillIds: [],
                       error: '',
                     })
-                  }
+                  }}
                 >
                   <PencilLine size={13} />
                   {t('프롬프트 고치기')}
                 </Button>
               </>
             )}
+            {sessionId &&
+              images
+                .filter((img) => !img.source && img.engine !== 'matplotlib')
+                .map((img) => (
+                  <ImageEditAction
+                    key={`edit-${img.id}`}
+                    sessionId={sessionId}
+                    source={{
+                      artifactId: img.id,
+                      fileId: null,
+                      src: img.src,
+                      name: img.prompt || img.title,
+                      origin: img.internalSource ? 'upload' : 'generated',
+                      internal: img.internalSource,
+                    }}
+                  />
+                ))}
+            {images.length === 1 && first?.editOf && (
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-pressed={comparing}
+                data-testid="image-compare-toggle"
+                onClick={() => setComparing((v) => !v)}
+              >
+                <Columns2 size={13} />
+                {t('전후 비교')}
+              </Button>
+            )}
           </div>
+          {images.length === 1 && <ImageVersions image={first!} />}
           {caption([
             t('{n}장').replace('{n}', String(images.length)),
             modelLabel(images[0].model),
           ])}
           {/* Prompt actually sent; editable, resendable. */}
-          {images[0].composedPrompt && images[0].composedPrompt !== images[0].prompt && (
+          {images[0].composedPrompt && images[0].composedPrompt !== images[0].prompt && !first?.editOf && (
             <details className="mt-2 max-w-2xl rounded-control border border-line bg-panel px-3 py-2 text-xs">
               <summary className="cursor-pointer font-medium text-muted">
                 {images[0].engine === 'matplotlib' ? t('그린 코드 보기') : t('보낸 프롬프트 보기')}
