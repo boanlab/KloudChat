@@ -73,13 +73,19 @@ export function SuperAgentSection() {
           {current} · {t('현재 사용 불가')}
         </option>
       )}
+      {/* The name whole in the box; the price is the line under it (and the option's title). */}
       {pool.map((model) => (
-        <option key={model.id} value={model.id}>
-          {model.label} · {tokenRate(model, t)}
+        <option key={model.id} value={model.id} title={tokenRate(model, t)}>
+          {model.label}
         </option>
       ))}
     </>
   )
+  /** The chosen model's price, under its select; nothing for 「그대로」 or a model no longer served. */
+  const rate = (pool: ModelInfo[], id: string) => {
+    const model = pool.find((m) => m.id === id)
+    return model ? <p className="mt-0.5 truncate text-xs text-faint" data-testid="model-rate">{tokenRate(model, t)}</p> : null
+  }
 
   return (
     <Card className="space-y-4 p-4">
@@ -144,6 +150,7 @@ export function SuperAgentSection() {
                     >
                       {options(pool, rule.model, SUPER_OVERRIDE_ROWS.has(name))}
                     </Select>
+                    {rate(pool, rule.model)}
                   </td>
                   <td className="py-2 pr-2 max-sm:block max-sm:p-0">
                     <span className="mb-1 hidden text-xs text-faint max-sm:block" aria-hidden>Super Agent (strict-local)</span>
@@ -154,6 +161,7 @@ export function SuperAgentSection() {
                     >
                       {options(strictOnly(pool), rule.strictModel, SUPER_OVERRIDE_ROWS.has(name))}
                     </Select>
+                    {rate(strictOnly(pool), rule.strictModel)}
                   </td>
                   <td className="py-2 max-sm:block max-sm:p-0">
                     <span className="mb-1 hidden text-xs text-faint max-sm:block" aria-hidden>{t('추론 강도')}</span>

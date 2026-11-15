@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { mockApp } from './super-agent-fixture'
+import { mockApp, model } from './super-agent-fixture'
 
 /** Admin screens the admin walk-through found wanting: a missing publication, the routing table's
  *  effort column. */
@@ -65,4 +65,35 @@ test('every effort in the routing table reads whole', { tag: '@phone' }, async (
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
   if (width < 640) await expect(table.locator('td span', { hasText: 'Super Agent (strict-local)' }).first()).toBeVisible()
   await shot(page, 'routing-effort', 'full')
+})
+
+test('the routing table shows each model name whole, its price on the line under it', async ({ page }) => {
+  test.skip((page.viewportSize()?.width ?? 0) < 640, 'desktop widths')
+  await mockApp(page, 'manual', undefined, undefined, {
+    catalogue: [
+      model('local/flash', 'Qwen · Qwen3.8 Flash (local)', 'hybrid'),
+      model('strict-local/flash', 'DeepSeek · Deepseek V4 Flash (strict-local)', 'self_hosted'),
+      model('external/deep', 'DeepSeek · Deepseek V4.1 Flash', 'external', 4),
+    ],
+  })
+  for (const width of [1440, 1280]) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto('/admin/system/routing')
+    const selects = page.getByTestId('super-agent-table').getByLabel(/ · (Super Agent|strict-local) 모델$/)
+    await expect(selects.first()).toBeVisible({ timeout: 15_000 })
+    const clipped = await selects.evaluateAll((nodes) => nodes.flatMap((node) => {
+      const select = node as HTMLSelectElement
+      const style = getComputedStyle(select)
+      const context = document.createElement('canvas').getContext('2d')!
+      context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
+      const text = select.selectedOptions[0]?.text ?? ''
+      const room = select.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+      return context.measureText(text).width > room + 0.5 ? [`${select.getAttribute('aria-label')}: ${text}`] : []
+    }))
+    expect(clipped).toEqual([])
+    // the price is not in the box but under it
+    await expect(selects.first().locator('option:checked')).not.toContainText('크레딧')
+    await expect(page.getByTestId('model-rate').first()).toBeVisible()
+    await shot(page, `routing-models-${width}`, 'full')
+  }
 })
