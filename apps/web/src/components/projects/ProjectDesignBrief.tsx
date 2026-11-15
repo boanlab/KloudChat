@@ -129,6 +129,7 @@ export function ProjectDesignBrief({ project }: { project: Project }) {
         <Button
           size="sm"
           variant="primary"
+          aria-label={t('디자인 지침 저장')}
           disabled={!dirty || saving}
           onClick={async () => {
             setSaving(true)

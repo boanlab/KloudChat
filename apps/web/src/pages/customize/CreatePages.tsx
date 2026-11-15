@@ -108,8 +108,8 @@ function fromDraft(base: Agent, d: AgentDraft): Agent {
     systemPrompt: d.systemPrompt,
     kinds: d.kinds,
     surface: d.surface,
-    renderTemplateId: d.renderTemplateId,
-    designSystemId: d.designSystemId,
+    docFormat: d.docFormat ?? base.docFormat,
+    designBrief: d.designBrief ?? base.designBrief,
     skillIds: d.skillIds.length > 0 ? d.skillIds : base.skillIds,
   }
 }

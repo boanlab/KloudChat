@@ -24,7 +24,7 @@ export const TAB_LABEL: Record<HubTab, string> = {
 export const MOVED_TABS: Record<string, string> = {
   workflows: '/customize?tab=agents',
   templates: '/customize?tab=agents',
-  designs: '/settings/themes',
+  designs: '/settings',
   memory: '/settings/memory',
 }
 

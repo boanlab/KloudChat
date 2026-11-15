@@ -1492,6 +1492,9 @@ export interface AgentDraft {
   surface: SessionKind
   renderTemplateId: string | null
   designSystemId: string | null
+  /** The report format and 디자인 지침 the conversation ran under. */
+  docFormat?: string | null
+  designBrief?: string
   skillIds: string[]
   mode: ProcessMode
   base: string | null

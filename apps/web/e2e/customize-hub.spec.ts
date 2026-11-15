@@ -5,7 +5,7 @@ import { viewport } from './project'
 /**
  * 「사용자 지정」: one hub for agents (and the 묶음 they tick), skills and connectors. Its tab,
  * view, search, filter and sort live in the address; every old screen's address lands where that
- * screen went (themes and memory in 설정, workflows in the agents' 진행 과정).
+ * screen went (memory in 설정, workflows in the agents' 진행 과정).
  */
 
 test.use({ serviceWorkers: 'block' })
@@ -170,8 +170,7 @@ const redirects: [string, RegExp][] = [
   // Templates are picked in the agent form and the composer.
   ['/customize?tab=templates', /\/customize\?tab=agents$/],
   // Themes and memory live in 설정.
-  ['/designs', /\/settings\/themes$/],
-  ['/customize?tab=designs', /\/settings\/themes$/],
+  ['/designs', /\/settings$/],
   ['/memory', /\/settings\/memory$/],
   ['/customize?tab=memory', /\/settings\/memory$/],
   // Members' published bots: shared agents.
@@ -187,9 +186,6 @@ test('every old address lands where its screen went', async ({ page }, testInfo)
   await page.goto('/memory')
   await expect(page.getByRole('navigation', { name: '설정 메뉴' }).getByRole('link', { name: '메모리' })).toHaveAttribute('aria-current', 'page')
   await expect(page.getByRole('button', { name: '새 메모리' })).toBeVisible()
-  await page.goto('/designs')
-  await expect(page.getByTestId('settings-themes')).toBeVisible()
-  await expect(page.getByText('학과 공식 문서')).toBeVisible()
   expect(state.problems).toEqual([])
 })
 

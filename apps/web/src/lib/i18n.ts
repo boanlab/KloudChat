@@ -6,6 +6,7 @@ export type Lang = 'ko' | 'en'
 const EN: Record<string, string> = {
   ...EN_UI,
   // 양식 (form files)
+  '디자인 지침 저장': 'Save the design brief',
   '형식·디자인': 'Format & design',
   '양식 파일이 있으면 그 양식에, 없으면 디자인 지침에 맞춰 씁니다': 'Written on the form file when there is one, else to the design brief',
   '보고서의 머리 항목·절 규칙과 물어볼 빈칸을 이 형식으로 고정합니다.': 'Fixes the report\'s head fields, section rules and the blanks to ask about to this format.',

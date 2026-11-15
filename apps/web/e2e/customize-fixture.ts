@@ -397,9 +397,9 @@ export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = f
       return json(skills.find((s) => s.id === id))
     }
     if (method === 'POST' && path === '/agents') {
-      // As the API checks it: a theme the person can neither own nor see is refused.
-      if (body.designSystemId && !designs.some((d) => d.id === body.designSystemId)) {
-        return json({ detail: 'design_system_not_found' }, 404)
+      // As the API checks it: a document format it does not know is refused.
+      if (body.docFormat === 'not-a-format') {
+        return json({ detail: 'doc_format_unknown' }, 422)
       }
       // Its 진행 과정 comes with it, saved in the same request.
       const { process: asked, ...fields } = body as Record<string, unknown> & { process?: Record<string, unknown> }

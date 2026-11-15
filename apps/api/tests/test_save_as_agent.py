@@ -171,7 +171,9 @@ async def test_a_conversation_with_an_official_agent_saves_as_a_draft_post_agent
     db.add(session)
     await db.commit()
     draft = await sessions.agent_draft(session.id, me, db)
-    assert draft["designSystemId"] == mine.id
+    # themes are retired: the draft carries the format and the agent's 디자인 지침, no theme
+    assert draft["designSystemId"] is None and draft["renderTemplateId"] is None
+    assert draft["docFormat"] == "minutes" and draft["designBrief"] == ""
     assert "official" not in draft["systemPrompt"]
     assert draft["systemPrompt"] == "이 대화에서 정한 것:\n- 결정과 할 일을 표로 둔다."
     assert draft["name"] == "회의록 에이전트" and draft["base"] == "minutes"
@@ -179,13 +181,9 @@ async def test_a_conversation_with_an_official_agent_saves_as_a_draft_post_agent
 
     made = await ws.create_agent(AgentIn(
         name=draft["name"], system_prompt=draft["systemPrompt"], kinds=draft["kinds"],
-        surface=draft["surface"], render_template_id=draft["renderTemplateId"],
-        design_system_id=draft["designSystemId"], skill_ids=draft["skillIds"]), me, db)
-    assert made.design_system_id == mine.id
-    # Without a theme of that name, none.
-    await db.delete(mine)
-    await db.commit()
-    assert (await sessions.agent_draft(session.id, me, db))["designSystemId"] is None
+        surface=draft["surface"], doc_format=draft["docFormat"],
+        design_brief=draft["designBrief"], skill_ids=draft["skillIds"]), me, db)
+    assert made.doc_format == "minutes" and made.design_system_id is None
 
 
 def test_a_draft_name_never_carries_a_date():
@@ -204,7 +202,7 @@ async def test_a_report_conversation_infers_its_base_from_its_template(db, calls
     db.add(session)
     await db.commit()
     draft = await sessions.agent_draft(session.id, me, db)
-    assert (draft["base"], draft["renderTemplateId"]) == ("minutes", "doc-minutes")
+    assert (draft["base"], draft["docFormat"]) == ("minutes", "minutes")
     assert draft["kinds"] == ["report"]
 
 

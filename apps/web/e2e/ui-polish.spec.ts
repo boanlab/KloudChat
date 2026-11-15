@@ -383,7 +383,7 @@ test('a table in an answer sorts by its headings and goes back to the written or
   expect(unexpected).toEqual([])
 })
 
-test('a report started from a project shows the home screen chips, its default template, and sends the picked file', async ({ page }, info) => {
+test('a report started from a project shows the home screen chips and sends the picked file', async ({ page }, info) => {
   const { unexpected, sends } = await composerFixture(page, info, { skills: false, agents: false, connectors: false })
   const id = 'c0000000000000000000000000000077'
   const project = {
@@ -404,22 +404,22 @@ test('a report started from a project shows the home screen chips, its default t
     return route.fulfill({ contentType: 'text/event-stream', body: 'data: {"type":"done"}\n\n' })
   })
   await page.goto(`/s/${id}`)
-  // The new subtitle, the same 형식 and 템플릿 chips as the home screen, the project's template picked.
+  // The new subtitle and the same 형식 chip as the home screen; no template picker.
   await expect(page.getByText('웹 보고서·한글·Word로 씁니다', { exact: false })).toBeVisible({ timeout: 15_000 })
   const format = page.getByRole('button', { name: /^형식/ })
   await expect(format).toContainText('웹 보고서')
-  await expect(page.getByTestId('template-chip')).toContainText('비교 보고서')
+  await expect(page.getByTestId('template-chip')).toHaveCount(0)
   await format.click()
   await page.getByRole('menuitemcheckbox', { name: 'Word', exact: true }).click()
   await expect(page.getByRole('button', { name: '빈 문서로 시작' })).toBeVisible()
   await page.getByLabel('프롬프트 입력').fill('3분기 실적 보고서')
   await page.getByLabel('프롬프트 입력').press('Enter')
   await expect.poll(() => sends.at(-1)?.body.outputFormat).toBe('docx')
-  expect(sends.at(-1)?.body.renderTemplateId).toBe('tpl-report')
+  expect(sends.at(-1)?.body.renderTemplateId).toBeUndefined()
   expect(unexpected).toEqual([])
 })
 
-test('an empty slides session reopened later (an agent\'s start) offers the same format and template chips', async ({ page }, info) => {
+test('an empty slides session reopened later (an agent\'s start) offers the same format chip', async ({ page }, info) => {
   const { unexpected } = await composerFixture(page, info, { skills: false, connectors: false })
   const id = 'c0000000000000000000000000000078'
   const empty = {
@@ -434,10 +434,7 @@ test('an empty slides session reopened later (an agent\'s start) offers the same
   await page.goto(`/s/${id}`)
   const format = page.getByRole('button', { name: /^형식/ })
   await expect(format).toContainText('웹 슬라이드', { timeout: 15_000 })
-  await expect(page.getByTestId('template-chip')).toContainText('기본값')
-  await page.getByTestId('template-chip').click()
-  await expect(page.getByRole('dialog', { name: '템플릿 고르기' })).toBeVisible()
-  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('template-chip')).toHaveCount(0)
   await format.click()
   await page.getByRole('menuitemcheckbox', { name: 'PowerPoint', exact: true }).click()
   await expect(page.getByRole('button', { name: '빈 문서로 시작' })).toBeVisible()
@@ -571,7 +568,7 @@ test('the safe model list reorders by dragging its handle on a touch screen @pho
   expect(fx.unexpected).toEqual([])
 })
 
-test('a PowerPoint start takes the picked slides template, blank or with a request', async ({ page }, info) => {
+test('a PowerPoint start sends the file, with or without a request, and no template', async ({ page }, info) => {
   const { unexpected, sends } = await composerFixture(page, info, { skills: false, agents: false, connectors: false })
   const made: Record<string, unknown>[] = []
   await page.route('**/api/artifacts/pptx', (route) => {
@@ -582,22 +579,16 @@ test('a PowerPoint start takes the picked slides template, blank or with a reque
   await page.goto('/new/slides')
   await page.getByRole('button', { name: /^형식/ }).click({ timeout: 15_000 })
   await page.getByRole('menuitemcheckbox', { name: 'PowerPoint', exact: true }).click()
-  const chip = page.getByTestId('template-chip')
-  await expect(chip).toBeEnabled()
-  await chip.click()
-  const gallery = page.getByRole('dialog', { name: '템플릿 고르기' })
-  await gallery.getByRole('button', { name: '이 템플릿으로 시작' }).first().click()
-  await expect(chip).toContainText('사업 소개')
-  // With a request: the slides turn carries the file and the template.
+  await expect(page.getByTestId('template-chip')).toHaveCount(0)
   await page.getByLabel('프롬프트 입력').fill('AI 도입 효과 발표')
   await page.getByLabel('프롬프트 입력').press('Enter')
   await expect.poll(() => sends.at(-1)?.body.outputFormat).toBe('pptx')
-  expect(sends.at(-1)?.body.renderTemplateId).toBe('tpl-deck')
+  expect(sends.at(-1)?.body.renderTemplateId).toBeUndefined()
   expect(made).toEqual([])
   expect(unexpected).toEqual([])
 })
 
-test('a blank PowerPoint start makes the deck from the picked template', async ({ page }, info) => {
+test('a blank PowerPoint start makes the deck with no template', async ({ page }, info) => {
   const { unexpected } = await composerFixture(page, info, { skills: false, agents: false, connectors: false })
   const made: Record<string, unknown>[] = []
   await page.route('**/api/artifacts/pptx', (route) => {
@@ -608,9 +599,8 @@ test('a blank PowerPoint start makes the deck from the picked template', async (
   await page.goto('/new/slides')
   await page.getByRole('button', { name: /^형식/ }).click({ timeout: 15_000 })
   await page.getByRole('menuitemcheckbox', { name: 'PowerPoint', exact: true }).click()
-  await page.getByTestId('template-chip').click()
-  await page.getByRole('dialog', { name: '템플릿 고르기' }).getByRole('button', { name: '이 템플릿으로 시작' }).first().click()
   await page.getByRole('button', { name: '빈 문서로 시작' }).click()
-  await expect.poll(() => made.at(-1)).toMatchObject({ templateId: 'tpl-deck', title: '새 PowerPoint 문서' })
+  await expect.poll(() => made.at(-1)).toMatchObject({ title: '새 PowerPoint 문서' })
+  expect(made.at(-1)?.templateId).toBeUndefined()
   expect(unexpected.filter((u) => !u.includes('/artifacts/art-pptx'))).toEqual([])
 })

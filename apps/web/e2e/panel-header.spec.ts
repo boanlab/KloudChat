@@ -91,7 +91,7 @@ test('report: ⋯ holds the views it folded, the contents, versions and reuse', 
   await expect(page.getByRole('dialog', { name: '버전 기록' })).toBeVisible()
 })
 
-test('report: 편집 opens the editing tabs; 레이아웃 holds the look, 강조색, 템플릿 and the page', async ({ page }, testInfo) => {
+test('report: 편집 opens the editing tabs; 레이아웃 holds the look, 강조색 and the page', async ({ page }, testInfo) => {
   await resultsFixture(page, testInfo)
   await open(page, reportSession)
   await header(page).getByRole('button', { name: '편집', exact: true }).click()
@@ -99,12 +99,13 @@ test('report: 편집 opens the editing tabs; 레이아웃 holds the look, 강조
   await expect(panel(page).getByRole('tab', { name: '홈' })).toHaveAttribute('aria-selected', 'true')
   await shot(page, 'report-editing', viewport(testInfo))
   await panel(page).getByRole('tab', { name: '레이아웃' }).click()
-  await expect(header(page).getByRole('button', { name: '문서 테마 고르기' })).toBeVisible()
+  await expect(header(page).getByRole('button', { name: '문서 모양 고르기' })).toBeVisible()
   await expect(header(page).getByRole('button', { name: '강조색 고르기' })).toBeVisible()
   await expect(header(page).getByRole('button', { name: '페이지 설정' })).toBeVisible()
-  // 템플릿 is the document's structure: the menu lists the templates.
-  await header(page).getByRole('button', { name: '문서 템플릿 고르기' }).click()
-  await expect(menu(page)).toContainText('내보내면 이 템플릿으로 나갑니다')
+  // no template picker: the structure comes from the request, the look is this document's
+  await expect(header(page).getByRole('button', { name: '문서 템플릿 고르기' })).toHaveCount(0)
+  await header(page).getByRole('button', { name: '문서 모양 고르기' }).click()
+  await expect(menu(page)).toContainText('같은 내용, 다른 인상')
   await shot(page, 'report-design-tab', viewport(testInfo))
   await page.keyboard.press('Escape')
   await panel(page).getByRole('tab', { name: '검토' }).click()
