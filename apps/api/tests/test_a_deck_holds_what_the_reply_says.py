@@ -190,3 +190,10 @@ async def test_a_picture_that_is_not_there_is_left_out_and_said(monkeypatch):
         {"title": "그림", "bullets": ["설명"], "image": {"file": "2309.06180-Figure8.png"}}]}, ctx)
     assert "image" not in args["slides"][0]
     assert "Figure8" in args[tool.NOTES][0]
+
+
+async def test_the_count_comes_from_the_persons_own_words():
+    ctx = SimpleNamespace(asked="vLLM 논문 발표할 PowerPoint 12장 만들어 줘.",
+                          request="# 프로젝트 지식\n… 3장 …\n\n질문")
+    with pytest.raises(ValueError, match="12장"):
+        await tool._prepare({"title": "t", "slides": [{"title": str(i)} for i in range(12)]}, ctx)

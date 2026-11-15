@@ -190,7 +190,7 @@ async def _prepare(args: dict[str, Any], ctx: Any) -> dict[str, Any]:
     args = {**args, "slides": [
         {**slide, "chart": _chart_values(slide["chart"])}
         if isinstance(slide.get("chart"), dict) else slide for slide in slides]}
-    asked = getattr(ctx, "request", "") or ""
+    asked = getattr(ctx, "asked", "") or getattr(ctx, "request", "") or ""
     # the person's own words come first; material the turn appended after them can hide the
     # count from the instruction scope, so the opening paragraph is read on its own as well
     opening = asked.strip().split("\n\n", 1)[0]

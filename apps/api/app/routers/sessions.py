@@ -7614,6 +7614,8 @@ async def _answer_turn(
         open_artifact=dict(open_artifact or {}),
         standing=list(standing or []),
         look=dict(look or {}),
+        # the person's message as typed this turn
+        asked=first_user_message,
         # latest user message, not the opening line
         request=next(
             (
