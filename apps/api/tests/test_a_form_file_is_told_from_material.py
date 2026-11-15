@@ -157,6 +157,18 @@ def test_a_binary_hwp_is_never_a_form_and_a_form_like_one_says_how_to_save_hwpx(
     assert "advice" not in form_profile.summary(plain)
 
 
+def test_an_hwp_named_hwpx_is_told_by_its_bytes_and_gets_the_hwpx_advice():
+    # 법령정보센터 serves HWP 5 files under 「….hwpx」 names
+    ole = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\0" * 504
+    found = form_profile.profile("[별지 제2호서식] 사업계획서.hwpx", ole,
+                                 "※ 작성요령\n상호: ○○○\n대표자: ○○○\n")
+    assert found["kind"] == "hwp" and found["verdict"] == "material"
+    assert "(*.hwpx)" in form_profile.summary(found)["advice"]
+    assert file_service.sniff("사업계획서.hwpx", ole) == "application/x-hwp"
+    hwpx = form_profile.profile("신청서_별지1호.hwp", _form_hwpx())
+    assert hwpx["kind"] == "hwpx" and hwpx["verdict"] == "form"
+
+
 def test_a_broken_office_file_is_material_with_its_reason():
     found = form_profile.profile("깨짐.pptx", b"not a zip")
     assert found["verdict"] == "material" and found["error"]

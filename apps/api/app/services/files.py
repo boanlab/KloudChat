@@ -134,6 +134,8 @@ _ZIP_SUFFIXES = {
 }
 _OLE_SUFFIXES = {
     ".hwp": "application/x-hwp",
+    # an HWP 5 file named 「.hwpx」 (법령정보센터's downloads)
+    ".hwpx": "application/x-hwp",
     ".doc": "application/msword",
     ".xls": "application/vnd.ms-excel",
     ".ppt": "application/vnd.ms-powerpoint",
@@ -796,6 +798,11 @@ def _extract_text(name: str, mime: str, data: bytes) -> str:
         return _from_csv(data)
     if suffix in _TEXT_SUFFIXES or mime.startswith("text/"):
         return _from_text(data)
+    # the bytes decide between the two 한글 formats: 법령정보센터 serves HWP 5 files as 「….hwpx」
+    if suffix in (".hwpx", ".hwp") and data[:8] == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":
+        return _from_hwp(data)
+    if suffix in (".hwpx", ".hwp") and data[:4] == b"PK\x03\x04":
+        return _from_hwpx(data)
     if suffix == ".hwpx":
         return _from_hwpx(data)
     if suffix == ".hwp":
