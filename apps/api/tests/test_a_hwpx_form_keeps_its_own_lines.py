@@ -36,11 +36,12 @@ def _form() -> bytes:
         _cell("", 2, 0, h=0, cols=2),
         _cell("2. 기상사업의 목적\n -", 3, 0, h=9000, cols=2),
         _cell("3. 기상사업의 계획\n가. 사업의 방법\n나. 관련 기술 및 시설", 4, 0, h=9000, cols=2),
+        _cell("\n".join(_RECEIPT), 5, 0, h=9000, cols=2),
     ]
     table = (
         '<hp:p paraPrIDRef="3" styleIDRef="0"><hp:run charPrIDRef="0"><hp:tbl id="0" '
         'zOrder="0" numberingType="TABLE" textWrap="TOP_AND_BOTTOM" textFlow="BOTH_SIDES" '
-        'lock="0" dropcapstyle="None" pageBreak="CELL" repeatHeader="1" rowCnt="5" colCnt="2" '
+        'lock="0" dropcapstyle="None" pageBreak="CELL" repeatHeader="1" rowCnt="6" colCnt="2" '
         'cellSpacing="0" borderFillIDRef="1" noAdjust="0"><hp:sz width="42520" '
         'widthRelTo="ABSOLUTE" height="4000" heightRelTo="ABSOLUTE" protect="0"/>'
         + "".join(f"<hp:tr>{row}</hp:tr>" for row in rows) + "</hp:tbl></hp:run></hp:p>")
@@ -194,3 +195,23 @@ def test_a_fixed_line_may_take_a_value_in_its_blank_but_content_cannot_stand_for
     assert hwpx_form._inserted("대학(nameofcollege):", "대학(nameofcollege):정보대학")
     assert not hwpx_form._inserted("사업명", "사업계획의명칭")
     assert not hwpx_form._inserted("대학", "대학교")
+
+
+_RECEIPT = [
+    "대학(Name) :", "위 학생의 복학원서를 접수함. The above student's form is hereby received.",
+    "년 월 일"]
+
+
+def test_a_cell_of_several_fixed_lines_keeps_its_long_lines_too():
+    marked = _marked()
+    assert form_marks.read(marked)["fixed"]["cells"]["t1:5:0"] == _RECEIPT
+    # written whole with its lines carried (a value in the first blank): kept as written
+    done = hwpx_edit.apply(marked, [{
+        "op": "set_cell", "table": "t1", "row": 5, "col": 0,
+        "text": "\n".join(["대학(Name) : 정보대학", *_RECEIPT[1:]])}])
+    assert _text(done.data, "t1", 5, 0).split("\n") == ["대학(Name) : 정보대학", *_RECEIPT[1:]]
+    # a write that drops the long line is left out, whatever else it says
+    with pytest.raises(hwpx_edit.HwpxError, match="그 줄을 그대로 두고"):
+        hwpx_edit.apply(marked, [{
+            "op": "set_cell", "table": "t1", "row": 5, "col": 0,
+            "text": "대학(Name) : 정보대학"}])

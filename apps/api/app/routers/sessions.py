@@ -5407,6 +5407,10 @@ async def _send_message(
     #: the surface this turn runs as: a report written as an HWP or Word file is worked on from
     #: here like a chat's office document, its tools and pre-read included
     kind = SessionKind.chat if await _office_report(db, session) else session.kind
+    if hwp_refusal:
+        # nothing is written: the answer is the way to HWPX, said by the chat turn that
+        # makes no model call (`_canned`), whatever the screen the person asked on
+        kind = SessionKind.chat
 
     #: user message being rerun; stored words/attachments replace the client's
     retry_of: Message | None = None

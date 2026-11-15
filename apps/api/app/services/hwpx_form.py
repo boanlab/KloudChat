@@ -29,6 +29,8 @@ from app.services.office_edit import BLANK
 _LISTED = 40
 #: a fixed line is at most this long (compact); longer ones are body or sample text
 _FIXED_MAX = 40
+#: a line of a cell of several fixed lines is fixed up to this long
+_STRUCTURE_MAX = 140
 #: a row shorter than this (hwpunit, 1/7200 in) holds nothing: a rule or a spacer
 _SPACER = 1000
 #: the fixed lines kept in the mark: cells and body paragraphs
@@ -108,6 +110,11 @@ def snapshot(doc: Any) -> dict[str, Any]:
         for r, c, cell in hwpx_edit._cells(table.element):
             lines = _lines(cell)
             fixed = [ln for ln in lines if fixed_line(ln)]
+            if len(fixed) >= 2:
+                # a cell of several fixed lines is a structure (a receipt, a list of headings):
+                # its longer lines are the form's too
+                fixed = [ln for ln in lines if not free_line(ln) and not BLANK.fullmatch(
+                    ln.strip()) and len(ln.strip()) <= _STRUCTURE_MAX]
             if not fixed or len(cells) >= _MAX_CELLS:
                 continue
             cells[_key(table.id, r, c)] = fixed
@@ -326,7 +333,7 @@ class Guard:
             want = [_compact(ln) for ln in fixed]
             at = 0
             for line in have:
-                if at < len(want) and line == want[at]:
+                if at < len(want) and (line == want[at] or _inserted(want[at], line)):
                     at += 1
             if at < len(want):
                 hwpx_edit._set_cell(cell, "\n".join(fixed), whole=True)
