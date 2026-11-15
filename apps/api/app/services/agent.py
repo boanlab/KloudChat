@@ -1709,8 +1709,15 @@ async def _run_tool(tool: Tool, arguments: str, ctx: ToolContext) -> ToolResult:
     try:
         parsed = json.loads(arguments or "{}")
     except json.JSONDecodeError:
+        cut = len(arguments or "") > 1500 and not (arguments or "").rstrip().endswith(("}", "]"))
         return ToolResult(
-            content=f"오류: 인자를 JSON으로 해석할 수 없습니다: {arguments[:200]}", failed=True
+            content=(
+                "오류: 인자가 중간에 끊겨 JSON이 아닙니다. 한 번에 쓸 수 있는 길이를 넘었습니다: "
+                "내용을 나눠 더 짧게 여러 번 호출하세요 (문서는 앞 부분만 쓰고, 나머지는 "
+                "문서 읽기 뒤 편집 도구로 더하세요)."
+                if cut else
+                f"오류: 인자를 JSON으로 해석할 수 없습니다: {arguments[:200]}"),
+            failed=True,
         )
     if not isinstance(parsed, dict):
         return ToolResult(content="오류: 인자는 객체여야 합니다.", failed=True)
@@ -1779,6 +1786,8 @@ async def run_turn(
     #: Tools whose result the answer is made of (a skill's declared connector, given its link):
     #: without a usable result the answer says so instead of writing the content.
     source_tools: frozenset[str] = frozenset(),
+    #: tool hops past `max_tool_hops` this turn may use (a form filled in place)
+    hop_bonus: int = 0,
     #: The turn carries the person's own material (pasted, attached or project files).
     material_given: bool = False,
     #: Other self-hosted model that writes the answer once more when this one left it empty,
@@ -1997,7 +2006,7 @@ async def run_turn(
     schedule_request = scheduling.latest_request(messages)
     schedule_retried = False
     #: Extra hops past the cap (max one, for computing values).
-    extra_hops = 0
+    extra_hops = max(0, hop_bonus)
     #: Next call is last after this hop's tools.
     close_after_tools = False
     #: Given text, to tell computed numbers apart.

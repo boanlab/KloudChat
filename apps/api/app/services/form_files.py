@@ -364,4 +364,65 @@ def writer_note(form: Resolved) -> str:
     ]
     if chapters:
         lines.append("Chapters: " + " / ".join(chapters))
+    for name, subs, heads in form_parts(form):
+        parts = []
+        if subs:
+            parts.append("sub-headings " + " / ".join(subs) + " (write each as a level-2 "
+                         "heading of that name)")
+        for head in heads:
+            parts.append("a table with the columns " + " | ".join(head) + " (write your "
+                         "table for it with exactly these column names; amounts in the unit "
+                         "the column names)")
+        if parts:
+            lines.append(f"Under 「{name}」 the form has " + "; ".join(parts) + ".")
     return "\n".join(lines)
+
+
+def form_parts(form: Resolved) -> list[tuple[str, list[str], list[list[str]]]]:
+    """(chapter, its sub-headings, the head rows of its blank tables) for a Word form."""
+    import io
+
+    from docx import Document
+
+    from app.services import docx_form
+
+    try:
+        document = Document(io.BytesIO(form_profile.as_document(form.data)))
+    except Exception:  # noqa: BLE001 — the note goes without the parts
+        return []
+    headings = form.profile.get("headings") or {}
+    ones = {(headings.get("1") or {}).get("style"), "Heading1"} - {None, ""}
+    twos = {(headings.get("2") or {}).get("style"), "Heading2"} - {None, ""}
+    body = [e for e in document.element.body if e.tag != docx_form._q("sectPr")]
+    _, chapters = docx_form._split(body, ones)
+    out = []
+    for heading, content in chapters:
+        _, subs = docx_form._split(content, twos)
+        heads = [docx_form.table_cells(e)[0] for e in content
+                 if e.tag == docx_form._q("tbl") and docx_form.blank_table(e)]
+        out.append((docx_form._NUMBER.sub("", docx_form._text(heading), count=1).strip(),
+                    [docx_form._NUMBER.sub("", docx_form._text(h), count=1).strip()
+                     for h, _ in subs], heads))
+    return out
+
+
+#: the request asks for the form to be filled or written on
+_FILL_ASK = re.compile(r"채워|채우|작성해|써\s{0,2}줘|써\s{0,2}주|기입|맞춰|양식대로|서식대로")
+
+HWP_REFUSAL = (
+    "이 파일은 예전 한글 형식(.hwp)이라 양식으로 채울 수 없어 이번에는 아무것도 쓰지 않았습니다."
+    "\n\n"
+    "한글에서 「파일 › 다른 이름으로 저장 › 한글 표준 문서 (*.hwpx)」로 저장해 다시 올려 주세요. "
+    "올리신 파일 옆의 「HWP로 열기」로 열어 저장해도 HWPX가 됩니다. 다시 올리면 서식의 칸마다 "
+    "채워 드립니다.")
+
+
+def hwp_refusal(turn: TurnForms, request: str) -> str:
+    """The whole answer to a request to fill an old-format `.hwp` as a form, which nothing can
+    be written on: the way to a form that can be (HWPX), not an essay about the file. Empty
+    when the request is not that (a summary of the file, a form that can be followed)."""
+    if turn.forms or form_profile.HWP_FORM_ADVICE not in turn.notes.values():
+        return ""
+    if not _FILL_ASK.search(request or "") or _AS_MATERIAL.search(request or ""):
+        return ""
+    return HWP_REFUSAL

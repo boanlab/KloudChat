@@ -394,7 +394,12 @@ TOOLS = tools_for(Toolset(
         "saved file holds (slides, charts, tables, pictures): say only that. Never invent names, "
         "dates, places or numbers: write a bracket blank named for what goes there, such as "
         "「[담당자]」, 「[YYYY. MM. DD.]」, 「[매출액]」, instead; never invent results, workloads "
-        "or figures a paper does not have; and add no slides the request does not call for."
+        "or figures a paper does not have; and add no slides the request does not call for. A "
+        "sum, difference, ratio or running total of numbers the material gives is not an "
+        "invention: work it out (code, or by hand with the working shown in notes) and write "
+        "the result (누적 합계, 달성률, 증감); only a value the material cannot yield stays a "
+        "bracket blank. Write at most about six slides in one call; if the deck is longer, "
+        "write the first part and add the rest with pptx_edit add_slide after pptx_read."
     ),
     write_params={
         "type": "object",

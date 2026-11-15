@@ -235,3 +235,45 @@ def test_the_question_lists_its_form_and_the_hwp_note():
     meta = form_files.turn_meta(turn, None)
     assert meta == [{"id": saved.id, "name": saved.name, "role": "form", "formKind": "pptx",
                      "source": "project"}]
+
+
+def _named_form() -> bytes:
+    """The company form with some layouts named for their use, as corporate forms are."""
+    deck = Presentation(io.BytesIO(_company_form()))
+    layouts = deck.slide_layouts
+    layouts[2].name = "마무리"
+    layouts[3].name = "핵심 숫자"
+    layouts[5].name = "표 전용"
+    out = io.BytesIO()
+    deck.save(out)
+    return out.getvalue()
+
+
+def test_a_layout_named_for_its_use_is_taken_before_the_generic_one():
+    slides = [
+        {"layout": "title", "title": "3분기 실적", "body": ""},
+        {"layout": "bullets", "title": "핵심", "bullets": ["매출 1,820", "이익 412", "고객 52사"]},
+        {"layout": "table", "title": "분기별",
+         "rows": [["분기", "매출"], ["1분기", "1,820"]]},
+        {"layout": "bullets", "title": "배경", "bullets": ["점검 기록이 흩어져 있다"]},
+        {"layout": "closing", "title": "[감사 인사 또는 Q&A 안내]", "body": ""},
+    ]
+    deck, followed = _written(_named_form(), slides)
+    names = [slide.slide_layout.name for slide in deck.slides]
+    assert names == ["Title Slide", "핵심 숫자", "표 전용", "Title and Content", "마무리"]
+    assert not followed.stand_ins
+    last = list(deck.slides)[-1]
+    texts = [shape.text_frame.text for shape in last.shapes if shape.has_text_frame]
+    assert "감사합니다" in texts
+    assert not any("[" in text for text in texts)
+
+
+def test_a_shape_past_the_slide_edge_is_brought_inside_with_its_table():
+    deck = Presentation()
+    deck.slide_width, deck.slide_height = Emu(12192000), Emu(6858000)
+    slide = deck.slides.add_slide(deck.slide_layouts[5])
+    table = slide.shapes.add_table(4, 3, Emu(3000000), Emu(1500000), Emu(12000000), Emu(2000000))
+    pptx_form.clamp(slide, (12192000, 6858000))
+    assert table.left >= 0 and table.left + table.width <= 12192000
+    assert table.top + table.height <= 6858000
+    assert sum(column.width for column in table.table.columns) == table.width

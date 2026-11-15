@@ -70,6 +70,8 @@ class Toolset:
                                            "insert_table", "move_paragraphs",
                                            "insert_picture"})
     write_text: str = ""
+    #: said after the default edit description (a kind's extra ops)
+    edit_extra: str = ""
     write_params: dict[str, Any] | None = None
     build: Callable[[dict[str, Any], Any], tuple[str, bytes]] | None = None
     #: a kind whose look is resolved its own way (PowerPoint's slides template): awaited with
@@ -299,6 +301,7 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool, Tool]:
             except kit.error as exc:
                 # what the model got wrong, for tuning the tool's description
                 log.info("%s_edit refused: %s", p, exc)
+                state(ctx)["refused"] = str(exc)[:400]
                 return ToolResult(
                     content=f"고치지 않았습니다: {exc}\n쓸 수 있는 op: {op_help}", failed=True
                 )
@@ -325,6 +328,11 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool, Tool]:
         state(ctx).setdefault("saved", []).append(record)
         lines = "\n".join(f"- {line}" for line in result.changes)
         content = f"v{saved.version}로 저장했습니다. 바뀐 곳:\n{lines}"
+        if result.notes:
+            # a form's fixed lines held the edit back: said, so the reply says it too
+            record["notes"] = list(result.notes)
+            content += "\n서식을 지키려고 넣지 않았거나 되돌린 것:\n" + "\n".join(
+                f"- {note}" for note in result.notes)
         if any(isinstance(op, dict) and op.get("op") in kit.renumbers for op in ops):
             # numbering moved; the next edit needs the new ids
             content += "\n\n번호가 바뀌었습니다. 지금 문서:\n" + kit.edit.outline(result.data)
@@ -522,7 +530,7 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool, Tool]:
             "~ [HH:MM]」), rewrite that line with replace_text instead. Put only facts the "
             "person gave; anything still unknown stays a bracket blank like 「[담당자]」; never "
             "delete text the person typed unless they asked for that very text to go."
-        ),
+        ) + kit.edit_extra,
         parameters={
             "type": "object",
             "properties": {
@@ -546,6 +554,11 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool, Tool]:
                             "rows": {"type": "array",
                                      "items": {"type": "array", "items": {"type": "string"}}},
                             "whole": {"type": "boolean"},
+                            "values": {"type": "array", "items": {
+                                "type": "object",
+                                "properties": {"label": {"type": "string"},
+                                               "text": {"type": "string"},
+                                               "table": {"type": "string"}}}},
                             "style": {"type": "string"},
                             "find": {"type": "string"},
                             "bold": {"type": "boolean"},

@@ -561,10 +561,18 @@ def apply(data: bytes, ops: list[dict],
           pictures: dict[str, tuple[str, bytes]] | None = None) -> Result:
     """Every op or none: targets resolve against `data` before anything changes. `pictures`:
     the image files picture ops name (`file`), found by the tool."""
-    from app.services import hwpx_ops
+    from app.services import hwpx_form, hwpx_ops
 
-    office_edit.check_ops(ops, HwpxError)
     archive, doc = _load(data)
+    #: the fixed lines of a 한글 form this document follows (`hwpx_form.Guard`)
+    guard = hwpx_form.guard_for(data, doc)
+    if guard is not None:
+        ops = guard.expand(ops) if isinstance(ops, list) else ops
+    elif any(isinstance(op, dict) and op.get("op") == "fill_fields" for op in ops or []):
+        raise HwpxError("fill_fields는 양식(서식) 문서에서만 쓸 수 있습니다. set_cell을 쓰세요.")
+    if not ops and guard is not None and guard.notes:
+        raise HwpxError("넣을 수 있는 값이 없었습니다. " + " ".join(guard.notes))
+    office_edit.check_ops(ops, HwpxError)
     # resolve first: ids name the version the model read
     plan: list[tuple[dict, object]] = []
     #: house shapes put into this file's header, once (`_import_shapes`)
@@ -574,8 +582,16 @@ def apply(data: bytes, ops: list[dict],
             raise HwpxError('op마다 {"op": ...} 객체여야 합니다.')
         kind = op.get("op")
         if kind == "replace_text":
-            plan.append((op, _paragraph(doc, op.get("id"))[1]))
+            found = _paragraph(doc, op.get("id"))[1]
             _text_arg(op)
+            if guard is not None:
+                try:
+                    op = {**op, "text": guard.paragraph_text(str(op.get("id")), found,
+                                                             _text_arg(op))}
+                except hwpx_form.Skip as why:
+                    guard.notes.append(str(why))
+                    continue
+            plan.append((op, found))
         elif kind == "fill_blank":
             blank = str(op.get("blank") or "").strip()
             if not BLANK.fullmatch(blank):
@@ -588,8 +604,21 @@ def apply(data: bytes, ops: list[dict],
             plan.append((op, places))
         elif kind == "set_cell":
             table = _table(doc, op.get("table"))
-            plan.append((op, _cell(table, op.get("row"), op.get("col"))))
+            target = _cell(table, op.get("row"), op.get("col"))
             _text_arg(op)
+            if guard is not None and op.get("whole") is not True:
+                try:
+                    op = {**op, "text": guard.cell_text(
+                        str(op.get("table")), int(op.get("row")), int(op.get("col")),
+                        _text_arg(op))}
+                except hwpx_form.Skip as why:
+                    guard.notes.append(str(why))
+                    continue
+            elif guard is not None:
+                guard.notes.append(f"{op.get('table')} r{op.get('row')}c{op.get('col')}: "
+                                   "whole은 서식 칸에 쓰지 않아 칸을 비우지 않고 썼습니다.")
+                op = {k: v for k, v in op.items() if k != "whole"}
+            plan.append((op, target))
         elif kind == "insert_paragraph":
             _text_arg(op)
             plan.append((op, _paragraph(doc, op.get("after"))))
@@ -599,6 +628,12 @@ def apply(data: bytes, ops: list[dict],
                 raise HwpxError(
                     f"{op.get('id')}에는 쪽 설정이 있어 지울 수 없습니다. 글만 비우세요."
                 )
+            if guard is not None:
+                try:
+                    guard.may_delete(str(op.get("id")), paragraph)
+                except hwpx_form.Skip as why:
+                    guard.notes.append(str(why))
+                    continue
             plan.append((op, paragraph))
         elif kind in ("insert_table_row", "delete_table_row"):
             table = _table(doc, op.get("table"))
@@ -617,6 +652,8 @@ def apply(data: bytes, ops: list[dict],
         else:
             raise office_edit.unknown_op(kind, HwpxError)
 
+    if guard is not None and not plan and guard.notes:
+        raise HwpxError("고칠 수 있는 op가 없었습니다. " + " ".join(guard.notes))
     changes: list[str] = []
     for op, target in plan:
         kind = op["op"]
@@ -665,7 +702,9 @@ def apply(data: bytes, ops: list[dict],
                            f"{max(len(row) for row in rows)}칸)")
         elif kind in hwpx_ops.OPS:
             changes.append(hwpx_ops.run(archive, doc, op, target))
-    return Result(_write(archive, doc), changes)
+    if guard is not None:
+        guard.verify()
+    return Result(_write(archive, doc), changes, guard.notes if guard is not None else [])
 
 
 #: the shapes a new table is drawn in, by `report_export`'s house ids: bordered cells, the
