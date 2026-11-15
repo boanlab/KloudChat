@@ -208,10 +208,10 @@ test('작업 문서 opens each kind in its editor, downloads it, renames and del
   await expect(page).toHaveURL(/\/s\/(?!c0000000000000000000000000000001)[^/?]+/)
   expect(asked.some((line) => line.startsWith(`POST /artifacts/${id(2)}/docx/session`))).toBe(true)
 
-  // a web report with none opens in the artifacts panel
+  // a web report with none opens in its panel over the file box
   await page.goto('/files?tab=working')
   await page.getByRole('button', { name: '분기 성과 보고서 편집기에서 열기' }).click()
-  await expect(page).toHaveURL(/\/artifacts/)
+  await expect(page).toHaveURL(new RegExp(`/files\\?tab=working&doc=${id(4)}`))
   await expect.poll(() => asked).toContain(`GET /artifacts/${id(4)}`)
   expect(unexpected).toEqual([])
 })
