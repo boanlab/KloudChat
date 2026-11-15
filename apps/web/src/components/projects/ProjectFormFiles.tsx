@@ -190,7 +190,7 @@ export function ProjectFormFiles({ project }: { project: Project }) {
       <div>
         <p className="text-base font-medium">{t('기본 양식 파일')}</p>
         <p className="text-sm text-muted">
-          {t('이 프로젝트에서 만드는 파일이 따를 양식입니다. 대화에 다른 양식을 첨부하면 그 대화에서는 첨부한 것이 우선합니다.')}
+          {t('이 프로젝트의 파일이 따를 양식입니다. 대화에 첨부한 양식이 우선합니다.')}
         </p>
       </div>
       <FormFilesField

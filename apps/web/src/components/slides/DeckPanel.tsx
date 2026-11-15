@@ -1425,7 +1425,7 @@ function SlidePicture({ deck, slide, open, onClose }: { deck: DeckArtifact; slid
       open={open}
       onClose={onClose}
       title={t('{name}에 그림 넣기').replace('{name}', slide.title || t('이 장'))}
-      description={t('여기서 바로 만들거나 이미 만든 그림을 고를 수 있습니다. 링크가 아니라 파일 안에 담기므로 인쇄와 공유에서도 함께 보입니다.')}
+      description={t('새로 만들거나 이미 만든 이미지를 고릅니다.')}
       footer={
         <>
           <Button onClick={onClose} disabled={busy}>
@@ -1458,7 +1458,7 @@ function SlidePicture({ deck, slide, open, onClose }: { deck: DeckArtifact; slid
       />
       {slide.diagram && (
         <p className="mt-2 text-sm text-muted">
-          {t('이 장의 도식은 글에서 자동으로 그린 것입니다. 이미지 모델의 그림으로 바꾸면 도식은 사라집니다.')}
+          {t('이미지로 바꾸면 이 장의 자동 도식은 사라집니다.')}
         </p>
       )}
       {error && <p className="mt-2 text-base text-danger">{error}</p>}

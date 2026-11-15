@@ -448,7 +448,7 @@ export function PipelineApprovals() {
     <section className="space-y-2 pt-8" aria-label={t('진행 과정 검토')}>
       <h2 className="text-lg font-semibold">{t('진행 과정 검토')}</h2>
       <p className="text-sm text-muted">
-        {t('파일로 내보내거나, 다른 모델이 검토하거나, 다른 에이전트를 부르는 직접 구성과 묶음은 승인한 뒤에야 다른 사람이 씁니다.')}
+        {t('내보내기·검토·다른 에이전트 부르기가 든 구성은 승인해야 다른 사람이 씁니다.')}
       </p>
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       {rows !== null && rows.length === 0 ? (

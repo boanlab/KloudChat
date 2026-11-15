@@ -391,7 +391,7 @@ function ModelMenu({
       title: t('Auto · 비용 절약'),
       available: autoRouting.available,
       blurb: autoRouting.available
-        ? t('간단한 질문은 관리자가 지정한 절약 모델로 보내고, 복잡하면 현재 모델을 유지합니다.')
+        ? t('간단한 질문은 절약 모델로 보냅니다.')
         : autoReason,
     },
     {
@@ -399,7 +399,7 @@ function ModelMenu({
       title: t('Auto · 품질 우선'),
       available: autoRouting.qualityAvailable,
       blurb: autoRouting.qualityAvailable
-        ? t('복잡한 요청만 관리자가 지정한 상위 모델로 보내고, 그 밖에는 현재 모델을 유지합니다. 데이터가 지금보다 멀리 나가지는 않습니다.')
+        ? t('복잡한 요청만 상위 모델로 보냅니다. 데이터는 지금보다 멀리 나가지 않습니다.')
         : qualityReason,
     },
   ]

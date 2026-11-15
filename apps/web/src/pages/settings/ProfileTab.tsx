@@ -103,7 +103,7 @@ export function ProfileTab() {
           />
         </div>
         <p className="mt-1.5 text-xs text-faint">
-          {t('{date}에 {n} 크레딧으로 리필됩니다. 남은 크레딧은 이월되지 않습니다. 한도 변경은 관리자에게 문의하세요.')
+          {t('{date}에 {n} 크레딧으로 다시 채워지며, 남은 크레딧은 이월되지 않습니다.')
             .replace('{date}', user ? formatDate(user.cycleResetsAt) : '')
             .replace('{n}', user?.monthlyCredits.toLocaleString() ?? '0')}
         </p>

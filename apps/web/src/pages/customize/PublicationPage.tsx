@@ -266,7 +266,7 @@ export function PublicationPage() {
                   {t('답을 만드는 과정')}: {t(SHOW_PROCESS_LABEL[pub.showProcess])} · {t('출처 목록')}: {pub.showSources ? t('보임') : t('숨김')} · {t('복사')}: {pub.allowCopy ? t('허용') : t('잠금')}
                 </p>
                 <p className="text-sm text-muted">
-                  {t('답은 공개한 판의 지시와 자료로만 하고, 내 메모리·개인 맞춤 설정·다른 파일은 쓰지 않습니다. 사용량은 내 크레딧으로 계산됩니다.')}
+                  {t('공개한 판의 지시와 자료로만 답하고 내 메모리는 쓰지 않습니다. 사용량은 내 크레딧으로 셉니다.')}
                 </p>
               </Card>
               <AdminReadsCard pub={pub} />
@@ -603,7 +603,7 @@ function VersionsTab({
     <div className="space-y-4">
       <Card className="space-y-3 p-4">
         <p className="text-base font-medium">{t('지금 에이전트로 새 판 공개')}</p>
-        <p className="text-sm text-muted">{t('에이전트의 지시·자료·검사를 지금 상태로 고정해 새 판으로 엽니다. 문제가 있으면 아래에서 이전 판으로 되돌릴 수 있습니다.')}</p>
+        <p className="text-sm text-muted">{t('지금 지시·자료·검사로 새 판을 엽니다. 이전 판으로 되돌릴 수 있습니다.')}</p>
         {outside && (
           <p className="text-sm text-warn">{t('로그인하지 않은 사람에게도 열린 챗봇이라 새 판은 관리자가 확인한 뒤 답합니다. 그동안 승인된 판이 답합니다.')}</p>
         )}

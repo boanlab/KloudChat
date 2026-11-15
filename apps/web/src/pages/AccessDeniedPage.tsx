@@ -21,7 +21,7 @@ export function AccessDeniedPage() {
           <div className="space-y-1">
             <h1 className="text-xl font-semibold">{t('이 페이지에 접근할 수 없습니다.')}</h1>
             <p className="max-w-sm text-base text-muted">
-              {t('관리자 권한이 필요한 화면입니다. 다른 작업은 계속 사용할 수 있습니다.')}
+              {t('관리자 권한이 필요한 화면입니다.')}
             </p>
           </div>
           <Button variant="primary" onClick={() => navigate('/')}>

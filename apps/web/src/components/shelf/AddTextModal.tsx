@@ -46,7 +46,7 @@ export function AddTextModal({
       open={open}
       onClose={() => !busy && onClose()}
       title={t('텍스트 붙여 넣기')}
-      description={t('복사한 글을 이 프로젝트의 자료로 보관합니다. 파일처럼 검색되고 인용됩니다.')}
+      description={t('붙여 넣은 글을 프로젝트 자료로 보관합니다.')}
       footer={
         <>
           <Button onClick={onClose} disabled={busy}>{t('취소')}</Button>

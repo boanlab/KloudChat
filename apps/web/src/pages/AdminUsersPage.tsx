@@ -517,7 +517,7 @@ export function AdminUsersPage() {
       <PageBody>
         <PageHeader
           title={t('사용자 · 크레딧')}
-          description={t('가입 승인과 월 크레딧 한도를 관리합니다. 한도는 매달 1일에 자동으로 리필되며, 남은 크레딧은 이월되지 않습니다.')}
+          description={t('가입을 승인하고 월 크레딧을 정합니다. 매달 1일에 다시 채워지고 이월되지 않습니다.')}
         />
 
         {error && (
@@ -810,7 +810,7 @@ export function AdminUsersPage() {
         title={t('쓸 수 있는 모델')}
         description={
           restricting
-            ? t('{name} 이(가) 호출할 수 있는 모델입니다. 아무것도 고르지 않으면 전체를 씁니다. 이 계정이 발급한 API 키에도 같은 제한이 걸립니다.').replace('{name}', restricting.name)
+            ? t('{name} 이(가) 쓸 수 있는 모델입니다. 고르지 않으면 전체이며, API 키에도 같이 걸립니다.').replace('{name}', restricting.name)
             : undefined
         }
         width="max-w-2xl"

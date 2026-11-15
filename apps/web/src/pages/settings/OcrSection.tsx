@@ -83,7 +83,7 @@ export function OcrSection({
         <div className="min-w-0 flex-1">
           <p className="text-base font-medium">{t('글자 읽기(OCR)')}</p>
           <p className="text-sm text-muted">
-            {t('스캔한 PDF 쪽과 문서 사진의 글자를 읽어 대화·프로젝트·에이전트 자료에서 찾을 수 있게 합니다. 엔진이 먼저 읽고, 자신 없는 쪽과 표가 있는 쪽은 비전 모델이 다시 읽습니다. 두 결과가 다르면 「확인 필요」로 표시합니다.')}
+            {t('스캔 PDF와 문서 사진의 글자를 읽어 찾을 수 있게 합니다. 어려운 쪽은 비전 모델이 다시 읽습니다.')}
           </p>
         </div>
         <Switch checked={enabled} onChange={setEnabled} label={t('글자 읽기(OCR)')} />

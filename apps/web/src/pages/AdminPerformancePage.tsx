@@ -133,7 +133,7 @@ export function AdminPerformancePage() {
   return (
     <PerfScreen
       perf={perf}
-      description={t('호스트, GPU 노드, 모델 서버의 지금 상태를 한 화면에 모읍니다. 추이와 세부 수치는 각 항목에서 봅니다.')}
+      description={t('호스트·GPU 노드·모델 서버의 지금 상태입니다.')}
     >
       {/* Verdict first: one line each, details on the host screen. */}
       <Card
@@ -245,7 +245,7 @@ export function AdminPerformancePage() {
       {data && (
         <Section
           title={t('GPU 노드')}
-          hint={t('vLLM 지표와 GPU 노드 지표는 KloudChat-LLM 게이트웨이의 /metrics로 읽습니다.')}
+          hint={t('게이트웨이의 /metrics에서 읽습니다.')}
         >
           <SortableTable
             label={t('GPU 노드')}

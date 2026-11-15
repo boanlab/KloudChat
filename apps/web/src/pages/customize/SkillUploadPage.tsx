@@ -206,7 +206,7 @@ export function SkillUploadPage() {
                 <span className="text-sm font-normal text-muted">{t('업로드할 때 실행')}</span>
               </p>
               <p className="mt-0.5 text-sm text-muted">
-                {t('경로·크기·압축 폭탄을 검사하고, 지시 무시·외부 전송·숨은 문자·키처럼 보이는 문자열을 찾습니다. scripts/ 의 파이썬 스크립트는 네트워크·다른 프로그램 실행·밖의 파일 쓰기를 따로 살피고, 코드 실행 샌드박스에서만 돌립니다. 검사는 휴리스틱이라 모든 위험을 찾지는 못합니다.')}
+                {t('위험한 지시·숨은 문자·키·스크립트 동작을 검사합니다. 모든 위험을 찾지는 못합니다.')}
               </p>
             </div>
           </div>

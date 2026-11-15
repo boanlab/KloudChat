@@ -107,7 +107,7 @@ export function ToolsSection({
 
       <Field
         label={t('서버 주소')}
-        hint={t('기능 서버를 설치할 때 안내받은 주소입니다. 기능마다 서버가 다르면 비워 두고 아래에서 따로 지정하세요.')}
+        hint={t('기능마다 서버가 다르면 비워 두고 아래에서 지정하세요.')}
       >
         <div className="flex items-center gap-2">
           <Input
@@ -186,7 +186,7 @@ export function ToolsSection({
       </div>
 
       <p className="text-sm text-muted">
-        {t('기능별 칸을 비우면 위 서버 주소를 따릅니다. 연결되지 않은 기능은 대화에서 쓸 수 없고, 나머지 기능은 그대로 동작합니다.')}
+        {t('비운 칸은 위 서버 주소를 씁니다.')}
       </p>
     </div>
   )

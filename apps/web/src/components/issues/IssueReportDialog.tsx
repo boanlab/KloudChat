@@ -296,8 +296,8 @@ function IssueForm() {
           </label>
           <p className="text-sm text-faint">
             {share
-              ? t('대화 내용, 만든 아티팩트의 판, 단계 기록, 대화의 파일을 지금 상태 그대로 복사해 보냅니다. 나중에 대화를 고치거나 지워도 신고에 담긴 사본은 바뀌지 않습니다.')
-              : t('체크하지 않으면 대화 내용은 보내지 않고, 사용한 모델과 단계 상태 같은 기록만 함께 갑니다.')}
+              ? t('대화·아티팩트·단계 기록·파일을 지금 상태로 복사해 보냅니다.')
+              : t('체크하지 않으면 모델·단계 상태 같은 기록만 보냅니다.')}
           </p>
           {strict && (
             <div role="alert" className="space-y-2 rounded-control border border-warn/40 bg-warn/10 p-2.5 text-sm">

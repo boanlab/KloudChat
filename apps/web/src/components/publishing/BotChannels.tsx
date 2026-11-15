@@ -114,7 +114,7 @@ export function ChannelsCard({ pub, onChange }: { pub: Publication; onChange: (n
     <Card className="space-y-3 p-4" data-testid="publication-channels">
       <div>
         <p className="text-base font-medium">{t('채널')}</p>
-        <p className="text-sm text-muted">{t('챗봇 페이지 말고도 다른 사이트, 내 프로그램(API), AI 도구(MCP)에서 이 챗봇을 쓸 수 있습니다. 켜는 것은 관리자가 승인하면 열리고, 끄는 것은 바로 적용됩니다.')}</p>
+        <p className="text-sm text-muted">{t('다른 사이트·API·MCP에서도 이 챗봇을 씁니다. 켜면 관리자 승인 뒤 열립니다.')}</p>
       </div>
       <ul className="divide-y divide-line rounded-card border border-line">
         {CHANNELS.map((channel) => {
@@ -274,7 +274,7 @@ export function ApiTab({ pub }: { pub: Publication }) {
     <div className="max-w-3xl space-y-4" data-testid="publication-api">
       {!apiOpen && !mcpOpen && (
         <p role="status" className="rounded-control border border-line bg-elevated px-3 py-2 text-base text-muted">
-          {t('API·MCP 채널이 아직 열리지 않았습니다. 개요의 채널에서 켜고 관리자 승인을 받으면 아래 키로 부를 수 있습니다. 키는 미리 만들어 둘 수 있습니다.')}
+          {t('API·MCP 채널이 아직 열리지 않았습니다. 개요 › 채널에서 켜고 승인을 받으면 아래 키로 부릅니다.')}
         </p>
       )}
       <Card className="space-y-3 p-4">
@@ -282,7 +282,7 @@ export function ApiTab({ pub }: { pub: Publication }) {
           <KeyRound size={14} aria-hidden className="text-muted" />
           {t('키')}
         </p>
-        <p className="text-sm text-muted">{t('이 챗봇만 부를 수 있는 키입니다. 다른 챗봇이나 KloudChat의 다른 기능에는 쓸 수 없고, 쓴 만큼 내 크레딧이 줄어듭니다.')}</p>
+        <p className="text-sm text-muted">{t('이 챗봇만 부르는 키입니다. 쓴 만큼 내 크레딧이 줄어듭니다.')}</p>
         {made?.key && (
           <div className="space-y-2 rounded-control border border-warn/30 bg-warn/5 p-3" role="status" data-testid="new-key">
             <p className="text-sm text-warn">{t('이 키는 지금 한 번만 보입니다. 안전한 곳에 보관하세요.')}</p>
@@ -337,7 +337,7 @@ export function ApiTab({ pub }: { pub: Publication }) {
           {t('API로 부르기')}
         </p>
         <p className="text-sm text-muted">
-          {t('OpenAI 호환 방식입니다. model에는 챗봇 주소를 씁니다. 답을 다 쓴 뒤에 보내므로 stream을 켜도 답이 한 번에 이어서 옵니다. 인용한 자료는 kloudchat.citations에 있습니다.')}
+          {t('OpenAI 호환 방식이며 model에는 챗봇 주소를 씁니다. 인용은 kloudchat.citations에 있습니다.')}
         </p>
         <CodeBlock code={curl} testId="api-curl" />
         <CodeBlock code={python} testId="api-python" />

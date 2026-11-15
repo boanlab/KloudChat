@@ -61,10 +61,10 @@ function SafeModelPriority({
     <div className="border-t border-line pt-3">
       <p className="text-base font-medium">{t('strict-local 안전 모델')}</p>
       <p className="text-sm text-muted">
-        {t('내부 자료 때문에 strict-local로 옮길 때는 사용자가 고른 모델의 strict-local 판을 먼저 쓰고, 그것이 없으면 이 목록의 첫 번째 모델을 씁니다. 개인정보 확인 창에서는 체크된 모델 중 하나를 사용자가 고를 수 있으며, 처음에는 첫 번째 모델이 골라져 있습니다.')}
+        {t('고른 모델에 strict-local 판이 없으면 이 목록의 첫 모델을 씁니다. 개인정보 확인 창에서는 체크한 모델 중에서 고릅니다.')}
       </p>
       <p className="mt-0.5 text-xs text-faint">
-        {t('프록시가 self-hosted이며 외부 대체 모델이 없다고 명시한 모델만 선택할 수 있습니다. 화살표나 손잡이를 끌어서 순서를 바꿉니다.')}
+        {t('자체 호스팅이고 외부 대체가 없는 모델만 고를 수 있습니다. 끌어서 순서를 바꿉니다.')}
       </p>
       <p className="sr-only" role="status" aria-live="polite">
         {said}
@@ -206,7 +206,7 @@ export function AdminGovernancePage() {
       <PageBody>
         <PageHeader
           title={t('보안 · 감사')}
-          description={t('정책: 개인정보 마스킹과 내부 자료 처리처럼 대화가 지켜야 할 규칙을 정합니다. 감사 로그: 누가 언제 무엇을 했는지 남은 기록입니다.')}
+          description={t('대화가 지킬 정책을 정하고 감사 로그를 봅니다.')}
         />
 
         <Tabs<'policy' | 'log'>
@@ -248,7 +248,7 @@ export function AdminGovernancePage() {
                     <div className="min-w-0 flex-1">
                       <p className="text-base font-medium">{t('외부 모델 개인정보 보호')}</p>
                       <p className="text-base text-muted">
-                        {t('대화의 전체 전송 맥락을 검사하고, 개인정보가 있으면 모델 전환·마스킹·편집 중 하나를 선택하게 합니다.')}
+                        {t('개인정보가 있으면 모델 전환·마스킹·편집 중 하나를 고르게 합니다.')}
                       </p>
                     </div>
                     <Switch
@@ -263,7 +263,7 @@ export function AdminGovernancePage() {
                       <p className="text-base font-medium">{t('내부 자료는 strict-local로만')}</p>
                       <p className="text-base text-muted">
                         {t(
-                          '첨부 파일·프로젝트 파일·메모리가 들어간 턴은 선택한 모델 대신 같은 모델의 strict-local 판으로 답하고, 그 세션은 이후에도 외부 모델로 승격되지 않습니다. 쌍이 없으면 아래 안전 모델 목록의 첫 번째 모델이 맡고, 목록이 비어 있으면 전송을 거절합니다.',
+                          '첨부·프로젝트 파일·메모리가 든 턴은 strict-local 모델로 답하고, 그 대화는 외부 모델로 돌아가지 않습니다.',
                         )}
                       </p>
                     </div>
@@ -278,7 +278,7 @@ export function AdminGovernancePage() {
                     <div className="min-w-0 flex-1 basis-64">
                       <p className="text-base font-medium">{t('strict-local 대화의 외부 검색')}</p>
                       <p className="text-sm text-muted">
-                        {t('strict-local 대화가 외부 정보를 필요로 할 때, 밖으로 나갈 검색어를 보여 주고 묻습니다. 프로젝트 자료 내용은 보내지 않으며, 프로젝트는 이보다 엄격하게만 정할 수 있습니다.')}
+                        {t('밖으로 나갈 검색어를 보여 주고 묻습니다. 자료 내용은 보내지 않습니다.')}
                       </p>
                     </div>
                     <Select
@@ -320,7 +320,7 @@ export function AdminGovernancePage() {
                     <div className="min-w-0 flex-1">
                       <p className="text-base font-medium">{t('의도 기반 필터')}</p>
                       <p className="text-base text-muted">
-                        {t('아래 범주에 해당하는 요청을 모델에 보내기 전에 거절합니다. 거절된 요청은 크레딧을 쓰지 않고 감사 로그에 남습니다.')}
+                        {t('아래 범주의 요청을 모델에 보내기 전에 거절합니다.')}
                       </p>
                     </div>
                     <Switch
@@ -383,7 +383,7 @@ export function AdminGovernancePage() {
                 <Card className="p-4">
                   <p className="text-base font-medium">{t('유휴 자동 로그아웃')}</p>
                   <p className="text-base text-muted">
-                    {t('지정한 시간 동안 아무 조작이 없으면 브라우저가 스스로 로그아웃합니다. 실습실·도서관처럼 여러 사람이 쓰는 PC에서 이전 사용자의 대화가 그대로 남는 것을 막습니다. 0 은 사용하지 않음.')}
+                    {t('이 시간 동안 조작이 없으면 로그아웃합니다. 0은 끄기.')}
                   </p>
                   <div className="mt-2 flex items-center gap-2">
                     <Input
@@ -407,7 +407,7 @@ export function AdminGovernancePage() {
                 <Card className="p-4">
                   <p className="text-base font-medium">{t('대화 보존 기간')}</p>
                   <p className="text-base text-muted">
-                    {t('지정한 일수가 지난 대화 본문을 지웁니다. 모델·토큰·크레딧 기록과 감사 로그는 남습니다 — 무엇이 있었는지가 아니라 내용만 지우는 것입니다. 0 은 계속 보관.')}
+                    {t('이 일수가 지난 대화 내용을 지웁니다. 사용 기록과 감사 로그는 남습니다. 0은 계속 보관.')}
                   </p>
                   <div className="mt-2 flex items-center gap-2">
                     <Input
@@ -438,7 +438,7 @@ export function AdminGovernancePage() {
 
         <p className="mt-3 flex items-center gap-1.5 text-sm text-faint">
           <ShieldCheck size={13} />
-          {t('정책은 서버에서 강제되고, 기록은 서버가 작성합니다. 이 화면에서 기록을 고치거나 지울 수 없습니다.')}
+          {t('기록은 고치거나 지울 수 없습니다.')}
         </p>
       </PageBody>
     </>

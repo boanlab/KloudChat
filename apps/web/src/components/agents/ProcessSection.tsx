@@ -466,7 +466,7 @@ export function ProcessSection({
           >
             <Info size={14} className="shrink-0 text-warn" aria-hidden />
             <span className="min-w-0 flex-1 basis-56">
-              {t('설명이나 지시에 파일 이야기가 있습니다. 바로 답하기는 대화로만 답하고 파일을 만들지 않습니다. DOCX·HWPX·PDF로 받으려면 문서를 쓰는 기본 과정으로 바꾸세요.')}
+              {t('바로 답하기는 파일을 만들지 않습니다. 파일로 받으려면 문서를 쓰는 기본 과정으로 바꾸세요.')}
             </span>
             <Button type="button" size="sm" onClick={toDocumentBase}>
               {t('「{name}」 과정으로 바꾸기').replace('{name}', baseLabel(documentBase.name, documentBase.templateName))}

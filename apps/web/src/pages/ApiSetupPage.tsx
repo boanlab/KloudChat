@@ -89,7 +89,7 @@ export function ApiSetupPage() {
       <PageBody>
         <h1 className="text-2xl font-semibold tracking-tight">{t('API 연동')}</h1>
         <p className="mt-1 text-base text-muted">
-          {t('이 인스턴스의 모델을 코드에서 부릅니다. 게이트웨이가 OpenAI 프로토콜을 말하므로, OpenAI SDK 와 LiteLLM SDK 가 그대로 붙습니다.')}
+          {t('이 인스턴스의 모델을 OpenAI·LiteLLM SDK로 코드에서 부릅니다.')}
         </p>
 
         <Card className="mt-6 flex flex-wrap items-center gap-3 p-4">
@@ -140,7 +140,7 @@ export function ApiSetupPage() {
         <section className="mt-6">
           <h2 className="text-base font-medium">Python · OpenAI SDK</h2>
           <p className="mt-1 mb-2 text-base text-muted">
-            {t('가장 짧은 길입니다. base_url 만 이 인스턴스로 바꾸면 나머지는 여느 OpenAI 코드와 같습니다.')}
+            {t('base_url만 이 인스턴스로 바꾸면 됩니다.')}
           </p>
           <Snippet text={openaiSnippet} />
         </section>
@@ -156,7 +156,7 @@ export function ApiSetupPage() {
         <section className="mt-5">
           <h2 className="text-base font-medium">Python · LiteLLM SDK</h2>
           <p className="mt-1 mb-2 text-base text-muted">
-            {t('이미 LiteLLM 으로 여러 제공자를 오가는 코드라면 이쪽이 자연스럽습니다.')}
+            {t('LiteLLM을 이미 쓰는 코드에 맞습니다.')}
           </p>
           <Snippet text={litellmSnippet} />
         </section>
@@ -182,7 +182,7 @@ export function ApiSetupPage() {
               </Link>
             </li>
             <li>
-              {t('월 한도는 계정에 걸려 있습니다. 키를 여러 개 만들어도 한도가 늘지 않고, 다 쓰면 요청이 거부됩니다.')}
+              {t('월 한도는 계정에 걸려 있어 키를 늘려도 늘지 않습니다.')}
             </li>
             <li>
               {t('임베딩도 같은 주소로 받습니다 — client.embeddings.create(model="local/bge-m3", input=[...]).')}

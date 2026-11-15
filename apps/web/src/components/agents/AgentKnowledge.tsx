@@ -94,7 +94,7 @@ export function AgentKnowledge({
       return (
         <div className="space-y-2">
           <p className="text-sm text-faint">
-            {t('파일을 붙이면 에이전트를 먼저 저장합니다. 이 에이전트가 그 안에서 찾아 답합니다.')}
+            {t('파일을 붙이면 에이전트가 먼저 저장됩니다.')}
           </p>
           <input
             ref={fileInput}
@@ -205,12 +205,12 @@ export function AgentKnowledge({
   return (
     <Field
       label={t('자료')}
-      hint={t('이 에이전트가 근거로 쓸 문서입니다. 질문마다 먼저 이 자료에서 찾아 답합니다. 짧은 자료는 통째로, 긴 자료는 질문과 맞는 대목만 들어갑니다.')}
+      hint={t('에이전트가 이 자료에서 먼저 찾아 답합니다.')}
     >
       <div className="relative space-y-2" {...dropHandlers}>
         {savedNote && (
           <p role="status" className="text-sm text-muted" data-testid="agent-saved-for-file">
-            {t('자료를 붙이려고 에이전트를 저장했습니다. 이 화면을 떠나도 에이전트는 남습니다.')}
+            {t('자료를 붙이려고 에이전트를 저장했습니다.')}
           </p>
         )}
         {dragging && (
@@ -358,7 +358,7 @@ export function AgentKnowledge({
           <div className="flex flex-wrap items-center gap-2">
             <p className="flex min-w-0 flex-1 max-sm:basis-32 items-center gap-1.5 text-xs text-faint">
               <Paperclip size={10} />
-              {t('URL 은 추가한 시점의 내용을 저장합니다. 페이지가 바뀌어도 따라가지 않습니다.')}
+              {t('URL은 추가한 때의 내용으로 저장됩니다.')}
             </p>
             {rows.some((f) => f.indexed === false && !f.error) && (
               <Button size="sm" disabled={busy !== null} onClick={() => void reindex()}>

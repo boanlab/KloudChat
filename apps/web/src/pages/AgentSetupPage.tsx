@@ -39,7 +39,7 @@ export function AgentSetupPage() {
       <PageBody>
         <h1 className="text-2xl font-semibold tracking-tight">{t('AI 에이전트 연동')}</h1>
         <p className="mt-1 text-base text-muted">
-          {t('Claude Code, Codex 같은 코딩 에이전트를 이 인스턴스에 연결합니다. 발급받은 키로 인증하며, 사용량과 한도는 그 키를 따라갑니다.')}
+          {t('Claude Code·Codex 같은 코딩 에이전트를 키로 연결합니다.')}
         </p>
 
         <Card className="mt-6 flex flex-wrap items-center gap-3 p-4">
@@ -125,7 +125,7 @@ export function AgentSetupPage() {
               </Link>
             </li>
             <li>
-              {t('월 한도는 계정에 걸려 있습니다. 키를 여러 개 만들어도 한도가 늘지 않고, 다 쓰면 요청이 거부됩니다.')}
+              {t('월 한도는 계정에 걸려 있어 키를 늘려도 늘지 않습니다.')}
             </li>
             <li>{t('키를 폐기하면 즉시 막힙니다. 도구 쪽 설정도 함께 지우세요.')}</li>
           </ul>

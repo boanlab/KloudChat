@@ -95,7 +95,7 @@ export function PreferencesTab() {
         <div>
           <h2 className="text-base font-semibold">{t('개인정보가 감지된 요청')}</h2>
           <p className="text-sm text-muted">
-            {t('외부 모델로 전송하기 전에 서버가 전체 대화 맥락을 검사하고 이 동작을 적용합니다.')}
+            {t('외부 모델로 보내기 전에 검사해 이대로 처리합니다.')}
           </p>
         </div>
         <label className="block max-w-xl space-y-1.5">
@@ -118,7 +118,7 @@ export function PreferencesTab() {
             )}
           </Select>
           <span className="block text-sm text-faint">
-            {t('모델 전환은 외부 대체 모델이 없는 strict-local 모델이 실제로 사용 가능할 때만 적용됩니다.')}
+            {t('모델 전환은 strict-local 모델을 쓸 수 있을 때만 적용됩니다.')}
           </span>
         </label>
         {strictImages.length > 1 && (
@@ -135,7 +135,7 @@ export function PreferencesTab() {
               ))}
             </Select>
             <span className="block text-sm text-faint">
-              {t('내부 자료가 있는 대화나 문서의 그림을 strict-local로 그려야 할 때, 고른 이미지 모델이 외부 모델이면 이 모델로 그립니다.')}
+              {t('내부 자료가 있을 때 외부 이미지 모델 대신 쓸 모델입니다.')}
             </span>
           </label>
         )}
@@ -146,19 +146,19 @@ export function PreferencesTab() {
         {[
           {
             label: '응답 스트리밍',
-            desc: '토큰이 도착하는 대로 표시합니다. 끄면 답변이 완성된 뒤 한 번에 나타납니다.',
+            desc: '답을 쓰는 대로 보여 줍니다.',
             value: prefs?.streamResponses ?? true,
             set: (v: boolean) => set({ streamResponses: v }),
           },
           {
             label: '메모리 자동 저장',
-            desc: '대화가 끝나면 사용자에 대해 계속 참인 사실만 골라 메모리에 기록합니다. 이미 아는 사실은 다시 쓰지 않습니다.',
+            desc: '대화에서 나에 대한 사실을 골라 메모리에 남깁니다.',
             value: prefs?.autoMemory ?? false,
             set: (v: boolean) => set({ autoMemory: v }),
           },
           ...(dictationEnabled ? [{
             label: '스페이스로 말하기',
-            desc: '빈 입력창에서 스페이스를 누른 채 말하면, 떼는 순간 받아 적어 입력창에 넣습니다. 보내지는 않습니다.',
+            desc: '빈 입력창에서 스페이스를 누른 채 말하면 받아 적습니다.',
             value: prefs?.spaceToTalk ?? false,
             set: (v: boolean) => set({ spaceToTalk: v }),
           }] : []),
@@ -178,7 +178,7 @@ export function PreferencesTab() {
           </div>
         ))}
         <p className="pt-1 text-xs text-faint">
-          {t('계정에 저장되므로 다른 기기에서도 같게 적용됩니다.')}
+          {t('다른 기기에도 같이 적용됩니다.')}
         </p>
       </section>
 

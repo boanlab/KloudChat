@@ -76,7 +76,7 @@ export function DesignBriefField({
     <div className="space-y-2">
       {value.includes(FROM_THEME) && (
         <p className="rounded-control border border-accent/30 bg-accent-soft px-3 py-2 text-sm text-accent" data-testid="brief-from-theme">
-          {t('테마의 색·서체·문체를 글로 적은 지침입니다. 고쳐 써도 됩니다.')}
+          {t('예전 테마를 글로 옮긴 지침입니다. 고쳐 써도 됩니다.')}
         </p>
       )}
       <textarea
@@ -123,7 +123,7 @@ export function ProjectDesignBrief({ project }: { project: Project }) {
         <div>
           <p className="text-base font-medium">{t('디자인 지침')}</p>
           <p className="text-sm text-muted">
-            {t('양식 파일이 없을 때 이 프로젝트의 문서·발표 자료 모양을 정하는 글입니다. 양식이 있으면 양식이 정하지 않은 부분에만 씁니다.')}
+            {t('양식 파일이 정하지 않은 문서·슬라이드 모양을 글로 정합니다.')}
           </p>
         </div>
         <Button

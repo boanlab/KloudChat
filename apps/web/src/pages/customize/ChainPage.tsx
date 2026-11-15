@@ -630,7 +630,7 @@ export function ChainPage() {
                   />
                 </ReactFlowProvider>
                 <p className="text-sm text-muted">
-                  {t('단계를 끌어 놓고, 오른쪽 점에서 다음 단계로 선을 이으세요. 왼쪽 단계를 누르면 고른 단계 뒤에 붙습니다. 에이전트 아래 칩은 붙은 스킬입니다.')}
+                  {t('단계를 끌어 놓고, 오른쪽 점에서 다음 단계로 선을 이으세요.')}
                 </p>
               </main>
               <aside

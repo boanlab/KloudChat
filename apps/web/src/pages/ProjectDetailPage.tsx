@@ -76,7 +76,7 @@ function EmojiGrid({ onPick }: { onPick: (emoji: string) => void }) {
 
 /** Mirrors server delete: knowledge files go, sessions detached, artifacts and memories stay. */
 const DELETE_SCOPE =
-  '되돌릴 수 없습니다. 지침과 지식 파일이 사라집니다. 대화는 지워지지 않고 프로젝트 밖으로 나오며, 아티팩트와 메모리는 그대로 남습니다.'
+  '되돌릴 수 없습니다. 지침과 지식 파일은 지워지고, 대화는 프로젝트 밖으로 나옵니다.'
 
 export function ProjectDetailPage() {
   const t = useT()
@@ -316,7 +316,7 @@ export function ProjectDetailPage() {
           setUrlError(null)
         }}
         title={t('웹 자료 추가')}
-        description={t('페이지를 지금 읽어 프로젝트에 보관합니다. 이후 원문이 바뀌어도 작업에는 저장된 내용이 사용됩니다.')}
+        description={t('지금 내용을 읽어 보관합니다. 원문이 바뀌어도 따라가지 않습니다.')}
         footer={
           <>
             <Button onClick={() => setUrlOpen(false)} disabled={urlBusy}>{t('취소')}</Button>
@@ -478,7 +478,7 @@ export function ProjectDetailPage() {
             <div>
               <p className="text-base font-medium">{t('프로젝트 지침')}</p>
               <p className="text-sm text-muted">
-                {t('이 프로젝트의 모든 대화에 시스템 프롬프트로 함께 전달됩니다.')}
+                {t('이 프로젝트의 모든 대화에 함께 전달됩니다.')}
               </p>
             </div>
             {dirty && (
@@ -539,7 +539,7 @@ export function ProjectDetailPage() {
                 <div className="min-w-[min(100%,16rem)] flex-1">
                   <p className="text-base font-medium">{t('기존 대화 편입')}</p>
                   <p className="text-sm text-muted">
-                    {t('다른 곳에서 시작한 대화를 이 프로젝트로 옮깁니다. 지침·지식·메모리를 그때부터 함께 받습니다.')}
+                    {t('다른 대화를 이 프로젝트로 옮깁니다.')}
                   </p>
                 </div>
                 <Dropdown
@@ -699,7 +699,7 @@ export function ProjectDetailPage() {
                     <Sparkles size={15} className="shrink-0 text-accent" />
                     <span className="min-w-0 flex-1">
                       <span className="block text-base font-medium">{withNames(t('프로젝트 전체 {guide}'), t)}</span>
-                      <span className="block text-sm text-muted">{t('자료 전체의 요약과 질문 예시입니다. 질문을 누르면 새 대화의 입력창에 들어갑니다.')}</span>
+                      <span className="block text-sm text-muted">{t('자료 요약과 질문 예시입니다. 질문을 누르면 입력창에 들어갑니다.')}</span>
                     </span>
                   </button>
                   {projectGuide && (
@@ -901,7 +901,7 @@ export function ProjectDetailPage() {
                 <div>
                   <p className="text-base font-medium">{t('공유 메모리')}</p>
                   <p className="text-sm text-muted">
-                    {t('이 프로젝트의 모든 대화와 에이전트가 다음 요청부터 이 내용을 함께 받습니다. 에이전트가 남긴 결론도 여기에 쌓입니다.')}
+                    {t('프로젝트의 모든 대화와 에이전트가 함께 받는 내용입니다.')}
                   </p>
                 </div>
                 <Button size="sm" onClick={() => setMemoryDraft(emptyMemory(project.id))}>

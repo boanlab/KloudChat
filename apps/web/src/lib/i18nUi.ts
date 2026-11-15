@@ -36,13 +36,10 @@ export const EN_UI: Record<string, string> = {
   '이미 첫 번째입니다': 'Already first',
   '이미 마지막입니다': 'Already last',
   '{name} · {n}번째': '{name}, position {n}',
-  '내부 자료 때문에 strict-local로 옮길 때는 사용자가 고른 모델의 strict-local 판을 먼저 쓰고, 그것이 없으면 이 목록의 첫 번째 모델을 씁니다. 개인정보 확인 창에서는 체크된 모델 중 하나를 사용자가 고를 수 있으며, 처음에는 첫 번째 모델이 골라져 있습니다.':
-    "When internal material moves a turn to strict-local, the chosen model's strict-local version is used first, else the first model of this list. On the privacy card the person can pick any checked model; the first is preselected.",
-  '프록시가 self-hosted이며 외부 대체 모델이 없다고 명시한 모델만 선택할 수 있습니다. 화살표나 손잡이를 끌어서 순서를 바꿉니다.':
-    'Only models the proxy declares self-hosted with no external fallback can be chosen. Reorder with the arrows or by dragging the handle.',
+  '고른 모델에 strict-local 판이 없으면 이 목록의 첫 모델을 씁니다. 개인정보 확인 창에서는 체크한 모델 중에서 고릅니다.': 'If the chosen model has no strict-local version, the first model here is used. The privacy prompt offers the checked models.',
+  '자체 호스팅이고 외부 대체가 없는 모델만 고를 수 있습니다. 끌어서 순서를 바꿉니다.': 'Only self-hosted models with no external fallback. Drag to reorder.',
   '전환할 로컬 모델': 'Local model to switch to',
-  '첨부 파일·프로젝트 파일·메모리가 들어간 턴은 선택한 모델 대신 같은 모델의 strict-local 판으로 답하고, 그 세션은 이후에도 외부 모델로 승격되지 않습니다. 쌍이 없으면 아래 안전 모델 목록의 첫 번째 모델이 맡고, 목록이 비어 있으면 전송을 거절합니다.':
-    'A turn that includes attachments, project files or memory is answered by the strict-local version of the chosen model instead, and the conversation never moves to an external model afterwards. Without that version, the first model of the safe model list below answers; with an empty list, the request is refused.',
+  '첨부·프로젝트 파일·메모리가 든 턴은 strict-local 모델로 답하고, 그 대화는 외부 모델로 돌아가지 않습니다.': 'Turns with attachments, project files or memory are answered by a strict-local model, and that conversation never goes back to external models.',
   '정책을 저장하지 못했습니다. 화면은 저장된 값으로 돌아갑니다.':
     'Could not save the policy. The screen shows the saved values again.',
   // Password boxes (no 「비밀번호」 in the toggle's name: the box keeps that label to itself)
@@ -84,8 +81,7 @@ export const EN_UI: Record<string, string> = {
   '한글 문서 열기': 'Open HWP document',
   'Word 문서 열기': 'Open Word document',
   'PowerPoint 열기': 'Open PowerPoint',
-  '자료와 지침을 프로젝트에 모아 두면, 모든 화면이 같은 맥락 위에서 작동합니다. 보고서는 웹 보고서·한글·Word로, 슬라이드는 웹 슬라이드·PowerPoint로 만들고, 만든 것은 아티팩트 화면에 쌓입니다.':
-    'Gather material and instructions in a project and every screen works from the same context. Reports come as web reports, HWP or Word, slides as web slides or PowerPoint, and what you make collects on the Artifacts screen.',
+  '자료와 지침을 프로젝트에 모으고, 그 위에서 대화·보고서·슬라이드를 만듭니다.': 'Gather material and instructions in a project, then chat and make reports and slides on top of it.',
   '에이전트 기본 모델': 'Agent default model',
   '기본 제공 템플릿에서 시작': 'Start from a built-in template',
   '기본 제공 템플릿을 불러오지 못했습니다.': 'Could not load the built-in templates.',
@@ -102,8 +98,7 @@ export const EN_UI: Record<string, string> = {
     'Your sign-in expired. Sign in again to return to where you were.',
   '페이지를 찾을 수 없음': 'Page not found',
   '이 주소에는 화면이 없습니다.': 'There is no screen at this address.',
-  '주소가 바뀌었거나 잘못 입력된 링크입니다. 찾던 대화나 파일은 검색으로 찾을 수 있습니다.':
-    'The address changed or the link is mistyped. Search can find the conversation or file you were looking for.',
+  '주소가 바뀌었거나 잘못된 링크입니다.': 'The address has changed or the link is wrong.',
   '새 보고서': 'New report',
   '새 슬라이드': 'New slides',
 }

@@ -643,7 +643,7 @@ function MessageItemInner({
           <Badge
             tone="warn"
             className="mb-2 max-w-full whitespace-normal! [overflow-wrap:anywhere]"
-            title={t('계산기가 직접 반환한 오류입니다. 답변 생성 비용만 0이며, 앞선 Auto 분류나 검색의 실행 여부와 비용은 별도입니다.')}
+            title={t('계산기가 돌려준 오류입니다. 답 생성 비용은 들지 않았습니다.')}
           >
             {t('계산 도구 결과 · 0으로 나눌 수 없음')}
           </Badge>

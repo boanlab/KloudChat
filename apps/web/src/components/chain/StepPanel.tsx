@@ -201,7 +201,7 @@ function AgentSkills({ agent, editable, props }: { agent: Agent; editable: boole
         )
       })}
       <p className="text-xs leading-relaxed text-muted">
-        {t('항상 적용: 매 턴 지시에 넣습니다. 필요할 때: 모델이 설명을 보고 고릅니다.')}
+        {t('항상 적용은 매 턴 쓰고, 필요할 때는 모델이 골라 씁니다.')}
       </p>
       {editable && (
         <div className="flex flex-wrap items-center gap-2">

@@ -87,7 +87,7 @@ function IssueList() {
     <>
       <TopBar left={<span className="text-base font-medium">{t('문의·신고')}</span>} />
       <PageBody>
-        <PageHeader title={t('문의·신고')} description={t('사용자가 보낸 오류 신고·기능 요청·문의를 확인하고 답합니다.')} />
+        <PageHeader title={t('문의·신고')} description={t('사용자가 보낸 신고·문의에 답합니다.')} />
         {data && (
           <div className="mb-4 flex flex-wrap gap-1.5" aria-label={t('상태별 건수')}>
             {STATUSES.map((s) => (

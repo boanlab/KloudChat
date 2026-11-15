@@ -29,7 +29,7 @@ export function OldTemplates() {
       <div>
         <p className="text-base font-medium">{t('내가 만든 템플릿')}</p>
         <p className="text-sm text-muted">
-          {t('템플릿은 에이전트로 옮겨 씁니다. 옮기면 문서 형식·물어볼 빈칸·검사·진행 과정이 그대로 에이전트에 들어가고, 템플릿은 남겨 둡니다.')}
+          {t('템플릿은 에이전트로 옮겨 씁니다. 원래 템플릿은 남습니다.')}
         </p>
       </div>
       <ul className="divide-y divide-line">

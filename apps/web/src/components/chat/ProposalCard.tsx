@@ -166,7 +166,7 @@ export function ProposalCard({
             )
           })}
           <p className="text-sm text-faint">
-            {t('답하지 않은 항목은 문서에 빈칸으로 남고, 나중에 문서에서 바로 채울 수 있습니다.')}
+            {t('답하지 않은 항목은 빈칸으로 남아 나중에 채울 수 있습니다.')}
           </p>
           <div className="flex flex-wrap gap-2">
             <Button

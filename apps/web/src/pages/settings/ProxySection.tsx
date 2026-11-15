@@ -304,7 +304,7 @@ export function ProxySection({
       </div>
 
       <p className="text-xs text-faint">
-        {t('키는 암호화해 서버에만 보관하며, 저장한 뒤에는 화면에 표시하지 않습니다. 저장하면 곧바로 적용됩니다.')}
+        {t('키는 암호화해 보관하며 저장한 뒤에는 보이지 않습니다.')}
       </p>
     </div>
   )

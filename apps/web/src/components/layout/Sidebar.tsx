@@ -375,7 +375,7 @@ export function Sidebar() {
           aria-label={t('이번 달 사용량')}
           onClick={() => navigate('/usage')}
           title={t(
-            '크레딧은 모델을 쓸 때마다 줄어듭니다. 글은 조금, 이미지와 영상은 많이 듭니다. 다 쓰면 다음 달까지 새 요청을 보낼 수 없고, 만든 것은 그대로 남습니다. 눌러서 무엇에 얼마나 썼는지 봅니다.',
+            '모델을 쓸 때마다 크레딧이 줄어듭니다. 눌러서 사용 내역을 봅니다.',
           )}
           className="mb-1 block w-full rounded-control px-2 py-1.5 text-left transition-colors hover:bg-elevated"
         >
@@ -407,7 +407,7 @@ export function Sidebar() {
         }}
         onConfirm={() => confirming && void deleteSession(confirming.id, { files: withFiles && !!fileCount })}
         title={t('{name} 삭제').replace('{name}', confirming?.title ?? '')}
-        description={t('되돌릴 수 없습니다. 이 대화가 만든 아티팩트도 함께 지워지고 공유 링크도 끊깁니다. 프로젝트와 메모리는 남습니다.')}
+        description={t('되돌릴 수 없습니다. 이 대화의 아티팩트와 공유 링크도 지워집니다.')}
       >
         <DeleteFilesChoice checked={withFiles} onChange={setWithFiles} count={fileCount ?? 0} />
       </ConfirmDialog>

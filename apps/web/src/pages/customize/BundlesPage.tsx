@@ -80,7 +80,7 @@ function BundleEditor({
         <div className="space-y-1.5">
           <p className="text-base font-medium">{t('할 일')}</p>
           <p className="text-sm text-faint">
-            {t('질문·계산·검사는 에이전트가 쓰는 과정 안에서, 검토·내보내기·다른 에이전트는 그 뒤에 합니다. 「이 에이전트」를 넣으면 그 앞뒤 순서를 정할 수 있습니다.')}
+            {t('「이 에이전트」를 넣으면 그 앞뒤 순서를 정할 수 있습니다.')}
           </p>
           <StepList steps={steps} onChange={setSteps} selfName={t('이 에이전트')} />
         </div>
@@ -173,7 +173,7 @@ export function BundlesPage() {
             <div>
               <h1 className="text-2xl font-semibold tracking-tight">{t('묶음')}</h1>
               <p className="text-base text-muted">
-                {t('에이전트 설정의 「추가로 할 일」에서 체크하는 할 일 묶음입니다. 내가 만든 묶음은 내 모든 에이전트에 나옵니다.')}
+                {t('에이전트 설정의 「추가로 할 일」에서 고르는 묶음입니다.')}
               </p>
             </div>
             <Button variant="primary" onClick={() => setEditing('new')}>

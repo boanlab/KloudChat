@@ -46,7 +46,7 @@ export function KeysTab() {
         <div>
           <h2 className="text-base font-semibold">{t('API 키')}</h2>
           <p className="text-sm text-muted">
-            {t('내 코드에서 직접 모델을 호출할 때 씁니다. 사용량과 월 한도는 이 계정에 그대로 합산됩니다.')}
+            {t('내 코드에서 모델을 부를 때 씁니다. 사용량은 이 계정에 합산됩니다.')}
           </p>
         </div>
         <Button variant="primary" onClick={() => setCreating(true)}>
@@ -58,7 +58,7 @@ export function KeysTab() {
       {allowed.length > 0 && (
         <Card className="p-3.5">
           <p className="text-base text-muted">
-            {t('이 계정은 모델 {n}개로 제한되어 있습니다. 발급한 키도 같은 범위만 호출할 수 있습니다.').replace(
+            {t('이 계정과 키는 모델 {n}개만 쓸 수 있습니다.').replace(
               '{n}',
               String(allowed.length),
             )}
@@ -79,7 +79,7 @@ export function KeysTab() {
         <Card className="p-8 text-center">
           <p className="text-base font-medium">{t('발급한 키가 없습니다')}</p>
           <p className="mt-1 text-base text-muted">
-            {t('키는 만들 때 한 번만 보여 줍니다. 그 뒤로는 서버에도 원문이 남지 않습니다.')}
+            {t('키는 만들 때 한 번만 보여 줍니다.')}
           </p>
         </Card>
       ) : (
@@ -146,7 +146,7 @@ export function KeysTab() {
         description={
           issued
             ? t('지금 복사해 두세요. 이 화면을 닫으면 다시 볼 수 없습니다.')
-            : t('어디에 쓸 키인지 적어 두면 나중에 어느 것을 폐기할지 알 수 있습니다.')
+            : t('어디에 쓸 키인지 적어 두세요.')
         }
         footer={
           issued ? (

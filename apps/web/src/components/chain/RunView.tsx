@@ -138,7 +138,7 @@ export function RunView({ agent, onEditStep }: { agent: Agent; onEditStep: (id: 
             </button>
           </p>
         )}
-        {runs.length === 0 && !failed && <p className="text-sm text-faint">{t('아직 실행 기록이 없습니다. 시험 실행으로 대화를 열면 여기에 남습니다.')}</p>}
+        {runs.length === 0 && !failed && <p className="text-sm text-faint">{t('시험 실행하면 여기에 기록이 남습니다.')}</p>}
         <ul className="flex flex-col gap-1.5">
           {runs.map((r) => (
             <li key={r.id}>
@@ -165,7 +165,7 @@ export function RunView({ agent, onEditStep }: { agent: Agent; onEditStep: (id: 
             </li>
           ))}
         </ul>
-        <p className="text-xs leading-relaxed text-muted">{t('최근 30번까지 보입니다. 실행마다 대화 하나로 남고, 아티팩트는 기존 아티팩트 화면에서 열립니다.')}</p>
+        <p className="text-xs leading-relaxed text-muted">{t('최근 30번까지 보입니다.')}</p>
       </aside>
       <main className="flex min-w-0 flex-[999_1_480px] flex-col gap-3 p-4">
         {run ? (

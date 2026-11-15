@@ -268,14 +268,11 @@ export function HistoryPage() {
       <TopBar left={<span className="text-base font-medium">{t('대화 기록')}</span>} />
       <PageBody>
       <h1 className="text-2xl font-semibold tracking-tight" data-history-top="">{t('대화 기록')}</h1>
-      <p className="mt-1 text-base text-muted" data-history-total="">
-        {!everyone
-          ? t('삭제한 대화는 되돌릴 수 없고, 그 대화에서 만든 아티팩트도 함께 지워집니다.')
-          : t('대화 {n}개가 있습니다. 삭제한 대화는 되돌릴 수 없고, 그 대화에서 만든 아티팩트도 함께 지워집니다.').replace(
-              '{n}',
-              everyone.toLocaleString(),
-            )}
-      </p>
+      {!!everyone && (
+        <p className="mt-1 text-base text-muted" data-history-total="">
+          {t('대화 {n}개').replace('{n}', everyone.toLocaleString())}
+        </p>
+      )}
 
       {/* No conversation at all: nothing to search, pick or delete; the empty state says what to do. */}
       {!(everyone === 0 && !urlQuery && !needle) && (
@@ -424,7 +421,7 @@ export function HistoryPage() {
         }}
         onConfirm={() => void removePicked()}
         title={t('대화 {n}개를 삭제할까요?').replace('{n}', String(picked.size))}
-        description={t('되돌릴 수 없습니다. 이 대화들이 만든 아티팩트(보고서·슬라이드·이미지·오디오·동영상)도 함께 지워지고 공유 링크도 끊깁니다. 프로젝트와 메모리는 남습니다.')}
+        description={t('되돌릴 수 없습니다. 이 대화들의 아티팩트와 공유 링크도 지워집니다.')}
       >
         <DeleteFilesChoice checked={withFiles} onChange={setWithFiles} count={null} />
       </ConfirmDialog>
@@ -441,7 +438,7 @@ export function HistoryPage() {
         <div className="flex items-start gap-2 rounded-card border border-danger/30 bg-danger/5 px-3 py-2.5 text-base text-danger">
           <TriangleAlert size={14} className="mt-0.5 shrink-0" />
           <span>
-            {t('되돌릴 수 없습니다. 이 대화들이 만든 아티팩트(보고서·슬라이드·이미지·오디오·동영상)도 함께 지워지고 공유 링크도 끊깁니다. 프로젝트와 메모리는 남습니다.')}
+            {t('되돌릴 수 없습니다. 이 대화들의 아티팩트와 공유 링크도 지워집니다.')}
           </span>
         </div>
         <div className="mt-3">

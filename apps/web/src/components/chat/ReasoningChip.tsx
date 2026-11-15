@@ -37,7 +37,7 @@ export function ReasoningChip({
         aria-disabled="true"
         data-testid="reasoning-chip"
         data-reasoning="unsupported"
-        title={t('이 모델은 추론 강도를 바꿀 수 없어 모델에 설정된 대로 답합니다. 추론을 고르려면 Super Agent나 추론을 조절할 수 있는 모델을 고르세요.')}
+        title={t('이 모델은 추론 강도를 바꿀 수 없습니다.')}
         aria-label={t('추론: 이 모델은 조절할 수 없음')}
         className={cn(CHIP, 'cursor-not-allowed text-faint opacity-60')}
       >

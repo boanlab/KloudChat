@@ -270,7 +270,7 @@ test('strict-local safe models are an ordered priority list the admin moves', as
   await page.goto('/admin/governance')
   const order = page.getByTestId('safe-model-order')
   await expect(order.getByRole('listitem')).toHaveText([/로컬 C/, /로컬 A/], { timeout: 15_000 })
-  await expect(page.getByText('이 목록의 첫 번째 모델을 씁니다', { exact: false })).toBeVisible()
+  await expect(page.getByText('이 목록의 첫 모델을 씁니다', { exact: false })).toBeVisible()
   // Move A up: the stored order follows.
   await page.getByRole('button', { name: '로컬 A 위로' }).click()
   await expect.poll(() => fx.puts.at(-1)?.privacySafeModelIds).toEqual(['strict-local/a', 'strict-local/c'])

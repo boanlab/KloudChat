@@ -640,11 +640,11 @@ export function AgentSkillList({
         onPick={() => onChange({ skillIds: skillIds ?? ids, activeSkillIds })}
       />
       <p className="text-sm text-faint">
-        {t('항상 적용: 매 턴 지시에 넣습니다. 필요할 때: 모델이 설명을 보고 고릅니다.')}
+        {t('항상 적용은 매 턴 쓰고, 필요할 때는 모델이 골라 씁니다.')}
       </p>
       {inherit ? (
         <p className="text-sm text-faint" data-testid="skill-mode-hint">
-          {t('내 스킬은 모두 「필요할 때」로 쓸 수 있습니다. 늘 쓸 스킬만 더해 「항상 적용」으로 두세요.')}
+          {t('내 스킬은 모두 필요할 때 씁니다. 늘 쓸 스킬만 더하세요.')}
         </p>
       ) : (
         <p
@@ -652,7 +652,7 @@ export function AgentSkillList({
           className={cn('text-sm', ids.length === 0 ? 'rounded-control border border-warn/30 bg-warn/10 px-3 py-2 text-warn' : 'text-faint')}
         >
           {ids.length === 0
-            ? t('「직접 고르기」에서 아무 스킬도 두지 않으면 이 에이전트는 스킬을 쓰지 않습니다. 입력창에서 골라도 쓰이지 않습니다.')
+            ? t('스킬을 하나도 두지 않으면 입력창에서 골라도 쓰지 않습니다.')
             : t('이 목록의 스킬만 씁니다. 입력창에서도 이 스킬만 고를 수 있습니다.')}
         </p>
       )}
