@@ -127,7 +127,8 @@ def _figure_box(drawings, caption_box, others, span, height):
             break
         chosen.append(box)
         top = max(top, box[3])
-    return (min(b[0] for b in chosen) - 3, min(b[1] for b in chosen) - 3,
+    # down to the caption: sub-labels under the plots (「(a) ShareGPT」) are text, not drawings
+    return (min(b[0] for b in chosen) - 3, min(min(b[1] for b in chosen) - 3, caption_box[3] + 1),
             max(b[2] for b in chosen) + 3, max(b[3] for b in chosen) + 3)
 
 

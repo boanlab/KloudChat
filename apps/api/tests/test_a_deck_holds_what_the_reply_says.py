@@ -123,7 +123,7 @@ def test_a_figure_is_found_by_its_caption_and_cut_out():
     assert figure.caption.startswith("Figure 2. Memory waste")
     left, bottom, right, top = figure.box
     # the bars, not the body text above or the caption below
-    assert 510 <= bottom <= 520 and 640 <= top < 726 and left < 100 and right > 260
+    assert 500 <= bottom <= 520 and 640 <= top < 726 and left < 100 and right > 260
     png = pdf_figures.cut(data, figure)
     assert png.startswith(b"\x89PNG")
 
