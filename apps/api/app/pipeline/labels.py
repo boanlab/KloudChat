@@ -32,6 +32,8 @@ LABELS: dict[str, str] = {
     "page-limit": "분량 맞추기",
     "format-step": "템플릿 점검 결과",
     "coverage": "빠진 자료 확인",
+    "paper-cites": "논문 인용 확인",
+    "source-conflicts": "자료끼리 다른 값 확인",
     "quality": "품질 점검",
     "report-save": "저장",
     "answer-normalize": "답 다듬기",

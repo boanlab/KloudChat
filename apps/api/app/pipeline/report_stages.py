@@ -21,6 +21,7 @@ from app.pipeline import registry, runs
 from app.pipeline.bundle import Bundle, Part
 from app.pipeline.stage import Base, Context, Stop
 from app.services import (
+    action_rows,
     calc,
     check_skills,
     checks,
@@ -44,6 +45,7 @@ from app.services import (
     meeting_tense,
     model_retry,
     output_language,
+    paper_cites,
     pictures,
     placeholders,
     process_settings,
@@ -51,6 +53,7 @@ from app.services import (
     report_checks,
     research,
     richtext,
+    source_conflicts,
     source_focus,
     stated_days,
     stated_meeting,
@@ -392,6 +395,9 @@ class Outline(Base):
         each = each if len(each) >= 2 else []
         most = report.most_sections(len(each))
         each_rule = report.each_item_rule(len(each), most) if each else ""
+        # 「프로젝트 논문 중 해당되는 것들을 인용」: each relevant paper gets its own place
+        if paper_cites.asks_project_papers(request):
+            each_rule += paper_cites.rule(paper_cites.papers_of(req.project_sources, mat.sources))
 
         async def ask(nudge: str = "") -> tuple[str, dict[str, int]]:
             return await report._complete(
@@ -973,8 +979,8 @@ class WriterNotes(Base):
     """Settled and conflicting figures in front of the writer."""
 
     name = "writer-notes"
-    reads = ("request", "material.given", "computed.settled", "computed.conflicts",
-             "computed.prepass", "spec.format_id")
+    reads = ("request", "material.given", "material.sources", "computed.settled",
+             "computed.conflicts", "computed.prepass", "spec.format_id")
     writes = ("material.parts",)
 
     async def apply(self, bundle: Bundle, ctx: Context) -> None:
@@ -990,6 +996,10 @@ class WriterNotes(Base):
             # writer notes; block names never reach the page
             mat.parts = [*mat.parts, Part(internal_words.WRITER_NOTE, "note")]
             log.info("settled figures: %s", [(f.name, f.value) for f in com.settled])
+        if paper_cites.asks_project_papers(bundle.request.text) and (
+                cite_rule := paper_cites.rule(paper_cites.papers_of(
+                    bundle.request.project_sources, mat.sources))):
+            mat.parts = [*mat.parts, Part(f"# 논문 인용 규칙{cite_rule}", "note")]
         if com.conflicts:
             # both values with where/when; never merged
             mat.parts = [Part(key_figures.conflict_block(com.conflicts,
@@ -1474,6 +1484,8 @@ def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
         ),
         prepass.bound_dates if prepass is not None and prepass.bound_dates else None,
     )
+    # a row that restates a source action item holds that item's owner and day
+    clean = action_rows.fix(clean, action_rows.items_of(document_context), request)
     today = report.local_today()
     computed = {str(d.get("date") or "") for d in (prepass.dates if prepass is not None else [])}
     if (doc_format is not None and doc_format.id == "minutes"
@@ -2731,11 +2743,194 @@ class Coverage(Base):
                "heading": section.get("heading"), "content": section["content"], "done": True}
 
 
+_PAPER_PROMPT = """The request below asks the document to cite the project's papers that belong
+to its topic. The papers listed here are not cited yet. Write the missing paragraphs.
+
+Request: {request}
+
+Sections of the document (number: heading):
+{sections}
+
+Papers not cited yet (each with the opening of its own text):
+{papers}
+
+For each paper answer with one block, nothing else:
+### [n] -> k
+one paragraph of 3 to 5 sentences, in the language and register of the document
+or, for a paper whose main subject lies outside the request's topic:
+### [n] SKIP
+
+Rules:
+- k is the number of the section the paragraph belongs in, by what that section is about.
+- Say what the paper proposes or finds, using only its own text above and the material; no
+  number, name or claim the paper does not give. Put its number [n] at the end of each sentence
+  that uses it, and cite no other paper.
+- A paper marked MUST is on the topic: write its paragraph. For the others write one only when
+  their main subject is within the request's topic; when unsure, SKIP.
+- Do not repeat what the document already says about other papers."""
+
+_PAPER_BLOCK = re.compile(r"^#{2,4}\s{0,2}\[(\d{1,3})\]\s{0,2}(?:->|→|:)?\s{0,2}(SKIP|\d{1,3})?[^\n]*$",
+                          re.M | re.I)
+_PAPER_NUMBER = re.compile(r"(?<![\w.])\d[\d,]*(?:\.\d+)?")
+_ANY_CITE = re.compile(r"\[\d{1,3}(?:\s{0,2}[,\-–]\s{0,2}\d{1,3})*\]")
+
+
+def paper_paragraphs(answer: str, wanted: dict[int, str], sections: int) -> dict[int, tuple[int | None, str]]:
+    """The paragraphs a repair answer gives, by paper number: `(section number or None, text)`.
+    A paragraph with a figure its paper's text does not hold loses that sentence; one citing no
+    paper but its own gets its number back, and a SKIP gives none."""
+    out: dict[int, tuple[int | None, str]] = {}
+    marks = list(_PAPER_BLOCK.finditer(answer or ""))
+    for i, m in enumerate(marks):
+        number = int(m.group(1))
+        if number not in wanted or str(m.group(2) or "").upper() == "SKIP":
+            continue
+        end = marks[i + 1].start() if i + 1 < len(marks) else len(answer)
+        body = " ".join(answer[m.end():end].split())
+        # only its own number is cited
+        own = f"[{number}]"
+        body = _ANY_CITE.sub(lambda c, own=own: c.group(0) if c.group(0) == own else "", body)
+        known = wanted[number]
+        kept = []
+        for sentence in re.split(r"(?<=[.!?다요])\s+", body):
+            figures = _PAPER_NUMBER.findall(re.sub(r"\[\d{1,3}\]", "", sentence))
+            if all(f.strip(",") in known for f in figures):
+                kept.append(sentence)
+        body = " ".join(kept).strip()
+        if len(body) < 40:
+            continue
+        if f"[{number}]" not in body:
+            body = re.sub(r"([.!?다요])?\s*$", rf" [{number}]\1", body, count=1)
+        at = int(m.group(2)) if m.group(2) and m.group(2).isdigit() else None
+        out[number] = (at if at and 1 <= at <= sections else None, body)
+    return out
+
+
+class PaperCites(Base):
+    """A request that cites the project's papers on a topic: every paper that belongs to it is
+    cited at least once. A relevant paper no `[n]` cites gets one targeted paragraph from the
+    writer, from its own text; one still missing after that is named at the end of the body."""
+
+    name = "paper-cites"
+    kind = "model"
+    reads = ("request", "material", "document.sections")
+    writes = ("document.sections",)
+
+    def skip(self, bundle: Bundle) -> str:
+        if not paper_cites.asks_project_papers(bundle.request.text):
+            return "the request does not ask to cite the project's papers"
+        if len(paper_cites.papers_of(bundle.request.project_sources,
+                                     bundle.material.sources)) < 2:
+            return "fewer than two project papers"
+        return ""
+
+    async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
+        report, req = _report(), bundle.request
+        papers = paper_cites.papers_of(req.project_sources, bundle.material.sources)
+        sections = list(bundle.document.sections)
+        heading = report._REFERENCE_HEADING
+        material = bundle.material.document
+        certain, maybe = paper_cites.required(papers, sections, req.text, material, heading)
+        if not certain and not maybe:
+            yield {"type": "step", "id": "paper-cites", "label": "프로젝트 논문 모두 인용됨",
+                   "status": "done"}
+            return
+        body = [i for i, sec in enumerate(sections)
+                if not heading.search(str(sec.get("heading") or ""))]
+        if not body:
+            return
+        full = paper_cites.texts_of(material, papers, most=400_000)
+        opening = {n: t[:1800] for n, t in full.items()}
+        listing = "\n\n".join(
+            f"[{p.ordinal}] {p.shown}{' (MUST)' if p in certain else ''}\n"
+            f"{opening.get(p.ordinal, '')}" for p in [*certain, *maybe])
+        outline = "\n".join(f"{n}: {sections[i].get('heading') or ''}"
+                            for n, i in enumerate(body, 1))
+        try:
+            answer, spent = await _written(
+                req.model,
+                _messages(bundle, _PAPER_PROMPT.format(
+                    request=prompt_request(req.text, 1200), sections=outline, papers=listing),
+                    req.model),
+                req.api_key, 2500)
+        except _CAUGHT as exc:
+            log.warning("paper citation repair failed: %s", exc)
+            answer = ""
+        else:
+            _count(bundle, spent)
+        wanted = {p.ordinal: full.get(p.ordinal, "") + req.text for p in [*certain, *maybe]}
+        added = paper_paragraphs(answer, wanted, len(body))
+        changed: list[int] = []
+        for at, text in added.values():
+            if at is None:
+                words = set(re.findall(r"[A-Za-z가-힣]{3,}", text.lower()))
+                at = max(range(1, len(body) + 1), key=lambda n: len(words & set(re.findall(
+                    r"[A-Za-z가-힣]{3,}", str(sections[body[n - 1]].get("content") or "").lower()))))
+            i = body[at - 1]
+            content = str(sections[i].get("content") or "").rstrip()
+            sections[i] = {**sections[i], "content": f"{content}\n\n{text}"}
+            changed.append(i)
+        # the ones the document must cite and still does not: said, never dropped silently
+        left = [p for p in certain if p.ordinal not in paper_cites.cited_numbers(sections)]
+        if left:
+            last = body[-1]
+            content = str(sections[last].get("content") or "").rstrip()
+            names = ", ".join(f"「{p.shown}」" for p in left)
+            sections[last] = {**sections[last], "content": (
+                f"{content}\n\n※ 프로젝트 논문 중 {names}은(는) 이 주제와 관련되지만 이 문서에 "
+                "반영하지 못했습니다. 필요하면 해당 논문을 지정해 다시 요청해 주세요.")}
+            changed.append(last)
+        bundle.document.sections = sections
+        got = len(added)
+        yield {"type": "step", "id": "paper-cites",
+               "label": (f"논문 {got}편 인용 보충" if got else "논문 인용 점검")
+               + (f" · {len(left)}편 빠짐" if left else ""),
+               "status": "done", **({"detail": ", ".join(p.shown for p in left)} if left else {})}
+        for i in dict.fromkeys(changed):
+            yield {"type": "section", "sectionId": sections[i].get("id"),
+                   "heading": sections[i].get("heading"), "content": sections[i]["content"],
+                   "done": True}
+
+
+class SourceConflicts(Base):
+    """A labelled quantity two source files give differently (「총사업비」 3.2억 vs 3.5억) that
+    the document states one value of: both values and their files are reported beside it,
+    the decision left as a named blank — never settled by the writer."""
+
+    name = "source-conflicts"
+    reads = ("request", "material.parts", "document.sections")
+    writes = ("document.sections",)
+
+    def skip(self, bundle: Bundle) -> str:
+        return "" if len(source_conflicts.source_files(bundle.material.document)) >= 2 \
+            else "fewer than two source files"
+
+    async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
+        report = _report()
+        found = source_conflicts.conflicts(source_conflicts.source_files(bundle.material.document))
+        if not found:
+            return
+        sections, marked = source_conflicts.mark(bundle.document.sections, found,
+                                                 report._REFERENCE_HEADING)
+        if not marked:
+            return
+        changed = [i for i, (a, b) in enumerate(zip(bundle.document.sections, sections,
+                                                      strict=True)) if a != b]
+        bundle.document.sections = sections
+        yield {"type": "step", "id": "source-conflicts",
+               "label": f"자료끼리 값이 다른 항목 {len(marked)}건 표시", "status": "done",
+               "detail": ", ".join(c.label for c in marked)}
+        for i in changed:
+            yield {"type": "section", "sectionId": sections[i].get("id"),
+                   "heading": sections[i].get("heading"), "content": sections[i]["content"],
+                   "done": True}
+
+
 for _stage in (
     Research(), Assemble(), Outline(), ApprovedPlan(), Calc(), Announce(), Settle(), Prepass(),
     WriterNotes(), Draft(), Sections(), Figures(), Additions(), Normalize(), TitleBlock(),
     ChecksPlan(), MinutesRepair(), FormatFind(), Verify(), MinutesReground(), FormatAmend(),
-    CareerPeriods(), PageLimit(), FormatStep(), Coverage(), Quality(),
+    CareerPeriods(), PageLimit(), FormatStep(), Coverage(), PaperCites(), SourceConflicts(), Quality(),
 ):
     registry.register(_stage)
 
