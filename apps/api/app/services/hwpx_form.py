@@ -41,6 +41,16 @@ def _compact(text: str) -> str:
     return re.sub(r"\s+", "", BLANK.sub("[]", text or ""))
 
 
+def _inserted(fixed: str, line: str) -> bool:
+    """`line` is the fixed line with something put in (every character of it, in order, and
+    not much more than a value's worth added)."""
+    if len(fixed) < 3 or len(line) > len(fixed) + 80 or len(line) <= len(fixed) \
+            or not line.startswith(fixed[:3]):
+        return False
+    it = iter(line)
+    return all(ch in it for ch in fixed)
+
+
 def free_line(text: str) -> bool:
     """Room for a value, or guidance to replace: empty, a bullet, a blank, a 작성요령 line."""
     t = (text or "").strip()
@@ -252,11 +262,16 @@ class Guard:
         mine = text.split("\n")
         have = [_compact(ln) for ln in mine]
         want = [_compact(ln) for ln in fixed]
-        # every fixed line in order: the writer wrote the cell whole; its fixed lines as they were
+        # every fixed line in order: the writer wrote the cell whole. A fixed line as it was,
+        # or with a value put into its blank (「대학(Name) :」 → 「대학(Name) : 정보대학」); any
+        # other line is content
         at, kept = 0, []
         for compact, line in zip(have, mine, strict=False):
             if at < len(want) and compact == want[at]:
                 kept.append(fixed[at])
+                at += 1
+            elif at < len(want) and _inserted(want[at], compact):
+                kept.append(line)
                 at += 1
             else:
                 kept.append(line)

@@ -188,3 +188,9 @@ def test_filling_an_old_hwp_gets_the_way_to_hwpx_and_no_essay():
     # a summary of the file is another request; a form that can be followed is not refused
     assert form_files.hwp_refusal(turn, "이 파일 내용을 요약해 줘.") == ""
     assert form_files.hwp_refusal(form_files.TurnForms(), "이 양식에 맞춰 채워 줘.") == ""
+
+
+def test_a_fixed_line_may_take_a_value_in_its_blank_but_content_cannot_stand_for_it():
+    assert hwpx_form._inserted("대학(nameofcollege):", "대학(nameofcollege):정보대학")
+    assert not hwpx_form._inserted("사업명", "사업계획의명칭")
+    assert not hwpx_form._inserted("대학", "대학교")
