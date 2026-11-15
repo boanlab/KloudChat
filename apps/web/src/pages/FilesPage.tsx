@@ -64,10 +64,13 @@ export function FilesPage() {
   const navigate = useNavigate()
   const newSession = useStore((s) => s.newSession)
   const setImageEdit = useStore((s) => s.setImageEdit)
-  // 「이미지 고치기」: in the conversation the picture came from, else a new image conversation
+  const sessions = useStore((s) => s.sessions)
+  // 「이미지 고치기」: in the conversation the picture came from, else (none, or gone) a new image
+  // conversation
   const editIn = async (row: FileRow, source: ImageEditSource) => {
     try {
-      const id = row.sessionId ?? (await newSession('image'))
+      const kept = row.sessionId && sessions.some((c) => c.id === row.sessionId) ? row.sessionId : null
+      const id = kept ?? (await newSession('image'))
       setImageEdit({ ...source, sessionId: id })
       navigate(`/s/${id}`)
     } catch (err) {

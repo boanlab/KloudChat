@@ -170,6 +170,16 @@ async function fixture(page: Page, testInfo: TestInfo, { imageModel = 'fixture/e
     if (method === 'GET' && file && files[file[1]]) {
       return route.fulfill({ status: 200, body: files[file[1]], headers: { 'content-type': 'image/png' } })
     }
+    if (method === 'GET' && path === '/files/page') {
+      const row = (id: string, name: string, origin: string, sessionId: string | null) => ({
+        id, name, size: 2048, mime: 'image/png', tokens: 0, projectId: null, sessionId, origin, preview: '',
+        error: null, createdAt: at,
+      })
+      const items = url.searchParams.get('origin') === 'generated'
+        ? [row('f-blue', '배경만 파랗게.png', 'generated', imageSession)]
+        : [row('f-red', '사진.png', 'upload', null)]
+      return route.fulfill({ json: { items, total: items.length, next: null, counts: { upload: 1, generated: 1, working: 0 } } })
+    }
     if (method === 'POST' && path === `/sessions/${imageSession}/images`) {
       const payload = request.postDataJSON() as Record<string, unknown>
       seen.images.push(payload)
@@ -275,6 +285,25 @@ test('strict-local 대화의 그림은 외부 모델로 고치지 않는다', as
   await expect(attached).toHaveAttribute('aria-disabled', 'true')
   await attached.click({ force: true })
   await expect(page.getByTestId('toast')).toContainText('strict-local 대화라 외부 모델로 고칠 수 없습니다.')
+})
+
+test('파일함의 그림도 고칠 수 있다: 만든 그림은 그 대화에서, 올린 그림은 새 이미지 대화에서', async ({ page }, testInfo) => {
+  await fixture(page, testInfo)
+  await page.goto('/files')
+  const uploaded = page.getByRole('button', { name: '사진.png 고치기' })
+  await expect(uploaded).toBeVisible()
+  await uploaded.click()
+  await expect(page).toHaveURL(/\/s\/[^/]+$/)
+  expect(page.url()).not.toContain(imageSession)
+  await expect(page.getByTestId('image-edit-chip')).toContainText('사진.png')
+
+  await page.goto('/files')
+  await page.getByRole('tab', { name: /대화에서 만든 파일/ }).click()
+  const madeHere = page.getByRole('button', { name: '배경만 파랗게.png 고치기' })
+  await expect(madeHere).toBeVisible()
+  await madeHere.click()
+  await expect(page).toHaveURL(new RegExp(`/s/${imageSession}$`))
+  await expect(page.getByTestId('image-edit-chip')).toContainText('배경만 파랗게.png')
 })
 
 test('휴대폰에서도 고치기와 전후 비교를 쓴다 @phone', async ({ page }, testInfo) => {
