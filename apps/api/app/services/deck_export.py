@@ -3854,7 +3854,16 @@ def _build_pptx(
             image_bytes, image_caption = picture
             image_caption = _unless_title(image_caption, data)
             alone = not (bullets or rows or metrics or chart or body or pattern_words)
-            box = (_W - 260, room) if alone else (picture_span, room)
+            # the caption's lines come out of the picture's room, not the footer's: a caption
+            # under a picture that took the whole height ran over the footer
+            caption_width = (_W - 260) if alone else picture_span
+            caption_size = max(deck_type.FLOOR_PT, _u("caption") * typescale[0])
+            # measured at the narrower width a tall picture leaves its caption
+            caption_lines = (len(_wrap(image_caption, measure, caption_size,
+                                       max(caption_width * 0.6, 120)) or [""])
+                             if image_caption else 0)
+            caption_room = caption_lines * caption_size * 1.3 + 8 if caption_lines else 0.0
+            box = ((_W - 260) if alone else picture_span, max(room - caption_room, room * 0.5))
             fill = str((data.get("image") or {}).get("fit") or "") == "cover"
             if fill:
                 _, _, crop_left, crop_top, crop_right, crop_bottom = _fill(image_bytes, box=box)
@@ -3863,9 +3872,9 @@ def _build_pptx(
                 width, height = _fit(image_bytes, box=box)
                 crop_left = crop_top = crop_right = crop_bottom = 0.0
             left = (72 if picture_left else 72 + text_width + 24) if not alone else (_W - width) / 2
-            top = body_top + max(0.0, (room - height) / 2)
+            top = body_top + max(0.0, (room - caption_room - height) / 2)
             # the caption's line under the figure only when there is a caption
-            figure_room = room - 30 if image_caption else room
+            figure_room = room - max(30.0, caption_room) if image_caption else room
             if (data.get("image") or {}).get("diagram") and native_figure(
                 slide, data,
                 left=(72 if picture_left else 72 + text_width + 24) if not alone else 72.0,
@@ -3897,7 +3906,8 @@ def _build_pptx(
             except _Drawn:
                 if image_caption:
                     frame = _textbox(
-                        slide, left=left, top=top + height + 6, width=max(width, 120), height=24
+                        slide, left=left, top=top + height + 6, width=max(width, 120),
+                        height=max(24.0, caption_room - 6),
                     )
                     run = frame.paragraphs[0].add_run()
                     run.text = image_caption
@@ -3907,7 +3917,8 @@ def _build_pptx(
             else:
                 if image_caption:
                     frame = _textbox(
-                        slide, left=left, top=top + height + 6, width=max(width, 120), height=24
+                        slide, left=left, top=top + height + 6, width=max(width, 120),
+                        height=max(24.0, caption_room - 6),
                     )
                     run = frame.paragraphs[0].add_run()
                     run.text = image_caption
