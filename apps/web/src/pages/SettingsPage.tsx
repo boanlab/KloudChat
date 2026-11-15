@@ -8,7 +8,9 @@ import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { AccessTab } from './settings/AccessTab'
 import { ConnectionsTab } from './settings/ConnectionsTab'
+import { AppTab } from './settings/AppTab'
 import { KeysTab } from './settings/KeysTab'
+import { NotificationsTab } from './settings/NotificationsTab'
 import { PersonalizationTab } from './settings/PersonalizationTab'
 import { PreferencesTab } from './settings/PreferencesTab'
 import { ProfileTab } from './settings/ProfileTab'
@@ -23,6 +25,8 @@ const tabs = [
   { to: '/settings/connections', label: '연결', end: false },
   { to: '/settings/keys', label: 'API 키', end: false },
   { to: '/settings/access', label: '보안', end: false },
+  { to: '/settings/notifications', label: '알림', end: false },
+  { to: '/settings/app', label: '앱', end: false },
 ]
 
 export function SettingsPage() {
@@ -87,6 +91,8 @@ export function SettingsPage() {
           <Route path="connections" element={<ConnectionsTab />} />
           <Route path="keys" element={<KeysTab />} />
           <Route path="access" element={<AccessTab />} />
+          <Route path="notifications" element={<NotificationsTab />} />
+          <Route path="app" element={<AppTab />} />
           <Route path="*" element={<Navigate to="/settings" replace />} />
         </Routes>
       </PageBody>

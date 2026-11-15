@@ -280,7 +280,13 @@ export interface Preferences {
   avModelByMode?: Partial<Record<'audio' | 'video', string>>
   /** Picture model when a picture must stay strict-local and none was picked; '' = first listed. */
   strictImageModel?: string
+  /** Push notice per event; a missing key is the event's default (`PUSH_DEFAULTS`). */
+  pushEvents?: Partial<Record<PushEvent, boolean>>
+  /** Conversation titles in notices about internal or strict-local material. */
+  pushInternalTitles?: boolean
 }
+
+export type PushEvent = 'job_done' | 'job_failed' | 'shared' | 'review' | 'decided' | 'issue' | 'credits'
 
 export type PrivacyAction = 'route_strict_local' | 'mask_external' | 'send_raw_external'
 

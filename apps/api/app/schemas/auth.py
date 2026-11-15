@@ -7,6 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from app.models.push import PUSH_EVENTS
 from app.models.user import AuditEvent, User, UserRole, UserStatus
 from app.services import geoip
 
@@ -71,6 +72,18 @@ class Preferences(Wire):
     av_model_by_mode: dict[str, str] = Field(default_factory=dict)
     #: picture model when a picture must stay strict-local and none was picked; "" = first listed
     strict_image_model: str = Field(default="", max_length=200)
+    #: push notice per event (`services.push.EVENTS`); missing key = the event's default
+    push_events: dict[str, bool] = Field(default_factory=dict)
+    #: conversation titles in notices about internal or strict-local material
+    push_internal_titles: bool = False
+
+    @field_validator("push_events")
+    @classmethod
+    def _known_events(cls, value: dict[str, bool]) -> dict[str, bool]:
+        unknown = set(value) - set(PUSH_EVENTS)
+        if unknown:
+            raise ValueError(f"unknown event: {', '.join(sorted(unknown))}")
+        return value
 
     @field_validator("model_by_kind")
     @classmethod

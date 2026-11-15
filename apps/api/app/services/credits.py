@@ -125,6 +125,7 @@ def settle(
         info.setdefault(_DELTAS, []).append((user.id, credits))
     before = int(user.credits_used or 0)
     set_committed_value(user, "credits_used", before + credits)
+    _warn_near_limit(user, before, before + credits)
     db.add(
         CreditLedger(
             user_id=user.id,
@@ -139,6 +140,22 @@ def settle(
 
 
 _DELTAS = "kchat_credit_deltas"
+
+#: share of the monthly allowance at which the one notice of the cycle goes out
+NEAR_LIMIT = 0.9
+
+
+def _warn_near_limit(user: User, before: int, after: int) -> None:
+    monthly = int(user.monthly_credits or 0)
+    if monthly <= 0 or not (before < monthly * NEAR_LIMIT <= after):
+        return
+    from app.services import push
+
+    cycle = user.cycle_resets_at.isoformat() if user.cycle_resets_at else "none"
+    push.notify(user.id, push.Notice(
+        event="credits", title="이번 달 크레딧이 90%를 넘었습니다",
+        label="남은 크레딧을 확인하세요", url="/usage", tag="credits",
+        once_key=f"credits:{cycle}"[:120]))
 
 
 @event.listens_for(Session, "before_flush")

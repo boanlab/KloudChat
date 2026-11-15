@@ -10,6 +10,7 @@ import { NewVersionBar } from '@/components/layout/NewVersionBar'
 import { setBotEmbedded } from '@/lib/api'
 import { SHARED_AGENTS_PATH } from '@/lib/publishing'
 import { kindOrder } from '@/lib/kinds'
+import { registerServiceWorker } from '@/lib/push'
 import { HomePage } from '@/pages/HomePage'
 import { LoginPage } from '@/pages/LoginPage'
 import { PendingApprovalPage } from '@/pages/PendingApprovalPage'
@@ -291,6 +292,10 @@ export default function App() {
   useEffect(() => {
     if (!window.location.pathname.startsWith('/embed/')) void bootstrap()
   }, [bootstrap])
+  // Push, notification clicks and the offline page; never inside another site's frame.
+  useEffect(() => {
+    if (!window.location.pathname.startsWith('/embed/')) void registerServiceWorker()
+  }, [])
 
   return <RouterProvider router={router} />
 }

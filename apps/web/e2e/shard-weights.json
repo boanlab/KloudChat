@@ -43,6 +43,8 @@
  "knowledge-shelf/desktop": 9.4,
  "knowledge-shelf/phone": 1.5,
  "media-jobs/desktop": 5.0,
+ "notifications/desktop": 40.0,
+ "notifications/phone": 15.0,
  "ocr/desktop": 16.0,
  "ocr/phone": 14.6,
  "office-safety/desktop": 104.9,

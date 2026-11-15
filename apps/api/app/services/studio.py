@@ -23,6 +23,7 @@ from app.models.chat import ChatSession, SessionKind
 from app.models.shelf import StudioItem
 from app.models.user import User, utcnow
 from app.models.workspace import Artifact, ArtifactKind, Project, StoredFile
+from app.services import push as push_service
 from app.services import (
     shelf_calls,
     shelf_checks,
@@ -261,6 +262,21 @@ async def _run(item_id: str) -> None:
         item.updated_at = utcnow()
         db.add(item)
         await db.commit()
+    _notify(item)
+
+
+def _notify(item: StudioItem) -> None:
+    """Studio output done or failed; project material, so internal."""
+    if item.session_id:
+        url = f"/s/{item.session_id}" + (f"?artifact={item.artifact_id}" if item.artifact_id
+                                         else "")
+    else:
+        url = f"/projects/{item.project_id}"
+    titles = push_service.JOB_TITLES["studio"]
+    ok = item.state == "done"
+    push_service.notify(item.user_id, push_service.Notice(
+        event="job_done" if ok else "job_failed", title=titles[0] if ok else titles[1],
+        label=item.title or "", url=url, tag=f"studio:{item.id}", internal=True))
 
 
 async def _write(db, user: User, item: StudioItem) -> None:

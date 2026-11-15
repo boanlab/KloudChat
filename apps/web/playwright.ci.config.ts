@@ -105,6 +105,8 @@ const groups: Record<string, Group> = {
   'artifacts-split': { files: ['artifacts-and-file-box.spec.ts'], projects: { desktop } },
   'audit-log': { files: ['audit-log.spec.ts'], projects: { desktop: desktopChrome, phone: desktopChromePhone } },
   security: { files: ['security-paging.spec.ts'], projects: { desktop: desktopChrome, phone: desktopChromePhone } },
+  // tab notices and the one-time question, 설정 › 알림 and › 앱, the service worker
+  notifications: { files: ['notifications.spec.ts', 'notifications-push.spec.ts'], projects: { desktop, phone: touchPhone } },
   pipeline: {
     files: ['pipeline-stages.spec.ts', 'user-pipelines.spec.ts', 'pipeline-chat-stays.spec.ts'],
     projects: { desktop, phone: pixelNative },

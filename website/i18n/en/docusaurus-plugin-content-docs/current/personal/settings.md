@@ -72,3 +72,11 @@ Issue keys for use in external tools or scripts. You can issue up to 10 keys per
 - **Change password**: Enter the current password and a new password of at least 10 characters. Changing it signs out the sessions on your other devices.
 - **Sign-in history**: Shows the last 100 sign-ins, failed sign-ins, password changes, and keys issued, together with the IP, the region, and the browser. Region information is shown only when the administrator has configured location data, and private networks are marked as "internal network".
 - Two-factor authentication is not provided. Use a sufficiently long password and sign out the devices you do not recognize.
+
+## Notifications
+
+When a long job (a report, slides, a document, deep research, a video, studio output or a chain) finishes, you get a notification. You are asked once, the first time a long job starts; **Turn on for this device** switches it on at any time. Notifications arrive even with the tab closed. Each event can be switched on or off, and the devices that get notifications are listed and can be removed. A notification carries only the conversation title; conversations with internal material are notified without it. iPhone and iPad receive them only in the app added to the Home Screen (iOS 16.4 or later).
+
+## App
+
+**Install as an app** makes KloudChat open in its own window without browser tabs. In Safari, use “Add to Home Screen” in the Share menu (on a Mac, “Add to Dock” in the File menu).

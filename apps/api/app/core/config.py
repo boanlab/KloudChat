@@ -40,6 +40,17 @@ class Settings(BaseSettings):
     jwt_secret: str = Field(default="change-me", min_length=8)
     #: Seals secrets at rest. Empty: derived from jwt_secret (rotation breaks stored secrets).
     secret_key: str = ""
+    #: Web push VAPID pair (base64url raw P-256). Empty: generated on first start and stored.
+    vapid_private_key: str = ""
+    vapid_public_key: str = ""
+    #: VAPID `sub` contact; empty: mailto: the contact address, then app_base_url
+    vapid_subject: str = ""
+    #: notices per user per minute, all devices together
+    push_per_minute: int = 6
+    #: first retry wait; doubles per attempt
+    push_backoff_sec: float = 1.0
+    #: push-service hosts allowed besides the browsers' own (own service, local mock)
+    push_extra_hosts: list[str] = []
     jwt_algorithm: str = "HS256"
     access_token_ttl_min: int = 15
     refresh_token_ttl_days: int = 30

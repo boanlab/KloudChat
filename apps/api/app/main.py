@@ -35,6 +35,7 @@ from app.routers import (
     pipelines,
     pptx,
     publications,
+    push,
     runs,
     search,
     sessions,
@@ -62,6 +63,7 @@ from app.services import (
     storage,
     video_jobs,
 )
+from app.services import push as push_service
 from app.services.perf import collector as perf_collector
 from app.services.perf import live as perf_live
 
@@ -130,6 +132,11 @@ async def lifespan(app: FastAPI):
                 log.info("stored secrets re-sealed under SECRET_KEY")
         except Exception as exc:  # noqa: BLE001 — old rows still open with the old key
             log.warning("stored secrets were not re-sealed: %s", exc)
+    # web push key pair: made once, before the first device subscribes
+    try:
+        await push_service.vapid_keys()
+    except Exception as exc:  # noqa: BLE001 — made again on first use
+        log.warning("web push keys not ready: %s", exc)
     # catalogue renames/hidden flags applied at deploy
     try:
         await starter.sync_catalog_at_startup(SessionLocal)
@@ -162,6 +169,11 @@ async def lifespan(app: FastAPI):
     yield
     # running answers finish (or are stored as interrupted) before anything else stops
     await sessions.drain_turns(settings.turn_drain_sec)
+    # notices of the turns that just finished
+    try:
+        await asyncio.wait_for(push_service.drain(), timeout=10)
+    except TimeoutError:
+        pass
     defaults.cancel()
     sweeper.cancel()
     bots.cancel()
@@ -227,6 +239,7 @@ app.include_router(keys.router, prefix=settings.api_prefix)
 app.include_router(transcriptions.router, prefix=settings.api_prefix)
 app.include_router(shares.router, prefix=settings.api_prefix)
 app.include_router(publications.router, prefix=settings.api_prefix)
+app.include_router(push.router, prefix=settings.api_prefix)
 # published bots: API, MCP, frame policy
 app.include_router(bot_api.router, prefix=settings.api_prefix)
 app.include_router(issues.router, prefix=settings.api_prefix)

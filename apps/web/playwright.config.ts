@@ -18,6 +18,8 @@ export default defineConfig({
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     locale: 'ko-KR',
+    // the app registers a service worker; blocked so page routes see every request
+    serviceWorkers: 'block',
   },
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } } },

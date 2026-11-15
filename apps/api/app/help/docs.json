@@ -1149,6 +1149,20 @@
 },
 {
 "lang": "ko",
+"path": "personal/settings",
+"title": "설정",
+"heading": "알림",
+"text": "오래 걸린 작업(보고서·슬라이드·문서·심층 조사·영상·스튜디오·체인)이 끝나면 알림으로 알려 줍니다. 처음 긴 작업을 시작할 때 한 번 묻고, **이 기기에서 알림 켜기**로 언제든 켭니다. 탭을 닫아도 알림이 옵니다. 알릴 일을 하나씩 켜고 끌 수 있고, 알림 받는 기기를 보고 지울 수 있습니다. 알림에는 대화 제목만 담기며, 내부 자료를 쓴 대화는 제목 없이 알립니다. iPhone·iPad는 홈 화면에 추가한 앱(iOS 16.4 이상)에서만 받습니다."
+},
+{
+"lang": "ko",
+"path": "personal/settings",
+"title": "설정",
+"heading": "앱",
+"text": "**앱으로 설치**를 누르면 브라우저 탭 없이 따로 열리는 앱이 됩니다. Safari에서는 공유 메뉴의 「홈 화면에 추가」(Mac은 파일 메뉴의 「Dock에 추가」)로 설치합니다."
+},
+{
+"lang": "ko",
 "path": "personal/usage-history",
 "title": "사용량과 대화 기록",
 "heading": "",
@@ -2868,6 +2882,20 @@
 "title": "Settings",
 "heading": "Security",
 "text": "- **Signed-in devices**: Shows the browser, the IP, and the last use time. The current device is marked, and individual sign-out and **Sign out all other devices** are provided. Calls made through an API key are not shown in this list.\n- **Change password**: Enter the current password and a new password of at least 10 characters. Changing it signs out the sessions on your other devices.\n- **Sign-in history**: Shows the last 100 sign-ins, failed sign-ins, password changes, and keys issued, together with the IP, the region, and the browser. Region information is shown only when the administrator has configured location data, and private networks are marked as \"internal network\".\n- Two-factor authentication is not provided. Use a sufficiently long password and sign out the devices you do not recognize."
+},
+{
+"lang": "en",
+"path": "personal/settings",
+"title": "Settings",
+"heading": "Notifications",
+"text": "When a long job (a report, slides, a document, deep research, a video, studio output or a chain) finishes, you get a notification. You are asked once, the first time a long job starts; **Turn on for this device** switches it on at any time. Notifications arrive even with the tab closed. Each event can be switched on or off, and the devices that get notifications are listed and can be removed. A notification carries only the conversation title; conversations with internal material are notified without it. iPhone and iPad receive them only in the app added to the Home Screen (iOS 16.4 or later)."
+},
+{
+"lang": "en",
+"path": "personal/settings",
+"title": "Settings",
+"heading": "App",
+"text": "**Install as an app** makes KloudChat open in its own window without browser tabs. In Safari, use “Add to Home Screen” in the Share menu (on a Mac, “Add to Dock” in the File menu)."
 },
 {
 "lang": "en",
