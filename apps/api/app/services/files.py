@@ -237,26 +237,15 @@ def estimate_tokens(text: str) -> int:
 
 
 def _from_pdf(data: bytes) -> str:
+    from app.services import pdf_text
+
     try:
-        from pypdf import PdfReader
-    except ImportError:  # pragma: no cover — dependency is pinned
-        raise RuntimeError(
-            "이 서버에서는 PDF 를 읽을 수 없습니다. 관리자에게 문의하세요."
-        ) from None
-    try:
-        reader = PdfReader(io.BytesIO(data))
-    except Exception as exc:  # noqa: BLE001 — pypdf raises a dozen different types
+        texts = pdf_text.page_texts(data)
+    except Exception as exc:  # noqa: BLE001 — the readers raise a dozen different types
         log.info("pdf unreadable: %s", exc)
         raise RuntimeError("손상되었거나 PDF 형식이 아닌 파일입니다.") from None
-    pages = []
-    for i, page in enumerate(reader.pages):
-        try:
-            body = (page.extract_text() or "").strip()
-            if body:
-                # page markers survive chunking for citations
-                pages.append(f"[페이지 {i + 1}]\n{body}")
-        except Exception as exc:  # noqa: BLE001 — one bad page must not lose the rest
-            log.info("pdf page %d unreadable: %s", i, exc)
+    # page markers survive chunking for citations
+    pages = [f"[페이지 {i + 1}]\n{body}" for i, body in enumerate(texts) if body.strip()]
     text = "\n\n".join(pages)
     if not text.strip():
         raise RuntimeError("텍스트를 추출하지 못했습니다. 스캔본이라면 OCR 이 필요합니다.")

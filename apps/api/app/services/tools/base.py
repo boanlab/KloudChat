@@ -72,6 +72,9 @@ class ToolContext:
     agent_name: str = ""
     #: User message text; checked by `create_artifact` for file requests.
     request: str = ""
+    #: The person's own words this turn, without the material the turn adds to the message
+    #: (`request` may carry it): what a size they asked for (「12장」) is read from.
+    asked: str = ""
     #: Artifacts stored after the turn (tools hold no DB session).
     pending_artifacts: list[dict] = field(default_factory=list)
     #: Shared notes stored after the turn.

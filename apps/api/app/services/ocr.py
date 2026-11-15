@@ -169,19 +169,10 @@ def _visible(text: str) -> int:
 
 def pdf_layer(data: bytes) -> list[str]:
     """Per-page text layer ("" for scans); raises if unopenable."""
-    from pypdf import PdfReader
+    from app.services import pdf_text
 
-    reader = PdfReader(io.BytesIO(data))
-    if len(reader.pages) > MAX_PAGES_CEILING:
-        # too many pages: not planned
-        raise ValueError("too many pages")
-    pages: list[str] = []
-    for page in reader.pages:
-        try:
-            pages.append((page.extract_text() or "").strip())
-        except Exception:  # noqa: BLE001 — one bad page must not lose the rest
-            pages.append("")
-    return pages
+    # too many pages: not planned
+    return pdf_text.page_texts(data, limit=MAX_PAGES_CEILING)
 
 
 #: per-picture pixel cap (decompression bomb guard)

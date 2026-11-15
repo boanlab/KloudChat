@@ -753,6 +753,19 @@ def _chart_line(shape) -> str:
     return f"(차트{', ' + said if said else ''}; 고칠 수 없음)"
 
 
+def contents(data: bytes) -> dict[str, int]:
+    """What the file holds, counted from the file itself: slides, and the charts, tables and
+    pictures on them (hidden shapes left out). A reply about a deck is held to these
+    (`office_claims`), not to what the writer meant to put in."""
+    deck = _index(_load(data))
+    counts = {"slides": len(deck.slides), "chart": 0, "table": 0, "picture": 0}
+    for entry in deck.slides:
+        for item in entry.items:
+            if item.kind in counts:
+                counts[item.kind] += 1
+    return counts
+
+
 def outline(data: bytes) -> str:
     """Numbered outline: each slide, its shapes `s2.1 (제목): …` with a multi-line text one
     line per paragraph, tables `s3.2 (표 4×3)` with `r0: a | b` rows, the notes, then the

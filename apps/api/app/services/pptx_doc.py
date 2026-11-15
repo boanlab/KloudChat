@@ -86,6 +86,7 @@ def deck(
     tokens: dict[str, str] | None = None,
     template: str = "",
     form: Any = None,
+    overflow: list[dict] | None = None,
 ) -> bytes:
     """A new deck in the house look (`deck_export`): a cover, then a slide per entry, as
     bullets, or a table when it has rows; `closing` adds a last slide with that line. `tokens`
@@ -95,17 +96,31 @@ def deck(
     made: list[dict[str, Any]] = [{"layout": "title", "title": title, "body": subtitle}]
     for slide in slides[:MAX_WRITE]:
         rows = [[str(cell) for cell in row] for row in slide.get("rows") or [] if row]
+        bullets = [str(b) for b in slide.get("bullets") or [] if str(b).strip()]
         entry: dict[str, Any] = {
             "title": str(slide.get("title") or ""),
             "notes": str(slide.get("notes") or ""),
         }
-        if rows:
+        chart = slide.get("chart")
+        image = slide.get("image")
+        if isinstance(chart, dict) and chart.get("series"):
+            # a native chart (its worksheet editable in PowerPoint), bullets beside it
+            entry.update(layout="chart", chart=chart, bullets=bullets)
+        elif isinstance(image, dict) and image.get("data"):
+            # a picture (a figure cropped from a paper, an attached image) with its caption
+            picture = {"data": image["data"], "caption": str(image.get("caption") or ""),
+                       "size": "large"}
+            if bullets and _wide(image["data"]):
+                # a wide figure (a row of plots) beside text shrinks to a strip nobody can
+                # read: it takes the slide, and its lines go to the speaker notes
+                notes = "\n".join([entry["notes"], *bullets]).strip()
+                entry.update(layout="bullets", bullets=[], image=picture, notes=notes)
+            else:
+                entry.update(layout="bullets", bullets=bullets, image=picture)
+        elif rows:
             entry.update(layout="table", rows=rows)
         else:
-            entry.update(
-                layout="bullets",
-                bullets=[str(b) for b in slide.get("bullets") or [] if str(b).strip()],
-            )
+            entry.update(layout="bullets", bullets=bullets)
         made.append(entry)
     if closing.strip():
         made.append({"layout": "closing", "title": closing.strip(), "body": ""})
@@ -113,7 +128,22 @@ def deck(
         # on the conversation's PowerPoint form: its layouts, type and theme
         return on_form(form, title, made)
     # `to_pptx` leaves no master bullet under a plain line (`written_bullets_only`)
-    return deck_export.to_pptx(title, made, tokens=tokens, template=template)
+    # `overflow` gets each slide whose text runs past its place at the floor size
+    return deck_export.to_pptx(title, made, tokens=tokens, template=template, overflow=overflow)
+
+
+def _wide(data: bytes) -> bool:
+    """A picture at least twice as wide as it is tall."""
+    import io
+
+    from PIL import Image
+
+    try:
+        with Image.open(io.BytesIO(data)) as picture:
+            width, height = picture.size
+    except Exception:  # noqa: BLE001 — an unreadable picture keeps the usual place
+        return False
+    return bool(height) and width / height >= 2.0
 
 
 async def project_look(

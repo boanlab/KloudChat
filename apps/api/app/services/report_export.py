@@ -150,7 +150,8 @@ class Paragraph(_Paragraph):
 def citation_text(source: dict[str, Any], style: str = "APA") -> str:
     """One source as a reference entry (APA, IEEE, MLA, Chicago)."""
     title = str(source.get("title") or "제목 없음").strip()
-    author = str(source.get("author") or "").strip()
+    # 「… et al.」 ends in its own period: the entry adds one
+    author = str(source.get("author") or "").strip().rstrip(".")
     publisher = str(source.get("publisher") or "").strip()
     year = str(source.get("year") or "").strip()
     url = str(source.get("url") or "").strip()

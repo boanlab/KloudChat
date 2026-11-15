@@ -24,6 +24,7 @@ from app.services import (
     calc,
     check_skills,
     checks,
+    citations,
     coverage,
     date_rules,
     design,
@@ -50,6 +51,7 @@ from app.services import (
     report_checks,
     research,
     richtext,
+    source_focus,
     stated_days,
     stated_meeting,
     stated_policy,
@@ -167,10 +169,14 @@ class Research(Base):
                 or report.material_complete(req.text, bundle.spec.format_id,
                                             has_files=bool(req.untrusted))):
             web_search = False
+        if web_search and req.project_sources and report.uses_project_material(req.text):
+            # 「프로젝트 논문 중 해당되는 것들을 인용」: the project's files are the sources
+            web_search = False
         # writing an approved outline: the outline pass's pages carry over (a fresh search
         # loses sources and blanks their sections); only headings they miss are searched again
         kept = (research.from_carried(req.approved_plan.get(PLAN_RESEARCH))
-                if req.approved_plan is not None else None)
+                if req.approved_plan is not None and (
+                    web_search or not report.uses_project_material(req.text)) else None)
         if kept is not None:
             web_search = True
             findings = kept
@@ -279,16 +285,23 @@ class Assemble(Base):
             if item.get("listed") and not each:
                 continue
             ordinal = len(findings.sources) + 1
-            title = str(item.get("name") or "프로젝트 자료")[:200]
+            name = str(item.get("name") or "프로젝트 자료")[:200]
+            # a paper as the work it is (its first page's title, authors, year, arXiv link),
+            # never its file name; the file name stays for the writer's list below
+            paper = dict(item.get("paper") or {})
+            title = str(paper.get("title") or name)[:200]
             url = str(item.get("sourceUrl") or "")
             findings.sources.append(
                 {
                     "id": str(item.get("id") or f"project-{ordinal}"),
                     "ordinal": ordinal,
                     "title": title,
-                    "publisher": research._publisher(url) if url else (
-                        "첨부 파일" if attached else "프로젝트 파일"),
-                    "url": url,
+                    **({"fileName": name} if title != name else {}),
+                    **{k: str(paper[k]) for k in ("author", "year") if paper.get(k)},
+                    "publisher": str(paper.get("publisher") or "") or (
+                        research._publisher(url) if url else (
+                            "첨부 파일" if attached else "프로젝트 파일")),
+                    "url": url or str(paper.get("url") or ""),
                     "origin": "web" if url else "file",
                     **({"attached": True} if attached else {}),
                     "originLabel": "첨부 파일" if attached else (
@@ -303,7 +316,8 @@ class Assemble(Base):
                     ),
                 }
             )
-            project_reference_lines.append(f"- [{ordinal}] {title}")
+            project_reference_lines.append(
+                f"- [{ordinal}] {title}" + (f" ({name})" if title != name else ""))
             project_selected += not attached
         mat.sources = findings.sources
 
@@ -341,8 +355,9 @@ class Assemble(Base):
             mat.trusted.append(Part(
                 "# 첨부·프로젝트 자료 인용 번호\n"
                 "End each sentence that uses a fact from an attached file or the project "
-                "material with that file's exact number below, never a web result's number. "
-                "Do not make up numbers that are not on the list.\n"
+                "material with that file's exact number below in brackets, like 「[1]」 — "
+                "never the file name or an arXiv id in brackets, and never a web result's "
+                "number. Do not make up numbers that are not on the list.\n"
                 + "\n".join(project_reference_lines),
                 "project"))
         mat.grounded = deck_rules.has_numbers(req.text, mat.document)
@@ -738,6 +753,41 @@ def _given(bundle: Bundle) -> str:
                          *req.tool_outputs]).strip()
 
 
+def _records_meeting(bundle: Bundle) -> bool:
+    """The document records one meeting (minutes): its head and days are that meeting's."""
+    return bundle.spec.format_id == "minutes" or bundle.spec.settings.date_base == "meeting"
+
+
+def _named_part(bundle: Bundle) -> source_focus.FilePart | None:
+    """The one project file the request names as its source (「11월 10일 회의록」), or None."""
+    names = [str(s.get("name") or "") for s in bundle.request.project_sources or []]
+    return source_focus.requested_part(bundle.request.text, bundle.material.given or _given(bundle),
+                                       names)
+
+
+def _meeting_material(bundle: Bundle) -> str:
+    """The material a minutes document's meeting is read from: the file the request names
+    when it names one among several, else all of it."""
+    given = bundle.material.given or _given(bundle)
+    if not _records_meeting(bundle) or (part := _named_part(bundle)) is None:
+        return given
+    return "\n\n".join(x for x in (_report()._request_material(bundle.request.text), part.text)
+                       if x).strip()
+
+
+def _head_material(bundle: Bundle) -> str:
+    """What a document's head fields are read from. A minutes head is its meeting's
+    (`_meeting_material`); any other document's head is its own — the request, the turn's
+    files and code output — never the head of a project file it draws on (a weekly report
+    built from minutes has no 회의명 or 참석자, and the minutes' 작성자 is not its 보고자)."""
+    if _records_meeting(bundle):
+        return _meeting_material(bundle)
+    req = bundle.request
+    return "\n\n".join([_report()._request_material(req.text),
+                         *source_focus.without_knowledge(req.untrusted),
+                         *req.tool_outputs]).strip()
+
+
 #: Writer note when the code calculation gave no values.
 CALC_MISSING_NOTE = (
     "# 작성 메모(내부)\nThe code calculation did not finish; at most the given figures' own "
@@ -863,6 +913,9 @@ class Prepass(Base):
     async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
         report, req = _report(), bundle.request
         format_id, given = bundle.spec.format_id, bundle.material.given
+        if given and _records_meeting(bundle):
+            # the meeting the request names, not the first dated meeting of another file
+            given = _meeting_material(bundle)
         quiet = bundle.spec.settings.prepass_quiet
         prepass: report_checks.Prepass | None = None
         if not given and bundle.spec.settings.date_base == "meeting":
@@ -1372,6 +1425,9 @@ def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
     sections, doc_format = bundle.document.sections, bundle.spec.format
     prepass, sources = bundle.computed.prepass, bundle.material.sources
     document_context = bundle.material.document
+    # 「[2309.06180]」 keyed by a file name or arXiv id: the source's number, so every later
+    # check and the reference list see it
+    body = citations.numbered_by_name(body, sources)
     # cut by code: model rewording invents content
     earlier = [str(s.get("content") or "") for s in sections[:index]]
     if doc_format is not None and doc_format.id == "minutes":
@@ -1811,7 +1867,7 @@ class TitleBlock(Base):
     async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
         report, req, prepass = _report(), bundle.request, bundle.computed.prepass
         # the agent's 지시 fills the head too (「작성자는 …로 적는다」, 「…께 올리는 보고」)
-        given = "\n".join([bundle.material.given,
+        given = "\n".join([_head_material(bundle),
                            *workspace_context.standing_of(req.trusted)]).strip()
         block, spent = await report.title_block_for(
             bundle.spec.format, req.text, bundle.plan.title, req.judge, req.api_key, given)
@@ -1986,7 +2042,8 @@ def _meeting_given(bundle: Bundle) -> str:
     asked = meeting_memo.of_request(bundle.request.text)
     return "\n".join([
         *([asked] if asked and asked not in (mat.given or "") else []),
-        *([mat.given] if mat.given and mat.given not in asked else []),
+        *([given] if (given := _meeting_material(bundle) if mat.given else "")
+          and given not in asked else []),
         *(p.text for p in mat.parts if p.origin in ("attachment", "pasted", "answer")),
         *stated_meeting.mail_lines(standing),
     ])
@@ -2733,9 +2790,12 @@ def bundle_for(*, request: str, model: str, api_key: str, **kwargs: Any) -> Bund
         # 서식 strictness joins the agent's
         req.check_options = {**{k: True for k in governing.check_options},
                              **dict(req.check_options or {})}
-    spec = Spec(format=doc_format, format_id=format_id,
-                genre=report._genre_rule(request, doc_format, req.template_id),
-                process=process)
+    genre = report._genre_rule(request, doc_format, req.template_id)
+    if not process.has_stage("page-limit") and (length := report.page_length_rule(request)):
+        # 「A4 2~3쪽」: the planner and the writer both held to it (a 서식 with its own page
+        # limit stage counts the rendered pages instead)
+        genre = f"{genre}\n{length}".strip()
+    spec = Spec(format=doc_format, format_id=format_id, genre=genre, process=process)
     # outline tokens apart: planning may use another model
     usage = {"inputTokens": 0, "outputTokens": 0, "outlineInputTokens": 0,
              "outlineOutputTokens": 0}

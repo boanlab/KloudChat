@@ -15,6 +15,7 @@ import {
   Plug,
   Loader2,
   Plus,
+  ShieldCheck,
   Sparkles,
   Square,
   TriangleAlert,
@@ -42,7 +43,7 @@ import { agentStartKind, distinctAgents, kindMeta } from '@/lib/kinds'
 import { Badge, Button, Dropdown, MenuItem, MenuLabel, MenuSeparator, Modal, Select } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { ChatSendRecoveryError, FIGURE_STYLES, composerKey, effectiveModelId, startingRoutingMode, useStore } from '@/store/useStore'
-import { isSuperMode } from '@/lib/superAgent'
+import { isSuperMode, STRICT_START_HINT, strictStartReason } from '@/lib/superAgent'
 import { offersReasoning, reasoningSteerable } from '@/lib/reasoning'
 import type {
   ModelInfo, PrivacyAction, ReportOutput, SessionKind, Skill, SlidesOutput, WebSearchMode,
@@ -980,7 +981,6 @@ export function Composer({
     jobs,
     uploadFile,
     newSession,
-    pickSuperEntry,
     setSessionSkills,
     setSessionRoutingMode,
     setSessionReasoning,
@@ -1004,8 +1004,8 @@ export function Composer({
   const project = projects.find((p) => p.id === projectId)
   const effectiveSessionId = sessionId ?? reusableSessionId
   const session = sessions.find((candidate) => candidate.id === effectiveSessionId)
-  // Nothing sent yet and no agent: what is picked here is the person's start for this surface too
-  // (the home screen turns into such a conversation as soon as a Super Agent entry is picked).
+  // Nothing sent yet and no agent: on a picture or av surface what is picked here is the person's
+  // start for it too; a chat, report or slides pick stays with its conversation.
   const startPick = !session
     ? !sessionId
     : !session.agentId && session.messages.length === 0 && !session.messageCount
@@ -2294,6 +2294,25 @@ export function Composer({
       )}
     </button>
   )
+  // Nothing sent yet and the conversation starts strict-local on its own (the project's policy,
+  // the saved default, the admin's start): the line under the box says why, so a strict start is
+  // never a silent leftover. A strict-local entry picked in this conversation needs no reason.
+  const unsentStart = !session ||
+    (session.messages.length === 0 && !session.messageCount && session.routingMode === 'super_strict')
+  const startReason = fresh && unsentStart
+    ? strictStartReason({
+        kind,
+        agentModel: session?.agentId
+          ? agents.find((agent) => agent.id === session.agentId)?.model ?? 'unknown'
+          : null,
+        superAgent,
+        homePick: user?.preferences.modelByKind?.[kind],
+        defaultRouting,
+        projectId: session?.projectId ?? projectId,
+      })
+    : null
+  const strictHint = startReason ? t(STRICT_START_HINT[startReason]) : null
+  const strictHintId = `strict-start-hint-${kind}`
   const modelPicker = (
     <fieldset disabled={!!editing} className="contents">
     <ModelPicker
@@ -2308,15 +2327,12 @@ export function Composer({
         try {
           let id = sessionId ?? reusableSessionId
           if (!id) {
-            // a Super Agent entry picked on the home screen is this surface's start from now on
-            if (isSuperMode(mode)) pickSuperEntry(kind, mode)
+            // the entry goes with this conversation only: the saved default is left alone
             id = await newSession(kind, { projectId, routingMode: mode })
             carriedComposer = heldComposer(id)
             setReusableSessionId(id)
             navigate(`/s/${id}`, { replace: true })
           } else {
-            // the home screen's unsent conversation: a Super Agent entry is the start from now on too
-            if (startPick && isSuperMode(mode)) pickSuperEntry(kind, mode)
             await setSessionRoutingMode(id, mode)
           }
         } catch (error) {
@@ -2326,6 +2342,21 @@ export function Composer({
           )
         }
       }}
+      onStartWithModel={async (model) => {
+        setChatError(null)
+        try {
+          // a model picked before the conversation exists starts it, held in the browser like
+          // a Super Agent pick; the saved default is left alone
+          const id = await newSession(kind, { projectId, routingMode: 'manual', model })
+          carriedComposer = heldComposer(id)
+          setReusableSessionId(id)
+          navigate(`/s/${id}`, { replace: true })
+        } catch (error) {
+          if (error instanceof LeaveCancelled) return
+          setChatError(errorMessage(error, t('모델을 바꾸지 못했습니다. 잠시 후 다시 시도하세요.')))
+        }
+      }}
+      describedBy={strictHint ? strictHintId : undefined}
       onBusyChange={setModelSelectionPending}
     />
     </fieldset>
@@ -2780,6 +2811,16 @@ export function Composer({
           {reasoningChip}
           <span className="flex min-w-0 max-w-full [&>fieldset>div]:max-w-full [&>fieldset>div]:min-w-0 [&>fieldset>div]:shrink [&_button]:max-w-full">{modelPicker}</span>
         </div>
+      )}
+      {strictHint && (
+        <p
+          id={strictHintId}
+          data-testid="strict-start-hint"
+          className="mt-1 flex items-center justify-end gap-1 px-1 text-right text-xs text-faint"
+        >
+          <ShieldCheck size={12} className="shrink-0" aria-hidden />
+          <span>{strictHint}</span>
+        </p>
       )}
       {mediaError && (
         <p

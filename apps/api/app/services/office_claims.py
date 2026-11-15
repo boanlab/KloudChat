@@ -45,11 +45,51 @@ def saved_by(ctx: Any) -> list[tuple[str, dict]]:
     return out
 
 
+#: a sentence saying the deck has a chart, a picture
+_CHART = re.compile(r"차트|그래프|\bcharts?\b|\bgraphs?\b", re.I)
+_PICTURE = re.compile(r"그림|이미지|사진|도표|\bfigures?\b|\bimages?\b|\bpictures?\b", re.I)
+#: 「12장짜리」, 「PPT 8장을」: the slide count a sentence gives the deck
+_SLIDES = re.compile(
+    r"(?<![\d.])(\d{1,2})\s{0,2}장(?:짜리|으로|을|를|의|이|입니다|(?![가-힣]))")
+#: a sentence about a missing or not-yet part, not a claim that it is there
+_ABSENT = re.compile(r"없|않|못|대신|빠|넣으면|붙여|직접|필요하시면|보내 주시면")
+
+
+def _held_note(reply: str, ctx: Any) -> str:
+    """What the reply says the PowerPoint file holds that the saved file does not: a chart, a
+    picture, or a slide count (counted from the file, `pptx_edit.contents`)."""
+    held = [record.get("contents") for record in _state(ctx, "pptx").get("saved") or []]
+    held = [c for c in held if isinstance(c, dict)]
+    if not held:
+        return ""
+    last = held[-1]
+    sentences = [x for x in re.split(r"(?<=[.!?。다요])\s+|\n+", reply or "") if x.strip()]
+    claimed = [x for x in sentences if not _FAILED.search(x) and not _ABSENT.search(x)]
+    wrong = []
+    if not last.get("chart") and any(_CHART.search(x) for x in claimed):
+        wrong.append("차트가 없습니다")
+    if not last.get("picture") and any(_PICTURE.search(x) for x in claimed):
+        wrong.append("그림이 없습니다")
+    # the deck's size is the first count a claiming sentence gives (「15장(표지 + 본문 13장)」)
+    said = [int(m.group(1)) for x in claimed if _CLAIMS.search(x) or "짜리" in x
+            for m in list(_SLIDES.finditer(x))[:1]]
+    if said and last.get("slides") != said[0]:
+        wrong.append(f"슬라이드는 {last.get('slides')}장입니다")
+    if not wrong:
+        return ""
+    return "\n\n(확인: 저장된 PowerPoint 파일에는 " + ", ".join(wrong) + ".)"
+
+
 def note(reply: str, ctx: Any, offered: set[str]) -> str:
     """The sentence to add to `reply`, or `` when it says what happened. `offered`: the office
     kinds whose tools the turn had."""
     if not offered:
         return ""
+    held = _held_note(reply, ctx) if "pptx" in offered else ""
+    return _saved_note(reply, ctx, offered) + held
+
+
+def _saved_note(reply: str, ctx: Any, offered: set[str]) -> str:
     saved = saved_by(ctx)
     sentences = re.split(r"(?<=[.!?。다요])\s+|\n+", reply or "")
     claims = any(_CLAIMS.search(x) and _ABOUT.search(x) and not _FAILED.search(x)

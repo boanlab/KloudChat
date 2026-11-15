@@ -501,6 +501,27 @@ def asks_public_sources(request: str) -> bool:
     return requests_web_search(instruction) or bool(_PUBLIC_FACTS.search("\n".join(asks)))
 
 
+#: the ask names the project's own files as what to use: 「프로젝트 논문 중 해당되는 것들을
+#: 인용」, 「이 프로젝트의 자료로」, 「업로드한 논문만」, 「올려 둔 PDF를 참고해서」
+_PROJECT_MATERIAL = re.compile(
+    r"(?:프로젝트(?:에\s{0,2}(?:있는|올린|넣은|넣어\s{0,2}둔|올려\s{0,2}둔))?|업로드(?:한|된|해\s{0,2}둔)|올린"
+    r"|올려\s{0,2}(?:둔|놓은|놨던)|넣어\s{0,2}둔|저장(?:한|된|해\s{0,2}둔)|공유(?:한|된|해\s{0,2}둔)"
+    r"|첨부(?:한|된|해\s{0,2}둔))\s{0,2}(?:의\s{0,2})?(?:[가-힣A-Za-z]{1,6}\s{0,2})?"
+    r"(?:논문|자료|파일|문헌|PDF|pdf)")
+#: …while also asking for the web: 「최신 연구도 찾아서」, 「외부 자료도」, 「웹에서」
+_WEB_TOO = re.compile(r"웹|인터넷|온라인|검색|최신|최근\s{0,2}(?:연구|논문|동향|자료)|외부\s{0,2}(?:자료|논문|문헌)"
+                      r"|찾아\s{0,2}(?:서|봐|보고)|추가로\s{0,2}(?:찾|조사)", re.I)
+
+
+def uses_project_material(request: str) -> bool:
+    """Whether the ask says to write from (and cite) the project's own files and names no
+    outside search: then the web adds pages the person did not ask for, cited in place of
+    their papers."""
+    instruction = instruction_part(request)
+    return bool(_PROJECT_MATERIAL.search(instruction)) and not (
+        requests_web_search(instruction) or _WEB_TOO.search(instruction))
+
+
 def material_complete(request: str, format_id: str | None, *, has_files: bool = False) -> bool:
     """Work document written from the person's material alone (no web unless asked)."""
     instruction = instruction_part(request)
@@ -863,23 +884,53 @@ def _english_days(text: str) -> list[tuple[int, int]]:
     return out
 
 
+def _row_words(row: str) -> set[str]:
+    """The words of a table row that tie it to a source line: names and task words."""
+    return {w for w in (x.strip("*_`()[]") for x in re.split(r"[\s,·/()|:]+", row or ""))
+            if len(w) >= 2 and not w.isdigit()}
+
+
+def _on_row_line(spellings: tuple[str, ...], row: str, lines: list[str]) -> bool | None:
+    """Whether a source line carries the day (any spelling) beside a word of the row; None when
+    no source line names the row at all (nothing to tie it by: the loose check stands)."""
+    words = {re.sub(r"\s+", "", w) for w in _row_words(row)
+             if w.lower() not in _BLANK_CELLS and not placeholders.is_blank(w)}
+    named = False
+    for line in lines:
+        flat = re.sub(r"\s+", "", line)
+        if not any(w in flat for w in words):
+            continue
+        named = True
+        if any(sp in flat for sp in spellings):
+            return True
+    return False if named else None
+
+
 def _cell_sourced(
-    cell: str, compact: str, row: str = "", dates: list[dict] | None = None
+    cell: str, compact: str, row: str = "", dates: list[dict] | None = None,
+    lines: list[str] | None = None,
 ) -> bool:
-    """Owner or due-date cell names something in the request or material (dates bound to their source line)."""
+    """Owner or due-date cell names something in the request or material (dates bound to their
+    source line). With `lines`, a day counts only on a source line that also names the row
+    (its owner or task): a 12/31 the material gives for something else is no source for it."""
     flat = re.sub(r"\s+", "", cell)
-    if placeholders.is_blank(cell) or flat.lower().strip("*_`") in _BLANK_CELLS or (
-        flat in compact and dates is None
-    ):
-        return True
     days = [(int(m), int(d)) for m, d in _MONTH_DAY.findall(flat)] + [
         (int(m), int(d)) for m, d in _ISO_DAY.findall(flat)
     ] + _english_days(cell)
+    if placeholders.is_blank(cell) or flat.lower().strip("*_`") in _BLANK_CELLS or (
+        flat in compact and dates is None and not (days and lines is not None)
+    ):
+        return True
     if dates is not None and days:
         entries = report_checks.bound_rows(row, dates)
         if entries:
             written = report_checks._cell_dates(cell)
-            return any(report_checks.date_matches(w, e) for w in written for e in entries)
+            if any(report_checks.date_matches(w, e) for w in written for e in entries):
+                return True
+            if lines is None:
+                return False
+            # bound to another line (a file of another meeting): the day as the row's own
+            # source line writes it still counts
     elif dates is not None and flat in compact:
         return True
     for month, day in days:
@@ -896,6 +947,11 @@ def _cell_sourced(
         # an English memo's 「Oct 28」, 「October 28th」, 「28 Oct」
         names = (calendar.month_abbr[month].lower(), calendar.month_name[month].lower())
         lowered = compact.lower()
+        if lines is not None and any(sp in compact for sp in spellings):
+            tied = _on_row_line(spellings, row, lines)
+            if tied is not False:
+                return True
+            continue
         if any(sp in compact for sp in spellings) or any(
                 re.search(rf"{n}\.?{day}(?!\d)|(?<!\d){day}(?:st|nd|rd|th)?{n}", lowered)
                 for n in names):
@@ -910,11 +966,44 @@ def _cell_sourced(
 _TIME_WORDS = re.compile(r"\d|다음|이번|지난|내일|모레|글피|주|월|요일|회의|때|까지|분기|반기|초|말|중순|순")
 
 
+_SOURCE_DAY = re.compile(r"(?<![\d./-])(?:20\d{2}\s{0,2}[-./년]\s{0,2})?\d{1,2}\s{0,2}(?:/|월\s{0,2}|\.\s?)"
+                         r"\d{1,2}(?![\d/])(?:\s{0,2}일)?(?:\s{0,2}[(（][월화수목금토일][)）])?")
+#: a day given as a deadline on its line: 「11/17까지」, 「기한 11/20」
+_DUE_AT = re.compile(r"\s{0,2}(?:까지|마감|완료|제출|전까지|내(?:로|에)?(?![가-힣]))")
+
+
+def _source_due(owner: str, row: str, lines: list[str]) -> str:
+    """The one day the source gives as this row's deadline, as the source writes it: a line
+    naming the row's owner and one of its task words, with a single day on it; "" when the
+    source gives none or more than one."""
+    owner = re.sub(r"\s+", "", owner.strip("*_` "))
+    if len(owner) < 2 or placeholders.is_blank(owner):
+        return ""
+    words = {w for w in _row_words(row) if re.sub(r"\s+", "", w) != owner}
+    found: dict[tuple[int, int], str] = {}
+    for line in lines:
+        flat = re.sub(r"\s+", "", line)
+        if owner not in flat or not any(re.sub(r"\s+", "", w) in flat for w in words):
+            continue
+        days = [m for m in _SOURCE_DAY.finditer(line)
+                if _DUE_AT.match(line, m.end()) or re.search(r"기한|마감|due", line, re.I)]
+        if len(days) != 1:
+            if days:
+                return ""
+            continue
+        nums = [int(x) for x in re.findall(r"\d+", days[0].group(0))]
+        key = (nums[-2], nums[-1]) if len(nums) >= 2 else (0, 0)
+        found.setdefault(key, days[0].group(0).strip())
+    return next(iter(found.values())) if len(found) == 1 else ""
+
+
 def _unsourced_owner_dates(text: str, source: str, dates: list[dict] | None = None) -> str:
-    """Unmentioned 담당/기한 cells become 「[담당자]」/「[기한]」 blanks."""
+    """Unmentioned 담당/기한 cells become 「[담당자]」/「[기한]」 blanks; a 기한 left blank (or
+    made up) whose row's owner the source gives one deadline for takes that day."""
     compact = re.sub(r"\s+", "", source)
     if not compact or "|" not in text:
         return text
+    source_lines = [ln for ln in source.split("\n") if ln.strip()]
     lines = text.split("\n")
     out: list[str] = []
     i = 0
@@ -944,8 +1033,21 @@ def _unsourced_owner_dates(text: str, source: str, dates: list[dict] | None = No
                                 and report_checks._ANY_OWNER.search(cells[k].strip()):
                             # 「전원」 「각 담당자」: everyone, no one invented
                             continue
-                        if k < len(cells) and not _cell_sourced(cells[k], compact, row, dates):
+                        if k < len(cells) and not _cell_sourced(cells[k], compact, row, dates,
+                                                                source_lines):
                             cells[k] = placeholders.for_header(header[k] if k < len(header) else "")
+                    owner_at = next((j for j in guarded if j < len(header)
+                                     and _OWNER_HEADER.search(header[j])), None)
+                    for k in guarded:
+                        if not (k < len(cells) and k < len(header)
+                                and _DUE_HEADER.search(header[k])
+                                and placeholders.is_blank(cells[k]) and owner_at is not None
+                                and owner_at < len(cells)):
+                            continue
+                        # the deadline the source gives this row's owner for this task
+                        task = " ".join(c for j, c in enumerate(cells) if j not in guarded)
+                        if due := _source_due(cells[owner_at], task, source_lines):
+                            cells[k] = due
                     out.append("| " + " | ".join(cells) + " |")
                 else:
                     out.append(lines[i])
@@ -1464,6 +1566,48 @@ _MATERIAL = re.compile(
 
 
 _PAGES = re.compile(r"(?<!\d)(\d{1,4})\s{0,3}(?:장|쪽|페이지|p)\s{0,3}(?:이상|분량|짜리|내외|정도)")
+#: a page count the request sets for the document: 「A4 2~3쪽」, 「3페이지 이내」, 「5쪽 분량」,
+#: 「A4 2장」 — 「학위논문 2장」 is a chapter, so a bare 「장」 needs the A4 or a length word
+_PAGE_SPAN = re.compile(
+    r"(?P<a4>A4\s{0,2}(?:용지\s{0,2})?(?:로\s{0,2}|기준\s{0,2})?)?(?<![\d.])(?P<lo>\d{1,2})"
+    r"(?:\s{0,2}[~∼〜\-–]\s{0,2}(?P<hi>\d{1,2}))?\s{0,2}(?P<unit>쪽|페이지|장|매)"
+    r"(?P<tail>\s{0,2}(?:이내|내외|정도|분량|짜리|안팎|가량|이하|이상|넘게|으로|로|$))?", re.I)
+#: body characters of a Korean A4 page with headings and the odd table: 1,500–1,700
+PAGE_CHARS = (1_400, 1_700)
+
+
+def requested_pages(request: str) -> tuple[int, int] | None:
+    """(fewest, most) A4 pages the request sets for the document, or None."""
+    for m in _PAGE_SPAN.finditer(lead_instruction(request) or request or ""):
+        tail = (m.group("tail") or "").strip()
+        if tail in ("이상", "넘게"):
+            # a floor, not a length to hold to (`_long_form` writes it section by section)
+            return None
+        if m.group("unit") in ("장", "매") and not m.group("a4") and tail in ("으로", "로", ""):
+            # 「학위논문 2장」, 「사진 3장으로」: a chapter or a count, no length
+            continue
+        lo = int(m.group("lo"))
+        hi = int(m.group("hi") or lo)
+        if 1 <= lo <= hi <= 60:
+            if (m.group("tail") or "").strip() in ("이내", "이하"):
+                lo = max(1, hi - 1) if hi > 1 else hi
+            return lo, hi
+    return None
+
+
+def page_length_rule(request: str) -> str:
+    """A rule holding the document to the pages the request sets, or ""."""
+    pages = requested_pages(request)
+    if pages is None:
+        return ""
+    lo, hi = pages
+    least, most = lo * PAGE_CHARS[0], hi * PAGE_CHARS[1]
+    span = f"{lo}–{hi}" if lo != hi else f"{hi}"
+    return (f"Length: the request sets about {span} A4 pages for the whole document — about "
+            f"{least:,}–{most:,} Korean characters of body text across all sections together "
+            "(a table counts as the space it takes). Plan the sections and write to that length: "
+            "fewer, fuller sections rather than many, and leave out detail that does not fit "
+            "rather than run past the pages asked (「A4 2~3쪽」 is never five).")
 
 
 def _long_form(request: str) -> bool:

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import random
+import re
 from typing import Any
 
 from sqlmodel import col, select
@@ -62,6 +63,28 @@ async def sources_for(db, user: User, project_id: str, ids: list[str] | None) ->
     return rows
 
 
+def _labels(f: StoredFile) -> tuple[str, ...]:
+    """What names a source's place in a course: its file name, its digest title, its
+    first line (「# 3강 논리 시계」)."""
+    digest = shelf_sources.digest_of(f) or {}
+    first = next((line.strip(" #\t") for line in (f.text or "").splitlines()[:5]
+                  if line.strip()), "")
+    return (f.name or "", str(digest.get("title") or ""), first[:120])
+
+
+def scoped(files: list[StoredFile], options: dict[str, Any]
+           ) -> tuple[list[StoredFile], str]:
+    """The sources a numbered range in the request (「1~7강」) names, and the range as written;
+    all of them and "" when it names none or no source carries such a number."""
+    scope = studio_kinds.scope_of(str(options.get("focus") or ""))
+    if scope is None:
+        return files, ""
+    kept = [f for f in files if studio_kinds.in_scope(scope, *_labels(f))]
+    if not kept:
+        return files, ""
+    return kept, scope.label
+
+
 def options_of(kind: str, raw: dict[str, Any] | None) -> dict[str, Any]:
     raw = raw or {}
     out: dict[str, Any] = {"language": str(raw.get("language") or "auto")}
@@ -90,6 +113,8 @@ async def estimate(db, user: User, project: Project, kind: str, ids: list[str] |
     files = await sources_for(db, user, project.id, ids)
     if not files:
         raise shelf_calls.ShelfError("no_sources", 422)
+    files, scope = scoped(files, options)
+    options = {**options, "scope": scope} if scope else options
     how = await shelf_calls.route(user, kind=kind, asked=options.get("model"))
     made = shelf_sources.bundle(files, source_budget(how.model))
     system = studio_kinds.system_prompt(kind, "ko", options)
@@ -140,6 +165,10 @@ async def start(db, user: User, project: Project, kind: str, ids: list[str] | No
     files = await sources_for(db, user, project.id, ids)
     if not files:
         raise shelf_calls.ShelfError("no_sources", 422)
+    # a range the request names (「1~7강」) is what is read: the item lists only those
+    files, scope = scoped(files, options)
+    options = {**options, "scope": scope} if scope else \
+        {k: v for k, v in options.items() if k != "scope"}
     how = await shelf_calls.route(user, kind=kind, asked=options.get("model"))
     if not shelf_calls.headroom(user, shelf_calls.estimate(how.model, 1000, 1000)):
         raise shelf_calls.ShelfError("insufficient_credits", 422)
@@ -163,19 +192,48 @@ async def regenerate(db, user: User, item: StudioItem) -> StudioItem:
                        dict(item.options or {}))
 
 
+#: the most output a re-ask after a cut-off answer may take (tokens)
+_MOST_TOKENS = 12_000
+_JSON_ONLY = ("\n\nYour previous answer was not a readable JSON object. Answer again with the "
+              "JSON object only.")
+_CONCISE = ("\n\nYour previous answer ran out of room and was cut off before the JSON object "
+            "closed. Answer again, more concisely: shorter sentences and explanations, the "
+            "same JSON shape, closed properly.")
+
+
+def cut_off(answer: str, usage: dict | None, max_tokens: int) -> bool:
+    """Whether an unreadable answer ran out of room: it used (nearly) all its output tokens,
+    or it opened a JSON object it never closed."""
+    spent = int((usage or {}).get("outputTokens") or (usage or {}).get("completion_tokens") or 0)
+    if max_tokens and spent >= max_tokens * 0.9:
+        return True
+    text = (answer or "").strip()
+    start = text.find("{")
+    return start >= 0 and text[start:].count("{") > text[start:].count("}")
+
+
 async def _complete_json(user: User, how: shelf_calls.Route, system: str, prompt: str,
                          max_tokens: int, db, item: StudioItem) -> dict[str, Any] | None:
-    """Ask once, and once more when the answer is not readable JSON; both billed on `item`."""
-    for attempt in range(2):
-        extra = "" if attempt == 0 else (
-            "\n\nYour previous answer was not a readable JSON object. Answer again with the "
-            "JSON object only.")
+    """The answer as JSON. An unreadable answer is asked again once (JSON only); one cut off
+    for room is asked again with twice the room and a nudge to be brief, up to twice (the
+    same room would cut it the same way). Every call billed on `item`."""
+    extra, most, tries = "", max_tokens, 2
+    for attempt in range(3):
+        if attempt >= tries:
+            break
         answer, usage = await shelf_calls.complete(user, how.model, system + extra, prompt,
-                                                   max_tokens, effort=how.effort)
+                                                   most, effort=how.effort)
         _add_usage(item, shelf_calls.bill(db, user, how.model, usage, REASON))
         data = shelf_jobs.parse_json(answer)
         if data is not None:
             return data
+        if cut_off(answer, usage, most):
+            log.info("studio %s (%s): answer cut off at %d tokens; asked again with more room",
+                     item.id, item.kind, most)
+            extra, most, tries = _CONCISE, min(_MOST_TOKENS, most * 2), 3
+        else:
+            log.info("studio %s (%s): answer not readable JSON", item.id, item.kind)
+            extra = _JSON_ONLY
     return None
 
 
@@ -213,7 +271,8 @@ async def _write(db, user: User, item: StudioItem) -> None:
     how = await shelf_calls.route(user, kind=item.kind, asked=options.get("model"))
     made = shelf_sources.bundle(files, source_budget(how.model))
     language = studio_kinds.language_of(made.text, str(options.get("language") or "auto"))
-    system = studio_kinds.system_prompt(item.kind, language, options)
+    unspaced = language == "ko" and any(shelf_checks.unspaced(f.text or "") for f in files)
+    system = _system(item.kind, language, options, unspaced)
     prompt = shelf_calls.outgoing(
         studio_kinds.user_prompt(made.text, [s.name for s in made.sources]), how)
     item.model = str(how.model["id"])
@@ -234,6 +293,9 @@ async def _write(db, user: User, item: StudioItem) -> None:
             if redo is not None and not studio_kinds.cites_nothing(item.kind, redo):
                 data = again
     checked = await _checked(db, user, how, item, data, made, language)
+    if item.kind in studio_kinds.SETS:
+        await _top_up(db, user, how, item, data, made, language, prompt, checked,
+                      options, unspaced)
     item.content = {"language": language, "sources": made.wire(), "partial": made.partial,
                     "strict": how.strict, "checks": checked}
     title = shelf_jobs.clip(data.get("title"), 160) or kind_name(item.kind, language)
@@ -254,12 +316,74 @@ async def _write(db, user: User, item: StudioItem) -> None:
         questions = studio_kinds.quiz(data, count, random.Random())
         if len(questions) < 3:
             raise ValueError("too few usable questions")
-        item.content = {**content, "questions": questions}
+        wanted = int(options.get("count") or len(questions))
+        item.content = {**content, "questions": questions[:wanted]}
     elif item.kind == "flashcards":
         found = studio_kinds.cards(data, count)
         if len(found) < 3:
             raise ValueError("too few usable cards")
-        item.content = {**content, "cards": found}
+        wanted = int(options.get("count") or len(found))
+        item.content = {**content, "cards": found[:wanted]}
+
+
+_SET_KEY = {"quiz": ("questions", "question"), "flashcards": ("cards", "front")}
+
+
+def _usable(kind: str, data: dict[str, Any], count: int) -> list[dict]:
+    return (studio_kinds.quiz(data, count, random.Random()) if kind == "quiz"
+            else studio_kinds.cards(data, count))
+
+
+def _system(kind: str, language: str, options: dict[str, Any], unspaced: bool) -> str:
+    system = studio_kinds.system_prompt(kind, language, options)
+    if unspaced:
+        # stored text extracted before word spacing was kept: the writer must not copy it
+        system = system.replace("Answer with one JSON object only",
+                                studio_kinds.SPACING_RULE + "Answer with one JSON object only",
+                                1)
+    return system
+
+
+async def _top_up(db, user: User, how: shelf_calls.Route, item: StudioItem,
+                  data: dict[str, Any], made: shelf_sources.Bundle, language: str,
+                  prompt: str, checked: dict[str, Any], options: dict[str, Any],
+                  unspaced: bool) -> None:
+    """A set the checks left short of the count asked for gets the missing items once: the
+    writer asked for exactly that many new ones (none like those kept, from the sources not
+    used yet), checked the same way, appended to `data` (in place). The count is trimmed to
+    after, by the caller."""
+    group, key = _SET_KEY[item.kind]
+    wanted = int(options.get("count") or 0)
+    count = len(made.sources)
+    have = _usable(item.kind, data, count)
+    missing = wanted - len(have)
+    if missing <= 0 or not have:
+        return
+    used = {n for row in have for n in row.get("cite") or []}
+    unused = [s.number for s in made.sources if s.number not in used]
+    asked = [str(row[key]) for row in have]
+    # room for the missing share of the set, and some to spare
+    most = max(1500, studio_kinds.MAX_TOKENS[item.kind] * (missing + 2) // max(wanted, 1))
+    try:
+        system = _system(item.kind, language, {**options, "count": missing}, unspaced)
+        extra = await _complete_json(
+            user, how, system + studio_kinds.more_prompt(item.kind, missing, asked, unused),
+            prompt, most, db, item)
+        if not extra or not isinstance(extra.get(group), list):
+            return
+        report = await _checked(db, user, how, item, extra, made, language)
+    except Exception as exc:  # noqa: BLE001 — the set stays as it is
+        log.info("studio %s top-up failed: %s", item.id, logs.safe(exc))
+        return
+    for name in ("script", "unbacked", "garbled", "fixed", "mended", "dropped"):
+        checked[name] = int(checked.get(name) or 0) + int(report.get(name) or 0)
+    checked["details"] = (list(checked.get("details") or [])
+                          + list(report.get("details") or []))[:30]
+    seen = {re.sub(r"\s+", "", a) for a in asked}
+    fresh = [row for row in extra[group] if isinstance(row, dict)
+             and re.sub(r"\s+", "", str(row.get(key) or "")) not in seen]
+    # all of them: a malformed one is left out when the set is read, the rest trimmed after
+    data[group] = [*(data.get(group) or []), *fresh]
 
 
 def _add_usage(item: StudioItem, spent: tuple[int, int, int]) -> None:

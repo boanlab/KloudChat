@@ -136,6 +136,8 @@ NOT_A_NAME = re.compile(
     # demonstratives (「이게 총무·IT 담당자에게 맞는」 must not become 「[이름] 총무」)
     r"이게|그게|저게|이건|그건|저건|이걸|그걸|이것|그것|저것|여기|거기|이분|그분)$"
 )
+#: Titles that are also common nouns or modifiers (「대표 오답」, 「이사 회의」, 「회장 선거」)
+_NOUN_TITLES = frozenset({"대표", "이사", "회장", "총무", "간사"})
 #: The end of a word that is not a name: 「참석한 교수」, 「맡은 대리」.
 #: A linking verb ending before a title-like word: 「달라」, 「달라서」, 「맡아」, 「하며」.
 _LINKING_END = re.compile(r"(?:라|아|어|서|고|며|면|게|지|해|여|러|워|니|므로)$")
@@ -1496,6 +1498,15 @@ def _other_values(line: str, masked: str, sources: Sources, k: int, found: list[
             continue
         if "○○" not in name and name[0] not in SURNAMES and _LINKING_END.search(name):
             # 「담당 교수가 달라 교수 효과와」: a verb running on, not a name
+            continue
+        title = m.group("title") or ""
+        if "○○" not in name and name[0] not in SURNAMES and not title.endswith(("님", "씨")):
+            # 「8강이 짚은 대표 오답」: a word with no surname before a title is a name only
+            # with 님·씨 (「지민 님」); 「박준영 대리」 starts with a surname
+            continue
+        if len(name) == 2 and title in _NOUN_TITLES and re.match(r"\s[가-힣]", masked[m.end():m.end() + 2]):
+            # 「가장 대표 오답」, 「이번 이사 회의」: a two-syllable word (a full name is three)
+            # before the title word used as a noun or modifier
             continue
         if "○○" in name:
             ok = sources.has_text(name)

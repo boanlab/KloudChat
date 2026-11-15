@@ -532,6 +532,7 @@ async def _project_knowledge(
                 picked.setdefault(by_name[passage.document], []).append(
                     knowledge_service.Passage(passage.document, passage.index, text,
                                               passage.score, passage.source_url))
+        room = _fill_from_lead(readable, picked, room)
     else:
         # no question to read around: each file's opening, as far as the room goes
         share = min(_EACH_MOST, room // len(readable) - 40)
@@ -556,6 +557,46 @@ async def _project_knowledge(
             continue
         used.append(_fate(stored, digest, chosen, kept))
     return "\n\n".join(parts), used
+
+
+#: share of the passage scores one file must hold to count as what the turn is about
+_LEAD_SHARE = 0.4
+#: room below which the lead file's other passages are not worth adding
+_LEAD_LEAST = 2_000
+
+
+def _fill_from_lead(readable: list[StoredFile], picked: dict[str, list], room: int) -> int:
+    """A focused turn about one file (「vLLM 논문 발표 자료」: most of the best passages are
+    its) gets the knowledge budget the passages left unused, filled from that file: more of
+    its passages, spread evenly over its length so its method and its results both come in,
+    in reading order. Without this a long project shows the model eight short passages of
+    the very paper it is asked to present, and the rest is guessed. Returns the room left."""
+    if room < _LEAD_LEAST or not picked:
+        return room
+    scores = {fid: sum(max(p.score, 0.0) for p in chosen) for fid, chosen in picked.items()}
+    total = sum(scores.values())
+    lead_id = max(scores, key=lambda fid: scores[fid])
+    if total <= 0 or scores[lead_id] < _LEAD_SHARE * total:
+        return room
+    lead = next((f for f in readable if f.id == lead_id), None)
+    if lead is None:
+        return room
+    pieces = knowledge_service.chunk(lead.text)
+    have = {p.index for p in picked[lead_id]}
+    left = [(i, text) for i, text in enumerate(pieces, 1) if i not in have]
+    if not left:
+        return room
+    size = sum(len(text) + 40 for _, text in left)
+    # every n-th piece, so what fits is spread over the whole file
+    stride = max(1, -(-size // room))
+    added = []
+    for i, text in left[::stride]:
+        if len(text) + 40 > room:
+            break
+        room -= len(text) + 40
+        added.append(knowledge_service.Passage(lead.name, i, text, 0.0, lead.source_url))
+    picked[lead_id] = sorted(picked[lead_id] + added, key=lambda p: p.index)
+    return room
 
 
 def _focus_terms(focus: str, text: str) -> list[str]:

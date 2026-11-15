@@ -245,7 +245,19 @@ def meeting_date(request: str, material: str, today: dt.date | None = None) -> d
     """Meeting date from the person or material header: the day in the clause naming the meeting
     (not a deadline's or the next meeting's); yearless day resolved by its weekday or the year the
     text's other weekdays fix, or, for a meeting the request says is still to come, by the next
-    such day."""
+    such day. A request naming its meeting's record by day (「11월 10일 회의록」) dates that
+    meeting, its year from the material's files or, failing that, the latest such day passed —
+    never the first dated meeting line of some other file."""
+    from app.services import source_focus
+
+    if (named := source_focus.named_day(request)) and _MEETING.search(named[3]) and (
+            source_focus.RECORD_KIND.search(named[3]) or not _UPCOMING.search(request or "")):
+        year, month, day, kind = named
+        found = source_focus.resolve_day(
+            year, month, day, material,
+            (today or dt.date.today()) if source_focus.RECORD_KIND.search(kind) else None)
+        if found is not None:
+            return found
     for text in (request, material):
         for line in (text or "").splitlines():
             if (m := _FULL_DATE.search(line)) and _MEETING.search(line):

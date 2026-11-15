@@ -28,6 +28,7 @@ from app.services.tools.builtin import (
     skill_tool,
 )
 from app.services.tools.docx import TOOLS as DOCX_TOOLS
+from app.services.tools.figures import PDF_FIGURES
 from app.services.tools.hwp import TOOLS as HWP_TOOLS
 from app.services.tools.pptx import TOOLS as PPTX_TOOLS
 from app.services.tools.web_doc import DECK_TOOLS as WEB_DECK_TOOLS
@@ -200,6 +201,9 @@ async def build_tools(
         if wanted:
             # in-process, no network: strict-local turns get them too
             tools += [t for t in kit if allowed is None or t.name in allowed]
+    if pptx and (allowed is None or PDF_FIGURES.name in allowed):
+        # a deck about a paper shows the paper's own figures (in-process, strict-local safe)
+        tools.append(PDF_FIGURES)
     return tools
 
 

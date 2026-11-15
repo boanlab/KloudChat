@@ -53,8 +53,8 @@ def test_a_date_on_another_line_does_not_bind_a_row():
              "| 강의계획서 초안 | 이교수 | 2026-10-30(금) |\n")
     bound = _bound(material)
     assert "| [기한] |" in report._unsourced_owner_dates(table, material, bound)
-    # Without the bound lines, any 10/30 anywhere in the material counts.
-    assert "2026-10-30" in report._unsourced_owner_dates(table, material)
+    # Without the bound lines the same: the lines naming the row's owner give no 10/30.
+    assert "| [기한] |" in report._unsourced_owner_dates(table, material)
 
 
 def test_the_date_block_names_the_phrase_its_line_and_the_base():

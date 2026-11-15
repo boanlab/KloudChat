@@ -185,11 +185,29 @@ _NOT_THE_OBJECT = re.compile(
     r")", re.I)
 
 
+#: after a document noun: it is what the writer reads, not what to make —
+#: 「회의록이랑 매출 실적표 보고 주간 보고서를 만들어」, 「회의록 읽고」,
+#: 「보고서와 회의록을 참고해서」. A noun joined to others by 이랑·과·하고·및 shares the
+#: reading verb that closes the list.
+_READ_VERB = (r"읽고|읽어\s{0,2}보고|살펴보고|훑어보고|확인하고|참고해서|참고하여|참고해|참고하고"
+              r"|참조해서|참조하여|참조해|보면서|토대로|바탕으로|기반으로|근거로")
+_READ_FROM = re.compile(
+    # 「회의록이랑 매출 실적표 보고」: a list of what is read, closed by the verb
+    r"\s{0,2}(?:이랑|랑|과|와|하고|및|,|·|/)\s{0,2}[^\n.?!「」]{0,40}?\s{0,2}(?:을|를)?\s{0,2}"
+    rf"(?:보고(?=[\s,])|{_READ_VERB})"
+    # 「회의록을 보고」, 「회의록 읽고」; a bare 「보고」 is the noun
+    # (「개조식 보고로」, 「주간 보고 써」)
+    rf"|\s{{0,2}}(?:을|를|이랑|랑)\s{{0,2}}(?:보고(?=[\s,])|{_READ_VERB})"
+    rf"|\s{{0,2}}(?:{_READ_VERB})")
+
+
 def asked(pattern: re.Pattern[str], instruction: str) -> bool:
     """Whether `pattern` names what the instruction asks to produce: a hit naming a product
-    (「회의록 서비스」) or the source material (「회의록을 바탕으로」) is a mention only."""
+    (「회의록 서비스」) or the source material (「회의록을 바탕으로」, 「회의록이랑 실적표 보고」)
+    is a mention only."""
     text = instruction or ""
-    return any(not _NOT_THE_OBJECT.match(text, m.end()) for m in pattern.finditer(text))
+    return any(not _NOT_THE_OBJECT.match(text, m.end()) and not _READ_FROM.match(text, m.end())
+               for m in pattern.finditer(text))
 
 
 BY_ID: dict[str, DocFormat] = {f.id: f for f in FORMATS}
