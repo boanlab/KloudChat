@@ -50,6 +50,17 @@ async def _look(db: Any, ctx: Any) -> tuple[dict | None, str, Any] | None:
 
 log = logging.getLogger(__name__)
 
+def _placeholder_picture() -> bytes:
+    """A 4:3 grey picture standing in for a slide's figure while its layout is checked."""
+    import io
+
+    from PIL import Image
+
+    out = io.BytesIO()
+    Image.new("RGB", (400, 300), "#cccccc").save(out, format="PNG")
+    return out.getvalue()
+
+
 #: what `_prepare` tells the model beside the saved file (`office.write`)
 NOTES = "__notes__"
 
@@ -150,6 +161,28 @@ def _build(args: dict[str, Any], look: Any = None) -> tuple[str, bytes]:
     return title, pptx_doc.deck(title, subtitle, slides, closing)
 
 
+def _overflow_problem(args: dict[str, Any]) -> str:
+    """Which slides' text runs past its place even at the smallest type, laid out as the file
+    will be (`deck_export.overflowing_slides`), or ``: a slide of long bullets beside a
+    figure, or five long questions, otherwise ends over the footer."""
+    found: list[dict] = []
+    slides = [{key: value for key, value in slide.items() if key != "image"}
+              | ({"image": {"data": slide["image"].get("data") or _placeholder_picture()}}
+                 if isinstance(slide.get("image"), dict) else {})
+              for slide in args["slides"]]
+    try:
+        pptx_doc.deck(str(args.get("title") or "t"), str(args.get("subtitle") or ""), slides,
+                      str(args.get("closing") or ""), overflow=found)
+    except Exception:  # noqa: BLE001 — the layout check never stops a write; _build reports
+        return ""
+    if not found:
+        return ""
+    numbers = sorted({int(item.get("index", 0)) + 1 for item in found})
+    return ("슬라이드 " + ", ".join(f"{n}장" for n in numbers) + "의 글이 가장 작은 글자로도 "
+            "자리를 넘칩니다: 줄마다 짧게 줄이거나(한 줄 40자 안팎) 줄 수를 줄이고, 그림 옆 "
+            "글은 세 줄 이하로, 많으면 두 장으로 나누세요(요청한 장 수 안에서).")
+
+
 def _total(args: dict[str, Any]) -> int:
     """Slides the file will have: the cover, one per entry, and the closing slide if any."""
     closing = 1 if str(args.get("closing") or "").strip() else 0
@@ -215,6 +248,14 @@ async def _prepare(args: dict[str, Any], ctx: Any) -> dict[str, Any]:
         # asked once already: a deck of another size beats no deck; the reply says the size
         notes.append(f"장 수가 요청과 다릅니다: 파일은 {_total(args)}장입니다. 답에 실제 장 "
                      "수를 그대로 말하세요.")
+    if problem := _overflow_problem(args):
+        record = getattr(ctx, "pptx", None)
+        if not isinstance(record, dict) or not record.get("overflow_refused"):
+            if isinstance(record, dict):
+                record["overflow_refused"] = True
+            raise ValueError(problem)
+        notes.append("일부 슬라이드의 글이 자리를 넘칩니다: " + problem.split(":", 1)[0]
+                     + ". 답에 그 슬라이드를 줄여야 한다고 말하세요.")
     wanted = [str((slide.get("image") or {}).get("file") or "").strip()
               for slide in args["slides"] if isinstance(slide.get("image"), dict)]
     wanted = [name for name in wanted if name]

@@ -3803,6 +3803,13 @@ def _build_pptx(
                 line_pt = drawn * look.leading
                 gap_pt = drawn * deck_type.BULLET_GAP
                 bullet_at = 0
+                for column in columns:
+                    # PowerPoint draws them at this size whatever their length: lines past the
+                    # box run over the footer, so the slide is reported (`overflowing_slides`)
+                    lines = sum(len(_wrap(text, measure, drawn, span - 26) or [""])
+                                for text in column)
+                    if lines * line_pt + max(0, len(column) - 1) * gap_pt > room + 0.5:
+                        _overflowed("\n".join(column))
                 for column_index, column in enumerate(columns):
                     listing = _textbox(
                         slide,

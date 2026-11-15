@@ -86,6 +86,7 @@ def deck(
     tokens: dict[str, str] | None = None,
     template: str = "",
     form: Any = None,
+    overflow: list[dict] | None = None,
 ) -> bytes:
     """A new deck in the house look (`deck_export`): a cover, then a slide per entry, as
     bullets, or a table when it has rows; `closing` adds a last slide with that line. `tokens`
@@ -127,7 +128,8 @@ def deck(
         # on the conversation's PowerPoint form: its layouts, type and theme
         return on_form(form, title, made)
     # `to_pptx` leaves no master bullet under a plain line (`written_bullets_only`)
-    return deck_export.to_pptx(title, made, tokens=tokens, template=template)
+    # `overflow` gets each slide whose text runs past its place at the floor size
+    return deck_export.to_pptx(title, made, tokens=tokens, template=template, overflow=overflow)
 
 
 def _wide(data: bytes) -> bool:
