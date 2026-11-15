@@ -14,6 +14,7 @@ import io
 import random
 import re
 import uuid
+from dataclasses import dataclass
 from typing import Any
 
 from app.services import shelf_jobs
@@ -124,6 +125,10 @@ def system_prompt(kind: str, language: str, options: dict[str, Any]) -> str:
     count = int(options.get("count") or (10 if kind == "quiz" else 15))
     rules = rules.replace("{count}", str(count))
     rules = rules.replace("{{", "{").replace("}}", "}")
+    scope = str(options.get("scope") or "").strip()
+    if scope:
+        rules += (f"- Scope: the reader asked for {scope} only, and the SOURCES are exactly "
+                  f"that range. Cover each of them; do not write about parts outside it.\n")
     focus = str(options.get("focus") or "").strip()
     if focus:
         # what the person wants it to centre on; data, not instructions to obey blindly
@@ -132,6 +137,97 @@ def system_prompt(kind: str, language: str, options: dict[str, Any]) -> str:
     return _SYSTEM.format(name=kind_name(kind, "en"),
                           language=_LANGUAGE.get(language, _LANGUAGE["ko"]),
                           rules=rules, shape=shape)
+
+
+#: added to the writer's rules when a source lost its word spacing in extraction
+SPACING_RULE = (
+    "- Some sources lost their word spacing when they were read from their files "
+    "(「클라우드는사용한만큼지불하는운영비」). Write with normal spacing (「클라우드는 사용한 "
+    "만큼 지불하는 운영비」); never copy run-together text.\n")
+
+
+def more_prompt(kind: str, missing: int, asked: list[str], unused: list[int]) -> str:
+    """The rule a top-up of a quiz or card set adds: `missing` new items, none like those
+    already `asked`, from the sources not yet used first."""
+    what = "questions" if kind == "quiz" else "cards"
+    listed = "\n".join(f"  - {shelf_jobs.clip(a, 160)}" for a in asked[:40])
+    spread = (f" Take them first from the sources not used yet: "
+              f"{', '.join(f'[{n}]' for n in unused[:30])}." if unused else "")
+    return (f"\n\nThis is a top-up: write exactly {missing} new {what}, in the same JSON "
+            f"shape. None may ask the same thing as one already written:\n{listed}\n"
+            f"Cover other points of the sources.{spread}")
+
+
+# ── scope: 「1~7강」 in the reader's request ───────────────────────────
+
+#: a numbered part's unit, as the reader or a file name writes it → one name per kind
+_UNITS = {"강": "lecture", "차시": "lecture", "lecture": "lecture", "lec": "lecture",
+          "장": "chapter", "챕터": "chapter", "chapter": "chapter", "ch": "chapter",
+          "주차": "week", "주": "week", "week": "week", "wk": "week",
+          "부": "part", "part": "part"}
+_KO_UNIT = r"(주차|차시|챕터|강|장|주|부)"
+_EN_UNIT = r"(lectures?|lec|chapters?|ch|weeks?|wk|parts?)"
+_TO = r"\s{0,2}(?:부터|에서|~|∼|〜|-|–|—|to|through|thru)\s{0,2}"
+_RANGE_KO = re.compile(
+    rf"(?:제\s?)?(\d{{1,3}})\s{{0,2}}{_KO_UNIT}?{_TO}(?:제\s?)?(\d{{1,3}})\s{{0,2}}{_KO_UNIT}")
+_RANGE_EN = re.compile(
+    rf"\b{_EN_UNIT}\.?\s{{0,2}}(\d{{1,3}}){_TO}(?:{_EN_UNIT}\.?\s{{0,2}})?(\d{{1,3}})\b", re.I)
+#: a number a source's name carries with its unit: 「01강_…」, 「제3장」, 「week05」, 「3주차」
+_NUMBERED_KO = re.compile(rf"(?<!\d)(\d{{1,3}})\s{{0,2}}{_KO_UNIT}")
+_NUMBERED_EN = re.compile(rf"(?<![A-Za-z]){_EN_UNIT}\.?[\s_\-.]{{0,2}}(\d{{1,3}})(?!\d)", re.I)
+
+
+def _unit(word: str) -> str:
+    word = word.lower()
+    return _UNITS.get(word) or _UNITS.get(word.rstrip("s"), "")
+
+
+@dataclass(frozen=True, slots=True)
+class Scope:
+    unit: str
+    low: int
+    high: int
+    #: as the reader wrote it, for the prompt
+    label: str
+
+
+def scope_of(focus: str) -> Scope | None:
+    """A numbered range the reader's request names (「1강부터 7강까지」, 「1~7강」, 「5~8장」,
+    「3주차~6주차」, "chapters 3-5"), or None."""
+    text = focus or ""
+    if m := _RANGE_KO.search(text):
+        first, unit_a, last, unit_b = m.groups()
+        if unit_a and _unit(unit_a) != _unit(unit_b):
+            return None
+        unit = _unit(unit_b)
+    elif m := _RANGE_EN.search(text):
+        unit_a, first, unit_b, last = m.groups()
+        if unit_b and _unit(unit_b) != _unit(unit_a):
+            return None
+        unit = _unit(unit_a)
+    else:
+        return None
+    low, high = sorted((int(first), int(last)))
+    if not unit or high - low > 200:
+        return None
+    return Scope(unit, low, high, m.group(0).strip())
+
+
+def numbers_in(name: str, unit: str) -> list[int]:
+    """The numbers `name` carries with `unit` (「01강_개요.pdf」 → [1] for lectures)."""
+    found = [int(n) for n, u in _NUMBERED_KO.findall(name or "") if _unit(u) == unit]
+    found += [int(n) for u, n in _NUMBERED_EN.findall(name or "") if _unit(u) == unit]
+    return found
+
+
+def in_scope(scope: Scope, *labels: str) -> bool:
+    """Whether a source is in the range: the first of its labels (its name, then its title)
+    that carries a number with the scope's unit decides."""
+    for label in labels:
+        numbers = numbers_in(label, scope.unit)
+        if numbers:
+            return any(scope.low <= n <= scope.high for n in numbers[:1])
+    return False
 
 
 def user_prompt(bundle_text: str, names: list[str]) -> str:
@@ -486,8 +582,8 @@ def cites_nothing(kind: str, doc: dict[str, Any]) -> bool:
     return not cited("\n".join(str(s.get("content") or "") for s in doc.get("sections") or []))
 
 
-__all__ = ["DOCUMENTS", "KINDS", "MAX_TOKENS", "SETS", "cards", "cited",
-           "cites_nothing",
+__all__ = ["DOCUMENTS", "KINDS", "MAX_TOKENS", "SETS", "SPACING_RULE", "Scope", "cards",
+           "cited", "cites_nothing", "in_scope", "more_prompt", "numbers_in", "scope_of",
            "clean_citations", "document", "export_anki", "export_csv", "language_of",
            "mindmap_source", "quiz", "report_data", "sheet_sections",
            "system_prompt", "term_in", "user_prompt"]
