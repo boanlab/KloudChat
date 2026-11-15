@@ -66,13 +66,7 @@ test('인쇄하면 보고서만 종이에 남는다', async ({ page }) => {
   )
 
   // The print tree is mounted by the report panel.
-  await page.goto('/artifacts')
-  const card = page
-    .locator('div')
-    .filter({ has: page.getByText(title, { exact: true }) })
-    .filter({ has: page.locator('button.aspect-video') })
-    .last()
-  await card.locator('button.aspect-video').first().click()
+  await page.goto(`/files?tab=working&doc=${artifact.id}`)
   const doc = page.locator('[data-print-doc]')
   await expect(doc).toHaveCount(1, { timeout: 20_000 })
   // Hidden on screen.

@@ -62,6 +62,8 @@ async function fixture(page: Page, testInfo: TestInfo, options: {
       } })
     }
     if (method === 'GET' && path === '/artifacts/counts') return route.fulfill({ json: { counts: { [kind]: 1 }, total: 1 } })
+    if (method === 'GET' && path === '/artifacts/gallery') return route.fulfill({ json: {
+      items: [{ ...artifact, section: kind }], total: 1, next: null, counts: { [kind]: 1 } } })
     const shell = shellRead(method, path)
     if (shell) return route.fulfill(shell)
     if (method === 'GET' && [`/sessions/${sessionId}/messages`, `/sessions/${sessionId}/jobs`, '/projects',

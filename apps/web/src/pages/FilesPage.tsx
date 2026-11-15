@@ -1,6 +1,7 @@
 import { Download, Eye, FolderOpen, Trash2, Upload } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { ArtifactModal } from '@/components/artifacts/ArtifactModal'
 import { FILE_SORT_FIELDS, FileBoxFilter, FileColumns, FileLine } from '@/components/files/FileBoxList'
 import { PhoneSort, useUrlSort } from '@/components/files/ListSort'
 import { FilePreview } from '@/components/files/FilePreview'
@@ -21,12 +22,18 @@ import { ImageEditAction } from '@/components/media/ImageEditAction'
 import { fileSrc, isPicture, type ImageEditSource } from '@/lib/imageEdit'
 import { useStore } from '@/store/useStore'
 
-/** 파일함: every file of the account, those the person gave apart from those made in
- *  conversations, and the documents they work on (「작업 문서」, `?tab=working`). */
+/** 파일함: the documents worked on (「작업 문서」, `?tab=working`), the pictures, sound, video and
+ *  other files conversations made (「만든 파일」, `?tab=made`) and the files the person gave
+ *  (「올린 파일」). `?doc=<id>` opens a web report or web slides with no conversation. */
+const tabOf = (asked: string | null): FileBoxTab =>
+  asked === 'working' ? 'working' : asked === 'made' ? 'generated' : 'upload'
+
 export function FilesPage() {
   const t = useT()
   const [params, setParams] = useSearchParams()
-  const [tab, setTab] = useState<FileBoxTab>(params.get('tab') === 'working' ? 'working' : 'upload')
+  const [tab, setTab] = useState<FileBoxTab>(tabOf(params.get('tab')))
+  // a working document with no conversation, opened in its panel here
+  const docId = params.get('doc')
   const origin = tab === 'working' ? 'upload' : tab
   const working = tab === 'working'
   const [query, setQuery] = useState('')
@@ -136,7 +143,7 @@ export function FilesPage() {
       <PageBody>
         <PageHeader
           title={t('파일함')}
-          description={t('올린 파일과 대화에서 만든 파일이 모두 여기 모입니다. 새 대화·보고서·슬라이드에서 「파일함에서 고르기」로 다시 붙일 수 있고, 작업하던 문서는 「작업 문서」에서 다시 엽니다.')}
+          description={t('작업 문서, 만든 파일, 올린 파일이 모입니다.')}
           action={
             <>
               <input
@@ -179,7 +186,7 @@ export function FilesPage() {
           onOrigin={(next) => {
             setTab(next)
             pick.clear()
-            setParams(next === 'working' ? { tab: 'working' } : {}, { replace: true })
+            setParams(next === 'upload' ? {} : { tab: next === 'generated' ? 'made' : 'working' }, { replace: true })
           }}
           query={query}
           onQuery={setQuery}
@@ -194,13 +201,13 @@ export function FilesPage() {
           ) : shown.length === 0 ? (
             <EmptyState
               icon={<FolderOpen size={18} />}
-              title={query ? t('찾는 파일이 없습니다') : origin === 'upload' ? t('올린 파일이 없습니다') : t('대화에서 만든 파일이 없습니다')}
+              title={query ? t('찾는 파일이 없습니다') : origin === 'upload' ? t('올린 파일이 없습니다') : t('만든 파일이 없습니다')}
               description={
                 query
                   ? t('이름의 다른 부분으로 찾아보세요.')
                   : origin === 'upload'
-                    ? t('대화·프로젝트에 올린 파일이 여기에 모입니다.')
-                    : t('코드 실행 결과, 이미지, 차트처럼 대화에서 만든 파일이 여기에 모입니다.')
+                    ? t('대화·프로젝트에 올린 파일이 여기 모입니다.')
+                    : t('대화에서 만든 이미지·오디오·동영상과 파일이 여기 모입니다.')
               }
             />
           ) : (
@@ -223,7 +230,7 @@ export function FilesPage() {
                 sort={sort}
                 onSort={sort.set}
               />
-              <Card role="table" aria-label={origin === 'upload' ? t('올린 파일') : t('대화에서 만든 파일')} className="px-3 py-1">
+              <Card role="table" aria-label={origin === 'upload' ? t('올린 파일') : t('만든 파일')} className="px-3 py-1">
                 <FileColumns sort={sort} onSort={sort.click} made={origin === 'generated'} />
                 {shown.map((row) => (
                   <FileLine
@@ -300,6 +307,19 @@ export function FilesPage() {
         </div>
         )}
         <FilePreview row={previewing} onClose={closePreview} start={previewing?.id === opening ? start : undefined} />
+        <ArtifactModal
+          id={docId}
+          onClose={() =>
+            setParams(
+              (current) => {
+                const out = new URLSearchParams(current)
+                out.delete('doc')
+                return out
+              },
+              { replace: true },
+            )
+          }
+        />
         <ConfirmDialog
           open={!!confirming}
           onClose={() => setConfirming(null)}

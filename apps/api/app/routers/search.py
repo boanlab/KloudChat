@@ -278,7 +278,8 @@ async def _artifacts(db, user_id: str, dialect: str, words: list[str], anchor: s
             func.length(Artifact.search_text).label("length"),
             (_position(dialect, Artifact.search_text, anchor) > literal(0)).label("in_text"),
         )
-        .where(Artifact.user_id == user_id, matches)
+        # an old inline code block stored as an artifact is part of its answer, not a result
+        .where(Artifact.user_id == user_id, Artifact.section != "snippet", matches)
         .order_by(case((in_title, 0), else_=1), col(Artifact.updated_at).desc(),
                   col(Artifact.id))
         .offset(offset)

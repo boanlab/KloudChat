@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { deckToolbar, deckToolbarMenu, signInAs } from './helpers'
+import { deckToolbar, deckToolbarMenu, openNewestDocument, signInAs } from './helpers'
 
 /**
  * The report and deck panels use the same vocabulary. The report edits through its ribbon; the
@@ -42,10 +42,7 @@ async function toolbarOf(page: Page): Promise<{ buttons: string[]; design: strin
 }
 
 async function openFirst(page: Page, tab: RegExp) {
-  await page.goto('/artifacts')
-  await page.getByRole('tab', { name: tab }).click()
-  await page.waitForTimeout(1_200)
-  await page.getByText('원본 작업 열기').first().click()
+  await openNewestDocument(page, String(tab).includes('슬라이드') ? 'deck' : 'report')
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
   await expect(page.getByLabel('중지')).toBeHidden({ timeout: 180_000 })
 }

@@ -1976,6 +1976,26 @@ export interface WorkingDocRow {
   updatedAt: string
 }
 
+/** The 아티팩트 page's sections, in tab order. */
+export type GallerySection = 'html' | 'code' | 'chart' | 'diagram'
+export type GallerySort = 'updated' | 'title' | 'section' | 'version'
+
+export const galleryApi = {
+  /** A page of the 아티팩트 page: HTML pages, code files, charts and diagrams; `counts` per
+   *  section over the search, the section filter aside. A cursor belongs to its `sort`. */
+  page: (params: { section?: GallerySection | null; q?: string; sort?: GallerySort; dir?: SortDir; cursor?: string | null; limit?: number }) =>
+    call<CursorPage<ArtifactRow> & { counts: Partial<Record<GallerySection, number>> }>(
+      `/artifacts/gallery${queryOf({
+        section: params.section ?? undefined,
+        q: params.q?.trim(),
+        sort: params.sort && params.sort !== 'updated' ? params.sort : undefined,
+        dir: params.dir && params.dir !== 'desc' ? params.dir : undefined,
+        cursor: params.cursor,
+        limit: params.limit,
+      })}`,
+    ),
+}
+
 export const workingDocsApi = {
   /** A page of 「작업 문서」; `counts` per kind over the search, the kind filter aside. A cursor
    *  belongs to its `sort`. */
@@ -2029,6 +2049,10 @@ export interface ArtifactRow {
   updatedAt: string
   /** Set on a listing row: the body was trimmed to what a card shows. */
   partial?: boolean
+  /** Where it is listed: `html`, `code`, `chart`, `diagram` (the 아티팩트 page), `document`
+   *  (파일함 › 작업 문서), `media` (파일함 › 만든 파일, by its file) or `snippet` (an old inline
+   *  code block, listed nowhere). */
+  section?: string
 }
 
 /** One gallery page; the cursor is the last row returned. */

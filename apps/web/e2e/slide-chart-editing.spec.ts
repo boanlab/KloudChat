@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { E2E_ADMIN, deckSelect, deckSelection, deckThumbs, saveDeck, signIn } from './helpers'
+import { E2E_ADMIN, deckSelect, deckSelection, deckThumbs, saveDeck, openNewestDocument, signIn } from './helpers'
 
 test('차트의 축·계열·수치를 고치면 차트 레이아웃과 데이터가 함께 저장된다', async ({ page }) => {
   test.setTimeout(90_000)
@@ -25,9 +25,7 @@ test('차트의 축·계열·수치를 고치면 차트 레이아웃과 데이�
     return first.id as string
   }, E2E_ADMIN)
 
-  await page.goto('/artifacts')
-  await page.getByRole('tab', { name: /^슬라이드/ }).click()
-  await page.locator('button.aspect-video').first().click()
+  await openNewestDocument(page, 'deck')
   // The slide is editable in place; selecting the chart shows its data under the slide.
   await deckThumbs(page).first().click()
   await deckSelect(page, 'chart')
@@ -63,9 +61,7 @@ test('차트의 축·계열·수치를 고치면 차트 레이아웃과 데이�
     data.slides[0] = { ...data.slides[0], layout: 'table', chart: undefined, rows: [['구분', '값'], ['기존', '10']] }
     await fetch(`/api/artifacts/${artifactId}`, { method: 'PATCH', headers, body: JSON.stringify({ data }) })
   }, [E2E_ADMIN, id] as [typeof E2E_ADMIN, string])
-  await page.goto('/artifacts')
-  await page.getByRole('tab', { name: /^슬라이드/ }).click()
-  await page.locator('button.aspect-video').first().click()
+  await openNewestDocument(page, 'deck')
   await deckThumbs(page).first().click()
   await deckSelect(page, 'table')
   const grid = deckSelection(page)

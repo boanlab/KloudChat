@@ -250,6 +250,21 @@ A conversation and its artifacts are one record: deleting a conversation,
 singly or in bulk, deletes the artifacts it produced with their versions and
 shares (`sessions._delete_artifacts_of`).
 
+**Where an artifact is listed** (`artifacts.section`, `services/artifact_section.py`, kept by
+the model's insert and update listeners): the 아티팩트 page (`GET /artifacts/gallery`:
+`section`, a title search `q`, `sort` `updated`/`title`/`section`/`version` with `dir`, a
+keyset `cursor`, per-section `counts`) holds what is viewed or run directly — `html` pages,
+`code` files, `chart`s (a chart artifact, or a code-drawn chart picture) and `diagram`s (a
+drawn figure with its source). Reports and decks of every format are `document`s, listed in
+파일함 › 작업 문서; generated pictures, sound and video are `media`, listed in 파일함 › 만든
+파일 by their files. An answer's inline code block is part of the answer: only a file the
+model makes with `create_artifact` becomes a code artifact. The inline blocks an older
+extractor stored are `snippet`s (migration 0092: a code or HTML body without the `kind` key
+every `create_artifact` file and designed page has); they stay for their conversation's panel
+and are listed nowhere — not in `GET /artifacts`, its counts, the gallery or search. An old
+`/artifacts?open={id}` link to a document opens its editor (or 작업 문서), to a picture, sound
+or video its file in 만든 파일.
+
 ---
 
 ## 6. Execution paths
@@ -426,7 +441,7 @@ its full schema on every turn, and model tool-choice degrades well before
 twenty of them. A server enters the catalogue once it has been started against
 a real credential and had its tool count checked.
 
-Artifact extraction and automatic memory run **after** the turn, in their own
+Storing the turn's `create_artifact` files and automatic memory run **after** the turn, in their own
 transaction: sharing the turn's would hold it open for an extra query and a
 model call, and a failure in either would roll the answer back.
 
@@ -3358,8 +3373,10 @@ stay in the file box (`forget_session_files`), unless the person ticked 「대�
 지우기」 (`?files=true`, bulk `files: true`): then the files attached or made in it go too,
 a project's or an agent's excepted (`delete_session_files`). Each file records how it came
 (`files.origin`: `upload`, or `generated` for a code run's output, an image, a chart, a
-figure, audio, video, an export); the file box (`/files` in the web app) lists the two
-apart, a page at a time (`GET /files/page?box=true`: agents' knowledge left out, `origin`,
+figure, audio, video, an export) and, when it only copies an artifact listed elsewhere — a
+document's export, the picture of a chart or a diagram — which one (`files.copy_of`); the file
+box (`/files` in the web app) lists 「올린 파일」 and 「만든 파일」 (`?tab=made`) apart, copies
+left out, a page at a time (`GET /files/page?box=true`: agents' knowledge left out, `origin`,
 a name search `q`, `sort` `created`/`name`/`size` with `dir`, a keyset `cursor` tied to
 the sort and direction (ties broken by id), with `total` and per-origin `counts`, plus
 `working` in the whole box), and a composer's 「파일함에서 고르기」 attaches one again by id. A third tab,
@@ -3371,7 +3388,8 @@ keyset `cursor` tied to the sort and direction, with
 `total`, per-kind `counts` and each row's conversation and project names, someone else's or a
 deleted one left out). The rows are the artifacts themselves, not copies: they open in the
 editor they have in chat (`/s/{session}?artifact={id}`; an office document with no
-conversation joins a new chat, a web document with none opens on `/artifacts?open={id}`),
+conversation joins a new chat, a web document with none opens over the file box,
+`/files?tab=working&doc={id}`),
 download in their own format (the office file, Markdown, `.pptx`), and rename and delete
 through `PATCH`/`DELETE /artifacts/{id}`; deleting an office document, or the conversation
 that holds it (singly or in bulk), also removes the file it keeps per version, after the

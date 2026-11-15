@@ -120,6 +120,18 @@ export async function resultsFixture(page: Page, testInfo: TestInfo, options: { 
     const own = sessions.find((row) => path === `/sessions/${row.id}/messages`)
     if (method === 'GET' && own) return route.fulfill({ json: own.messages })
     if (method === 'GET' && path === '/artifacts') return route.fulfill({ json: Object.values(artifacts) })
+    if (method === 'GET' && path === '/artifacts/gallery') {
+      return route.fulfill({ json: { items: [], total: 0, next: null, counts: { html: 0, code: 0, chart: 0, diagram: 0 } } })
+    }
+    if (method === 'GET' && path === '/artifacts/working') {
+      const items = [report, deck].map((a) => ({ id: a.id, kind: a.kind, title: artifacts[a.id].title,
+        version: artifacts[a.id].version ?? 1, sessionId: a.sessionId, sessionTitle: a.title, projectId: null,
+        createdAt: at, updatedAt: artifacts[a.id].updatedAt ?? later }))
+      return route.fulfill({ json: { items, total: items.length, next: null, counts: { report: 1, deck: 1 } } })
+    }
+    if (method === 'GET' && path === '/files/page') {
+      return route.fulfill({ json: { items: [], total: 0, next: null, counts: { upload: 0, generated: 0, working: 2 } } })
+    }
     if (method === 'GET' && path === '/artifacts/counts') {
       return route.fulfill({ json: { counts: { report: 1, deck: 1 }, total: 2 } })
     }

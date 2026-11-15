@@ -3,7 +3,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { E2E_ADMIN, deckHeader, deckReview, deckToolbar, signIn, openAndSeedReport } from './helpers'
 
-/** Titles of finished artifacts of one kind, newest first; an unwritten part disables 내보내기 and 발표. */
+/** Ids of finished artifacts of one kind, newest first; an unwritten part disables 내보내기 and 발표. */
 async function titles(page: Page, kind: string, least = 1): Promise<string[]> {
   return page.evaluate(
     async ([admin, want, least]: [typeof E2E_ADMIN, string, number]) => {
@@ -35,7 +35,7 @@ async function titles(page: Page, kind: string, least = 1): Promise<string[]> {
               (s.metrics as unknown[])?.length ||
               s.chart,
           )
-          return written && parts.length >= least ? (a.title as string) : ''
+          return written && parts.length >= least ? (a.id as string) : ''
         }),
       )
       return whole.filter(Boolean)
@@ -44,13 +44,13 @@ async function titles(page: Page, kind: string, least = 1): Promise<string[]> {
   )
 }
 
-/** Opens one finished artifact by its gallery card's `aria-label` (title substrings also match sidebar rows). */
+/** Opens one finished report or deck in the modal over 파일함 › 작업 문서 (the 아티팩트 page no longer lists them). */
 async function open(page: Page, kind: string, least = 1): Promise<boolean> {
   await signIn(page)
-  await page.goto('/artifacts')
+  await page.goto('/files?tab=working')
   const found = await titles(page, kind, least)
   if (!found.length) return false
-  await page.getByRole('button', { name: `${found[0]} 열기` }).first().click()
+  await page.goto(`/files?tab=working&doc=${found[0]}`)
   await expect(page.getByRole('dialog')).toBeVisible({ timeout: 30_000 })
   return true
 }

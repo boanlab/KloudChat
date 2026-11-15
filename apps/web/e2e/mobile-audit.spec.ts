@@ -179,13 +179,11 @@ test('모바일 감사 — 390px 에서 일이 끝나는가', async ({ page }) =
   )
 
   if ((deck as { id?: string } | null)?.id) {
-    await page.goto('/artifacts')
-    await page.locator('button.aspect-video').first().waitFor({ timeout: 20_000 }).catch(() => {})
-    await page.getByRole('tab', { name: /^슬라이드/ }).click()
-    await page.waitForTimeout(600)
-    const card = page.locator('button.aspect-video').first()
+    // Decks are listed in 파일함 › 작업 문서; the doc param opens the deck in a modal.
+    await page.goto(`/files?tab=working&doc=${(deck as { id: string }).id}`)
+    await page.getByRole('dialog').waitFor({ timeout: 20_000 }).catch(() => {})
+    const card = page.getByRole('dialog')
     if ((await card.count()) > 0) {
-      await card.click()
       await page.getByRole('dialog').waitFor({ timeout: 15_000 }).catch(() => {})
       await page.waitForTimeout(700)
 

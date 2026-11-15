@@ -12,6 +12,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
 from app.models.user import utcnow
+from app.services.artifact_section import section_of
 from app.services.search_text import artifact_text
 
 
@@ -98,6 +99,10 @@ class StoredFile(SQLModel, table=True):
     #: `form`: a copy saved as a project's or agent's 기본 양식 파일, kept out of the file box and
     #: never read as material; null: any other file
     role: str | None = Field(default=None, max_length=12)
+    #: the artifact this generated file is a copy of — a document's export, the picture of a
+    #: chart or a diagram — so 파일함 › 만든 파일 leaves it to where that artifact is listed;
+    #: null for any other file (a generated picture, sound or video is itself the result)
+    copy_of: str | None = Field(default=None, max_length=36)
     #: what an Office upload offers as a form (`services/form_profile.py`); null: not Office
     form_profile: dict | None = Field(default=None, sa_column=_json(nullable=True))
     name: str
@@ -241,7 +246,10 @@ class ArtifactKind(StrEnum):
 
 class Artifact(SQLModel, table=True):
     __tablename__ = "artifacts"
-    __table_args__ = (Index("ix_artifacts_user_updated", "user_id", "updated_at"),)
+    __table_args__ = (
+        Index("ix_artifacts_user_updated", "user_id", "updated_at"),
+        Index("ix_artifacts_user_section", "user_id", "section"),
+    )
 
     id: str = Field(default_factory=_uuid, primary_key=True)
     user_id: str = Field(foreign_key="users.id", index=True)
@@ -257,6 +265,10 @@ class Artifact(SQLModel, table=True):
     search_text: str = Field(
         default="", sa_column=Column(Text, nullable=False, server_default="", default="")
     )
+    #: where it is listed (`services/artifact_section.py`): `html`, `code`, `chart`, `diagram`
+    #: (the 아티팩트 page), `document` (파일함 › 작업 문서), `media` (파일함 › 만든 파일, by
+    #: its file) or `snippet` (an old inline code block, listed nowhere); synced below
+    section: str = Field(default="", max_length=16)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
     updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
 
@@ -264,6 +276,8 @@ class Artifact(SQLModel, table=True):
 @event.listens_for(Artifact, "before_insert")
 def _artifact_text_on_insert(_mapper, _connection, target: Artifact) -> None:
     target.search_text = artifact_text(target.data)
+    if target.section != "snippet":
+        target.section = section_of(target.kind, target.data)
 
 
 @event.listens_for(Artifact, "before_update")
@@ -271,6 +285,9 @@ def _artifact_text_on_update(_mapper, _connection, target: Artifact) -> None:
     # body changes only; title/project edits keep text
     if inspect(target).attrs.data.history.has_changes():
         target.search_text = artifact_text(target.data)
+        # a snippet stays one when edited in its conversation's panel
+        if target.section != "snippet":
+            target.section = section_of(target.kind, target.data)
 
 
 class JobStatus(StrEnum):

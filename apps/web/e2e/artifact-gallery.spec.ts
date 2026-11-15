@@ -3,7 +3,7 @@ import { signIn } from './helpers'
 
 /** The gallery lists one page of partial rows; counts and search cover the whole workspace. */
 
-const PAGE = 60
+const PAGE = 50
 
 const AS_USER = `async (path, init) => {
   const login = await fetch('/api/auth/login', {
@@ -49,26 +49,25 @@ test('아티팩트 목록은 한 페이지씩 오고, 개수와 검색은 전체
   // Measured on a reload: signing in already requests this page.
   await page.goto('/artifacts')
   const firstPage = page.waitForResponse(
-    (r) => r.url().includes('/api/artifacts?') && r.request().method() === 'GET' && r.ok(),
+    (r) => r.url().includes('/api/artifacts/gallery?') && r.request().method() === 'GET' && r.ok(),
   )
   await page.reload()
   const response = await firstPage
-  const rows = (await response.json()) as { id: string; kind: string; partial?: boolean }[]
+  const body = (await response.json()) as { items: { id: string }[]; total: number; counts: Record<string, number> }
+  const rows = body.items
   const bytes = (await response.body()).length
 
   // One page, at the server's page size.
   expect(rows.length).toBeLessThanOrEqual(PAGE)
   expect(bytes).toBeLessThan(400_000)
-  // Written documents arrive as partial cards.
-  expect(rows.some((row) => row.partial)).toBe(true)
 
-  // Tabs count the workspace; the number arrives on its own request.
+  // Tabs count the workspace, not the page.
   const all = page.getByRole('tab', { name: /전체/ })
   await expect(all).toHaveText(/전체\s*\d+/, { timeout: 20_000 })
   const total = Number((await all.textContent())?.match(/\d+/)?.[0] ?? '0')
   expect(total).toBeGreaterThan(rows.length)
 
-  const cards = page.getByRole('button', { name: /열기$/ })
+  const cards = page.getByTestId('artifact-row')
   await expect(cards).toHaveCount(rows.length, { timeout: 20_000 })
 
   // Anchored: the sidebar links to 「모든 대화 보기」, which is not this button.
@@ -80,10 +79,10 @@ test('아티팩트 목록은 한 페이지씩 오고, 개수와 검색은 전체
   expect(grown).toBeGreaterThan(rows.length)
 
   const searched = page.waitForResponse(
-    (r) => r.url().includes('/api/artifacts?') && r.url().includes('q=') && r.ok(),
+    (r) => r.url().includes('/api/artifacts/gallery?') && r.url().includes('q=') && r.ok(),
   )
   await page.getByLabel('아티팩트 검색').fill('보안')
-  const hits = (await (await searched).json()) as { title: string }[]
+  const hits = ((await (await searched).json()) as { items: { title: string }[] }).items
   expect(hits.length).toBeGreaterThan(0)
   // Every row matches.
   expect(hits.every((row) => row.title.includes('보안'))).toBe(true)
@@ -113,7 +112,8 @@ test('카드에 없던 본문은 문서를 열 때 채워진다', async ({ page 
 
   await page.goto('/artifacts')
   await page.getByRole('tab', { name: /HTML/ }).click()
-  const card = page.getByRole('button', { name: /열기$/ }).first()
+  // The row's title button opens the preview modal.
+  const card = page.getByTestId('artifact-row').getByRole('button', { name: /열기$/ }).first()
   await expect(card).toBeVisible({ timeout: 20_000 })
   await card.click()
 

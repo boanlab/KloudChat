@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { composerFixture } from './composer-fixture'
 
-/** Rating and 원본 작업 열기 do what they look like they do. Stubbed: each is a claim about a
+/** Rating and 원래 대화로 do what they look like they do. Stubbed: each is a claim about a
  *  request that was or was not made. (Web search per conversation: composer-handoff.spec.ts;
  *  a store agent's install: customize-forms.spec.ts.) */
 
@@ -36,6 +36,7 @@ const artifact = (id: string, title: string) => ({
   projectId: null,
   createdAt: NOW,
   updatedAt: NOW,
+  section: 'html',
 })
 
 const answer = (rating: 'up' | 'down' | null) => ({
@@ -132,9 +133,9 @@ test('싫어요는 서버에 남고, 다시 열었을 때 눌린 채로 보인�
   await expect(reloaded).toHaveAttribute('aria-pressed', 'false')
 })
 
-// ── 2. 원본 작업 열기 ───────────────────────────────────────────────────
+// ── 2. 원래 대화로 ───────────────────────────────────────────────────
 
-test('원본 작업 열기는 눌린 아티팩트를 연다, 그 대화의 최신 아티팩트가 아니라', async ({ page }, testInfo) => {
+test('원래 대화로는 눌린 아티팩트를 연다, 그 대화의 최신 아티팩트가 아니라', async ({ page }, testInfo) => {
   await composerFixture(page, testInfo)
 
   await stubGet(page, /\/api\/sessions(\?|$)/, [session()])
@@ -144,6 +145,10 @@ test('원본 작업 열기는 눌린 아티팩트를 연다, 그 대화의 최�
     artifact('artifact-latest', '8월 점검 결과'),
   ])
   await stubGet(page, '**/api/artifacts/counts**', { counts: { html: 2 }, total: 2 })
+  await stubGet(page, '**/api/artifacts/gallery**', {
+    items: [artifact('artifact-clicked', '3월 점검 결과'), artifact('artifact-latest', '8월 점검 결과')],
+    total: 2, next: null, counts: { html: 2 },
+  })
   await stubGet(page, '**/api/artifacts/artifact-clicked', artifact('artifact-clicked', '3월 점검 결과'))
   await stubGet(page, '**/api/artifacts/artifact-latest', artifact('artifact-latest', '8월 점검 결과'))
 
@@ -155,9 +160,9 @@ test('원본 작업 열기는 눌린 아티팩트를 연다, 그 대화의 최�
   })
 
   await page.goto('/artifacts')
-  const links = page.getByRole('button', { name: '원본 작업 열기 →' })
+  const links = page.getByRole('button', { name: /원래 대화로$/ })
   await expect(links).toHaveCount(2)
-  // The older document's card; its session has moved on since.
+  // The older document's row; its session has moved on since.
   await links.first().click()
 
   // The session's own `artifactId` is `artifact-latest`; that is not what was clicked.

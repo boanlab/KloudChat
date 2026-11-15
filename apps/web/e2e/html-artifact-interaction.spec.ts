@@ -155,14 +155,12 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
       }
     })
 
-    test('갤러리는 스크립트를 실행하지 않고 전체 미리보기는 부모 화면에서 격리된다', async ({ page, seedArtifact }) => {
+    test('전체 미리보기는 부모 화면에서 격리된다', async ({ page, seedArtifact }) => {
       const artifact = await seedArtifact(ISOLATION_PROBE, 'HTML 격리 회귀')
       await page.goto('/artifacts')
       const card = page.getByRole('button', { name: `${artifact.title} 열기`, exact: true })
-      const thumbnail = card.locator('iframe')
-      await expect(thumbnail).toHaveAttribute('srcdoc', /Check isolation/)
-      await expect(thumbnail).toHaveAttribute('sandbox', '')
-      await expect(card.frameLocator('iframe').locator('#boot')).toHaveText('not-started')
+      // The list has no thumbnails; the page runs only inside the preview modal.
+      await expect(card).toBeVisible()
 
       await page.evaluate(() => {
         document.documentElement.setAttribute('data-html-qa', 'unchanged')

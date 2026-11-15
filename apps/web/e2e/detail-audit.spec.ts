@@ -213,10 +213,11 @@ test('디테일 감사 — 페르소나 · 화면 · 규칙', async ({ page }) =
 
   // Artifact panels, opened from the gallery once its list has landed.
   await page.setViewportSize(VIEWPORTS.desktop)
-  for (const tab of ['보고서', '슬라이드', '차트', '코드', 'HTML', '이미지']) {
+  // Reports, decks and media are in 파일함 now; this page lists HTML, code files, charts and diagrams.
+  for (const tab of ['차트', '코드 파일', 'HTML', '도식']) {
     await page.goto('/artifacts')
     await page
-      .locator('button.aspect-video')
+      .getByTestId('artifact-row')
       .first()
       .waitFor({ timeout: 15_000 })
       .catch(() => {})
@@ -224,7 +225,7 @@ test('디테일 감사 — 페르소나 · 화면 · 규칙', async ({ page }) =
     if ((await tabButton.count()) === 0) continue
     if (Number((await tabButton.innerText()).replace(/\D+/g, '') || 0) === 0) continue
     await tabButton.click()
-    const card = page.locator('button.aspect-video').first()
+    const card = page.getByTestId('artifact-row').getByRole('button', { name: /열기$/ }).first()
     if ((await card.count()) === 0) continue
     await card.click()
 

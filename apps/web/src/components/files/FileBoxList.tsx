@@ -20,7 +20,7 @@ function FileGlyph({ row }: { row: FileRow }) {
   return <FileIcon {...props} />
 }
 
-/** 올린 파일 / 대화에서 만든 파일 (and, in the file box itself, 작업 문서) tabs and the search over them. */
+/** 올린 파일 / 만든 파일 (and, in the file box itself, 작업 문서) tabs and the search over them. */
 export function FileBoxFilter<T extends FileBoxTab>({
   counts,
   origin,
@@ -41,7 +41,7 @@ export function FileBoxFilter<T extends FileBoxTab>({
   const t = useT()
   const tabs = [
     { id: 'upload', label: t('올린 파일'), count: counts.upload },
-    { id: 'generated', label: t('대화에서 만든 파일'), count: counts.generated },
+    { id: 'generated', label: t('만든 파일'), count: counts.generated },
     ...(working ? [{ id: 'working', label: t('작업 문서'), count: counts.working }] : []),
   ] as { id: T; label: string; count?: number }[]
   return (

@@ -2,19 +2,12 @@
  *  nodes, no phantom edits, recovery from pagination failure, 서식 and page settings persisted. */
 
 import { expect, test } from '@playwright/test'
-import { E2E_ADMIN, openAndSeedReport, signIn, ribbonTab } from './helpers'
+import { E2E_ADMIN, openAndSeedReport, signIn, ribbonTab, openNewestDocument } from './helpers'
 
 async function openPageView(page: import('@playwright/test').Page) {
   await signIn(page)
-  await page.goto('/artifacts')
-  // The kind first, then the newest of that kind, inside the grid.
-  await page.getByRole('tab', { name: /보고서/ }).click()
-  await page
-    .locator('div.grid')
-    .getByRole('button', { name: /열기$/ })
-    .first()
-    .click()
-  await expect(page.getByRole('dialog')).toBeVisible({ timeout: 30_000 })
+  await openNewestDocument(page, 'report')
+  await expect(page.locator('[data-panel="artifact"]')).toBeVisible({ timeout: 30_000 })
 
   // Idempotent: a report with a `templateId` may already be showing the page view.
   const home = page.locator('[data-panel="artifact"] header, [role="dialog"] header').first()

@@ -57,11 +57,8 @@ test('검사에서 걸린 곳은 아티팩트 패널에서 셀 수 있고 읽을
   )
   expect(artifact, '아티팩트를 만들지 못했습니다').not.toBeNull()
 
-  await page.goto('/artifacts')
-  // By its own name; the sidebar carries session titles that read the same.
-  const card = page.getByRole('button', { name: `${title} 열기` })
-  await expect(card).toBeVisible({ timeout: 20_000 })
-  await card.click()
+  // Reports are listed in 파일함 › 작업 문서; the doc param opens the document in a modal.
+  await page.goto(`/files?tab=working&doc=${artifact.id}`)
 
   // The count: the P0-severity finding only.
   await ribbonTab(page, '검토')
@@ -82,7 +79,7 @@ test('검토를 받으면 점수와 지적이 같은 자리에 함께 선다', a
   await signIn(page)
 
   const title = `검토 대상 ${Date.now()}`
-  await page.evaluate(
+  const artifact = await page.evaluate(
     async ([fn, name]) =>
       await eval(fn)('/api/artifacts', {
         method: 'POST',
@@ -117,10 +114,8 @@ test('검토를 받으면 점수와 지적이 같은 자리에 함께 선다', a
     [AS_USER, title],
   )
 
-  await page.goto('/artifacts')
-  const card = page.getByRole('button', { name: `${title} 열기` })
-  await expect(card).toBeVisible({ timeout: 20_000 })
-  await card.click()
+  // Reports are listed in 파일함 › 작업 문서; the doc param opens the document in a modal.
+  await page.goto(`/files?tab=working&doc=${artifact.id}`)
 
   // The review costs a call, so it is offered rather than run.
   await ribbonTab(page, '검토')
@@ -154,7 +149,7 @@ test('걸린 것이 없으면 개수 대신 검토를 권한다', async ({ page 
   await signIn(page)
 
   const title = `검사 없음 ${Date.now()}`
-  await page.evaluate(
+  const artifact = await page.evaluate(
     async ([fn, name]) =>
       await eval(fn)('/api/artifacts', {
         method: 'POST',
@@ -175,10 +170,8 @@ test('걸린 것이 없으면 개수 대신 검토를 권한다', async ({ page 
     [AS_USER, title],
   )
 
-  await page.goto('/artifacts')
-  const card = page.getByRole('button', { name: `${title} 열기` })
-  await expect(card).toBeVisible({ timeout: 20_000 })
-  await card.click()
+  // Reports are listed in 파일함 › 작업 문서; the doc param opens the document in a modal.
+  await page.goto(`/files?tab=working&doc=${artifact.id}`)
   await artifactReady(page, 20_000)
   // Nothing found: the badge offers a review instead of a count.
   await ribbonTab(page, '검토')

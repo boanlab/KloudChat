@@ -1,13 +1,11 @@
 import { expect, test } from '@playwright/test'
-import { deckLayout, deckPanel, deckThumbs, deckTitle, deckToolbarMenu, saveDeck, signIn } from './helpers'
+import { deckLayout, deckPanel, deckThumbs, deckTitle, deckToolbarMenu, saveDeck, openNewestDocument, signIn } from './helpers'
 
 test('슬라이드를 복제하고 내용을 유지한 채 레이아웃을 바꾼다', async ({ page }) => {
   test.setTimeout(90_000)
   await signIn(page)
-  await page.goto('/artifacts')
-  await page.getByRole('tab', { name: /^슬라이드/ }).click()
-  await page.locator('button.aspect-video').first().click()
-  await expect(page.getByRole('dialog')).toBeVisible({ timeout: 20_000 })
+  await openNewestDocument(page, 'deck')
+  await expect(page.locator('[data-panel="artifact"]')).toBeVisible({ timeout: 20_000 })
 
   // One numbered thumbnail per slide.
   await expect(deckThumbs(page).first()).toBeVisible({ timeout: 20_000 })
@@ -34,9 +32,7 @@ test('슬라이드를 복제하고 내용을 유지한 채 레이아웃을 바�
   await expect(deckPanel(page).getByText('그사이 다른 판이 저장되어 저장하지 않았습니다.')).toHaveCount(0)
 
   await page.reload()
-  await page.getByRole('tab', { name: /^슬라이드/ }).click()
-  await page.locator('button.aspect-video').first().click()
-  await expect(page.getByRole('dialog')).toBeVisible({ timeout: 20_000 })
+  await expect(page.locator('[data-panel="artifact"]')).toBeVisible({ timeout: 20_000 })
   await expect(deckThumbs(page)).toHaveCount(before + 1, { timeout: 20_000 })
   await deckThumbs(page).nth(1).click()
   const again = await deckToolbarMenu(page, '레이아웃')

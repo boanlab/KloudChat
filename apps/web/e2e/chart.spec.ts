@@ -70,7 +70,7 @@ test('수치를 주고 차트를 부탁하면 차트 아티팩트가 생긴다',
   // Scoped to the dialog: 데이터 also names things in the sidebar.
   await page.goto('/artifacts')
   await page.getByRole('tab', { name: /^차트/ }).click()
-  await page.locator('button.aspect-video').first().click()
+  await page.getByTestId('artifact-row').getByRole('button', { name: /열기$/ }).first().click()
   const panel = page.getByRole('dialog')
   await expect(panel.locator('svg[role="img"]').first()).toBeVisible({ timeout: 20_000 })
   await panel.getByRole('button', { name: '데이터' }).click()

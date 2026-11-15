@@ -3698,7 +3698,7 @@ function toJob(row: JobRow): Job {
   }
 }
 
-function toArtifact(a: ArtifactRow): Artifact {
+export function toArtifact(a: ArtifactRow): Artifact {
   return {
     id: a.id,
     title: a.title,
@@ -3712,6 +3712,7 @@ function toArtifact(a: ArtifactRow): Artifact {
     ...(a.data ?? {}),
     // After the spread, so a body carrying the key cannot decide it.
     partial: a.partial === true,
+    ...(a.section ? { section: a.section } : {}),
   } as Artifact
 }
 

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { signInAs } from './helpers'
+import { openNewestDocument, signInAs } from './helpers'
 
 /** The artifact panel belongs to the current conversation: start screens and other
  *  conversations do not show the previous one's document. */
@@ -11,10 +11,7 @@ test('덱을 열어 둔 채 새 작업으로 가면 패널이 비워진다', asy
   await signInAs(page, ADMIN.email, ADMIN.password)
 
   // A conversation with a document open.
-  await page.goto('/artifacts')
-  await page.getByRole('tab', { name: /^슬라이드/ }).click()
-  await page.waitForTimeout(1_500)
-  await page.getByText('원본 작업 열기').first().click()
+  await openNewestDocument(page, 'deck')
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
   const panel = page.locator('[data-panel="artifact"]')
   await expect(panel).toBeVisible({ timeout: 30_000 })
@@ -36,10 +33,7 @@ test('대화를 옮기면 그 대화의 문서만 보인다', async ({ page }) =
   await signInAs(page, ADMIN.email, ADMIN.password)
 
   // A conversation with a document, then one without.
-  await page.goto('/artifacts')
-  await page.getByRole('tab', { name: /^슬라이드/ }).click()
-  await page.waitForTimeout(1_500)
-  await page.getByText('원본 작업 열기').first().click()
+  await openNewestDocument(page, 'deck')
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
   const panel = page.locator('[data-panel="artifact"]')
   await expect(panel).toBeVisible({ timeout: 30_000 })

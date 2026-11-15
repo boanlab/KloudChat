@@ -35,10 +35,9 @@ test('60장 덱을 열고 끝까지 탐색해 PPTX와 PDF로 내보낸다', asyn
   }, [E2E_ADMIN, title] as const)
 
   try {
-    await page.goto('/artifacts')
-    await page.getByRole('tab', { name: /^슬라이드/ }).click()
     const openedAt = Date.now()
-    await page.getByRole('button', { name: `${title} 열기` }).click()
+    // Decks are listed in 파일함 › 작업 문서; the doc param opens the document in a modal.
+    await page.goto(`/files?tab=working&doc=${id}`)
     const panel = page.getByRole('dialog')
     await expect(panel.getByText(title).first()).toBeVisible({ timeout: 10_000 })
     expect(Date.now() - openedAt).toBeLessThan(5_000)
@@ -118,10 +117,9 @@ test('40절 장문 보고서를 조판하고 DOCX·PDF·HWPX로 내보낸다', a
   }, [E2E_ADMIN, title] as const)
 
   try {
-    await page.goto('/artifacts')
-    await page.getByRole('tab', { name: /^보고서/ }).click()
     const openedAt = Date.now()
-    await page.getByRole('button', { name: `${title} 열기` }).click()
+    // Reports are listed in 파일함 › 작업 문서; the doc param opens the document in a modal.
+    await page.goto(`/files?tab=working&doc=${id}`)
     const panel = page.getByRole('dialog')
     await expect(panel.getByText(title).first()).toBeVisible({ timeout: 10_000 })
     expect(Date.now() - openedAt).toBeLessThan(5_000)

@@ -507,29 +507,25 @@ test('handing a chat to a report asks which file and carries it to the first tur
   expect(unexpected).toEqual([])
 })
 
-test('the artifacts page groups HWP and Word with reports, PowerPoint with slides, and filters by format', async ({ page }, info) => {
+test('the artifacts page has tabs for pages, code files, charts and diagrams only, and asks by section', async ({ page }, info) => {
   const { unexpected } = await composerFixture(page, info, { skills: false, agents: false, connectors: false })
   const asked: (string | null)[] = []
-  await page.route('**/api/artifacts/counts*', (route) =>
-    route.fulfill({ json: { counts: { report: 2, hwp: 1, docx: 3, deck: 1, pptx: 2, chart: 1 }, total: 10 } }))
-  await page.route('**/api/artifacts?*', (route) => {
-    asked.push(new URL(route.request().url()).searchParams.get('kind'))
-    return route.fulfill({ json: [] })
-  })
-  await page.route('**/api/artifacts', (route) => {
-    asked.push(null)
-    return route.fulfill({ json: [] })
+  await page.route('**/api/artifacts/gallery*', (route) => {
+    asked.push(new URL(route.request().url()).searchParams.get('section'))
+    return route.fulfill({ json: { items: [], total: 0, next: null, counts: { html: 2, code: 1, chart: 3, diagram: 0 } } })
   })
   await page.goto('/artifacts')
-  await expect(page.getByRole('tab', { name: /보고서/ })).toContainText('6', { timeout: 15_000 })
-  await expect(page.getByRole('tab', { name: /슬라이드/ })).toContainText('3')
-  await expect(page.getByRole('tab', { name: /^한글/ })).toHaveCount(0)
-  await page.getByRole('tab', { name: /보고서/ }).click()
-  await expect.poll(() => asked.at(-1)).toBe('report,hwp,docx')
-  await page.getByTestId('artifact-formats').getByRole('button', { name: /Word/ }).click()
-  await expect.poll(() => asked.at(-1)).toBe('docx')
-  await page.getByRole('tab', { name: /슬라이드/ }).click()
-  await expect.poll(() => asked.at(-1)).toBe('deck,pptx')
+  const tabs = page.getByRole('tablist').first().getByRole('tab')
+  await expect(tabs).toHaveText([/^전체\s*6/, /^HTML\s*2/, /^코드 파일\s*1/, /^차트\s*3/, /^도식\s*0/], { timeout: 15_000 })
+  for (const gone of ['보고서', '슬라이드', '이미지', '오디오', '동영상']) {
+    await expect(page.getByRole('tab', { name: new RegExp(`^${gone}`) })).toHaveCount(0)
+  }
+  await page.getByRole('tab', { name: /^차트/ }).click()
+  await expect.poll(() => asked.at(-1)).toBe('chart')
+  await expect(page).toHaveURL(/kind=chart/)
+  await page.getByRole('tab', { name: /^도식/ }).click()
+  await expect.poll(() => asked.at(-1)).toBe('diagram')
+  await expect(page.getByText('찾는 아티팩트가 없습니다')).toBeVisible()
   expect(unexpected).toEqual([])
 })
 

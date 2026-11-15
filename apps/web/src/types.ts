@@ -747,6 +747,8 @@ interface ArtifactBase {
   projectId: string | null
   /** Listing copy with a trimmed body; `refreshArtifact` fetches the whole document and clears this. */
   partial?: boolean
+  /** Where it is listed (`ArtifactRow.section`); absent on a local draft. */
+  section?: string
   /** Local draft a run is still streaming into; the server does not hold it yet. */
   draft?: boolean
   /** Linter findings as of when this was written. */

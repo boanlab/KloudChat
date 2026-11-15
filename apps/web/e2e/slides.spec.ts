@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { expect, test } from '@playwright/test'
-import { approvePlan, deckHeader, deckNotes, deckPanel, deckThumbs, deckTitle, deckType, saveDeck, signIn } from './helpers'
+import { approvePlan, deckHeader, deckNotes, deckPanel, deckThumbs, deckTitle, deckType, saveDeck, openNewestDocument, signIn } from './helpers'
 
 /** Entry names from a zip's central directory; nothing is inflated. */
 function zipNames(buffer: Buffer): string[] {
@@ -132,12 +132,8 @@ test('슬라이드 한 장을 고치면 저장되고 새로고침 뒤에도 남�
   test.setTimeout(120_000)
   await signIn(page)
 
-  await page.goto('/artifacts')
-  await page.getByRole('tab', { name: /^슬라이드/ }).click()
-  const card = page.locator('button.aspect-video').first()
-  await expect(card).toBeVisible({ timeout: 20_000 })
-  await card.click()
-  await expect(page.getByRole('dialog')).toBeVisible({ timeout: 20_000 })
+  await openNewestDocument(page, 'deck')
+  await expect(page.locator('[data-panel="artifact"]')).toBeVisible({ timeout: 20_000 })
   // The slide is editable in place: no 편집 toggle, nothing saved until 저장.
   await expect(deckThumbs(page).first()).toBeVisible({ timeout: 20_000 })
   await deckThumbs(page).first().click()
@@ -156,11 +152,8 @@ test('슬라이드 한 장을 고치면 저장되고 새로고침 뒤에도 남�
 
   // Survives a reload: the server has it.
   await page.reload()
-  await page.getByRole('tab', { name: /^슬라이드/ }).click()
-  // Found by content: the gallery sorts by last touched.
-  const again = page.locator('button.aspect-video').filter({ hasText: edited }).first()
-  await expect(again).toBeVisible({ timeout: 20_000 })
-  await again.click()
+  // The URL still names the conversation and document, so the panel reopens on it.
+  await expect(page.locator('[data-panel="artifact"]')).toBeVisible({ timeout: 20_000 })
   await expect(page.getByText(edited).first()).toBeVisible({ timeout: 20_000 })
   await expect(page.getByRole('heading', { name: '화면을 표시하지 못했습니다' })).toHaveCount(0)
 })

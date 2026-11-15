@@ -42,7 +42,7 @@ class Export(Base):
             try:
                 body, name = await artifact_file(artifact, fmt)
                 outputs.append(await sandbox.store_output(req.user_id, req.session_id, name,
-                                                          body))
+                                                          body, copy_of=artifact.id))
             except Exception as exc:  # noqa: BLE001 — one failing still hands the others over
                 log.warning("export %s of %s failed: %s", fmt, artifact.id, logs.safe(exc))
                 failed.append(fmt)

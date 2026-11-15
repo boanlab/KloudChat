@@ -111,12 +111,10 @@ test('덱도 같은 버튼으로 되돌린다', async ({ page }) => {
       },
     ],
   })
-  await seedEdited(page, 'deck', title, slide('처음 제목'), slide('고친 제목'), '1장 편집')
+  const docId = await seedEdited(page, 'deck', title, slide('처음 제목'), slide('고친 제목'), '1장 편집')
 
-  await page.goto('/artifacts')
-  const card = page.getByRole('button', { name: `${title} 열기` })
-  await expect(card).toBeVisible({ timeout: 20_000 })
-  await card.click()
+  // Decks and reports are listed in 파일함 › 작업 문서; the doc param opens the document in a modal.
+  await page.goto(`/files?tab=working&doc=${docId}`)
 
   const dialog = page.getByRole('dialog')
   await expect(dialog.getByText('고친 제목').first()).toBeVisible({ timeout: 20_000 })
@@ -144,7 +142,7 @@ test('보고서의 되돌리기는 옮겨진 뒤에도 그대로다', async ({ p
     citationStyle: 'APA',
     wordCount: 3,
   })
-  await seedEdited(
+  const docId = await seedEdited(
     page,
     'report',
     title,
@@ -153,10 +151,8 @@ test('보고서의 되돌리기는 옮겨진 뒤에도 그대로다', async ({ p
     '문서 편집',
   )
 
-  await page.goto('/artifacts')
-  const card = page.getByRole('button', { name: `${title} 열기` })
-  await expect(card).toBeVisible({ timeout: 20_000 })
-  await card.click()
+  // Decks and reports are listed in 파일함 › 작업 문서; the doc param opens the document in a modal.
+  await page.goto(`/files?tab=working&doc=${docId}`)
 
   const dialog = page.getByRole('dialog')
   await expect(dialog.getByText('고쳐 쓴 본문입니다.')).toBeVisible({ timeout: 20_000 })

@@ -32,9 +32,9 @@ export type OfficeOptions = {
   holdSave?: Promise<void>
   /** These fetches of the document's file (the first is 1) fail with a server error. */
   failLoads?: number[]
-  /** The document has no conversation (made outside one); the page opens on the artifacts page. */
+  /** The document has no conversation (made outside one); the page opens on it in the file box. */
   orphan?: boolean
-  /** The artifacts page opens instead of the chat. */
+  /** The file box opens on the document (`/files?tab=working&doc=`) instead of the chat. */
   artifactsPage?: boolean
   /** A share link to the document, read without an account: the page opens on it. */
   shared?: { token: string }
@@ -269,6 +269,14 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
       return json(artifact)
     }
     if (path === '/artifacts/counts') return json({ counts: { [kind]: 1 }, total: 1 })
+    // the 아티팩트 page lists no document; 파일함 › 작업 문서 lists this one
+    if (path === '/artifacts/gallery') return json({ items: [], total: 0, next: null, counts: { html: 0, code: 0, chart: 0, diagram: 0 } })
+    if (path === '/artifacts/working') {
+      return json({ items: [{ id: artifactId, kind, title: artifact.title, version: artifact.version,
+        sessionId: artifact.sessionId, sessionTitle: null, projectId: null, createdAt: at, updatedAt: at }],
+      total: 1, next: null, counts: { [kind]: 1 } })
+    }
+    if (path === '/files/page') return json({ items: [], total: 0, next: null, counts: { upload: 0, generated: 0, working: 1 } })
     const shell = shellRead(method, path)
     if (shell) return route.fulfill(shell)
     if (method === 'GET' && [`/sessions/${session.id}/jobs`, '/projects', '/skills', '/memory',
@@ -279,7 +287,7 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
   })
   const opened = options.shared ? `/share/${options.shared.token}`
     : options.box ? '/files' : options.fromHome ? '/'
-      : options.orphan || options.artifactsPage ? '/artifacts'
+      : options.orphan || options.artifactsPage ? `/files?tab=working&doc=${artifactId}`
         : options.attachment || options.reopen ? `/s/${sessionId}` : `/s/${sessionId}?artifact=${artifactId}`
   await page.goto(opened)
   return {

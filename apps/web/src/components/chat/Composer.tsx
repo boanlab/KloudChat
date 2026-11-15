@@ -2909,9 +2909,9 @@ export function Composer({
         {busy && isMedia
             ? t('생성 중입니다 — 완료되면 위 카드가 결과로 바뀝니다')
             : kind === 'image'
-              ? t('Enter로 생성 · 만든 이미지는 아티팩트에 쌓입니다')
+              ? t('Enter로 생성 · 만든 이미지는 파일함에 쌓입니다')
               : kind === 'av' && avOptions.mode === 'audio'
-                ? t('Enter로 생성 · 음성과 음악은 아티팩트에 쌓입니다')
+                ? t('Enter로 생성 · 음성과 음악은 파일함에 쌓입니다')
                 : kind === 'av'
                   ? t('Enter로 생성 · 영상은 몇 분 걸리고 진행은 카드에 표시됩니다')
                   : kind === 'slides' && outputSurface && (output ?? detectedOutput) === 'pptx'

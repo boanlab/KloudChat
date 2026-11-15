@@ -1,7 +1,8 @@
-import { Download, FilePenLine, FileStack, FileText, Loader2, MessageSquare, Pencil, Presentation, Trash2 } from 'lucide-react'
+import { Download, FilePenLine, FileStack, FileText, Loader2, MessageSquare, MoreHorizontal, Pencil, Presentation, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Badge, Button, Card, ConfirmDialog, EmptyState, Input, Modal, ReloadNotice } from '@/components/ui'
+import { ReuseItems } from '@/components/artifacts/ResultActions'
+import { Badge, Button, Card, ConfirmDialog, Dropdown, EmptyState, Input, Modal, ReloadNotice } from '@/components/ui'
 import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
 import { RelTime } from '@/components/ui/RelTime'
 import { LoadMore } from '@/components/ui/ShowMore'
@@ -11,6 +12,7 @@ import { ColumnHeader, PhoneSort, useUrlSort, type SortField } from './ListSort'
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
+import type { Artifact } from '@/types'
 import { WORKING_KINDS, useWorkingDocs } from './useWorkingDocs'
 
 const KIND_LABEL: Record<WorkingKind, string> = {
@@ -30,7 +32,7 @@ const SORT_FIELDS: SortField<WorkingSort>[] = [
 ]
 
 /** The grid on a wide screen: pick, title, format, versions, last edit, controls. */
-const GRID = 'sm:grid sm:grid-cols-[1.75rem_minmax(0,1fr)_8.5rem_4rem_8rem_11.5rem] sm:items-center sm:gap-x-3'
+const GRID = 'sm:grid sm:grid-cols-[1.75rem_minmax(0,1fr)_8.5rem_4rem_8rem_13.5rem] sm:items-center sm:gap-x-3'
 
 function KindGlyph({ kind }: { kind: WorkingKind }) {
   const Icon = kind === 'pptx' || kind === 'deck' ? Presentation : FileText
@@ -38,7 +40,7 @@ function KindGlyph({ kind }: { kind: WorkingKind }) {
 }
 
 /** Opens a document where it is edited from chat: beside its conversation; an office file with
- *  none joins a new chat, a web report or web slides with none opens in the artifacts panel. */
+ *  none joins a new chat, a web report or web slides with none opens in its panel here. */
 function useOpenInEditor() {
   const navigate = useNavigate()
   const newSession = useStore((s) => s.newSession)
@@ -50,7 +52,8 @@ function useOpenInEditor() {
       return
     }
     if (row.kind === 'report' || row.kind === 'deck') {
-      navigate(`/artifacts?open=${row.id}`)
+      // its panel, over the file box
+      navigate(`/files?tab=working&doc=${row.id}`)
       return
     }
     const sessionId = await ensureSession(await newSession('chat', { projectId: row.projectId }))
@@ -199,7 +202,7 @@ export function WorkingDocs({ query, onCount }: { query: string; onCount: (n: nu
             description={
               query.trim() || kind
                 ? t('제목의 다른 부분이나 다른 형식으로 찾아보세요.')
-                : t('대화에서 만들거나 편집기에서 고친 한글·Word·PowerPoint 문서와 웹 보고서·웹 슬라이드가 여기에 모입니다.')
+                : t('보고서와 슬라이드가 형식과 상관없이 여기 모입니다.')
             }
           />
         ) : (
@@ -245,6 +248,7 @@ export function WorkingDocs({ query, onCount }: { query: string; onCount: (n: nu
                   <div className="min-w-0 flex-1">
                     <button
                       type="button"
+                      data-testid="working-doc-open"
                       onClick={() => void open(row)}
                       disabled={opening === row.id}
                       className="block min-h-6 max-w-full truncate text-left text-base font-medium hover:underline max-sm:line-clamp-2 max-sm:whitespace-normal max-sm:break-all"
@@ -297,6 +301,20 @@ export function WorkingDocs({ query, onCount }: { query: string; onCount: (n: nu
                     >
                       <Download size={14} />
                     </Button>
+                    {(row.kind === 'report' || row.kind === 'deck') && (
+                      // 이걸로 새로 시작 · 새 대화에 첨부, as beside a chat; they read the id, kind
+                      // and title only
+                      <Dropdown
+                        align="right"
+                        trigger={() => (
+                          <Button variant="ghost" size="icon" aria-label={t('{name} 더보기').replace('{name}', row.title)} title={t('더보기')}>
+                            <MoreHorizontal size={14} />
+                          </Button>
+                        )}
+                      >
+                        <ReuseItems artifact={row as unknown as Artifact} />
+                      </Dropdown>
+                    )}
                     <Button
                       variant="ghost"
                       size="icon"

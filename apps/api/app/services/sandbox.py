@@ -213,12 +213,16 @@ def read_input(file: InputFile) -> bytes:
     return file_service.read_blob(file.storage_key)
 
 
-async def store_output(user_id: str, session_id: str, name: str, data: bytes) -> dict[str, Any]:
-    """Store a produced file as the user's own, in its chat."""
+async def store_output(
+    user_id: str, session_id: str, name: str, data: bytes, *, copy_of: str | None = None
+) -> dict[str, Any]:
+    """Store a produced file as the user's own, in its chat; `copy_of`: the artifact it is an
+    export of (kept out of 파일함 › 만든 파일)."""
     stored = StoredFile(
         user_id=user_id,
         session_id=session_id or None,
         origin="generated",
+        copy_of=copy_of,
         name=file_service.safe_name(name),
         size=len(data),
         mime=file_service.detected_mime(name, None, data),

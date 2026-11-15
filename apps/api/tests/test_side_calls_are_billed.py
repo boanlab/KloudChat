@@ -496,7 +496,6 @@ async def test_a_memory_extraction_is_billed_at_the_model_that_read_the_turn(
 
     monkeypatch.setattr(sessions_router, "SessionLocal", lambda: db)
     monkeypatch.setattr(sessions_router.artifact_extract, "store_requested", nothing)
-    monkeypatch.setattr(sessions_router.artifact_extract, "extract", nothing)
     monkeypatch.setattr(
         sessions_router.model_service, "resolve_enrichment_model", enrichment_model
     )

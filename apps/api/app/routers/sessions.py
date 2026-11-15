@@ -4298,12 +4298,15 @@ async def _draw_chart(
     )
     image.width, image.height = imagegen._measure(chart.png)
     file_id, key = imagegen.store(user.id, image)
+    chart_artifact_id = uuid.uuid4().hex
     db.add(
         StoredFile(
             id=file_id,
             user_id=user.id,
             origin="generated",
             session_id=session.id,
+            # the chart is listed as an artifact; its picture is not a file of its own
+            copy_of=chart_artifact_id,
             name=f"{payload.prompt[:40] or 'chart'}.png",
             mime="image/png",
             size=len(chart.png),
@@ -4312,6 +4315,7 @@ async def _draw_chart(
         )
     )
     artifact = Artifact(
+        id=chart_artifact_id,
         user_id=user.id,
         session_id=session.id,
         project_id=session.project_id,
@@ -4470,6 +4474,7 @@ def _store_figure(
 ) -> Artifact:
     """Drawn figure as image artifact with mermaid source; added, not committed."""
     file_id = uuid.uuid4().hex
+    figure_id = uuid.uuid4().hex
     key = file_service.write_blob(user.id, file_id, "figure.png", png)
     title = (title or caption or "도식")[:200]
     db.add(
@@ -4478,6 +4483,8 @@ def _store_figure(
             user_id=user.id,
             origin="generated",
             session_id=session.id,
+            # the diagram is listed as an artifact; its picture is not a file of its own
+            copy_of=figure_id,
             name=f"{title[:40]}.png",
             mime="image/png",
             size=len(png),
@@ -4486,6 +4493,7 @@ def _store_figure(
         )
     )
     artifact = Artifact(
+        id=figure_id,
         user_id=user.id,
         session_id=session.id,
         project_id=session.project_id,
@@ -8502,7 +8510,7 @@ async def _store_artifacts(
     legacy_masking: bool = False,
     protected_values: frozenset[str] = frozenset(),
 ) -> str | None:
-    """Artifacts from a finished turn; never raises; committed before the message."""
+    """Artifacts the turn asked for; never raises; committed before the message."""
     masker = governance.mask_legacy if legacy_masking else governance.mask
 
     def at_rest(value: str) -> tuple[str, int]:
@@ -8513,7 +8521,8 @@ async def _store_artifacts(
     artifact_id: str | None = None
     async with SessionLocal() as db:
         try:
-            # `create_artifact` call wins over transcript extraction; both run
+            # only files the model made with `create_artifact`; an answer's inline code block
+            # is part of the answer, never an artifact of its own
             requested_id = await artifact_extract.store_requested(
                 db,
                 user_id=user_id,
@@ -8522,14 +8531,7 @@ async def _store_artifacts(
                 requests=requested_artifacts or [],
                 masker=privacy_masker,
             )
-            extracted_id = await artifact_extract.extract(
-                db,
-                user_id=user_id,
-                session_id=session_id,
-                project_id=project_id,
-                content=privacy_masker(content)[0] if privacy_masker else content,
-            )
-            artifact_id = requested_id or extracted_id
+            artifact_id = requested_id
             await db.commit()
         except Exception:  # noqa: BLE001
             log.exception("artifact extraction failed for session %s", session_id)
