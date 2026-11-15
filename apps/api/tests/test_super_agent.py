@@ -284,7 +284,7 @@ async def test_picker_offers_both_entries_with_a_credit_range(monkeypatch) -> No
         return {"models": CATALOGUE, "litellmAvailable": True}
 
     async def policy():
-        return Governance(super_agent_enabled=True)
+        return Governance()
 
     monkeypatch.setattr(models_router.model_service, "list_models", catalogue)
     monkeypatch.setattr(models_router.governance, "current", policy)
@@ -293,12 +293,16 @@ async def test_picker_offers_both_entries_with_a_credit_range(monkeypatch) -> No
     assert offer["strict"]["estimate"]["max"] == 0
     assert offer["default"]["estimate"]["max"] > 0
 
-    async def off():
-        return Governance(super_agent_enabled=False)
-
-    monkeypatch.setattr(models_router.governance, "current", off)
-    offer = (await models_router.list_models(user))["superAgent"]
-    assert offer["default"] == {**offer["default"], "available": False, "reason": "disabled"}
+    # no switch: the entries are always there; an account whose allowed models leave the
+    # table nothing says why instead
+    assert "enabled" not in offer
+    # a project's `super` start is strict-local where internal material stays inside
+    assert offer["projectStrict"] is Governance().internal_data_strict_local
+    lonely = User(email="q@example.test", password_hash="h", name="Q",
+                  allowed_models=["no/such-model"])
+    offer = (await models_router.list_models(lonely))["superAgent"]
+    assert offer["default"] == {"available": False, "reason": "no_models", "estimate": None}
+    assert offer["strict"]["available"] is False
 
 
 def _migration():
@@ -409,11 +413,14 @@ async def test_the_writer_call_carries_the_routed_effort(monkeypatch) -> None:
 
 
 def test_hard_classes_go_to_deepseek_with_reasoning_high() -> None:
-    # owner decision 2026-11-14: hard turns on DeepSeek V4.1 Flash @high; strict column unchanged
+    # owner decision 2026-11-14: hard turns on DeepSeek V4.1 Flash @high; the strict column
+    # keeps flash for the hard classes, and the escalation row's strict pick is self-hosted
+    # DeepSeek V4 Flash (second decision of 2026-11-14)
     for name in ("calc", "code", "current", "long", "reasoning", "escalation"):
         rule = sa.DEFAULT_RULES[name]
         assert (rule["model"], rule["effort"]) == ("deepseek/deepseek-v4.1-flash", "high"), name
-        assert rule["strictModel"] == "strict-local/qwen3.8-flash", name
+        assert rule["strictModel"] == ("strict-local/deepseek-v4-flash" if name == "escalation"
+                                       else "strict-local/qwen3.8-flash"), name
     for name in ("simple", "chat", "transform"):
         assert sa.DEFAULT_RULES[name]["model"] == "local/qwen3.8-flash"
     assert sa.DEFAULT_RULES["document"]["strictModel"] == "strict-local/qwen3.8-27b"
@@ -440,7 +447,7 @@ async def test_a_new_project_conversation_on_super_agent_starts_strict_when_requ
         return {"models": CATALOGUE, "litellmAvailable": True}
 
     async def policy():
-        return Governance(super_agent_enabled=True, internal_data_strict_local=strict_rule)
+        return Governance(internal_data_strict_local=strict_rule)
 
     monkeypatch.setattr(sessions_router.model_service, "list_models", catalogue)
     monkeypatch.setattr(sessions_router.governance, "current", policy)

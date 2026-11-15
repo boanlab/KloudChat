@@ -37,7 +37,7 @@ const DESIGN_REACHES: Partial<Record<SessionKind, string>> = {
   chat: '이 대화의 말투를 이 테마에 맞춥니다',
   report: '보고서의 말투와 색, 서체를 이 테마에 맞춥니다',
   slides: '슬라이드의 말투와 색, 서체를 이 테마에 맞춥니다',
-  image: '그림의 색과 스타일을 이 테마에 맞춥니다',
+  image: '이미지의 색과 스타일을 이 테마에 맞춥니다',
 }
 
 /** Agent, project and theme of an empty session; the template chip lives in the composer. */

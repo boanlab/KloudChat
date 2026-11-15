@@ -142,7 +142,8 @@ test('관리자가 계정을 삭제하면 목록에서 사라진다', async ({ p
   await page.getByPlaceholder('이름 또는 이메일').fill(email)
   const row = page.locator('tr', { hasText: email })
   await expect(row).toBeVisible({ timeout: 15_000 })
-  await row.getByRole('button', { name: '계정 삭제' }).click()
+  await row.getByRole('button', { name: /관리 메뉴$/ }).click()
+  await page.getByRole('menuitem', { name: /계정 삭제$/ }).click()
 
   // Confirmed in a dialog.
   const dialog = page.getByRole('dialog')

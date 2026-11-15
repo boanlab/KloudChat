@@ -169,6 +169,8 @@ const groups: Record<string, Group> = {
   ux: { files: ['ux-keyboard-forms.spec.ts'], projects: { desktop, phone: pixel } },
   'admin-models': { files: ['admin-models.spec.ts'], projects: { desktop, phone: touchPhone } },
   'admin-users': { files: ['admin-users-paging.spec.ts'], projects: { desktop, phone: touchPhone } },
+  // a missing publication, the routing table's effort column
+  'admin-screens': { files: ['admin-screens.spec.ts'], projects: { desktop, phone: touchPhone } },
   // sortable tables, CSV exports, strict-local priority, 404, tab titles, expired sign-in
   'ui-polish': { files: ['ui-polish.spec.ts'], projects: { desktop, phone: touchPhone } },
   'share-and-index': {
@@ -176,6 +178,9 @@ const groups: Record<string, Group> = {
     projects: { desktop },
   },
   'failed-saves': { files: ['saves-that-fail.spec.ts'], projects: { desktop } },
+  // screens a product walk-through found broken: project rows and boxes, the template picker
+  // and a failed answer at phone widths (390 and 360), 접근 제한, an empty history, a mind map
+  'screen-states': { files: ['screen-states.spec.ts'], projects: { desktop, phone: touchPhone } },
   // 지식 서가: sources panel, source viewer, studio, quiz player, notes
   'knowledge-shelf': { files: ['knowledge-shelf.spec.ts'], projects: { desktop, phone: touchPhone } },
   // HWP panel against a stand-in editor; the real studio (built by rhwp/build-studio.sh into
@@ -190,6 +195,8 @@ const groups: Record<string, Group> = {
   'pptx-panel': { files: ['pptx-panel.spec.ts', 'pptx-bullets.spec.ts'], projects: { desktop, phone: touchPhone } },
   // HWP, Word and PowerPoint files in the file box: drawn by their editors, 편집 opens a copy
   'file-box-office': { files: ['file-box-office.spec.ts'], projects: { desktop, phone: touchPhone } },
+  // 「작업 문서」: the documents worked on, one row each, opened in their editors
+  'file-box-working': { files: ['file-box-working.spec.ts'], projects: { desktop, phone: touchPhone } },
   // unsaved office edits never dropped unasked; phone read only, retries, share, reopen, artifacts page
   'office-safety': { files: ['office-edit-safety.spec.ts'], projects: { desktop, phone: touchPhone } },
   // every toolbar, rail, notes and menu action against the saved file; a manual check

@@ -43,6 +43,7 @@ import { useT } from '@/lib/useT'
 import { scopePagedStyles } from '@/components/report/scopePagedStyles'
 import { DEFAULT_PAGE_SETTINGS, pagedSheetCss, type PageSettings } from '@/components/report/pagedSheet'
 import { PLACEHOLDER_CSS, markPlaceholders } from '@/lib/placeholders'
+import { randomId } from '@/lib/cryptoFallback'
 
 const escapePagedText = (text: string) => text
   .replace(/&/g, '&amp;')
@@ -541,7 +542,7 @@ export function DocumentEditor({
   const addComment = () => {
     if (!commentSection || !commentQuote || !commentDraft.trim()) return
     commitComments([...comments, {
-      id: crypto.randomUUID(), sectionId: commentSection, quote: commentQuote,
+      id: randomId(), sectionId: commentSection, quote: commentQuote,
       body: commentDraft.trim(), status: 'open', createdAt: new Date().toISOString(),
     }])
     setCommentQuote('')

@@ -146,6 +146,7 @@ export type SuperAgentClass =
   | 'long'
   | 'reasoning'
   | 'document'
+  | 'material'
   | 'escalation'
 
 /** What a session produced, as measurements so the row can be phrased in the reader's language. */
@@ -301,6 +302,11 @@ export interface SuperAgentRoute {
   row?: SuperAgentClass
   /** Privacy routing moved the turn after the pick (strict-local twin, safe model). */
   boundaryModel?: string
+  /** The writer failed mid-turn and this strict-local model carried the turn on. */
+  fallbackModel?: string
+  fallbackReason?: 'timeout' | 'busy' | 'error' | 'failed'
+  /** The row's model failed lately and the pick went past it. */
+  skipped?: string
   strictReason?: 'personal_data' | 'internal_data'
   classifierModel?: string
   classifierConfidence?: number
@@ -605,7 +611,7 @@ export interface Step {
   memories?: string[]
   files?: {
     name: string
-    state: 'included' | 'truncated' | 'omitted' | 'unreadable' | 'picture' | 'picture_unseen' | 'reading'
+    state: 'included' | 'truncated' | 'omitted' | 'unreadable' | 'picture' | 'picture_unseen' | 'reading' | 'watching'
     keptChars: number
     totalChars: number
   }[]

@@ -128,6 +128,7 @@ from app.services import (
     index_cleanup,
     lint,
     message_links,
+    model_health,
     model_tier,
     office_claims,
     office_doc,
@@ -148,6 +149,7 @@ from app.services import (
     skill_specs,
     skill_turn,
     source_selection,
+    start_mode,
     starter,
     stop_signal,
     super_agent,
@@ -1226,14 +1228,6 @@ async def _project_super_mode(user: User) -> RoutingMode:
     return RoutingMode.super
 
 
-async def _require_super_agent() -> None:
-    """Super Agent entries need the admin's switch."""
-    if not (await governance.current()).super_agent_enabled:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="super_agent_disabled"
-        )
-
-
 def _cost_routing(
     *,
     decision: str,
@@ -1429,6 +1423,7 @@ def _turn_reasoning_fields(
     super_route: dict[str, Any] | None,
     rescue: dict | None = None,
     rescue_effort: str = "default",
+    fallback: dict | None = None,
 ) -> tuple[dict[str, dict[str, Any]] | None, dict[str, Any]]:
     """`(fields by model, note)`: the writer's reasoning fields for `thinking.TURN_REASONING`
     (None leaves the deployment's) and what the answer's line says (`routing.reasoning`).
@@ -1437,7 +1432,7 @@ def _turn_reasoning_fields(
     깊게 the writer cannot act on is marked `unsupported` rather than shown as a level."""
     if super_route is not None:
         fields = _super_reasoning(model, str(super_route.get("effort") or "default"), rescue,
-                                  rescue_effort)
+                                  rescue_effort, fallback)
     else:
         effort = super_agent.manual_effort(mode, model)
         wanted = super_agent.reasoning_fields(str(model["id"]), effort, model)
@@ -1466,11 +1461,13 @@ def _super_history(history: list[Message]) -> tuple[tuple[str, str, dict | None]
 
 
 def _super_reasoning(
-    model: dict, effort: str, rescue: dict | None, rescue_effort: str
+    model: dict, effort: str, rescue: dict | None, rescue_effort: str,
+    fallback: dict | None = None,
 ) -> dict[str, dict[str, Any]] | None:
-    """Effort fields by model for `agent.TURN_REASONING`; None leaves the deployment's."""
+    """Effort fields by model for `agent.TURN_REASONING`; None leaves the deployment's. The
+    writer's fallback (`_super_fallback`) carries on at the writer's effort."""
     fields: dict[str, dict[str, Any]] = {}
-    for row, level in ((rescue, rescue_effort), (model, effort)):
+    for row, level in ((fallback, effort), (rescue, rescue_effort), (model, effort)):
         if row is not None and (wanted := super_agent.reasoning_fields(
                 str(row["id"]), level, row)):
             fields[str(row["id"])] = wanted
@@ -1489,6 +1486,7 @@ def _super_rescue(
         _allowed_models(user, catalogue, kind=SessionKind.chat.value), kind="chat",
         strict=strict_local or route.get("mode") == super_agent.SUPER_STRICT,
         allowed=set(user.allowed_models or []), needs_tools=True,
+        skip=model_health.unhealthy(),
     )
     if chosen is None or chosen["id"] == writer["id"] or _widens_boundary(chosen, writer):
         return None, "default"
@@ -1496,6 +1494,45 @@ def _super_rescue(
         # 빠르게: the rescue writes without reasoning too
         return chosen, "none"
     return chosen, rules[super_agent.ESCALATION_CLASS]["effort"]
+
+
+def _super_fallback(
+    route: dict[str, Any] | None, *, user: User, catalogue: list[dict], writer: dict,
+    strict_local: bool, needs_tools: bool,
+) -> dict | None:
+    """Who carries a strict-local Super Agent turn on, in the same turn, when its writer fails
+    (refused, unreachable, a broken stream, nothing shown within its patience): the first
+    strict fallback (Qwen3.8 Flash) when the writer is another model; never one that may leave."""
+    if route is None or not strict_local:
+        return None
+    return super_agent.strict_fallback(
+        _allowed_models(user, catalogue, kind=SessionKind.chat.value), writer, kind="chat",
+        allowed=set(user.allowed_models or []), needs_tools=needs_tools,
+        skip=model_health.unhealthy(),
+    )
+
+
+async def _material_present(
+    db: AsyncSession, user: User, session: ChatSession, attachments: list[str] | None
+) -> bool:
+    """Whether a turn works over internal material: a file attached to it (not a picture), or
+    what `search_knowledge` searches in this conversation (`_knowledge_shelf`): files with
+    text attached earlier, the project's knowledge sources still switched on, the agent's own
+    files."""
+    if attachments:
+        found = (
+            await db.exec(
+                select(StoredFile.id).where(
+                    StoredFile.user_id == user.id,
+                    col(StoredFile.id).in_(list(attachments)),
+                    or_(StoredFile.text != "", ~col(StoredFile.mime).startswith("image/")),
+                ).limit(1)
+            )
+        ).first()
+        if found is not None:
+            return True
+    shelf, _ = await _knowledge_shelf(db, user, session, None)
+    return bool(shelf)
 
 
 def _first_document_model(history: list[Message]) -> str | None:
@@ -1554,6 +1591,14 @@ async def _super_route(
         session, None, attachments, history
     )
     strict = mode == super_agent.SUPER_STRICT or bool(personal) or internal
+    #: a column where the material row names a model: whether this turn works over files
+    material = bool(
+        kind is SessionKind.chat
+        and rules[super_agent.MATERIAL_CLASS]["strictModel" if strict else "model"]
+        and await _material_present(db, user, session, attachments)
+    )
+    #: writers that failed lately (`model_health`): passed over, so no one waits on them
+    skip = model_health.unhealthy()
     classified: super_agent.Classified | None = None
     classifier_id: str | None = None
     # 깊게 goes to the escalation row whatever the class: nothing for the classifier to decide
@@ -1578,8 +1623,10 @@ async def _super_route(
                     classified.task_class, "classifier", "classified",
                     confidence=classified.confidence, signals=decision.signals,
                 )
-    needs_tools = decision.task_class not in ("simple", "transform", "document") or tool_bound
-    row_class, effort = super_agent.steer(rules, decision, reasoning_mode)
+    row_class, effort = super_agent.steer(rules, decision, reasoning_mode, material=material,
+                                          strict=strict)
+    needs_tools = (decision.task_class not in ("simple", "transform", "document") or tool_bound
+                   or row_class == super_agent.MATERIAL_CLASS)
     chosen: dict | None = None
     how = "rule"
     sticky_id = (
@@ -1595,20 +1642,21 @@ async def _super_route(
         # this turn (not served, not this surface's), the class's own pick at effort high
         rule = rules[super_agent.ESCALATION_CLASS]
         candidate = model_service.find(catalogue, rule["strictModel" if strict else "model"])
-        if super_agent.usable_for(candidate, **checks):
+        if candidate is not None and candidate["id"] not in skip and super_agent.usable_for(
+                candidate, **checks):
             chosen, how = candidate, "rule"
         else:
             row_class = decision.task_class
     if sticky_id:
         # a document's revisions, and a short follow-up, stay on the same model
         candidate = model_service.find(catalogue, sticky_id)
-        if super_agent.usable_for(candidate, **checks):
+        if sticky_id not in skip and super_agent.usable_for(candidate, **checks):
             chosen, how = candidate, "sticky"
     if chosen is None:
         chosen, how = super_agent.pick(
             rules, row_class, catalogue, kind=kind.value, strict=strict,
             allowed=allowed, context_bytes=turn.context_bytes, needs_tools=needs_tools,
-            needs_vision=pictures, default=default,
+            needs_vision=pictures, default=default, skip=skip,
         )
     if chosen is None and strict and mode != super_agent.SUPER_STRICT:
         # no strict-local model here: privacy routing decides on the ordinary pick
@@ -1638,9 +1686,14 @@ async def _super_route(
     )
     if reasoning_mode != super_agent.AUTO:
         route["reasoningMode"] = reasoning_mode
-        if row_class != decision.task_class:
-            # the row the chip moved the turn to (the class stays what the request is)
-            route["row"] = row_class
+    if row_class != decision.task_class:
+        # the row the chip or the material moved the turn to (the class stays what the
+        # request is)
+        route["row"] = row_class
+    wanted = (rules.get(row_class) or {}).get("strictModel" if strict else "model")
+    if wanted and wanted in skip and chosen["id"] != wanted:
+        # the row's model failed lately: the pick went past it rather than wait on it
+        route["skipped"] = wanted
     if strict and mode != super_agent.SUPER_STRICT:
         route["strictReason"] = "personal_data" if personal else "internal_data"
     return chosen, route, effort
@@ -2247,7 +2300,10 @@ _FILE_NOTE = {
     "unreadable": "{name} 읽지 못함",
     "picture_unseen": "{name} 그림 · 이 모델은 보지 못함",
     "reading": "{name} 글자 읽는 중",
+    "watching": "{name} 영상 읽는 중",
 }
+#: A state without its own line (a newer `ContextFile` state) still names the file.
+_FILE_NOTE_OTHER = "{name}"
 
 _NAMES_SHOWN = 6
 
@@ -2268,10 +2324,13 @@ def _file_context_step(step_id: str, subject: str, files: tuple[ContextFile, ...
     short = [file for file in files if file.state not in whole]
     cut = sum(1 for file in short if file.state == "truncated")
     reading = sum(1 for file in short if file.state == "reading")
-    dropped = len(short) - cut - reading
+    watching = sum(1 for file in short if file.state == "watching")
+    dropped = len(short) - cut - reading - watching
     fates = [f"{cut}개 잘림"] if cut else []
     if reading:
         fates.append(f"{reading}개 글자 읽는 중")
+    if watching:
+        fates.append(f"{watching}개 영상 읽는 중")
     if dropped:
         fates.append(f"{dropped}개 빠짐")
     label = (
@@ -2279,7 +2338,10 @@ def _file_context_step(step_id: str, subject: str, files: tuple[ContextFile, ...
         if fates
         else f"{subject} {len(files)}개 반영"
     )
-    notes = [_FILE_NOTE[file.state].format(name=file.name, kept=file.kept_chars) for file in short]
+    notes = [
+        _FILE_NOTE.get(file.state, _FILE_NOTE_OTHER).format(name=file.name, kept=file.kept_chars)
+        for file in short
+    ]
     detail = _named(notes or [file.name for file in files], "개")
     return {
         "id": step_id,
@@ -2950,17 +3012,25 @@ async def create_session(payload: SessionCreate, user: CurrentUser, db: DbSessio
     if payload.routing_mode in _AUTO_MODES:
         await _require_auto_quality_model(user, payload.model)
     routing_mode = payload.routing_mode
-    if routing_mode in _SUPER_MODES:
-        await _require_super_agent()
-        if routing_mode == RoutingMode.super and payload.project_id:
-            routing_mode = await _project_super_mode(user)
+    model = payload.model or ""
+    if routing_mode is None:
+        # nobody picked: the surface's start (Super Agent unless the admin fixed a model);
+        # an agent's own model keeps the conversation on it
+        if agent is not None and agent.model:
+            routing_mode = RoutingMode.manual
+        else:
+            routing_mode, model = await start_mode.starting_mode(
+                payload.kind, user, project_id=payload.project_id, fixed_model=model
+            )
+    elif routing_mode == RoutingMode.super and payload.project_id:
+        routing_mode = await _project_super_mode(user)
     session = ChatSession(
         **({"id": payload.id} if payload.id else {}),
         user_id=user.id,
         kind=payload.kind,
         project_id=payload.project_id,
         agent_id=payload.agent_id,
-        model=payload.model or "",
+        model=model,
         routing_mode=routing_mode,
         reasoning_mode=_stored_reasoning(payload.reasoning_mode),
         render_template_id=(await _agent_template_loaded(db, user, agent, payload.kind))
@@ -3198,12 +3268,20 @@ async def handoff_session(
         if earlier else []
     )
     by_id = {row.id: row for row in carried}
+    # the document starts as any new one would; an agent's own model keeps it on that model
+    handoff_mode = RoutingMode.manual
+    handoff_model = ""
+    if agent is None or not agent.model:
+        handoff_mode, handoff_model = await start_mode.starting_mode(
+            kind, user, project_id=source.project_id
+        )
     target = ChatSession(
         user_id=user.id,
         kind=kind,
         project_id=source.project_id,
         agent_id=source.agent_id,
-        routing_mode=RoutingMode.manual,
+        model=handoff_model,
+        routing_mode=handoff_mode,
         render_template_id=(await _agent_template_loaded(db, user, agent, kind))
         or await _project_render_template(db, source.project_id, kind),
     )
@@ -3495,8 +3573,6 @@ async def patch_session(session_id: str, payload: SessionPatch, user: CurrentUse
         changes["routing_mode"] = RoutingMode.manual
     if changes.get("routing_mode", session.routing_mode) in _AUTO_MODES:
         await _require_auto_quality_model(user, changes.get("model", session.model))
-    if changes.get("routing_mode") in _SUPER_MODES:
-        await _require_super_agent()
     if "render_template_id" in changes:
         if not await user_templates.usable(db, user.id, changes["render_template_id"]):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
@@ -3549,7 +3625,8 @@ async def delete_session(
     await db.exec(delete(Message).where(Message.session_id == session.id))
     # Job rows: no cascade
     await db.exec(delete(Job).where(Job.session_id == session.id))
-    counts["artifacts"] = await _delete_artifacts_of(db, [session.id])
+    kept: set[str] = set()
+    counts["artifacts"] = await _delete_artifacts_of(db, [session.id], kept)
     gone = await delete_session_files(db, [session.id]) if files else 0
     await forget_session_files(db, [session.id])
     if session.index_key:
@@ -3560,6 +3637,7 @@ async def delete_session(
         note=_files_note(counts["files"], gone),
     ))
     await db.commit()
+    office_doc.drop_files(kept)
 
 
 #: conversation uploads stay in the file box; only their search entries go
@@ -3590,11 +3668,18 @@ async def _conversation_counts(db: DbSession, session_ids: list[str]) -> dict[st
     return {"sessions": len(session_ids), "messages": int(messages), "files": int(files)}
 
 
-async def _delete_artifacts_of(db: DbSession, session_ids: list[str]) -> int:
-    """Deletes these conversations' artifacts (versions first); returns the count."""
+async def _delete_artifacts_of(
+    db: DbSession, session_ids: list[str], files: set[str] | None = None
+) -> int:
+    """Deletes these conversations' artifacts (versions first); returns the count. `files`
+    collects the office documents' version files, for the caller to drop after its commit."""
     made = (
         await db.exec(select(Artifact.id).where(col(Artifact.session_id).in_(session_ids)))
     ).all()
+    if made and files is not None:
+        office = (await db.exec(select(Artifact).where(
+            col(Artifact.id).in_(made), col(Artifact.kind).in_(office_doc.FILE_KINDS)))).all()
+        files |= await office_doc.kept_files(db, list(office))
     if made:
         await db.exec(delete(ArtifactVersion).where(col(ArtifactVersion.artifact_id).in_(made)))
         await db.exec(delete(Artifact).where(col(Artifact.id).in_(made)))
@@ -4236,7 +4321,8 @@ async def delete_sessions(
     # Job rows: no cascade
     await db.exec(delete(Job).where(col(Job.session_id).in_(ids)))
 
-    artifacts_deleted = await _delete_artifacts_of(db, ids)
+    kept: set[str] = set()
+    artifacts_deleted = await _delete_artifacts_of(db, ids, kept)
     counts["artifacts"] = artifacts_deleted
     gone = await delete_session_files(db, ids) if payload.files else 0
     await forget_session_files(db, ids)
@@ -4250,6 +4336,7 @@ async def delete_sessions(
         everything=payload.all, note=_files_note(counts["files"], gone),
     ))
     await db.commit()
+    office_doc.drop_files(kept)
     return {"deleted": len(ids), "artifactsDeleted": artifacts_deleted, "filesDeleted": gone}
 
 
@@ -5939,13 +6026,19 @@ async def _send_message(
                       writer=model, strict_local=strict_local)
         if super_route is not None else (None, "default")
     )
+    #: who carries the turn on when its strict-local writer fails mid-turn
+    writer_fallback = (
+        _super_fallback(super_route, user=user, catalogue=catalogue_models, writer=model,
+                        strict_local=strict_local, needs_tools=bool(tools))
+        if kind is SessionKind.chat else None
+    )
     #: the writer's reasoning fields and the answer line's note (the chip, the route's effort)
     turn_reasoning, reasoning_note = _turn_reasoning_fields(
         reasoning_mode, model,
         super_route if super_route is not None
         else (document_routing or {}).get("superAgent") if kind is not SessionKind.chat
         else None,
-        super_rescue, rescue_effort,
+        super_rescue, rescue_effort, writer_fallback,
     )
     if reasoning_note != {"mode": super_agent.AUTO, "effort": "default"}:
         # 자동 with nothing sent is the behaviour before the chip: no note to show
@@ -6725,6 +6818,8 @@ async def _send_message(
                 rescue=super_rescue or await _rescue_model(
                     user=user, catalogue=catalogue_models, writer=model,
                     strict_local=strict_local, outline=outline_model),
+                # a strict-local writer that fails mid-turn: Qwen3.8 Flash carries it on
+                writer_fallback=writer_fallback,
                 calculation_expression=(
                     calculation_policy.direct_calculation_expression(content)
                     if calculation_required and preflight_tool == "calculate" else None
@@ -7223,6 +7318,8 @@ async def _answer_turn(
     calculation_handoff: dict | None = None,
     #: model that writes an empty or announced-only answer once more (`agent.run_turn`)
     rescue: dict | None = None,
+    #: strict-local model that carries the turn on when the writer fails (`agent.run_turn`)
+    writer_fallback: dict | None = None,
     calculation_expression: str | None = None,
     #: server's own first call (`agent.run_turn`)
     preset_call: tuple[str, dict[str, Any]] | None = None,
@@ -7285,6 +7382,8 @@ async def _answer_turn(
     actual_model = model["id"]
     #: the asked model failed over and LiteLLM's fallback answered (`fallback_watch.record`)
     fallback: dict | None = None
+    #: the writer that failed mid-turn before `writer_fallback` carried the turn on
+    failed_writer: dict | None = None
     server_abstention = False
     tool_result_answer = False
     length_check: dict | None = None
@@ -7398,6 +7497,8 @@ async def _answer_turn(
                     if calculation_handoff is not None else {}
                 ),
                 **({"rescue_model": rescue["id"]} if rescue is not None else {}),
+                **({"fallback_model": writer_fallback["id"]}
+                   if writer_fallback is not None else {}),
                 **(
                     {"calculation_expression": calculation_expression}
                     if calculation_expression is not None else {}
@@ -7463,6 +7564,18 @@ async def _answer_turn(
                     routing = {**(routing or {}), "costRouting": cost_routing}
                     # don't leak the agent loop's partial provider-route shape
                     yield chat_service.sse({"type": "model_route", **cost_routing})
+                continue
+            elif event["type"] == "writer_fallback" and writer_fallback is not None:
+                # the strict-local writer failed: the fallback writes the rest; tokens either
+                # spent stay on its own ledger line (`model:<id>:` counters)
+                failed_writer, model = model, writer_fallback
+                actual_model = model["id"]
+                route = (routing or {}).get("superAgent")
+                if isinstance(route, dict):
+                    routing = {**routing, "superAgent": {
+                        **route, "fallbackModel": model["id"],
+                        "fallbackReason": str(event.get("reason") or "failed")}}
+                yield chat_service.sse({"type": "privacy_route", **(routing or {})})
                 continue
             elif event["type"] == "fallback_route":
                 try:
@@ -7637,7 +7750,7 @@ async def _answer_turn(
     # calculation hand-off and a rewrite by the rescue model: each model's price, own ledger
     # line (one line when they are the same model, its tokens counted once)
     partners = [(row, "chat.calculation" if row is calculation_handoff else "chat.completion")
-                for row in (calculation_handoff, rescue) if row is not None]
+                for row in (calculation_handoff, rescue, failed_writer) if row is not None]
     partners = [p for k, p in enumerate(partners)
                 if all(p[0]["id"] != q[0]["id"] for q in partners[:k])]
     partner_credits: list[tuple[dict, str, int]] = []

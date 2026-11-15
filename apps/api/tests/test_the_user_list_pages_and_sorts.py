@@ -10,6 +10,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.models.user import User, UserRole, UserStatus
 from app.routers import admin
+from app.services.credits import next_cycle_reset
 
 _DDL = """
     CREATE TABLE users (
@@ -153,7 +154,9 @@ async def test_tab_counts_follow_the_search_and_the_cards_do_not():
     assert out.summary.users == 25 and out.summary.pending == 5
     assert out.summary.credits_granted == 25_000
     assert out.summary.credits_used == sum((i // 2) * 10 for i in range(25))
-    assert out.summary.next_reset is not None
+    # the service's next 1st, not the oldest stored cycle (T0 + 31 days is long past)
+    assert out.summary.next_reset == next_cycle_reset()
+    assert out.summary.next_reset > datetime.now(UTC)
 
     # "lab" is in the odd addresses only.
     lab = await _page(db, q="LAB")

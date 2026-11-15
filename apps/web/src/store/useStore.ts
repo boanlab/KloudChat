@@ -1,5 +1,6 @@
 import type { OpenArtifact, UploadProgress, WebSearchSetting } from '@/lib/api'
 import { startingMode } from '@/lib/superAgent'
+import { withAccountPicks } from '@/lib/modelPicks'
 import { forgetStoredDraft, purgeStoredDrafts } from '@/lib/drafts'
 import { findUnsent, forgetUnsent, keepUnsent, purgeUnsent, unsentId } from '@/lib/unsentSessions'
 import { create } from 'zustand'
@@ -156,11 +157,14 @@ function queueSessionPersistence(sessionId: string, persist: () => Promise<void>
 
 const noop = () => {}
 
-/** Before the catalogue answers (or from an older server): no Super Agent entry. */
+/** An entry an older server does not offer. */
+const NO_SUPER_OFFER = { available: false, reason: 'no_models' as const, estimate: null }
+
+/** Before the catalogue answers: entries not known yet. */
 const NO_SUPER_AGENT: NonNullable<ModelCatalogue['superAgent']> = {
-  enabled: false,
-  default: { available: false, reason: 'disabled', estimate: null },
-  strict: { available: false, reason: 'disabled', estimate: null },
+  default: { available: false, reason: null, estimate: null },
+  strict: { available: false, reason: null, estimate: null },
+  pending: true,
 }
 
 /** Marks a session as having a turn in flight, with the abort for that turn. */
@@ -366,8 +370,10 @@ interface State {
   /** Strict-local picture model the server uses when the person picked none. */
   strictImageDefault: string
   autoRouting: ModelCatalogue['autoRouting']
-  /** Super Agent entries; both unavailable until the catalogue says otherwise. */
+  /** Super Agent entries; `pending` until the catalogue answers. */
   superAgent: NonNullable<ModelCatalogue['superAgent']>
+  /** How a new chat, report or slides conversation starts (설정 › 시스템 › 모델). */
+  defaultRouting: NonNullable<ModelCatalogue['defaultRoutingByKind']>
   loadModels: () => Promise<void>
 
   // ── session / generation ──────────────────────────────────────────────
@@ -376,8 +382,10 @@ interface State {
   running: Record<string, () => void>
   modelByKind: Record<SessionKind, string>
   setModel: (kind: SessionKind, id: string) => void
-  /** Forgets the home-screen pick for a surface: its new conversations start on Super Agent. */
+  /** Forgets the home-screen pick for a surface: its new conversations start on the admin default. */
   clearModelPick: (kind: SessionKind) => void
+  /** Picks a Super Agent entry as the surface's own start (chat, report, slides). */
+  pickSuperEntry: (kind: SessionKind, entry: 'super' | 'super_strict') => void
   /** One remembered model per av mode; `modelByKind.av` mirrors the current mode's. */
   avModelByMode: Record<AvMode, string>
   /** Changes one conversation's model; the surface default is left alone. */
@@ -725,26 +733,22 @@ function sameFilter(filter: ArtifactFilter): ArtifactFilter {
   return { ...(kind ? { kind } : {}), ...(q ? { q } : {}) }
 }
 
-const MODEL_STORAGE_KEY = 'kchat-models'
-
-/** The picks this browser kept, under the account's own where it has any. */
-function readRememberedModels(
-  account: Partial<Record<SessionKind, string>> = {},
-): Partial<Record<SessionKind, string>> | null {
-  let local: Partial<Record<SessionKind, string>> = {}
-  try {
-    const raw = localStorage.getItem(MODEL_STORAGE_KEY)
-    local = raw ? (JSON.parse(raw) as Partial<Record<SessionKind, string>>) : {}
-  } catch {
-    local = {}
-  }
-  const merged = { ...local, ...account }
-  return Object.keys(merged).length ? merged : null
+/**
+ * The model picks of the signed-in account: one source of truth on every device. The server copy
+ * (`preferences.modelByKind`) is what the settings page, the composer's start chip and the
+ * server's start rule all read; this browser keeps none of its own.
+ */
+function accountPicks(
+  account: Partial<Record<SessionKind, string>> | undefined,
+): Partial<Record<SessionKind, string>> {
+  return { ...(account ?? {}) }
 }
 
-/** Keeps the picks on the account; a failure leaves the browser copy, which still works here. */
+/** Keeps the picks on the account, the one copy every device reads. */
+let accountWrites: Promise<unknown> = Promise.resolve()
 function rememberOnAccount(patch: Partial<Preferences>) {
-  void auth.updateMe({ preferences: patch }).catch(() => {})
+  // one after another, so two quick picks reach the server in the order they were made
+  accountWrites = accountWrites.then(() => auth.updateMe({ preferences: patch })).catch(() => {})
 }
 
 type AvMode = 'audio' | 'video'
@@ -791,14 +795,7 @@ function reconcileAvModels(
   return next
 }
 
-const initialModelByKind: Record<SessionKind, string> = (() => {
-  const blank = { chat: '', report: '', slides: '', image: '', av: '' }
-  try {
-    return { ...blank, ...JSON.parse(localStorage.getItem(MODEL_STORAGE_KEY) || '{}') }
-  } catch {
-    return blank
-  }
-})()
+const initialModelByKind: Record<SessionKind, string> = { chat: '', report: '', slides: '', image: '', av: '' }
 
 // `system` is stored as-is, never the resolved colour, so the OS setting keeps applying.
 const darkQuery = window.matchMedia('(prefers-color-scheme: dark)')
@@ -960,14 +957,16 @@ function reconcileDefaults(
   account: Partial<Record<SessionKind, string>> = {},
 ): Record<SessionKind, string> {
   const next = { ...current }
-  const remembered = readRememberedModels(account)
+  const remembered = accountPicks(account)
   for (const kind of Object.keys(next) as SessionKind[]) {
-    const kept = remembered?.[kind]
+    const kept = remembered[kind]
     if (kept && available.some((m) => m.id === kept && m.kinds.includes(kind))) {
       next[kind] = kept
       continue
     }
-    if (available.some((m) => m.id === next[kind] && m.kinds.includes(kind))) continue
+    // no pick of the account's own: the surface follows the admin's default, not a model left over
+    // av follows the mode's own remembered model (`avModelByMode`), set when the mode changes
+    if (kind === 'av' && available.some((m) => m.id === next.av && m.kinds.includes('av'))) continue
     const usable = available
       .filter((m) => m.kinds.includes(kind))
       // Catalogue order; a strict-local model only when nothing else serves the surface.
@@ -1010,15 +1009,20 @@ function turnReasoning(get: Get, sessionId: string): ReasoningMode {
 
 /** The mode a new conversation starts in (`startingMode`), from this store's state. */
 export function startingRoutingMode(
-  s: Pick<State, 'superAgent' | 'user'>,
+  s: Pick<State, 'superAgent' | 'user' | 'defaultRouting' | 'agents'>,
   kind: SessionKind,
   agentId?: string | null,
+  projectId?: string | null,
 ): Session['routingMode'] {
+  const agent = agentId ? s.agents.find((a) => a.id === agentId) : undefined
   return startingMode({
     kind,
-    agentId,
+    // an agent not loaded yet is taken to fix its model: the server decides
+    agentModel: agentId ? (agent ? agent.model : 'unknown') : null,
     superAgent: s.superAgent,
     homePick: s.user?.preferences.modelByKind?.[kind],
+    defaultRouting: s.defaultRouting,
+    projectId,
   })
 }
 
@@ -1238,6 +1242,8 @@ export const useStore = create<State>((set, get) => ({
 
   /** Session handed over by a mailed signup-verification link. */
   adoptSession: (session) => {
+    // Signed in now: the next load asks for the refresh cookie the server just set.
+    rememberSignedOut(false)
     setAccessToken(session.accessToken, session.expiresIn)
     set((state) => ({ authenticated: true, user: session.user, authLoading: false, authError: null,
       accountEpoch: state.accountEpoch + 1, messageEdit: null, messageEditBusy: false }))
@@ -1252,7 +1258,9 @@ export const useStore = create<State>((set, get) => ({
     try {
       const { user, session } = await auth.signup(email, password, name)
       if (session) {
-        // `open` signup mode, or the bootstrap admin.
+        // `open` signup mode, or the bootstrap admin. The flag a sign-out left would keep the
+        // next load from asking for the refresh cookie signup just set.
+        rememberSignedOut(false)
         setAccessToken(session.accessToken, session.expiresIn)
         set({ authenticated: true, user: session.user, authLoading: false })
         scheduleRefresh(session.expiresIn, () => void renewSession())
@@ -1351,6 +1359,7 @@ export const useStore = create<State>((set, get) => ({
   litellmAvailable: true,
   strictImageDefault: '',
   superAgent: NO_SUPER_AGENT,
+  defaultRouting: {},
   autoRouting: {
     enabled: false,
     available: false,
@@ -1478,6 +1487,7 @@ export const useStore = create<State>((set, get) => ({
         strictImageDefault,
         autoRouting,
         superAgent,
+        defaultRoutingByKind,
       } = await modelsApi.list()
       set((s) => ({
         models: live,
@@ -1488,7 +1498,11 @@ export const useStore = create<State>((set, get) => ({
         ),
         litellmAvailable,
         strictImageDefault: strictImageDefault ?? '',
-        superAgent: superAgent ?? NO_SUPER_AGENT,
+        // an older server without the entries: none to offer
+        superAgent: superAgent
+          ? { default: superAgent.default, strict: superAgent.strict, projectStrict: superAgent.projectStrict ?? false }
+          : { default: NO_SUPER_OFFER, strict: NO_SUPER_OFFER },
+        defaultRouting: defaultRoutingByKind ?? {},
         autoRouting: autoRouting ?? {
           enabled: false,
           available: false,
@@ -1509,12 +1523,6 @@ export const useStore = create<State>((set, get) => ({
           s.user?.preferences.modelByKind,
         ),
       }))
-      // An account without picks adopts this browser's once; then the account copy leads.
-      const prefs = get().user?.preferences
-      if (prefs && !Object.keys(prefs.modelByKind ?? {}).length) {
-        const local = readRememberedModels()
-        if (local) rememberOnAccount({ modelByKind: local, avModelByMode: readRememberedAvModels() })
-      }
     } catch {
       // Keep what is loaded. `litellmAvailable` describes the list, not this request.
       set((s) => ({
@@ -1547,8 +1555,7 @@ export const useStore = create<State>((set, get) => ({
     set((s) => {
       const next = { ...s.modelByKind, [kind]: id }
       // Only picks are remembered: a surface left on its default keeps following the admin's.
-      const picks = { ...readRememberedModels(s.user?.preferences.modelByKind), [kind]: id }
-      localStorage.setItem(MODEL_STORAGE_KEY, JSON.stringify(picks))
+      const picks = { ...accountPicks(s.user?.preferences.modelByKind), [kind]: id }
       // An av pick is also remembered for its own mode.
       const modality = kind === 'av' ? s.models.find((m) => m.id === id)?.modality : undefined
       const byMode =
@@ -1565,16 +1572,17 @@ export const useStore = create<State>((set, get) => ({
         ...(s.user ? { user: { ...s.user, preferences: { ...s.user.preferences, ...kept } } } : {}),
       }
     }),
+  pickSuperEntry: (kind, entry) =>
+    set((s) => {
+      const picks = { ...accountPicks(s.user?.preferences.modelByKind), [kind]: entry }
+      if (s.user) rememberOnAccount({ modelByKind: picks })
+      return s.user ? { user: { ...s.user, preferences: { ...s.user.preferences, modelByKind: picks } } } : {}
+    }),
   clearModelPick: (kind) =>
     set((s) => {
-      const picks = { ...readRememberedModels(s.user?.preferences.modelByKind) }
+      const picks = accountPicks(s.user?.preferences.modelByKind)
       if (!(kind in picks)) return {}
       delete picks[kind]
-      try {
-        localStorage.setItem(MODEL_STORAGE_KEY, JSON.stringify(picks))
-      } catch {
-        // storage unavailable: the account keeps it
-      }
       if (s.user) rememberOnAccount({ modelByKind: picks })
       return s.user ? { user: { ...s.user, preferences: { ...s.user.preferences, modelByKind: picks } } } : {}
     }),
@@ -1781,7 +1789,7 @@ export const useStore = create<State>((set, get) => ({
       id: unsentId(), kind, title: tr('새 작업'), projectId, agentId, pipelineId: null,
       // A session model outranks the agent's, so an agent that pins one gets none here.
       model: agent?.model ? '' : (state.modelByKind[kind] ?? ''),
-      routingMode: routingMode ?? startingRoutingMode(state, kind, agentId),
+      routingMode: routingMode ?? startingRoutingMode(state, kind, agentId, projectId),
       // the home screen's chip goes with the conversation it starts
       reasoningMode: state.reasoningPick[kind] && state.reasoningPick[kind] !== 'auto'
         ? state.reasoningPick[kind] : null,
@@ -3126,6 +3134,13 @@ export const useStore = create<State>((set, get) => ({
   replaceLitellmKey: (id, key) => applyUserChange(set, get, adminApi.replaceLitellmKey(id, key)),
 }))
 
+useStore.subscribe((s, prev) => {
+  const picks = s.user?.preferences.modelByKind
+  if (picks === prev.user?.preferences.modelByKind && s.models === prev.models) return
+  const next = withAccountPicks(s.modelByKind, s.models, picks)
+  if (next !== s.modelByKind) useStore.setState({ modelByKind: next })
+})
+
 /**
  * Admin mutations return the updated row; a self-edit also updates `user`. A change that can
  * move the row (status, name, credits) reloads the page: tab counts and order follow it.
@@ -3241,7 +3256,11 @@ function turnFailure(err: unknown): string {
   const named =
     err instanceof ApiError && err.status < 500 ? refusalSentence(errorCode(err), tr) : undefined
   if (named) return named
-  if (err instanceof ApiError && err.status >= 500) {
+  // A 500 is our server failing, not the model; 502–504 is a gateway in front of the turn.
+  if (err instanceof ApiError && err.status === 500) {
+    return '서버 오류로 요청을 처리하지 못했습니다. 잠시 후 다시 시도하세요.'
+  }
+  if (err instanceof ApiError && err.status > 500) {
     return '모델 서버가 응답하지 않습니다. 잠시 후 다시 시도하세요.'
   }
   return '응답을 받지 못했습니다. 잠시 후 다시 시도하세요.'
@@ -3410,15 +3429,18 @@ function retold(step: Step): Partial<Step> {
     const short = step.files.filter((file) => file.state !== 'included' && file.state !== 'picture')
     const cut = short.filter((file) => file.state === 'truncated').length
     const reading = short.filter((file) => file.state === 'reading').length
-    const dropped = short.length - cut - reading
+    const watching = short.filter((file) => file.state === 'watching').length
+    const dropped = short.length - cut - reading - watching
     const fates = [
       ...(cut ? [tr('{n}개 잘림').replace('{n}', String(cut))] : []),
       ...(reading ? [tr('{n}개 글자 읽는 중').replace('{n}', String(reading))] : []),
+      ...(watching ? [tr('{n}개 영상 읽는 중').replace('{n}', String(watching))] : []),
       ...(dropped ? [tr('{n}개 빠짐').replace('{n}', String(dropped))] : []),
     ]
     const notes: Record<string, string> = {
       omitted: '{name} 분량을 넘겨 제외',
       reading: '{name} 글자 읽는 중',
+      watching: '{name} 영상 읽는 중',
       picture_unseen: '{name} 그림 · 이 모델은 보지 못함',
     }
     const note = (file: NonNullable<Step['files']>[number]) =>

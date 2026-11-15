@@ -6,7 +6,7 @@ title: PowerPoint 문서
 
 대화 옆에 PowerPoint 편집기를 띄우고, 받은 발표 파일이나 회사 템플릿 같은 PowerPoint 문서(`.pptx`)를 챗으로 채우고 고칩니다. 같은 파일을 편집기에서 직접 고칠 수도 있습니다.
 
-KloudChat이 처음부터 쓰는 발표 자료는 [슬라이드](slides) 화면이 기본이며, 그 결과도 PPTX로 내려받을 수 있습니다. 이 쪽은 PowerPoint 파일 자체를 다루어야 할 때 씁니다.
+KloudChat이 처음부터 쓰는 슬라이드는 [슬라이드](slides) 화면이 기본이며, 그 결과도 PPTX로 내려받을 수 있습니다. 이 쪽은 PowerPoint 파일 자체를 다루어야 할 때 씁니다.
 
 ## 시작하기
 

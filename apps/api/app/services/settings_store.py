@@ -83,6 +83,20 @@ MODEL_TITLE = "models.title"
 #: `run_code` Python writer; fallback gets one more try
 MODEL_CODE = "models.code"
 MODEL_CODE_FALLBACK = "models.code_fallback"
+#: How a new chat, report or slides conversation starts: `super` or `super_strict` (Super Agent
+#: picks per turn) or `manual` (the surface's model above). Report and slides may store "" to
+#: follow chat. Unset: `super` (owner decision 2026-11-14: Super Agent is the default).
+#: The surface's model stays the fallback when Super Agent has nothing usable.
+ROUTING_CHAT = "routing.chat"
+ROUTING_REPORT = "routing.report"
+ROUTING_SLIDES = "routing.slides"
+ROUTING_KEYS: dict[str, str] = {
+    "chat": ROUTING_CHAT,
+    "report": ROUTING_REPORT,
+    "slides": ROUTING_SLIDES,
+}
+#: The two Super Agent start modes an admin may pick as a surface default.
+SUPER_START_MODES = ("super", "super_strict")
 #: "1" think, "0" don't
 THINKING_SELF_HOSTED = "thinking.self_hosted"
 THINKING_EXTERNAL = "thinking.external"
@@ -389,6 +403,30 @@ class ModelRoles:
     code_fallback: str
     self_hosted_thinking: bool
     external_thinking: bool
+    #: start mode per routed surface (`ROUTING_CHAT`), report and slides already resolved
+    #: through chat: `super`, `super_strict` or `manual`
+    chat_start: str = "super"
+    report_start: str = "super"
+    slides_start: str = "super"
+    #: report and slides follow chat for both model and mode (stored "")
+    report_follows_chat: bool = False
+    slides_follows_chat: bool = False
+
+    def start(self, kind: str) -> str:
+        """How a new conversation of `kind` starts: `super`, `super_strict` or `manual`."""
+        return {
+            "chat": self.chat_start,
+            "report": self.report_start,
+            "slides": self.slides_start,
+        }.get(kind, "manual")
+
+    def surface_default(self, kind: str) -> str:
+        """The admin's default for `kind` as one value: a Super Agent mode, a model id, or ""
+        (report and slides following chat)."""
+        if kind in ("report", "slides") and getattr(self, f"{kind}_follows_chat"):
+            return ""
+        start = self.start(kind)
+        return start if start in SUPER_START_MODES else getattr(self, kind)
 
 
 def model_roles_from(values: dict[str, str]) -> ModelRoles:
@@ -403,7 +441,21 @@ def model_roles_from(values: dict[str, str]) -> ModelRoles:
         raw = values.get(key)
         return env_value if raw is None else raw.strip() == "1"
 
+    def start(key: str) -> str:
+        raw = values.get(key)
+        if raw is None:
+            return "super"
+        raw = raw.strip()
+        return raw if raw in (*SUPER_START_MODES, "manual", "") else "super"
+
+    chat_start = start(ROUTING_CHAT) or "super"
+    report_raw, slides_raw = start(ROUTING_REPORT), start(ROUTING_SLIDES)
     return ModelRoles(
+        chat_start=chat_start,
+        report_start=report_raw or chat_start,
+        slides_start=slides_raw or chat_start,
+        report_follows_chat=report_raw == "",
+        slides_follows_chat=slides_raw == "",
         chat=pick(MODEL_CHAT),
         report=pick(MODEL_REPORT),
         slides=pick(MODEL_SLIDES),

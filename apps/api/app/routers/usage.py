@@ -847,7 +847,6 @@ async def get_governance(admin: AdminUser, db: DbSession):
         "adaptiveQualityEnabled": policy.adaptive_quality_enabled,
         "internalDataStrictLocal": policy.internal_data_strict_local,
         "strictLocalWebSearch": policy.strict_local_web_search or "ask",
-        "superAgentEnabled": policy.super_agent_enabled,
         "superAgentRules": super_agent.normalise_rules(policy.super_agent_rules),
         "superAgentDefaultRules": super_agent.DEFAULT_RULES,
         "adaptiveQualityModelIds": list(policy.adaptive_quality_model_ids or []),
@@ -880,6 +879,9 @@ async def _validated_super_rules(raw: dict | None) -> dict:
     changed = super_agent.stored_rules(raw)
     for name, rule in changed.items():
         kind = "report" if name == "document" else "chat"
+        # an override row's empty column keeps the class's own row: nothing to check
+        rule = {key: value for key, value in rule.items()
+                if value or key == "effort" or name not in super_agent.OVERRIDE_ROWS}
         model = catalogue.get(merged[name]["model"]) if "model" in rule else None
         if "model" in rule and (model is None or kind not in model.get("kinds", [])):
             raise HTTPException(

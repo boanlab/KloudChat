@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { filesApi, type FileRow, type OfficeKind } from '@/lib/api'
+import { filesApi, type FileRow, type FileSort, type OfficeKind, type SortDir } from '@/lib/api'
 
 export type FileOrigin = 'upload' | 'generated'
+/** The file box's tabs: files by origin, and the documents worked on (「작업 문서」). */
+export type FileBoxTab = FileOrigin | 'working'
+export type FileBoxCounts = Record<FileOrigin, number> & { working?: number }
 
 /** Rows per file-box page. */
 export const FILE_PAGE = 50
@@ -10,9 +13,15 @@ export const FILE_PAGE = 50
  * The account's files of one origin, a page at a time, uploaded and made in conversations alike;
  * agents' knowledge left out. The name search runs on the server, so it reaches every file.
  */
-export function useFileBox(enabled = true, origin: FileOrigin = 'upload', query = '') {
+export function useFileBox(
+  enabled = true,
+  origin: FileOrigin = 'upload',
+  query = '',
+  sort: FileSort = 'created',
+  dir: SortDir = 'desc',
+) {
   const [rows, setRows] = useState<FileRow[]>([])
-  const [counts, setCounts] = useState<Record<FileOrigin, number>>({ upload: 0, generated: 0 })
+  const [counts, setCounts] = useState<FileBoxCounts>({ upload: 0, generated: 0 })
   const [total, setTotal] = useState(0)
   const [next, setNext] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -31,10 +40,10 @@ export function useFileBox(enabled = true, origin: FileOrigin = 'upload', query 
     setFailed(false)
     setMoreFailed(false)
     try {
-      const page = await filesApi.page({ box: true, origin, q, limit: FILE_PAGE })
+      const page = await filesApi.page({ box: true, origin, q, sort, dir, limit: FILE_PAGE })
       if (ticket !== asked.current) return
       setRows(page.items)
-      setHeldFor(`${origin}|${q}`)
+      setHeldFor(`${origin}|${q}|${sort}|${dir}`)
       setCounts(page.counts)
       setTotal(page.total)
       setNext(page.next)
@@ -43,7 +52,7 @@ export function useFileBox(enabled = true, origin: FileOrigin = 'upload', query 
     } finally {
       if (ticket === asked.current) setLoading(false)
     }
-  }, [origin, q])
+  }, [origin, q, sort, dir])
 
   const loadMore = useCallback(async () => {
     if (!next || loadingMore) return
@@ -51,7 +60,7 @@ export function useFileBox(enabled = true, origin: FileOrigin = 'upload', query 
     setLoadingMore(true)
     setMoreFailed(false)
     try {
-      const page = await filesApi.page({ box: true, origin, q, cursor: next, limit: FILE_PAGE })
+      const page = await filesApi.page({ box: true, origin, q, sort, dir, cursor: next, limit: FILE_PAGE })
       if (ticket !== asked.current) return
       setRows((held) => [...held, ...page.items.filter((row) => !held.some((h) => h.id === row.id))])
       setCounts(page.counts)
@@ -62,7 +71,7 @@ export function useFileBox(enabled = true, origin: FileOrigin = 'upload', query 
     } finally {
       setLoadingMore(false)
     }
-  }, [next, loadingMore, origin, q])
+  }, [next, loadingMore, origin, q, sort, dir])
 
   useEffect(() => {
     if (!enabled) return
@@ -94,7 +103,7 @@ export function useFileBox(enabled = true, origin: FileOrigin = 'upload', query 
   /** A fresher copy of a row (its scan or video was read meanwhile). */
   const updateRow = (row: FileRow) => setRows((held) => held.map((h) => (h.id === row.id ? row : h)))
 
-  const fresh = heldFor === `${origin}|${q}`
+  const fresh = heldFor === `${origin}|${q}|${sort}|${dir}`
   return { rows: fresh ? rows : [], loading: loading || (!fresh && !failed), counts, total, hasMore: fresh && next !== null, loadingMore, failed, moreFailed, load, loadMore, removeRows, addRow, updateRow }
 }
 

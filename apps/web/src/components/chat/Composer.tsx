@@ -85,7 +85,7 @@ const placeholders: Record<SessionKind, string> = {
 // Mirrors `imagegen.STYLE_CHOICES`. The first group is drawn by the picture model; the
 // second is drawn as shapes or a chart (exact, editable text), not by the picture model.
 const STYLE_GROUPS: { label?: string; options: string[] }[] = [
-  { label: '그림', options: ['자동', '사진', '일러스트', '인포그래픽', '수채화'] },
+  { label: '이미지', options: ['자동', '사진', '일러스트', '인포그래픽', '수채화'] },
   { label: '정확한 도식', options: ['구조도', '흐름도', '개념도', '차트'] },
   { options: ['없음'] },
 ]
@@ -982,13 +982,14 @@ export function Composer({
     jobs,
     uploadFile,
     newSession,
-    clearModelPick,
+    pickSuperEntry,
     setSessionSkills,
     setSessionRoutingMode,
     setSessionReasoning,
     reasoningPick,
     setReasoningPick,
     superAgent,
+    defaultRouting,
     skillStore,
     skillStoreLoaded,
     loadSkillStore,
@@ -1005,6 +1006,11 @@ export function Composer({
   const project = projects.find((p) => p.id === projectId)
   const effectiveSessionId = sessionId ?? reusableSessionId
   const session = sessions.find((candidate) => candidate.id === effectiveSessionId)
+  // Nothing sent yet and no agent: what is picked here is the person's start for this surface too
+  // (the home screen turns into such a conversation as soon as a Super Agent entry is picked).
+  const startPick = !session
+    ? !sessionId
+    : !session.agentId && session.messages.length === 0 && !session.messageCount
   // Nothing sent yet (the home screen, /new/:kind, a project's start, any empty session):
   // the same 형식·템플릿 chips and first-send options as the home screen.
   const opened = sessionId ? sessions.find((candidate) => candidate.id === sessionId) : undefined
@@ -2311,25 +2317,29 @@ export function Composer({
       key={editing ? 'editing' : 'normal'}
       kind={kind}
       sessionId={sessionId ?? reusableSessionId}
+      projectId={projectId}
       modality={kind === 'av' ? (avOptions.mode === 'video' ? 'video' : 'audio') : undefined}
+      homePick={startPick}
       onEnableAuto={async (mode) => {
         setChatError(null)
         try {
           let id = sessionId ?? reusableSessionId
           if (!id) {
-            // Super Agent picked on the home screen: new conversations start on it again
-            if (mode === 'super') clearModelPick(kind)
+            // a Super Agent entry picked on the home screen is this surface's start from now on
+            if (isSuperMode(mode)) pickSuperEntry(kind, mode)
             id = await newSession(kind, { projectId, routingMode: mode })
             carriedComposer = heldComposer(id)
             setReusableSessionId(id)
             navigate(`/s/${id}`, { replace: true })
           } else {
+            // the home screen's unsent conversation: a Super Agent entry is the start from now on too
+            if (startPick && isSuperMode(mode)) pickSuperEntry(kind, mode)
             await setSessionRoutingMode(id, mode)
           }
         } catch (error) {
           setChatError(
             refusalSentence(errorCode(error), t) ??
-              errorMessage(error, t('Super Agent를 켜지 못했습니다. 잠시 후 다시 시도하세요.')),
+              errorMessage(error, t('Super Agent로 바꾸지 못했습니다. 잠시 후 다시 시도하세요.')),
           )
         }
       }}
@@ -2339,7 +2349,7 @@ export function Composer({
   )
   // The reasoning chip: the conversation's, else the home screen's pick for the next one.
   const laneMode = session?.routingMode ?? (offersReasoning(kind)
-    ? startingRoutingMode({ superAgent, user }, kind, null)
+    ? startingRoutingMode({ superAgent, user, defaultRouting, agents }, kind, null, projectId)
     : undefined)
   const reasoningChip = offersReasoning(kind) && !isMedia ? (
     <ReasoningChip
@@ -2717,7 +2727,7 @@ export function Composer({
                 ? t('이 모델은 이 조합을 만들지 않습니다')
                 : kind === 'image' && FIGURE_STYLES[imageOptions.style]
                   // A figure is drawn by the text model, not priced as a picture.
-                  ? t('도식은 글 모델이 씁니다 · 그림 요금이 아닙니다')
+                  ? t('도식은 글 모델이 씁니다 · 이미지 요금이 아닙니다')
                   : t('예상 {n} 크레딧').replace('{n}', estimate.toLocaleString())}
             </span>
           </div>
@@ -2813,14 +2823,22 @@ export function Composer({
             <div className="ml-auto flex min-w-0 items-center gap-1">
               {contextGauge}
               {reasoningChip}
-              {modelPicker}
+              {/* A narrow column (a document open beside it): the model's name shortens inside the box. */}
+              <span className="flex min-w-0 shrink [&>fieldset>div]:min-w-0 [&>fieldset>div]:max-w-full [&>fieldset>div]:shrink [&_button]:max-w-full" data-testid="composer-model-slot">{modelPicker}</span>
               {sendButton}
             </div>
           </div>
         )}
       </div>
       {/* The phone's line has no room for the model; it sits just under the box. */}
-      {phone && modelPicker && <div className="mt-1 flex items-center justify-end gap-1">{contextGauge}{reasoningChip}{modelPicker}</div>}
+      {/* Wraps rather than overflowing: right-aligned content wider than the row ran past the left gutter. */}
+      {phone && modelPicker && (
+        <div className="mt-1 flex min-w-0 flex-wrap items-center justify-end gap-1" data-testid="composer-phone-row">
+          {contextGauge}
+          {reasoningChip}
+          <span className="flex min-w-0 max-w-full [&>fieldset>div]:max-w-full [&>fieldset>div]:min-w-0 [&>fieldset>div]:shrink [&_button]:max-w-full">{modelPicker}</span>
+        </div>
+      )}
       {mediaError && (
         <p
           role="status"
@@ -2880,7 +2898,7 @@ export function Composer({
         {busy && isMedia
             ? t('생성 중입니다 — 완료되면 위 카드가 결과로 바뀝니다')
             : kind === 'image'
-              ? t('Enter로 생성 · 만든 그림은 아티팩트에 쌓입니다')
+              ? t('Enter로 생성 · 만든 이미지는 아티팩트에 쌓입니다')
               : kind === 'av' && avOptions.mode === 'audio'
                 ? t('Enter로 생성 · 음성과 음악은 아티팩트에 쌓입니다')
                 : kind === 'av'

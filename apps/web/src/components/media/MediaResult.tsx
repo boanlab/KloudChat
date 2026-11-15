@@ -100,7 +100,7 @@ export function MediaResult({
           {images.some((img) => img.source) && (
             <div className="mt-2 max-w-md space-y-1">
               {images.filter((img) => img.caption).map((img) => (
-                <p key={img.id} className="text-sm text-muted">{t('그림')}. {img.caption}</p>
+                <p key={img.id} className="text-sm text-muted">{t('이미지')}. {img.caption}</p>
               ))}
               <div className="flex flex-wrap items-center gap-1">
                 {images.filter((img) => img.source).map((img) => (
@@ -129,8 +129,8 @@ export function MediaResult({
                 download={`${(img.prompt || 'image').slice(0, 40)}${i > 0 ? `-${i + 1}` : ''}.png`}
                 aria-label={
                   images.length > 1
-                    ? t('{n}번째 그림 내려받기').replace('{n}', String(i + 1))
-                    : t('그림 내려받기')
+                    ? t('{n}번째 이미지 내려받기').replace('{n}', String(i + 1))
+                    : t('이미지 내려받기')
                 }
               >
                 <Download size={13} />

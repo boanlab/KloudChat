@@ -150,7 +150,6 @@ class GovernanceIn(Wire):
     internal_data_strict_local: bool | None = None
     #: strict-local turns' web search: `ask` each time, `allow` (queries only) or `off`
     strict_local_web_search: Literal["ask", "allow", "off"] | None = None
-    super_agent_enabled: bool | None = None
     #: class → {model, strictModel, effort}; validated against the live catalogue
     super_agent_rules: dict[str, dict[str, str]] | None = Field(default=None, max_length=20)
     outline_model_id: str | None = Field(default=None, max_length=200)
@@ -177,6 +176,18 @@ class UserSummary(Wire):
     pending: int = 0
     credits_granted: int = 0
     credits_used: int = 0
+    next_reset: datetime | None = None
+
+
+class UserOverview(Wire):
+    """One account in the admin detail view: the row's fields plus what it holds."""
+
+    user: UserOut
+    sessions: int = 0
+    projects: int = 0
+    files: int = 0
+    artifacts: int = 0
+    #: when this account's credits refill (its own cycle, else the service's next 1st)
     next_reset: datetime | None = None
 
 

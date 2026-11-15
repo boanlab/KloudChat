@@ -8,6 +8,7 @@ import { Badge, Button, Card, EmptyState, Field, Input, LoadingState, Modal, Pag
 import { LoadMore } from '@/components/ui/ShowMore'
 import {
   adminPublicationsApi,
+  ApiError,
   errorMessage,
   type AdminPublication,
   type BotChannels,
@@ -200,6 +201,8 @@ function ReviewView({ id }: { id: string }) {
   const refreshBadge = useBotAttention((s) => s.refresh)
   const [data, setData] = useState<PublicationReview | null>(null)
   const [failed, setFailed] = useState(false)
+  // 404: no such publication (a removed bot, a mistyped address) — not a failed refresh.
+  const [missing, setMissing] = useState(false)
   const [deciding, setDeciding] = useState<Decision | null>(null)
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
@@ -210,8 +213,12 @@ function ReviewView({ id }: { id: string }) {
       (found) => {
         setData(found)
         setFailed(false)
+        setMissing(false)
       },
-      () => setFailed(true),
+      (err) => {
+        if (err instanceof ApiError && err.status === 404) setMissing(true)
+        else setFailed(true)
+      },
     )
   }, [id])
   useEffect(load, [load])
@@ -241,6 +248,21 @@ function ReviewView({ id }: { id: string }) {
       {t('공개 챗봇')}
     </Link>
   )
+  if (missing) {
+    return (
+      <>
+      <TopBar left={<span className="text-base font-medium">{t('공개 챗봇')}</span>} />
+      <PageBody>
+        <EmptyState
+          icon={<Bot size={18} />}
+          title={t('공개 신청을 찾을 수 없습니다')}
+          description={t('지워졌거나 주소가 잘못되었습니다.')}
+          action={<Link className="text-accent" to="/admin/publications">{t('목록으로')}</Link>}
+        />
+      </PageBody>
+      </>
+    )
+  }
   if (failed) {
     return (
       <PageBody>

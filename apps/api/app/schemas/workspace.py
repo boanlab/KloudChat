@@ -222,6 +222,35 @@ class ArtifactOut(Wire):
         return out
 
 
+class WorkingDocOut(Wire):
+    """A document the person works on (`GET /artifacts/working`): one row per document, its
+    versions counted by `version`; where it belongs named, so the list needs no other call."""
+
+    id: str
+    kind: ArtifactKind
+    title: str
+    #: the current version, which is also how many versions it has had
+    version: int
+    #: null when it has no conversation, or its conversation is gone
+    session_id: str | None
+    session_title: str | None = None
+    project_id: str | None
+    project_name: str | None = None
+    project_emoji: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class WorkingDocPage(Wire):
+    """`GET /artifacts/working`: `total` counts the whole filter, `counts` each kind over the
+    same search, the kind filter aside."""
+
+    items: list[WorkingDocOut]
+    total: int
+    next: str | None = None
+    counts: dict[str, int] = Field(default_factory=dict)
+
+
 class ArtifactIn(Wire):
     kind: ArtifactKind
     title: str = ""

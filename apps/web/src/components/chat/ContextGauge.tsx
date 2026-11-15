@@ -98,7 +98,12 @@ export function ContextGauge({
   const attachmentsKey = attachmentIds.join(',')
   // the writing surfaces: a report's and a deck's turns read the same context as a chat's
   const enabled = kind === 'chat' || kind === 'report' || kind === 'slides'
-  const started = !!session
+  // A conversation held in the browser (`unsent`) has no server row until its first send: it is
+  // counted as a new one, from its project and agent, not asked for by an id the server lacks.
+  const started = !!session && !session.unsent
+  const askedId = started ? sessionId : null
+  const startProjectId = started ? undefined : (session?.projectId ?? projectId ?? null)
+  const startAgentId = started ? undefined : (session?.agentId ?? null)
   // the question the server counts with is the one typed when it is asked; later keystrokes
   // are counted here (`withDraft`)
   const draftRef = useRef(draft)
@@ -111,9 +116,10 @@ export function ContextGauge({
     const timer = window.setTimeout(() => {
       sessionsApi
         .contextUsage({
-          sessionId,
+          sessionId: askedId,
           kind: kind === 'report' || kind === 'slides' ? kind : 'chat',
-          projectId: started ? undefined : projectId ?? null,
+          projectId: startProjectId,
+          agentId: startAgentId,
           model: modelId || null,
           draft: draftRef.current,
           attachments: attachmentsKey ? attachmentsKey.split(',') : [],
@@ -125,7 +131,7 @@ export function ContextGauge({
       live = false
       window.clearTimeout(timer)
     }
-  }, [enabled, kind, sessionId, started, projectId, modelId, attachmentsKey, messageCount, streaming])
+  }, [enabled, kind, askedId, started, startProjectId, startAgentId, modelId, attachmentsKey, messageCount, streaming])
 
   const shown = open || hover
   const measure = useCallback(() => {

@@ -95,7 +95,7 @@ type Lane = {
 function superReason(reason: string | null, t: (s: string) => string): string {
   return reason === 'no_models'
     ? t('이 계정에서 쓸 수 있는 모델이 표에 없습니다.')
-    : t('관리자가 Super Agent를 켜지 않았습니다.')
+    : t('모델 목록을 불러오는 중입니다.')
 }
 
 /** 「답 하나에 보통 0~120 크레딧」; free when every class runs on a self-hosted model. */
@@ -116,8 +116,10 @@ export function ModelPicker({
   variant = 'toolbar',
   label,
   modality,
+  projectId,
   onEnableAuto,
   onBusyChange,
+  homePick = false,
 }: {
   kind: SessionKind
   /** When set, the picker reads and writes this session's model. */
@@ -128,10 +130,14 @@ export function ModelPicker({
   label?: string
   /** Narrows `av` models to audio or video. */
   modality?: ModelInfo['modality']
+  /** The project a new conversation would start in (its strict-local rule shows before sending). */
+  projectId?: string | null
   /** Enables Auto routing; on `/new/chat` the composer creates the session first. */
   onEnableAuto?: (mode: RoutingMode) => void | Promise<void>
   /** Reports an in-flight selection so a turn does not race it. */
   onBusyChange?: (busy: boolean) => void
+  /** The home screen's composer (its session, if any, is unsent): a pick is the person's start too. */
+  homePick?: boolean
 }) {
   const t = useT()
   const field = variant === 'field'
@@ -144,11 +150,13 @@ export function ModelPicker({
     setModel,
     setSessionModel,
     setSessionRoutingMode,
+    pickSuperEntry,
     sessions,
     modelsLoading,
     litellmAvailable,
     autoRouting,
     superAgent,
+    defaultRouting,
     user,
   } = useStore()
   const session = sessionId ? sessions.find((s) => s.id === sessionId) : undefined
@@ -166,10 +174,12 @@ export function ModelPicker({
   // A picture or av surface without the admin's default: none chosen, said so (never the first or cheapest).
   const noDefault = !current && (kind === 'image' || kind === 'av')
   const routedSurface = kind === 'chat' || kind === 'report' || kind === 'slides'
-  // Outside a conversation (the home screen), the mode a new one would start in.
-  const startingMode = !session && !sessionId && !field && routedSurface
-    ? startingRoutingMode({ superAgent, user }, kind)
+  // Outside a conversation (the home screen, the personal default), the mode a new one would start in.
+  const startingMode = !session && !sessionId && routedSurface
+    ? startingRoutingMode({ superAgent, user, defaultRouting, agents }, kind, null, projectId)
     : undefined
+  // The personal default (설정 › 환경설정) offers both Super Agent entries like any model.
+  const fieldLanes: RoutingMode[] | undefined = field && !routedSurface ? [] : undefined
   const laneMode = session?.routingMode ?? startingMode
   const superLane = routedSurface && isSuperMode(laneMode) ? laneMode : undefined
   const autoLane = superLane ?? (kind === 'chat' && session?.routingMode !== 'manual'
@@ -182,7 +192,7 @@ export function ModelPicker({
     Boolean(session?.agentId && !session.model && !agents.some((agent) => agent.id === session.agentId))
   // Auto needs a session or a caller that creates one; the server settles a document's lane after the strict-local rule.
   const canRouteAuto = (kind === 'chat' || kind === 'report' || kind === 'slides') &&
-    (Boolean(sessionId) || Boolean(onEnableAuto))
+    (Boolean(sessionId) || Boolean(onEnableAuto) || field)
   const persistSelection = async (action: () => void | Promise<void>) => {
     if (selectionPending) return
     setSelectionPending(true)
@@ -234,7 +244,7 @@ export function ModelPicker({
           disabled={selectionPending}
           aria-busy={selectionPending}
           // The full name, also where a phone shows the short one.
-          aria-label={label ? `${label}: ${modelLabel}` : triggerText}
+          aria-label={label ? `${label}: ${superLane ? superLaneTitle(superLane) : modelLabel}` : triggerText}
           title={!field ? triggerText : undefined}
           className={cn(
             'flex h-9 items-center gap-1.5 rounded-control text-base font-medium transition-colors',
@@ -277,10 +287,12 @@ export function ModelPicker({
         autoRouting={autoRouting}
         superAgent={superAgent}
         showAuto={canRouteAuto}
+        onlyLanes={fieldLanes}
         litellmAvailable={litellmAvailable}
         selectionPending={selectionPending}
         onAuto={(mode) => {
           return persistSelection(() => {
+            if (field) return isSuperMode(mode) ? pickSuperEntry(kind, mode) : undefined
             if (onEnableAuto) return onEnableAuto(mode)
             if (sessionId) return setSessionRoutingMode(sessionId, mode)
           })
@@ -288,8 +300,10 @@ export function ModelPicker({
         onPick={(id) => {
           // Keyed off `sessionId`, not the session row: the list can lag behind the URL.
           return persistSelection(() => {
+            // the home screen's unsent conversation: the pick is also this surface's start
+            if (homePick) setModel(kind, id)
             if (sessionId) return setSessionModel(sessionId, id)
-            setModel(kind, id)
+            if (!homePick) setModel(kind, id)
           })
         }}
       />
@@ -306,6 +320,7 @@ function ModelMenu({
   autoRouting,
   superAgent,
   showAuto,
+  onlyLanes,
   litellmAvailable,
   selectionPending,
   onAuto,
@@ -318,6 +333,8 @@ function ModelMenu({
   autoRouting: ReturnType<typeof useStore.getState>['autoRouting']
   superAgent: ReturnType<typeof useStore.getState>['superAgent']
   showAuto: boolean
+  /** Only these Super Agent entries (the personal default offers the installation's start). */
+  onlyLanes?: RoutingMode[]
   litellmAvailable: boolean
   selectionPending: boolean
   onAuto: (mode: RoutingMode) => void | Promise<void>
@@ -389,7 +406,8 @@ function ModelMenu({
   // Super Agent replaces the two Auto lanes; an Auto lane stays visible only while in use.
   const offeredLanes = showAuto
     ? [
-        ...superLanes.filter((lane) => lane.available || autoLane === lane.mode),
+        ...superLanes.filter((lane) =>
+          (lane.available || autoLane === lane.mode) && (!onlyLanes || onlyLanes.includes(lane.mode))),
         ...lanes.filter((lane) => autoLane === lane.mode),
       ]
     : []
@@ -481,7 +499,7 @@ function ModelMenu({
           key={m.id}
           type="button"
           role="menuitemradio"
-          aria-checked={!unresolvedAgentModel && m.id === active.id}
+          aria-checked={!unresolvedAgentModel && !isSuperMode(autoLane) && m.id === active.id}
           onClick={() => {
             void onPick(m.id)
             closeMenu()

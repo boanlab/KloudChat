@@ -478,6 +478,8 @@ export interface ModelCatalogue {
   defaultAvModelByMode?: Partial<Record<'audio' | 'video', string>>
   /** Strict-local picture model when the person picked none; empty when none is served. */
   strictImageDefault?: string
+  /** How a new chat, report or slides conversation starts (설정 › 시스템 › 모델); absent: `super`. */
+  defaultRoutingByKind?: Partial<Record<'chat' | 'report' | 'slides', 'super' | 'super_strict' | 'manual'>>
   autoRouting: {
     enabled: boolean
     available: boolean
@@ -489,23 +491,27 @@ export interface ModelCatalogue {
     qualityReason: 'disabled' | 'classifier_unavailable' | 'no_quality_models' | null
     qualityModelIds: string[]
   }
-  /** The picker's Super Agent entries; absent from an older server. */
+  /** The picker's Super Agent entries, always offered; absent from an older server. */
   superAgent?: {
-    enabled: boolean
     default: SuperAgentOffer
     strict: SuperAgentOffer
+    /** A project conversation starts its `super` start on `super_strict` (internal material). */
+    projectStrict?: boolean
+    /** Client-side only: the catalogue has not answered yet. */
+    pending?: boolean
   }
 }
 
 /** One Super Agent entry: offered or why not, and a typical answer's credits across the table. */
 export interface SuperAgentOffer {
   available: boolean
-  reason: 'disabled' | 'no_models' | null
+  reason: 'no_models' | null
   estimate: { min: number; max: number; models: string[] } | null
 }
 
 /** One row of the admin's Super Agent table. */
 export interface SuperAgentRule {
+  /** '' on an override row (`material`): the turn keeps its class's row in that column. */
   model: string
   strictModel: string
   effort: 'default' | 'none' | 'low' | 'high'
@@ -585,6 +591,7 @@ export interface SystemSettings {
     visionChoices: { id: string; label: string }[]
   }
   /** As in force; an empty string is a choice (follow the default or session model). Absent from older servers. */
+  /** Chat, report and slides: `super`, `super_strict`, a model id, or "" (follow chat). */
   modelRoles?: {
     chat: string
     report: string
@@ -826,6 +833,8 @@ export const adminApi = {
   catalogue: () => call<{ id: string; label: string; kinds: string[] }[]>('/admin/models'),
   /** Every key an account holds: KloudChat's own (preview only) and the ones the person issued. */
   userKeys: (id: string) => call<AdminKeys>(`/admin/users/${id}/keys`),
+  /** One account with what it holds, for the detail view. */
+  userOverview: (id: string) => call<UserOverview>(`/admin/users/${id}/overview`),
   revokeUserKey: (id: string, keyId: string) =>
     call<void>(`/admin/users/${id}/keys/${keyId}`, { method: 'DELETE' }),
   /** Binds a LiteLLM key the administrator already holds as the account's KloudChat key. */
@@ -951,6 +960,17 @@ interface AuditPage {
   size: number
 }
 
+/** 관리자 › 사용자 detail: the account and how much it holds. */
+export interface UserOverview {
+  user: User
+  sessions: number
+  projects: number
+  files: number
+  artifacts: number
+  /** Its own cycle while ahead, else the service's next 1st. */
+  nextReset: string | null
+}
+
 export interface AuditQuery {
   page: number
   size: number
@@ -988,8 +1008,6 @@ export interface GovernancePolicy {
   adaptiveEconomyModelIds: string[]
   adaptiveQualityEnabled: boolean
   adaptiveQualityModelIds: string[]
-  /** Super Agent entries offered in the picker. */
-  superAgentEnabled: boolean
   /** Class → model, strict-local model and effort, the admin's changes merged over the defaults. */
   superAgentRules: Record<string, SuperAgentRule>
   /** The built-in table (read-only), for 「기본값으로」. */
@@ -1561,21 +1579,26 @@ function queryOf(params: Record<string, string | number | boolean | undefined | 
 }
 
 export const filesApi = {
-  /** One file-box page: `box` leaves agents' knowledge out; `counts` per origin ignore `origin`. */
+  /** One file-box page: `box` leaves agents' knowledge out; `counts` per origin ignore `origin`;
+   *  the whole box also counts its 「작업 문서」 (`working`). */
   page: (params: {
     box?: boolean
     origin?: 'upload' | 'generated'
     q?: string
     projectId?: string
+    sort?: FileSort
+    dir?: SortDir
     cursor?: string | null
     limit?: number
   }) =>
-    call<CursorPage<FileRow> & { counts: { upload: number; generated: number } }>(
+    call<CursorPage<FileRow> & { counts: { upload: number; generated: number; working?: number } }>(
       `/files/page${queryOf({
         box: params.box ? 'true' : undefined,
         origin: params.origin,
         q: params.q?.trim(),
         project_id: params.projectId,
+        sort: params.sort && params.sort !== 'created' ? params.sort : undefined,
+        dir: params.dir && params.dir !== 'desc' ? params.dir : undefined,
         cursor: params.cursor,
         limit: params.limit,
       })}`,
@@ -1818,6 +1841,52 @@ export const artifactsApi = {
 
 /** Office documents edited beside a chat; each is also its file route (`/artifacts/{id}/hwp`). */
 export type OfficeKind = 'hwp' | 'docx' | 'pptx'
+
+/** What the file box's 「작업 문서」 tab lists: HWP, Word, PowerPoint files and web reports, web slides. */
+export type WorkingKind = OfficeKind | 'report' | 'deck'
+export type WorkingSort = 'updated' | 'title' | 'kind' | 'version'
+export type FileSort = 'created' | 'name' | 'size'
+export type SortDir = 'asc' | 'desc'
+
+/** One document in 「작업 문서」, however many versions it has (`version` counts them). */
+export interface WorkingDocRow {
+  id: string
+  kind: WorkingKind
+  title: string
+  version: number
+  /** Null when it has no conversation, or its conversation is gone. */
+  sessionId: string | null
+  sessionTitle: string | null
+  projectId: string | null
+  projectName: string | null
+  projectEmoji: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export const workingDocsApi = {
+  /** A page of 「작업 문서」; `counts` per kind over the search, the kind filter aside. A cursor
+   *  belongs to its `sort`. */
+  page: (params: { kind?: WorkingKind | null; q?: string; sort?: WorkingSort; dir?: SortDir; cursor?: string | null; limit?: number }) =>
+    call<CursorPage<WorkingDocRow> & { counts: Partial<Record<WorkingKind, number>> }>(
+      `/artifacts/working${queryOf({
+        kind: params.kind ?? undefined,
+        q: params.q?.trim(),
+        sort: params.sort && params.sort !== 'updated' ? params.sort : undefined,
+        dir: params.dir && params.dir !== 'desc' ? params.dir : undefined,
+        cursor: params.cursor,
+        limit: params.limit,
+      })}`,
+    ),
+  /** Its current version as a file: an office document as it is kept, a web report as
+   *  Markdown, web slides as PowerPoint. */
+  download: (row: Pick<WorkingDocRow, 'id' | 'kind' | 'title'>) =>
+    row.kind === 'report'
+      ? downloadArtifact(row.id, 'md', row.title)
+      : row.kind === 'deck'
+        ? downloadArtifact(row.id, 'pptx', row.title)
+        : download(`/artifacts/${row.id}/${row.kind}`, `${row.title || 'document'}.${row.kind === 'hwp' ? 'hwpx' : row.kind}`),
+}
 
 /** The editable format each kind is saved in. */
 export const OFFICE_MIME: Record<OfficeKind, string> = {

@@ -66,6 +66,7 @@ import { DocMarksLayer } from './DocMarks'
 import { fillBlank, useDocMarks } from '@/lib/docMarks'
 import { useStore } from '@/store/useStore'
 import { useT, useTIn } from '@/lib/useT'
+import { randomId } from '@/lib/cryptoFallback'
 
 /** Picker order. */
 const DOC_LOOKS: { id: 'editorial' | 'poster' | 'minimal'; label: string; why: string }[] = [
@@ -696,7 +697,7 @@ export function ReportPanel({
     if (!title || !/^https?:\/\//i.test(url)) return
     const ordinal = Math.max(0, ...report.sources.map((source) => source.ordinal)) + 1
     const source: Source = {
-      id: `manual_${crypto.randomUUID()}`,
+      id: `manual_${randomId()}`,
       ordinal,
       title,
       url,

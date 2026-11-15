@@ -26,6 +26,7 @@ import {
   type CharRange,
 } from './slideTools'
 import { Btn, Menu, NotesPane, Sep, SlideRail } from './chrome'
+import { randomId } from '@/lib/cryptoFallback'
 
 /** What the panel asks of the editor. */
 export interface SlidesApi {
@@ -560,7 +561,7 @@ function Editor({
       if (!api) return
       const others = api.getElements() as unknown as Placed[]
       const place = staggered({ ...(element as unknown as Placed), id: '' }, others, sp.canvasSize)
-      api.addElement({ ...element, ...place, id: `kc-${crypto.randomUUID()}` } as Element)
+      api.addElement({ ...element, ...place, id: `kc-${randomId()}` } as Element)
     }
     return {
       textBox: () => add({

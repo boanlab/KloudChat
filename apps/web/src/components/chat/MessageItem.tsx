@@ -303,16 +303,16 @@ function MessageItemInner({
   const projectFiles = useStore((s) => s.projects.find((p) => p.id === sessionProject)?.files)
   /** Videos this conversation has (its attachments, its project's files): an answer's time marks open them. */
   const videos = useMemo<VideoRef[]>(() => {
-    const found = new Map<string, string>()
+    const found = new Map<string, VideoRef>()
     for (const m of sessionMessages ?? []) {
       for (const a of m.attachments ?? []) {
-        if (a.id && /^(video|audio)\//.test(a.type)) found.set(a.id, a.name)
+        if (a.id && /^(video|audio)\//.test(a.type)) found.set(a.id, { id: a.id, name: a.name })
       }
     }
     for (const f of projectFiles ?? []) {
-      if (f.mediaState === 'done') found.set(f.id, f.name)
+      if (f.mediaState === 'done') found.set(f.id, { id: f.id, name: f.name, seconds: f.mediaDuration || undefined })
     }
-    return [...found].map(([id, name]) => ({ id, name }))
+    return [...found.values()]
   }, [sessionMessages, projectFiles])
   /** The copy opened in this chat earlier, reopened from the attachment: a new one only on request. */
   const [reopened, setReopened] = useState<{ kind: OfficeKind; id: string } | null>(null)
@@ -529,17 +529,20 @@ function MessageItemInner({
             <div
               role="status"
               className={cn(
-                'flex items-center justify-end gap-2 text-base',
+                // A narrow screen puts the actions under the reason, never the reason in a sliver beside them.
+                'flex flex-wrap items-center justify-end gap-2 text-base',
                 // A stop the reader chose is not an error.
                 message.failure === 'stopped' && !message.error ? 'text-muted' : 'text-danger',
               )}
             >
-              {message.failure === 'stopped' && !message.error ? (
-                <CircleStop size={14} className="shrink-0" />
-              ) : (
-                <TriangleAlert size={14} className="shrink-0" />
-              )}
-              <span>{failed}</span>
+              <span className="flex min-w-0 items-center gap-2">
+                {message.failure === 'stopped' && !message.error ? (
+                  <CircleStop size={14} className="shrink-0" />
+                ) : (
+                  <TriangleAlert size={14} className="shrink-0" />
+                )}
+                <span className="min-w-0">{failed}</span>
+              </span>
               {madeHere ? (
                 <Button size="sm" onClick={() => void retryMediaTurn(sessionId, message.content)}>
                   <RotateCcw size={13} />
@@ -816,20 +819,24 @@ function MessageItemInner({
         {failed && (
           <div
             role="status"
+            data-testid="answer-failure"
             className={cn(
-              'mt-3 flex items-start gap-2 rounded-card border px-3 py-2.5 text-base',
+              // The reason takes its own line when it does not fit beside the actions.
+              'mt-3 flex flex-wrap items-start gap-2 rounded-card border px-3 py-2.5 text-base',
               // A stop the reader chose is not an error.
               stopped
                 ? 'border-line bg-elevated text-muted'
                 : 'border-danger/30 bg-danger/5 text-danger',
             )}
           >
-            {stopped ? (
-              <CircleStop size={14} className="mt-0.5 shrink-0" />
-            ) : (
-              <TriangleAlert size={14} className="mt-0.5 shrink-0" />
-            )}
-            <span className="min-w-0 flex-1">{failed}</span>
+            <span className="flex min-w-0 flex-[1_1_auto] items-start gap-2" data-testid="answer-failure-reason">
+              {stopped ? (
+                <CircleStop size={14} className="mt-0.5 shrink-0" />
+              ) : (
+                <TriangleAlert size={14} className="mt-0.5 shrink-0" />
+              )}
+              <span className="min-w-0">{failed}</span>
+            </span>
             {!madeHere && askedAbove && (
               <RetryActions
                 sessionId={sessionId}

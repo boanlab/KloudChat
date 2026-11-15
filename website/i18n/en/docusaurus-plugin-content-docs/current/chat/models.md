@@ -27,7 +27,7 @@ When a **May switch to an external provider** model fails to answer and the gate
 
 ## Super Agent
 
-When the administrator turns it on, two entries appear at the top of the list. They apply to the conversation, not to a model.
+Two entries are always at the top of the list. They apply to the conversation, not to a model, and new chat, report and slides conversations start on Super Agent (unless the administrator set another default, you picked a model on the home screen, or the conversation's agent has its own model). When the table has no model your account may use, the entry is not shown and new conversations start on the default model.
 
 | Entry | What it does |
 |---|---|
@@ -35,6 +35,8 @@ When the administrator turns it on, two entries appear at the top of the list. T
 | Super Agent (strict-local) | Picks the same way but only among strict-local in-house models. Questions and material never leave, and the web is not searched. |
 
 Each entry shows the usual credits for one answer. Every answer shows "This answer: model · task type" and the reason in its processing row. Saying "again" or "more detail" answers once more with a stronger setup; short follow-ups in the same conversation and revisions of the same document stay on the same model.
+
+In conversations answered by in-house models, answers after "again" or "that's wrong", and material too long for the default model, are written by a larger in-house model (DeepSeek V4 Flash). It thinks at length before it writes, so the first words usually take about a minute; meanwhile the processing row shows "Thinking it through". If it does not respond or shows nothing for 4 minutes, the in-house default model carries the same answer on, and the processing row says so. Nothing leaves the organisation either way.
 
 ## The reasoning chip
 
@@ -55,7 +57,7 @@ The **Reasoning** chip to the left of the model name sets how much the model thi
 
 ## Scope of a model selection
 
-- **Selecting on the home screen** saves the model to your account as the **default model** for that screen, such as Chat, Reports, or Slides. It applies when you sign in from another device, and you can also change it in Settings → Preferences.
+- **Selecting on the home screen** saves the model to your account as the **default model** for that screen, such as Chat, Reports, or Slides. It applies when you sign in from another device, and you can also change it in Settings → Preferences. Super Agent and Super Agent (strict-local) can be picked like any model; new conversations then start on that entry.
 - **Selecting during a conversation** applies to that conversation only.
 - An agent conversation uses the model set on the agent. An agent with no model of its own (**Default model**) follows that screen's default model.
 - When the administrator limits which models an account may use, only the allowed models appear.

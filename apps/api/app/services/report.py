@@ -62,6 +62,31 @@ _MIN_SECTIONS = 3
 _MAX_SECTIONS = 12
 
 
+#: sections an each-item plan may run to (one per project file, plus opening and closing)
+_EACH_MOST_SECTIONS = 30
+
+
+def most_sections(each_items: int = 0) -> int:
+    """The 목차's ceiling: the usual one, or room for every file of an each-item request."""
+    return max(_MAX_SECTIONS, min(each_items + 3, _EACH_MOST_SECTIONS))
+
+
+def outline_tokens(most: int) -> int:
+    """Answer room for a 목차 of `most` headings (12 took ~330 tokens)."""
+    return 400 + 30 * max(0, most - _MAX_SECTIONS)
+
+
+def each_item_rule(count: int, most: int) -> str:
+    """Planner rule for a request about every one of `count` project files."""
+    return (
+        f"\n- The request asks about every one of the {count} files in 「자료 목록」. The 목차 "
+        f"must reach all {count}, in their order: one section per file when the request asks "
+        "for one per file (「주차별로」, 「강마다」) and that fits in the section limit, "
+        "otherwise neighbouring files grouped under one heading named by their range "
+        "(「1~3장 기초」). Never stop before the last file."
+    ) if count >= 2 else ""
+
+
 def requested_sections(request: str) -> int | None:
     """Explicit section count; page counts imply none."""
     return plan_rules.requested_count(request, ("섹션", "절"), maximum=_MAX_SECTIONS)
@@ -3579,8 +3604,8 @@ def _heading_of(item: Any) -> str:
     return text
 
 
-def _parse_outline(text: str) -> tuple[str, list[str]]:
-    """`(title, headings)` from wrapped JSON; title may be empty."""
+def _parse_outline(text: str, most: int = _MAX_SECTIONS) -> tuple[str, list[str]]:
+    """`(title, headings)` from wrapped JSON, at most `most`; title may be empty."""
     title = ""
     obj = re.search(r"\{.*\}", text, re.S)
     if obj:
@@ -3595,7 +3620,7 @@ def _parse_outline(text: str) -> tuple[str, list[str]]:
                 ]
                 headings = _fold_alternatives(headings, alternatives)
                 if headings:
-                    return title, headings[:_MAX_SECTIONS]
+                    return title, headings[:most]
         except json.JSONDecodeError:
             pass
     match = re.search(r"\[.*\]", text, re.S)
@@ -3604,7 +3629,7 @@ def _parse_outline(text: str) -> tuple[str, list[str]]:
             items = json.loads(match.group(0))
             headings = [h for h in map(_heading_of, items) if h]
             if headings:
-                return title, headings[:_MAX_SECTIONS]
+                return title, headings[:most]
         except json.JSONDecodeError:
             pass
     # truncated reply: partial `sections` array counts
@@ -3619,7 +3644,7 @@ def _parse_outline(text: str) -> tuple[str, list[str]]:
         if headings:
             if not title and (named := re.search(r'"title"\s*:\s*"((?:[^"\\]|\\.){1,120})"', text)):
                 title = named.group(1).strip()
-            return title, headings[:_MAX_SECTIONS]
+            return title, headings[:most]
     # format ignored: list under the last header counts
     raw = text.splitlines()
     start = 0
@@ -3639,7 +3664,7 @@ def _parse_outline(text: str) -> tuple[str, list[str]]:
         line = re.sub(r"\s{0,3}[(（][^()（）]{1,40}[)）]\s*$", "", line).strip()
         if line and len(line) <= 40:
             headings.append(line)
-    return title, headings[:_MAX_SECTIONS]
+    return title, headings[:most]
 
 
 _OUTLINE_LIST_HEADER = re.compile(
@@ -4925,10 +4950,44 @@ def _stem_key(line: str) -> str:
     return re.sub(r"[^가-힣A-Za-z0-9]", "", stem)[:12]
 
 
+#: a line that opens another piece of the material: a file's bold name in a project's
+#: knowledge block (「**04강_가상화의_원리.pdf**」) or a heading, unless it belongs to the set
+_PIECE = re.compile(r"^(?:\*\*[^*\n]{2,200}\*\*|#{1,3}\s.{1,200})$")
+_SET_PART = re.compile(r"정답|해설|채점|모범|문항|문제|평가|퀴즈|객관식|서술형|단답형")
+#: a file's own name in bold always opens another piece, whatever it is called
+_FILE_PIECE = re.compile(r"^\*\*[^*\n]{1,200}\.[A-Za-z0-9]{2,5}\*\*$")
+
+
+def opens_piece(line: str) -> bool:
+    """Whether `line` starts another piece of the material than the questions above it."""
+    line = line.strip()
+    return bool(_FILE_PIECE.match(line) or (_PIECE.match(line) and not _SET_PART.search(line)))
+
+
+#: lines between two questions of one set at most (a reading passage fits)
+_SET_GAP = 60
+
+
+def _question_runs(lines: list[str], stems: list[int]) -> list[list[int]]:
+    """Questions grouped into the sets they belong to: a set ends where another piece of the
+    material opens before the next question, or the next question is far away. Twenty
+    lecture notes with one 「생각해 볼 문제」 each are twenty sets of one, not one set."""
+    runs: list[list[int]] = []
+    for stem in stems:
+        if runs:
+            last = runs[-1][-1]
+            if stem - last <= _SET_GAP and not any(
+                    opens_piece(line) for line in lines[last + 1:stem]):
+                runs[-1].append(stem)
+                continue
+        runs.append([stem])
+    return runs
+
+
 def question_set(material: str) -> str:
-    """The material's question set (5+), as written."""
+    """The material's question set (5+ questions in one piece), as written."""
     lines = (material or "").split("\n")
-    stems = _question_lines(material or "")
+    stems = max(_question_runs(lines, _question_lines(material or "")), key=len, default=[])
     if len(stems) < 5:
         return ""
     # last question ends at the first non-question line
@@ -4970,8 +5029,9 @@ def carry_question_set(sections: list[dict], material: str, request: str) -> lis
     if not block:
         return sections
     body = re.sub(r"[^가-힣A-Za-z0-9]", "", "\n".join(str(s.get("content") or "") for s in sections))
-    given = material.split("\n")
-    keys = [k for k in (_stem_key(_stem_of(given, i)) for i in _question_lines(material)) if k]
+    # the set's own questions, not every numbered question elsewhere in the material
+    given = block.split("\n")
+    keys = [k for k in (_stem_key(_stem_of(given, i)) for i in _question_lines(block)) if k]
     if not keys or sum(1 for k in keys if k in body) >= 0.6 * len(keys):
         return sections
     body_idx = [i for i, s in enumerate(sections)

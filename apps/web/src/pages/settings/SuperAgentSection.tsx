@@ -1,10 +1,16 @@
 import { Gauge, RotateCcw, TriangleAlert } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { Button, Card, Field, Select, Switch } from '@/components/ui'
+import { Button, Card, Field, Select } from '@/components/ui'
 import { errorCode, errorMessage, type SuperAgentRule } from '@/lib/api'
-import { SUPER_CLASSES, SUPER_CLASS_LABEL, SUPER_EFFORT_LABEL } from '@/lib/superAgent'
+import {
+  SUPER_CLASSES,
+  SUPER_CLASS_LABEL,
+  SUPER_EFFORT_LABEL,
+  SUPER_OVERRIDE_ROWS,
+} from '@/lib/superAgent'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
+import { useMediaQuery } from '@/lib/useMediaQuery'
 import { useUnsavedMark } from '@/lib/unsaved'
 import { tokenRate } from '@/lib/utils'
 import type { ModelInfo, SuperAgentClass } from '@/types'
@@ -20,11 +26,11 @@ const SUPER_REFUSALS: Record<string, string> = {
 
 const EFFORTS = Object.keys(SUPER_EFFORT_LABEL) as SuperAgentRule['effort'][]
 
-/** The Super Agent switch, its classifier and the class → model table (설정 › 시스템 › 라우팅). */
+/** Super Agent's classifier and the class → model table (설정 › 시스템 › 라우팅); no switch. */
 export function SuperAgentSection() {
   const t = useT()
+  const phone = useMediaQuery('(max-width: 40rem)')
   const { governance, loadGovernance, saveGovernance, models, loadModels, superAgent } = useStore()
-  const [enabled, setEnabled] = useState(false)
   const [classifierModelId, setClassifierModelId] = useState('')
   const [rules, setRules] = useState<Record<string, SuperAgentRule>>({})
   const [busy, setBusy] = useState(false)
@@ -45,7 +51,6 @@ export function SuperAgentSection() {
 
   useEffect(() => {
     if (!governance || dirty.current) return
-    setEnabled(governance.superAgentEnabled ?? false)
     setClassifierModelId(governance.adaptiveClassifierModelId ?? '')
     setRules(governance.superAgentRules ?? {})
   }, [governance])
@@ -62,23 +67,36 @@ export function SuperAgentSection() {
     setRules((current) => ({ ...current, [name]: { ...current[name], ...patch } }))
     touched()
   }
-  const options = (pool: ModelInfo[], current: string) => (
+  const options = (pool: ModelInfo[], current: string, keepsClass = false, strictColumn = false) => (
     <>
+      {keepsClass && <option value="">{t('작업 종류의 모델 그대로')}</option>}
       {current && !pool.some((model) => model.id === current) && (
         <option value={current}>
           {current} · {t('현재 사용 불가')}
         </option>
       )}
+      {/* The name whole in the box; the price is the line under it (and the option's title). */}
       {pool.map((model) => (
-        <option key={model.id} value={model.id}>
-          {model.label} · {tokenRate(model, t)}
+        <option key={model.id} value={model.id} title={`${model.label} · ${tokenRate(model, t)}`}>
+          {/* a phone card has less room: the name without the vendor, and in the strict-local
+              column (its heading says so) without 「(strict-local)」 */}
+          {phone
+            ? strictColumn
+              ? (model.name || model.label).replace(/\s*\(strict-local\)$/, '')
+              : model.name || model.label
+            : model.label}
         </option>
       ))}
     </>
   )
+  /** The chosen model's price, under its select; nothing for 「그대로」 or a model no longer served. */
+  const rate = (pool: ModelInfo[], id: string) => {
+    const model = pool.find((m) => m.id === id)
+    return model ? <p className="mt-0.5 truncate text-xs text-faint" data-testid="model-rate">{tokenRate(model, t)}</p> : null
+  }
 
   return (
-    <Card className="space-y-4 p-4">
+    <Card className="space-y-4 p-4 max-sm:p-3">
       <div className="flex items-start gap-3">
         <div className="grid size-9 shrink-0 place-items-center rounded-control bg-accent-soft text-accent max-sm:hidden">
           <Gauge size={17} />
@@ -89,14 +107,6 @@ export function SuperAgentSection() {
             {t('질문마다 작업 종류를 먼저 규칙으로 가리고, 애매할 때만 분류 모델에 짧게 물어 아래 표의 모델과 추론 강도로 답합니다. 개인정보나 내부 자료가 있으면 strict-local 열의 모델을 씁니다.')}
           </p>
         </div>
-        <Switch
-          checked={enabled}
-          onChange={(value) => {
-            setEnabled(value)
-            touched()
-          }}
-          label={t('모델 선택기에 Super Agent 보이기')}
-        />
       </div>
 
       <Field
@@ -115,10 +125,11 @@ export function SuperAgentSection() {
         </Select>
       </Field>
 
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[640px] text-sm">
+      {/* A phone stacks each row as a card with its own field names; wider screens keep the table. */}
+      <div className="overflow-x-auto max-sm:overflow-visible">
+        <table className="w-full min-w-[640px] text-sm max-sm:block max-sm:min-w-0" data-testid="super-agent-table">
           <caption className="sr-only">{t('작업 종류별 모델')}</caption>
-          <thead>
+          <thead className="max-sm:hidden">
             <tr className="text-left text-xs text-faint">
               <th scope="col" className="py-1.5 pr-2 font-medium">{t('작업 종류')}</th>
               <th scope="col" className="py-1.5 pr-2 font-medium">Super Agent</th>
@@ -126,35 +137,45 @@ export function SuperAgentSection() {
               <th scope="col" className="py-1.5 font-medium">{t('추론 강도')}</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="max-sm:block max-sm:space-y-2">
             {SUPER_CLASSES.map((name) => {
               const rule = rules[name] ?? defaults[name]
               if (!rule) return null
               const pool = name === 'document' ? documentModels : chatModels
               const label = t(SUPER_CLASS_LABEL[name])
               return (
-                <tr key={name} className="border-t border-line align-top">
-                  <th scope="row" className="py-2 pr-2 text-left font-medium">{label}</th>
-                  <td className="py-2 pr-2">
+                <tr
+                  key={name}
+                  className="border-t border-line align-top max-sm:block max-sm:space-y-2 max-sm:rounded-control max-sm:border max-sm:p-3"
+                >
+                  <th scope="row" className="py-2 pr-2 text-left font-medium max-sm:block max-sm:p-0">{label}</th>
+                  <td className="py-2 pr-2 max-sm:block max-sm:p-0">
+                    <span className="mb-1 hidden text-xs text-faint max-sm:block" aria-hidden>Super Agent</span>
                     <Select
                       aria-label={t('{class} · Super Agent 모델').replace('{class}', label)}
                       value={rule.model}
                       onChange={(event) => setRule(name, { model: event.target.value })}
                     >
-                      {options(pool, rule.model)}
+                      {options(pool, rule.model, SUPER_OVERRIDE_ROWS.has(name))}
                     </Select>
+                    {rate(pool, rule.model)}
                   </td>
-                  <td className="py-2 pr-2">
+                  <td className="py-2 pr-2 max-sm:block max-sm:p-0">
+                    <span className="mb-1 hidden text-xs text-faint max-sm:block" aria-hidden>Super Agent (strict-local)</span>
                     <Select
                       aria-label={t('{class} · strict-local 모델').replace('{class}', label)}
                       value={rule.strictModel}
                       onChange={(event) => setRule(name, { strictModel: event.target.value })}
                     >
-                      {options(strictOnly(pool), rule.strictModel)}
+                      {options(strictOnly(pool), rule.strictModel, SUPER_OVERRIDE_ROWS.has(name), true)}
                     </Select>
+                    {rate(strictOnly(pool), rule.strictModel)}
                   </td>
-                  <td className="py-2">
+                  <td className="py-2 max-sm:block max-sm:p-0">
+                    <span className="mb-1 hidden text-xs text-faint max-sm:block" aria-hidden>{t('추론 강도')}</span>
+                    {/* As wide as its longest label: a shared column width cut 「추론 높게」. */}
                     <Select
+                      className="min-w-[10.5em]"
                       aria-label={t('{class} · 추론 강도').replace('{class}', label)}
                       value={rule.effort}
                       onChange={(event) =>
@@ -174,8 +195,11 @@ export function SuperAgentSection() {
       <p className="text-xs text-faint">
         {t('다시 해 달라거나 더 자세히 해 달라는 요청과 비었거나 실패한 답 뒤에는 「다시 요청·빈 답 뒤」 줄의 모델로 올리고, 그 모델이 빈 답을 다시 씁니다. 같은 문서의 수정은 처음 쓴 모델을 유지합니다.')}
       </p>
+      <p className="text-xs text-faint">
+        {t('첨부·프로젝트·에이전트 파일을 다루는 질문은 「내부 자료 작업」 줄에 모델이 있는 열에서 그 모델로 답합니다(간단한 질문·보고서·다시 요청은 그대로). 그 모델이 실패하거나 오래 아무것도 내지 않으면 같은 답 안에서 strict-local 기본 모델이 이어 씁니다.')}
+      </p>
 
-      {enabled && classifiers.length === 0 && (
+      {classifiers.length === 0 && (
         <p className="flex items-start gap-2 rounded-control border border-warn/30 bg-warn/5 px-3 py-2 text-sm text-warn">
           <TriangleAlert size={14} className="mt-0.5 shrink-0" />
           {t('무료 strict-local 분류 모델이 없어 애매한 질문은 규칙의 기본값으로 보냅니다.')}
@@ -197,7 +221,6 @@ export function SuperAgentSection() {
             setError(null)
             try {
               await saveGovernance({
-                superAgentEnabled: enabled,
                 superAgentRules: rules,
                 ...(classifierModelId !== (governance?.adaptiveClassifierModelId ?? '')
                   ? { adaptiveClassifierModelId: classifierModelId || null }
@@ -231,7 +254,7 @@ export function SuperAgentSection() {
           {t('표를 기본값으로')}
         </Button>
         {saved && <span className="text-sm text-success">{t('저장했습니다.')}</span>}
-        {!saved && superAgent.enabled && !superAgent.default.available && (
+        {!saved && !superAgent.pending && !superAgent.default.available && (
           <span className="text-sm text-warn">
             {t('표의 모델 중 지금 쓸 수 있는 것이 없어 Super Agent를 제공하지 못합니다.')}
           </span>

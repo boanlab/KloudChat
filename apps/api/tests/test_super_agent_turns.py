@@ -67,7 +67,7 @@ class _Db(_NoWriteDb):
 
 async def _turn(monkeypatch, text: str, *, mode: str = "super", history: list | None = None,
                 policy: Governance | None = None, project: str | None = None,
-                classify: str | None = None, web_search=False) -> dict:
+                classify: str | None = None, web_search=False, answer_stub=None) -> dict:
     def no_network(*_args, **_kwargs):
         pytest.fail("unexpected network access")
 
@@ -101,7 +101,8 @@ async def _turn(monkeypatch, text: str, *, mode: str = "super", history: list | 
     async def answer(model_id, messages, tools, _context, **kwargs):
         calls.append({"model": model_id, "tools": [t.name for t in tools],
                       "reasoning": sessions_router.agent_service.TURN_REASONING.get(),
-                      **{k: kwargs.get(k) for k in ("disable_fallbacks",)}})
+                      **{k: kwargs.get(k) for k in ("disable_fallbacks", "fallback_model",
+                                                    "rescue_model")}})
         yield {"type": "model_route", "routedModel": model_id, "actualModel": model_id}
         yield {"type": "delta", "text": "답입니다."}
         yield {"type": "usage", "inputTokens": 10, "outputTokens": 5}
@@ -137,7 +138,7 @@ async def _turn(monkeypatch, text: str, *, mode: str = "super", history: list | 
     monkeypatch.setattr(sessions_router.litellm_service, "credentials_for", credentials)
     monkeypatch.setattr(sessions_router, "has_headroom", lambda *_args: True)
     monkeypatch.setattr(sessions_router, "build_tools", tools)
-    monkeypatch.setattr(sessions_router.agent_service, "run_turn", answer)
+    monkeypatch.setattr(sessions_router.agent_service, "run_turn", answer_stub or answer)
     monkeypatch.setattr(sessions_router, "_enrichment_model", writer)
     monkeypatch.setattr(sessions_router.chat_service, "generate_title", title)
     monkeypatch.setattr(sessions_router, "_store_artifacts", nothing)
@@ -278,12 +279,11 @@ class _SessionWriteDb:
 
 
 @pytest.mark.asyncio
-async def test_super_modes_need_the_switch_and_a_routed_surface(monkeypatch) -> None:
+async def test_super_modes_are_always_offered_on_routed_surfaces(monkeypatch) -> None:
     user = User(email="p@example.test", password_hash="h", name="P")
-    switch = {"on": False}
 
     async def current(*_args, **_kwargs):
-        return Governance(super_agent_enabled=switch["on"])
+        return Governance()
 
     async def enabled_kinds():
         return {"chat", "image"}
@@ -295,11 +295,9 @@ async def test_super_modes_need_the_switch_and_a_routed_surface(monkeypatch) -> 
     monkeypatch.setattr(sessions_router.settings_store, "enabled_kinds", enabled_kinds)
     monkeypatch.setattr(sessions_router, "_validate_session_links", links)
     db = _SessionWriteDb()
-    with pytest.raises(Exception) as caught:
-        await sessions_router.create_session(
-            SessionCreate(kind=SessionKind.chat, routing_mode=RoutingMode.super), user, db)
-    assert getattr(caught.value, "detail", None) == "super_agent_disabled"
-    switch["on"] = True
+    created = await sessions_router.create_session(
+        SessionCreate(kind=SessionKind.chat, routing_mode=RoutingMode.super), user, db)
+    assert created.routing_mode is RoutingMode.super
     with pytest.raises(Exception) as caught:
         await sessions_router.create_session(
             SessionCreate(kind=SessionKind.image, routing_mode=RoutingMode.super_strict),
@@ -315,8 +313,6 @@ async def test_super_modes_need_the_switch_and_a_routed_surface(monkeypatch) -> 
         return session
 
     monkeypatch.setattr(sessions_router, "_owned", owned)
-    switch["on"] = False
-    with pytest.raises(Exception) as caught:
-        await sessions_router.patch_session(
-            session.id, SessionPatch(routing_mode=RoutingMode.super), user, db)
-    assert getattr(caught.value, "detail", None) == "super_agent_disabled"
+    patched = await sessions_router.patch_session(
+        session.id, SessionPatch(routing_mode=RoutingMode.super), user, db)
+    assert patched.routing_mode is RoutingMode.super

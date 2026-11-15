@@ -3,18 +3,30 @@ import { useEffect, useRef, useState } from 'react'
 import { Button, Card, Field, LoadingState, Select, Switch } from '@/components/ui'
 import { ApiError, adminApi, type SystemSettings } from '@/lib/api'
 import { useT } from '@/lib/useT'
+import { superLaneTitle } from '@/lib/superAgent'
 import { useUnsavedMark } from '@/lib/unsaved'
 
 type Roles = NonNullable<SystemSettings['modelRoles']>
 type Choice = Roles['choices']['chat'][number]
 type ModelKey = 'chat' | 'report' | 'slides' | 'image' | 'audio' | 'video' | 'title' | 'code' | 'codeFallback'
 
-/** Label, source list, and what empty means (none: required; `none`: required only while one is served). */
-const SURFACES: { key: ModelKey; label: string; from: keyof Roles['choices']; empty?: string; none?: string }[] = [
-  { key: 'chat', label: '대화 기본 모델', from: 'chat' },
-  { key: 'report', label: '보고서 기본 모델', from: 'report', empty: '대화 기본 모델을 따름' },
-  { key: 'slides', label: '발표 자료 기본 모델', from: 'slides', empty: '대화 기본 모델을 따름' },
-  { key: 'image', label: '그림 기본 모델', from: 'image' },
+/**
+ * Label, source list, and what empty means (none: required; `none`: required only while one is
+ * served). `superAgent`: the two Super Agent entries come first (chat, report and slides only;
+ * Super Agent does not route pictures, audio or video).
+ */
+const SURFACES: {
+  key: ModelKey
+  label: string
+  from: keyof Roles['choices']
+  empty?: string
+  none?: string
+  superAgent?: boolean
+}[] = [
+  { key: 'chat', label: '챗 기본 모델', from: 'chat', superAgent: true },
+  { key: 'report', label: '보고서 기본 모델', from: 'report', empty: '챗 기본 모델을 따름', superAgent: true },
+  { key: 'slides', label: '슬라이드 기본 모델', from: 'slides', empty: '챗 기본 모델을 따름', superAgent: true },
+  { key: 'image', label: '이미지 기본 모델', from: 'image' },
   { key: 'audio', label: '오디오 기본 모델', from: 'audio', none: '제공되는 오디오 모델 없음' },
   { key: 'video', label: '동영상 기본 모델', from: 'video', none: '제공되는 동영상 모델 없음' },
 ]
@@ -54,8 +66,8 @@ const FIELD: Record<ModelKey, string> = {
 
 /** Server refusals (`model_title_invalid`, …). */
 function refusal(detail: string, t: (s: string) => string): string {
-  if (detail === 'model_chat_required') return t('대화 기본 모델은 비워 둘 수 없습니다.')
-  if (detail === 'model_image_required') return t('그림 기본 모델은 비워 둘 수 없습니다.')
+  if (detail === 'model_chat_required') return t('챗 기본 모델은 비워 둘 수 없습니다.')
+  if (detail === 'model_image_required') return t('이미지 기본 모델은 비워 둘 수 없습니다.')
   if (detail === 'model_audio_required') return t('오디오 기본 모델은 비워 둘 수 없습니다.')
   if (detail === 'model_video_required') return t('동영상 기본 모델은 비워 둘 수 없습니다.')
   if (/^model_(title|code|code_fallback)_invalid$/.test(detail))
@@ -64,12 +76,19 @@ function refusal(detail: string, t: (s: string) => string): string {
   return t('저장하지 못했습니다.')
 }
 
+/** The Super Agent entries a routed surface's default may be; product names, not translated. */
+const SUPER_ENTRIES = [
+  { id: 'super', label: superLaneTitle('super') },
+  { id: 'super_strict', label: superLaneTitle('super_strict') },
+] as const
+
 function ModelSelect({
   label,
   hint,
   value,
   choices,
   empty,
+  superAgent = false,
   onChange,
 }: {
   label: string
@@ -77,12 +96,19 @@ function ModelSelect({
   value: string
   choices: Choice[]
   empty?: string
+  superAgent?: boolean
   onChange: (value: string) => void
 }) {
   const t = useT()
+  const entries = superAgent ? SUPER_ENTRIES : []
   return (
     <Field label={label} hint={hint}>
       <Select value={value} onChange={(e) => onChange(e.target.value)}>
+        {entries.map((entry) => (
+          <option key={entry.id} value={entry.id}>
+            {entry.label}
+          </option>
+        ))}
         {empty !== undefined && <option value="">{empty}</option>}
         {/* A required job saved empty before it became required: shown as unchosen, not as the first model. */}
         {empty === undefined && !value && (
@@ -91,7 +117,7 @@ function ModelSelect({
           </option>
         )}
         {/* Stored model missing from the catalogue stays selectable, so the choice is not misread. */}
-        {value && !choices.some((m) => m.id === value) && (
+        {value && !choices.some((m) => m.id === value) && !entries.some((e) => e.id === value) && (
           <option value={value}>
             {value} · {t('현재 사용 불가')}
           </option>
@@ -194,6 +220,8 @@ export function ModelRolesSection({
           <p className="text-base font-medium">{t('작업별 모델')}</p>
           <p className="text-sm text-muted">
             {t('사용자가 모델을 고르지 않았을 때 각 화면이 쓰는 모델과, 제목 짓기·코드 작성 같은 보조 작업을 맡을 모델을 정합니다. 사용자가 고른 모델이 있으면 그 모델이 우선합니다.')}
+            {' '}
+            {t('챗·보고서·슬라이드는 Super Agent가 기본이며, 질문마다 라우팅 표의 모델을 고릅니다. 모델을 고르면 새 대화가 그 모델로 시작합니다.')}
           </p>
         </div>
       </div>
@@ -205,6 +233,7 @@ export function ModelRolesSection({
             label={t(row.label)}
             value={models[row.key]}
             choices={roles.choices[row.from]}
+            superAgent={row.superAgent}
             empty={
               row.empty !== undefined
                 ? t(row.empty)

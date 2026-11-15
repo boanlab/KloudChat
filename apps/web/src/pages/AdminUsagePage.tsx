@@ -382,7 +382,7 @@ export function AdminUsagePage() {
                   <>
                     <div className="flex items-baseline justify-between text-base">
                       <span>
-                        {t('올린 파일과 만든 그림·클립')}{' '}
+                        {t('올린 파일과 만든 이미지·클립')}{' '}
                         <span className="text-faint">· {t('{n}개').replace('{n}', storage.files.toLocaleString())}</span>
                       </span>
                       <span className="tabular-nums">{bytes(storage.usedBytes)}</span>

@@ -1,6 +1,8 @@
 import {
   Check,
   Download,
+  IdCard,
+  MoreHorizontal,
   SlidersHorizontal,
   KeyRound,
   UserPen,
@@ -26,10 +28,15 @@ import {
   ConfirmDialog,
   Field,
   Input,
+  Dropdown,
+  MenuItem,
+  MenuSeparator,
   Modal,
   PageHeader,
   Tabs,
 } from '@/components/ui'
+import { CreditBar, UserDetail } from '@/components/admin/UserDetail'
+import { useMediaQuery } from '@/lib/useMediaQuery'
 import { adminApi, ApiError, errorMessage, type AdminKeys } from '@/lib/api'
 import { cn, formatCompact, formatDate, relativeTime } from '@/lib/utils'
 import { Pager } from '@/components/ui/Pager'
@@ -105,22 +112,6 @@ function useListParams() {
   return { tab, sort, order, page, q, update }
 }
 
-function CreditBar({ user }: { user: User }) {
-  const pct = user.monthlyCredits > 0 ? (user.creditsUsed / user.monthlyCredits) * 100 : 0
-  return (
-    <div className="w-36">
-      <div className="h-1.5 overflow-hidden rounded-full bg-elevated">
-        <div
-          className={cn('h-full rounded-full', pct > 90 ? 'bg-danger' : 'bg-accent')}
-          style={{ width: `${Math.min(pct, 100)}%` }}
-        />
-      </div>
-      <span className="mt-1 block text-xs tabular-nums text-faint">
-        {user.creditsUsed.toLocaleString()} / {user.monthlyCredits.toLocaleString()}
-      </span>
-    </div>
-  )
-}
 
 export function AdminUsersPage() {
   const t = useT()
@@ -305,6 +296,221 @@ export function AdminUsersPage() {
   // Pending accounts have no cycle.
   const resetDate = summary?.nextReset
 
+  const phone = useMediaQuery('(max-width: 40rem)')
+  // 상세: the account opened in the detail view lives in the address (`?user=`).
+  const [params, setParams] = useSearchParams()
+  const detailId = params.get('user')
+  const openDetail = (u: User) =>
+    setParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.set('user', u.id)
+      return next
+    })
+  const closeDetail = () =>
+    setParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.delete('user')
+      return next
+    })
+  const openProfile = (u: User) => {
+    setProfile(u)
+    setDraftName(u.name)
+    setDraftEmail(u.email)
+    setDraftPassword('')
+    setProfileNote(null)
+    setProfileError(null)
+  }
+  const openCredits = (u: User) => {
+    setEditing(u)
+    setDraftCredits(String(u.monthlyCredits))
+  }
+
+  /** The less common actions, each a labelled row; the row keeps 승인·반려 and 크레딧 in view. */
+  const userMenu = (u: User) => (
+    <Dropdown
+      align="right"
+      sheet={phone}
+      className="min-w-60"
+      label={t('{name} 관리').replace('{name}', u.name)}
+      trigger={() => (
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={t('{name} 관리 메뉴').replace('{name}', u.name)}
+          title={t('정보 수정·모델 제한·키·권한·정지·삭제')}
+          disabled={busy.includes(u.id)}
+        >
+          <MoreHorizontal size={15} />
+        </Button>
+      )}
+    >
+      {detailId !== u.id && (
+        <MenuItem icon={<IdCard size={14} />} onClick={() => openDetail(u)}>
+          {t('상세 보기')}
+        </MenuItem>
+      )}
+      <MenuItem
+        icon={<UserPen size={14} />}
+        label={t('{name} 정보 수정').replace('{name}', u.name)}
+        title={t('이름·이메일을 고치거나 비밀번호를 초기화합니다')}
+        onClick={() => openProfile(u)}
+      >
+        {t('정보 수정')}
+      </MenuItem>
+      <MenuItem
+        icon={<SlidersHorizontal size={14} />}
+        label={t('{name} 모델 제한').replace('{name}', u.name)}
+        title={t('이 계정이 쓸 수 있는 모델을 제한합니다')}
+        onClick={() => setRestricting(u)}
+      >
+        {t('모델 제한')}
+      </MenuItem>
+      <MenuItem
+        icon={<KeyRound size={14} />}
+        label={t('{name} 키 관리').replace('{name}', u.name)}
+        title={t('KloudChat 키를 재발급·교체하고, 이 사용자가 발급한 키를 확인·삭제합니다')}
+        onClick={() => openKeys(u)}
+      >
+        {t('키 관리')}
+      </MenuItem>
+      <MenuItem
+        icon={u.role === 'admin' ? <ShieldOff size={14} /> : <Shield size={14} />}
+        label={(u.role === 'admin' ? t('{name} 관리자 해제') : t('{name} 관리자로 지정')).replace('{name}', u.name)}
+        title={
+          u.id === user?.id
+            ? t('자기 계정의 관리자 권한은 해제할 수 없습니다')
+            : u.role !== 'admin' && u.status !== 'active'
+              ? t('활성 계정만 관리자로 지정할 수 있습니다')
+              : u.role === 'admin'
+                ? t('관리자 권한을 거둡니다')
+                : t('관리자 권한을 줍니다')
+        }
+        // Only an active account is made an admin; any admin can be revoked.
+        disabled={u.id === user?.id || (u.role !== 'admin' && u.status !== 'active')}
+        onClick={() => setPromoting(u)}
+      >
+        {u.role === 'admin' ? t('관리자 해제') : t('관리자로 지정')}
+      </MenuItem>
+      {u.status !== 'suspended' ? (
+        <MenuItem
+          icon={<UserX size={14} />}
+          label={t('{name} 정지').replace('{name}', u.name)}
+          title={u.id === user?.id ? t('자기 계정은 정지할 수 없습니다') : t('이 계정의 접속을 막습니다')}
+          disabled={u.id === user?.id}
+          onClick={() => setSuspending(u)}
+        >
+          {t('정지')}
+        </MenuItem>
+      ) : (
+        <MenuItem
+          icon={<RefreshCw size={14} />}
+          label={t('{name} 정지 해제').replace('{name}', u.name)}
+          title={t('다시 접속할 수 있게 합니다')}
+          onClick={() => void run(u.id, () => reinstateUser(u.id))}
+        >
+          {t('정지 해제')}
+        </MenuItem>
+      )}
+      {/* Last and set apart: the one action that cannot be undone. */}
+      <MenuSeparator />
+      <MenuItem
+        danger
+        icon={<Trash2 size={14} />}
+        label={t('{name} 계정 삭제').replace('{name}', u.name)}
+        title={
+          u.id === user?.id
+            ? t('자기 계정은 삭제할 수 없습니다')
+            : t('계정과 그 계정이 만든 모든 것을 지웁니다. 되돌릴 수 없습니다.')
+        }
+        disabled={u.id === user?.id}
+        onClick={() => setDeleting(u)}
+      >
+        {t('계정 삭제')}
+      </MenuItem>
+    </Dropdown>
+  )
+
+  const rowActions = (u: User) => (
+    <>
+      {u.status === 'pending' && (
+        <Button
+          size="sm"
+          variant="primary"
+          disabled={busy.includes(u.id)}
+          onClick={() => void run(u.id, () => approveUser(u.id, PLANS[0].credits))}
+        >
+          {busy.includes(u.id) ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+          {t('승인')}
+        </Button>
+      )}
+      {u.status === 'pending' && (
+        <Button size="sm" variant="danger" disabled={busy.includes(u.id)} onClick={() => void run(u.id, () => rejectUser(u.id))}>
+          <X size={13} />
+          {t('반려')}
+        </Button>
+      )}
+      <Button size="sm" title={t('월 크레딧 한도를 바꿉니다')} onClick={() => openCredits(u)}>
+        {t('크레딧')}
+      </Button>
+      {userMenu(u)}
+    </>
+  )
+
+  /** Avatar, name (opens the detail), admin badge, address. */
+  const identity = (u: User) => (
+    <div className="flex min-w-0 items-center gap-2.5">
+      <span
+        className="grid size-7 shrink-0 place-items-center rounded-full text-xs font-semibold text-white"
+        style={{ background: u.avatarColor }}
+      >
+        {u.name[0]}
+      </span>
+      <div className="min-w-0">
+        <p className="flex items-center gap-1.5 font-medium">
+          <button
+            type="button"
+            className="min-w-0 truncate text-left hover:text-accent hover:underline"
+            title={t('상세 보기')}
+            onClick={() => openDetail(u)}
+          >
+            {u.name}
+          </button>
+          {u.role === 'admin' && (
+            <Badge tone="accent">
+              <Shield size={10} />
+              {t('관리자')}
+            </Badge>
+          )}
+        </p>
+        <p className="flex min-w-0 items-center gap-0.5 text-xs text-faint">
+          <span className="truncate">{u.email}</span>
+          <CopyButton text={u.email} label={t('이메일')} className="size-5" />
+        </p>
+        {/* No key: turns fall back to the master key, unattributed. */}
+        <p className="mt-0.5 flex items-center gap-1 text-2xs text-faint">
+          <KeyRound size={9} />
+          {u.litellmKeyPreview ? (
+            <span className="font-mono">{u.litellmKeyPreview}</span>
+          ) : (
+            <span className="text-warn">{t('전용 키 없음')}</span>
+          )}
+          {rotated?.id === u.id && <span className="text-success">{t('방금 재발급됨')}</span>}
+        </p>
+      </div>
+    </div>
+  )
+
+  const statusBadges = (u: User) => (
+    <>
+      <Badge tone={statusTone[u.status]}>{t(statusLabel[u.status])}</Badge>
+      {u.status === 'pending' && u.emailVerifiedAt === null && (
+        <Badge className="ml-1" title={t('확인 메일의 링크를 아직 누르지 않았습니다. 승인하면 확인한 것으로 칩니다.')}>
+          {t('메일 미확인')}
+        </Badge>
+      )}
+    </>
+  )
+
   return (
     <>
       <TopBar left={<span className="text-base font-medium">{t('사용자 · 크레딧')}</span>} />
@@ -440,7 +646,49 @@ export function AdminUsersPage() {
           }
           confirmLabel={bulk === 'approve' ? t('승인') : t('반려')}
         />
-        <Card className="overflow-hidden">
+        {/* A phone: one card per account, its actions in reach; the table on wider screens. */}
+        {phone && (
+          <div className="space-y-2" data-testid="user-cards" aria-busy={usersLoading || undefined}>
+            {visible.length === 0 && (
+              <Card className="px-4 py-8 text-center text-base text-faint">
+                {usersLoading ? (
+                  <Loader2 size={16} className="mx-auto animate-spin" />
+                ) : !usersPage ? (
+                  t('사용자를 불러오지 못했습니다.')
+                ) : (
+                  t('조건에 맞는 사용자가 없습니다.')
+                )}
+              </Card>
+            )}
+            {visible.map((u) => (
+              <Card
+                key={u.id}
+                data-user-card={u.id}
+                className={cn('space-y-2.5 px-3 py-3', ticked.has(u.id) && 'border-accent/40 bg-accent/5')}
+              >
+                <div className="flex items-start gap-2">
+                  <input
+                    type="checkbox"
+                    className="mt-1.5 size-4 shrink-0 cursor-pointer accent-[var(--accent)]"
+                    aria-label={t('{name} 선택').replace('{name}', u.name)}
+                    checked={ticked.has(u.id)}
+                    onChange={() => tick(u.id)}
+                  />
+                  <div className="min-w-0 flex-1">{identity(u)}</div>
+                  <div className="shrink-0">{statusBadges(u)}</div>
+                </div>
+                <CreditBar user={u} className="w-full" />
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs text-muted">
+                    {t('마지막 활동')} <RelTime iso={u.lastActiveAt} />
+                  </span>
+                  <div className="flex items-center gap-1.5">{rowActions(u)}</div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+        <Card className={cn('overflow-hidden', phone && 'hidden')}>
           {/* Scroll box inside the card: card keeps `overflow-hidden` for rounded corners. */}
           <div className="overflow-x-auto">
             <table className="w-full text-base" aria-busy={usersLoading || undefined}>
@@ -517,54 +765,8 @@ export function AdminUsersPage() {
                       onChange={() => tick(u.id)}
                     />
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2.5">
-                      <span
-                        className="grid size-7 shrink-0 place-items-center rounded-full text-xs font-semibold text-white"
-                        style={{ background: u.avatarColor }}
-                      >
-                        {u.name[0]}
-                      </span>
-                      <div className="min-w-0">
-                        <p className="flex items-center gap-1.5 font-medium">
-                          {u.name}
-                          {u.role === 'admin' && (
-                            <Badge tone="accent">
-                              <Shield size={10} />
-                              {t('관리자')}
-                            </Badge>
-                          )}
-                        </p>
-                        <p className="flex min-w-0 items-center gap-0.5 text-xs text-faint">
-                          <span className="truncate">{u.email}</span>
-                          <CopyButton text={u.email} label={t('이메일')} className="size-5" />
-                        </p>
-                        {/* No key: turns fall back to the master key, unattributed. */}
-                        <p className="mt-0.5 flex items-center gap-1 text-2xs text-faint">
-                          <KeyRound size={9} />
-                          {u.litellmKeyPreview ? (
-                            <span className="font-mono">{u.litellmKeyPreview}</span>
-                          ) : (
-                            <span className="text-warn">{t('전용 키 없음')}</span>
-                          )}
-                          {rotated?.id === u.id && (
-                            <span className="text-success">{t('방금 재발급됨')}</span>
-                          )}
-                        </p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge tone={statusTone[u.status]}>{t(statusLabel[u.status])}</Badge>
-                    {u.status === 'pending' && u.emailVerifiedAt === null && (
-                      <Badge
-                        className="ml-1"
-                        title={t('확인 메일의 링크를 아직 누르지 않았습니다. 승인하면 확인한 것으로 칩니다.')}
-                      >
-                        {t('메일 미확인')}
-                      </Badge>
-                    )}
-                  </td>
+                  <td className="max-w-[22rem] px-4 py-3">{identity(u)}</td>
+                  <td className="px-4 py-3">{statusBadges(u)}</td>
                   <td className="px-4 py-3">
                     <CreditBar user={u} />
                   </td>
@@ -572,140 +774,7 @@ export function AdminUsersPage() {
                     <RelTime iso={u.lastActiveAt} />
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex justify-end gap-1.5">
-                      {u.status === 'pending' && (
-                        <Button
-                          size="sm"
-                          variant="primary"
-                          disabled={busy.includes(u.id)}
-                          onClick={() => void run(u.id, () => approveUser(u.id, PLANS[0].credits))}
-                        >
-                          {busy.includes(u.id) ? (
-                            <Loader2 size={13} className="animate-spin" />
-                          ) : (
-                            <Check size={13} />
-                          )}
-                          {t('승인')}
-                        </Button>
-                      )}
-                      {u.status === 'pending' && (
-                        <Button
-                          size="sm"
-                          variant="danger"
-                          disabled={busy.includes(u.id)}
-                          onClick={() => void run(u.id, () => rejectUser(u.id))}
-                        >
-                          <X size={13} />
-                          {t('반려')}
-                        </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label={t('{name} 정보 수정').replace('{name}', u.name)}
-                        title={t('이름·이메일을 고치거나 비밀번호를 초기화합니다')}
-                        disabled={busy.includes(u.id)}
-                        onClick={() => {
-                          setProfile(u)
-                          setDraftName(u.name)
-                          setDraftEmail(u.email)
-                          setDraftPassword('')
-                          setProfileNote(null)
-                          setProfileError(null)
-                        }}
-                      >
-                        <UserPen size={14} />
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={() => {
-                          setEditing(u)
-                          setDraftCredits(String(u.monthlyCredits))
-                        }}
-                      >
-                        {t('크레딧')}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label={t('{name} 모델 제한').replace('{name}', u.name)}
-                        title={t('이 계정이 쓸 수 있는 모델을 제한합니다')}
-                        disabled={busy.includes(u.id)}
-                        onClick={() => setRestricting(u)}
-                      >
-                        <SlidersHorizontal size={14} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label={t('{name} 키 관리').replace('{name}', u.name)}
-                        title={t('KloudChat 키를 재발급·교체하고, 이 사용자가 발급한 키를 확인·삭제합니다')}
-                        disabled={busy.includes(u.id)}
-                        onClick={() => openKeys(u)}
-                      >
-                        <KeyRound size={14} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label={(u.role === 'admin'
-                          ? t('{name} 관리자 해제')
-                          : t('{name} 관리자로 지정')
-                        ).replace('{name}', u.name)}
-                        title={
-                          u.id === user?.id
-                            ? t('자기 계정의 관리자 권한은 해제할 수 없습니다')
-                            : u.role === 'admin'
-                              ? t('관리자 권한을 거둡니다')
-                              : t('관리자 권한을 줍니다')
-                        }
-                        disabled={
-                          busy.includes(u.id) ||
-                          u.id === user?.id ||
-                          // Only an active account is made an admin; any admin can be revoked.
-                          (u.role !== 'admin' && u.status !== 'active')
-                        }
-                        onClick={() => setPromoting(u)}
-                      >
-                        {u.role === 'admin' ? <ShieldOff size={14} /> : <Shield size={14} />}
-                      </Button>
-                      {u.status !== 'suspended' ? (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label={t('{name} 정지').replace('{name}', u.name)}
-                          title={t('이 계정의 접속을 막습니다')}
-                          disabled={busy.includes(u.id) || u.id === user?.id}
-                          onClick={() => setSuspending(u)}
-                        >
-                          <UserX size={14} />
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label={t('{name} 정지 해제').replace('{name}', u.name)}
-                          title={t('다시 접속할 수 있게 합니다')}
-                          disabled={busy.includes(u.id)}
-                          onClick={() => void run(u.id, () => reinstateUser(u.id))}
-                        >
-                          <RefreshCw size={14} />
-                        </Button>
-                      )}
-                      {/* Last and set apart: the one action that cannot be undone. */}
-                      <span aria-hidden className="mx-1 w-px self-stretch bg-line" />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-danger hover:bg-danger/10 hover:text-danger"
-                        aria-label={t('{name} 계정 삭제').replace('{name}', u.name)}
-                        title={t('계정과 그 계정이 만든 모든 것을 지웁니다. 되돌릴 수 없습니다.')}
-                        disabled={busy.includes(u.id) || u.id === user?.id}
-                        onClick={() => setDeleting(u)}
-                      >
-                        <Trash2 size={14} />
-                      </Button>
-                    </div>
+                    <div className="flex items-center justify-end gap-1.5">{rowActions(u)}</div>
                   </td>
                 </tr>
               ))}
@@ -727,6 +796,13 @@ export function AdminUsersPage() {
         <PipelineApprovals />
         <SkillApprovals />
       </PageBody>
+
+      <UserDetail
+        userId={detailId}
+        row={users.find((u) => u.id === detailId) ?? null}
+        onClose={closeDetail}
+        actions={(u) => rowActions(u)}
+      />
 
       <Modal
         open={!!restricting}
@@ -805,7 +881,7 @@ export function AdminUsersPage() {
             className="mt-1"
           />
           <span>
-            {t('올린 파일과 만든 그림·클립도 디스크에서 지웁니다')}
+            {t('올린 파일과 만든 이미지·클립도 디스크에서 지웁니다')}
             <span className="block text-xs text-faint">
               {t('끄면 파일은 남고, 디스크가 차면 저장소 정리가 오래된 것부터 지웁니다.')}
             </span>

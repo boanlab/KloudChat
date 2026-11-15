@@ -375,7 +375,7 @@ export function Sidebar() {
           aria-label={t('이번 달 사용량')}
           onClick={() => navigate('/usage')}
           title={t(
-            '크레딧은 모델을 쓸 때마다 줄어듭니다. 글은 조금, 그림과 영상은 많이 듭니다. 다 쓰면 다음 달까지 새 요청을 보낼 수 없고, 만든 것은 그대로 남습니다. 눌러서 무엇에 얼마나 썼는지 봅니다.',
+            '크레딧은 모델을 쓸 때마다 줄어듭니다. 글은 조금, 이미지와 영상은 많이 듭니다. 다 쓰면 다음 달까지 새 요청을 보낼 수 없고, 만든 것은 그대로 남습니다. 눌러서 무엇에 얼마나 썼는지 봅니다.',
           )}
           className="mb-1 block w-full rounded-control px-2 py-1.5 text-left transition-colors hover:bg-elevated"
         >

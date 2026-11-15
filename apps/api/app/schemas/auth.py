@@ -37,6 +37,10 @@ class LoginRequest(Wire):
     password: str = Field(max_length=200)
 
 
+#: picker entries a routed surface's pick may be instead of a model id (`start_mode`)
+SUPER_ENTRIES = ("super", "super_strict")
+
+
 def _model_picks(value: dict[str, str], keys: set[str]) -> dict[str, str]:
     """Known surfaces only; empty id drops the pick."""
     unknown = set(value) - keys
@@ -61,7 +65,8 @@ class Preferences(Wire):
     ] = "ask"
     about_me: str = Field(default="", max_length=1500)
     response_style: str = Field(default="", max_length=1500)
-    #: per-surface/per-a/v-mode picks, synced across browsers; unserved ids fall back on screen
+    #: per-surface/per-a/v-mode picks, synced across browsers; unserved ids fall back on screen.
+    #: Chat, report and slides may hold a Super Agent entry (`super`, `super_strict`).
     model_by_kind: dict[str, str] = Field(default_factory=dict)
     av_model_by_mode: dict[str, str] = Field(default_factory=dict)
     #: picture model when a picture must stay strict-local and none was picked; "" = first listed
@@ -70,7 +75,12 @@ class Preferences(Wire):
     @field_validator("model_by_kind")
     @classmethod
     def _surfaces_only(cls, value: dict[str, str]) -> dict[str, str]:
-        return _model_picks(value, {"chat", "report", "slides", "image", "av"})
+        picks = _model_picks(value, {"chat", "report", "slides", "image", "av"})
+        # a Super Agent entry (`super`, `super_strict`) is a pick on the routed surfaces only
+        for kind, pick in picks.items():
+            if pick in SUPER_ENTRIES and kind not in ("chat", "report", "slides"):
+                raise ValueError(f"super_agent_entry_not_for_{kind}")
+        return picks
 
     @field_validator("av_model_by_mode")
     @classmethod

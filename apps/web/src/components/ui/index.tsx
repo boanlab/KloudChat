@@ -1,4 +1,4 @@
-import { Check, ChevronDown, X } from 'lucide-react'
+import { Check, ChevronDown, ChevronLeft, ChevronRight, X } from 'lucide-react'
 import {
   createContext,
   useCallback,
@@ -892,30 +892,92 @@ export function Tabs<T extends string>({
   value: T
   onChange: (v: T) => void
 }) {
+  const t = useT()
+  const row = useRef<HTMLDivElement>(null)
+  // the labels and counts: a count that arrives later widens its tab
+  const shape = tabs.map((tab) => `${tab.label}:${tab.count ?? ''}`).join('|')
+  // A row wider than the screen scrolls sideways; the hidden side is shown by a fade and an arrow.
+  const [hidden, setHidden] = useState({ left: false, right: false })
+  const measure = useCallback(() => {
+    const el = row.current
+    if (!el) return
+    const left = el.scrollLeft > 2
+    const right = el.scrollLeft + el.clientWidth < el.scrollWidth - 2
+    setHidden((prev) => (prev.left === left && prev.right === right ? prev : { left, right }))
+  }, [])
+  useLayoutEffect(() => {
+    const el = row.current
+    if (!el) return
+    // the chosen tab is always in view
+    const active = el.querySelector<HTMLElement>('[aria-selected="true"]')
+    if (active && el.scrollWidth > el.clientWidth) {
+      const { offsetLeft, offsetWidth } = active
+      if (offsetLeft < el.scrollLeft || offsetLeft + offsetWidth > el.scrollLeft + el.clientWidth) {
+        el.scrollLeft = offsetLeft - (el.clientWidth - offsetWidth) / 2
+      }
+    }
+    measure()
+  }, [value, shape, measure])
+  useEffect(() => {
+    const el = row.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const watch = new ResizeObserver(measure)
+    watch.observe(el)
+    return () => watch.disconnect()
+  }, [measure])
+  const nudge = (dir: 1 | -1) => row.current?.scrollBy({ left: dir * row.current.clientWidth * 0.6, behavior: 'smooth' })
+  const edge = 'absolute inset-y-0 z-10 flex w-9 items-center text-muted hover:text-fg'
   return (
-    // A phone scrolls the row sideways instead of the page.
-    <div
-      role="tablist"
-      className="flex gap-1 border-b border-line max-sm:overflow-x-auto max-sm:[scrollbar-width:none]"
-    >
-      {tabs.map((t) => (
+    <div className="relative">
+      <div
+        ref={row}
+        role="tablist"
+        onScroll={measure}
+        className="flex gap-1 border-b border-line max-sm:overflow-x-auto max-sm:[scrollbar-width:none] max-sm:[&::-webkit-scrollbar]:hidden"
+      >
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            role="tab"
+            aria-selected={value === tab.id}
+            onClick={() => onChange(tab.id)}
+            className={cn(
+              // One line per tab, even at phone width.
+              '-mb-px shrink-0 border-b-2 px-3 py-2 text-base font-medium whitespace-nowrap transition-colors max-sm:px-2.5',
+              value === tab.id
+                ? 'border-accent text-fg'
+                : 'border-transparent text-muted hover:text-fg',
+            )}
+          >
+            {tab.label}
+            {tab.count !== undefined && <span className="ml-1.5 text-faint">{tab.count}</span>}
+          </button>
+        ))}
+      </div>
+      {hidden.left && (
         <button
-          key={t.id}
-          role="tab"
-          aria-selected={value === t.id}
-          onClick={() => onChange(t.id)}
-          className={cn(
-            // One line per tab, even at phone width.
-            '-mb-px border-b-2 px-3 py-2 text-base font-medium whitespace-nowrap transition-colors max-sm:px-2.5',
-            value === t.id
-              ? 'border-accent text-fg'
-              : 'border-transparent text-muted hover:text-fg',
-          )}
+          type="button"
+          tabIndex={-1}
+          aria-label={t('앞 탭 보기')}
+          data-testid="tabs-more-left"
+          onClick={() => nudge(-1)}
+          className={cn(edge, 'left-0 justify-start bg-gradient-to-r from-bg via-bg/90 to-transparent')}
         >
-          {t.label}
-          {t.count !== undefined && <span className="ml-1.5 text-faint">{t.count}</span>}
+          <ChevronLeft size={16} />
         </button>
-      ))}
+      )}
+      {hidden.right && (
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-label={t('다음 탭 보기')}
+          data-testid="tabs-more-right"
+          onClick={() => nudge(1)}
+          className={cn(edge, 'right-0 justify-end bg-gradient-to-l from-bg via-bg/90 to-transparent')}
+        >
+          <ChevronRight size={16} />
+        </button>
+      )}
     </div>
   )
 }

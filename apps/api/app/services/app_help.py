@@ -158,12 +158,19 @@ def block(query: str, *, lang: str = "ko") -> str:
         return (head + "\nThe user guide has no section on this question. Say that the "
                 "guide does not cover it and name where in the app to look: "
                 + _PAGES.get(lang, _PAGES["ko"]) + "\n")
-    parts = []
+    heads, texts = [], []
     for row in found:
         where = " › ".join(x for x in (row["title"], row["heading"]) if x)
         link = page_link(row.get("path", ""), lang=lang)
-        parts.append(f"## {where}\n" + (f"Guide page: {link}\n" if link else "") + row["text"])
-    body = "\n\n".join(parts)[:_BLOCK_CHARS]
+        heads.append(f"## {where}\n" + (f"Guide page: {link}\n" if link else ""))
+        texts.append(row["text"])
+    # Over the budget, the longest sections lose their ends first, so a lower-ranked short
+    # section still arrives whole instead of being cut off by the joined body's tail.
+    room = _BLOCK_CHARS - sum(map(len, heads)) - 2 * (len(found) - 1)
+    cap = max(map(len, texts), default=0)
+    while cap > 0 and sum(min(len(t), cap) for t in texts) > room:
+        cap -= 50
+    body = "\n\n".join(h + t[:max(cap, 0)] for h, t in zip(heads, texts, strict=True))
     return head + "Answer from these sections of its user guide, naming its own screens, " \
         "menus and buttons as written here, in order.\n\n" + body
 

@@ -2887,6 +2887,22 @@ replace the two Auto lanes in the picker; conversations on an Auto lane were mov
 by migration 0083. The Auto code below stays for comparison and for sessions set through the
 API.
 
+**Always there, and the default.** There is no switch (migration 0089 dropped
+`governance.super_agent_enabled`): the picker lists both entries first on chat, report and
+slides, each with its credit range, or as unavailable while a conversation is on an entry
+whose table has no model the account may use. A new conversation the caller sends without a
+`routing_mode` starts as `services/start_mode.py` decides: a model fixed by the caller or the
+conversation's agent keeps it `manual`; the person's own pick for the surface
+(`preferences.modelByKind`, a model id or the entry `super` / `super_strict`) comes next; otherwise the
+surface's start from 설정 › 시스템 › 모델 (`system_settings` `routing.chat`, `routing.report`,
+`routing.slides`; unset is `super`), with `super` moved to `super_strict` in a project where
+internal material stays strict-local, and to `manual` when neither entry has a usable model
+(a `super_strict` start never widens to `super`). The web client applies the same rule before
+the first send (`lib/superAgent.ts` `startingMode`, from the catalogue's
+`defaultRoutingByKind` and `superAgent.projectStrict`, so a project conversation shows
+Super Agent (strict-local) before anything is sent), and a chat handed off to a report or deck starts the same way.
+Existing conversations keep their stored mode.
+
 **Task class first, by rules.** Each turn is sorted into `simple`, `chat`, `transform`
 (translate, summarise, proofread), `calc`, `code`, `current` (facts that change; search
 switched on), `long` (large pasted material or conversation), `reasoning` or `document`
@@ -2917,16 +2933,61 @@ V4.1 Flash at high effort by the owner's decision of 2026-11-14:
 | simple, chat, transform | Qwen3.8 Flash | strict Flash | none | Flash matched every larger model (8.5/8.2 of 10) |
 | calc, code, long, reasoning, current | DeepSeek V4.1 Flash | strict Flash (no search for current) | high | hard turns: thinking Flash matched (8.3–8.5) but sometimes left nothing; DeepSeek searches and cites best (8.7 vs Flash 6.3) |
 | document | Qwen3.8 27B | strict 27B | default | 6.0 free vs GLM-5.3 6.7 at ~800 credits |
-| escalation | DeepSeek V4.1 Flash | strict Flash | high | never empty; 9/10 where thinking Flash left nothing |
+| material (a row, not a class) | — (the class's own row) | — (the class's own row) | high | moves nothing by default: on the re-run strict DeepSeek scored 7.6 vs thinking Flash 7.7 over files (8.2 with passback) at ~50 s more to the first text |
+| escalation | DeepSeek V4.1 Flash | strict DeepSeek V4 Flash | high | never empty; 9/10 where thinking Flash left nothing; strict 「틀렸어, 다시」 6.7 vs Flash 6.2 |
+
+The strict `escalation` pick comes from the owner's decision of 2026-11-14,
+after a strict-column comparison (26 scenarios, 3 runs each, the app's envelope and tools,
+judged blind by Sonnet): self-hosted DeepSeek V4 Flash with thinking on did not beat thinking
+Flash on reasoning, calculation, code, long pasted text or current facts (6.7 vs 6.9 overall,
+2–5× slower), so those rows stay on Flash; it was slightly better as the 「다시」 writer and
+clearly better on very long material. Questions over attached documents first looked
+clearly better (8.6 vs 6.9) but not on a re-run (7.6 vs 7.7; 8.2 with passback, first text
+p50 60 s vs 9 s), so on 2026-11-15 the owner kept them on Flash: the `material` row exists
+for an admin to fill, and is empty by default. Material too long for Flash's window still
+reaches DeepSeek through the size check (`usable_for`, the last-resort pick by window).
 
 **Escalation, de-escalation, stickiness.** 「다시」, 「더 자세히」, 「틀렸어」 and the like, or an
 empty or failed previous answer, move the turn to the `escalation` row; that row's model also
 rewrites, inside the same turn, an answer the class's model left empty or cut (the rescue
-writer, with its own effort). A thanks or 「ok」 after a hard turn comes down to `simple`. A
+writer, with its own effort). A rescuer gets `_FALLBACK_PATIENCE` (240 s) to show text; if it
+fails or stays silent, the turn's own model still writes (`_RESCUE_PATIENCE`, 300 s, sits
+above it). A thanks or 「ok」 after a hard turn comes down to `simple`. A
 short follow-up with no markers of its own keeps the previous turn's class and model (one
 voice per thread, and the provider's prefix cache stays warm), and every revision of a report
 or deck keeps the model that wrote its first version (`_first_document_model`). The pick is
 the turn's: `sessions.model` is not overwritten.
+
+**Internal material.** A chat turn works over internal material when a file that is not a
+picture is attached to it, or when `search_knowledge` has something to search in the
+conversation (`_material_present`, the same set as `_knowledge_shelf`): files with text
+attached earlier, the project's knowledge sources still switched on, the agent's own files.
+Pasted text alone is not material here (it is the `long` class's business). Such a turn moves
+to the `material` row (`route.row`), in a column where that row names a model, except a thanks
+(`simple`), a document and a retry (`escalation`), which keep their rows; the class stays what
+the request is. By default neither column names a model, so nothing moves (an override row's
+empty column keeps the class's row; the admin may fill or empty either column). 빠르게 still sends the turn to the `chat` row, 깊게 to `escalation`.
+
+**Failure inside a strict turn.** DeepSeek V4 Flash is served across both GB10 nodes
+(tensor-parallel 2), so either node down takes it away, and the gateway refuses strict aliases
+outright (503 `strict_local_unavailable`) while vLLM has requests waiting. A strict Super Agent
+turn whose writer is not Qwen3.8 Flash therefore carries a same-turn fallback
+(`_super_fallback`, `agent.run_turn(fallback_model=…)`): when the writer's call is refused,
+cannot connect, breaks mid-stream, or shows neither answer text nor a finished call within
+`_FALLBACK_PATIENCE` (240 s; DeepSeek took at most 180 s on one call in the evaluation, a
+stalled stream 20 minutes), the shown part is taken back and Flash continues the same
+conversation, tool results included, at the writer's effort; nothing is answered outside
+strict-local. The switch is a `writer_fallback` event: the answer's route note gains
+`fallbackModel`/`fallbackReason`, the answer row records Flash, and the tokens the failed
+writer spent bill on its own ledger line. The failed model is marked in `model_health` (60 s
+after a busy refusal, 300 s otherwise, per process) and left out of Super Agent picks, rescuers
+and the 깊게 route meanwhile, so the next turns go to Flash at once (`route.skipped` says so).
+Within a tool loop the self-hosted DeepSeek writer gets its own reasoning back on each tool
+call (`reasoning_content`, `agent._passes_reasoning`; no other model is sent it): on
+「다시」 turns it no longer re-derives figures at every step (judged 7.7 vs 6.6, ~20% fewer
+output tokens, first text p50 85 s vs 143 s). DeepSeek's first visible text takes ~50 s on material turns and 85 s on 「다시」 turns (Flash ~6–20 s): the step list shows a
+running 「깊이 생각하는 중」 row naming the writer, the wait and the fallback until the first text
+or tool call, next to the turn's elapsed clock.
 
 **Boundaries.** `super_strict` picks only `self_hosted` strict-local models; with none usable
 the turn is refused (503 `strict_local_unavailable`), never answered outside, and titles,
@@ -3202,7 +3263,27 @@ a project's or an agent's excepted (`delete_session_files`). Each file records h
 (`files.origin`: `upload`, or `generated` for a code run's output, an image, a chart, a
 figure, audio, video, an export); the file box (`/files` in the web app) lists the two
 apart, a page at a time (`GET /files/page?box=true`: agents' knowledge left out, `origin`,
-a name search `q`, a keyset `cursor`, with `total` and per-origin `counts`), and a composer's 「파일함에서 고르기」 attaches one again by id. Deleting
+a name search `q`, `sort` `created`/`name`/`size` with `dir`, a keyset `cursor` tied to
+the sort and direction (ties broken by id), with `total` and per-origin `counts`, plus
+`working` in the whole box), and a composer's 「파일함에서 고르기」 attaches one again by id. A third tab,
+「작업 문서」 (`/files?tab=working`), lists the documents worked on as a whole — the HWP, Word
+and PowerPoint artifacts and the web reports and web slides — one row per artifact, its
+version count being its `version` (`GET /artifacts/working`: `kind` one kind or a comma list,
+a title search `q`, `sort` `updated`/`title`/`kind`/`version` with `dir` `asc`/`desc`, a
+keyset `cursor` tied to the sort and direction, with
+`total`, per-kind `counts` and each row's conversation and project names, someone else's or a
+deleted one left out). The rows are the artifacts themselves, not copies: they open in the
+editor they have in chat (`/s/{session}?artifact={id}`; an office document with no
+conversation joins a new chat, a web document with none opens on `/artifacts?open={id}`),
+download in their own format (the office file, Markdown, `.pptx`), and rename and delete
+through `PATCH`/`DELETE /artifacts/{id}`; deleting an office document, or the conversation
+that holds it (singly or in bulk), also removes the file it keeps per version, after the
+commit (`office_doc.kept_files`, `drop_files`); deleting an account with its files takes them
+with its directory, and one deleted with `purgeFiles=false` leaves them to the storage sweep. Uploaded office files stay in 올린 파일 as files; a
+copy opened from one for editing is the working document. Every file-box tab sorts on the server by clicking its
+column headings (`components/files/ListSort.tsx`: `SortHeader` cells over a grid list, the
+sorted one carrying `aria-sort`), the order kept in the address (`?sort=…&dir=…`); a phone,
+which has no heading row, picks the column and the direction instead (`PhoneSort`). Deleting
 the project drops the collection; `POST /projects/{id}/knowledge/reindex`
 backfills files uploaded before the index existed. The lexical shelf the tool
 also reads includes the project's files, so a passage the budget could not
