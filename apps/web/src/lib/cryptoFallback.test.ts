@@ -20,7 +20,7 @@ describe('crypto stand-ins for plain-http origins', () => {
   it('a diagram key is the same with and without crypto.subtle', async () => {
     const source = 'mindmap\n  root((클라우드))  \n    가상화\n'
     const withSubtle = await diagramKey(source)
-    vi.stubGlobal('crypto', { getRandomValues: (a: Uint8Array) => a })
+    vi.stubGlobal('crypto', { getRandomValues: (a: Uint8Array<ArrayBuffer>) => a })
     const without = await diagramKey(source)
     expect(without).toBe(withSubtle)
     expect(without).toMatch(/^[0-9a-f]{16}$/)
@@ -28,7 +28,7 @@ describe('crypto stand-ins for plain-http origins', () => {
 
   it('randomId gives a v4 UUID without crypto.randomUUID', () => {
     const real = globalThis.crypto
-    vi.stubGlobal('crypto', { getRandomValues: (a: Uint8Array) => real.getRandomValues(a) })
+    vi.stubGlobal('crypto', { getRandomValues: (a: Uint8Array<ArrayBuffer>) => real.getRandomValues(a) })
     const id = randomId()
     expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
     expect(randomId()).not.toBe(id)

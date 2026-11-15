@@ -56,7 +56,7 @@ export function sha256(data: Uint8Array): Uint8Array {
 }
 
 /** SHA-256 through Web Crypto where the page may use it, else `sha256`. */
-export async function sha256Digest(data: Uint8Array): Promise<Uint8Array> {
+export async function sha256Digest(data: Uint8Array<ArrayBuffer>): Promise<Uint8Array> {
   const subtle = globalThis.crypto?.subtle
   if (subtle) return new Uint8Array(await subtle.digest('SHA-256', data))
   return sha256(data)
