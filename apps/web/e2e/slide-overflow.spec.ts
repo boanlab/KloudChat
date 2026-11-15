@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { E2E_ADMIN, deckEditor, deckPanel, deckReview, deckThumbs, saveDeck, signIn } from './helpers'
+import { E2E_ADMIN, deckEditor, deckPanel, deckReview, deckThumbs, saveDeck, openNewestDocument, signIn } from './helpers'
 
 test('잘린 슬라이드를 감지하고 가독성 한계까지 자동 맞춘 뒤 파일로 내보낸다', async ({ page }) => {
   test.setTimeout(90_000)
@@ -23,9 +23,7 @@ test('잘린 슬라이드를 감지하고 가독성 한계까지 자동 맞춘 �
     return first.id as string
   }, E2E_ADMIN)
 
-  await page.goto('/artifacts')
-  await page.getByRole('tab', { name: /^슬라이드/ }).click()
-  await page.locator('button.aspect-video').first().click()
+  await openNewestDocument(page, 'deck')
   await deckThumbs(page).first().click()
   // 검토 names the slides at risk of being cut
   const review = await deckReview(page)

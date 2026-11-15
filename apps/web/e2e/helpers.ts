@@ -222,7 +222,15 @@ export async function pickToolModel(page: Page, name = /qwen3\.8/i) {
   throw new Error('도구를 쓸 수 있는 모델을 고르지 못했습니다')
 }
 
-/** Opens the first report in the gallery, then overwrites it with one Markdown section via the API.
+/** Opens the newest web report (`report`) or web slides (`deck`) beside its conversation, from
+ *  파일함 › 작업 문서 (newest edit first): the 아티팩트 page lists no document. */
+export async function openNewestDocument(page: Page, kind: 'report' | 'deck') {
+  await page.goto('/files?tab=working')
+  await page.getByRole('group', { name: '형식' }).getByRole('button', { name: kind === 'report' ? /^웹 보고서/ : /^웹 슬라이드/ }).click()
+  await page.getByTestId('working-doc-open').first().click()
+}
+
+/** Opens the newest report, then overwrites it with one Markdown section via the API.
  *  Opened first because titles are not unique; the session in the URL names the document.
  *  Returns the artifact id and the seeded section id. */
 export async function openAndSeedReport(
@@ -231,9 +239,7 @@ export async function openAndSeedReport(
   options: { clearDiagrams?: boolean } = {},
 ): Promise<{ id: string; sectionId: string }> {
   await signIn(page)
-  await page.goto('/artifacts')
-  await page.getByRole('tab', { name: /^보고서/ }).click()
-  await page.getByText('원본 작업 열기').first().click()
+  await openNewestDocument(page, 'report')
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
   await expect(page.locator('[data-panel="artifact"]')).toBeVisible({ timeout: 30_000 })
   // Idle first: the opened report may still be mid-stream from another spec.

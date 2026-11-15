@@ -32,7 +32,7 @@ test('파일함 lists uploaded and made files apart and deletes one after asking
   await expect(rows.filter({ hasText: '회의녹취_0904.txt' })).toContainText('지원 사업 공고 정리')
   await expect(rows.filter({ hasText: '검색서비스_월별지표.csv' })).toContainText('대화 밖에서 올림')
 
-  await page.getByRole('tab', { name: /대화에서 만든 파일\s*2/ }).click()
+  await page.getByRole('tab', { name: /만든 파일\s*2/ }).click()
   await expect(rows).toHaveCount(2)
   await expect(rows.filter({ hasText: '방법 구조도.png' })).toContainText('지운 대화')
   await page.getByLabel('파일 검색').fill('lru')
@@ -57,7 +57,7 @@ test('파일함 previews a picture as itself and a document as its text', async 
   await dialog.getByRole('button', { name: '닫기' }).click()
   await expect(dialog).toHaveCount(0)
 
-  await page.getByRole('tab', { name: /대화에서 만든 파일/ }).click()
+  await page.getByRole('tab', { name: /만든 파일/ }).click()
   await page.getByRole('button', { name: '방법 구조도.png 미리보기' }).click()
   const picture = page.getByRole('dialog', { name: '방법 구조도.png' }).getByRole('img', { name: '방법 구조도.png' })
   await expect(picture).toBeVisible()
@@ -173,7 +173,7 @@ test('파일함 sorts on its column headings, on the server, and keeps the order
   await expect(heading('이름')).toHaveAttribute('aria-sort', 'ascending')
   await expect(rows.last()).toContainText('c_큰.txt')
   // another tab starts from its own default order
-  await page.getByRole('tab', { name: /대화에서 만든 파일/ }).click()
+  await page.getByRole('tab', { name: /만든 파일/ }).click()
   await expect(page).not.toHaveURL(/sort=/)
   expect(unexpected).toEqual([])
 })

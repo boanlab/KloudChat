@@ -57,6 +57,7 @@ test('내용 감사 — 붙여넣은 것, 두 번 누른 것, 만료된 것', as
 
   // Content the layout did not choose.
   const made: string[] = []
+  const madeBy: Record<string, string> = {}
   for (const [kind, title] of Object.entries(HOSTILE)) {
     const row = await post(page, {
       kind: 'report',
@@ -71,12 +72,15 @@ test('내용 감사 — 붙여넣은 것, 두 번 누른 것, 만료된 것', as
         wordCount: 10,
       },
     })
-    if ((row as { id?: string } | null)?.id) made.push((row as { id: string }).id)
-    void kind
+    if ((row as { id?: string } | null)?.id) {
+      made.push((row as { id: string }).id)
+      madeBy[kind] = (row as { id: string }).id
+    }
   }
 
-  await page.goto('/artifacts')
-  await page.locator('button.aspect-video').first().waitFor({ timeout: 20_000 }).catch(() => {})
+  // Reports are listed in 파일함 › 작업 문서 (the 아티팩트 page lists only HTML, code, charts, diagrams).
+  await page.goto('/files?tab=working')
+  await page.getByTestId('working-doc-row').first().waitFor({ timeout: 20_000 }).catch(() => {})
   await page.waitForTimeout(800)
 
   for (const [width, size] of [
@@ -98,15 +102,9 @@ test('내용 감사 — 붙여넣은 것, 두 번 누른 것, 만료된 것', as
   }
   await page.setViewportSize({ width: 1440, height: 900 })
 
-  // Markup is text, checked through the prose renderer (thumbnails are `<pre>`, escaped by construction).
-  await page.getByRole('tab', { name: /^보고서/ }).click()
-  const markupCard = page
-    .locator('div')
-    .filter({ has: page.getByText(HOSTILE.markup, { exact: true }) })
-    .filter({ has: page.locator('button.aspect-video') })
-    .last()
-  if ((await markupCard.count()) > 0) {
-    await markupCard.locator('button.aspect-video').first().click()
+  // Markup is text, checked through the prose renderer.
+  if (madeBy.markup) {
+    await page.goto(`/files?tab=working&doc=${madeBy.markup}`)
     await page.getByRole('dialog').waitFor({ timeout: 15_000 }).catch(() => {})
     await page.waitForTimeout(1200)
 
@@ -281,9 +279,10 @@ test('내용 감사 — 붙여넣은 것, 두 번 누른 것, 만료된 것', as
 
   // Back must not leave the app.
   await page.goto('/artifacts')
-  await page.locator('button.aspect-video').first().waitFor({ timeout: 20_000 }).catch(() => {})
-  if ((await page.locator('button.aspect-video').count()) > 0) {
-    await page.locator('button.aspect-video').first().click()
+  await page.getByTestId('artifact-row').first().waitFor({ timeout: 20_000 }).catch(() => {})
+  const previewTitle = page.getByTestId('artifact-row').getByRole('button', { name: /열기$/ }).first()
+  if ((await previewTitle.count()) > 0) {
+    await previewTitle.click()
     await page.getByRole('dialog').waitFor({ timeout: 15_000 }).catch(() => {})
     await page.goBack()
     await page.waitForTimeout(900)

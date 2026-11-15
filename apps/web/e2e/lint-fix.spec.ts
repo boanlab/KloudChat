@@ -88,8 +88,8 @@ test('고치기를 누르면 그 절이 실제로 바뀐다', async ({ page }) =
   const was = await state(page)
   expect(was.content).toContain('威胁')
 
-  await page.goto('/artifacts')
-  await page.getByRole('button', { name: /보고/ }).first().click()
+  // Reports are listed in 파일함 › 작업 문서; the doc param opens the document in a modal.
+  await page.goto(`/files?tab=working&doc=${before.id}`)
   await artifactReady(page, 30_000)
   await ribbonTab(page, '검토')
 

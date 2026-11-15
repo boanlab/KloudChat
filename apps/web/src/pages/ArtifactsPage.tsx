@@ -1,32 +1,12 @@
-import { leaveOffice, officeDirty } from '@/lib/officeGuard'
-import {
-  AudioLines,
-  BarChart3,
-  FilePenLine,
-  FileText,
-  Loader2,
-  Image as ImageIcon,
-  Layers,
-  MoreHorizontal,
-  Presentation,
-  Video,
-  Trash2,
-} from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { BarChart3, Code2, Globe, Layers, MessageSquare, MoreHorizontal, Trash2, Workflow } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { ArtifactPreview, CodePanel, MediaPanel } from '@/components/artifacts/ArtifactPanel'
-import {
-  PanelControls,
-  nextMode,
-  type PanelMode,
-} from '@/components/artifacts/PanelControls'
-import { ChartPanel } from '@/components/chart/ChartPanel'
+import { ArtifactModal } from '@/components/artifacts/ArtifactModal'
+import { ReuseItems } from '@/components/artifacts/ResultActions'
+import { useGallery } from '@/components/artifacts/useGallery'
+import { ColumnHeader, PhoneSort, useUrlSort, type SortField } from '@/components/files/ListSort'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
-import { DeckPanel } from '@/components/slides/DeckPanel'
-import { ReportPanel } from '@/components/report/ReportPanel'
-import { ReuseItems } from '@/components/artifacts/ResultActions'
-import { reusable } from '@/lib/reuse'
 import {
   Badge,
   Button,
@@ -35,292 +15,153 @@ import {
   Dropdown,
   EmptyState,
   Input,
-  LoadingState,
-  Modal,
-  ReloadNotice,
   PageHeader,
+  ReloadNotice,
   Tabs,
 } from '@/components/ui'
-import { OfficeView } from '@/components/files/OfficeView'
-import {
-  artifactsApi, errorMessage, templateText, type DesignTemplateRow, type OfficeKind,
-} from '@/lib/api'
-import { currentLang } from '@/lib/i18n'
 import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
-import { useStore } from '@/store/useStore'
-import type { Artifact, ArtifactKind } from '@/types'
-import { useT } from '@/lib/useT'
 import { RelTime } from '@/components/ui/RelTime'
-import { cn } from '@/lib/utils'
+import { LoadMore } from '@/components/ui/ShowMore'
 import { ListSkeleton } from '@/components/ui/Skeleton'
+import { artifactsApi, errorMessage, type GallerySection, type GallerySort } from '@/lib/api'
+import { reusable } from '@/lib/reuse'
+import { useT } from '@/lib/useT'
+import { cn } from '@/lib/utils'
+import { useStore } from '@/store/useStore'
+import type { Artifact } from '@/types'
 
-const kindIcon: Record<ArtifactKind, typeof FileText> = {
-  report: FileText,
-  deck: Presentation,
-  chart: BarChart3,
-  image: ImageIcon,
-  audio: AudioLines,
-  video: Video,
-  code: FileText,
-  html: FileText,
-  hwp: FileText,
-  docx: FileText,
-  pptx: FileText,
+/** The page's sections, in tab order. */
+const SECTIONS: { id: GallerySection; label: string; icon: typeof Globe }[] = [
+  { id: 'html', label: 'HTML', icon: Globe },
+  { id: 'code', label: '코드 파일', icon: Code2 },
+  { id: 'chart', label: '차트', icon: BarChart3 },
+  { id: 'diagram', label: '도식', icon: Workflow },
+]
+
+const sectionOf = (artifact: Artifact) => SECTIONS.find((s) => s.id === artifact.section) ?? SECTIONS[1]
+
+/** The sortable columns; the newest edit first by default, as in 파일함 › 작업 문서. */
+const SORT_FIELDS: SortField<GallerySort>[] = [
+  { id: 'title', label: '제목', first: 'asc' },
+  { id: 'section', label: '종류', first: 'asc' },
+  { id: 'version', label: '판 수', first: 'desc' },
+  { id: 'updated', label: '마지막 수정', first: 'desc' },
+]
+
+/** The grid on a wide screen: pick, title, kind, versions, last edit, controls. */
+const GRID = 'sm:grid sm:grid-cols-[1.75rem_minmax(0,1fr)_8.5rem_4rem_8rem_7.5rem] sm:items-center sm:gap-x-3'
+
+/** The file a picture, a sound or a video is kept as (`/files/<id>/content`), if any. */
+function fileOf(data: Record<string, unknown> | null): string | null {
+  const src = typeof data?.src === 'string' ? data.src : ''
+  return /\/files\/([0-9a-f]{32})\/content/.exec(src)?.[1] ?? null
 }
 
-const kindLabel: Record<ArtifactKind, string> = {
-  report: '보고서',
-  deck: '슬라이드',
-  chart: '차트',
-  image: '이미지',
-  audio: '오디오',
-  video: '동영상',
-  code: '코드',
-  html: 'HTML',
-  hwp: '한글 문서',
-  docx: 'Word 문서',
-  pptx: 'PowerPoint 문서',
+/** A kind's detail beside its section: a code file's language. */
+function detailOf(artifact: Artifact): string {
+  if (artifact.kind !== 'code') return ''
+  const language = artifact.language ?? ''
+  return language && language !== 'text' ? language : ''
 }
-
-/** Unknown kinds: the artifact's icon. */
-const templateIcon: Record<string, typeof FileText> = {
-  deck: Presentation,
-  document: FileText,
-}
-
-/** Null once gone from the catalogue. */
-function templateOf(artifact: Artifact, templates: DesignTemplateRow[]) {
-  const id = artifact.kind === 'html' || artifact.kind === 'code' ? artifact.templateId : undefined
-  return id ? templates.find((row) => row.id === id) : undefined
-}
-
-type Filter = ArtifactKind | 'all' | 'reports' | 'decks'
-
-/** A report is written as a web report, an HWP file or a Word file; a deck as web slides or a PowerPoint file. */
-const FAMILIES = {
-  reports: [
-    { kind: 'report', label: '웹 보고서' },
-    { kind: 'hwp', label: '한글' },
-    { kind: 'docx', label: 'Word' },
-  ],
-  decks: [
-    { kind: 'deck', label: '웹 슬라이드' },
-    { kind: 'pptx', label: 'PowerPoint' },
-  ],
-} as const satisfies Record<string, readonly { kind: ArtifactKind; label: string }[]>
-
-const isOffice = (artifact: Artifact): artifact is Extract<Artifact, { kind: OfficeKind }> =>
-  artifact.kind === 'hwp' || artifact.kind === 'docx' || artifact.kind === 'pptx'
 
 /**
- * An office document (HWP, Word, PowerPoint) as its editor draws it, read only, with 「편집기에서
- * 열기」: beside its conversation, or beside a new chat when it has none (it joins that chat).
+ * 「아티팩트」: what conversations made to view or run — HTML pages, code files, charts and
+ * diagrams. Reports and decks are in 파일함 › 작업 문서, pictures, sound and video in 만든 파일;
+ * an old link to one of those (`?open=<id>`) goes there.
  */
-function OfficeArtifactView({ artifact }: { artifact: Extract<Artifact, { kind: OfficeKind }> }) {
-  const t = useT()
-  const navigate = useNavigate()
-  const newSession = useStore((s) => s.newSession)
-  const ensureSession = useStore((s) => s.ensureSession)
-  const refreshArtifact = useStore((s) => s.refreshArtifact)
-  const [bytes, setBytes] = useState<ArrayBuffer | null>(null)
-  const [failed, setFailed] = useState<string | null>(null)
-  const [opening, setOpening] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const { kind, id, version } = artifact
-  useEffect(() => {
-    let live = true
-    artifactsApi
-      .documentFile(kind, id)
-      .then((file) => live && setBytes(file.bytes))
-      .catch((err: unknown) => live && setFailed(errorMessage(err, t('문서를 불러오지 못했습니다.'))))
-    return () => {
-      live = false
-    }
-  }, [kind, id, version, t])
-
-  const openInEditor = async () => {
-    setOpening(true)
-    setError(null)
-    try {
-      let sessionId = artifact.sessionId
-      if (!sessionId) {
-        // no conversation: a new chat to edit it beside, which it joins
-        sessionId = await ensureSession(await newSession('chat', { projectId: artifact.projectId }))
-        await artifactsApi.attachDocument(kind, id, sessionId)
-        await refreshArtifact(id)
-      }
-      navigate(`/s/${sessionId}?artifact=${id}`)
-    } catch (err) {
-      setError(errorMessage(err, t('편집기에서 열지 못했습니다.')))
-      setOpening(false)
-    }
-  }
-
-  const text = artifact.text ?? ''
-  return (
-    <div className="flex h-full flex-col">
-      <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
-        <p className="min-w-0 flex-1 text-sm text-muted">
-          {error ?? (artifact.sessionId
-            ? t('편집하면 이 문서를 만든 대화 옆 편집기에서 엽니다.')
-            : t('이 문서의 대화가 없습니다. 편집하면 새 대화 옆 편집기에서 엽니다.'))}
-        </p>
-        <Button size="sm" variant="primary" disabled={opening} onClick={() => void openInEditor()}>
-          {opening ? <Loader2 size={14} className="animate-spin" /> : <FilePenLine size={14} />}
-          {t('편집기에서 열기')}
-        </Button>
-      </div>
-      <div className="relative min-h-0 flex-1 bg-elevated">
-        {failed ? (
-          <div className="absolute inset-0 overflow-auto p-4">
-            <p className="pb-3 text-sm text-muted">{failed}</p>
-            <pre className="whitespace-pre-wrap break-words font-sans text-base text-fg">{text}</pre>
-          </div>
-        ) : bytes ? (
-          <OfficeView
-            key={version}
-            kind={kind}
-            bytes={bytes}
-            name={artifact.title}
-            onFail={() => setFailed(t('이 파일은 모양대로 그리지 못해 글자만 보여 줍니다.'))}
-          />
-        ) : (
-          <LoadingState />
-        )}
-      </div>
-    </div>
-  )
-}
-
-/** Partial HTML/code bodies fetched near the viewport. */
-function CardThumb({ artifact }: { artifact: Artifact }) {
-  const refreshArtifact = useStore((s) => s.refreshArtifact)
-  const ref = useRef<HTMLDivElement>(null)
-  const needsBody = artifact.partial && (artifact.kind === 'html' || artifact.kind === 'code')
-
-  useEffect(() => {
-    const node = ref.current
-    if (!needsBody || !node) return
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          observer.disconnect()
-          void refreshArtifact(artifact.id)
-        }
-      },
-      { rootMargin: '600px' },
-    )
-    observer.observe(node)
-    return () => observer.disconnect()
-  }, [needsBody, artifact.id, refreshArtifact])
-
-  const media =
-    artifact.kind === 'image' ||
-    artifact.kind === 'audio' ||
-    artifact.kind === 'video' ||
-    artifact.kind === 'chart'
-
-  return (
-    <div ref={ref} className="size-full">
-      {needsBody ? (
-        <div className="grid size-full place-items-center bg-elevated text-xs text-faint">
-          {'…'}
-        </div>
-      ) : media ? (
-        <ArtifactPreview artifact={artifact} />
-      ) : (
-        <div className="pointer-events-none origin-top-left scale-[0.45] [height:222%] [width:222%]">
-          <ArtifactPreview artifact={artifact} />
-        </div>
-      )}
-    </div>
-  )
-}
-
 export function ArtifactsPage() {
   const t = useT()
   const navigate = useNavigate()
-  const {
-    artifacts,
-    deleteArtifact,
-    deleteMany,
-    projects,
-    sessions,
-    loadArtifacts,
-    loadMoreArtifacts,
-    artifactsLoading,
-    artifactsLoadingMore,
-    artifactsHasMore,
-    artifactsMoreFailed,
-    artifactCounts,
-    artifactsFailed,
-    refreshArtifact,
-    designTemplates,
-  } = useStore()
-  const english = currentLang() === 'en'
-
-  const [filter, setFilterState] = useState<Filter>('all')
-  // Within a family: one format, or all of them.
-  const [format, setFormat] = useState<ArtifactKind | null>(null)
-  const setFilter = (next: Filter) => {
-    setFilterState(next)
-    setFormat(null)
-  }
-  const [query, setQuery] = useState('')
-  const family = filter === 'reports' || filter === 'decks' ? FAMILIES[filter] : null
-  const kindParam =
-    filter === 'all' ? undefined : family ? (format ?? family.map((f) => f.kind).join(',')) : filter
-
-  // Server-side filter and search; debounced.
-  useEffect(() => {
-    const timer = setTimeout(() => void loadArtifacts({ kind: kindParam, q: query }), query ? 300 : 0)
-    return () => clearTimeout(timer)
-  }, [loadArtifacts, kindParam, query])
-  // By id: the panel edits in place.
-  const [previewId, setPreviewId] = useState<string | null>(null)
-  const [previewMode, setPreviewMode] = useState<PanelMode>('wide')
-  const [previewDirty, setPreviewDirty] = useState(false)
-  const [confirmPreviewClose, setConfirmPreviewClose] = useState(false)
-  const [confirming, setConfirming] = useState<Artifact | null>(null)
-
-  // `?open=<id>`: a result made outside any conversation, opened in the panel.
   const [params, setParams] = useSearchParams()
+  const asked = params.get('kind')
+  const [section, setSectionState] = useState<GallerySection | null>(
+    SECTIONS.some((s) => s.id === asked) ? (asked as GallerySection) : null,
+  )
+  const [query, setQuery] = useState('')
+  const sort = useUrlSort(SORT_FIELDS, { field: 'updated', dir: 'desc' })
+  const gallery = useGallery(section, query, sort.field, sort.dir)
+  const pick = useBulkSelect(gallery.rows)
+  const sessions = useStore((s) => s.sessions)
+  const projects = useStore((s) => s.projects)
+  const [previewId, setPreviewId] = useState<string | null>(null)
+  const [confirming, setConfirming] = useState<Artifact | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const setSection = (next: GallerySection | null) => {
+    setSectionState(next)
+    pick.clear()
+    setParams(
+      (current) => {
+        const out = new URLSearchParams(current)
+        if (next) out.set('kind', next)
+        else out.delete('kind')
+        return out
+      },
+      { replace: true },
+    )
+  }
+
+  // `?open=<id>`: a link from search or an older card. What is listed here opens here; a
+  // document opens in its editor (or 작업 문서), a picture, a sound or a video in 만든 파일.
   const openId = params.get('open')
   useEffect(() => {
     if (!openId) return
-    setParams({}, { replace: true })
-    setPreviewId(openId)
-  }, [openId, setParams])
-  // Not on the current page: fetched and joined.
-  const previewListed = artifacts.some((a) => a.id === previewId)
-  useEffect(() => {
-    if (previewId && !previewListed && !artifactsLoading) void refreshArtifact(previewId)
-  }, [previewId, previewListed, artifactsLoading, refreshArtifact])
-
-  const preview = artifacts.find((a) => a.id === previewId) ?? null
-  const closePreview = () => {
-    setPreviewId(null)
-    setPreviewMode('wide')
-    setPreviewDirty(false)
-  }
-  // a document on the shared unsaved guard (the web slides, office files) asks its own
-  // 저장 / 버리기 / 취소; any other unsaved preview asks here
-  const requestPreviewClose = () => {
-    if (officeDirty()) {
-      void leaveOffice().then((go) => go && closePreview())
-      return
+    let live = true
+    const clear = () =>
+      setParams(
+        (current) => {
+          const out = new URLSearchParams(current)
+          out.delete('open')
+          return out
+        },
+        { replace: true },
+      )
+    void artifactsApi
+      .get(openId)
+      .then((row) => {
+        if (!live) return
+        if (row.section === 'document') {
+          navigate(row.sessionId ? `/s/${row.sessionId}?artifact=${row.id}` : `/files?tab=working&doc=${row.id}`, { replace: true })
+          return
+        }
+        if (row.section === 'media') {
+          const file = fileOf(row.data)
+          navigate(file ? `/files?tab=made&open=${file}` : '/files?tab=made', { replace: true })
+          return
+        }
+        clear()
+        setPreviewId(row.id)
+      })
+      .catch((err) => {
+        if (!live) return
+        clear()
+        setError(errorMessage(err, t('아티팩트를 열지 못했습니다.')))
+      })
+    return () => {
+      live = false
     }
-    if (previewDirty) setConfirmPreviewClose(true)
-    else closePreview()
+  }, [openId, navigate, setParams, t])
+
+  // the store's copy (an open panel) follows what changed here
+  const forget = (ids: string[]) =>
+    useStore.setState((s) => ({ artifacts: s.artifacts.filter((a) => !ids.includes(a.id)) }))
+
+  const remove = async (ids: string[]) => {
+    setError(null)
+    try {
+      if (ids.length === 1) await artifactsApi.remove(ids[0])
+      else await artifactsApi.removeMany(ids)
+      gallery.removeRows(ids)
+      forget(ids)
+    } catch (err) {
+      setError(errorMessage(err, t('삭제하지 못했습니다.')))
+      void gallery.load()
+    }
   }
-  // Undefined until counts arrive: no number rather than 0.
-  const count = (k: ArtifactKind) => (artifactCounts ? (artifactCounts[k] ?? 0) : undefined)
-  const familyCount = (f: 'reports' | 'decks') =>
-    artifactCounts ? FAMILIES[f].reduce((sum, row) => sum + (artifactCounts[row.kind] ?? 0), 0) : undefined
-  const total = artifactCounts
-    ? Object.values(artifactCounts).reduce((sum, n) => sum + n, 0)
-    : undefined
-  const pick = useBulkSelect(artifacts)
+
+  const count = (id: GallerySection) => gallery.counts?.[id]
+  const shown = gallery.rows
+  const filtered = !!query.trim() || !!section
 
   return (
     <>
@@ -328,7 +169,7 @@ export function ArtifactsPage() {
       <PageBody>
         <PageHeader
           title={t('아티팩트')}
-          description={t('만든 아티팩트가 모두 여기 모입니다. 수정할 때마다 버전이 쌓이고, 만든 대화로 바로 돌아갈 수 있습니다.')}
+          description={t('대화에서 만든 HTML·코드 파일·차트·도식입니다.')}
         />
 
         <div className="mb-3 max-w-sm">
@@ -340,64 +181,29 @@ export function ArtifactsPage() {
           />
         </div>
 
-        <Tabs<Filter>
-          value={filter}
-          onChange={setFilter}
-          tabs={([
-            { id: 'all', label: t('전체'), count: total },
-            { id: 'code', label: t('코드'), count: count('code') },
-            { id: 'html', label: 'HTML', count: count('html') },
-            { id: 'reports', label: t('보고서'), count: familyCount('reports') },
-            { id: 'decks', label: t('슬라이드'), count: familyCount('decks') },
-            { id: 'chart', label: t('차트'), count: count('chart') },
-            { id: 'image', label: t('이미지'), count: count('image') },
-            { id: 'audio', label: t('오디오'), count: count('audio') },
-            { id: 'video', label: t('동영상'), count: count('video') },
-            // Empty kinds hidden, unless open.
-          ] as { id: Filter; label: string; count?: number }[]).filter((tab) => tab.id === 'all' || tab.id === filter || tab.count !== 0)}
+        <Tabs<GallerySection | 'all'>
+          value={section ?? 'all'}
+          onChange={(next) => setSection(next === 'all' ? null : next)}
+          tabs={[
+            { id: 'all', label: t('전체'), count: gallery.all },
+            ...SECTIONS.map((s) => ({ id: s.id, label: t(s.label), count: count(s.id) })),
+          ]}
         />
+        <PhoneSort className="mt-3" fields={SORT_FIELDS} sort={sort} onSort={sort.set} />
 
-        {family && (
-          // The family's formats: all, or one (웹 보고서 · 한글 · Word / 웹 슬라이드 · PowerPoint).
-          <div className="mt-3 flex flex-wrap gap-1.5" role="group" aria-label={t('형식')} data-testid="artifact-formats">
-            {[{ kind: null, label: '모든 형식' }, ...family].map((row) => (
-              <button
-                key={row.kind ?? 'all'}
-                type="button"
-                aria-pressed={format === row.kind}
-                onClick={() => setFormat(row.kind)}
-                className={cn(
-                  'h-8 rounded-full border px-3 text-sm transition-colors',
-                  format === row.kind
-                    ? 'border-accent bg-accent-soft text-accent'
-                    : 'border-line text-muted hover:bg-elevated hover:text-fg',
-                )}
-              >
-                {t(row.label)}
-                {row.kind && count(row.kind) !== undefined && (
-                  <span className="ml-1 tabular-nums text-faint">{count(row.kind)}</span>
-                )}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {artifactsFailed && <ReloadNotice onRetry={() => void loadArtifacts()} />}
+        {gallery.failed && <ReloadNotice onRetry={() => void gallery.load()} />}
+        {error && <p role="alert" className="pt-3 text-base text-danger">{error}</p>}
 
         <div className="pt-4">
-          {artifactsLoading ? (
-            <ListSkeleton variant="cards" rows={6} />
-          ) : artifacts.length === 0 ? (
+          {gallery.loading ? (
+            <ListSkeleton />
+          ) : gallery.failed ? null : shown.length === 0 ? (
             <EmptyState
               icon={<Layers size={18} />}
-              title={query ? t('찾는 아티팩트가 없습니다') : t('아직 아티팩트가 없습니다')}
-              description={
-                query
-                  ? t('제목의 다른 부분으로 찾아보세요.')
-                  : t('챗·보고서·슬라이드·이미지·오디오/동영상에서 만든 아티팩트가 여기에 저장됩니다.')
-              }
+              title={filtered ? t('찾는 아티팩트가 없습니다') : t('아직 아티팩트가 없습니다')}
+              description={filtered ? t('다른 제목이나 종류로 찾아보세요.') : t('대화에서 만든 페이지·코드 파일·차트·도식이 여기 모입니다.')}
               action={
-                query ? undefined : (
+                filtered ? undefined : (
                   <Button variant="primary" onClick={() => navigate('/')}>
                     {t('새 대화 시작')}
                   </Button>
@@ -406,49 +212,95 @@ export function ArtifactsPage() {
             />
           ) : (
             <>
-            <BulkBar
-              count={pick.count}
-              allPicked={pick.allPicked}
-              onToggleAll={pick.toggleAll}
-              onClear={pick.clear}
-              title={t('아티팩트')}
-              note={t('아티팩트를 만든 대화는 그대로 남습니다.')}
-              onDelete={async () => {
-                await deleteMany('artifacts', pick.ids)
-                pick.clear()
-              }}
-            />
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {artifacts.map((a) => {
-                const template = templateOf(a, designTemplates)
-                const Icon = (template && templateIcon[template.kind]) ?? kindIcon[a.kind]
-                const label = template
-                  ? templateText(template, english).name
-                  : t(kindLabel[a.kind])
-                const project = projects.find((p) => p.id === a.projectId)
-                const session = sessions.find((s) => s.id === a.sessionId)
-                return (
-                  <Card key={a.id} className="overflow-hidden">
-                    <button
-                      aria-label={t('{name} 열기').replace('{name}', a.title)}
-                      // Refetch on open: list copy may be stale.
-                      onClick={() => {
-                        setPreviewId(a.id)
-                        void refreshArtifact(a.id)
-                      }}
-                      className="block aspect-video w-full overflow-hidden border-b border-line bg-elevated text-left"
+              <BulkBar
+                count={pick.count}
+                allPicked={pick.allPicked}
+                onToggleAll={pick.toggleAll}
+                onClear={pick.clear}
+                title={t('아티팩트')}
+                note={t('아티팩트를 만든 대화는 그대로 남습니다.')}
+                onDelete={async () => {
+                  await remove(pick.ids)
+                  pick.clear()
+                }}
+              />
+              <Card role="table" aria-label={t('아티팩트')} className="px-3 py-1">
+                <div role="row" className={cn('hidden border-b border-line px-1 py-1.5 text-xs text-muted', GRID)}>
+                  <div role="columnheader"><span className="sr-only">{t('선택')}</span></div>
+                  {SORT_FIELDS.map((field) => (
+                    <ColumnHeader key={field.id} field={field} sort={sort} onSort={sort.click} align={field.id === 'version' ? 'right' : 'left'} />
+                  ))}
+                  <div role="columnheader"><span className="sr-only">{t('동작')}</span></div>
+                </div>
+                {shown.map((a) => {
+                  const kind = sectionOf(a)
+                  const Icon = kind.icon
+                  const detail = detailOf(a)
+                  const label = (
+                    <Badge>
+                      {t(kind.label)}
+                      {detail && <span className="ml-1 text-faint">{detail}</span>}
+                    </Badge>
+                  )
+                  const session = a.sessionId ? sessions.find((s) => s.id === a.sessionId) : undefined
+                  const project = a.projectId ? projects.find((p) => p.id === a.projectId) : undefined
+                  return (
+                    // A phone moves the controls under the title, so the title keeps the row's width.
+                    <div
+                      key={a.id}
+                      role="row"
+                      data-testid="artifact-row"
+                      data-section={a.section}
+                      className={cn('flex flex-wrap items-center gap-x-2 border-b border-line px-1 py-2 last:border-b-0 sm:flex-nowrap', GRID)}
                     >
-                      <CardThumb artifact={a} />
-                    </button>
-                    <div className="p-3.5">
-                      <div className="flex items-center gap-2">
+                      <div role="cell" className="flex items-center">
                         <PickBox
                           checked={pick.picked.has(a.id)}
                           onChange={() => pick.toggle(a.id)}
                           label={t('{name} 선택').replace('{name}', a.title)}
                         />
-                        <Icon size={14} className="shrink-0 text-accent" />
-                        <p className="min-w-0 flex-1 truncate text-base font-medium">{a.title}</p>
+                      </div>
+                      <div role="cell" className="flex min-w-0 flex-1 items-center gap-2">
+                        <Icon size={16} className="shrink-0 text-accent" aria-hidden />
+                        <div className="min-w-0 flex-1">
+                          <button
+                            type="button"
+                            aria-label={t('{name} 열기').replace('{name}', a.title)}
+                            onClick={() => setPreviewId(a.id)}
+                            className="block min-h-6 max-w-full truncate text-left text-base font-medium hover:underline max-sm:line-clamp-2 max-sm:whitespace-normal max-sm:break-all"
+                            title={a.title}
+                          >
+                            {a.title || t('제목 없는 아티팩트')}
+                          </button>
+                          <p className="flex min-w-0 flex-wrap items-center gap-x-2 text-xs text-faint">
+                            {/* a wide screen has these in their own columns */}
+                            <span className="sm:hidden">{label}</span>
+                            <span className="sm:hidden">v{a.version}</span>
+                            <span className="sm:hidden"><RelTime iso={a.updatedAt} /></span>
+                            {project && (
+                              <span className="truncate">{project.emoji} {project.name}</span>
+                            )}
+                            {session && <span className="truncate">{session.title || t('제목 없는 대화')}</span>}
+                          </p>
+                        </div>
+                      </div>
+                      <div role="cell" className="max-sm:hidden">{label}</div>
+                      <div role="cell" className="text-right text-sm tabular-nums text-muted max-sm:hidden" title={t('버전 {n}개').replace('{n}', String(a.version))}>
+                        v{a.version}
+                      </div>
+                      <div role="cell" className="text-sm text-muted max-sm:hidden"><RelTime iso={a.updatedAt} /></div>
+                      <div role="cell" className="flex shrink-0 items-center justify-end max-sm:-mt-1 max-sm:basis-full">
+                        {a.sessionId && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label={t('{name} 원래 대화로').replace('{name}', a.title)}
+                            title={t('원래 대화로')}
+                            onClick={() => navigate(`/s/${a.sessionId}?artifact=${a.id}`)}
+                          >
+                            <MessageSquare size={14} />
+                          </Button>
+                        )}
                         {reusable(a) && (
                           <Dropdown
                             align="right"
@@ -471,56 +323,20 @@ export function ArtifactsPage() {
                           <Trash2 size={14} />
                         </Button>
                       </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-faint">
-                        <Badge>{label}</Badge>
-                        <Badge>v{a.version}</Badge>
-                        {project && (
-                          <span>
-                            {project.emoji} {project.name}
-                          </span>
-                        )}
-                        <RelTime iso={a.updatedAt} />
-                      </div>
-                      {session && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="mt-2 -ml-2"
-                          onClick={() => navigate(`/s/${session.id}?artifact=${a.id}`)}
-                        >
-                          {t('원본 작업 열기 →')}
-                        </Button>
-                      )}
                     </div>
-                  </Card>
-                )
-              })}
-            </div>
-            </>
-          )}
-
-          {artifactsHasMore && (
-            <div className="mt-4 flex flex-col items-center gap-2">
-              {artifactsMoreFailed && (
-                <p role="alert" className="text-base text-danger">
-                  {t('다음 아티팩트를 불러오지 못했습니다. 다시 시도하세요.')}
-                </p>
+                  )
+                })}
+              </Card>
+              {gallery.hasMore && (
+                <LoadMore
+                  remaining={gallery.total - shown.length}
+                  loading={gallery.loadingMore}
+                  failed={gallery.moreFailed}
+                  failedText={t('다음 아티팩트를 불러오지 못했습니다.')}
+                  onMore={() => void gallery.loadMore()}
+                />
               )}
-              <Button
-                variant="secondary"
-                disabled={artifactsLoadingMore}
-                onClick={() => void loadMoreArtifacts()}
-              >
-                {artifactsLoadingMore
-                  ? t('불러오는 중…')
-                  : artifactsMoreFailed
-                    ? t('다시 시도')
-                    : t('{n}개 더 보기').replace(
-                        '{n}',
-                        String(Math.max(0, (total ?? artifacts.length) - artifacts.length)),
-                      )}
-              </Button>
-            </div>
+            </>
           )}
         </div>
       </PageBody>
@@ -528,74 +344,18 @@ export function ArtifactsPage() {
       <ConfirmDialog
         open={!!confirming}
         onClose={() => setConfirming(null)}
-        onConfirm={() => confirming && void deleteArtifact(confirming.id)}
+        onConfirm={() => confirming && void remove([confirming.id])}
         title={t('{name} 삭제').replace('{name}', confirming?.title ?? '')}
         description={t('되돌릴 수 없습니다. 버전 기록도 함께 사라집니다.')}
       />
 
-      <Modal
-        open={!!preview}
-        onClose={requestPreviewClose}
-        title={preview?.title ?? ''}
-        description={preview ? `${t(kindLabel[preview.kind])} · v${preview.version}` : undefined}
-        width={previewMode === 'narrow' ? 'max-w-4xl' : 'max-w-7xl'}
-        bare={preview?.kind === 'report' || preview?.kind === 'deck'}
-      >
-        {preview && (
-          <div className="flex h-[64vh] flex-col overflow-hidden rounded-card border border-line">
-            {/* Report, deck, chart and HTML panels carry their own width control. */}
-            {!(
-              preview.kind === 'report' ||
-              preview.kind === 'deck' ||
-              preview.kind === 'chart' ||
-              preview.kind === 'html'
-            ) && (
-              <header className="flex shrink-0 justify-end border-b border-line px-2 py-1.5">
-                <PanelControls
-                  mode={previewMode}
-                  onCycle={() => setPreviewMode(nextMode(previewMode))}
-                />
-              </header>
-            )}
-            <div className="min-h-0 flex-1 overflow-hidden">
-            {preview.kind === 'report' ? (
-              <ReportPanel report={preview} onModeChange={setPreviewMode} onClose={closePreview} onDirtyChange={setPreviewDirty} />
-            ) : preview.kind === 'deck' ? (
-              <DeckPanel deck={preview} onModeChange={setPreviewMode} onClose={requestPreviewClose} onDirtyChange={setPreviewDirty} />
-            ) : preview.kind === 'chart' ? (
-              <ChartPanel chart={preview} onModeChange={setPreviewMode} />
-            ) : preview.kind === 'image' ||
-              preview.kind === 'audio' ||
-              preview.kind === 'video' ? (
-              <MediaPanel artifact={preview} />
-            ) : isOffice(preview) ? (
-              <OfficeArtifactView artifact={preview} />
-            ) : preview.kind === 'html' || preview.kind === 'code' ? (
-              <CodePanel
-                artifact={preview}
-                headerControls={
-                  preview.kind === 'html' ? (
-                    <PanelControls
-                      mode={previewMode}
-                      onCycle={() => setPreviewMode(nextMode(previewMode))}
-                    />
-                  ) : undefined
-                }
-              />
-            ) : (
-              <ArtifactPreview artifact={preview} />
-            )}
-            </div>
-          </div>
-        )}
-      </Modal>
-      <ConfirmDialog
-        open={confirmPreviewClose}
-        onClose={() => setConfirmPreviewClose(false)}
-        title={t('저장하지 않은 변경 내용이 있습니다')}
-        description={t('계속하면 아티팩트에서 바꾼 내용이 사라집니다.')}
-        confirmLabel={t('저장하지 않고 닫기')}
-        onConfirm={closePreview}
+      <ArtifactModal
+        id={previewId}
+        onClose={() => {
+          setPreviewId(null)
+          // an edit in the panel (a title, a new version) shows in the list
+          void gallery.load()
+        }}
       />
     </>
   )

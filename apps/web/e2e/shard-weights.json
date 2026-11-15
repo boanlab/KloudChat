@@ -7,6 +7,7 @@
  "admin-users/phone": 10.5,
  "agents/desktop": 44.3,
  "artifact-source/default": 7.4,
+ "artifacts-split/desktop": 25.0,
  "audit-log/desktop": 3.6,
  "audit-log/phone": 3.9,
  "auto-badge/desktop": 7.5,

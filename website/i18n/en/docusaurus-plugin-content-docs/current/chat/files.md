@@ -33,9 +33,9 @@ The Reports and Slides screens do not carry over attachments from earlier reques
 
 **Files** in the left menu holds every file of your account, under three tabs.
 
-- **Uploaded**: files you attached to conversations or uploaded to projects
-- **Made in conversations**: files made during a conversation, such as code-run outputs (CSV and the like), images and charts
-- **Working documents**: the HWP, Word and PowerPoint documents and the web reports and web slides you made in conversations or edited in an editor
+- **Uploaded**: only the files you attached to conversations or uploaded to projects
+- **Generated**: images, audio and video generated in conversations, and downloadable files such as code-run outputs (CSV and the like). A report's exported PDF, HWPX, DOCX or PPTX and the picture of a chart or diagram are not listed again here: the document is under **Working documents**, and charts and diagrams are on the [Artifacts](../write/artifacts) screen.
+- **Working documents**: every report and slide deck (web reports, web slides, HWP, Word and PowerPoint)
 
 Each row shows the size, when it came, and which conversation or project it belongs to. Click a column heading (Name, Size, Uploaded) to sort by it, and click it again to reverse the order. On a phone, use the sort field and the arrow button above the list. The order you pick stays in the address, so a reload keeps it. Find files by name, download them, and delete one or a selection. Deleting a project file takes it out of the project too.
 
@@ -47,12 +47,13 @@ The **Working documents** tab is where you find the documents you were working o
 
 - Each row shows the format (HWP document, Word document, PowerPoint document, web report, web slides), the number of versions (v3 and so on), when it was last edited, and the project and conversation it belongs to.
 - Show one format with the format chips and find documents by title. Click a column heading (**Title**, **Format**, **Versions**, **Last edited**) to sort by it, and click it again to reverse the order. On a phone, use the sort field and the arrow button.
-- Click the title or **Open in its editor** to open the same editor as from the chat, beside the document's conversation. An HWP, Word or PowerPoint document with no conversation opens beside a new chat and joins it. A web report or web slides with no conversation opens in the editing panel of the **Artifacts** screen.
+- Click the title or **Open in its editor** to open the same editor as from the chat, beside the document's conversation. An HWP, Word or PowerPoint document with no conversation opens beside a new chat and joins it. A web report or web slides with no conversation opens in an editing panel over Files.
 - **Go to the conversation** takes you to the conversation that made it.
+- **More** on a web report or web slides offers **Start new from this** and **Attach to a new conversation**.
 - **Download** saves the current version in its own format: HWP, Word and PowerPoint documents as the file itself, a web report as Markdown (.md), web slides as PowerPoint (.pptx). For other formats, use Download (export) on the document's screen.
 - **Rename** changes the title, and you can delete one document or a selection. Deleting a document removes its version history too; the conversation that made it stays.
 
-A working document is not a copy: it is the document itself. What you change in the editor shows here at once, and it is the same document as on the **Artifacts** screen. Opening an HWP, Word or PowerPoint file from the file box with **Edit** puts its copy under Working documents, and the uploaded file stays under **Uploaded**.
+A working document is not a copy: it is the document itself. What you change in the editor shows here at once. Opening an HWP, Word or PowerPoint file from the file box with **Edit** puts its copy under Working documents, and the uploaded file stays under **Uploaded**.
 
 When you delete a conversation you can tick **Also delete the conversation's files**. Left unticked, its files stay in Files. Project files are never deleted with a conversation.
 

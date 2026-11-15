@@ -1,9 +1,11 @@
-"""Code blocks and requested artifacts from a transcript stored as Artifact rows."""
+"""`create_artifact` requests stored as Artifact rows.
+
+An answer's inline code blocks are not stored: they are part of the answer (copied and run in
+the chat), not files of their own (`services/artifact_section.py`)."""
 
 from __future__ import annotations
 
 import json
-import re
 from collections.abc import Callable
 from typing import Any
 
@@ -11,102 +13,6 @@ from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.models.workspace import Artifact, ArtifactKind
-
-_FENCE = re.compile(r"```([A-Za-z0-9_+#.-]*)\n(.*?)```", re.S)
-
-#: either bound qualifies
-_MIN_LINES = 8
-_MIN_CHARS = 300
-
-#: output/prose fences
-_NOT_CODE = {"", "text", "txt", "output", "console", "log", "md", "markdown", "plain"}
-
-_LANGUAGE_LABEL = {
-    "py": "python",
-    "js": "javascript",
-    "ts": "typescript",
-    "sh": "bash",
-    "shell": "bash",
-    "yml": "yaml",
-}
-
-
-_DEFINITION = re.compile(
-    r"^\s*(?:async\s+)?(?:def|function|class|interface|type)\s+([A-Za-z_][\w]*)"
-    r"|^\s*(?:const|let|var)\s+([A-Za-z_][\w]*)\s*=",
-    re.M,
-)
-
-
-def _title_for(content: str, block_start: int, body: str, language: str, index: int) -> str:
-    """Nearest heading above, else first definition, else `"<lang> <n>"`."""
-    before = content[:block_start].rstrip().splitlines()
-    for line in reversed(before[-4:]):
-        line = line.strip()
-        if heading := re.match(r"^#{1,6}\s+(.{2,60})$", line):
-            return heading.group(1).strip()
-        if bold := re.match(r"^\*\*(.{2,60})\*\*:?$", line):
-            return bold.group(1).strip()
-    if defined := _DEFINITION.search(body):
-        name = defined.group(1) or defined.group(2)
-        return f"{name}()" if defined.group(1) else name
-    return f"{language or '코드'} {index}"
-
-
-def find_blocks(content: str) -> list[dict]:
-    """Blocks worth keeping, in order."""
-    out: list[dict] = []
-    for match in _FENCE.finditer(content):
-        raw_lang = (match.group(1) or "").lower()
-        body = match.group(2).strip("\n")
-        if raw_lang in _NOT_CODE:
-            continue
-        if len(body.splitlines()) < _MIN_LINES and len(body) < _MIN_CHARS:
-            continue
-        language = _LANGUAGE_LABEL.get(raw_lang, raw_lang)
-        out.append(
-            {
-                "kind": ArtifactKind.html if language == "html" else ArtifactKind.code,
-                "title": _title_for(content, match.start(), body, language, len(out) + 1),
-                "data": {"content": body, "language": language},
-            }
-        )
-    return out
-
-
-async def extract(
-    db: AsyncSession,
-    *,
-    user_id: str,
-    session_id: str,
-    project_id: str | None,
-    content: str,
-) -> str | None:
-    """Store new blocks; last artifact id or None. Caller commits."""
-    blocks = find_blocks(content)
-    if not blocks:
-        return None
-
-    # skip already-stored content (regenerated answers)
-    existing = (await db.exec(select(Artifact).where(col(Artifact.session_id) == session_id))).all()
-    seen = {(a.data or {}).get("content") for a in existing}
-
-    last: Artifact | None = None
-    for block in blocks:
-        if block["data"]["content"] in seen:
-            continue
-        seen.add(block["data"]["content"])
-        artifact = Artifact(
-            user_id=user_id,
-            session_id=session_id,
-            project_id=project_id,
-            kind=block["kind"],
-            title=block["title"][:200],
-            data=block["data"],
-        )
-        db.add(artifact)
-        last = artifact
-    return last.id if last is not None else None
 
 
 def _identity(kind: str, title: str, data: dict) -> tuple[str, str, str]:

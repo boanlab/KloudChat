@@ -4,7 +4,7 @@ title: Artifacts
 
 # Artifacts
 
-Reports (web, HWP, Word), slides (web, PowerPoint), charts, code, web pages, images and other outputs generated in a conversation are called artifacts. They are collected on the **Artifacts** screen in the sidebar.
+What a conversation generates is called an artifact. The **Artifacts** screen in the sidebar holds what you view or run directly: HTML pages, code files, charts and diagrams. Reports and slide decks (web, HWP, Word, PowerPoint) are under **Working documents** in [Files](../chat/files#files), and generated images, audio and video under **Generated**. A short code block inside an answer is part of the conversation and is not saved as an artifact of its own; copy and run it in the chat.
 
 ![Artifact gallery](/img/guide/artifacts.png)
 
@@ -31,4 +31,4 @@ PDF reproduces the chosen look as it is, and DOCX and PPTX put an editable struc
 
 ## Gallery
 
-See the full list under **Artifacts** in the sidebar. It provides tabs by type (all, code, HTML, report, slides, chart, image, audio, video) and a title search. The tabs group by family: the **Report** tab holds web reports, HWP and Word, and the **Slides** tab holds web slides and PowerPoint. A row of formats below them narrows the list to **All formats** or to one format (with its count). There are no separate HWP, Word or PowerPoint tabs. Selecting a card opens it as a panel inside the gallery. To go to the conversation that generated it, use **Open the original conversation** on the card. Deleting from the gallery deletes the version history as well, but the conversation is kept.
+See the full list under **Artifacts** in the sidebar. The tabs are **All**, **HTML**, **Code files**, **Charts** and **Diagrams**, each with its count. Search by title, and click a column heading (**Title**, **Kind**, **Versions**, **Last edited**) to sort by it; click it again to reverse the order. On a phone, use the sort field and the arrow button above the list. Click a title to open it as a panel on this screen; **Back to the chat** goes to the conversation that made it. Deleting removes the version history as well, but the conversation is kept. An older artifact link to a report or deck opens its editor or Working documents, and one to an image, audio or video opens that file in Files.

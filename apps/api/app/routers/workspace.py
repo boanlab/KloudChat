@@ -54,6 +54,7 @@ from app.schemas.workspace import (
     AgentOut,
     ArtifactIn,
     ArtifactOut,
+    ArtifactPage,
     ArtifactPatch,
     ArtifactRestore,
     ArtifactVersionDetailOut,
@@ -135,6 +136,7 @@ from app.services import litellm as litellm_service
 from app.services import models as model_service
 from app.services import page as page_service
 from app.services import report as report_service
+from app.services.artifact_section import GALLERY
 from app.services.credits import charge_for_tokens, has_headroom, record_units, settle
 from app.services.tools import builtin as builtin_tools
 from app.services.tools import registry as tool_registry
@@ -608,6 +610,9 @@ async def page_files(
         col(StoredFile.agent_id).is_(None) if box
         else or_(col(StoredFile.agent_id).is_(None), col(StoredFile.agent_id).not_in(copies)),
     ]
+    if box:
+        # a document's export or a chart's or diagram's picture is listed with that artifact
+        conds.append(col(StoredFile.copy_of).is_(None))
     if project_id:
         conds.append(StoredFile.project_id == project_id)
     if session_id:
@@ -989,9 +994,11 @@ async def list_artifacts(
     before_at: datetime | None = None,
     before_id: str | None = None,
 ):
-    """Artifact cards page, newest first; `q` matches title; `kind` may be a comma list."""
+    """Artifact cards, newest first, every kind (a picture for a slide, a project's results);
+    `q` matches title; `kind` may be a comma list. An old inline code block (`snippet`) is
+    never listed. The 아티팩트 page reads `GET /artifacts/gallery`."""
     # keyset pagination on (before_at, before_id)
-    query = select(Artifact).where(Artifact.user_id == user.id)
+    query = select(Artifact).where(Artifact.user_id == user.id, Artifact.section != "snippet")
     if kind:
         # one kind, or a family as a comma list (`report,hwp,docx`)
         known = {member.value for member in ArtifactKind}
@@ -1002,7 +1009,7 @@ async def list_artifacts(
     if project_id:
         query = query.where(Artifact.project_id == project_id)
     if q and q.strip():
-        query = query.where(col(Artifact.title).ilike(f"%{q.strip()[:80]}%"))
+        query = query.where(col(Artifact.title).ilike(f"%{_like(q.strip()[:80])}%", escape="\\"))
     if before_at is not None:
         query = query.where(
             tuple_(col(Artifact.updated_at), col(Artifact.id)) < tuple_(before_at, before_id or "")
@@ -1019,14 +1026,14 @@ async def list_artifacts(
 
 @router.get("/artifacts/counts")
 async def artifact_counts(user: CurrentUser, db: DbSession, q: str | None = None):
-    """Per-kind artifact counts for gallery tabs."""
+    """Per-kind artifact counts, old inline code blocks aside."""
     query = (
         select(Artifact.kind, func.count())
-        .where(Artifact.user_id == user.id)
+        .where(Artifact.user_id == user.id, Artifact.section != "snippet")
         .group_by(col(Artifact.kind))
     )
     if q and q.strip():
-        query = query.where(col(Artifact.title).ilike(f"%{q.strip()[:80]}%"))
+        query = query.where(col(Artifact.title).ilike(f"%{_like(q.strip()[:80])}%", escape="\\"))
     rows = (await db.exec(query)).all()
     counts = {str(kind): int(total) for kind, total in rows}
     return {"counts": counts, "total": sum(counts.values())}
@@ -1119,6 +1126,58 @@ _WORKING_SORT = {
     "kind": (Artifact.kind, "kind"),
     "version": (Artifact.version, "int"),
 }
+
+
+#: the 아티팩트 page's sortable columns
+_GALLERY_SORT = {
+    "updated": (Artifact.updated_at, "time"),
+    "title": (Artifact.title, "text"),
+    "section": (Artifact.section, "text"),
+    "version": (Artifact.version, "int"),
+}
+
+
+@router.get("/artifacts/gallery", response_model=ArtifactPage)
+async def page_gallery(
+    user: CurrentUser,
+    db: DbSession,
+    section: str | None = Query(None, max_length=60),
+    q: str | None = Query(None, max_length=200),
+    sort: Literal["updated", "title", "section", "version"] = "updated",
+    dir: Direction = "desc",
+    cursor: str | None = paging.Cursor,
+    limit: int = paging.Limit,
+):
+    """The 아티팩트 page a page at a time: HTML pages, code files, charts and diagrams
+    (`section`, one or a comma list), newest edit first by default; `q` matches the title,
+    `sort` a column and `dir` its direction, ties broken by id. Reports and decks are listed
+    in 파일함 › 작업 문서, pictures, sound and video in 만든 파일, and an old inline code block
+    nowhere. `counts` has each section over the search, the section filter aside."""
+    conds = [Artifact.user_id == user.id, col(Artifact.section).in_(list(GALLERY))]
+    if q and q.strip():
+        conds.append(col(Artifact.title).ilike(f"%{_like(q.strip()[:80])}%", escape="\\"))
+    by_section = dict((await db.exec(
+        select(Artifact.section, func.count()).where(*conds).group_by(col(Artifact.section))
+    )).all())
+    counts = {name: int(by_section.get(name, 0)) for name in GALLERY}
+    if section:
+        wanted = {k.strip() for k in section.split(",")} & set(GALLERY)
+        if not wanted:
+            return ArtifactPage(items=[], total=0, next=None, counts=counts)
+        conds.append(col(Artifact.section).in_(sorted(wanted)))
+    total = int((await db.exec(select(func.count()).select_from(Artifact).where(*conds))).one())
+    column, how = _GALLERY_SORT[sort]
+    tag = f"{sort}.{dir}"
+    order, past = _keyset(col(column), col(Artifact.id), how, dir, tag, cursor)
+    if past is not None:
+        conds.append(past)
+    rows = list((await db.exec(
+        select(Artifact).where(and_(*conds)).order_by(*order).limit(limit + 1)
+    )).all())
+    rows, after = paging.after(
+        rows, limit, lambda a: _cursor_of(how, tag, getattr(a, column.key), a.id))
+    return ArtifactPage(items=[ArtifactOut.card(a) for a in rows], total=total, next=after,
+                        counts=counts)
 
 
 @router.get("/artifacts/working", response_model=WorkingDocPage)

@@ -103,16 +103,8 @@ test('내구성 감사 — 끊길 때, 겹칠 때, 길어질 때', async ({ page
     await signIn(second)
 
     const openReport = async (p: typeof page) => {
-      await p.goto('/artifacts')
-      await p.getByRole('tab', { name: /^보고서/ }).click()
-      await p
-        .locator('div')
-        .filter({ has: p.getByText(report.title, { exact: true }) })
-        .filter({ has: p.locator('button.aspect-video') })
-        .last()
-        .locator('button.aspect-video')
-        .first()
-        .click()
+      // Reports are listed in 파일함 › 작업 문서; the doc param opens the document in a modal.
+      await p.goto(`/files?tab=working&doc=${report.id}`)
       await p.getByRole('dialog').waitFor({ timeout: 15_000 })
     }
 

@@ -99,6 +99,8 @@ const groups: Record<string, Group> = {
   // a strict-local turn's search card: allow, edit, material only, reload, phone; the badge
   'search-consent': { files: ['search-consent.spec.ts'], projects: { desktop, phone: touchPhone } },
   'artifact-source': { files: ['artifact-source-download.spec.ts'], projects: { default: desktop } },
+  // 아티팩트 (pages, code files, charts, diagrams) and 파일함 (documents, made files, uploads)
+  'artifacts-split': { files: ['artifacts-and-file-box.spec.ts'], projects: { desktop } },
   'audit-log': { files: ['audit-log.spec.ts'], projects: { desktop: desktopChrome, phone: desktopChromePhone } },
   security: { files: ['security-paging.spec.ts'], projects: { desktop: desktopChrome, phone: desktopChromePhone } },
   pipeline: {

@@ -2217,7 +2217,7 @@ export function DeckPanel({
   }
   const deleteSlide = (at: number) => {
     if (slides.length <= 1) {
-      setOpError(t('마지막 한 장은 지울 수 없습니다. 덱 자체를 지우려면 아티팩트 목록에서 지우세요.'))
+      setOpError(t('마지막 한 장은 지울 수 없습니다. 덱은 파일함 › 작업 문서에서 지우세요.'))
       return
     }
     doc.edit((now) => ({ ...now, slides: now.slides.filter((_, i) => i !== at) }))

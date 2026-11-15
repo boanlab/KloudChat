@@ -56,7 +56,8 @@ _DDL = (
         version INTEGER DEFAULT 1,
         created_at DATETIME,
         updated_at DATETIME,
-        search_text TEXT NOT NULL DEFAULT ''
+        search_text TEXT NOT NULL DEFAULT '',
+        section VARCHAR(16) NOT NULL DEFAULT ''
     )
     """,
     """

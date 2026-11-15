@@ -1,14 +1,12 @@
 import { expect, test } from '@playwright/test'
-import { signIn, moreMenu } from './helpers'
+import { signIn, moreMenu, openNewestDocument } from './helpers'
 
 /** 원문 편집 round-trips the whole report as Markdown: title, headings and body. */
 test('보고서를 문서 단위로 고치면 제목·절 제목·본문이 함께 반영된다', async ({ page }) => {
   test.setTimeout(180_000)
   await signIn(page)
 
-  await page.goto('/artifacts')
-  await page.getByRole('tab', { name: /^보고서/ }).click()
-  await page.getByText('원본 작업 열기').first().click()
+  await openNewestDocument(page, 'report')
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
 
   await moreMenu(page, /원문 편집/)

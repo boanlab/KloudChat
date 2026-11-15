@@ -14,28 +14,31 @@ const AS_USER = `async (path) => {
   return r.ok ? await r.json() : null
 }`
 
-async function openNewest(page: import('@playwright/test').Page, tab: string, kind: string) {
-  const exists = await page.evaluate(
+/** Generated audio and video live in 파일함 › 만든 파일 now (not on the 아티팩트 page): the file
+ *  is found through its artifact's `src`, then opened with the `open` param. */
+async function openNewest(page: import('@playwright/test').Page, kind: string) {
+  const fileId = await page.evaluate(
     async ([fn, k]) => {
-      const rows = await eval(fn as string)('/api/artifacts')
+      const rows = await eval(fn as string)(`/api/artifacts?kind=${k}&limit=1`)
       const list = Array.isArray(rows) ? rows : (rows?.items ?? [])
-      return list.some((a: { kind: string }) => a.kind === k)
+      if (!list.length) return ''
+      const full = await eval(fn as string)(`/api/artifacts/${list[0].id}`)
+      const src = String((full?.data ?? full)?.src ?? '')
+      return /\/files\/([0-9a-f]{32})\/content/.exec(src)?.[1] ?? ''
     },
     [AS_USER, kind] as const,
   )
-  test.skip(!exists, `${kind} 아티팩트가 없습니다`)
-  await page.getByRole('tab', { name: new RegExp(`^${tab}`) }).click()
-  await page.locator('button.aspect-video').first().click()
+  test.skip(!fileId, `${kind} 아티팩트가 없습니다`)
+  await page.goto(`/files?tab=made&open=${fileId}`)
 }
 
 test('만든 오디오를 앱 안에서 재생할 수 있다', async ({ page }) => {
   await signIn(page)
-  await page.goto('/artifacts')
-  await openNewest(page, '오디오', 'audio')
+  await openNewest(page, 'audio')
 
-  const player = page.locator('audio[controls]')
+  const player = page.getByTestId('media-element')
   await expect(player).toBeVisible({ timeout: 20_000 })
-  await expect(player).toHaveAttribute('src', /\/api\/files\/[0-9a-f]+\/content/)
+  await expect(player).toHaveAttribute('src', /\/files\/[0-9a-f]+/)
 
   // A duration means the container decoded; raw PCM without a WAV header gives NaN.
   await expect
@@ -51,12 +54,11 @@ test('만든 오디오를 앱 안에서 재생할 수 있다', async ({ page }) 
 
 test('만든 영상을 앱 안에서 재생할 수 있다', async ({ page }) => {
   await signIn(page)
-  await page.goto('/artifacts')
-  await openNewest(page, '동영상', 'video')
+  await openNewest(page, 'video')
 
-  const player = page.locator('video[controls]')
+  const player = page.getByTestId('media-element')
   await expect(player).toBeVisible({ timeout: 20_000 })
-  await expect(player).toHaveAttribute('src', /\/api\/files\/[0-9a-f]+\/content/)
+  await expect(player).toHaveAttribute('src', /\/files\/[0-9a-f]+/)
 
   await expect
     .poll(

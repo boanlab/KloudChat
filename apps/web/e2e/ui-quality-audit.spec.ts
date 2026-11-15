@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { signInAs } from './helpers'
+import { openNewestDocument, signInAs } from './helpers'
 
 /** Measurable layout rules on every route: no horizontal overflow, no clipped text,
  *  no tap target under 24px, no ragged grid rows. Reports every screen, asserts on defects. */
@@ -230,12 +230,10 @@ test('아이디로 여는 화면의 레이아웃 품질', async ({ page }) => {
   if (href) await check(href, '프로젝트 상세')
 
   // Share page: share one document and open its link.
-  await page.goto('/artifacts')
-  await page.getByRole('tab', { name: /^보고서/ }).click()
+  await page.goto('/files?tab=working')
   await page.waitForTimeout(1_200)
-  const open = page.getByText('원본 작업 열기').first()
-  if (await open.isVisible().catch(() => false)) {
-    await open.click()
+  if (await page.getByTestId('working-doc-open').first().isVisible().catch(() => false)) {
+    await openNewestDocument(page, 'report')
     await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
     // Exact: a sidebar title may contain 공유 too.
     await page.getByRole('button', { name: '공유', exact: true }).click()
@@ -263,18 +261,15 @@ test('문서와 덱 패널의 레이아웃 품질', async ({ page }) => {
   await signInAs(page, ADMIN.email, ADMIN.password)
 
   const defects: string[] = []
-  for (const [tab, label] of [
-    [/^슬라이드/, '덱'],
-    [/^보고서/, '문서'],
-  ] as [RegExp, string][]) {
-    await page.goto('/artifacts')
-    const chip = page.getByRole('tab', { name: tab })
-    if (!(await chip.isVisible().catch(() => false))) continue
-    await chip.click()
+  for (const [kind, label] of [
+    ['deck', '덱'],
+    ['report', '문서'],
+  ] as ['deck' | 'report', string][]) {
+    await page.goto('/files?tab=working')
+    await page.getByRole('group', { name: '형식' }).getByRole('button', { name: kind === 'report' ? /^웹 보고서/ : /^웹 슬라이드/ }).click()
     await page.waitForTimeout(1_200)
-    const open = page.getByText('원본 작업 열기').first()
-    if (!(await open.isVisible().catch(() => false))) continue
-    await open.click()
+    if (!(await page.getByTestId('working-doc-open').first().isVisible().catch(() => false))) continue
+    await openNewestDocument(page, kind)
     await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
     const panel = page.locator('[data-panel="artifact"]')
     await expect(panel).toBeVisible({ timeout: 30_000 })

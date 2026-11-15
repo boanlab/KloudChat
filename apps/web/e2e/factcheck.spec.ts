@@ -81,9 +81,8 @@ test('확신 있는 판정에는 반드시 근거 링크가 붙는다', async ({
     expect(claim.text).not.toContain('훨씬 낫다')
   }
 
-  await page.goto('/artifacts')
-  await page.getByRole('tab', { name: /^슬라이드/ }).click()
-  await page.locator('button.aspect-video').first().click()
+  // Decks are listed in 파일함 › 작업 문서 now; the doc param opens the same modal.
+  await page.goto(`/files?tab=working&doc=${deck.id}`)
   const panel = page.getByRole('dialog')
   await expect(panel.getByRole('button', { name: '팩트체크' })).toBeVisible({ timeout: 20_000 })
 

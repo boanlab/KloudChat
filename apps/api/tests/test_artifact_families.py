@@ -17,7 +17,8 @@ _DDL = """
         id TEXT PRIMARY KEY, user_id TEXT, session_id TEXT, project_id TEXT, kind TEXT,
         title TEXT, data TEXT, storage_key TEXT, version INTEGER DEFAULT 1,
         created_at DATETIME, updated_at DATETIME,
-        search_text TEXT NOT NULL DEFAULT ''
+        search_text TEXT NOT NULL DEFAULT '',
+        section VARCHAR(16) NOT NULL DEFAULT ''
     )
 """
 

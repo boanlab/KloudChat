@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { E2E_ADMIN, deckEditor, deckPanel, deckThumbs, saveDeck, signIn } from './helpers'
+import { E2E_ADMIN, deckEditor, deckPanel, deckThumbs, saveDeck, openNewestDocument, signIn } from './helpers'
 
 test('긴 표와 차트를 구조를 보존해 두 장으로 나눈다', async ({ page }) => {
   test.setTimeout(90_000)
@@ -24,9 +24,7 @@ test('긴 표와 차트를 구조를 보존해 두 장으로 나눈다', async (
   }, E2E_ADMIN)
 
   const open = async () => {
-    await page.goto('/artifacts')
-    await page.getByRole('tab', { name: /^슬라이드/ }).click()
-    await page.locator('button.aspect-video').first().click()
+    await openNewestDocument(page, 'deck')
     await deckThumbs(page).first().click()
   }
   // the strip over a slide at risk of being cut offers the split; it stays in the browser until 저장

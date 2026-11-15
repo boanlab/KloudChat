@@ -226,6 +226,9 @@ class ArtifactOut(Wire):
     project_id: str | None
     created_at: datetime
     updated_at: datetime
+    #: where it is listed (`services/artifact_section.py`); a link to a document or a
+    #: picture opens it in the file box rather than on the 아티팩트 page
+    section: str = ""
     #: trimmed listing `data`; fetch by id before render/edit
     partial: bool = False
 
@@ -267,6 +270,16 @@ class WorkingDocPage(Wire):
     same search, the kind filter aside."""
 
     items: list[WorkingDocOut]
+    total: int
+    next: str | None = None
+    counts: dict[str, int] = Field(default_factory=dict)
+
+
+class ArtifactPage(Wire):
+    """`GET /artifacts/gallery`: `total` counts the whole filter, `counts` each section over
+    the same search, the section filter aside."""
+
+    items: list[ArtifactOut]
     total: int
     next: str | None = None
     counts: dict[str, int] = Field(default_factory=dict)

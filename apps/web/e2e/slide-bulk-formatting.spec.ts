@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { E2E_ADMIN, signIn } from './helpers'
+import { E2E_ADMIN, openNewestDocument, signIn } from './helpers'
 
 test('선택한 여러 장의 색과 글자 크기를 한 번에 바꾸고 덱 기본색을 보존한다', async ({ page }) => {
   test.setTimeout(90_000)
@@ -15,9 +15,7 @@ test('선택한 여러 장의 색과 글자 크기를 한 번에 바꾸고 덱 �
     return first.id as string
   }, E2E_ADMIN)
 
-  await page.goto('/artifacts')
-  await page.getByRole('tab', { name: /^슬라이드/ }).click()
-  await page.locator('button.aspect-video').first().click()
+  await openNewestDocument(page, 'deck')
   await page.getByRole('button', { name: '여러 장 선택' }).click()
   await page.getByLabel('1번 장 선택').check()
   await page.getByLabel('2번 장 선택').check()

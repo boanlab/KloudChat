@@ -1,12 +1,10 @@
 /** The title and section headings are editable in 페이지뷰, proven by the round trip. */
 import { expect, test } from '@playwright/test'
-import { artifactReady, signIn } from './helpers'
+import { artifactReady, openNewestDocument, signIn } from './helpers'
 
 test('페이지뷰에서 제목과 절 제목을 고칠 수 있다', async ({ page }) => {
   await signIn(page)
-  await page.goto('/artifacts')
-  await page.getByRole('tab', { name: /^보고서/ }).click()
-  await page.getByText('원본 작업 열기').first().click()
+  await openNewestDocument(page, 'report')
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
   await artifactReady(page, 30_000)
   await page.getByRole('button', { name: '페이지뷰' }).click()

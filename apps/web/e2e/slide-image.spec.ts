@@ -110,16 +110,14 @@ test('JSON 덱의 한 장에 그림을 넣고, 파일로 받으면 그림이 들
     [SETUP, PNG_BASE64],
   )
   expect(seeded, '덱과 그림을 만들지 못했습니다').not.toBeNull()
-  const { pictureTitle, deckId, deckTitle } = seeded as {
+  const { pictureTitle, deckId } = seeded as {
     pictureTitle: string
     deckId: string
     deckTitle: string
   }
 
-  await page.goto('/artifacts')
-  const card = page.getByRole('button', { name: `${deckTitle} 열기` })
-  await expect(card).toBeVisible({ timeout: 20_000 })
-  await card.click()
+  // Decks are listed in 파일함 › 작업 문서; the doc param opens the deck in a modal.
+  await page.goto(`/files?tab=working&doc=${deckId}`)
 
   const dialog = page.getByRole('dialog')
   // The picture goes into the slide being shown: 이미지 › 그림 넣기 on slide 2.

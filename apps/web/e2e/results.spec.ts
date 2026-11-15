@@ -139,9 +139,9 @@ test('an answer whose version was later edited opens that version', async ({ pag
   await expect(dialog.getByRole('region', { name: 'v1 내용 미리보기' })).toBeVisible()
 })
 
-test('the 아티팩트 page offers the same reuse', async ({ page }, testInfo) => {
+test('파일함 › 작업 문서 offers the same reuse', async ({ page }, testInfo) => {
   const recorded = await resultsFixture(page, testInfo)
-  await page.goto('/artifacts')
+  await page.goto('/files?tab=working')
   await page.getByRole('button', { name: `${reportTitle} 더보기` }).click()
   await expect(menu(page).getByRole('menuitem', { name: '이걸로 새로 시작' })).toBeVisible()
   await menu(page).getByRole('menuitem', { name: '새 대화에 첨부' }).click()

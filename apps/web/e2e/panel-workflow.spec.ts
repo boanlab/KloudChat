@@ -42,16 +42,20 @@ function remove(page: Page, id: string) {
   )
 }
 
-/** Opens an artifact by title from the gallery and returns its dialog. */
+/** Opens an artifact by title and returns its dialog. Reports and decks are listed in
+ *  파일함 › 작업 문서 (the doc param opens the same modal); HTML pages are on the 아티팩트 page. */
 async function openPreview(page: Page, title: string) {
-  await page.goto('/artifacts')
-  // The thumbnail opens the card; `.last()` is the innermost div holding both.
-  const card = page
-    .locator('div')
-    .filter({ has: page.getByText(title, { exact: true }) })
-    .filter({ has: page.locator('button.aspect-video') })
-    .last()
-  await card.locator('button.aspect-video').first().click()
+  const found = (await page.evaluate(
+    async ([fn, q]) => await eval(fn as string)(`/api/artifacts/working?q=${encodeURIComponent(q)}`),
+    [AS_USER, title] as const,
+  )) as { items?: { id: string; title: string }[] } | null
+  const doc = found?.items?.find((row) => row.title === title)
+  if (doc) {
+    await page.goto(`/files?tab=working&doc=${doc.id}`)
+  } else {
+    await page.goto('/artifacts')
+    await page.getByRole('button', { name: `${title} 열기` }).first().click()
+  }
   const dialog = page.getByRole('dialog')
   await expect(dialog).toBeVisible({ timeout: 15_000 })
   return dialog

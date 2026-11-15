@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs'
 import { inflateRawSync } from 'node:zlib'
 import { expect, test } from '@playwright/test'
-import { approvePlan, ribbonTab, signIn, panelHeader, moreMenu } from './helpers'
+import { approvePlan, ribbonTab, signIn, panelHeader, moreMenu, openNewestDocument } from './helpers'
 
 // Retried: the content is model-written.
 test.describe.configure({ retries: 2 })
@@ -55,9 +55,7 @@ async function artifact(page: import('@playwright/test').Page, id: string) {
 
 /** Opens the newest report on its own surface and returns its artifact id. */
 async function openNewestReport(page: import('@playwright/test').Page) {
-  await page.goto('/artifacts')
-  await page.getByRole('tab', { name: /^보고서/ }).click()
-  await page.getByText('원본 작업 열기').first().click()
+  await openNewestDocument(page, 'report')
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
   await expect(panelHeader(page).getByRole('button', { name: '더보기' })).toBeVisible({ timeout: 20_000 })
   return page.evaluate(async () => {

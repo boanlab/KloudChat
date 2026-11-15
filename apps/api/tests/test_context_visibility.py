@@ -456,9 +456,6 @@ def _patch_enrichment(monkeypatch, db: _EnrichDb, *, written: int) -> None:
     async def store_requested(*_args, **_kwargs):
         return None
 
-    async def extract(*_args, **_kwargs):
-        return None
-
     async def remember(*_args, **_kwargs):
         # `(written, usage)`; billing is covered in test_side_calls_are_billed.py.
         return written, {"inputTokens": 0, "outputTokens": 0}
@@ -467,7 +464,6 @@ def _patch_enrichment(monkeypatch, db: _EnrichDb, *, written: int) -> None:
         return "model-a"
 
     monkeypatch.setattr(sessions_router.artifact_extract, "store_requested", store_requested)
-    monkeypatch.setattr(sessions_router.artifact_extract, "extract", extract)
     monkeypatch.setattr(sessions_router.auto_memory_service, "extract", remember)
     monkeypatch.setattr(sessions_router.model_service, "resolve_enrichment_model", enrichment_model)
 

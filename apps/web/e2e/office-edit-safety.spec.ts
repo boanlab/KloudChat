@@ -104,6 +104,7 @@ test.describe('leaving unsaved edits', () => {
     await page.getByRole('link', { name: '아티팩트' }).first().click()
     await asked(page).getByRole('button', { name: '저장', exact: true }).click()
     await expect(page).toHaveURL(/\/artifacts$/)
+    await expect(page.getByText('아직 아티팩트가 없습니다')).toBeVisible()
     expect(state.saves).toEqual([{ expected: '1', size: expect.any(Number) }])
   })
 
@@ -386,13 +387,11 @@ test.describe('sharing, reopening and the artifacts page', () => {
     await expect.poll(() => state.created).toEqual([{ sessionId, fileId: 'file-1' }])
   })
 
-  test('the artifacts page draws an office document, filters by kind, and opens it in the editor', async ({ page }) => {
+  test('the file box draws an office document and opens it in the editor', async ({ page }) => {
     desktopOnly(page)
     await fixture(page, 'hwp', { artifactsPage: true })
-    // An HWP report sits with the reports, 한글 among their formats.
-    await page.getByRole('tab', { name: /보고서/ }).click()
-    await expect(page.getByTestId('artifact-formats').getByRole('button', { name: /한글/ })).toBeVisible()
-    await page.getByRole('button', { name: '직원 연수 참석 요청 열기' }).click()
+    // an HWP report is a working document, among the file box's
+    await expect(page.getByTestId('working-doc-row').filter({ hasText: '직원 연수 참석 요청' })).toBeVisible()
     const dialog = page.getByRole('dialog', { name: '직원 연수 참석 요청' })
     await expect(dialog.locator('[data-hwp-page="1"] svg')).toContainText(`document.hwpx 1쪽 ${hwpx.length}`)
     await dialog.getByRole('button', { name: '편집기에서 열기' }).click()
@@ -403,7 +402,6 @@ test.describe('sharing, reopening and the artifacts page', () => {
   test('a document with no chat opens in the editor beside a new one', async ({ page }) => {
     desktopOnly(page)
     const state = await fixture(page, 'hwp', { orphan: true })
-    await page.getByRole('button', { name: '직원 연수 참석 요청 열기' }).click()
     const dialog = page.getByRole('dialog', { name: '직원 연수 참석 요청' })
     await expect(dialog).toContainText('이 문서의 대화가 없습니다.')
     await dialog.getByRole('button', { name: '편집기에서 열기' }).click()

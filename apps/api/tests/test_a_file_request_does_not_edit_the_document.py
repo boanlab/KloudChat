@@ -105,7 +105,8 @@ _DDL = (
         id TEXT PRIMARY KEY, user_id TEXT, session_id TEXT, project_id TEXT, kind TEXT,
         title TEXT, data TEXT, storage_key TEXT, version INTEGER DEFAULT 1,
         created_at DATETIME, updated_at DATETIME,
-        search_text TEXT NOT NULL DEFAULT ''
+        search_text TEXT NOT NULL DEFAULT '',
+        section VARCHAR(16) NOT NULL DEFAULT ''
     )
     """,
     """
@@ -162,9 +163,11 @@ async def _report_session(maker) -> tuple[str, str]:
 
 async def test_pdf_please_hands_over_a_pdf_and_leaves_the_document_alone(maker, monkeypatch):
     kept: list[tuple[str, bytes]] = []
+    copies: list[str | None] = []
 
-    async def store_output(user_id, session_id, name, data):
+    async def store_output(user_id, session_id, name, data, copy_of=None):
         kept.append((name, data))
+        copies.append(copy_of)
         return {"id": f"f{len(kept)}", "name": name, "size": len(data)}
 
     monkeypatch.setattr(sandbox, "store_output", store_output)
@@ -181,6 +184,8 @@ async def test_pdf_please_hands_over_a_pdf_and_leaves_the_document_alone(maker, 
 
     assert [name for name, _ in kept] == ["한빛물류 제안서.pdf"]
     assert kept[0][1].startswith(b"%PDF")
+    # the export is a copy of the document: 파일함 › 만든 파일 leaves it to 작업 문서
+    assert copies == [artifact_id]
     chips = [e for e in events if e.get("type") == "step" and e.get("outputs")]
     assert chips and chips[0]["outputs"][0]["name"] == "한빛물류 제안서.pdf"
     said = "".join(e.get("text", "") for e in events if e.get("type") == "delta")
@@ -198,7 +203,7 @@ async def test_pdf_please_hands_over_a_pdf_and_leaves_the_document_alone(maker, 
 async def test_both_formats_are_handed_over_and_a_slide_format_is_declined(maker, monkeypatch):
     kept: list[str] = []
 
-    async def store_output(user_id, session_id, name, data):
+    async def store_output(user_id, session_id, name, data, copy_of=None):
         kept.append(name)
         return {"id": name, "name": name, "size": len(data)}
 

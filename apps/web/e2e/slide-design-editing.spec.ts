@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import {
   E2E_ADMIN, deckHeader, deckLayout, deckSelect, deckSelection, deckStage, deckTextSize, deckThumbs,
-  deckToolbar, deckToolbarMenu, saveDeck, signIn,
+  deckToolbar, deckToolbarMenu, saveDeck, signIn, openNewestDocument,
 } from './helpers'
 
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
@@ -30,9 +30,7 @@ test('장별 강조색과 그림 설명을 수정하고 그림을 제거할 수 
     return first.id as string
   }, [E2E_ADMIN, PNG] as [typeof E2E_ADMIN, string])
 
-  await page.goto('/artifacts')
-  await page.getByRole('tab', { name: /^슬라이드/ }).click()
-  await page.locator('button.aspect-video').first().click()
+  await openNewestDocument(page, 'deck')
   // No 편집 toggle: the toolbar is there from the start, the slide's steps in 더보기.
   await expect(deckToolbar(page)).toBeVisible({ timeout: 20_000 })
   await deckThumbs(page).first().click()

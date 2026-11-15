@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { gotoSurface, openSidebar, pickToolModel, seedPendingUser, signIn, surfaceOn, ribbonTab, panelHeader } from './helpers'
+import { gotoSurface, openSidebar, pickToolModel, seedPendingUser, signIn, surfaceOn, ribbonTab, panelHeader, openNewestDocument } from './helpers'
 import { personas } from './personas'
 import { toolNames } from './composer-tools'
 
@@ -15,9 +15,7 @@ test.use({ actionTimeout: 5_000 })
 
 /** Opens the newest artifact of a kind in its own conversation. */
 async function openNewest(page: import('@playwright/test').Page, tab: string) {
-  await page.goto('/artifacts')
-  await page.getByRole('tab', { name: new RegExp(`^${tab}`) }).click()
-  await page.getByText('원본 작업 열기').first().click()
+  await openNewestDocument(page, tab === '슬라이드' ? 'deck' : 'report')
   await page.waitForURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
 }
 
@@ -230,7 +228,7 @@ test.describe('페르소나 커버리지', () => {
               case 'eng-chart':
                 await page.goto('/artifacts')
                 await page.getByRole('tab', { name: /^차트/ }).click()
-                await page.locator('button.aspect-video').first().click()
+                await page.getByTestId('artifact-row').getByRole('button', { name: /열기$/ }).first().click()
                 await probe(page.getByRole('dialog').locator('svg[role="img"]').first()).toBeVisible()
                 await probe(page.getByRole('dialog').getByRole('button', { name: '데이터' })).toBeVisible()
                 break

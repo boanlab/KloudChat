@@ -364,11 +364,11 @@ test('the deck locks while the agent works, then shows its version where the per
   expect(recorded.problems).toEqual([])
 })
 
-test('in the artifacts page preview the keys work as in the panel', async ({ page }, testInfo) => {
+test('in the file box preview the keys work as in the panel', async ({ page }, testInfo) => {
   test.skip(viewport(testInfo) === 'phone', 'desktop width')
   await resultsFixture(page, testInfo)
-  await page.goto('/artifacts')
-  await page.getByRole('button', { name: `${deckFixture.title} 열기` }).click()
+  // web slides open over 파일함 › 작업 문서 (`?doc=`), as one with no conversation does
+  await page.goto(`/files?tab=working&doc=${deckId}`)
   const preview = page.getByRole('dialog').filter({ has: page.getByRole('region', { name: '웹 슬라이드 편집기' }) })
   const rail = preview.locator('.kc-thumb')
   await expect(rail).toHaveCount(4)
