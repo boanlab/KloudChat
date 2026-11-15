@@ -73,6 +73,8 @@ _REL = "http://schemas.openxmlformats.org/package/2006/relationships"
 _HP = "http://www.hancom.co.kr/hwpml/2011/paragraph"
 
 _PARSER = etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=False)
+#: an OLE compound file (HWP 5, old Office)
+_OLE = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 
 
 class FormError(ValueError):
@@ -578,6 +580,11 @@ def profile(name: str, data: bytes, text: str = "") -> dict[str, Any] | None:
     kind = kind_of(name)
     if not kind:
         return None
+    # the bytes decide between the two 한글 formats: 법령정보센터 serves HWP 5 files as 「….hwpx」
+    if kind == "hwpx" and data[:8] == _OLE:
+        kind = "hwp"
+    elif kind == "hwp" and data[:4] == b"PK\x03\x04":
+        kind = "hwpx"
     suffix = Path(name).suffix.lower()
     try:
         if kind == "pptx":
