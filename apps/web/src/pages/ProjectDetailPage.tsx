@@ -40,6 +40,7 @@ import type { MemoryEntry, Session } from '@/types'
 import { useMarkUnsaved } from '@/lib/unsaved'
 import { useT } from '@/lib/useT'
 import { ProjectSearchConsent } from '@/components/projects/ProjectSearchConsent'
+import { ProjectFormFiles } from '@/components/projects/ProjectFormFiles'
 import { isListed } from '@/lib/listed'
 import { KNOWLEDGE_ACCEPT, knowledgeKinds, knowledgeRefusal } from '@/lib/knowledgeFiles'
 import { RelTime } from '@/components/ui/RelTime'
@@ -569,6 +570,8 @@ export function ProjectDetailPage() {
         </Card>
 
         <ProjectSearchConsent project={project} />
+
+        <ProjectFormFiles project={project} />
 
         {formatSurfaces.length > 0 && (
           <Card className="space-y-3 p-4">

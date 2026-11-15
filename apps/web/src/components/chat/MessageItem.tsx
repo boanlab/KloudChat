@@ -10,6 +10,7 @@ import {
   Flag,
   Gauge,
   Loader2,
+  FileStack,
   Paperclip,
   Pencil,
   RotateCcw,
@@ -461,10 +462,18 @@ function MessageItemInner({
           )}
           {message.attachments?.map((a) => {
             const bytes = typeof a.size === 'number' ? fileSize(a.size) : a.size
+            const asForm = a.role === 'form'
             const chip = (
               <>
-                <Paperclip size={13} className="text-faint" />
+                {asForm
+                  ? <FileStack size={13} className="text-accent" />
+                  : <Paperclip size={13} className="text-faint" />}
                 <span className="truncate">{a.name}</span>
+                {asForm && (
+                  <span data-testid="attachment-form" className="shrink-0 rounded-[4px] bg-accent-soft px-1 text-xs text-accent">
+                    {a.source === 'project' ? t('프로젝트 양식') : a.source === 'agent' ? t('에이전트 양식') : t('양식')}
+                  </span>
+                )}
                 {bytes && <span className="shrink-0 text-faint">{bytes}</span>}
               </>
             )
@@ -472,7 +481,7 @@ function MessageItemInner({
               'ml-auto flex w-fit max-w-full items-center gap-2 rounded-control border border-line bg-panel px-2.5 py-1.5 text-base'
             // the office editor this file opens in (beside this chat, or a new one off a report
             // or deck screen)
-            const editable: OfficeKind | null = !a.id ? null
+            const editable: OfficeKind | null = !a.id || a.source ? null
               : /\.hwpx?$/i.test(a.name) ? 'hwp'
                 : /\.docx$/i.test(a.name) ? 'docx'
                   : /\.pptx$/i.test(a.name) ? 'pptx' : null
@@ -520,6 +529,11 @@ function MessageItemInner({
               </div>
             )
           })}
+          {message.attachments?.filter((a) => a.formNote).map((a) => (
+            <p key={`note-${a.id ?? a.name}`} data-testid="attachment-form-note" className="ml-auto max-w-[36rem] text-right text-sm text-warn">
+              {a.name}: {a.formNote}
+            </p>
+          ))}
           {fileError && <p className="text-right text-sm text-danger">{fileError}</p>}
           <div className="rounded-panel rounded-br-md bg-elevated px-4 py-2.5 text-md leading-[1.7] whitespace-pre-wrap phone:text-[1rem] phone:leading-[1.7]">
             {message.content}

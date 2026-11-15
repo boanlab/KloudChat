@@ -13,7 +13,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.models.chat import ChatSession, SessionKind
 from app.models.user import User
 from app.models.workspace import Artifact, ArtifactKind, Project
-from app.services import deck_export, office_doc, pptx_edit
+from app.services import deck_export, form_marks, office_doc, pptx_edit
 from app.services.office_doc import Conflict, read, read_version
 
 __all__ = ["Conflict", "read", "read_version"]
@@ -39,16 +39,37 @@ def describe(data: bytes, fmt: str) -> dict[str, Any]:
         slides = pptx_edit.slide_count(data)
     except pptx_edit.PptxError:
         text, slides = "", 0
-    return {"format": fmt, "size": len(data), "text": text, "slides": slides}
+    out = {"format": fmt, "size": len(data), "text": text, "slides": slides}
+    if (form := form_marks.read(data)) is not None:
+        # the form this version was written on (`pptx_form`), for the 「양식을 따름」 line
+        out["form"] = form
+    return out
 
 
 KIND = office_doc.Kind(ArtifactKind.pptx, "pptx", "PowerPoint 문서", file_format, describe)
 
 
-def blank(*, tokens: dict[str, str] | None = None, template: str = "") -> bytes:
+def on_form(form: Any, title: str, slides: list[dict[str, Any]]) -> bytes:
+    """`slides` written on a conversation's PowerPoint form (`form_files.Resolved`), marked
+    with what was followed."""
+    from app.services import pptx_form
+
+    data, followed = pptx_form.write(form.data, title, slides, profile=form.profile,
+                                     name=form.choice.name)
+    return form_marks.mark(data, {
+        "kind": "pptx", "name": form.choice.name, "source": form.choice.source,
+        "fileId": form.choice.file_id, "followed": followed.wire(),
+    })
+
+
+def blank(*, tokens: dict[str, str] | None = None, template: str = "",
+          form: Any = None) -> bytes:
     """A new deck with one empty title slide: python-pptx's default stretched to 16:9
     (`pptx_edit.blank_deck`), or, given a project's 테마 `tokens` or 서식 `template`, an empty
-    cover in that look (`deck_export.to_pptx`), as a web deck made there would have."""
+    cover in that look (`deck_export.to_pptx`), as a web deck made there would have. On a
+    `form` (`form_files.Resolved`), the form's own cover with its sample slides taken out."""
+    if form is not None:
+        return on_form(form, "", [{"layout": "title", "title": "", "body": ""}])
     if not tokens and not template:
         return pptx_edit.blank_deck()
     return deck_export.to_pptx(
@@ -64,6 +85,7 @@ def deck(
     *,
     tokens: dict[str, str] | None = None,
     template: str = "",
+    form: Any = None,
 ) -> bytes:
     """A new deck in the house look (`deck_export`): a cover, then a slide per entry, as
     bullets, or a table when it has rows; `closing` adds a last slide with that line. `tokens`
@@ -87,6 +109,9 @@ def deck(
         made.append(entry)
     if closing.strip():
         made.append({"layout": "closing", "title": closing.strip(), "body": ""})
+    if form is not None:
+        # on the conversation's PowerPoint form: its layouts, type and theme
+        return on_form(form, title, made)
     # `to_pptx` leaves no master bullet under a plain line (`written_bullets_only`)
     return deck_export.to_pptx(title, made, tokens=tokens, template=template)
 

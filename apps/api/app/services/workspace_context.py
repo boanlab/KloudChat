@@ -1093,7 +1093,11 @@ def _file_report(
 async def _earlier_attachments(
     db: AsyncSession, user: User, session: ChatSession, *, exclude: set[str]
 ) -> list[StoredFile]:
-    """Readable earlier-turn uploads in this session, newest first."""
+    """Readable earlier-turn uploads in this session, newest first; a form the conversation
+    follows is not material (`form_files`)."""
+    from app.services import form_files
+
+    exclude = exclude | form_files.attached_ids(session)
     rows = (
         await db.exec(
             select(StoredFile)

@@ -117,6 +117,7 @@ from app.services import (
     fallback_watch,
     figures,
     file_schema,
+    form_files,
     freshness,
     gap_questions,
     governance,
@@ -363,6 +364,23 @@ async def _web_edit_target(db: AsyncSession, session: ChatSession,
     return found
 
 
+async def _turn_forms(db: AsyncSession, user: User, session: ChatSession,
+                      payload: SendMessage) -> form_files.TurnForms:
+    """This turn's attached forms: the attachments' roles (the chip's, else the file's profile
+    and the request's words), kept on the conversation. The agent's and the project's saved
+    forms are found where the document is written (`form_files.for_session`)."""
+    ids = list(dict.fromkeys(payload.attachments or []))
+    rows = list((await db.exec(select(StoredFile).where(
+        col(StoredFile.id).in_(ids), StoredFile.user_id == user.id))).all()) if ids else []
+    by_id = {row.id: row for row in rows}
+    rows = [by_id[i] for i in ids if i in by_id]
+    turn = form_files.choose(rows, payload.attachment_roles, payload.content)
+    turn.material += [i for i in ids if i not in by_id]
+    if form_files.remember(session, turn, payload.saved_forms_off):
+        db.add(session)
+    return turn
+
+
 async def _pptx_surface(db: AsyncSession, user: User, session: ChatSession) -> None:
     """A slides conversation asked for a PowerPoint file (`output_format` `pptx`) and holding
     no document yet gets a blank deck as its document: the turn then runs as the office chat
@@ -371,7 +389,11 @@ async def _pptx_surface(db: AsyncSession, user: User, session: ChatSession) -> N
     if session.kind is not SessionKind.slides or session.artifact_id:
         return
     blank = pptx_doc.blank()
-    if project_look := getattr(pptx_doc, "project_look", None):
+    form = await form_files.for_session(db, session, "pptx")
+    if form is not None:
+        # the conversation's PowerPoint form, its sample slides taken out
+        blank = pptx_doc.blank(form=form)
+    elif project_look := getattr(pptx_doc, "project_look", None):
         # the project's theme and slides template (the conversation's pick first)
         tokens, template = await project_look(db, user, session)
         blank = pptx_doc.blank(tokens=tokens, template=template or "")
@@ -512,6 +534,9 @@ async def _knowledge_shelf(
             .order_by(col(StoredFile.created_at))
         )
     ).all()
+    # a form the conversation follows is not material
+    forms = form_files.attached_ids(session)
+    rows = [row for row in rows if row.id not in forms and row.role is None]
     # project sources the conversation switched off (지식 서가) are not searched
     if session.project_id:
         rows = source_selection.keep(rows, await source_selection.excluded(db, session.id))
@@ -5021,6 +5046,18 @@ async def _send_message(
     #: the document open in the panel beside the chat: chat edits work on it
     opened = (await _opened_document(db, user, session, payload.open_artifact)
               if published is None else None)
+    #: the forms (양식) this turn's attachments bring, kept on the conversation; a form is
+    #: followed, never read as material (`form_files`)
+    turn_forms: form_files.TurnForms | None = None
+    if published is None:
+        turn_forms = await _turn_forms(db, user, session, payload)
+        if turn_forms.forms or turn_forms.notes:
+            material = [i for i in payload.attachments or [] if i in turn_forms.material]
+            payload = payload.model_copy(update={"attachments": material or None})
+        if (session.kind is SessionKind.slides and payload.output_format is None
+                and "pptx" in turn_forms.forms and turn_forms.forms["pptx"].source == "attached"):
+            # a PowerPoint form makes the deck a PowerPoint file
+            payload = payload.model_copy(update={"output_format": "pptx"})
     if published is None and payload.output_format == "pptx" and not session.pending:
         await _pptx_surface(db, user, session)
     #: the surface this turn runs as: a report written as an HWP or Word file is worked on from
@@ -5041,8 +5078,12 @@ async def _send_message(
             update={
                 "content": retry_of.content,
                 "attachments": payload.attachments
-                or [a["id"] for a in (retry_of.attachments or []) if a.get("id")]
+                or [a["id"] for a in (retry_of.attachments or [])
+                    if a.get("id") and not a.get("source")]
                 or None,
+                "attachment_roles": payload.attachment_roles or {
+                    a["id"]: a["role"] for a in (retry_of.attachments or [])
+                    if a.get("id") and a.get("role") in ("form", "material")} or None,
                 "web_search": turn_options.get("webSearch", payload.web_search),
                 "activated_skill_ids": turn_options.get(
                     "activatedSkillIds", payload.activated_skill_ids
@@ -5298,6 +5339,13 @@ async def _send_message(
 
     # ownership before privacy assembly
     rows, attachment_meta = await _owned_attachments(db, user, payload.attachments)
+    for meta in attachment_meta or []:
+        # the chip's role, kept with the turn so a retry reads the file the same way
+        if (role := (payload.attachment_roles or {}).get(meta["id"])) is not None:
+            meta["role"] = role
+    if turn_forms is not None:
+        # the forms followed and what the person is told about a file, on the question
+        attachment_meta = form_files.turn_meta(turn_forms, attachment_meta)
 
     #: picked skills, else the standing set; a pick replaces the standing set
     active_skill_ids = list(payload.activated_skill_ids)
@@ -6090,6 +6138,13 @@ async def _send_message(
             privacy_resolution.routing if privacy_resolution else document_routing
         )
     else:
+        if turn_forms is not None and kind is SessionKind.slides:
+            # the saved form the deck follows, named on the question
+            for form_kind in form_files.FOLLOWED:
+                saved = await form_files.for_session(db, session, form_kind, agent=agent_row)
+                if saved is not None and saved.choice.source != "attached":
+                    turn_forms.forms.setdefault(form_kind, saved.choice)
+            attachment_meta = form_files.turn_meta(turn_forms, attachment_meta)
         user_message = Message(
             session_id=session.id,
             role=Role.user,

@@ -1847,6 +1847,39 @@ the app's i18n; crv's own few canvas words get Korean through
 `PptxI18nProvider`. On a phone the deck is read only, its thumbnails a row under
 the slide.
 
+### Form files (양식)
+
+A form file is an Office file whose look and slots a document is written into, as opposed to
+material that is read. It replaces templates for the look of PowerPoint output (Word and HWPX
+follow in later steps).
+
+- **Profile on upload.** `services/form_profile.py` reads an Office upload once by code and
+  stores `files.form_profile`: a PowerPoint's slide size, theme fonts and colours, and every
+  layout with its placeholders (classified as `title`, `section`, `content`, `two`,
+  `comparison`, `title_only`, `picture` or `blank`); a Word file's heading styles, header and
+  footer, fields and section skeleton; an HWPX file's label/value cells. A score and a verdict
+  (`form`, `material`, `unsure`) come with it. `.potx`/`.dotx` are forms by kind. A binary
+  `.hwp` is never a form: the person is told to save it as HWPX.
+- **Role per turn.** `services/form_files.py` decides each attachment's role: the chip's pick
+  (`attachmentRoles`), else the verdict moved by the request's words. Forms are taken out of
+  the turn's material; the conversation keeps an attached form (`sessions.form_files`) and
+  never reads it as material in later turns or in `search_knowledge`. Precedence: attached
+  form, the agent's saved form, the project's (`projects.form_files`, saved as `files.role =
+  form` copies through `routers/forms.py`, kept out of the file box). `savedFormsOff` takes a
+  saved one off for a conversation. The question's attachment list records the forms followed.
+- **Writing on a PowerPoint form.** `services/pptx_form.py` draws the deck with the house
+  renderer in its bare mode (`deck_export.render_on`: no ornaments, no foot, the form's theme
+  accent and ink as tokens) into the form's own package, then puts each slide on the form
+  layout its kind maps to. Titles, subtitles and plain bullets go into the layout's
+  placeholders; tables, charts, patterns and figures are moved and scaled into the layout's body
+  area, with the accent and ink rewritten as theme colours (`schemeClr`) and typefaces left to
+  the theme. The form's sample slides go and its slide size stays. Used by the PowerPoint tools
+  (`pptx_write`, the blank deck a slides conversation starts) and by a web deck's `.pptx`
+  download.
+- **The mark.** `services/form_marks.py` writes what was followed (form, source, layouts used,
+  stand-ins) into the file's custom properties; `pptx_doc.describe` puts it on the artifact,
+  and the answer's card shows 「양식을 따름」 from it.
+
 ### Web slides editor
 
 The web slides (`DeckPanel`, a deck artifact's JSON) work the way the PowerPoint

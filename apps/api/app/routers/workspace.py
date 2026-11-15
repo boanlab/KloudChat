@@ -104,6 +104,8 @@ from app.services import (
     doc_formats,
     elk_layout,
     factcheck,
+    form_files,
+    form_profile,
     hangul,
     index_cleanup,
     index_client,
@@ -399,6 +401,20 @@ def _validated_render_templates(raw: dict[str, str] | None) -> dict[str, str] | 
     return chosen
 
 
+async def _form_slots(db: DbSession, user: User, current: dict | None,
+                      changes: dict[str, str | None] | None) -> dict[str, str] | None:
+    """Checked 기본 양식 파일 slots (`form_files.checked_slots`); None when none are set."""
+    if changes is None:
+        return current
+    try:
+        slots = await form_files.checked_slots(db, user.id, current, changes)
+    except form_files.SlotError as exc:
+        code = status.HTTP_404_NOT_FOUND if exc.code == "form_not_found" \
+            else status.HTTP_422_UNPROCESSABLE_ENTITY
+        raise HTTPException(status_code=code, detail=exc.code) from None
+    return slots or None
+
+
 async def _project_out(db: DbSession, project: Project) -> ProjectOut:
     files = (
         await db.exec(
@@ -410,7 +426,11 @@ async def _project_out(db: DbSession, project: Project) -> ProjectOut:
     session_ids = (
         await db.exec(select(ChatSession.id).where(ChatSession.project_id == project.id))
     ).all()
-    return ProjectOut.of(project, list(files), list(session_ids))
+    form_ids = [v for v in (project.form_files or {}).values() if isinstance(v, str)]
+    forms = (await db.exec(
+        select(StoredFile).where(col(StoredFile.id).in_(form_ids))
+    )).all() if form_ids else []
+    return ProjectOut.of(project, list(files), list(session_ids), list(forms))
 
 
 @router.get("/projects", response_model=list[ProjectOut])
@@ -431,6 +451,7 @@ async def create_project(payload: ProjectIn, user: CurrentUser, db: DbSession):
     await _validate_design_system_id(db, user, payload.design_system_id)
     fields = payload.model_dump()
     fields["render_templates"] = _validated_render_templates(fields["render_templates"])
+    fields["form_files"] = await _form_slots(db, user, None, fields.get("form_files"))
     project = Project(user_id=user.id, **fields)
     db.add(project)
     await db.commit()
@@ -458,6 +479,13 @@ async def patch_project(project_id: str, payload: ProjectPatch, user: CurrentUse
         await _validate_design_system_id(db, user, changes["design_system_id"])
     if "render_templates" in changes:
         changes["render_templates"] = _validated_render_templates(changes["render_templates"])
+    replaced: set[str] = set()
+    if "form_files" in changes:
+        before = dict(project.form_files or {})
+        changes["form_files"] = await _form_slots(db, user, before, changes["form_files"])
+        replaced = set(before.values()) - set((changes["form_files"] or {}).values())
+    if "design_brief" in changes and changes["design_brief"] is None:
+        changes["design_brief"] = ""
     if changes.get("strict_local_web_search") is not None:
         # a project only tightens the admin's setting
         admin = (await governance_service.current(force=True)).strict_local_web_search
@@ -470,6 +498,9 @@ async def patch_project(project_id: str, payload: ProjectPatch, user: CurrentUse
         setattr(project, field, value)
     project.updated_at = utcnow()
     db.add(project)
+    if replaced:
+        await db.flush()
+        await form_files.drop_unused(db, user.id, replaced)
     await db.commit()
     await db.refresh(project)
     return await _project_out(db, project)
@@ -491,7 +522,11 @@ async def _remove_project(db: DbSession, project: Project) -> int:
     ).all():
         session.project_id = None
         db.add(session)
+    forms = {v for v in (project.form_files or {}).values() if isinstance(v, str)}
     await db.delete(project)
+    if forms:
+        await db.flush()
+        await form_files.drop_unused(db, project.user_id, forms)
     return len(files)
 
 
@@ -533,6 +568,8 @@ async def list_files(
     query = select(StoredFile).where(
         StoredFile.user_id == user.id,
         or_(col(StoredFile.agent_id).is_(None), col(StoredFile.agent_id).not_in(copies)),
+        # saved forms live on their project or agent, not in the file lists
+        col(StoredFile.role).is_(None),
     )
     if project_id:
         query = query.where(StoredFile.project_id == project_id)
@@ -568,6 +605,7 @@ async def page_files(
                                     Agent.owner_id == user.id)
     conds = [
         StoredFile.user_id == user.id,
+        col(StoredFile.role).is_(None),
         col(StoredFile.agent_id).is_(None) if box
         else or_(col(StoredFile.agent_id).is_(None), col(StoredFile.agent_id).not_in(copies)),
     ]
@@ -659,6 +697,8 @@ async def upload_file(
         except Exception as exc:  # noqa: BLE001
             log.info("extraction failed for %s: %s", stored.name, exc)
             stored.error = str(exc)
+        # what an Office file offers as a form, read once (`form_profile`)
+        stored.form_profile = form_profile.profile(stored.name, data, stored.text)
     # scanned pages read in background; text layer kept meanwhile
     reading = not watching and await ocr_jobs.queue_if_scanned(stored, data)
     # project material gets its digest once its text is whole (OCR asks for it when done)
@@ -2683,6 +2723,7 @@ async def create_agent(payload: AgentCreateIn, user: CurrentUser, db: DbSession)
                                                  fields.get("active_skill_ids"))
     bindings = await _validate_agent_bindings(db, user, fields)
     checks = await _validated_checks(db, user, fields)
+    fields["form_files"] = await _form_slots(db, user, None, fields.get("form_files"))
     slug = await _claim_slug(db, user.id, payload.slug or payload.name)
     agent = Agent(
         owner_id=user.id,
@@ -2858,6 +2899,11 @@ async def patch_agent(agent_id: str, payload: AgentIn, user: CurrentUser, db: Db
                                            keep_format=agent.doc_format)
         )
     changes.update(await _validated_checks(db, user, changes))
+    replaced: set[str] = set()
+    if "form_files" in changes:
+        before = dict(agent.form_files or {})
+        changes["form_files"] = await _form_slots(db, user, before, changes["form_files"])
+        replaced = set(before.values()) - set((changes["form_files"] or {}).values())
     wanted = changes.pop("slug", None)
     if agent.sealed:
         # sealed copy: no own prompt, no unsealing
@@ -2876,6 +2922,9 @@ async def patch_agent(agent_id: str, payload: AgentIn, user: CurrentUser, db: Db
         from app.routers import user_pipelines
 
         await user_pipelines.submit_shared_process(db, user, agent)
+    if replaced:
+        await db.flush()
+        await form_files.drop_unused(db, user.id, replaced)
     await db.commit()
     await db.refresh(agent)
     out = AgentOut.of(
@@ -2896,7 +2945,11 @@ async def delete_agent(agent_id: str, user: CurrentUser, db: DbSession,
     # drop index collection too (else still searchable)
     key = agent.index_key
     await user_pipelines.drop_processes(db, [agent.id])
+    forms = {v for v in (agent.form_files or {}).values() if isinstance(v, str)}
     await db.delete(agent)
+    if forms:
+        await db.flush()
+        await form_files.drop_unused(db, user.id, forms)
     db.add(audit.deletion(user, request, action="agent.delete", ids=[agent_id],
                           counts={"agents": 1}))
     await db.commit()
@@ -2913,8 +2966,12 @@ async def delete_agents(payload: BulkDelete, user: CurrentUser, db: DbSession,
     rows = await _owned_many(db, Agent, "owner_id", user, payload.ids)
     keys = [row.index_key for row in rows if row.index_key]
     await user_pipelines.drop_processes(db, [row.id for row in rows])
+    forms = {v for row in rows for v in (row.form_files or {}).values() if isinstance(v, str)}
     for row in rows:
         await db.delete(row)
+    if forms:
+        await db.flush()
+        await form_files.drop_unused(db, user.id, forms)
     if rows:
         db.add(audit.deletion(user, request, action="agent.bulk_delete",
                               ids=[row.id for row in rows], counts={"agents": len(rows)}))
@@ -2969,6 +3026,19 @@ def _export_code_source(artifact: Artifact) -> Response:
     return response
 
 
+async def _deck_form(artifact: Artifact):
+    """The PowerPoint form a web deck's `.pptx` follows: its conversation's (`form_files`)."""
+    from app.core.db import SessionLocal
+
+    if not artifact.session_id:
+        return None
+    async with SessionLocal() as db:
+        session = await db.get(ChatSession, artifact.session_id)
+        if session is None:
+            return None
+        return await form_files.for_session(db, session, "pptx")
+
+
 async def _export_deck(artifact: Artifact, format: str) -> Response:
     """Deck as `.pptx`, `.pdf` or Markdown."""
     slides = list((artifact.data or {}).get("slides") or [])
@@ -2991,6 +3061,18 @@ async def _export_deck(artifact: Artifact, format: str) -> Response:
     if format in ("pptx", "docx"):
         # `docx` default → `.pptx` for decks
         await elk_layout.prepare(deck_export.figure_sources(slides))
+        form = await _deck_form(artifact)
+        if form is not None:
+            # the conversation's or project's PowerPoint form (`pptx_form`)
+            from app.services import pptx_doc
+
+            try:
+                return _attachment(
+                    pptx_doc.on_form(form, title, slides),
+                    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                    stem, "pptx")
+            except ValueError as exc:
+                log.warning("deck %s not written on its form: %s", artifact.id, exc)
         return _attachment(
             deck_export.to_pptx(
                 title,

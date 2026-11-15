@@ -385,7 +385,15 @@ _LOOKS: dict[str, Look] = {
 }
 
 
+#: the bare look a deck takes when it is drawn on a PowerPoint form (`pptx_form`): no ground,
+#: ornament or cover of its own, which the form's master gives
+_FORM_LOOK = Look(bg="#ffffff", ink="#1a1a1a", muted="#666666", hair="#e6e6e6", tint=7,
+                  card="filled", radius=0, badge="square", cover="none", ornament="none")
+
+
 def _look_of(visual_style: str) -> Look:
+    if visual_style == "form":
+        return _FORM_LOOK
     return _LOOKS.get(visual_style) or _LOOKS["editorial"]
 
 
@@ -2933,6 +2941,28 @@ def to_pptx(
     return pptx_edit.written_bullets_only(data)
 
 
+def render_on(form: bytes, title: str, slides: list[dict], *,
+              tokens: dict[str, str] | None = None) -> bytes:
+    """The deck drawn bare into a PowerPoint form's own package, one scratch slide per written
+    slide after the form's own (`pptx_form` moves what is drawn onto the form's layouts)."""
+    token = _OVERFLOW.set(None)
+    try:
+        return _build_pptx(title, slides, tokens=tokens, dark=False, template=form, found=[],
+                           bare=True)
+    finally:
+        _OVERFLOW.reset(token)
+
+
+def written_slides(slides: list[dict]) -> list[dict]:
+    """The slides a `.pptx` gets, in order (what `render_on` draws)."""
+    return _written(_without_written_numbers(slides))
+
+
+def columns_of(data: dict, bullets: list[str]) -> list[list[str]]:
+    """A two-column slide's columns, as the export splits them."""
+    return _columns_of(data, bullets, str(data.get("layout") or "two-column"))
+
+
 def overflowing_slides(
     title: str, slides: list[dict], *, tokens: dict[str, str] | None = None, template: str = ""
 ) -> list[dict]:
@@ -2951,8 +2981,9 @@ def _build_pptx(
     *,
     tokens: dict[str, str] | None,
     dark: bool,
-    template: str,
+    template: str | bytes,
     found: list[tuple[int, dict, list[str]]],
+    bare: bool = False,
 ) -> bytes:
     slides = _without_written_numbers(slides)
     style = design.normalise_tokens(tokens) if tokens else None
@@ -3049,17 +3080,27 @@ def _build_pptx(
             run.font.underline = bool(inline.get("underline"))
 
     # free shapes, not template placeholders
-    presentation = Presentation(template) if template else Presentation()
+    if isinstance(template, bytes):
+        presentation = Presentation(io.BytesIO(template))
+    else:
+        presentation = Presentation(template) if template else Presentation()
     presentation.slide_width = Emu(int(_W * _EMU_PER_PT))
     presentation.slide_height = Emu(int(_H * _EMU_PER_PT))
-    blank = presentation.slide_layouts[6]
-    visual_style = (style or {}).get("visualStyle") or "editorial"
+    if bare:
+        # a form's layouts: the one with the fewest placeholders; its copies are removed
+        blank = min(presentation.slide_layouts, key=lambda lay: len(lay.placeholders))
+    else:
+        blank = presentation.slide_layouts[6]
+    visual_style = "form" if bare else (style or {}).get("visualStyle") or "editorial"
 
     for index, data in enumerate(_written(slides)):
         cut: list[str] = []
         _OVERFLOW.set(cut)
         found.append((index, data, cut))
         slide = presentation.slides.add_slide(blank)
+        if bare:
+            for holder in list(slide.placeholders):
+                holder._element.getparent().remove(holder._element)
         typescale[0] = _typescale(data)
         if dark:
             slide.background.fill.solid()
@@ -3079,7 +3120,9 @@ def _build_pptx(
         cover = layout in _COVERS
         #: Cover text on the accent (white ink).
         on_accent = look.cover in ("gradient", "glow")
-        if cover:
+        if bare:
+            pass
+        elif cover:
             fill = slide.background.fill
             if look.cover == "gradient":
                 try:
@@ -3421,7 +3464,8 @@ def _build_pptx(
             )
             # tab under the title; body loses a line per extra title line
             tab_top = _TITLE_TOP + title_line * title_lines + 6 * _K
-            _block(slide, left=text_left, top=tab_top, width=62, height=5, colour=accent)
+            if not bare:
+                _block(slide, left=text_left, top=tab_top, width=62, height=5, colour=accent)
             body_top = _BODY_TOP + title_line * (title_lines - 1)
             room = _BODY_BOTTOM - body_top
 
@@ -3780,8 +3824,8 @@ def _build_pptx(
                     run.text = image_caption
                     paint(run, size=_u("caption"), colour=muted)
 
-        # foot: logo, title, footer left; number right
-        if not cover:
+        # foot: logo, title, footer left; number right (a form's master has its own)
+        if not cover and not bare:
             edge = 72.0
             if mark:
                 blob, mark_width, mark_height = mark

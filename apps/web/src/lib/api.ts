@@ -1244,6 +1244,8 @@ export interface SessionRow {
   skillIds?: string[] | null
   /** The rendering template this session writes into, if one was picked. */
   renderTemplateId: string | null
+  /** 양식 attached in this conversation by output kind; `''`: the saved one taken off. */
+  formFiles?: Partial<Record<FormKind, string>> | null
   pinned: boolean
   createdAt: string
   updatedAt: string
@@ -1384,6 +1386,50 @@ export const sessionsApi = {
 
 /* ── workspace: owned by the caller; anything else 404 ── */
 
+/** An output kind a 양식 (form file) shapes. */
+export type FormKind = 'pptx' | 'docx' | 'hwpx'
+/** How a turn reads an attachment: followed as its 양식, or read as 자료. */
+export type FormRole = 'form' | 'material'
+
+/** What an Office file offers as a form (`form_profile.summary`). */
+export interface FormSummary {
+  kind: FormKind | 'hwp'
+  verdict: 'form' | 'material' | 'unsure'
+  score?: number
+  error?: string
+  /** PowerPoint: layout count, slide size, body font, first accent colour. */
+  layouts?: number
+  size?: string
+  font?: string
+  accent?: string
+  /** Word: heading levels, sections, header, cover, fields. */
+  headings?: number
+  sections?: number
+  header?: boolean
+  cover?: boolean
+  /** Word and 한글: the slots to fill. */
+  fields?: number
+  tables?: number
+  /** `.hwp`: how to save it as HWPX to use it as a form. */
+  advice?: string
+}
+
+/** What a written file took from its form (`form_marks`), on its artifact. */
+export interface FollowedForm {
+  kind: FormKind
+  name: string
+  /** Where the form came from: this conversation, the agent, or the project. */
+  source: 'attached' | 'agent' | 'project'
+  fileId?: string
+  followed?: {
+    layouts?: Record<string, number>
+    slides?: number
+    size?: string
+    fonts?: Record<string, string>
+    standIns?: { slide: number; kind: string; layout: string }[]
+  }
+}
+
 export interface FileRow {
   id: string
   name: string
@@ -1400,6 +1446,10 @@ export interface FileRow {
   origin?: 'upload' | 'generated'
   /** First few hundred characters of the extracted text. */
   preview: string
+  /** `form`: a saved 기본 양식 파일 copy. */
+  role?: 'form' | null
+  /** What an Office file offers as a form; null for other files. */
+  form?: FormSummary | null
   /** Set when extraction failed. The file still uploaded. */
   error: string | null
   /** False when the vector index does not cover this document yet. */
@@ -1679,12 +1729,36 @@ export interface ProjectRow {
   designSystemId: string | null
   /** Surface → template; sent whole, a missing key means the built-in track. */
   renderTemplates: Record<string, string>
+  /** 기본 양식 파일: output kind → saved form copy id; `null` in a patch clears that kind. */
+  formFiles?: Partial<Record<FormKind, string | null>>
+  /** The saved form copies themselves. */
+  formRows?: FileRow[]
+  /** 디자인 지침. */
+  designBrief?: string
   /** Web search in this project's strict-local turns; null follows the admin. */
   strictLocalWebSearch?: SearchConsentMode | null
   files: FileRow[]
   sessionIds: string[]
   createdAt: string
   updatedAt: string
+}
+
+/** Saved 양식 (`routers/forms.py`): kept out of the file box, set on a project or agent. */
+export const formsApi = {
+  /** A new saved form from an upload; a `.hwp` or a non-Office file is refused. */
+  upload: async (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    const res = await authedFetch(`${BASE_URL}/forms`, { method: 'POST', body: form })
+    if (!res.ok) {
+      const detail = await readDetail(res)
+      if (res.status === 401) throw new UnauthorizedError(detail)
+      throw new ApiError(res.status, detail)
+    }
+    return (await res.json()) as FileRow
+  },
+  /** A saved form copied from one of the person's files. */
+  fromFile: (fileId: string) => call<FileRow>('/forms/from-file', body({ fileId })),
 }
 
 export const projectsApi = {
@@ -2642,6 +2716,10 @@ export async function* streamSession(
     content: string
     /** File ids from `filesApi.upload` — the server reads their extracted text. */
     attachments?: string[]
+    /** The role picked on an attachment's chip; others take the role their file suggests. */
+    attachmentRoles?: Record<string, FormRole>
+    /** Output kinds whose saved 양식 is taken off in this conversation. */
+    savedFormsOff?: FormKind[]
     /** `true` searches every turn, `false` never, `'auto'` when the words call for it. */
     webSearch?: WebSearchSetting
     model?: string

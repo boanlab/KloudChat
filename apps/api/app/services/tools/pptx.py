@@ -24,9 +24,10 @@ _OP_HELP = (
 )
 
 
-async def _look(db: Any, ctx: Any) -> tuple[dict | None, str] | None:
+async def _look(db: Any, ctx: Any) -> tuple[dict | None, str, Any] | None:
     """The deck's theme and slides template: the conversation's pick, else the project's
-    (`pptx_doc.project_look`, where the slides surface defines it)."""
+    (`pptx_doc.project_look`, where the slides surface defines it); and the conversation's
+    PowerPoint form (`form_files.for_session`), which a written deck follows instead."""
     project_look = getattr(pptx_doc, "project_look", None)
     if project_look is None:
         return None
@@ -37,7 +38,11 @@ async def _look(db: Any, ctx: Any) -> tuple[dict | None, str] | None:
     session = await db.get(ChatSession, ctx.session_id) if ctx.session_id else None
     if user is None:
         return None
-    return await project_look(db, user, session)
+    tokens, template = await project_look(db, user, session)
+    from app.services import form_files
+
+    form = await form_files.for_session(db, session, "pptx") if session is not None else None
+    return tokens, template, form
 
 
 def _build(args: dict[str, Any], look: Any = None) -> tuple[str, bytes]:
@@ -61,9 +66,10 @@ def _build(args: dict[str, Any], look: Any = None) -> tuple[str, bytes]:
     subtitle = " ".join(str(args.get("subtitle") or "").split())[:200]
     closing = " ".join(str(args.get("closing") or "").split())[:80]
     if isinstance(look, tuple) and _takes_look():
-        tokens, template = look
+        tokens, template, form = (*look, None)[:3]
+        extra = {"form": form} if form is not None else {}
         return title, pptx_doc.deck(title, subtitle, slides, closing, tokens=tokens,
-                                    template=template or "")
+                                    template=template or "", **extra)
     return title, pptx_doc.deck(title, subtitle, slides, closing)
 
 

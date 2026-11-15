@@ -220,6 +220,8 @@ class SessionOut(Wire):
     reasoning_mode: str | None = None
     artifact_id: str | None
     render_template_id: str | None = None
+    #: 양식 attached in this conversation (`ChatSession.form_files`); `""` a saved one taken off
+    form_files: dict[str, str] | None = None
     pending: dict | None = None
     skill_ids: list | None = None
     pinned: bool
@@ -353,6 +355,14 @@ class SearchConsentAnswer(Wire):
 class SendMessage(Wire):
     content: str = Field(min_length=1, max_length=200_000)
     attachments: list[str] | None = None
+    #: the role picked on an attachment's chip (`form` 양식 or `material` 자료); an attachment
+    #: not named here gets the role its profile and the request suggest (`form_files.role_of`)
+    attachment_roles: dict[str, Literal["form", "material"]] | None = Field(default=None,
+                                                                            max_length=20)
+    #: the output kinds whose saved (agent or project) 양식 the person took off in this
+    #: conversation; None leaves the conversation's choice as it is
+    saved_forms_off: list[Literal["pptx", "docx", "hwpx"]] | None = Field(default=None,
+                                                                         max_length=3)
     model: str | None = None
     #: True every turn, False never (unless research asked), "auto" when warranted; None: the
     #: agent's `web_search_default`, else False

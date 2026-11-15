@@ -22,10 +22,11 @@ import {
   X,
 } from 'lucide-react'
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import type { FileRow, OfficeKind, PrivacyDecision, WebSearchSetting } from '@/lib/api'
+import type { FileRow, FormKind, FormRole, OfficeKind, PrivacyDecision, WebSearchSetting } from '@/lib/api'
 import { ApiError, transcriptionsApi } from '@/lib/api'
 import { startWavRecording, type WavRecorder } from '@/lib/wavRecorder'
 import { DesignGalleryModal, offersTemplates } from '@/components/chat/DesignGallery'
+import { FormRoleToggle, SavedFormChip, followable, formRoleOf } from '@/components/chat/FormChips'
 import { FileBoxPicker } from '@/components/files/FileBoxPicker'
 import { warmStudio } from '@/components/hwp/warmStudio'
 import { errorCode, errorMessage, PrivacyDecisionError, templateText } from '@/lib/api'
@@ -642,6 +643,18 @@ export function Composer({
     ref.current?.setSelectionRange(range[0], range[1])
   }, [value])
   const [attachments, setAttachments] = useState<FileRow[]>([])
+  // 양식: the role picked on an attachment's chip (else the file's own verdict decides)
+  const [formRoles, setFormRoles] = useState<Record<string, FormRole>>({})
+  const liveFormRoles = useRef(formRoles)
+  liveFormRoles.current = formRoles
+  const rolesFor = (files: FileRow[]) => {
+    const picked = Object.fromEntries(files.flatMap((file) =>
+      liveFormRoles.current[file.id] ? [[file.id, liveFormRoles.current[file.id]]] : []))
+    return Object.keys(picked).length ? picked as Record<string, FormRole> : undefined
+  }
+  // the saved (project) form taken off or put back here; null: as the conversation has it
+  const [savedFormsOff, setSavedFormsOff] = useState<FormKind[] | null>(null)
+  useEffect(() => setSavedFormsOff(null), [sessionId])
   const liveAttachments = useRef(attachments)
   const liveSessionId = useRef(sessionId)
   liveSessionId.current = sessionId
@@ -1038,6 +1051,13 @@ export function Composer({
     (fresh && !projectTemplateOff ? designTemplates.find((row) => row.surface === kind && row.id === project?.renderTemplates?.[kind]) : undefined) ??
     null
   blankTemplate.current = shownTemplate?.surface === 'slides' ? shownTemplate.id : undefined
+  // An attached PowerPoint form makes the deck a PowerPoint file written on it.
+  const attachedForm = attachments.find((file) =>
+    followable(file) && file.form?.kind === 'pptx' && formRoleOf(file, formRoles[file.id]) === 'form')
+  const savedForm = kind === 'slides' && !attachedForm && !session?.formFiles?.pptx
+    ? project?.formRows?.find((row) => row.id === project?.formFiles?.pptx)
+    : undefined
+  const savedFormOff = savedFormsOff ? savedFormsOff.includes('pptx') : session?.formFiles?.pptx === ''
   // Same gate as the gallery button.
   const hasTemplates =
     offersTemplates(kind) && designTemplates.some((row) => row.surface === kind)
@@ -1301,6 +1321,7 @@ export function Composer({
         webSearch: search,
         attachments: files.map((file) => file.id),
         attachmentNames: files.map((file) => file.name),
+        attachmentRoles: rolesFor(files),
         activatedSkillIds: skillIds,
         privacyAction: action,
         privacyDecisionToken: decisionToken,
@@ -1779,6 +1800,7 @@ export function Composer({
         webSearch: sentWebSearch,
         attachments: attachmentIds,
         attachmentNames: attachmentLabels,
+        attachmentRoles: rolesFor(readableAttachments),
         activatedSkillIds: skillsFor(handoff),
         onSession: (id) => {
           landedHandoffSessionId = id
@@ -1824,13 +1846,15 @@ export function Composer({
       webSearch: sentWebSearch,
       attachments: attachmentIds,
       attachmentNames: attachmentLabels,
+      attachmentRoles: rolesFor(readableAttachments),
+      ...(savedFormsOff ? { savedFormsOff } : {}),
       activatedSkillIds: sentSkillIds,
       renderTemplateId: shownTemplate ? shownTemplate.id : undefined,
       // a file picked beside the surface chips; else the server reads the request
       // PowerPoint for a deck is the same send: the server makes the blank file the turn fills.
       outputFormat: !fresh ? undefined
         : kind === 'report' ? (output as ReportOutput | null) ?? undefined
-          : kind === 'slides' && (output ?? detectedOutput) === 'pptx' ? 'pptx' : undefined,
+          : kind === 'slides' && (attachedForm || (output ?? detectedOutput) === 'pptx') ? 'pptx' : undefined,
       // Sending from /new/:kind creates a session; the URL has to follow it.
       onSession: (id) => {
         landedSessionId = id
@@ -2572,6 +2596,16 @@ export function Composer({
                   <Paperclip size={10} className={f.error ? '' : 'text-faint'} />
                 )}
                 {f.name}
+                {followable(f) && (
+                  <FormRoleToggle
+                    file={f}
+                    role={formRoleOf(f, formRoles[f.id])}
+                    onPick={(role) => setFormRoles((current) => ({ ...current, [f.id]: role }))}
+                  />
+                )}
+                {f.form?.advice && (
+                  <span className="text-warn" title={f.form.advice}>{t('양식으로 쓰려면 HWPX로')}</span>
+                )}
                 {reading && (
                   <span className={reading.tone === 'warn' ? 'text-warn' : 'text-faint'}>
                     {reading.text}
@@ -2672,7 +2706,9 @@ export function Composer({
           <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-2.5 py-2">
             <OutputOptions
               surface={outputSurface}
-              shown={output ?? detectedOutput ?? (outputSurface === 'report' ? 'web' : 'deck')}
+              shown={outputSurface === 'slides' && attachedForm
+                ? 'pptx'
+                : output ?? detectedOutput ?? (outputSurface === 'report' ? 'web' : 'deck')}
               onPick={onPickOutput}
               onBlank={onBlankDocument}
               opening={openingDocument}
@@ -2710,6 +2746,14 @@ export function Composer({
               >
                 <X size={13} />
               </button>
+            )}
+            {savedForm && (
+              <SavedFormChip
+                name={savedForm.name}
+                source="project"
+                off={savedFormOff}
+                onOff={(off) => setSavedFormsOff(off ? ['pptx'] : [])}
+              />
             )}
           </div>
         )}

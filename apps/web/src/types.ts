@@ -1,6 +1,20 @@
 /** Domain types: a `Session` of a `SessionKind` produces `Artifact`s; no proxy credential here. */
 
 import type { PatternName } from '@/components/slides/patterns'
+import type { FileRow, FollowedForm } from '@/lib/api'
+
+/** A file a question carried: `role` `form` when the turn followed it as its 양식 (`source` set
+ *  for a saved project or agent form), `formNote` what the person is told about it. */
+export interface MessageAttachment {
+  id?: string
+  name: string
+  size: number | string
+  type: string
+  role?: 'form' | 'material'
+  formKind?: 'pptx' | 'docx' | 'hwpx'
+  source?: 'agent' | 'project'
+  formNote?: string
+}
 
 /* ── identity ───────────────────────────────────────────────────────── */
 
@@ -240,6 +254,8 @@ export interface Session {
   skillIds: string[]
   /** Sticky rendering template; null is the surface's built-in track. */
   renderTemplateId: string | null
+  /** 양식 attached in this conversation by output kind; `''`: the saved one taken off. */
+  formFiles?: Partial<Record<'pptx' | 'docx' | 'hwpx', string>> | null
   /** Opened but not sent: the browser holds it until the first send creates it under this id. */
   unsent?: boolean
 }
@@ -663,7 +679,7 @@ export interface Message {
   /** The version of `artifactIds[0]` this turn wrote; absent on media turns and live rows. */
   artifactVersion?: number
   /** `id` names the stored blob; absent only on the optimistic row while the upload is in flight. */
-  attachments?: { id?: string; name: string; size: number | string; type: string }[]
+  attachments?: MessageAttachment[]
   /** `estimated` on a stopped turn; planner and reviewer counters too (`lib/usage.ts`). */
   usage?: {
     inputTokens: number
@@ -1077,6 +1093,8 @@ export interface PptxArtifact extends ArtifactBase {
   slides?: number
   /** Slide text and notes, for search and cards. */
   text?: string
+  /** The PowerPoint form (양식) this version was written on (`form_marks`). */
+  form?: FollowedForm
 }
 
 export type Artifact =
@@ -1106,6 +1124,12 @@ export interface Project {
   designSystemId: string | null
   /** Surface → rendering template id; a surface with no entry uses the built-in track. */
   renderTemplates: Record<string, string>
+  /** 기본 양식 파일: output kind → saved form copy id. */
+  formFiles?: Partial<Record<'pptx' | 'docx' | 'hwpx', string>>
+  /** The saved form copies, for names and summaries. */
+  formRows?: FileRow[]
+  /** 디자인 지침. */
+  designBrief?: string
   /** Web search in this project's strict-local turns; null follows the admin. Absent on older servers. */
   strictLocalWebSearch?: SearchConsentMode | null
   updatedAt: string

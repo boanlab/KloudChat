@@ -90,6 +90,9 @@ class ChatSession(SQLModel, table=True):
     artifact_id: str | None = Field(default=None)
     #: not a FK: catalogue ships in image; unknown id → no template
     render_template_id: str | None = Field(default=None)
+    #: 양식 attached in this conversation, kept for its later turns: output kind → file id;
+    #: `""` for a kind whose saved (agent or project) form the person took off
+    form_files: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
     #: user pipeline (「이 워크플로로 시작」); else agent binding
     pipeline_id: str | None = Field(default=None)
     #: per-conversation index collection; unguessable (session id is in URLs)

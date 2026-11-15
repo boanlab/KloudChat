@@ -1,0 +1,192 @@
+import { expect, test, type Page } from '@playwright/test'
+import { at, chatId, composerFixture } from './composer-fixture'
+import { openTool } from './composer-tools'
+import { viewport } from './project'
+
+/**
+ * 양식 (form files): a PowerPoint attached as a form is followed (its chip says 양식, the deck
+ * becomes a PowerPoint file), a project's saved form shows beside the 형식 chip and can be left
+ * off, the project keeps one saved form per kind, and an answer's file says which form it
+ * followed. Screenshots of each go to `FORM_FILES_SHOT_DIR` when set.
+ */
+
+const projectId = 'p0000000000000000000000000000001'
+const savedId = 'f9'.padEnd(32, '9')
+const formId = 'f1'.padEnd(32, '1')
+const slidesId = 'c9'.padEnd(32, '9')
+const deckId = 'd9'.padEnd(32, '9')
+
+const pptxSummary = (extra: Record<string, unknown> = {}) => ({
+  kind: 'pptx', verdict: 'form', score: 0.95, layouts: 9, size: '16:9', font: '맑은 고딕', accent: '#1F4E8C', ...extra,
+})
+const fileRow = (id: string, name: string, extra: Record<string, unknown> = {}) => ({
+  id, name, size: 48213, mime: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  tokens: 120, projectId: null, sessionId: null, preview: '', error: null, origin: 'upload', createdAt: at, ...extra,
+})
+const saved = fileRow(savedId, '발표_기본.pptx', { role: 'form', form: pptxSummary() })
+const project = (formFiles: Record<string, string> = { pptx: savedId }) => ({
+  id: projectId, name: '2027 지원사업 신청', description: '', emoji: '📁', instructions: '', skillIds: [],
+  designSystemId: null, renderTemplates: {}, formFiles, formRows: formFiles.pptx ? [saved] : [], designBrief: '',
+  strictLocalWebSearch: null, files: [], sessionIds: [slidesId], createdAt: at, updatedAt: at,
+})
+
+const shots = process.env.FORM_FILES_SHOT_DIR
+async function shot(page: Page, name: string, info: Parameters<Parameters<typeof test>[2]>[1]) {
+  if (!shots) return
+  // the start screen fades in; the shot waits for it
+  await page.waitForTimeout(600)
+  await page.screenshot({ path: `${shots}/${name}-${viewport(info)}.png`, fullPage: false })
+}
+
+/** The project, its forms, and a deck written on its form, over the composer fixture. */
+async function formsFixture(page: Page, info: Parameters<Parameters<typeof test>[2]>[1]) {
+  const fixture = await composerFixture(page, info, {
+    files: [
+      fileRow(formId, '2027_사업계획_발표양식.pptx', { form: pptxSummary({ layouts: 11 }) }),
+      fileRow('f2'.padEnd(32, '2'), '사업계획서_초안_v3.docx', {
+        mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        form: { kind: 'docx', verdict: 'material', score: 0.1 },
+      }),
+    ],
+  })
+  let current = project()
+  const patches: Record<string, unknown>[] = []
+  const deck = {
+    id: deckId, kind: 'pptx', title: '2027 사업계획 발표', version: 1, sessionId: slidesId, projectId,
+    createdAt: at, updatedAt: at, partial: false,
+    data: {
+      format: 'pptx', size: 81234, slides: 8, text: '2027 사업계획 발표',
+      form: {
+        kind: 'pptx', name: '발표_기본.pptx', source: 'project', fileId: savedId,
+        followed: { layouts: { 'Title Slide': 2, 'Title and Content': 3, 'Title Only': 2, Blank: 1 },
+          slides: 8, size: '16:9', fonts: { major: '맑은 고딕', minor: '맑은 고딕' },
+          standIns: [{ slide: 7, kind: 'free', layout: 'Title Only' }] },
+      },
+    },
+  }
+  const slidesSession = {
+    id: slidesId, kind: 'slides', title: '사업계획 발표', model: 'fixture/model', routingMode: 'manual',
+    projectId, agentId: null, artifactId: null, pending: null, skillIds: [], renderTemplateId: null,
+    formFiles: null, pinned: false, messageCount: 2, createdAt: at, updatedAt: at, preview: null, made: null,
+    messages: [
+      { id: 'm9'.padEnd(32, '1'), role: 'user', content: '초안 내용으로 심사 발표 자료 8장 만들어 줘.', createdAt: at,
+        attachments: [
+          { id: 'f2'.padEnd(32, '2'), name: '사업계획서_초안_v3.docx', size: 20480, type: 'docx', role: 'material' },
+          { id: savedId, name: '발표_기본.pptx', role: 'form', formKind: 'pptx', source: 'project', size: '', type: '' },
+          { id: 'f3'.padEnd(32, '3'), name: '신청서 양식.hwp', size: 30720, type: 'hwp', role: 'material',
+            formNote: '이 파일은 예전 한글 형식(.hwp)이라 양식으로 따를 수 없습니다. 한글에서 파일 › 다른 이름으로 저장 › 파일 형식 「한글 표준 문서 (*.hwpx)」로 저장한 뒤 다시 올려 주세요. 이번에는 이 파일을 자료로만 읽었습니다.' },
+        ] },
+      { id: 'm9'.padEnd(32, '2'), role: 'assistant', content: '발표 자료를 프로젝트 양식에 맞춰 PowerPoint로 만들었습니다. 2단계 종료일은 자료에 없어 [2단계 종료일]로 비워 두었습니다.',
+        attachments: [], model: 'fixture/model', createdAt: at, artifactIds: [deckId], artifactVersion: 1 },
+    ],
+  }
+  await page.route('**/api/**', async (route) => {
+    const url = new URL(route.request().url())
+    const path = url.pathname.slice(4)
+    const method = route.request().method()
+    if (method === 'GET' && path === '/projects') return route.fulfill({ json: [current] })
+    if (method === 'GET' && path === `/projects/${projectId}`) return route.fulfill({ json: current })
+    if (method === 'PATCH' && path === `/projects/${projectId}`) {
+      const body = route.request().postDataJSON() as { formFiles?: Record<string, string | null> }
+      patches.push(body)
+      const slots = { ...current.formFiles } as Record<string, string>
+      for (const [kind, id] of Object.entries(body.formFiles ?? {})) {
+        if (id) slots[kind] = id
+        else delete slots[kind]
+      }
+      current = project(slots)
+      return route.fulfill({ json: current })
+    }
+    if (method === 'POST' && path === '/forms/from-file') {
+      return route.fulfill({ status: 201, json: saved })
+    }
+    if (method === 'GET' && path === '/artifacts') return route.fulfill({ json: [deck] })
+    if (method === 'GET' && path === `/artifacts/${deckId}`) return route.fulfill({ json: deck })
+    if (method === 'GET' && path === `/sessions/${slidesId}`) return route.fulfill({ json: slidesSession })
+    if (method === 'GET' && path === `/sessions/${slidesId}/messages`) return route.fulfill({ json: slidesSession.messages })
+    if (method === 'GET' && path === '/sessions') {
+      return route.fulfill({ json: [{ ...slidesSession, messages: null }] })
+    }
+    return route.fallback()
+  })
+  return { ...fixture, patches }
+}
+
+test('a PowerPoint attached as a form is followed and the project form steps aside', { tag: '@phone' }, async ({ page }, info) => {
+  const { sends } = await formsFixture(page, info)
+  await page.goto(`/projects/${projectId}`)
+  await page.getByRole('button', { name: '새로 시작' }).click()
+  await page.getByRole('menuitem', { name: '슬라이드' }).click()
+  await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
+
+  // the project's saved form shows beside 형식, and can be left off for this conversation
+  const savedChip = page.getByTestId('saved-form-chip')
+  await expect(savedChip).toContainText('발표_기본.pptx')
+  await expect(savedChip).toContainText('프로젝트 양식')
+  await shot(page, 'composer-saved', info)
+  await page.getByRole('button', { name: '발표_기본.pptx 양식 빼기' }).click()
+  await expect(savedChip).toHaveAttribute('data-off', '')
+  await savedChip.click()
+  await expect(savedChip).not.toHaveAttribute('data-off', '')
+
+  // attached: a PowerPoint the server read as a form, and a Word file read as material
+  await openTool(page, '파일함에서 고르기')
+  const dialog = page.getByRole('dialog', { name: '파일함에서 고르기' })
+  await dialog.getByLabel('2027_사업계획_발표양식.pptx 고르기').check()
+  await dialog.getByLabel('사업계획서_초안_v3.docx 고르기').check()
+  await dialog.getByRole('button', { name: '2개 붙이기' }).click()
+  const role = page.getByTestId('form-role')
+  await expect(role).toHaveCount(1)
+  await expect(role).toHaveAttribute('data-role', 'form')
+  // a form that is attached outranks the saved one, and the deck becomes a PowerPoint file
+  await expect(savedChip).toHaveCount(0)
+  await page.getByLabel('프롬프트 입력').fill('초안 내용으로 심사 발표 자료 10장 만들어 줘. 표지는 양식 그대로.')
+  await shot(page, 'composer-form', info)
+
+  // read as material instead, then back: the chip's pick goes with the turn
+  await role.getByRole('radio', { name: '자료' }).click()
+  await expect(role).toHaveAttribute('data-role', 'material')
+  await expect(savedChip).toBeVisible()
+  await role.getByRole('radio', { name: '양식' }).click()
+  await page.getByLabel('프롬프트 입력').press('Enter')
+  await expect.poll(() => sends.length).toBe(1)
+  expect(sends[0].body.attachmentRoles).toEqual({ [formId]: 'form' })
+  expect(sends[0].body.outputFormat).toBe('pptx')
+})
+
+test('a project keeps one saved PowerPoint form', { tag: '@phone' }, async ({ page }, info) => {
+  const { patches } = await formsFixture(page, info)
+  await page.goto(`/projects/${projectId}`)
+  const card = page.getByTestId('project-form-files')
+  await card.scrollIntoViewIfNeeded()
+  await expect(card.getByTestId('form-slot-pptx')).toContainText('발표_기본.pptx')
+  await expect(card.getByTestId('form-slot-pptx')).toContainText('레이아웃 9개')
+  // Word and 한글 slots come with their writers
+  await expect(card.getByTestId('form-slot-docx')).toHaveCount(0)
+  await shot(page, 'project-forms', info)
+  await card.getByRole('button', { name: '발표_기본.pptx 양식 빼기' }).click()
+  await expect(card.getByTestId('form-slot-pptx')).toContainText('양식 없음')
+  expect(patches).toEqual([{ formFiles: { pptx: null } }])
+  await card.getByRole('button', { name: '파일함에서 고르기' }).click()
+  const dialog = page.getByRole('dialog', { name: '파일함에서 고르기' })
+  await dialog.getByLabel('2027_사업계획_발표양식.pptx 고르기').check()
+  await dialog.getByRole('button', { name: '1개 붙이기' }).click()
+  await expect(card.getByTestId('form-slot-pptx')).toContainText('발표_기본.pptx')
+  expect(patches.at(-1)).toEqual({ formFiles: { pptx: savedId } })
+})
+
+test('an answer says which form its file followed', { tag: '@phone' }, async ({ page }, info) => {
+  await formsFixture(page, info)
+  await page.goto(`/s/${slidesId}`)
+  await expect(page.getByTestId('attachment-form')).toHaveText('프로젝트 양식')
+  await expect(page.getByTestId('attachment-form-note')).toContainText('(*.hwpx)')
+  const line = page.getByTestId('followed-form')
+  await expect(line).toContainText('양식을 따름')
+  await expect(line).toContainText('발표_기본.pptx (프로젝트 기본)')
+  await line.getByRole('button').click()
+  await expect(line).toContainText('쓴 레이아웃: Title Slide 2, Title and Content 3')
+  await expect(line).toContainText('7번 슬라이드')
+  await line.scrollIntoViewIfNeeded()
+  await shot(page, 'answer-followed', info)
+  expect(chatId).toBeTruthy()
+})
