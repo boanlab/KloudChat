@@ -5,6 +5,7 @@ import {
   Eye,
   Gauge,
   Plug,
+  Save,
   ShieldCheck,
   TriangleAlert,
   Wrench,
@@ -15,7 +16,7 @@ import { cn, formatTokens } from '@/lib/utils'
 import { effectiveModelId, startingRoutingMode, useStore } from '@/store/useStore'
 import type { ModelInfo, RoutingMode, SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
-import { isSuperMode, superLaneTitle } from '@/lib/superAgent'
+import { isSuperEntry, isSuperMode, superLaneTitle } from '@/lib/superAgent'
 
 /** Price label in the modality's own unit; text models quote both directions. */
 function rateLabel(m: ModelInfo, t: (s: string) => string): string {
@@ -120,6 +121,8 @@ export function ModelPicker({
   onEnableAuto,
   onBusyChange,
   homePick = false,
+  onStartWithModel,
+  describedBy,
 }: {
   kind: SessionKind
   /** When set, the picker reads and writes this session's model. */
@@ -136,8 +139,15 @@ export function ModelPicker({
   onEnableAuto?: (mode: RoutingMode) => void | Promise<void>
   /** Reports an in-flight selection so a turn does not race it. */
   onBusyChange?: (busy: boolean) => void
-  /** The home screen's composer (its session, if any, is unsent): a pick is the person's start too. */
+  /**
+   * The home screen's composer (its session, if any, is unsent). On a picture or av surface a
+   * pick is the person's start too; on chat, report and slides it stays with the conversation.
+   */
   homePick?: boolean
+  /** Starts the conversation on a picked model (chat, report, slides before one exists). */
+  onStartWithModel?: (modelId: string) => void | Promise<void>
+  /** Id of a line that says why the conversation starts where it does. */
+  describedBy?: string
 }) {
   const t = useT()
   const field = variant === 'field'
@@ -193,6 +203,14 @@ export function ModelPicker({
   // Auto needs a session or a caller that creates one; the server settles a document's lane after the strict-local rule.
   const canRouteAuto = (kind === 'chat' || kind === 'report' || kind === 'slides') &&
     (Boolean(sessionId) || Boolean(onEnableAuto) || field)
+  // What this conversation would start on, and what the saved personal default is: a pick in a
+  // conversation is that conversation's only, so 「기본값으로 저장」 is how it becomes the default.
+  const choice = superLane ?? (legacyAutoActive || unresolvedAgentModel || noDefault ? undefined : current?.id)
+  const adminStart = (defaultRouting as Partial<Record<SessionKind, RoutingMode>> | undefined)?.[kind] ?? 'super'
+  const savedStart = user?.preferences.modelByKind?.[kind] ??
+    (adminStart === 'manual' ? modelByKind[kind] : adminStart)
+  const offerSaveDefault = !field && routedSurface && Boolean(user) && !session?.agentId &&
+    Boolean(choice) && choice !== savedStart
   const persistSelection = async (action: () => void | Promise<void>) => {
     if (selectionPending) return
     setSelectionPending(true)
@@ -245,6 +263,7 @@ export function ModelPicker({
           aria-busy={selectionPending}
           // The full name, also where a phone shows the short one.
           aria-label={label ? `${label}: ${superLane ? superLaneTitle(superLane) : modelLabel}` : triggerText}
+          aria-describedby={describedBy}
           title={!field ? triggerText : undefined}
           className={cn(
             'flex h-9 items-center gap-1.5 rounded-control text-base font-medium transition-colors',
@@ -290,6 +309,10 @@ export function ModelPicker({
         onlyLanes={fieldLanes}
         litellmAvailable={litellmAvailable}
         selectionPending={selectionPending}
+        onSaveDefault={offerSaveDefault && choice ? () => {
+          if (isSuperEntry(choice)) pickSuperEntry(kind, choice)
+          else setModel(kind, choice)
+        } : undefined}
         onAuto={(mode) => {
           return persistSelection(() => {
             if (field) return isSuperMode(mode) ? pickSuperEntry(kind, mode) : undefined
@@ -300,7 +323,15 @@ export function ModelPicker({
         onPick={(id) => {
           // Keyed off `sessionId`, not the session row: the list can lag behind the URL.
           return persistSelection(() => {
-            // the home screen's unsent conversation: the pick is also this surface's start
+            if (field) return setModel(kind, id)
+            // A chat, report or slides pick belongs to its conversation: the saved default stays
+            // as it was (settings, or 「기본값으로 저장」, change it).
+            if (routedSurface) {
+              if (sessionId) return setSessionModel(sessionId, id)
+              if (onStartWithModel) return onStartWithModel(id)
+              return
+            }
+            // the home screen's unsent picture or av conversation: the pick is also this surface's start
             if (homePick) setModel(kind, id)
             if (sessionId) return setSessionModel(sessionId, id)
             if (!homePick) setModel(kind, id)
@@ -325,6 +356,7 @@ function ModelMenu({
   selectionPending,
   onAuto,
   onPick,
+  onSaveDefault,
 }: {
   usable: ModelInfo[]
   active: ModelInfo
@@ -339,6 +371,8 @@ function ModelMenu({
   selectionPending: boolean
   onAuto: (mode: RoutingMode) => void | Promise<void>
   onPick: (id: string) => void | Promise<void>
+  /** Saves the current choice as the surface's personal default; absent when it already is. */
+  onSaveDefault?: () => void
 }) {
   const t = useT()
   const closeMenu = useMenuClose()
@@ -548,6 +582,30 @@ function ModelMenu({
           })}
         </div>
       ))}
+      {onSaveDefault && (
+        <div className="mt-1 border-t border-line p-1.5">
+          <button
+            type="button"
+            role="menuitem"
+            disabled={selectionPending}
+            onClick={() => {
+              onSaveDefault()
+              closeMenu()
+            }}
+            className="flex w-full items-start gap-2.5 rounded-control px-2.5 py-2 text-left transition-colors hover:bg-elevated disabled:cursor-not-allowed disabled:opacity-55"
+          >
+            <span className="mt-0.5 w-4 shrink-0 text-accent">
+              <Save size={14} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-base font-medium">{t('기본값으로 저장')}</span>
+              <span className="mt-0.5 block text-sm text-muted">
+                {t('새 대화가 지금 고른 항목으로 시작합니다.')}
+              </span>
+            </span>
+          </button>
+        </div>
+      )}
     </>
   )
 }

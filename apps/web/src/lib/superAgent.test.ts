@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { withAccountPicks } from './modelPicks'
-import { startingMode } from './superAgent'
+import { startingMode, strictStartReason } from './superAgent'
 
 const usable = { available: true, reason: null, estimate: null }
 const unusable = { available: false, reason: 'no_models' as const, estimate: null }
@@ -48,6 +48,22 @@ describe('startingMode', () => {
   })
   it('takes the start as usable until the catalogue answers', () => {
     expect(startingMode({ kind: 'chat', superAgent: { default: unusable, strict: unusable, pending: true } })).toBe('super')
+  })
+})
+
+describe('strictStartReason', () => {
+  it('names why a new conversation starts strict-local, and nothing otherwise', () => {
+    const strictOffer = { ...offered, projectStrict: true }
+    expect(strictStartReason({ kind: 'chat', superAgent: offered })).toBeNull()
+    expect(strictStartReason({ kind: 'chat', projectId: 'p1', superAgent: strictOffer })).toBe('project')
+    expect(strictStartReason({ kind: 'chat', projectId: 'p1', homePick: 'super', superAgent: strictOffer })).toBe('project')
+    expect(strictStartReason({ kind: 'chat', homePick: 'super_strict', superAgent: offered })).toBe('personal')
+    expect(strictStartReason({ kind: 'chat', projectId: 'p1', homePick: 'super_strict', superAgent: strictOffer })).toBe('personal')
+    expect(strictStartReason({ kind: 'chat', superAgent: offered, defaultRouting: { chat: 'super_strict' } })).toBe('admin')
+    expect(strictStartReason({ kind: 'chat', superAgent: { default: unusable, strict: usable } })).toBe('unavailable')
+    // a model picked as the personal default, or a project without the policy: no strict start
+    expect(strictStartReason({ kind: 'chat', projectId: 'p1', homePick: 'local/flash', superAgent: strictOffer })).toBeNull()
+    expect(strictStartReason({ kind: 'chat', projectId: 'p1', superAgent: offered })).toBeNull()
   })
 })
 

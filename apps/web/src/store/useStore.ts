@@ -386,10 +386,17 @@ interface State {
   /** Sessions with a turn in flight, each holding the abort for its own stream. */
   running: Record<string, () => void>
   modelByKind: Record<SessionKind, string>
+  /**
+   * Saves a model as the surface's personal default on the account. A pick in one chat, report or
+   * slides conversation goes to that conversation (`setSessionModel`, `newSession({ model })`).
+   */
   setModel: (kind: SessionKind, id: string) => void
   /** Forgets the home-screen pick for a surface: its new conversations start on the admin default. */
   clearModelPick: (kind: SessionKind) => void
-  /** Picks a Super Agent entry as the surface's own start (chat, report, slides). */
+  /**
+   * Saves a Super Agent entry as the surface's own start (chat, report, slides) on the account:
+   * only from the personal default (설정 › 환경설정) or the picker's 「기본값으로 저장」.
+   */
   pickSuperEntry: (kind: SessionKind, entry: 'super' | 'super_strict') => void
   /** One remembered model per av mode; `modelByKind.av` mirrors the current mode's. */
   avModelByMode: Record<AvMode, string>
@@ -431,6 +438,8 @@ interface State {
       projectId?: string | null
       agentId?: string | null
       routingMode?: Session['routingMode']
+      /** A model picked for this conversation only (the surface's default is left alone). */
+      model?: string
     },
   ) => Promise<string>
   /** Creates an unsent conversation on the server (same id); resolves to the id to use. */
@@ -1782,7 +1791,7 @@ export const useStore = create<State>((set, get) => ({
 
   newSession: async (
     kind,
-    { projectId = null, agentId = null, routingMode } = {},
+    { projectId = null, agentId = null, routingMode, model } = {},
   ) => {
     // the panel closes for the new conversation: its document's unsaved edits are asked about first
     if (get().openArtifactId && officeDirty() && !(await leaveOffice())) throw new LeaveCancelled()
@@ -1793,7 +1802,7 @@ export const useStore = create<State>((set, get) => ({
     const session: Session = {
       id: unsentId(), kind, title: tr('새 작업'), projectId, agentId, pipelineId: null,
       // A session model outranks the agent's, so an agent that pins one gets none here.
-      model: agent?.model ? '' : (state.modelByKind[kind] ?? ''),
+      model: model ?? (agent?.model ? '' : (state.modelByKind[kind] ?? '')),
       routingMode: routingMode ?? startingRoutingMode(state, kind, agentId, projectId),
       // the home screen's chip goes with the conversation it starts
       reasoningMode: state.reasoningPick[kind] && state.reasoningPick[kind] !== 'auto'

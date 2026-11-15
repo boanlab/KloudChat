@@ -1663,6 +1663,13 @@ const EN: Record<string, string> = {
 
   // ── Super Agent ──────────────────────────────────────────────────
   'Super Agent로 바꾸지 못했습니다. 잠시 후 다시 시도하세요.': 'Couldn\'t switch to Super Agent. Try again shortly.',
+  '모델을 바꾸지 못했습니다. 잠시 후 다시 시도하세요.': 'Couldn\'t switch the model. Try again shortly.',
+  '기본값으로 저장': 'Save as default',
+  '새 대화가 지금 고른 항목으로 시작합니다.': 'New conversations will start on this choice.',
+  '이 프로젝트는 기관 정책상 strict-local로 시작합니다': 'This project starts in strict-local by your organization\'s policy',
+  '기본 모델 설정(strict-local)에 따라 시작합니다': 'Starts in strict-local, your default model setting',
+  '관리자 기본 설정에 따라 strict-local로 시작합니다': 'Starts in strict-local, the administrator\'s default',
+  '쓸 수 있는 외부 모델이 없어 strict-local로 시작합니다': 'Starts in strict-local: no external model is available to you',
   '이 계정에서 쓸 수 있는 모델이 표에 없습니다.': 'No model in the table is available to this account.',
   '모델 목록을 불러오는 중입니다.': 'Loading the model list.',
   '답 하나에 보통 무료(내부 모델)': 'Usually free per answer (in-house models)',

@@ -52,6 +52,34 @@ export function startingMode({
   return superAgent.strict.available ? 'super_strict' : 'manual'
 }
 
+type StartInputs = Parameters<typeof startingMode>[0]
+
+/** Why a new conversation starts in Super Agent (strict-local), when it does. */
+export type StrictStartReason = 'project' | 'personal' | 'admin' | 'unavailable'
+
+/**
+ * The reason `startingMode` lands on `super_strict` (null when it does not): the project's
+ * policy moved a `super` start, the person's saved default is strict-local, the admin's start
+ * for the surface is, or the external entry has nothing this person may use.
+ */
+export function strictStartReason(inputs: StartInputs): StrictStartReason | null {
+  if (startingMode(inputs) !== 'super_strict') return null
+  const { kind, homePick, defaultRouting, projectId, superAgent } = inputs
+  const routed = kind as 'chat' | 'report' | 'slides'
+  const start = homePick && isSuperEntry(homePick) ? homePick : defaultRouting?.[routed] ?? 'super'
+  if (start === 'super_strict') return homePick === 'super_strict' ? 'personal' : 'admin'
+  if (projectId && superAgent.projectStrict) return 'project'
+  return 'unavailable'
+}
+
+/** The short line that says why a new conversation starts strict-local (Korean source text). */
+export const STRICT_START_HINT: Record<StrictStartReason, string> = {
+  project: '이 프로젝트는 기관 정책상 strict-local로 시작합니다',
+  personal: '기본 모델 설정(strict-local)에 따라 시작합니다',
+  admin: '관리자 기본 설정에 따라 strict-local로 시작합니다',
+  unavailable: '쓸 수 있는 외부 모델이 없어 strict-local로 시작합니다',
+}
+
 /** 「Super Agent」 or 「Super Agent (strict-local)」: product names, not translated. */
 export function superLaneTitle(mode: 'super' | 'super_strict'): string {
   return mode === 'super_strict' ? 'Super Agent (strict-local)' : 'Super Agent'

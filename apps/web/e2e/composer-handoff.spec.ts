@@ -129,9 +129,9 @@ for (const mode of ['super', 'super_strict'] as const) {
       await expect(page.getByLabel('프롬프트 입력')).toHaveValue('전환 후에도 보존할 초안')
       await expect(page.getByRole('button', { name: 'draft.txt 제거' })).toBeVisible()
       await expect(page.getByText(`웹 검색: ${search}`, { exact: true })).toBeVisible()
-      // The conversation is held in the browser until its first send; a Super Agent entry
-      // picked on the home screen becomes the chat surface's own start, like a model pick.
-      expect(writes).toEqual([{ path: '/auth/me', body: { preferences: { modelByKind: { chat: mode } } } }])
+      // The conversation is held in the browser until its first send; the entry goes with it
+      // only, so the account's saved default is not written.
+      expect(writes).toEqual([])
       // Repeated renders must not consume or reset the restored state again.
       await page.getByLabel('프롬프트 입력').fill('전환 후 다시 수정한 초안')
       await expect(page.getByRole('button', { name: 'draft.txt 제거' })).toBeVisible()

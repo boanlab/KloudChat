@@ -253,17 +253,22 @@ for (const [entry, stored, shown] of [
   [/Super Agent \(strict-local\)/, 'super_strict', 'Super Agent (strict-local)'],
   [/Mock · Deep/, 'external/deep', 'Mock · Deep'],
 ] as const) {
-  test(`홈에서 Super Agent를 고른 뒤 ${shown}을 고르면 서버에 남은 값을 다른 기기의 설정도 보여 준다 @phone`, async ({ page, browser }) => {
+  test(`홈에서 ${shown}을 고른 뒤 「기본값으로 저장」하면 서버에 남은 값을 다른 기기의 설정도 보여 준다 @phone`, async ({ page, browser }) => {
     const state = await mockApp(page, 'manual', undefined, { chat: 'local/flash' })
     await page.goto('/')
     // Super Agent first: the home screen keeps an unsent conversation for it
     await page.getByRole('button', { name: /Mock · Flash/ }).click()
     await page.getByRole('menuitemradio', { name: /^Super Agent 사용 가능/ }).click()
     await expect(page.getByRole('button', { name: 'Super Agent', exact: true })).toBeVisible()
-    await expect.poll(() => state.profilePatches.at(-1)).toMatchObject({ preferences: { modelByKind: { chat: 'super' } } })
     await page.getByRole('button', { name: 'Super Agent', exact: true }).click()
     await page.getByRole('menuitemradio', { name: entry }).first().click()
+    await expect(page.getByRole('button', { name: shown === 'Mock · Deep' ? /Mock · Deep/ : shown, exact: shown !== 'Mock · Deep' }).first()).toBeVisible()
+    // a pick in one conversation is that conversation's only
+    expect(state.profilePatches).toEqual([])
+    await page.getByRole('button', { name: shown === 'Mock · Deep' ? /Mock · Deep/ : shown, exact: shown !== 'Mock · Deep' }).first().click()
+    await page.getByRole('menuitem', { name: /기본값으로 저장/ }).click()
     await expect.poll(() => state.profilePatches.at(-1)).toMatchObject({ preferences: { modelByKind: { chat: stored } } })
+    expect(state.profilePatches).toHaveLength(1)
     const kept = (state.profilePatches.at(-1) as { preferences: { modelByKind: Record<string, string> } }).preferences.modelByKind
     // this browser's settings, after a reload
     await page.goto('/settings/preferences')
@@ -279,6 +284,62 @@ for (const [entry, stored, shown] of [
     await other.close()
   })
 }
+
+test('프로젝트 새 대화에서 고른 strict-local은 계정 기본값이 되지 않고, 다음 새 대화는 저장한 기본값으로 시작한다', async ({ page }) => {
+  const state = await mockApp(page, 'manual', undefined, { chat: 'local/flash' }, { projectStrict: false })
+  await page.route(/\/api\/projects(?:\?.*)?$/, (r) => r.fulfill({ json: [project] }))
+  await page.route(/\/api\/projects\/p+$/, (r) => r.fulfill({ json: project }))
+  await page.goto(`/projects/${project.id}`)
+  await page.getByRole('button', { name: '새로 시작', exact: true }).click()
+  await page.getByRole('menuitem', { name: '챗' }).click()
+  await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}$/)
+  await page.getByRole('button', { name: /Mock · Flash/ }).first().click()
+  await page.getByRole('menuitemradio', { name: /Super Agent \(strict-local\)/ }).click()
+  await expect(page.getByRole('button', { name: 'Super Agent (strict-local)', exact: true }).first()).toBeVisible()
+  // picked here, so no reason line: the person chose it for this conversation
+  await expect(page.getByTestId('strict-start-hint')).toHaveCount(0)
+  await setWebSearch(page, '끔')
+  await page.getByLabel('프롬프트 입력').fill('감사 자료 정리')
+  await page.getByLabel('프롬프트 입력').press('Enter')
+  await expect.poll(() => state.creates.length).toBe(1)
+  expect(state.creates[0]).toMatchObject({ kind: 'chat', projectId: project.id, routingMode: 'super_strict' })
+  expect(state.profilePatches).toEqual([])
+  // another task: a new chat starts on the saved default, not the one-off pick
+  await page.goto('/new/chat')
+  await expect(page.getByRole('button', { name: /Mock · Flash/ }).first()).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Super Agent (strict-local)', exact: true })).toHaveCount(0)
+  await expect(page.getByTestId('strict-start-hint')).toHaveCount(0)
+})
+
+test('strict-local로 시작하는 새 대화는 그 이유를 모델 선택기 옆에 밝힌다 @phone', async ({ page }) => {
+  await mockApp(page, 'manual', undefined, { chat: 'super' }, { projectStrict: true })
+  await page.route(/\/api\/projects(?:\?.*)?$/, (r) => r.fulfill({ json: [project] }))
+  await page.route(/\/api\/projects\/p+$/, (r) => r.fulfill({ json: project }))
+  await page.goto(`/projects/${project.id}`)
+  await page.getByRole('button', { name: '새로 시작', exact: true }).click()
+  await page.getByRole('menuitem', { name: '챗' }).click()
+  await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}$/)
+  const hint = page.getByTestId('strict-start-hint')
+  await expect(hint).toHaveText('이 프로젝트는 기관 정책상 strict-local로 시작합니다')
+  const trigger = page.getByRole('button', { name: 'Super Agent (strict-local)', exact: true }).first()
+  await expect(trigger).toHaveAccessibleDescription('이 프로젝트는 기관 정책상 strict-local로 시작합니다')
+  // outside the project the same account starts on Super Agent, with no line
+  await page.goto('/new/chat')
+  await expect(page.getByRole('button', { name: 'Super Agent', exact: true }).first()).toBeVisible()
+  await expect(hint).toHaveCount(0)
+})
+
+test('개인 기본값이 strict-local이면 새 대화가 그 설정 때문이라고 밝힌다', async ({ page }) => {
+  await mockApp(page, 'manual', undefined, { chat: 'super_strict' })
+  await page.goto('/new/chat')
+  await expect(page.getByTestId('strict-start-hint')).toHaveText('기본 모델 설정(strict-local)에 따라 시작합니다')
+  // a model picked for this conversation: the line goes, and the account keeps its default
+  await page.getByRole('button', { name: 'Super Agent (strict-local)', exact: true }).first().click()
+  await page.getByRole('menuitemradio', { name: /Mock · Deep/ }).click()
+  await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}$/)
+  await expect(page.getByRole('button', { name: /Mock · Deep/ }).first()).toBeVisible()
+  await expect(page.getByTestId('strict-start-hint')).toHaveCount(0)
+})
 
 test('in a narrow column the composer shortens the model name inside its row', async ({ page }) => {
   test.skip((page.viewportSize()?.width ?? 0) < 640, 'desktop layout')
