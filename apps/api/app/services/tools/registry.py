@@ -292,6 +292,12 @@ async def tool_catalog(db: AsyncSession, user: User) -> list[dict[str, object]]:
                 "description": blurbs.blurb(connector.slug, row.name, row.description),
             }
 
+    # the person's connected Google and Slack services
+    from app.services.integrations import tools as integration_tools
+
+    for row in await integration_tools.catalog_rows(db, user):
+        rows.setdefault(str(row["name"]), row)
+
     # Only for agents with shelf documents.
     rows["search_knowledge"] = {
         "name": "search_knowledge",

@@ -652,6 +652,8 @@ export interface Step {
   summarisedTurns?: number
   /** Whether a summary was actually written for them. */
   summarised?: boolean
+  /** A write to Google Drive or Slack waiting for the person's confirmation card. */
+  confirm?: { actionId: string; kind: string; provider: 'google' | 'slack' }
 }
 
 /** An answer a rerun replaced; kept so the reader can page back to it. */

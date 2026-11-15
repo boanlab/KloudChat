@@ -134,8 +134,15 @@ SIGNUP_VERIFY_EMAIL = "signup.verify_email"
 #: stdio commands members may register as their own connectors, one per line
 CONNECTOR_STDIO_ALLOW = "connectors.stdio_allow"
 
+#: Google and Slack integration secrets (`services/integrations/config.py`)
+INTEGRATION_SECRET_KEYS = frozenset({
+    "integrations.google.client_secret",
+    "integrations.slack.client_secret",
+    "integrations.slack.signing_secret",
+})
+
 #: encrypted at rest; API returns only set flag and last four chars
-SECRET_KEYS = {LITELLM_MASTER_KEY, SMTP_PASSWORD}
+SECRET_KEYS = {LITELLM_MASTER_KEY, SMTP_PASSWORD, *INTEGRATION_SECRET_KEYS}
 
 _TTL = 15.0
 _cache: dict[str, Any] = {"at": 0.0, "values": None}

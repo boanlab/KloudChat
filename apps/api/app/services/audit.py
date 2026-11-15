@@ -99,6 +99,16 @@ ACTIONS: frozenset[str] = frozenset(
         "publication.admin_read",
         "publication.visitor_blocked",
         "publication.visitor_unblocked",
+        # Google and Slack connections (`services/integrations`)
+        "integration.connect",
+        "integration.disconnect",
+        "integration.settings",
+        "integration.slack_install",
+        "integration.slack_uninstall",
+        "integration.write",
+        "integration.write_failed",
+        "integration.import",
+        "integration.slack_bot_channel",
         # a person deleting their own content (`deletion`)
         "conversation.delete",
         "conversation.bulk_delete",

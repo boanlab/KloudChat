@@ -523,6 +523,13 @@ Why this split:
   node, which serves more sequences at once; Flash's node takes the many short
   readings.
 
+### Integrations
+
+Google Drive and Slack, connected by each person with their own account. The administrator
+creates one OAuth client per provider and enters it here; see
+[Google Drive and Slack integrations](integrations.md) for the console steps, scopes and
+redirect URIs.
+
 ### Connector catalogue
 
 The MCP connectors users can install from **Customize › Connectors**: name,

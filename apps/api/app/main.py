@@ -24,6 +24,7 @@ from app.routers import (
     docx,
     forms,
     hwp,
+    integrations,
     issues,
     jobs,
     keys,
@@ -231,6 +232,9 @@ app.include_router(bot_api.router, prefix=settings.api_prefix)
 app.include_router(issues.router, prefix=settings.api_prefix)
 app.include_router(perf.router, prefix=settings.api_prefix)
 app.include_router(client_errors.router, prefix=settings.api_prefix)
+# Google and Slack connections; the OAuth callback and Slack's events come here too
+app.include_router(integrations.router, prefix=settings.api_prefix)
+app.include_router(integrations.admin_router, prefix=settings.api_prefix)
 
 
 @app.api_route(f"{settings.api_prefix}/health", methods=["GET", "HEAD"])

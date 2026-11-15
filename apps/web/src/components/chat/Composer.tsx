@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Gauge,
   Globe,
+  HardDrive,
   Mic,
   Paperclip,
   Pencil,
@@ -27,6 +28,7 @@ import { ApiError, fileUrl, transcriptionsApi } from '@/lib/api'
 import { startWavRecording, type WavRecorder } from '@/lib/wavRecorder'
 import { FormRoleToggle, SavedFormChip, followable, formRoleOf } from '@/components/chat/FormChips'
 import { FileBoxPicker } from '@/components/files/FileBoxPicker'
+import { importFromDrive, pickFailure } from '@/lib/googlePicker'
 import { warmStudio } from '@/components/hwp/warmStudio'
 import { errorCode, errorMessage, PrivacyDecisionError } from '@/lib/api'
 import { refusedBeforeWrite, refusalSentence, startFailure, withRetryWait } from '@/lib/failures'
@@ -776,6 +778,7 @@ export function Composer({
   const fileInput = useRef<HTMLInputElement>(null)
   // Dictation via the deployment's Whisper only, never the browser's recognizer; recording not kept.
   const dictationEnabled = useStore((s) => s.dictationEnabled)
+  const drivePicker = useStore((s) => s.drivePicker)
   const [recording, setRecording] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
   const recorder = useRef<WavRecorder | null>(null)
@@ -2014,6 +2017,29 @@ export function Composer({
                 }}
               >
                 {t('파일함에서 고르기')}
+              </ToolItem>
+            )}
+            {!isMedia && drivePicker && (
+              <ToolItem
+                icon={<HardDrive size={15} />}
+                disabled={editPending}
+                onClick={async () => {
+                  closePlus()
+                  try {
+                    const { files, refused } = await importFromDrive({ sessionId: liveSessionId.current || null })
+                    if (files.length)
+                      setAttachments((current) => {
+                        const next = [...current, ...files.filter((row) => !current.some((file) => file.id === row.id))]
+                        liveAttachments.current = next
+                        return next
+                      })
+                    if (refused) setNotice(t('드라이브 파일 {n}개는 가져오지 못했습니다.').replace('{n}', String(refused)))
+                  } catch (err) {
+                    setNotice(t(pickFailure(err)))
+                  }
+                }}
+              >
+                {t('드라이브에서 가져오기')}
               </ToolItem>
             )}
             {showSkills && (

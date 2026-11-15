@@ -10,6 +10,7 @@ import { SuperAgentSection } from './settings/SuperAgentSection'
 import { BrandingSection } from './settings/BrandingSection'
 import { ConnectorCatalogSection } from './settings/ConnectorCatalogSection'
 import { FeaturesSection } from './settings/FeaturesSection'
+import { IntegrationsSection } from './settings/IntegrationsSection'
 import { MailSection } from './settings/MailSection'
 import { ModelRolesSection } from './settings/ModelRolesSection'
 import { OutlineModelSection } from './settings/OutlineModelSection'
@@ -28,6 +29,7 @@ const tabs = [
   { to: '/admin/system/mail', label: '메일', end: false },
   { to: '/admin/system/signup', label: '회원 가입', end: false },
   { to: '/admin/system/connectors', label: '커넥터 카탈로그', end: false },
+  { to: '/admin/system/integrations', label: '연동', end: false },
 ]
 
 function Group({
@@ -71,7 +73,7 @@ export function AdminSystemPage() {
 
   const here = useLocation().pathname.replace(/\/$/, '')
   // Proxy says it in its status card; routing and the catalogue do not read these settings.
-  const notice = status.error && !['/admin/system', '/admin/system/routing', '/admin/system/connectors'].includes(here)
+  const notice = status.error && !['/admin/system', '/admin/system/routing', '/admin/system/connectors', '/admin/system/integrations'].includes(here)
 
   return (
     <>
@@ -188,6 +190,17 @@ export function AdminSystemPage() {
                 description={t('사용자가 설치할 수 있는 MCP 서버입니다. stdio 서버는 여기서만 추가합니다.')}
               >
                 <ConnectorCatalogSection />
+              </Group>
+            }
+          />
+          <Route
+            path="integrations"
+            element={
+              <Group
+                title={t('연동')}
+                description={t('Google 드라이브와 Slack을 켭니다. 사람마다 자기 계정을 설정 › 연결에서 연결합니다.')}
+              >
+                <IntegrationsSection />
               </Group>
             }
           />
