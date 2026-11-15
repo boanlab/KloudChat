@@ -1,0 +1,16 @@
+# 케이스 발표: status and alternatives to a recommendation in about fifteen minutes.
+name = "케이스 발표"
+words = "케이스|사례\\s{0,2}(?:발표|분석)|대안\\s{0,2}(?:검토|비교)|권고|의사\\s{0,2}결정|경영진\\s{0,2}보고"
+rules = """
+- The recommendation comes right after the first slide; the rest are its grounds.
+- A status slide carries one number and one line on what it means.
+- Alternatives go side by side on one slide, judged by the same criteria.
+- One thought per bullet, at most five bullets; do not write what the presenter will say.
+- The last slide asks the listeners what to decide.
+"""
+checks = [
+  "권고가 앞쪽 장에 나오는가.",
+  "대안을 같은 기준으로 나란히 견주는 장이 있는가.",
+  "글머리가 다섯 줄을 넘지 않는가.",
+  "마지막 장이 무엇을 판단해 달라는 요청인가.",
+]

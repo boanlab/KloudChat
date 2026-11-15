@@ -1890,6 +1890,22 @@ step).
   stand-ins) into the file's custom properties; `pptx_doc.describe` puts it on the artifact,
   and the answer's card shows 「양식을 따름」 from it.
 
+### Structural patterns
+
+Structure comes from the request, not from a picked template (`services/patterns.py`).
+
+- **Reports.** The pattern is the purpose format the request names (`doc_formats.detect` on the
+  instruction, as `report_stages.bundle_for` decides it; a picked template or an agent's bound
+  format still wins). With it come the format's pre-writing questions (`gap_questions.resolve`
+  by `doc_format`), process settings (`process_settings.governing_template`), genre rule, and
+  now its check skills (`render_template_checks` falls back to `patterns.check_skills`). The
+  format templates still hold these settings; `patterns` is where the turn asks for them by
+  format.
+- **Decks.** The pattern is the deck's purpose: 사내 브리핑, 케이스 발표, 심사 발표, 제안 발표,
+  강의 자료 (`app/patterns/deck/*.toml`, each with the words that name it, its rules and its
+  checks). With no template picked, the purpose the request names reaches the deck planner as
+  trusted context (`[패턴: …]`). The slide shapes stay the planner's choice per slide.
+
 ### Web slides editor
 
 The web slides (`DeckPanel`, a deck artifact's JSON) work the way the PowerPoint

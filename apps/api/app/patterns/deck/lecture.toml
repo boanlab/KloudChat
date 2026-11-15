@@ -1,0 +1,17 @@
+# 강의 자료: one step per slide, a concept followed by an example, read from the back row.
+name = "강의 자료"
+words = "강의|수업|교육\\s{0,2}(?:자료|과정)|교안|세미나\\s{0,2}자료|워크숍|연수|오리엔테이션|튜토리얼"
+rules = """
+- One slide is one step; split a slide that has to say two things.
+- A slide that states a concept is followed by an example from what the audience already knows.
+- Define a term before the slide where it is first used.
+- At most six lines per slide; a line that wraps is shortened.
+- Number only steps that happen in order.
+- End with what comes next: the next session or the assignment.
+"""
+checks = [
+  "개념마다 예시가 붙어 있는가.",
+  "용어가 처음 쓰이기 전에 뜻이 나왔는가.",
+  "한 장에 여섯 줄을 넘지 않는가.",
+  "마지막 장이 다음 시간이나 과제로 이어지는가.",
+]
