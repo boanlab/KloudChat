@@ -251,7 +251,8 @@ class _Client:
         return _Response([_said(ANSWER), _USAGE, "data: [DONE]"])
 
 
-async def _run(monkeypatch, deepseek, *, fallback: str | None = STRICT_FLASH["id"]):
+async def _run(monkeypatch, deepseek, *, fallback: str | None = STRICT_FLASH["id"],
+               patience: float = 0.2):
     seen: list[dict] = []
 
     async def client(*_args, **_kwargs):
@@ -261,7 +262,7 @@ async def _run(monkeypatch, deepseek, *, fallback: str | None = STRICT_FLASH["id
         return ToolResult(content="3분기 매출 120억 원, 전분기 136억 원. 주요 고객사 발주 감소.")
 
     monkeypatch.setattr(agent, "_client", client)
-    monkeypatch.setattr(agent, "_FALLBACK_PATIENCE", 0.2)
+    monkeypatch.setattr(agent, "_FALLBACK_PATIENCE", patience)
     tool = Tool(name="search_knowledge", description="자료 검색", parameters={"type": "object"},
                 run=search, label="자료 찾기", read_only=True)
     events = [
@@ -290,7 +291,8 @@ def _text(events: list[dict]) -> str:
 
 @pytest.mark.asyncio
 async def test_a_busy_gateway_hands_the_turn_to_flash_at_once(monkeypatch) -> None:
-    events, seen = await _run(monkeypatch, lambda _n: _Response([], status=503))
+    # a 503 hands over without waiting: a long patience keeps a slow runner from timing out first
+    events, seen = await _run(monkeypatch, lambda _n: _Response([], status=503), patience=30.0)
     assert ANSWER in _text(events)
     switch = next(e for e in events if e["type"] == "writer_fallback")
     assert switch == {"type": "writer_fallback", "from": STRICT_DS["id"],
