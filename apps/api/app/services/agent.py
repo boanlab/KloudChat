@@ -1938,6 +1938,8 @@ async def run_turn(
     seen_urls: set[str] = set()
     #: Dispatched (tool, raw args); repeats refused.
     called: set[tuple[str, str]] = set()
+    #: writes the tool refused, by (tool, arguments): how often; one identical repeat still runs
+    failed_writes: dict[tuple[str, str], int] = {}
     # Arithmetic gate evidence only; futures coalesce duplicates, results detached before masking.
     arithmetic_evidence: dict[tuple[str, str], asyncio.Future[ToolResult | None]] = {}
     #: Tool URLs in numbering order, after the numbers earlier answers gave theirs (a later
@@ -2647,7 +2649,7 @@ async def run_turn(
                 and tool.source == "builtin"
                 and tool.read_only
             )
-            if key in called:
+            if key in called and not (key in failed_writes and failed_writes[key] < 2):
                 pending = arithmetic_evidence.get(key) if reuse_arithmetic else None
                 if pending is not None:
                     saved = await asyncio.shield(pending)
@@ -2667,6 +2669,11 @@ async def run_turn(
             ctx.tool_calls[tool.name] = ctx.tool_calls.get(tool.name, 0) + 1
             try:
                 result = await _run_tool(tool, call["arguments"], ctx)
+                if result.failed and not tool.read_only:
+                    # a write the tool refused may be sent once more as it was: a tool that
+                    # asks for a change once (a slide count) takes the same call the second
+                    # time, and a model that repeats itself gets the refusal, not a dead end
+                    failed_writes[key] = failed_writes.get(key, 0) + 1
                 if pending is not None and not result.failed and not result.empty:
                     try:
                         evidence = json.loads(result.content)
