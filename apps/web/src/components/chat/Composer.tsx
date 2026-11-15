@@ -1029,14 +1029,18 @@ export function Composer({
   const pending = session?.pending ?? null
   const sessionAgent = agents.find((agent) => agent.id === session?.agentId)
   // An attached form makes the document that kind of file, written on it: a deck a
-  // PowerPoint file, a report a Word file.
-  const formKind: FormKind | null = kind === 'slides' ? 'pptx' : kind === 'report' ? 'docx' : null
-  const attachedForm = formKind ? attachments.find((file) =>
-    followable(file) && file.form?.kind === formKind && formRoleOf(file, formRoles[file.id]) === 'form') : undefined
-  const formOutput = attachedForm ? (formKind === 'pptx' ? 'pptx' : 'docx') : null
-  // The saved form the document follows: a deck's always, a report's when it is a Word file.
+  // PowerPoint file, a report a Word or 한글 file.
+  const formKinds: FormKind[] = kind === 'slides' ? ['pptx'] : kind === 'report' ? ['docx', 'hwpx'] : []
+  const attachedForm = attachments.find((file) =>
+    followable(file) && formKinds.includes(file.form?.kind as FormKind) &&
+    formRoleOf(file, formRoles[file.id]) === 'form')
+  const formOutput = attachedForm
+    ? ({ pptx: 'pptx', docx: 'docx', hwpx: 'hwp' } as const)[attachedForm.form!.kind as FormKind]
+    : null
+  // The saved form the document follows: a deck's always, a report's when it is a Word or 한글 file.
+  const reportFile = kind === 'report' ? formOutput ?? output ?? detectedOutput : null
   const savedKind: FormKind | null = kind === 'slides' ? 'pptx'
-    : kind === 'report' && (formOutput ?? output ?? detectedOutput) === 'docx' ? 'docx' : null
+    : reportFile === 'docx' ? 'docx' : reportFile === 'hwp' ? 'hwpx' : null
   const savedForm = savedKind && !attachedForm && !session?.formFiles?.[savedKind]
     ? project?.formRows?.find((row) => row.id === project?.formFiles?.[savedKind])
     : undefined

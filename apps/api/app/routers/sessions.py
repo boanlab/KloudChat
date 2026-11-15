@@ -118,6 +118,7 @@ from app.services import (
     figures,
     file_schema,
     form_files,
+    form_marks,
     freshness,
     gap_questions,
     governance,
@@ -389,6 +390,26 @@ async def _turn_forms(db: AsyncSession, user: User, session: ChatSession,
     if form_files.remember(session, turn, payload.saved_forms_off):
         db.add(session)
     return turn
+
+
+async def _hwpx_form_surface(db: AsyncSession, user: User, session: ChatSession) -> None:
+    """A report asked as an HWP file whose conversation follows a 한글 form: the form becomes
+    the conversation's HWP document, and the turn fills it in place as the office chat
+    (`hwpx_form`), its tables and page kept as they are."""
+    if session.kind is not SessionKind.report or session.artifact_id:
+        return
+    form = await form_files.for_session(db, session, "hwpx")
+    if form is None:
+        return
+    from app.services import hwpx_form
+
+    title = re.sub(r"\.hwpx?$", "", form.choice.name, flags=re.I)[:120] or "한글 문서"
+    made = await hwp_doc.create(db, user_id=user.id, title=title, data=hwpx_form.start(form),
+                                session_id=session.id, project_id=session.project_id)
+    session.artifact_id = made.id
+    db.add(session)
+    await db.commit()
+    await db.refresh(session)
 
 
 async def _pptx_surface(db: AsyncSession, user: User, session: ChatSession) -> None:
@@ -5079,8 +5100,15 @@ async def _send_message(
                 and "docx" in turn_forms.forms and turn_forms.forms["docx"].source == "attached"):
             # a Word form makes the report a Word file
             payload = payload.model_copy(update={"output_format": "docx"})
+        if (session.kind is SessionKind.report and payload.output_format is None
+                and "hwpx" in turn_forms.forms and turn_forms.forms["hwpx"].source == "attached"):
+            # a 한글 form makes the report the form itself, filled
+            payload = payload.model_copy(update={"output_format": "hwp"})
     if published is None and payload.output_format == "pptx" and not session.pending:
         await _pptx_surface(db, user, session)
+    if (published is None and not session.pending
+            and _report_output(payload.output_format or "", payload.content) == "hwp"):
+        await _hwpx_form_surface(db, user, session)
     #: the surface this turn runs as: a report written as an HWP or Word file is worked on from
     #: here like a chat's office document, its tools and pre-read included
     kind = SessionKind.chat if await _office_report(db, session) else session.kind
@@ -6776,6 +6804,15 @@ async def _send_message(
                 else _OFFICE_RULE)
         messages = _with_system_rule(messages, rule.format(
             p=office_target.kind.value, title=office_target.title))
+        if office_target.kind is ArtifactKind.hwp and (office_target.data or {}).get("form"):
+            # the HWP document is the person's 한글 form: filled in place, never replaced
+            from app.services import hwpx_form
+
+            try:
+                mark = form_marks.read(office_doc.read(office_target)) or {}
+            except (OSError, ValueError):
+                mark = {}
+            messages = _with_system_rule(messages, hwpx_form.rule(mark))
     # substantial chat request: short plan beside it; not on economy/calculator turns
     if (
         kind is SessionKind.chat

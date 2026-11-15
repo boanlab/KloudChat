@@ -9,7 +9,7 @@ from typing import Any
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.models.workspace import Artifact, ArtifactKind
-from app.services import hwpx_edit, office_doc, office_look, report_export
+from app.services import form_marks, hwpx_edit, office_doc, office_look, report_export
 from app.services.office_doc import Conflict, read, read_version
 
 __all__ = ["Conflict", "read", "read_version"]
@@ -41,7 +41,14 @@ def describe(data: bytes, fmt: str) -> dict[str, Any]:
             text = hwpx_edit.plain_text(data)[:20000]
         except hwpx_edit.HwpxError:
             text = ""
-    return {"format": fmt, "size": len(data), "text": text}
+    out = {"format": fmt, "size": len(data), "text": text}
+    if fmt == "hwpx" and (form := form_marks.read(data)) is not None:
+        # the 한글 form this document is (`hwpx_form`): what of it is filled, for 「양식을 따름」
+        from app.services import hwpx_form
+
+        out["form"] = {k: v for k, v in form.items() if k != "fields"} | {
+            "followed": hwpx_form.progress(data, form)}
+    return out
 
 
 KIND = office_doc.Kind(ArtifactKind.hwp, "hwpx", "한글 문서", file_format, describe)

@@ -1074,6 +1074,8 @@ export interface HwpArtifact extends ArtifactBase {
   size: number
   /** Body text, for search and cards. */
   text?: string
+  /** The 한글 form (양식) this document is, and how much of it is filled (`hwpx_form`). */
+  form?: FollowedForm
 }
 
 /** A Word document: the file itself is fetched per version (`artifactsApi.documentFile`). */

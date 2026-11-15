@@ -1,5 +1,7 @@
 """What form a written Office file followed, kept inside the file: one custom document property
-(`docProps/custom.xml`, `KloudChatForm`, a JSON string) of a `.pptx` or `.docx`.
+(`docProps/custom.xml`, `KloudChatForm`, a JSON string) of a `.pptx` or `.docx`; in an `.hwpx`,
+which has no custom properties, the entry `KloudChat/form.json` (an editor keeps an entry it
+does not know, `hwpx_edit._write`).
 
 The artifact's description reads it back (`pptx_doc.describe`), so every version says whether
 and how it followed a form, and an edit that keeps the file's parts keeps the mark.
@@ -38,8 +40,40 @@ def _properties(info: dict[str, Any]) -> bytes:
     ).encode()
 
 
+_HWPX_ENTRY = "KloudChat/form.json"
+
+
+def _hwpx(data: bytes) -> bool:
+    try:
+        with open_capped_zip(data) as archive:
+            names = archive.namelist()
+    except (zipfile.BadZipFile, RuntimeError):
+        return False
+    return any(n.startswith("Contents/section") for n in names) and "word/document.xml" \
+        not in names
+
+
+def _mark_hwpx(data: bytes, info: dict[str, Any]) -> bytes:
+    source = open_capped_zip(data)
+    out = io.BytesIO()
+    with source, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as copy:
+        names = source.namelist()
+        if "mimetype" in names:
+            # OWPML: `mimetype` first and stored
+            copy.writestr(zipfile.ZipInfo("mimetype"), source.read("mimetype"),
+                          zipfile.ZIP_STORED)
+        for item in source.infolist():
+            if item.filename in ("mimetype", _HWPX_ENTRY):
+                continue
+            copy.writestr(item, source.read(item.filename))
+        copy.writestr(_HWPX_ENTRY, json.dumps(info, ensure_ascii=False).encode("utf-8"))
+    return out.getvalue()
+
+
 def mark(data: bytes, info: dict[str, Any]) -> bytes:
     """`data` with the form mark set (replacing any custom properties it had)."""
+    if _hwpx(data):
+        return _mark_hwpx(data, info)
     source = open_capped_zip(data)
     out = io.BytesIO()
     with source, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as copy:
@@ -65,8 +99,11 @@ def read(data: bytes) -> dict[str, Any] | None:
     """The form mark of an Office file, or None."""
     try:
         with open_capped_zip(data) as archive:
+            if _HWPX_ENTRY in archive.namelist():
+                found = json.loads(archive.read(_HWPX_ENTRY).decode("utf-8"))
+                return found if isinstance(found, dict) else None
             root = etree.fromstring(archive.read(_PART), _PARSER)
-    except (KeyError, zipfile.BadZipFile, RuntimeError, etree.XMLSyntaxError):
+    except (KeyError, zipfile.BadZipFile, RuntimeError, etree.XMLSyntaxError, ValueError):
         return None
     for prop in root.iter(f"{{{_PROPS}}}property"):
         if prop.get("name") == NAME:
