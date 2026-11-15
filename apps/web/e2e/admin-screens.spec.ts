@@ -67,16 +67,17 @@ test('every effort in the routing table reads whole', { tag: '@phone' }, async (
   await shot(page, 'routing-effort', 'full')
 })
 
-test('the routing table shows each model name whole, its price on the line under it', async ({ page }) => {
-  test.skip((page.viewportSize()?.width ?? 0) < 640, 'desktop widths')
+test('the routing table shows each model name whole, its price on the line under it', { tag: '@phone' }, async ({ page }) => {
   await mockApp(page, 'manual', undefined, undefined, {
     catalogue: [
-      model('local/flash', 'Qwen · Qwen3.8 Flash (local)', 'hybrid'),
-      model('strict-local/flash', 'DeepSeek · Deepseek V4 Flash (strict-local)', 'self_hosted'),
-      model('external/deep', 'DeepSeek · Deepseek V4.1 Flash', 'external', 4),
+      // as the gateway lists them: the label with the vendor, the name without
+      { ...model('local/flash', 'Qwen · Qwen3.8 Flash (local)', 'hybrid'), name: 'Qwen3.8 Flash (local)' },
+      { ...model('strict-local/flash', 'DeepSeek · Deepseek V4 Flash (strict-local)', 'self_hosted'), name: 'Deepseek V4 Flash (strict-local)' },
+      { ...model('external/deep', 'DeepSeek · Deepseek V4.1 Flash', 'external', 4), name: 'Deepseek V4.1 Flash' },
     ],
   })
-  for (const width of [1440, 1280]) {
+  const widths = (page.viewportSize()?.width ?? 0) < 640 ? [390, 360] : [1440, 1280]
+  for (const width of widths) {
     await page.setViewportSize({ width, height: 900 })
     await page.goto('/admin/system/routing')
     const selects = page.getByTestId('super-agent-table').getByLabel(/ · (Super Agent|strict-local) 모델$/)

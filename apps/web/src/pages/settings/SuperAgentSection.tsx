@@ -10,6 +10,7 @@ import {
 } from '@/lib/superAgent'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
+import { useMediaQuery } from '@/lib/useMediaQuery'
 import { useUnsavedMark } from '@/lib/unsaved'
 import { tokenRate } from '@/lib/utils'
 import type { ModelInfo, SuperAgentClass } from '@/types'
@@ -28,6 +29,7 @@ const EFFORTS = Object.keys(SUPER_EFFORT_LABEL) as SuperAgentRule['effort'][]
 /** Super Agent's classifier and the class → model table (설정 › 시스템 › 라우팅); no switch. */
 export function SuperAgentSection() {
   const t = useT()
+  const phone = useMediaQuery('(max-width: 40rem)')
   const { governance, loadGovernance, saveGovernance, models, loadModels, superAgent } = useStore()
   const [classifierModelId, setClassifierModelId] = useState('')
   const [rules, setRules] = useState<Record<string, SuperAgentRule>>({})
@@ -65,7 +67,7 @@ export function SuperAgentSection() {
     setRules((current) => ({ ...current, [name]: { ...current[name], ...patch } }))
     touched()
   }
-  const options = (pool: ModelInfo[], current: string, keepsClass = false) => (
+  const options = (pool: ModelInfo[], current: string, keepsClass = false, strictColumn = false) => (
     <>
       {keepsClass && <option value="">{t('작업 종류의 모델 그대로')}</option>}
       {current && !pool.some((model) => model.id === current) && (
@@ -75,8 +77,14 @@ export function SuperAgentSection() {
       )}
       {/* The name whole in the box; the price is the line under it (and the option's title). */}
       {pool.map((model) => (
-        <option key={model.id} value={model.id} title={tokenRate(model, t)}>
-          {model.label}
+        <option key={model.id} value={model.id} title={`${model.label} · ${tokenRate(model, t)}`}>
+          {/* a phone card has less room: the name without the vendor, and in the strict-local
+              column (its heading says so) without 「(strict-local)」 */}
+          {phone
+            ? strictColumn
+              ? (model.name || model.label).replace(/\s*\(strict-local\)$/, '')
+              : model.name || model.label
+            : model.label}
         </option>
       ))}
     </>
@@ -88,7 +96,7 @@ export function SuperAgentSection() {
   }
 
   return (
-    <Card className="space-y-4 p-4">
+    <Card className="space-y-4 p-4 max-sm:p-3">
       <div className="flex items-start gap-3">
         <div className="grid size-9 shrink-0 place-items-center rounded-control bg-accent-soft text-accent max-sm:hidden">
           <Gauge size={17} />
@@ -159,7 +167,7 @@ export function SuperAgentSection() {
                       value={rule.strictModel}
                       onChange={(event) => setRule(name, { strictModel: event.target.value })}
                     >
-                      {options(strictOnly(pool), rule.strictModel, SUPER_OVERRIDE_ROWS.has(name))}
+                      {options(strictOnly(pool), rule.strictModel, SUPER_OVERRIDE_ROWS.has(name), true)}
                     </Select>
                     {rate(strictOnly(pool), rule.strictModel)}
                   </td>
