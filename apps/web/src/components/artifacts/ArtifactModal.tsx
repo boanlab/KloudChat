@@ -82,8 +82,8 @@ function OfficeArtifactView({ artifact }: { artifact: Extract<Artifact, { kind: 
       <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
         <p className="min-w-0 flex-1 text-sm text-muted">
           {error ?? (artifact.sessionId
-            ? t('편집하면 이 문서를 만든 대화 옆 편집기에서 엽니다.')
-            : t('이 문서의 대화가 없습니다. 편집하면 새 대화 옆 편집기에서 엽니다.'))}
+            ? t('편집하면 만든 대화의 편집기에서 열립니다.')
+            : t('만든 대화가 없어 새 대화의 편집기에서 열립니다.'))}
         </p>
         <Button size="sm" variant="primary" disabled={opening} onClick={() => void openInEditor()}>
           {opening ? <Loader2 size={14} className="animate-spin" /> : <FilePenLine size={14} />}
@@ -102,7 +102,7 @@ function OfficeArtifactView({ artifact }: { artifact: Extract<Artifact, { kind: 
             kind={kind}
             bytes={bytes}
             name={artifact.title}
-            onFail={() => setFailed(t('이 파일은 모양대로 그리지 못해 글자만 보여 줍니다.'))}
+            onFail={() => setFailed(t('모양은 그리지 못해 글자만 보여 줍니다.'))}
           />
         ) : (
           <LoadingState />
@@ -205,7 +205,7 @@ export function ArtifactModal({ id, onClose }: { id: string | null; onClose: () 
         open={confirmClose}
         onClose={() => setConfirmClose(false)}
         title={t('저장하지 않은 변경 내용이 있습니다')}
-        description={t('계속하면 아티팩트에서 바꾼 내용이 사라집니다.')}
+        description={t('계속하면 바꾼 내용이 사라집니다.')}
         confirmLabel={t('저장하지 않고 닫기')}
         onConfirm={close}
       />

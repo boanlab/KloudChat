@@ -271,7 +271,7 @@ function SharedOffice({
             kind={kind}
             bytes={file.bytes}
             name={name}
-            onFail={() => setFailed(t('이 파일은 모양대로 그리지 못해 글자만 보여 줍니다.'))}
+            onFail={() => setFailed(t('모양은 그리지 못해 글자만 보여 줍니다.'))}
           />
         </div>
       ) : failed ? (

@@ -74,7 +74,7 @@ export function strictStartReason(inputs: StartInputs): StrictStartReason | null
 
 /** The short line that says why a new conversation starts strict-local (Korean source text). */
 export const STRICT_START_HINT: Record<StrictStartReason, string> = {
-  project: '이 프로젝트는 기관 정책상 strict-local로 시작합니다',
+  project: '기관 정책에 따라 strict-local로 시작합니다',
   personal: '기본 모델 설정(strict-local)에 따라 시작합니다',
   admin: '관리자 기본 설정에 따라 strict-local로 시작합니다',
   unavailable: '쓸 수 있는 외부 모델이 없어 strict-local로 시작합니다',

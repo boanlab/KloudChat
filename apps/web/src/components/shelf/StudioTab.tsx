@@ -216,7 +216,7 @@ export function StudioTab({ projectId }: { projectId: string }) {
             .catch((err) => setError(errorMessage(err, t('삭제하지 못했습니다.'))))
         }}
         title={t('{name} 삭제').replace('{name}', removing?.title ?? '')}
-        description={withNames(t('{studio}에서 지웁니다. 문서로 저장된 것은 파일함에 남습니다.'), t)}
+        description={withNames(t('{studio}에서만 지웁니다. 문서로 저장한 것은 파일함에 남습니다.'), t)}
       />
     </div>
   )

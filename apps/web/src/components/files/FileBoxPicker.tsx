@@ -46,7 +46,7 @@ export function FileBoxPicker({
       open={open}
       onClose={close}
       title={t('파일함에서 고르기')}
-      description={t('올렸거나 대화에서 만든 파일을 이 메시지에 다시 붙입니다.')}
+      description={t('올렸거나 만든 파일을 이 메시지에 붙입니다.')}
       width="max-w-2xl"
       footer={
         <>

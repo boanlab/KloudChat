@@ -403,7 +403,7 @@ test.describe('sharing, reopening and the artifacts page', () => {
     desktopOnly(page)
     const state = await fixture(page, 'hwp', { orphan: true })
     const dialog = page.getByRole('dialog', { name: '직원 연수 참석 요청' })
-    await expect(dialog).toContainText('이 문서의 대화가 없습니다.')
+    await expect(dialog).toContainText('만든 대화가 없어')
     await dialog.getByRole('button', { name: '편집기에서 열기' }).click()
     await expect.poll(() => state.attached).toEqual([{ sessionId: expect.any(String) }])
     await expect(page).toHaveURL(/\/s\/[0-9a-f]+/)
