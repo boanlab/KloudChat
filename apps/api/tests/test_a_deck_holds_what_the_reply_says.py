@@ -196,16 +196,20 @@ async def test_the_count_comes_from_the_persons_own_words():
     ctx = SimpleNamespace(asked="vLLM 논문 발표할 PowerPoint 12장 만들어 줘.",
                           request="# 프로젝트 지식\n… 3장 …\n\n질문")
     with pytest.raises(ValueError, match="12장"):
-        await tool._prepare({"title": "t", "slides": [{"title": str(i)} for i in range(12)]}, ctx)
+        await tool._prepare({"title": "t", "slides": [{"title": str(i)} for i in range(14)]}, ctx)
 
 
 async def test_a_wrong_count_is_refused_once_then_saved_with_a_note():
     ctx = SimpleNamespace(asked="PowerPoint 12장 만들어 줘", pptx={})
-    args = {"title": "t", "slides": [{"title": str(i)} for i in range(12)]}
+    args = {"title": "t", "slides": [{"title": str(i)} for i in range(14)]}
     with pytest.raises(ValueError, match="12장"):
         await tool._prepare(args, ctx)
     again = await tool._prepare(args, ctx)
-    assert "13장" in again[tool.NOTES][0]
+    assert "15장" in again[tool.NOTES][0]
+    # one slide off is said, not sent back
+    near = await tool._prepare({"title": "t", "slides": [{"title": str(i)} for i in range(12)]},
+                               SimpleNamespace(asked="PowerPoint 12장 만들어 줘", pptx={}))
+    assert "13장" in near[tool.NOTES][0]
 
 
 async def test_unreadable_slides_say_so_before_any_count():

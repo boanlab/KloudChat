@@ -189,7 +189,7 @@ def _total(args: dict[str, Any]) -> int:
     return 1 + len(_slides_of(args)) + closing
 
 
-def count_problem(request: str, args: dict[str, Any]) -> str:
+def count_problem(request: str, args: dict[str, Any], *, slack: int = 0) -> str:
     """Why the deck the arguments make is not the size the person asked (「8장」, 「10~12장」,
     「5장 정도」), counting every slide in the file (cover and closing too, as the person and
     PowerPoint count them), or ``."""
@@ -200,7 +200,7 @@ def count_problem(request: str, args: dict[str, Any]) -> str:
     exact = deck.requested_slides(request)
     span = None if exact else deck.slide_range(request)
     about = None if exact or span else deck.about_slides(request)
-    if exact and total != exact:
+    if exact and abs(total - exact) > slack:
         want = f"{exact}장"
         body = exact - 1 - closing
     elif span and not span[0] <= total <= span[1]:
@@ -238,8 +238,15 @@ async def _prepare(args: dict[str, Any], ctx: Any) -> dict[str, Any]:
     # count from the instruction scope, so the opening paragraph is read on its own as well
     opening = asked.strip().split("\n\n", 1)[0]
     notes: list[str] = []
-    if problem := count_problem(asked, args) or (
+    if count_problem(asked, args) or (
             count_problem(opening, args) if opening != asked.strip() else ""):
+        # one slide off (a closing slide added) is said, not sent back: each send-back costs
+        # a small model a turn, and a long paper deck ran out of turns with no file at all
+        notes.append(f"장 수가 요청과 한 장 다릅니다: 파일은 {_total(args)}장입니다. 답에 "
+                     "실제 장 수를 그대로 말하세요.")
+    if problem := count_problem(asked, args, slack=1) or (
+            count_problem(opening, args, slack=1) if opening != asked.strip() else ""):
+        notes = [note for note in notes if not note.startswith("장 수가 요청과 한 장")]
         record = getattr(ctx, "pptx", None)
         if not isinstance(record, dict) or not record.get("count_refused"):
             if isinstance(record, dict):
