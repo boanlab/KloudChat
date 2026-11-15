@@ -1,0 +1,16 @@
+# 심사 발표: a research question, its method, results and limits, before a committee.
+name = "심사 발표"
+words = "심사|디펜스|defen[cs]e|학위\\s{0,2}(?:논문|발표)|연구\\s{0,2}(?:발표|성과)|중간\\s{0,2}(?:평가|보고)|학회\\s{0,2}발표"
+rules = """
+- The research question stands on one slide, before the background.
+- Method and results are separate slides.
+- Results are figures or tables, each with one line under it on what it shows.
+- State the limitations yourself: what could not be examined, and why.
+- End with the next plans; keep citations short at the bottom of the slide.
+"""
+checks = [
+  "연구 질문이 배경보다 앞에 한 장으로 서 있는가.",
+  "방법과 결과가 다른 장인가.",
+  "한계를 스스로 밝힌 장이 있는가.",
+  "인용한 수치에 출처가 붙어 있는가.",
+]

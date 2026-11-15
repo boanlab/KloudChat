@@ -136,6 +136,7 @@ from app.services import (
     office_edit,
     office_look,
     output_language,
+    patterns,
     pptx_doc,
     prompt_tier,
     publishing,
@@ -4757,10 +4758,13 @@ def _deep_search(keys, specs: dict | None) -> bool:
                     and spec.process.get("deep_search")) for key in keys)
 
 
-def render_template_checks(session: ChatSession) -> tuple[str, ...]:
-    """Check skills attached by the session's 서식."""
+def render_template_checks(session: ChatSession, pattern: str | None = None) -> tuple[str, ...]:
+    """Check skills attached by the session's 서식, else by the report's pattern (the format
+    the request names, `patterns.report_format`)."""
     template = design_templates.get(session.render_template_id)
-    return template.check_skills if template is not None else ()
+    if template is not None:
+        return template.check_skills
+    return patterns.check_skills(pattern)
 
 
 def _gap_judge_model(user: User, catalogue_models: list[dict],
@@ -5637,11 +5641,15 @@ async def _send_message(
     short = grounding.file_shortfalls(workspace.attachments) if _plans_first(kind) else []
     # gap check: same card, once, before the first draft; never on revisions or follow-ups
     agent_key = await _agent_catalog_key(db, agent_row)
+    # a report's pattern: the format the request names, with its questions and checks
+    pattern = patterns.report_format(
+        content, session.render_template_id, workspace.doc_format) \
+        if kind is SessionKind.report else None
     # agent's own checks and strictness from its row
     check_keys = check_skills.attached(
         agent_checks=skills_bring.checks_with(
             agent_row.check_skills if agent_row is not None else None),
-        template_checks=render_template_checks(session), specs=specs)
+        template_checks=render_template_checks(session, pattern), specs=specs)
     if kind is not SessionKind.chat:
         # document writers run no tools: a turned-on check skill runs as the server's check
         check_keys = tuple(dict.fromkeys((*check_keys, *check_skills.attached(
@@ -5665,7 +5673,8 @@ async def _send_message(
     asking = skills_bring.questions_with(gap_questions.resolve(
         own=agent_row.gap_questions if agent_row is not None else None, base_key=agent_key,
         template_id=session.render_template_id if kind is SessionKind.report else None,
-        doc_format=workspace.doc_format)) if check_skills.of_stage(check_keys, "pre", specs) \
+        doc_format=pattern or workspace.doc_format)) \
+        if check_skills.of_stage(check_keys, "pre", specs) \
         else []
     judge_model, judge_key = "", ""
     if gap_questions.needs_judge(asking):
@@ -8579,6 +8588,9 @@ async def _run_deck(
         trusted_context = [f"[서식: {template.name}]\n{template.instructions.strip()}"] + list(
             trusted_context or []
         )
+    elif (purpose := patterns.deck_purpose(request)) is not None:
+        # no template: the deck pattern the request names (브리핑, 제안, 강의…)
+        trusted_context = [purpose.note(), *(trusted_context or [])]
     turn = {
         "user_id": user_id, "model": model, "outline_model": outline_model,
         "project_id": project_id, "routing": routing, "skills_event": skills_event,

@@ -9,7 +9,9 @@ from app.schemas.chat import SendMessage
 from app.services import grounding
 from app.services.workspace_context import ContextFile, WorkspaceContext
 
-_REQUEST = "연구실 주간 미팅 녹음 파일이야. 회의록으로 정리해 줘."
+_REQUEST = "연구실 주간 미팅 녹음 파일이야. 내용을 보고서로 정리해 줘."
+#: a 회의록 asks its own questions (the minutes pattern's) on the same card
+_MINUTES = "연구실 주간 미팅 녹음 파일이야. 회의록으로 정리해 줘."
 _FILES = (ContextFile("녹음.mp3", "unreadable", 0, 0),)
 
 
@@ -73,6 +75,15 @@ async def test_the_first_request_puts_the_card_up(monkeypatch):
     assert response is not None and session.pending["stage"] == "clarify"
     asked = [m for m in db.added if isinstance(m, Message) and m.role is Role.assistant]
     assert asked[0].routing["askedCard"]["ids"] == ["unreadable"]
+
+
+async def test_a_minutes_request_asks_its_patterns_questions_on_the_same_card(monkeypatch):
+    response, _seen, _session, db = await _send(monkeypatch, pending=None, content=_MINUTES)
+
+    assert response is not None
+    asked = [m for m in db.added if isinstance(m, Message) and m.role is Role.assistant]
+    ids = asked[0].routing["askedCard"]["ids"]
+    assert ids[0] == "unreadable" and "gap:meeting_date" in ids
 
 
 async def test_a_typed_reply_goes_on_with_what_was_read(monkeypatch):
