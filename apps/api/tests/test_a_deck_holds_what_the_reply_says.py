@@ -197,3 +197,18 @@ async def test_the_count_comes_from_the_persons_own_words():
                           request="# 프로젝트 지식\n… 3장 …\n\n질문")
     with pytest.raises(ValueError, match="12장"):
         await tool._prepare({"title": "t", "slides": [{"title": str(i)} for i in range(12)]}, ctx)
+
+
+async def test_a_wrong_count_is_refused_once_then_saved_with_a_note():
+    ctx = SimpleNamespace(asked="PowerPoint 12장 만들어 줘", pptx={})
+    args = {"title": "t", "slides": [{"title": str(i)} for i in range(12)]}
+    with pytest.raises(ValueError, match="12장"):
+        await tool._prepare(args, ctx)
+    again = await tool._prepare(args, ctx)
+    assert "13장" in again[tool.NOTES][0]
+
+
+async def test_unreadable_slides_say_so_before_any_count():
+    ctx = SimpleNamespace(asked="PowerPoint 12장 만들어 줘", pptx={})
+    with pytest.raises(ValueError, match="배열"):
+        await tool._prepare({"title": "t", "slides": "[{broken"}, ctx)

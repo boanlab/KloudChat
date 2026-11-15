@@ -4,6 +4,7 @@ new deck (`office.py`), against the saved file (services/pptx_edit.py)."""
 from __future__ import annotations
 
 import json
+import logging
 import re
 from typing import Any
 
@@ -46,6 +47,8 @@ async def _look(db: Any, ctx: Any) -> tuple[dict | None, str, Any] | None:
     form = await form_files.for_session(db, session, "pptx") if session is not None else None
     return tokens, template, form
 
+
+log = logging.getLogger(__name__)
 
 #: what `_prepare` tells the model beside the saved file (`office.write`)
 NOTES = "__notes__"
@@ -190,18 +193,32 @@ async def _prepare(args: dict[str, Any], ctx: Any) -> dict[str, Any]:
     args = {**args, "slides": [
         {**slide, "chart": _chart_values(slide["chart"])}
         if isinstance(slide.get("chart"), dict) else slide for slide in slides]}
+    if not args["slides"]:
+        raw = args.get("slides")
+        log.info("pptx_write slides unreadable: %s of %d chars", type(raw).__name__,
+                 len(str(raw or "")))
+        raise ValueError("slides는 [{title, bullets: [...]}, …] 꼴의 배열이어야 합니다(한 장 "
+                         "이상). 문자열이나 다른 키 아래에 넣지 마세요.")
     asked = getattr(ctx, "asked", "") or getattr(ctx, "request", "") or ""
     # the person's own words come first; material the turn appended after them can hide the
     # count from the instruction scope, so the opening paragraph is read on its own as well
     opening = asked.strip().split("\n\n", 1)[0]
+    notes: list[str] = []
     if problem := count_problem(asked, args) or (
             count_problem(opening, args) if opening != asked.strip() else ""):
-        raise ValueError(problem)
+        record = getattr(ctx, "pptx", None)
+        if not isinstance(record, dict) or not record.get("count_refused"):
+            if isinstance(record, dict):
+                record["count_refused"] = True
+            raise ValueError(problem)
+        # asked once already: a deck of another size beats no deck; the reply says the size
+        notes.append(f"장 수가 요청과 다릅니다: 파일은 {_total(args)}장입니다. 답에 실제 장 "
+                     "수를 그대로 말하세요.")
     wanted = [str((slide.get("image") or {}).get("file") or "").strip()
               for slide in args["slides"] if isinstance(slide.get("image"), dict)]
     wanted = [name for name in wanted if name]
     if not wanted:
-        return args
+        return {**args, NOTES: notes}
     from app.services.tools.office import _pictures
 
     async with SessionLocal() as db:
@@ -220,9 +237,10 @@ async def _prepare(args: dict[str, Any], ctx: Any) -> dict[str, Any]:
             else:
                 slide = {**slide, "image": {**image, "data": found[name][1]}}
         slides.append(slide)
-    notes = ([f"그림을 찾지 못해 넣지 않은 곳: {', '.join(missing)}. 이 그림들은 파일에 "
-              "없으니 넣었다고 말하지 마세요(pdf_figures로 잘라 온 그림 이름만 쓸 수 있습니다)."]
-             if missing else [])
+    if missing:
+        notes.append(f"그림을 찾지 못해 넣지 않은 곳: {', '.join(missing)}. 이 그림들은 파일에 "
+                     "없으니 넣었다고 말하지 마세요(pdf_figures로 잘라 온 그림 이름만 쓸 수 "
+                     "있습니다).")
     return {**args, "slides": slides, NOTES: notes}
 
 
