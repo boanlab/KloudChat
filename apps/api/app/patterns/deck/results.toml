@@ -1,0 +1,61 @@
+# 실적·성과 보고: chosen from the request (`services/patterns.py`); never shown as a picker.
+order = 50
+name = "실적·성과 보고"
+name_en = "Results report"
+words = '''실적\s{0,2}(?:보고|발표|리뷰|점검)?|성과\s{0,2}(?:보고|발표|리뷰|공유)|KPI|(?:분기|월간|반기|연간|연말)\s{0,2}(?:보고|리뷰|결산)|\d\s{0,2}분기\s{0,2}(?:보고|실적|결과)|매출\s{0,2}(?:보고|현황)|목표\s{0,2}대비|(?<![A-Za-z])quarterly (?:results|review|business review)(?![A-Za-z])|(?<![A-Za-z])QBR(?![A-Za-z])|(?<![A-Za-z])earnings(?![A-Za-z])|(?<![A-Za-z])performance review(?![A-Za-z])|(?<![A-Za-z])KPI review(?![A-Za-z])'''
+rules = """- Open with the three numbers that matter, each with its target and the gap.
+- Every number is the material's; a chart is drawn from the material's own rows (chart data), never from guessed values.
+- Show results against target and against the same period before, with the unit and period named.
+- Say why a number moved only where the material says so; otherwise mark it 「확인 필요」.
+- End with what changes next period, with owners.
+"""
+checks = ["첫 장에 핵심 숫자와 목표·차이가 있는가.", "모든 수치가 자료에 있는 값이고 단위·기간이 붙었는가.", "차트가 자료의 행으로 그려졌는가.", "다음 기간 계획에 담당이 있는가."]
+
+[[flow]]
+part = "요약(핵심 숫자 3개)"
+slides = "1"
+layouts = ["kpi-grid", "metrics"]
+
+[[flow]]
+part = "목표 대비 실적"
+slides = "1-2"
+layouts = ["number-compare", "stat-bars", "table"]
+
+[[flow]]
+part = "추이"
+slides = "1-2"
+layouts = ["chart", "chart-stacked"]
+
+[[flow]]
+part = "잘된 것·부족한 것"
+slides = "1"
+layouts = ["pros-cons", "two-column"]
+
+[[flow]]
+part = "원인"
+slides = "1"
+layouts = ["bullets", "cards-3"]
+
+[[flow]]
+part = "다음 분기 계획"
+slides = "1"
+layouts = ["roadmap", "checklist"]
+
+[process]
+search = false
+
+[[questions]]
+id = "period"
+label = "보고 기간"
+question = "어느 기간의 실적인가요? (예: 2026년 3분기)"
+why = "표와 차트의 기간 표시에 들어갑니다."
+placeholder = "[보고 기간]"
+detector = { type = "regex", pattern = '''(?:\d\s{0,2}분기|Q[1-4]|\d{1,2}\s{0,2}월|상반기|하반기|20\d\d\s{0,2}년)''' }
+
+[[questions]]
+id = "targets"
+label = "목표치"
+question = "비교할 목표치(계획 값)가 있나요?"
+why = "목표 대비 실적 장에 들어갑니다. 없으면 전기 대비로만 씁니다."
+placeholder = "[목표치]"
+detector = { type = "keyword", words = ["목표", "계획", "target", "plan", "예산"] }

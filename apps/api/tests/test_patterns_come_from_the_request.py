@@ -12,10 +12,10 @@ from app.services import design_templates, gap_questions, patterns
 
 
 @pytest.mark.parametrize(("request_text", "purpose"), [
-    ("다음 주 운영 회의에 쓸 주간 브리핑 자료 5장 만들어 줘", "briefing"),
+    ("다음 주 운영 회의에 쓸 주간 브리핑 자료 5장 만들어 줘", "meeting"),
     ("학위 논문 심사 발표 자료를 만들어 줘", "defense"),
-    ("신입 사원 교육 자료로 Git 강의 슬라이드 만들어 줘", "lecture"),
-    ("투자 유치용 피치 덱 10장", "proposal"),
+    ("신입 사원 교육 자료로 Git 강의 슬라이드 만들어 줘", "training"),
+    ("투자 유치용 피치 덱 10장", "ir"),
     ("두 대안 비교해서 경영진 보고 케이스 발표 자료", "case"),
     ("고양이 사진 모음 슬라이드", None),
 ])
@@ -31,7 +31,7 @@ def test_pasted_material_does_not_pick_the_purpose():
 
 def test_a_deck_pattern_tells_the_planner_its_rules():
     note = patterns.deck_purpose("주간 브리핑 자료 만들어 줘").note()
-    assert note.startswith("[패턴: 사내 브리핑]") and "owners and deadlines" in note
+    assert note.startswith("[패턴: 회의·브리핑 자료]") and "owners and deadlines" in note
     assert all(p.checks for p in patterns.deck_patterns())
 
 

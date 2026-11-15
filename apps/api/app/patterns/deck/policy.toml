@@ -1,0 +1,63 @@
+# 정책·제도 안내: chosen from the request (`services/patterns.py`); never shown as a picker.
+order = 90
+name = "정책·제도 안내"
+name_en = "Policy or rule change briefing"
+words = '''(?:제도|정책|규정|지침|절차)\s{0,2}(?:안내|설명|변경|개정|도입)|설명회|시행\s{0,2}안내|달라지는\s{0,2}(?:점|것)|개정\s{0,2}(?:안내|사항)|(?<![A-Za-z])policy (?:update|change|briefing)(?![A-Za-z])|(?<![A-Za-z])rule change(?![A-Za-z])|(?<![A-Za-z])new procedure(?![A-Za-z])|(?<![A-Za-z])town ?hall(?![A-Za-z])'''
+rules = """- Say what changes in one sentence on the first slide.
+- Show before and after side by side, then who is affected and from when.
+- The actions people must take are a checklist with dates.
+- Quote the rule's own article or document when the material names it; never paraphrase a legal condition loosely.
+- End with questions people will ask and where to ask more.
+"""
+checks = ["첫 장에 무엇이 바뀌는지 한 문장이 있는가.", "이전·이후와 대상·시행일이 있는가.", "해야 할 일이 날짜와 함께 있는가.", "문의처가 있는가."]
+
+[[flow]]
+part = "무엇이 바뀌나"
+slides = "1"
+layouts = ["statement", "big-number"]
+
+[[flow]]
+part = "왜 바뀌나"
+slides = "1"
+layouts = ["bullets"]
+
+[[flow]]
+part = "이전과 이후"
+slides = "1"
+layouts = ["before-after", "compare-2"]
+
+[[flow]]
+part = "누가 해당되나"
+slides = "1"
+layouts = ["cards-3", "table"]
+
+[[flow]]
+part = "언제부터"
+slides = "1"
+layouts = ["timeline", "milestones"]
+
+[[flow]]
+part = "해야 할 일"
+slides = "1"
+layouts = ["checklist", "steps"]
+
+[[flow]]
+part = "자주 묻는 질문·문의"
+slides = "1"
+layouts = ["faq", "closing"]
+
+[[questions]]
+id = "effective_date"
+label = "시행일"
+question = "언제부터 시행되나요?"
+why = "시행 일정 장에 들어갑니다."
+placeholder = "[시행일]"
+detector = { type = "regex", pattern = '''(?:20\d\d|\d{1,2}\s{0,2}월\s{0,2}\d{1,2}\s{0,2}일|시행일|부터)''' }
+
+[[questions]]
+id = "contact"
+label = "문의처"
+question = "문의는 어디로 하면 되나요?"
+why = "마지막 장에 들어갑니다."
+placeholder = "[문의처]"
+detector = { type = "regex", pattern = '''(?:문의|연락|담당|@|\d{2,4}-\d{3,4})''' }

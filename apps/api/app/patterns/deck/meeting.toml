@@ -1,0 +1,54 @@
+# 회의·브리핑 자료: chosen from the request (`services/patterns.py`); never shown as a picker.
+order = 130
+name = "회의·브리핑 자료"
+name_en = "Meeting deck"
+words = '''회의\s{0,2}(?:자료|안건|발표)|(?:주간|월간|운영|팀|정기|임원|부서)\s{0,2}회의|브리핑|킥오프|안건|진행\s{0,2}(?:상황|현황)\s{0,2}(?:공유|보고)?|현황\s{0,2}(?:공유|보고)|(?<![A-Za-z])meeting (?:deck|slides|agenda)(?![A-Za-z])|(?<![A-Za-z])briefing(?![A-Za-z])|(?<![A-Za-z])kick-?off(?![A-Za-z])|(?<![A-Za-z])stand-?up(?![A-Za-z])|(?<![A-Za-z])status update(?![A-Za-z])|(?<![A-Za-z])weekly sync(?![A-Za-z])'''
+rules = """- The first slide states what is decided today, in one line. If nothing is to be decided, say it is a briefing.
+- Keep what is decided apart from what is still to be decided.
+- Show progress as a table of 항목·상태·담당; for 상태 write how far it has got, not 「진행 중」.
+- Do not hide blockers: say what blocks each one and who can unblock it.
+- The last slide lists owners and deadlines.
+- At most eight slides.
+"""
+checks = ["첫 장에 오늘 정할 것이 한 줄로 있는가.", "정해진 것과 정할 것이 갈라져 있는가.", "막힌 일마다 무엇이 막고 누가 풀 수 있는지 있는가.", "마지막 장이 담당과 기한인가."]
+
+[[flow]]
+part = "오늘 정할 것"
+slides = "1"
+layouts = ["statement", "agenda"]
+
+[[flow]]
+part = "안건"
+slides = "1"
+layouts = ["agenda", "numbered"]
+
+[[flow]]
+part = "진행 현황"
+slides = "1-2"
+layouts = ["table", "milestones"]
+
+[[flow]]
+part = "정해진 것·정할 것"
+slides = "1"
+layouts = ["two-column", "compare-2"]
+
+[[flow]]
+part = "막힌 일"
+slides = "1"
+layouts = ["bullets", "cards-2"]
+
+[[flow]]
+part = "담당과 기한"
+slides = "1"
+layouts = ["checklist", "table"]
+
+[process]
+search = false
+
+[[questions]]
+id = "meeting_when"
+label = "회의 일시"
+question = "회의는 언제인가요?"
+why = "표지와 기한 계산에 들어갑니다."
+placeholder = "[회의 일시]"
+detector = { type = "regex", pattern = '''(?:\d{1,2}\s{0,2}월\s{0,2}\d{1,2}\s{0,2}일|\d{1,2}/\d{1,2}|20\d\d[.-]\d{1,2}|월요일|화요일|수요일|목요일|금요일|내일|오늘)''' }

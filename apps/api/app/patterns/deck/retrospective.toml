@@ -1,0 +1,57 @@
+# 프로젝트 결과 보고: chosen from the request (`services/patterns.py`); never shown as a picker.
+order = 60
+name = "프로젝트 결과 보고"
+name_en = "Project retrospective"
+words = '''(?:프로젝트|사업|과제)\s{0,2}(?:결과|완료|종료)\s{0,2}(?:보고|발표)|결과\s{0,2}보고\s{0,2}(?:발표|자료)|회고|사후\s{0,2}(?:검토|분석)|종료\s{0,2}보고|교훈|(?<![A-Za-z])retrospective(?![A-Za-z])|(?<![A-Za-z])post-?mortem(?![A-Za-z])|(?<![A-Za-z])lessons learned(?![A-Za-z])|(?<![A-Za-z])project (?:close|closing|wrap-?up)(?![A-Za-z])'''
+rules = """- Start with what the project set out to do: goal, period and scope.
+- Give the outcome against each goal, plainly, including the ones missed.
+- Keep what went well and what did not on one slide, then the lessons that follow from them.
+- Close with follow-up actions, each with an owner and a date; a missing one is a bracket blank.
+"""
+checks = ["목표·기간·범위가 앞에 있는가.", "목표마다 결과가 있고 못 이룬 것도 적혀 있는가.", "교훈이 잘된 점·아쉬운 점에서 나오는가.", "후속 조치에 담당과 날짜가 있는가."]
+
+[[flow]]
+part = "개요(목표·기간·범위)"
+slides = "1"
+layouts = ["table", "bullets"]
+
+[[flow]]
+part = "결과 한눈에"
+slides = "1"
+layouts = ["kpi-grid", "big-number"]
+
+[[flow]]
+part = "한 일"
+slides = "1-2"
+layouts = ["timeline", "milestones"]
+
+[[flow]]
+part = "목표 대비"
+slides = "1"
+layouts = ["number-compare", "table"]
+
+[[flow]]
+part = "잘된 점·아쉬운 점"
+slides = "1"
+layouts = ["pros-cons", "do-dont"]
+
+[[flow]]
+part = "교훈"
+slides = "1"
+layouts = ["takeaways"]
+
+[[flow]]
+part = "후속 조치"
+slides = "1"
+layouts = ["checklist", "roadmap"]
+
+[process]
+search = false
+
+[[questions]]
+id = "project_goals"
+label = "처음 목표"
+question = "이 프로젝트의 처음 목표(지표)가 무엇이었나요?"
+why = "목표 대비 장에 들어갑니다."
+placeholder = "[처음 목표]"
+detector = { type = "keyword", words = ["목표", "goal", "kpi", "계획"] }

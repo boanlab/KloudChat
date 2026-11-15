@@ -1,16 +1,49 @@
-# 심사 발표: a research question, its method, results and limits, before a committee.
+# 심사 발표: chosen from the request (`services/patterns.py`); never shown as a picker.
+order = 10
 name = "심사 발표"
-words = "심사|디펜스|defen[cs]e|학위\\s{0,2}(?:논문|발표)|연구\\s{0,2}(?:발표|성과)|중간\\s{0,2}(?:평가|보고)|학회\\s{0,2}발표"
-rules = """
-- The research question stands on one slide, before the background.
-- Method and results are separate slides.
-- Results are figures or tables, each with one line under it on what it shows.
+name_en = "Review defense"
+words = '''심사\s{0,2}(?:발표|위원)|디펜스|학위\s{0,2}(?:논문|심사|발표)|중간\s{0,2}(?:평가|심사)|예비\s{0,2}심사|졸업\s{0,2}(?:심사|논문)|(?<![A-Za-z])defen[cs]e(?![A-Za-z])|(?<![A-Za-z])viva(?![A-Za-z])|(?<![A-Za-z])thesis committee(?![A-Za-z])|(?<![A-Za-z])qualifying exam(?![A-Za-z])'''
+rules = """- The research question stands on one slide, before the background.
+- Method and results are separate slides; results are figures or tables, each with one line on what it shows.
 - State the limitations yourself: what could not be examined, and why.
 - End with the next plans; keep citations short at the bottom of the slide.
 """
-checks = [
-  "연구 질문이 배경보다 앞에 한 장으로 서 있는가.",
-  "방법과 결과가 다른 장인가.",
-  "한계를 스스로 밝힌 장이 있는가.",
-  "인용한 수치에 출처가 붙어 있는가.",
-]
+checks = ["연구 질문이 배경보다 앞에 한 장으로 서 있는가.", "방법과 결과가 다른 장인가.", "한계를 스스로 밝힌 장이 있는가.", "인용한 수치에 출처가 붙어 있는가."]
+
+[[flow]]
+part = "연구 질문"
+slides = "1"
+layouts = ["question", "statement"]
+
+[[flow]]
+part = "배경과 선행 연구"
+slides = "1-2"
+layouts = ["bullets", "compare-2"]
+
+[[flow]]
+part = "방법"
+slides = "2-3"
+layouts = ["process", "steps", "table"]
+
+[[flow]]
+part = "결과"
+slides = "2-4"
+layouts = ["chart", "table", "kpi-grid"]
+
+[[flow]]
+part = "한계"
+slides = "1"
+layouts = ["bullets", "do-dont"]
+
+[[flow]]
+part = "다음 계획"
+slides = "1"
+layouts = ["roadmap", "milestones"]
+
+[[questions]]
+id = "committee_stage"
+label = "심사 단계"
+question = "어떤 심사인가요? (예비·중간·본심사)"
+why = "심사 단계에 따라 결과와 다음 계획의 비중이 달라집니다."
+placeholder = "[심사 단계]"
+detector = { type = "keyword", words = ["예비", "중간", "본심사", "최종", "proposal", "final"] }

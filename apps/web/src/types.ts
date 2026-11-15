@@ -991,6 +991,8 @@ export interface Slide {
 }
 
 export interface DeckArtifact extends ArtifactBase {
+  /** The structure pattern the request named (`patterns.deck_purposes`), and others it also named. */
+  pattern?: { id: string; name: string; nameEn?: string; also?: string[] }
   kind: 'deck'
   theme: string
   slides: Slide[]

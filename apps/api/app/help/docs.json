@@ -1662,6 +1662,13 @@
 "lang": "ko",
 "path": "write/slides",
 "title": "슬라이드 작성",
+"heading": "용도에 맞는 구성",
+"text": "요청에 쓴 말로 발표의 용도를 알아보고, 그 용도의 흐름과 확인 항목을 따릅니다. 고르는 화면은 없습니다.\n\n| 용도 | 이런 말이 있으면 | 흐름 |\n|---|---|---|\n| 심사 발표 | 학위 논문 심사, 디펜스, 중간 평가 | 연구 질문 → 방법 → 결과 → 한계 → 다음 계획 |\n| 연구·논문 발표 | 논문 발표, 랩 세미나, 저널 클럽, 학회 발표 | 논문 정보 → 문제 → 방법(논문의 그림·표) → 결과 → 한계 → 토론 질문 |\n| 수업 과제 발표 | 과제 발표, 조별 과제, 팀플, 기말 발표 | 과목·조 → 질문 → 조사 → 분석 → 결론 → 참고 자료 |\n| 투자 IR | 투자 유치, IR 자료, 피치덱, 시리즈 A | 문제 → 해결 → 시장 → 모델 → 지표 → 경쟁 → 팀 → 재무 → 요청 |\n| 실적·성과 보고 | 분기 실적, 성과 보고, KPI, 목표 대비 | 핵심 숫자 → 목표 대비 → 추이(자료의 값으로 그린 차트) → 원인 → 다음 계획 |\n| 프로젝트 결과 보고 | 결과 보고, 완료 보고, 회고, 사후 검토 | 목표·기간 → 결과 → 목표 대비 → 잘된 점·아쉬운 점 → 교훈 → 후속 조치 |\n| 제품·서비스 소개 | 제품·솔루션 소개, 영업 자료, 고객사 미팅 | 고객의 문제 → 기능과 효과 → 작동 방식 → 사례 → 도입 절차 |\n| 제안 발표 | 제안, 공모, 지원사업, 사업계획, 예산 승인 요청 | 현황 → 제안 → 근거 → 일정·예산 → 요청 |\n| 정책·제도 안내 | 제도·정책 변경 안내, 설명회, 시행 안내 | 무엇이 바뀌나 → 이전·이후 → 대상·시행일 → 해야 할 일 → 문의처 |\n| 교육·온보딩 | 신입·온보딩, 사내·직무 교육, 워크숍 | 학습 목표 → 개념 → 따라 하기 → 자주 하는 실수 → 확인 문제 |\n| 강의 자료 | 강의, 수업 자료, 교안, ○주차 | 주제 → 개념과 예시 → 요점 → 다음 시간·과제 |\n| 케이스 발표 | 대안 비교, 권고안, 경영진 보고 | 권고 → 현황 → 대안 비교 → 판단 기준 → 위험 → 요청 |\n| 회의·브리핑 자료 | 회의 자료, 안건, 브리핑, 진행 현황 공유 | 오늘 정할 것 → 안건 → 진행 현황 → 막힌 일 → 담당과 기한 |\n\n- 용도마다 쓰기 전에 물어볼 빈칸이 있습니다. 예를 들어 실적 보고는 기간과 목표치가 자료에 없으면 먼저 묻고, 답이 없으면 대괄호 빈칸으로 둡니다.\n- 실적 보고, 연구·논문 발표, 프로젝트 결과 보고, 회의 자료는 주신 자료로만 만들고 요청에 「검색」, 「최신」 같은 말이 없으면 웹 검색을 하지 않습니다.\n- 두 용도에 모두 맞으면 표의 위쪽 용도를 따르고, 진행 단계에 「구조: … 패턴」과 함께 맞은 패턴을 적습니다. 웹 슬라이드 카드 아래에도 같은 줄이 붙습니다.\n- PowerPoint 양식을 붙였으면 모양은 양식을 따르고, 흐름은 용도를 따릅니다."
+},
+{
+"lang": "ko",
+"path": "write/slides",
+"title": "슬라이드 작성",
 "heading": "장 수 지정",
 "text": "| 입력 예시 | 반영 내용 |\n|---|---|\n| \"6장\", \"20장짜리\" | 지정한 장 수로 작성합니다. 최대 50장입니다. |\n| \"20분 발표\" | 2분당 1장을 기준으로 최소 장 수를 산출합니다. 20분이면 최소 10장입니다. |\n| 지정하지 않음 | 주제에 맞춰 5~12장으로 작성합니다. |\n\n6장을 초과하면 두 번째 장에 목차가 삽입됩니다."
 },
@@ -3358,6 +3365,13 @@
 "title": "Writing slides",
 "heading": "Items in the structure check",
 "text": "- Slide titles and their order\n- **How will this be used?**: presenting with narration, or handing over the material only\n\nThe look of web slides is not chosen on the structure card. After writing, choose it in the panel from editorial, minimal, poster, split, dark, steel, warm, pastel, forest, academic, and monochrome."
+},
+{
+"lang": "en",
+"path": "write/slides",
+"title": "Writing slides",
+"heading": "Structure by purpose",
+"text": "The words of the request tell the deck's purpose, and the deck follows that purpose's flow and checks. There is no picker.\n\n| Purpose | When the request says | Flow |\n|---|---|---|\n| Review defense | thesis review, defense, interim review | question → method → results → limits → next plans |\n| Research or paper talk | paper talk, lab seminar, journal club, conference talk | paper → problem → method (the paper's figures and tables) → results → limits → discussion questions |\n| Class project presentation | class presentation, group project, final presentation | course and team → question → research → analysis → conclusion → references |\n| Investor deck | fundraising, IR deck, pitch deck, series A | problem → solution → market → model → traction → competition → team → financials → ask |\n| Results report | quarterly results, KPI, against target | key numbers → against target → trend (charts from the material's values) → causes → next plans |\n| Project retrospective | project results, completion report, retrospective, post-mortem | goals and period → outcome → against goals → went well, went badly → lessons → follow-ups |\n| Product or service pitch | product or solution introduction, sales deck, customer meeting | customer's problem → features and benefits → how it works → cases → how to start |\n| Proposal for approval | proposal, grant, business plan, budget request | situation → proposal → evidence → schedule and budget → request |\n| Policy or rule change briefing | policy or rule change, information session, effective date | what changes → before and after → who and from when → what to do → contact |\n| Training or onboarding | onboarding, internal training, workshop | goals → concepts → step by step → common mistakes → check questions |\n| Lecture | lecture, class slides, "
 },
 {
 "lang": "en",

@@ -17,6 +17,31 @@ Choose **Web slides** or **PowerPoint** with the **Format** chip above the promp
 
 The look of web slides is not chosen on the structure card. After writing, choose it in the panel from editorial, minimal, poster, split, dark, steel, warm, pastel, forest, academic, and monochrome.
 
+## Structure by purpose
+
+The words of the request tell the deck's purpose, and the deck follows that purpose's flow and checks. There is no picker.
+
+| Purpose | When the request says | Flow |
+|---|---|---|
+| Review defense | thesis review, defense, interim review | question → method → results → limits → next plans |
+| Research or paper talk | paper talk, lab seminar, journal club, conference talk | paper → problem → method (the paper's figures and tables) → results → limits → discussion questions |
+| Class project presentation | class presentation, group project, final presentation | course and team → question → research → analysis → conclusion → references |
+| Investor deck | fundraising, IR deck, pitch deck, series A | problem → solution → market → model → traction → competition → team → financials → ask |
+| Results report | quarterly results, KPI, against target | key numbers → against target → trend (charts from the material's values) → causes → next plans |
+| Project retrospective | project results, completion report, retrospective, post-mortem | goals and period → outcome → against goals → went well, went badly → lessons → follow-ups |
+| Product or service pitch | product or solution introduction, sales deck, customer meeting | customer's problem → features and benefits → how it works → cases → how to start |
+| Proposal for approval | proposal, grant, business plan, budget request | situation → proposal → evidence → schedule and budget → request |
+| Policy or rule change briefing | policy or rule change, information session, effective date | what changes → before and after → who and from when → what to do → contact |
+| Training or onboarding | onboarding, internal training, workshop | goals → concepts → step by step → common mistakes → check questions |
+| Lecture | lecture, class slides, week n | topic → concepts with examples → summary → next session or assignment |
+| Options to recommendation | options review, recommendation, board report | recommendation → situation → options compared → criteria → risks → ask |
+| Meeting deck | meeting slides, agenda, briefing, status update | what to decide today → agenda → progress → blockers → owners and dates |
+
+- Each purpose has questions to ask before writing. A results report, for instance, asks for the period and the targets when the material lacks them, and leaves bracket blanks when there is no answer.
+- Results reports, research talks, project retrospectives and meeting decks are made from your material alone; they search the web only when the request asks for it ("search", "latest").
+- When two purposes match, the one higher in the table is taken, and the progress steps say 「구조: … 패턴」 with the other match. Web slides show the same line under their card.
+- With a PowerPoint form attached, the look follows the form and the flow follows the purpose.
+
 ## Setting the number of slides
 
 | Example input | What it does |

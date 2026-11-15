@@ -1,0 +1,58 @@
+# 수업 과제 발표: chosen from the request (`services/patterns.py`); never shown as a picker.
+order = 30
+name = "수업 과제 발표"
+name_en = "Class project presentation"
+words = '''과제\s{0,2}발표|조별\s{0,2}(?:과제|발표)|팀플|팀\s{0,2}과제|수업\s{0,2}(?:시간\s{0,2})?발표|(?:기말|중간)\s{0,2}(?:과제\s{0,2})?발표|발표\s{0,2}과제|(?<![A-Za-z])class presentation(?![A-Za-z])|(?<![A-Za-z])course project(?![A-Za-z])|(?<![A-Za-z])group project(?![A-Za-z])|(?<![A-Za-z])term project(?![A-Za-z])'''
+rules = """- The cover names the course, the team or presenter and the date, as given; a missing one is a bracket blank.
+- State the question the presentation answers right after the cover.
+- Every fact from outside the material carries its source; the last slide lists the references.
+- Write in the student's own plain voice; no business jargon.
+- About one slide per minute of the time given.
+"""
+checks = ["표지에 과목·조(발표자)가 있는가.", "다루는 질문이 앞쪽에 있는가.", "밖에서 가져온 사실에 출처가 붙고 참고 자료 장이 있는가.", "발표 시간에 맞는 장 수인가."]
+
+[[flow]]
+part = "표지(과목·조·이름)"
+slides = "1"
+layouts = ["title"]
+
+[[flow]]
+part = "주제와 질문"
+slides = "1"
+layouts = ["question", "statement"]
+
+[[flow]]
+part = "조사한 내용"
+slides = "2-4"
+layouts = ["bullets", "cards-3", "compare-2"]
+
+[[flow]]
+part = "분석·결과"
+slides = "1-3"
+layouts = ["chart", "table", "swot"]
+
+[[flow]]
+part = "결론과 느낀 점"
+slides = "1"
+layouts = ["takeaways"]
+
+[[flow]]
+part = "참고 자료"
+slides = "1"
+layouts = ["references"]
+
+[[questions]]
+id = "course_team"
+label = "과목·발표자"
+question = "과목 이름과 조(발표자) 이름을 알려 주세요."
+why = "표지에 들어갑니다."
+placeholder = "[과목명·조]"
+detector = { type = "regex", pattern = '''(?:과목|강좌|수업명|조\s{0,2}\d|\d\s{0,2}조|학번|발표자)''' }
+
+[[questions]]
+id = "talk_minutes"
+label = "발표 시간"
+question = "발표 시간은 몇 분인가요?"
+why = "장 수를 시간에 맞춥니다."
+placeholder = "[발표 시간]"
+detector = { type = "regex", pattern = '''\d{1,3}\s{0,2}분''' }
