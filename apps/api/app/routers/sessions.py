@@ -7205,6 +7205,9 @@ async def _send_message(
                 hop_bonus=_FORM_HOPS if form_turn else 0,
                 form_card=office_target.id if form_turn and office_target is not None else None,
                 canned_answer=hwp_refusal,
+                bare_deck=(session.kind is SessionKind.slides and office_target is not None
+                           and office_target.kind is ArtifactKind.pptx
+                           and (office_target.data or {}).get("slides", 2) <= 1),
                 preset_empty_answer=not_covered,
                 freshness_request=content if fresh_fact else None,
                 caveat_request=(
@@ -7768,6 +7771,8 @@ async def _answer_turn(
     form_card: str | None = None,
     #: the whole answer, no model call (`form_files.hwp_refusal`)
     canned_answer: str = "",
+    #: a slides turn whose deck is still only the blank cover when it starts
+    bare_deck: bool = False,
     #: whole answer when that material search finds nothing
     preset_empty_answer: str | None = None,
     freshness_request: str | None = None,
@@ -8137,6 +8142,12 @@ async def _answer_turn(
             yield chat_service.sse({"type": "retract", "text": content})
             content = said
             yield chat_service.sse({"type": "delta", "text": said})
+    if bare_deck and content.strip() and not failed and not office_claims.saved_by(ctx):
+        # a deck that is still only its cover: said plainly, not left to a promise to retry
+        said = ("\n\n(확인: 슬라이드가 하나도 쓰이지 않아 문서는 표지 한 장뿐입니다. "
+                "같은 요청을 다시 보내면 처음부터 다시 씁니다.)")
+        content += said
+        yield chat_service.sse({"type": "delta", "text": said})
     if consent is not None:
         if content.strip() and not failed and (note := consent.note(korean=not _english(
                 ctx.request))) and note.strip() not in content:
