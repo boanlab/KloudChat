@@ -47,7 +47,7 @@ export function sizeLine(
     case 'report':
       return t.n('{n}개 절', count('sections'))
     case 'deck':
-      return t.n('{n}장', count('slides'))
+      return t.n('{n}장', count('slides'), 'deck')
     case 'chart': {
       const table = data?.table as { rows?: unknown[] } | undefined
       return t('데이터 {n}행').replace('{n}', String(table?.rows?.length ?? 0))

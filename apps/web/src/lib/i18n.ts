@@ -5379,12 +5379,12 @@ const EN: Record<string, string> = {
 /** A translator whose `n(text, count)` also fills 「{n}」 and picks the English singular for one. */
 export interface Translator {
   (text: string): string
-  n: (text: string, count: number) => string
+  n: (text: string, count: number, context?: string) => string
 }
 
 export function translator(lang: () => Lang): Translator {
   const t = ((text: string) => translate(lang(), text)) as Translator
-  t.n = (text, count) => translateCount(lang(), text, count)
+  t.n = (text, count, context) => translateCount(lang(), text, count, context)
   return t
 }
 
@@ -5403,14 +5403,15 @@ function singular(word: string): string {
 }
 
 /** A counted phrase (「{n}회 사용」): the English noun after `{n}` is singular for one. Korean as is. */
-export function translateCount(lang: Lang, text: string, n: number): string {
-  let out = translate(lang, text)
+export function translateCount(lang: Lang, text: string, n: number, context?: string): string {
+  let out = context ? translateIn(lang, context, text) : translate(lang, text)
   if (lang !== 'ko' && n === 1) out = out.replace(/\{n\}(\s?)([A-Za-z]+)/, (_, sp: string, w: string) => `{n}${sp}${singular(w)}`)
   return out.replace('{n}', n.toLocaleString(lang === 'ko' ? 'ko-KR' : 'en-US'))
 }
 
 /** Context-dependent English, keyed `context|Korean` (hub 「탐색」 = explore, 「개요」 = overview). */
 const EN_IN: Record<string, string> = {
+  'deck|{n}장': '{n} slides',
   'hub|탐색': 'Explore',
   'hub|개요': 'Overview',
   'colour|직접 고르기': 'Pick a color',
