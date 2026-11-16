@@ -93,9 +93,10 @@ def test_each_kind_has_its_place() -> None:
         assert section_of(kind, {}) == "document"
 
 
-async def _gallery(db, section=None, q=None, sort="updated", dir="desc", cursor=None, limit=50):
+async def _gallery(db, section=None, q=None, sort="updated", dir="desc", cursor=None,
+                   limit=50, offset=0):
     return await ws.page_gallery(ME, db, section=section, q=q, sort=sort, dir=dir,
-                                 cursor=cursor, limit=limit)
+                                 cursor=cursor, limit=limit, offset=0)
 
 
 async def test_the_gallery_lists_pages_code_charts_and_diagrams_only(maker) -> None:
@@ -174,12 +175,12 @@ async def test_the_file_box_leaves_out_copies_of_artifacts(maker) -> None:
         await db.commit()
         page = await ws.page_files(ME, db, box=True, origin="generated", q=None,
                                    project_id=None, session_id=None, sort="created",
-                                   dir="desc", cursor=None, limit=50)
+                                   dir="desc", cursor=None, limit=50, offset=0)
         assert [row.id for row in page.items] == ["pic"]
         assert page.counts["generated"] == 1 and page.counts["upload"] == 1
         uploads = await ws.page_files(ME, db, box=True, origin="upload", q=None,
                                       project_id=None, session_id=None, sort="created",
-                                      dir="desc", cursor=None, limit=50)
+                                      dir="desc", cursor=None, limit=50, offset=0)
         assert [row.id for row in uploads.items] == ["up"]
         # the conversation's own file list still has the export
         listed = {row.id for row in await ws.list_files(ME, db)}
