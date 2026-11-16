@@ -63,7 +63,12 @@ _KINDS_FOR: dict[str, list[str]] = {
 _ACRONYMS = {"gpt", "ai", "llm", "xtts", "ltx", "tts", "stt", "hd", "sd", "vl", "glm"}
 
 #: label words with their own capitalization
-_BRAND_WORDS = {"deepseek": "DeepSeek", "openai": "OpenAI", "minimax": "MiniMax", "nvidia": "NVIDIA"}
+_BRAND_WORDS = {
+    "deepseek": "DeepSeek",
+    "openai": "OpenAI",
+    "minimax": "MiniMax",
+    "nvidia": "NVIDIA",
+}
 
 
 def _joined(vendor: str, name: str) -> str:
