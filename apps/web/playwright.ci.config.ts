@@ -169,6 +169,8 @@ const groups: Record<string, Group> = {
   // the web slides as the PowerPoint editor: header, toolbar, rail, notes, keys, saves, phone
   'deck-editor': { files: ['deck-editor.spec.ts'], projects: { desktop, phone: touchPhone } },
   search: { files: ['search-dialog.spec.ts'], projects: { desktop, phone: pixel } },
+  // numbered pages on the long lists: in memory (projects) and from the server (file box)
+  'list-paging': { files: ['list-paging.spec.ts'], projects: { desktop, phone: touchPhone } },
   publishing: { files: ['publishing.spec.ts'], projects: { desktop, phone: pixel } },
   ocr: { files: ['ocr.spec.ts'], projects: { desktop, phone: touchPhone } },
   video: { files: ['video-moments.spec.ts'], projects: { desktop, phone: touchPhone } },

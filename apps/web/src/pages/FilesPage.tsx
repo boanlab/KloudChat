@@ -11,7 +11,7 @@ import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import { Button, Card, ConfirmDialog, EmptyState, PageHeader, ReloadNotice } from '@/components/ui'
 import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
-import { LoadMore } from '@/components/ui/ShowMore'
+import { ListPager } from '@/components/ui/ListPager'
 import { downloadFile, errorMessage, filesApi, type FileRow } from '@/lib/api'
 import { ATTACH_ACCEPT, attachRefusal } from '@/lib/attachable'
 import { mediaPreflight } from '@/lib/media'
@@ -293,15 +293,7 @@ export function FilesPage() {
                   />
                 ))}
               </Card>
-              {box.hasMore && (
-                <LoadMore
-                  remaining={box.total - shown.length}
-                  loading={box.loadingMore}
-                  failed={box.moreFailed}
-                  failedText={t('다음 파일을 불러오지 못했습니다.')}
-                  onMore={() => void box.loadMore()}
-                />
-              )}
+              <ListPager paging={box.paging} total={box.total} label={t('파일 페이지')} />
             </>
           )}
         </div>

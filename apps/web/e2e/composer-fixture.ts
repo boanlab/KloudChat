@@ -246,7 +246,7 @@ export async function composerFixture(
       const q = (url.searchParams.get('q') ?? '').toLowerCase()
       const origin = url.searchParams.get('origin')
       const limit = Number(url.searchParams.get('limit') ?? 50)
-      const start = Number(url.searchParams.get('cursor') ?? 0)
+      const start = Number(url.searchParams.get('offset') ?? url.searchParams.get('cursor') ?? 0)
       const named = box.filter((row) => !row.agentId && (!q || String(row.name).toLowerCase().includes(q)))
       const originOf = (row: Record<string, unknown>) => (row.origin === 'generated' ? 'generated' : 'upload')
       const all = named.filter((row) => !origin || originOf(row) === origin)

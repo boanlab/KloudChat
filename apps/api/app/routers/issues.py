@@ -319,20 +319,21 @@ async def unread_issues(user: CurrentUser, db: DbSession):
 
 @router.get("/issues/page")
 async def page_issues(user: CurrentUser, db: DbSession, unread: bool = False,
-                      cursor: str | None = paging.Cursor, limit: int = paging.Limit):
+                      cursor: str | None = paging.Cursor, limit: int = paging.Limit,
+                      offset: int = paging.Offset):
     """`/issues` a page at a time, newest first; `unread`: only those `/issues/unread` counts.
     `unread` in the answer is that count."""
     conds = _unread_conds(user.id) if unread else [IssueReport.user_id == user.id]
     total = int((await db.exec(
         select(func.count()).select_from(IssueReport).where(*conds))).one())
-    if cursor:
+    if cursor and not offset:
         at, last_id = paging.decode(cursor, 2)
         conds = [*conds, tuple_(col(IssueReport.created_at), col(IssueReport.id))
                  < tuple_(paging.when(at), last_id)]
     rows = list((await db.exec(
         select(IssueReport).where(*conds)
         .order_by(col(IssueReport.created_at).desc(), col(IssueReport.id).desc())
-        .limit(limit + 1)
+        .limit(limit + 1).offset(offset)
     )).all())
     rows, after = paging.after(rows, limit, lambda r: (paging.stamp(r.created_at), r.id))
     counts = await _reply_counts(db, [r.id for r in rows])

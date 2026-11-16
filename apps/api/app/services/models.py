@@ -62,6 +62,22 @@ _KINDS_FOR: dict[str, list[str]] = {
 #: upper-case label tokens
 _ACRONYMS = {"gpt", "ai", "llm", "xtts", "ltx", "tts", "stt", "hd", "sd", "vl", "glm"}
 
+#: label words with their own capitalization
+_BRAND_WORDS = {
+    "deepseek": "DeepSeek",
+    "openai": "OpenAI",
+    "minimax": "MiniMax",
+    "nvidia": "NVIDIA",
+}
+
+
+def _joined(vendor: str, name: str) -> str:
+    """`Vendor · Name`, or just the name when it already starts with the vendor."""
+    if name.lower().startswith(vendor.lower()):
+        return name
+    return f"{vendor} · {name}"
+
+
 #: vendor names by id prefix; else title-cased slug
 _VENDORS = {
     "openai": "OpenAI",
@@ -173,7 +189,9 @@ def _label(model_id: str) -> str:
     for word in tail.replace("_", "-").split("-"):
         if not word:
             continue
-        if word.lower() in _ACRONYMS:
+        if word.lower() in _BRAND_WORDS:
+            out.append(_BRAND_WORDS[word.lower()])
+        elif word.lower() in _ACRONYMS:
             out.append(word.upper())
         elif any(ch.isdigit() for ch in word):
             # version-ish tokens keep shape (4.8, v2, 122b)
@@ -269,7 +287,7 @@ def _shape(entry: dict[str, Any]) -> dict[str, Any] | None:
     data_boundary, strict_local, privacy_only = _data_boundary(info)
     return {
         "id": model_id,
-        "label": f"{vendor} · {name}",
+        "label": _joined(vendor, name),
         "name": name,
         "vendor": vendor,
         "provider": provider,
@@ -320,7 +338,7 @@ def _adapter_entries() -> list[dict[str, Any]]:
     return [
         {
             "id": m["id"],
-            "label": f"{_vendor(m['id'], m['provider'])} · {m['label']}",
+            "label": _joined(_vendor(m["id"], m["provider"]), m["label"]),
             "name": m["label"],
             "vendor": _vendor(m["id"], m["provider"]),
             "provider": m["provider"],

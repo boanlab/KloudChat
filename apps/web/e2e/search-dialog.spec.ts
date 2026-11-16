@@ -231,7 +231,7 @@ test('50 compact rows a page; page and words live in the address', { tag: '@phon
   await expect(page.getByRole('heading', { level: 1, name: '대화 기록' })).toBeVisible({ timeout: 15_000 })
   await expect(page.locator('[data-history-total]')).toContainText('대화 120개')
   await expect(historyRows(page)).toHaveCount(50)
-  await expect(page.locator('[data-history-range]')).toHaveText('120개 중 1–50')
+  await expect(page.getByTestId('history-range')).toHaveText('120개 중 1–50')
   await expect(pager(page).getByRole('button', { name: '1쪽' })).toHaveAttribute('aria-current', 'page')
   // One line per conversation (the phone's larger type and touch target make it a little taller).
   const box = await historyRows(page).first().boundingBox()
@@ -240,10 +240,10 @@ test('50 compact rows a page; page and words live in the address', { tag: '@phon
 
   await pager(page).getByRole('button', { name: '2쪽' }).click()
   await expect(page).toHaveURL(/\/history\?page=2$/)
-  await expect(page.locator('[data-history-range]')).toHaveText('120개 중 51–100')
+  await expect(page.getByTestId('history-range')).toHaveText('120개 중 51–100')
   await expect(historyRows(page).first()).toContainText(pagedRows[50].title)
 
-  await pager(page).getByRole('button', { name: '마지막 페이지' }).click()
+  await pager(page).getByRole('button', { name: '3쪽' }).click()
   await expect(page).toHaveURL(/page=3$/)
   await expect(historyRows(page)).toHaveCount(20)
   await expect(pager(page).getByRole('button', { name: '다음 페이지' })).toBeDisabled()
@@ -253,8 +253,8 @@ test('50 compact rows a page; page and words live in the address', { tag: '@phon
   await expect(page.getByRole('button', { name: '선택 20개 삭제' })).toBeEnabled()
   await page.getByRole('button', { name: '선택 해제' }).click()
 
-  // The compact pager above the list, and the browser's back button.
-  await page.getByRole('navigation', { name: '페이지 이동(위)' }).getByRole('button', { name: '이전 페이지' }).click()
+  // 이전 and the browser's back button.
+  await pager(page).getByRole('button', { name: '이전 페이지' }).click()
   await expect(page).toHaveURL(/page=2$/)
   await page.goBack()
   await expect(page).toHaveURL(/page=3$/)
@@ -268,7 +268,7 @@ test('50 compact rows a page; page and words live in the address', { tag: '@phon
   // Words start again on page 1 and page through the search.
   await page.getByLabel('대화 검색').fill('예산')
   await expect(page).toHaveURL(/\/history\?q=%EC%98%88%EC%82%B0$/)
-  await expect(page.locator('[data-history-range]')).toHaveText('「예산」 검색 결과 60개 중 1–50')
+  await expect(page.getByTestId('history-range')).toHaveText('「예산」 검색 결과 60개 중 1–50')
   await expect(page.locator('[data-snippet] mark').first()).toHaveText('예산')
   await pager(page).getByRole('button', { name: '2쪽' }).click()
   await expect(page).toHaveURL(/q=%EC%98%88%EC%82%B0&page=2$/)

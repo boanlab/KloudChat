@@ -400,7 +400,7 @@ async def test_a_saved_form_is_kept_out_of_the_file_lists(db):
     assert source.id in listed and saved.id not in listed
     page = await ws.page_files(me, db, box=True, origin=None, q=None, project_id=None,
                                session_id=None, sort="created", dir="desc", cursor=None,
-                               limit=50)
+                               limit=50, offset=0)
     assert saved.id not in {row.id for row in page.items}
 
 

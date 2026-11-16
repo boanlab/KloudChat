@@ -303,12 +303,15 @@ function Intro({
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center px-4 pb-8">
       <div className="animate-fade-up mb-7 text-center">
-        <div
-          className="mx-auto mb-4 grid size-11 place-items-center rounded-panel text-white"
-          style={{ background: agent ? agent.color : meta.color }}
-        >
-          {agent ? <Bot size={20} /> : <Icon size={20} />}
-        </div>
+        {/* A plain chat opens like the home screen: heading only. */}
+        {(agent || kind !== 'chat') && (
+          <div
+            className="mx-auto mb-4 grid size-11 place-items-center rounded-panel text-white"
+            style={{ background: agent ? agent.color : meta.color }}
+          >
+            {agent ? <Bot size={20} /> : <Icon size={20} />}
+          </div>
+        )}
         <StartHeading
           title={
             agent
@@ -321,7 +324,7 @@ function Intro({
             agent
               ? agent.description || t('이 에이전트로 대화를 시작합니다.')
               : kind === 'chat'
-                ? t('무엇을 도와드릴까요?')
+                ? t('무엇을 만들까요?')
                 : t(meta.tagline)
           }
         />
@@ -618,14 +621,16 @@ export function SessionPage() {
     )
   }
 
+  // An unsent plain chat is the home screen's twin: same top bar word.
+  const plainStart = session.unsent && session.kind === 'chat' && !agent && !project && session.messages.length === 0
   return (
     <>
       <TopBar
         left={
           <div className="flex min-w-0 items-center gap-2">
-            <Icon size={14} className="shrink-0" style={{ color: meta.color }} />
+            {plainStart ? null : <Icon size={14} className="shrink-0" style={{ color: meta.color }} />}
             <span className="truncate text-base font-medium">
-              {session?.title ?? t('새 {kind}').replace('{kind}', t(meta.label))}
+              {plainStart ? t('홈') : (session?.title ?? t('새 {kind}').replace('{kind}', t(meta.label)))}
             </span>
             {project && (
               <Badge tone="accent" className="max-sm:hidden">

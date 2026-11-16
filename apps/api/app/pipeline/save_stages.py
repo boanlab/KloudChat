@@ -806,7 +806,7 @@ def _written_note(count: int, title_block: dict | None, *, english: bool = False
         name = "한글 문서" if office is ArtifactKind.hwp else "Word 문서"
         genre = genre or "보고서"
         return (f"{count}개 섹션의 {genre}{_particle(genre, '을', '를')} {name}로 "
-                "만들었습니다. 옆 편집기에서 바로 고치거나, 고칠 곳을 말해 주세요.")
+                "작성했습니다. 옆 편집기에서 바로 고치거나, 고칠 곳을 말해 주세요.")
     if not genre or genre == "보고서":
         return f"{count}개 섹션으로 보고서를 작성했습니다."
     return f"{count}개 절로 {genre} 작성을 마쳤습니다."

@@ -21,3 +21,12 @@ def test_the_same_weights_over_two_routes_are_two_different_rows() -> None:
 def test_a_vendor_prefix_is_not_a_route() -> None:
     assert _label("anthropic/claude-opus-4.8") == "Claude Opus 4.8"
     assert _label("openrouter/some-model:free") == "Some Model"
+
+
+def test_a_brand_keeps_its_own_capitalization_and_is_not_said_twice() -> None:
+    from app.services.models import _joined
+
+    name = _label("deepseek/deepseek-v4-flash")
+    assert name == "DeepSeek V4 Flash"
+    assert _joined("DeepSeek", name) == "DeepSeek V4 Flash"
+    assert _joined("Anthropic", "Claude Opus 4.8") == "Anthropic · Claude Opus 4.8"

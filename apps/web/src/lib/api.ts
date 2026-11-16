@@ -1675,6 +1675,7 @@ export const filesApi = {
     dir?: SortDir
     cursor?: string | null
     limit?: number
+    offset?: number
   }) =>
     call<CursorPage<FileRow> & { counts: { upload: number; generated: number; working?: number } }>(
       `/files/page${queryOf({
@@ -1686,6 +1687,7 @@ export const filesApi = {
         dir: params.dir && params.dir !== 'desc' ? params.dir : undefined,
         cursor: params.cursor,
         limit: params.limit,
+        offset: params.offset || undefined,
       })}`,
     ),
   list: (params?: { projectId?: string; sessionId?: string }) => {
@@ -2003,7 +2005,7 @@ export type GallerySort = 'updated' | 'title' | 'section' | 'version'
 export const galleryApi = {
   /** A page of the 아티팩트 page: HTML pages, code files, charts and diagrams; `counts` per
    *  section over the search, the section filter aside. A cursor belongs to its `sort`. */
-  page: (params: { section?: GallerySection | null; q?: string; sort?: GallerySort; dir?: SortDir; cursor?: string | null; limit?: number }) =>
+  page: (params: { section?: GallerySection | null; q?: string; sort?: GallerySort; dir?: SortDir; cursor?: string | null; limit?: number; offset?: number }) =>
     call<CursorPage<ArtifactRow> & { counts: Partial<Record<GallerySection, number>> }>(
       `/artifacts/gallery${queryOf({
         section: params.section ?? undefined,
@@ -2012,6 +2014,7 @@ export const galleryApi = {
         dir: params.dir && params.dir !== 'desc' ? params.dir : undefined,
         cursor: params.cursor,
         limit: params.limit,
+        offset: params.offset || undefined,
       })}`,
     ),
 }
@@ -2019,7 +2022,7 @@ export const galleryApi = {
 export const workingDocsApi = {
   /** A page of 「작업 문서」; `counts` per kind over the search, the kind filter aside. A cursor
    *  belongs to its `sort`. */
-  page: (params: { kind?: WorkingKind | null; q?: string; sort?: WorkingSort; dir?: SortDir; cursor?: string | null; limit?: number }) =>
+  page: (params: { kind?: WorkingKind | null; q?: string; sort?: WorkingSort; dir?: SortDir; cursor?: string | null; limit?: number; offset?: number }) =>
     call<CursorPage<WorkingDocRow> & { counts: Partial<Record<WorkingKind, number>> }>(
       `/artifacts/working${queryOf({
         kind: params.kind ?? undefined,
@@ -2028,6 +2031,7 @@ export const workingDocsApi = {
         dir: params.dir && params.dir !== 'desc' ? params.dir : undefined,
         cursor: params.cursor,
         limit: params.limit,
+        offset: params.offset || undefined,
       })}`,
     ),
   /** Its current version as a file: an office document as it is kept, a web report as
@@ -3244,9 +3248,9 @@ export const publicationsApi = {
     call<Publication>(`/publications/${id}/versions/${versionId}/activate`, { method: 'POST' }),
   stats: (id: string, days = 30) => call<PublicationStats>(`/publications/${id}/stats?days=${days}`),
   conversations: (id: string) => call<BotConversationRow[]>(`/publications/${id}/conversations`),
-  conversationsPage: (id: string, params: { cursor?: string | null; limit?: number }) =>
+  conversationsPage: (id: string, params: { cursor?: string | null; limit?: number; offset?: number }) =>
     call<CursorPage<BotConversationRow>>(
-      `/publications/${id}/conversations/page${queryOf({ cursor: params.cursor, limit: params.limit })}`,
+      `/publications/${id}/conversations/page${queryOf({ cursor: params.cursor, limit: params.limit, offset: params.offset || undefined })}`,
     ),
   conversation: (id: string, sessionId: string) =>
     call<BotConversationRow & { messages: BotTranscriptMessage[] }>(`/publications/${id}/conversations/${sessionId}`),
@@ -3338,13 +3342,14 @@ export const adminPublicationsApi = {
   conversationsPage: (
     id: string,
     reason: string,
-    params: { cursor?: string | null; limit?: number; dateFrom?: string; dateTo?: string },
+    params: { cursor?: string | null; limit?: number; offset?: number; dateFrom?: string; dateTo?: string },
   ) =>
     call<CursorPage<BotConversationRow>>(
       `/admin/publications/${id}/conversations/page${queryOf({
         reason,
         cursor: params.cursor,
         limit: params.limit,
+        offset: params.offset || undefined,
         date_from: params.dateFrom,
         date_to: params.dateTo,
       })}`,
@@ -3532,9 +3537,9 @@ export const issuesApi = {
   create: (payload: IssueCreate) => call<IssueRow>('/issues', body(payload)),
   list: () => call<IssueRow[]>('/issues'),
   /** My reports a page at a time; `unread` keeps those with admin activity I have not seen. */
-  page: (params: { cursor?: string | null; limit?: number; unread?: boolean }) =>
+  page: (params: { cursor?: string | null; limit?: number; offset?: number; unread?: boolean }) =>
     call<CursorPage<IssueRow> & { unread: number }>(
-      `/issues/page${queryOf({ cursor: params.cursor, limit: params.limit, unread: params.unread ? 'true' : undefined })}`,
+      `/issues/page${queryOf({ cursor: params.cursor, limit: params.limit, offset: params.offset || undefined, unread: params.unread ? 'true' : undefined })}`,
     ),
   unread: () => call<{ count: number }>('/issues/unread'),
   get: (id: string) => call<IssueDetail>(`/issues/${id}`),

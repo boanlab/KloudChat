@@ -597,6 +597,7 @@ async def page_files(
     dir: Direction = "desc",
     cursor: str | None = paging.Cursor,
     limit: int = paging.Limit,
+    offset: int = paging.Offset,
 ):
     """`/files` a page at a time, newest first unless `sort` (a column) and `dir` say
     otherwise, ties broken by id; `box` leaves agents' knowledge out (the file
@@ -634,11 +635,12 @@ async def page_files(
     total = int((await db.exec(select(func.count()).select_from(StoredFile).where(*conds))).one())
     column, how = _FILE_SORT[sort]
     tag = f"{sort}.{dir}"
-    order, past = _keyset(col(column), col(StoredFile.id), how, dir, tag, cursor)
+    order, past = _keyset(
+        col(column), col(StoredFile.id), how, dir, tag, None if offset else cursor)
     if past is not None:
         conds.append(past)
     rows = list((await db.exec(
-        select(StoredFile).where(and_(*conds)).order_by(*order).limit(limit + 1)
+        select(StoredFile).where(and_(*conds)).order_by(*order).limit(limit + 1).offset(offset)
     )).all())
     rows, after = paging.after(
         rows, limit, lambda f: _cursor_of(how, tag, getattr(f, column.key), f.id))
@@ -1161,6 +1163,7 @@ async def page_gallery(
     dir: Direction = "desc",
     cursor: str | None = paging.Cursor,
     limit: int = paging.Limit,
+    offset: int = paging.Offset,
 ):
     """The 아티팩트 page a page at a time: HTML pages, code files, charts and diagrams
     (`section`, one or a comma list), newest edit first by default; `q` matches the title,
@@ -1182,11 +1185,11 @@ async def page_gallery(
     total = int((await db.exec(select(func.count()).select_from(Artifact).where(*conds))).one())
     column, how = _GALLERY_SORT[sort]
     tag = f"{sort}.{dir}"
-    order, past = _keyset(col(column), col(Artifact.id), how, dir, tag, cursor)
+    order, past = _keyset(col(column), col(Artifact.id), how, dir, tag, None if offset else cursor)
     if past is not None:
         conds.append(past)
     rows = list((await db.exec(
-        select(Artifact).where(and_(*conds)).order_by(*order).limit(limit + 1)
+        select(Artifact).where(and_(*conds)).order_by(*order).limit(limit + 1).offset(offset)
     )).all())
     rows, after = paging.after(
         rows, limit, lambda a: _cursor_of(how, tag, getattr(a, column.key), a.id))
@@ -1204,6 +1207,7 @@ async def page_working_documents(
     dir: Direction = "desc",
     cursor: str | None = paging.Cursor,
     limit: int = paging.Limit,
+    offset: int = paging.Offset,
 ):
     """The person's working documents a page at a time: one row per document (its versions
     counted, not listed), newest edit first by default. `kind` is one kind or a comma list,
@@ -1223,11 +1227,11 @@ async def page_working_documents(
     total = int((await db.exec(select(func.count()).select_from(Artifact).where(*conds))).one())
     column, how = _WORKING_SORT[sort]
     tag = f"{sort}.{dir}"
-    order, past = _keyset(col(column), col(Artifact.id), how, dir, tag, cursor)
+    order, past = _keyset(col(column), col(Artifact.id), how, dir, tag, None if offset else cursor)
     if past is not None:
         conds.append(past)
     rows = list((await db.exec(
-        select(Artifact).where(and_(*conds)).order_by(*order).limit(limit + 1)
+        select(Artifact).where(and_(*conds)).order_by(*order).limit(limit + 1).offset(offset)
     )).all())
     rows, after = paging.after(
         rows, limit, lambda a: _cursor_of(how, tag, getattr(a, column.key), a.id))

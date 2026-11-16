@@ -221,7 +221,9 @@ test('@phone a project conversation row reads its latest message, not 「내용 
   const state = await fixture(page, info)
   await page.goto(`/projects/${projectId}`)
   const list = page.getByText('컨테이너와 Docker 정리').locator('xpath=ancestor::*[contains(@class,"cursor-pointer")][1]')
-  await expect(list).toContainText('Docker 이미지는 계층으로 쌓입니다. 컨테이너는 그 위에 쓰기 계층을 더합니다.', { timeout: 15_000 })
+  // one sentence, the first
+  await expect(list).toContainText('Docker 이미지는 계층으로 쌓입니다.', { timeout: 15_000 })
+  await expect(list).not.toContainText('쓰기 계층을 더합니다')
   await expect(list).not.toContainText('###')
   await expect(list).not.toContainText('[1]')
   const made = page.getByText('클라우드 컴퓨팅 강의 노트 마인드맵').locator('xpath=ancestor::*[contains(@class,"cursor-pointer")][1]')

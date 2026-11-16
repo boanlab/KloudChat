@@ -1,3 +1,5 @@
+import { ListPager } from '@/components/ui/ListPager'
+import { pageOf, usePaging } from '@/lib/usePaging'
 import { BookPlus, Download, MessageSquareQuote, NotebookPen, Pencil, Plus, TextSelect, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Markdown } from '@/components/chat/Markdown'
@@ -146,6 +148,7 @@ export function NotesTab({ projectId }: { projectId: string }) {
   const [draft, setDraft] = useState<Draft | null>(null)
   const [removing, setRemoving] = useState<Note | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const notesPaging = usePaging(notes?.length ?? 0, [projectId])
 
   const load = useCallback(
     () => shelfApi.notes(projectId).then(setNotes).catch((err) => setError(errorMessage(err, t('메모를 불러오지 못했습니다.')))),
@@ -188,7 +191,7 @@ export function NotesTab({ projectId }: { projectId: string }) {
           description={t('대화의 답변 아래 메모 단추를 누르거나, 답변의 글을 골라 「메모함에 저장」을 누르세요.')}
         />
       )}
-      {(notes ?? []).map((note) => {
+      {pageOf(notes ?? [], notesPaging).map((note) => {
         const origin = ORIGINS[note.origin]
         const Icon = origin.icon
         return (
@@ -222,6 +225,7 @@ export function NotesTab({ projectId }: { projectId: string }) {
           </Card>
         )
       })}
+      <ListPager paging={notesPaging} total={notes?.length ?? 0} label={t('메모 페이지')} />
       {draft && (
         <NoteEditor
           projectId={projectId}

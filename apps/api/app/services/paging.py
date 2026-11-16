@@ -15,6 +15,8 @@ PAGE_MAX = 200
 #: shared query params
 Limit = Query(PAGE, ge=1, le=PAGE_MAX)
 Cursor = Query(None, max_length=300)
+#: numbered pages: rows to skip; given, it stands in for `cursor`
+Offset = Query(0, ge=0, le=100_000)
 
 
 def _bad() -> HTTPException:

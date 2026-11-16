@@ -5,7 +5,9 @@ import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import { Markdown } from '@/components/chat/Markdown'
 import { Badge, Button, Card, EmptyState, Field, Input, LoadingState, Modal, PageHeader, ReloadNotice, Tabs, Textarea } from '@/components/ui'
-import { LoadMore } from '@/components/ui/ShowMore'
+import { ListPager } from '@/components/ui/ListPager'
+import { pageOf, usePaging } from '@/lib/usePaging'
+import { useServerPages } from '@/lib/useServerPages'
 import {
   adminPublicationsApi,
   ApiError,
@@ -118,7 +120,9 @@ function PublicationList() {
   const [rows, setRows] = useState<AdminPublication[] | null>(null)
   const [failed, setFailed] = useState(false)
   const [query, setQuery] = useState('')
-  const shown = rows?.filter((row) => matchesQuery(query, row.title, row.ownerName, row.ownerEmail)) ?? null
+  const matching = rows?.filter((row) => matchesQuery(query, row.title, row.ownerName, row.ownerEmail)) ?? null
+  const paging = usePaging(matching?.length ?? 0, [view, query])
+  const shown = matching ? pageOf(matching, paging) : null
 
   const load = useCallback(() => {
     adminPublicationsApi.list(view === 'pending').then(
@@ -155,7 +159,7 @@ function PublicationList() {
           <ListSkeleton />
         ) : rows && rows.length === 0 ? (
           <EmptyState icon={<Bot size={18} />} title={view === 'pending' ? t('승인을 기다리는 요청이 없습니다') : t('공개된 챗봇이 없습니다')} />
-        ) : shown && shown.length === 0 ? (
+        ) : matching && matching.length === 0 ? (
           <NoMatch />
         ) : (
           <ul className="divide-y divide-line rounded-card border border-line bg-panel" data-testid="admin-publications">
@@ -191,6 +195,7 @@ function PublicationList() {
             ))}
           </ul>
         )}
+        <ListPager paging={paging} total={matching?.length ?? 0} label={t('챗봇 페이지')} />
       </PageBody>
     </>
   )
@@ -521,55 +526,39 @@ function ConversationsCard({ id }: { id: string }) {
   const t = useT()
   const [asking, setAsking] = useState(false)
   const [reason, setReason] = useState('')
-  const [given, setGiven] = useState('')
-  const [rows, setRows] = useState<BotConversationRow[] | null>(null)
-  const [total, setTotal] = useState(0)
-  const [next, setNext] = useState<string | null>(null)
-  const [loadingMore, setLoadingMore] = useState(false)
-  const [moreFailed, setMoreFailed] = useState(false)
+  const [given, setGiven] = useState<string | null>(null)
   // Old conversations by date: inclusive days, the bot's own record kept whole.
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  // The dates take effect on 날짜로 찾기, not per keystroke.
+  const [range, setRange] = useState({ dateFrom: '', dateTo: '' })
   const [open, setOpen] = useState<(BotConversationRow & { messages: BotTranscriptMessage[] }) | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // A page at a time; every page read is audited with the reason given.
+  const list = useServerPages<BotConversationRow>({
+    enabled: given !== null,
+    keys: [id, given, range.dateFrom, range.dateTo],
+    fetch: async (offset, limit) => {
+      const page = await adminPublicationsApi.conversationsPage(id, given ?? '', { limit, offset, ...range })
+      return { items: page.items, total: page.total }
+    },
+  })
+  const rows = given === null || list.loading ? null : list.rows
+  const total = list.total
 
-  const firstPage = async (why: string) => {
+  const firstPage = (why: string) => {
     setError(null)
-    try {
-      const page = await adminPublicationsApi.conversationsPage(id, why, { limit: 50, dateFrom, dateTo })
-      setRows(page.items)
-      setTotal(page.total)
-      setNext(page.next)
-      setMoreFailed(false)
-      setGiven(why)
-      setAsking(false)
-    } catch (err) {
-      setError(errorMessage(err, t('대화를 열지 못했습니다.')))
-    }
+    setGiven(why)
+    setRange({ dateFrom, dateTo })
+    setAsking(false)
   }
   const start = () => firstPage(reason.trim())
-
-  const loadMore = async () => {
-    if (!next || loadingMore) return
-    setLoadingMore(true)
-    setMoreFailed(false)
-    try {
-      const page = await adminPublicationsApi.conversationsPage(id, given, { limit: 50, cursor: next, dateFrom, dateTo })
-      setRows((held) => [...(held ?? []), ...page.items.filter((row) => !held?.some((h) => h.id === row.id))])
-      setTotal(page.total)
-      setNext(page.next)
-    } catch {
-      setMoreFailed(true)
-    } finally {
-      setLoadingMore(false)
-    }
-  }
 
   return (
     <Card className="space-y-3 p-4" data-testid="admin-conversations">
       <div className="flex flex-wrap items-center gap-2">
         <p className="min-w-0 flex-1 max-sm:basis-32 text-sm text-faint">{t('대화 열람')}</p>
-        {rows === null && (
+        {given === null && (
           <Button size="sm" onClick={() => setAsking(true)} data-testid="admin-conversations-open">
             <Eye size={13} />
             {t('대화 열람')}
@@ -584,7 +573,7 @@ function ConversationsCard({ id }: { id: string }) {
           className="flex flex-wrap items-end gap-2"
           onSubmit={(event) => {
             event.preventDefault()
-            void firstPage(given)
+            firstPage(given ?? '')
           }}
         >
           <Field label={t('시작일')}>
@@ -606,6 +595,7 @@ function ConversationsCard({ id }: { id: string }) {
           <p className="text-sm text-faint">{t('대화가 없습니다.')}</p>
         ) : (
           <div className="grid gap-3 xl:grid-cols-[minmax(0,14rem)_minmax(0,1fr)]">
+            <div className="min-w-0">
             <ul className="space-y-1" data-testid="admin-conversation-list">
               {rows.map((row) => (
                 <li key={row.id}>
@@ -613,7 +603,7 @@ function ConversationsCard({ id }: { id: string }) {
                     type="button"
                     onClick={() =>
                       void adminPublicationsApi
-                        .conversation(id, row.id, given)
+                        .conversation(id, row.id, given ?? '')
                         .then(setOpen, (err) => setError(errorMessage(err, t('대화를 열지 못했습니다.'))))
                     }
                     className={
@@ -629,18 +619,9 @@ function ConversationsCard({ id }: { id: string }) {
                   </button>
                 </li>
               ))}
-              {next && (
-                <li>
-                  <LoadMore
-                    remaining={total - rows.length}
-                    loading={loadingMore}
-                    failed={moreFailed}
-                    failedText={t('다음 대화를 불러오지 못했습니다.')}
-                    onMore={() => void loadMore()}
-                  />
-                </li>
-              )}
             </ul>
+            <ListPager paging={list.paging} total={total} label={t('대화 페이지')} />
+            </div>
             <div className="min-w-0 space-y-3" data-testid="admin-conversation-transcript">
               {open ? (
                 open.messages.map((m) => (
@@ -655,9 +636,9 @@ function ConversationsCard({ id }: { id: string }) {
             </div>
           </div>
         ))}
-      {error && (
+      {(error || list.failed) && (
         <p role="alert" className="text-sm text-danger">
-          {error}
+          {error ?? t('대화를 열지 못했습니다.')}
         </p>
       )}
       <Modal

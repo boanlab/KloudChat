@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, MessageSquare, Plus, Search, Trash2, TriangleAlert } from 'lucide-react'
+import { MessageSquare, Plus, Search, Trash2, TriangleAlert } from 'lucide-react'
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -22,6 +22,7 @@ import { useT } from '@/lib/useT'
 import type { SessionKind } from '@/types'
 import { RelTime } from '@/components/ui/RelTime'
 import { ListSkeleton } from '@/components/ui/Skeleton'
+import { Pager } from '@/components/ui/Pager'
 
 /** Server pages list and search alike. */
 const PAGE_SIZE = 50
@@ -39,77 +40,6 @@ interface Listing {
   rows: Row[]
   total: number
   page: number
-}
-
-/** Gaps as null: 1 … 4 5 6 … 12. */
-function pageWindow(page: number, pages: number): (number | null)[] {
-  const keep = new Set([1, pages, page - 1, page, page + 1].filter((p) => p >= 1 && p <= pages))
-  const out: (number | null)[] = []
-  let last = 0
-  for (const p of [...keep].sort((a, b) => a - b)) {
-    if (p - last > 1) out.push(null)
-    out.push(p)
-    last = p
-  }
-  return out
-}
-
-/** `compact`: one-line version above the list. */
-function Pager({
-  page,
-  pages,
-  onPage,
-  compact = false,
-}: {
-  page: number
-  pages: number
-  onPage: (page: number) => void
-  compact?: boolean
-}) {
-  const t = useT()
-  if (pages <= 1) return null
-  const edge = (label: string, to: number, icon: React.ReactNode, disabled: boolean, text?: string) => (
-    <Button size="sm" variant="ghost" disabled={disabled} onClick={() => onPage(to)} aria-label={t(label)} title={t(label)}>
-      {icon}
-      {text && <span className="hidden sm:inline">{t(text)}</span>}
-    </Button>
-  )
-  if (compact) {
-    return (
-      <nav aria-label={t('페이지 이동(위)')} className="flex items-center gap-1 text-sm text-muted">
-        {edge('이전 페이지', page - 1, <ChevronLeft size={14} />, page <= 1)}
-        <span className="tabular-nums">
-          {t('{page} / {pages}쪽').replace('{page}', String(page)).replace('{pages}', String(pages))}
-        </span>
-        {edge('다음 페이지', page + 1, <ChevronRight size={14} />, page >= pages)}
-      </nav>
-    )
-  }
-  return (
-    <nav aria-label={t('페이지 이동')} className="mt-4 flex flex-wrap items-center justify-center gap-1">
-      {edge('첫 페이지', 1, <ChevronsLeft size={14} />, page <= 1, '처음')}
-      {edge('이전 페이지', page - 1, <ChevronLeft size={14} />, page <= 1)}
-      {pageWindow(page, pages).map((p, i) =>
-        p === null ? (
-          <span key={`gap-${i}`} className="px-1 text-faint">…</span>
-        ) : (
-          <Button
-            key={p}
-            size="sm"
-            variant={p === page ? 'primary' : 'ghost'}
-            aria-current={p === page ? 'page' : undefined}
-            aria-label={t('{n}쪽').replace('{n}', String(p))}
-            onClick={() => onPage(p)}
-            className="min-w-8 tabular-nums"
-          >
-            {p}
-          </Button>
-        ),
-      )}
-      {edge('다음 페이지', page + 1, <ChevronRight size={14} />, page >= pages)}
-      {edge('마지막 페이지', pages, <ChevronsRight size={14} />, page >= pages, '마지막')}
-    </nav>
-  )
 }
 
 /** Search reads titles and messages. */
@@ -210,7 +140,6 @@ export function HistoryPage() {
 
   const rows = listing?.rows ?? []
   const total = listing?.total ?? 0
-  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const allPagePicked = rows.length > 0 && rows.every((s) => picked.has(s.id))
 
   const toggle = (id: string) =>
@@ -324,19 +253,6 @@ export function HistoryPage() {
 
       {failed && <ReloadNotice onRetry={() => setReload((n) => n + 1)} />}
 
-      {listing && total > 0 && (
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm text-faint tabular-nums" data-history-range="">
-            {(urlQuery ? t('「{q}」 검색 결과 {n}개 중 {from}–{to}') : t('{n}개 중 {from}–{to}'))
-              .replace('{q}', urlQuery)
-              .replace('{n}', total.toLocaleString())
-              .replace('{from}', String((listing.page - 1) * PAGE_SIZE + 1))
-              .replace('{to}', String((listing.page - 1) * PAGE_SIZE + rows.length))}
-          </p>
-          <Pager compact page={listing.page} pages={pages} onPage={onPage} />
-        </div>
-      )}
-
       <div className={cn('mt-2', loading && listing && 'opacity-60')} aria-busy={loading}>
         {loading && !listing ? (
           <ListSkeleton />
@@ -411,7 +327,18 @@ export function HistoryPage() {
         )}
       </div>
 
-      {listing && <Pager page={listing.page} pages={pages} onPage={onPage} />}
+      {listing && total > 0 && (
+        <Pager
+          page={listing.page}
+          size={PAGE_SIZE}
+          total={total}
+          onPage={onPage}
+          label={t('페이지 이동')}
+          rangeTestId="history-range"
+          rangeFormat={urlQuery ? t('「{q}」 검색 결과 {n}개 중 {first}–{last}').replace('{q}', urlQuery).replace('{n}', total.toLocaleString()) : t('{n}개 중 {first}–{last}').replace('{n}', total.toLocaleString())}
+          className="mt-4"
+        />
+      )}
 
       <ConfirmDialog
         open={confirmPicked}

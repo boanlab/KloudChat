@@ -1,3 +1,5 @@
+import { ListPager } from '@/components/ui/ListPager'
+import { pageOf, usePaging } from '@/lib/usePaging'
 import {
   ArrowRight,
   ArrowUpDown,
@@ -448,6 +450,9 @@ function Hub() {
     () => sortItems(filterItems(view === 'mine' ? hub.mine : hub.explore, filter, t), sort),
     [view, hub.mine, hub.explore, filter, sort, t],
   )
+  // Card grids page too: a library of dozens of agents or skills is not one long scroll.
+  const paging = usePaging(filtered.length, [view, tab, filter, sort], 24)
+  const pageItems = pageOf(filtered, paging)
   const deletable = view === 'mine' && (tab === 'agents' || tab === 'skills') ? filtered.filter((i) => i.deletable) : []
   const pick = useBulkSelect(deletable)
 
@@ -555,7 +560,10 @@ function Hub() {
             />
           )
         ) : (
-          <Grid>{filtered.map((item) => card(item, 'mine'))}</Grid>
+          <>
+            <Grid>{pageItems.map((item) => card(item, 'mine'))}</Grid>
+            <ListPager paging={paging} total={filtered.length} label={t('목록 페이지')} />
+          </>
         )}
         {tab === 'agents' && <OldTemplates />}
         {tab === 'agents' && (
@@ -594,7 +602,7 @@ function Hub() {
       )
     }
     if (anyFilter || all) {
-      const rows = filtered
+      const rows = pageItems
       return (
         <div className="space-y-4">
           {toggleRow}
@@ -603,10 +611,13 @@ function Hub() {
               ← {t('탐색으로 돌아가기')}
             </button>
           )}
-          {rows.length === 0 ? (
+          {filtered.length === 0 ? (
             <EmptyState icon={<Search size={18} />} title={t('조건에 맞는 항목이 없습니다')} />
           ) : (
-            <Grid>{rows.map((item) => card(item, 'explore'))}</Grid>
+            <>
+              <Grid>{rows.map((item) => card(item, 'explore'))}</Grid>
+              <ListPager paging={paging} total={filtered.length} label={t('목록 페이지')} />
+            </>
           )}
         </div>
       )
@@ -616,7 +627,8 @@ function Hub() {
       return (
         <section aria-label={t('공유된 에이전트')} data-testid="shared-agents">
           <SectionHead title={t('공유된 에이전트')} />
-          <Grid>{sortItems(hub.explore, sort).map((item) => card(item, 'explore'))}</Grid>
+          <Grid>{pageOf(sortItems(hub.explore, sort), paging).map((item) => card(item, 'explore'))}</Grid>
+          <ListPager paging={paging} total={filtered.length} label={t('목록 페이지')} />
         </section>
       )
     }

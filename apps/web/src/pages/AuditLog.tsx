@@ -300,11 +300,11 @@ export function AuditLog({ onTotal, account: initialAccount = '' }: {
           {/* Wide: one line per event; the whole row opens its details. */}
           <table className="hidden w-full table-fixed text-base lg:table">
             <colgroup>
-              <col className="w-[11.5rem]" />
-              <col className="w-[18%]" />
+              <col className="w-[15.5rem]" />
+              <col className="w-[21%]" />
               <col />
-              <col className="w-[18%]" />
-              <col className="w-[15rem]" />
+              <col className="w-[19%]" />
+              <col className="w-[12rem]" />
             </colgroup>
             <thead className="sticky top-0 z-[1] border-b border-line bg-panel text-left text-xs tracking-wide text-faint uppercase">
               <tr>
@@ -322,7 +322,7 @@ export function AuditLog({ onTotal, account: initialAccount = '' }: {
                   {...rowProps(e)}
                   className="cursor-pointer whitespace-nowrap hover:bg-elevated focus-visible:bg-elevated focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
                 >
-                  <td className="truncate px-4 py-2 tabular-nums text-muted">{formatDateTime(e.at)}</td>
+                  <td className="px-4 py-2 tabular-nums text-muted">{formatDateTime(e.at)}</td>
                   <td className="truncate px-4 py-2" title={e.actor}>
                     {t(e.actor)}
                   </td>
@@ -330,7 +330,7 @@ export function AuditLog({ onTotal, account: initialAccount = '' }: {
                     <ActionCell row={e} modelName={modelName} />
                   </td>
                   <td className="truncate px-4 py-2 text-muted">
-                    <Target row={e} />
+                    <Target row={e} modelName={modelName} />
                   </td>
                   <td className="truncate px-4 py-2 text-xs text-faint">
                     <Where row={e} />
@@ -348,17 +348,15 @@ export function AuditLog({ onTotal, account: initialAccount = '' }: {
                 {...rowProps(e)}
                 className="cursor-pointer space-y-1 px-4 py-2.5 hover:bg-elevated focus-visible:bg-elevated focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
               >
-                <div className="flex items-baseline justify-between gap-x-3">
-                  <span className="shrink-0 text-sm tabular-nums text-muted">{formatDateTime(e.at)}</span>
-                  <span className="min-w-0 truncate text-sm" title={e.actor}>
-                    {t(e.actor)}
-                  </span>
-                </div>
+                <div className="text-sm tabular-nums text-muted">{formatDateTime(e.at)}</div>
                 <ActionCell row={e} modelName={modelName} />
+                <p className="min-w-0 truncate text-sm" title={e.actor}>
+                  {t(e.actor)}
+                </p>
                 <p className="flex min-w-0 gap-x-2 text-xs text-faint">
-                  {targetParts(e).length > 0 && (
+                  {targetParts(e, modelName).length > 0 && (
                     <span className="min-w-0 truncate text-muted">
-                      <Target row={e} />
+                      <Target row={e} modelName={modelName} />
                     </span>
                   )}
                   <span className="min-w-0 truncate">
@@ -413,7 +411,7 @@ export function AuditLog({ onTotal, account: initialAccount = '' }: {
 function ActionCell({ row, modelName }: { row: AuditRow; modelName: (id: string) => string }) {
   const t = useT()
   const fields = changedFields(row)
-  const words = detailWords(row, t)
+  const words = row.action.startsWith('routing.') ? '' : detailWords(row, t)
   const shown = fields.slice(0, 3)
   const only = fields.length === 1 ? row.metadata?.changes?.[fields[0]] : undefined
   const summary =
@@ -441,9 +439,9 @@ function ActionCell({ row, modelName }: { row: AuditRow; modelName: (id: string)
   )
 }
 
-function Target({ row }: { row: AuditRow }) {
+function Target({ row, modelName }: { row: AuditRow; modelName: (id: string) => string }) {
   const t = useT()
-  return <>{targetParts(row).map((part) => t(part)).join(' · ') || '—'}</>
+  return <>{targetParts(row, modelName).map((part) => t(part)).join(' · ') || '—'}</>
 }
 
 /** IP · region · browser on one line, so a cell can cut it short. */
@@ -486,8 +484,9 @@ function Details({ row, modelName }: { row: AuditRow; modelName: (id: string) =>
           </span>,
         )}
         {item('행위', <Badge tone={SEVERITY[row.severity] ?? 'neutral'}>{t(actionLabel(row))}</Badge>)}
-        {item('대상', <Target row={row} />)}
+        {item('대상', <Target row={row} modelName={modelName} />)}
         {item('내용', words || '—')}
+        {row.action.startsWith('routing.') && row.target && item('대화 ID', <span className="font-mono text-xs break-all text-muted">{row.target}</span>)}
         {item(
           '접속 위치',
           <span className="inline-flex items-center gap-1">

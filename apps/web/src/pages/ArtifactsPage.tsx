@@ -21,7 +21,7 @@ import {
 } from '@/components/ui'
 import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
 import { RelTime } from '@/components/ui/RelTime'
-import { LoadMore } from '@/components/ui/ShowMore'
+import { ListPager } from '@/components/ui/ListPager'
 import { ListSkeleton } from '@/components/ui/Skeleton'
 import { artifactsApi, errorMessage, type GallerySection, type GallerySort } from '@/lib/api'
 import { reusable } from '@/lib/reuse'
@@ -201,7 +201,7 @@ export function ArtifactsPage() {
             <EmptyState
               icon={<Layers size={18} />}
               title={filtered ? t('찾는 아티팩트가 없습니다') : t('아직 아티팩트가 없습니다')}
-              description={filtered ? t('다른 제목이나 종류로 찾아보세요.') : t('대화에서 만든 HTML·코드·차트·도식이 여기 모입니다.')}
+              description={filtered ? t('다른 제목이나 종류로 찾아보세요.') : t('대화에서 웹 페이지나 차트를 만들어 달라고 하면 여기에 모입니다.')}
               action={
                 filtered ? undefined : (
                   <Button variant="primary" onClick={() => navigate('/')}>
@@ -327,15 +327,7 @@ export function ArtifactsPage() {
                   )
                 })}
               </Card>
-              {gallery.hasMore && (
-                <LoadMore
-                  remaining={gallery.total - shown.length}
-                  loading={gallery.loadingMore}
-                  failed={gallery.moreFailed}
-                  failedText={t('다음 아티팩트를 불러오지 못했습니다.')}
-                  onMore={() => void gallery.loadMore()}
-                />
-              )}
+              <ListPager paging={gallery.paging} total={gallery.total} label={t('아티팩트 페이지')} />
             </>
           )}
         </div>

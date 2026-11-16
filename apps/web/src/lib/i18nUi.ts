@@ -27,6 +27,7 @@ export const EN_UI: Record<string, string> = {
   '{what} 복사됨': '{what} copied',
   '복사하지 못했습니다': 'Could not copy',
   '기록 ID': 'Record ID',
+  '대화 ID': 'Conversation ID',
   '챗봇 주소': 'Chatbot address',
   '챗봇 검색': 'Search chatbots',
   // strict-local priority list
