@@ -33,6 +33,7 @@ from app.services import (
 from app.services import bundles as bundle_service
 from app.services import chat as chat_service
 from app.services import models as model_service
+from app.services import push as push_service
 
 log = logging.getLogger(__name__)
 
@@ -739,6 +740,9 @@ async def submit_shared_process(db: DbSession, user: User, agent: Agent) -> None
                        edges=edges_of(row))).ok:
         row.review, row.review_note, row.updated_at = "pending", "", utcnow()
         db.add(row)
+        await push_service.notify_admins(db, push_service.Notice(
+            event="review", title="공유 에이전트 승인 요청이 왔습니다", label=agent.name,
+            url="/customize?tab=agents", tag=f"review:{row.id}"), but=user.id)
 
 
 async def clone_process(db: DbSession, origin: Agent, copy: Agent, user: User) -> None:
@@ -955,6 +959,11 @@ async def _reviewed(db: DbSession, admin: User, pipeline_id: str, *, approve: bo
         user_agent=request.headers.get("User-Agent", "")[:400] if request else ""))
     await db.commit()
     await db.refresh(row)
+    push_service.notify(row.owner_id, push_service.Notice(
+        event="decided",
+        title="공유 에이전트가 승인됐습니다" if approve else "공유 에이전트 요청이 반려됐습니다",
+        label=row.name, url=f"/customize/agents/{row.agent_id}" if row.agent_id else "/customize",
+        tag=f"decided:{row.id}"))
     return _out(row, {})
 
 
@@ -1185,6 +1194,11 @@ async def compose_pass(work: Bundle, steps: list[dict], agents: dict[str, compos
         elif not saved.get("messageId"):
             yield _sse(sessions._error_event("진행 과정이 문서나 답을 남기지 못했습니다.",
                                              code="empty_pipeline"))
+        if sessions._run_status(work.steps) not in ("stopped", "cancelled"):
+            await push_service.notify_session_job(
+                session_id, "chain",
+                ok=bool(saved.get("artifactId") or saved.get("messageId")),
+            )
         # all counters incl. planner/reviewer (`web/src/lib/usage.ts` sums them)
         yield _sse({"type": "usage", **compose.usage_counts(work.usage),
                     "credits": int(saved.get("credits") or 0)})

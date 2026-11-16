@@ -713,6 +713,24 @@ export interface MyUsage {
   }[]
 }
 
+export interface PushDevice {
+  id: string
+  device: string
+  createdAt: string
+  lastSentAt: string | null
+}
+
+/** Web push: this account's devices; subscribe and leave are called from the page (the token lives here). */
+export const pushApi = {
+  config: () => call<{ publicKey: string; events: Record<string, boolean> }>('/push/config'),
+  devices: () => call<PushDevice[]>('/push/subscriptions'),
+  subscribe: (sub: { endpoint: string; keys: { p256dh: string; auth: string } }) =>
+    call<PushDevice>('/push/subscriptions', body(sub)),
+  remove: (id: string) => call<void>(`/push/subscriptions/${id}`, { method: 'DELETE' }),
+  unsubscribe: (endpoint: string) => call<void>('/push/unsubscribe', body({ endpoint })),
+  test: () => call<{ sent: number }>('/push/test', { method: 'POST' }),
+}
+
 export const meApi = {
   /** Own spend; `/admin/usage` covers everyone. */
   usage: (days = 30) => call<MyUsage>(`/me/usage?days=${days}`),

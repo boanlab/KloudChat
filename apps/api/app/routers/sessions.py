@@ -177,6 +177,7 @@ from app.services import (
     outline as outline_rules,
 )
 from app.services import page as page_service
+from app.services import push as push_service
 from app.services import reasoning as reasoning_service
 from app.services import report as report_service
 from app.services import research as research_service
@@ -7857,6 +7858,7 @@ async def _answer_turn(
     project_sources: list[dict] | None = None,
 ) -> AsyncIterator[str]:
     """Drives one assistant turn to completion; own DB session (request one closes)."""
+    turn_started = time.monotonic()
     text_parts: list[str] = []
     steps: list[dict] = _prelude_steps(skills_event, context_steps)
     usage = {"inputTokens": 0, "outputTokens": 0}
@@ -8567,6 +8569,11 @@ async def _answer_turn(
     yield chat_service.sse({"type": "usage", **usage, "credits": credits + partner_total})
     if title:
         yield chat_service.sse({"type": "title", "title": title})
+    if published is None:
+        await _push_answer(session_id, force_tool=force_tool, office_made=office_made,
+                           office_target=any(saved.get("id") for saved in (
+                               ctx.hwp, ctx.docx, ctx.pptx)),
+                           failed=failed, elapsed=time.monotonic() - turn_started)
     # stored id with `done`; browser's streaming id provisional
     yield chat_service.sse({"type": "done", **({"messageId": answer_id} if answer_id else {})})
 
@@ -9155,6 +9162,9 @@ async def _make_pass(work: PipelineBundle, pipe: Any, *, crashed: str,
                            parent=parent, from_stage=start)
     if saved.get("artifactId"):
         yield chat_service.sse({"type": "artifact", "artifactId": saved["artifactId"]})
+    await push_service.notify_session_job(
+        session_id, "page" if pipe.name == "page" else "deck",
+        ok=bool(saved.get("artifactId")), artifact_id=saved.get("artifactId"))
     yield chat_service.sse({"type": "usage", **usage, "credits": int(saved.get("credits") or 0)})
     yield chat_service.sse({"type": "done"})
 
@@ -10170,6 +10180,28 @@ async def _mark_unanswered(session_id: str) -> None:
         log.exception("could not mark the unanswered report turn in session %s", session_id)
 
 
+#: an office-document turn shorter than this sends no notice
+_PUSH_OFFICE_AFTER_SEC = 20.0
+
+
+async def _push_answer(session_id: str, *, force_tool: str | None, office_made: list[str],
+                       office_target: bool, failed: str | None, elapsed: float) -> None:
+    """A chat turn is a long job when it ran deep research, or worked on an office document
+    for a while (a one-word fix in an open document is no news)."""
+    research = bool(force_tool) and force_tool.endswith(("__detailed_research",
+                                                         "__quick_research"))
+    if failed in ("stopped", "interrupted"):
+        return
+    if not research and elapsed < _PUSH_OFFICE_AFTER_SEC:
+        return
+    if office_made and not failed:
+        await push_service.notify_session_job(session_id, "office", ok=True,
+                                              artifact_id=office_made[-1])
+    elif research or office_target:
+        await push_service.notify_session_job(session_id, "research" if research else "office",
+                                              ok=not failed)
+
+
 async def _report_tail(work: PipelineBundle | None, *, recorder: pipeline_runs.Recorder | None,
                        session_id: str, user_id: str, usage: dict, parent: Any = None,
                        from_stage: str | None = None) -> AsyncIterator[str]:
@@ -10182,6 +10214,8 @@ async def _report_tail(work: PipelineBundle | None, *, recorder: pipeline_runs.R
                            saved=saved, parent=parent, from_stage=from_stage)
     if saved.get("artifactId"):
         yield chat_service.sse({"type": "artifact", "artifactId": saved["artifactId"]})
+        await push_service.notify_session_job(session_id, "report", ok=True,
+                                              artifact_id=saved["artifactId"])
     elif not written:
         # empty body (thinking-only, empty answer): said, never a blank page that looks finished
         log.warning("report for session %s came back with no section text", session_id)
@@ -10190,6 +10224,7 @@ async def _report_tail(work: PipelineBundle | None, *, recorder: pipeline_runs.R
             code="empty_report",
         ))
         await _mark_unanswered(session_id)
+        await push_service.notify_session_job(session_id, "report", ok=False)
     credits = int(saved.get("credits") or 0)
     yield chat_service.sse({"type": "usage", **usage, "credits": credits})
     yield chat_service.sse({"type": "done"})

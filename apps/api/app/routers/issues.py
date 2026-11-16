@@ -23,6 +23,7 @@ from app.schemas.auth import Wire
 from app.services import audit as audit_service
 from app.services import files as file_service
 from app.services import issue_snapshot, paging
+from app.services import push as push_service
 
 log = logging.getLogger(__name__)
 
@@ -551,6 +552,8 @@ async def admin_update(report_id: str, payload: IssuePatch, request: Request, ad
         _audit(db, request, admin, "issue.update", row, changes=diff)
         await db.commit()
         await db.refresh(row)
+        if "status" in diff:
+            _tell_reporter(row, "문의 처리 상태가 바뀌었습니다")
     return await _admin_detail(db, row)
 
 
@@ -567,7 +570,15 @@ async def reply_as_admin(report_id: str, payload: ReplyIn, admin: AdminUser, db:
     db.add_all([reply, row])
     await db.commit()
     await db.refresh(reply)
+    _tell_reporter(row, "문의에 답변이 달렸습니다")
     return _reply_out(reply)
+
+
+def _tell_reporter(row: IssueReport, title: str) -> None:
+    """The reporter hears of an answer; the reply's text stays in the app."""
+    push_service.notify(row.user_id, push_service.Notice(
+        event="issue", title=title, label="문의·신고", url="/issues?unread=1",
+        tag=f"issue:{row.id}"))
 
 
 def _public_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:

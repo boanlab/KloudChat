@@ -108,6 +108,7 @@ import { setMaxUploadMb, setMediaUpload } from '@/lib/uploadLimit'
 import { LeaveCancelled, leaveOffice, officeDirty, saveOpenOffice } from '@/lib/officeGuard'
 import { searchCardOf } from '@/lib/privacy'
 import { imageModelId, type ImageEditSource } from '@/lib/imageEdit'
+import { leaveOnSignOut } from '@/lib/push'
 
 /** Store-side translation (no hooks here); only strings that reach the screen. */
 const tr = (text: string) => translate(currentLang(), text)
@@ -1311,6 +1312,8 @@ export const useStore = create<State>((set, get) => ({
 
   logout: async (reason) => {
     forgetDrafts(set, get)
+    // signing out by hand leaves push on this browser; an idle sign-out keeps it (jobs still finish)
+    if (!reason) await leaveOnSignOut().catch(() => undefined)
     try {
       await auth.logout()
     } catch {

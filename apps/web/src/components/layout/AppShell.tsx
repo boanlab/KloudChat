@@ -9,6 +9,7 @@ import { useNarrowLayout } from '@/lib/useMediaQuery'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { KeyboardShortcuts } from './KeyboardShortcuts'
+import { Notices } from './Notices'
 import { SearchDialog } from './SearchDialog'
 import { TopBar } from './TopBar'
 import { Sidebar } from './Sidebar'
@@ -302,6 +303,7 @@ export function AppShell() {
       <OfflineBar />
       <NoticeBar />
       <ToastBar />
+      <Notices />
       <KeyboardShortcuts />
       <SearchDialog />
       <IssueReportDialog />

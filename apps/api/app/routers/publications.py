@@ -52,6 +52,7 @@ from app.schemas.publishing import (
 )
 from app.services import governance, paging, publishing, skill_packages, stop_signal
 from app.services import models as model_service
+from app.services import push as push_service
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["publications"])
@@ -256,6 +257,19 @@ def _request(pub: Publication, visibility: str) -> None:
     pub.updated_at = utcnow()
 
 
+async def _tell_reviewers(db: DbSession, pub: Publication, owner_id: str) -> None:
+    """Admins hear of a review request (their own opt-in)."""
+    await push_service.notify_admins(db, push_service.Notice(
+        event="review", title="에이전트 공개 승인 요청이 왔습니다", label=pub.title,
+        url=f"/admin/publications/{pub.id}", tag=f"review:{pub.id}"), but=owner_id)
+
+
+def _tell_owner(pub: Publication, title: str) -> None:
+    push_service.notify(pub.owner_id, push_service.Notice(
+        event="decided", title=title, label=pub.title,
+        url=f"/customize/publications/{pub.id}", tag=f"decided:{pub.id}"))
+
+
 def _require_cap(pub: Publication) -> None:
     if publishing.credits_cap(pub) is None:
         raise HTTPException(status_code=422, detail="credits_cap_required")
@@ -311,6 +325,8 @@ async def publish(payload: PublishIn, request: Request, user: CurrentUser, db: D
         _audit(db, user, "publication.requested", pub, request,
                visibility=pub.requested_visibility, version=version.number)
     await db.commit()
+    if pub.review_state == ReviewState.pending.value:
+        await _tell_reviewers(db, pub, user.id)
     return _pub_out(pub, versions=await _versions(db, pub), agent_name=agent.name,
                     owner_name=user.name)
 
@@ -381,10 +397,12 @@ async def set_scope(publication_id: str, payload: ScopeIn, request: Request, use
         pub.limits = publishing.clean_limits(
             {**(pub.limits or {}), publishing.CREDITS_PER_DAY: payload.credits_per_day})
     target = payload.visibility
+    asked = False
     if VISIBILITY_RANK[target] > VISIBILITY_RANK[pub.visibility]:
         _require_cap(pub)
         _request(pub, target)
         _audit(db, user, "publication.requested", pub, request, visibility=target)
+        asked = True
     else:
         if target != pub.visibility:
             _audit(db, user, "publication.narrowed", pub, request, visibility=target,
@@ -402,6 +420,8 @@ async def set_scope(publication_id: str, payload: ScopeIn, request: Request, use
         pub.updated_at = utcnow()
     db.add(pub)
     await db.commit()
+    if asked:
+        await _tell_reviewers(db, pub, user.id)
     return await get_publication(publication_id, user, db)
 
 
@@ -447,6 +467,8 @@ async def new_version(publication_id: str, payload: VersionIn, request: Request,
     _audit(db, user, "publication.version", pub, request, version=version.number,
            pending=reviewed)
     await db.commit()
+    if reviewed:
+        await _tell_reviewers(db, pub, user.id)
     return await get_publication(publication_id, user, db)
 
 
@@ -470,6 +492,8 @@ async def activate_version(publication_id: str, version_id: str, request: Reques
     _audit(db, user, "publication.rollback", pub, request, version=version.number,
            pending=reviewed)
     await db.commit()
+    if reviewed:
+        await _tell_reviewers(db, pub, user.id)
     return await get_publication(publication_id, user, db)
 
 
@@ -525,6 +549,8 @@ async def set_channels(publication_id: str, payload: ChannelsIn, request: Reques
     pub.updated_at = utcnow()
     db.add(pub)
     await db.commit()
+    if pub.requested_channels and pub.review_state == ReviewState.pending.value:
+        await _tell_reviewers(db, pub, user.id)
     return await get_publication(publication_id, user, db)
 
 
@@ -1436,7 +1462,15 @@ async def visitor_share(slug: str, session_id: str, request: Request, user: BotC
         await publishing.bump(db, pub.id, publishing.day_window(), "shared")
         _audit(db, user, "publication.shared", pub, request, sessionId=session.id,
                visitorId=visitor.id)
+        shared_now = True
+    else:
+        shared_now = False
     await db.commit()
+    if shared_now:
+        # the maker's inbox; the visitor's words stay out of the notice
+        push_service.notify(pub.owner_id, push_service.Notice(
+            event="shared", title="방문자가 대화를 보냈습니다", label=pub.title,
+            url=f"/customize/publications/{pub.id}", tag=f"shared:{pub.id}"))
     return {"id": session.id, "sharedAt": session.shared_at}
 
 
@@ -1626,6 +1660,8 @@ async def admin_decide(publication_id: str, payload: ReviewIn, request: Request,
     _audit(db, admin, "publication.reviewed", pub, request, severity="warn",
            decision=payload.decision, asked=asked, **detail)
     await db.commit()
+    _tell_owner(pub, "에이전트 공개가 승인됐습니다" if payload.decision == "approve"
+                else "에이전트 공개 요청이 반려됐습니다")
     return await _named_out(db, pub)
 
 

@@ -141,8 +141,11 @@ INTEGRATION_SECRET_KEYS = frozenset({
     "integrations.slack.signing_secret",
 })
 
+#: web push VAPID private key; public half derived (`services.push.vapid_keys`)
+PUSH_VAPID_PRIVATE = "push.vapid_private"
+
 #: encrypted at rest; API returns only set flag and last four chars
-SECRET_KEYS = {LITELLM_MASTER_KEY, SMTP_PASSWORD, *INTEGRATION_SECRET_KEYS}
+SECRET_KEYS = {LITELLM_MASTER_KEY, SMTP_PASSWORD, PUSH_VAPID_PRIVATE, *INTEGRATION_SECRET_KEYS}
 
 _TTL = 15.0
 _cache: dict[str, Any] = {"at": 0.0, "values": None}

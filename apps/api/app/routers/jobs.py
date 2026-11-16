@@ -21,6 +21,7 @@ from app.services import chat as chat_service
 from app.services import files as file_service
 from app.services import litellm as litellm_service
 from app.services import models as model_service
+from app.services import push as push_service
 from app.services import settings_store, videogen
 from app.services.credits import settle
 
@@ -63,6 +64,9 @@ async def _finish(job_id: str, **fields) -> None:
             setattr(job, key, value)
         db.add(job)
         await db.commit()
+        session_id = job.session_id
+    if fields.get("status") == JobStatus.failed:
+        await push_service.notify_session_job(session_id, "video", ok=False)
 
 
 async def _poll_until_done(job_id: str) -> None:
@@ -193,6 +197,9 @@ async def _poll_until_done(job_id: str) -> None:
                 job.finished_at = _now()
                 db.add(job)
                 await db.commit()
+            await push_service.notify_session_job(
+                session_id, "video", ok=True, artifact_id=artifact.id
+            )
             return
 
         await _finish(

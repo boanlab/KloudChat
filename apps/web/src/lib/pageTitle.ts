@@ -23,6 +23,8 @@ const ROUTES: [RegExp, string][] = [
   [/^\/settings\/memory/, '메모리'],
   [/^\/settings\/keys/, 'API 키'],
   [/^\/settings\/access/, '보안'],
+  [/^\/settings\/notifications/, '알림 설정'],
+  [/^\/settings\/app/, '앱 설치'],
   [/^\/settings/, '설정'],
   [/^\/admin\/users/, '사용자 · 크레딧'],
   [/^\/admin\/usage/, '사용량'],

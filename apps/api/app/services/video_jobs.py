@@ -39,6 +39,7 @@ from app.models.workspace import FileUpload, MediaPart, StoredFile
 from app.services import files as file_service
 from app.services import media_client, transcribe, video_doc, video_read
 from app.services import ocr as ocr_service
+from app.services import push as push_service
 from app.services.credits import charge_for_tokens, record_units, settle
 
 log = logging.getLogger(__name__)
@@ -491,6 +492,7 @@ async def process(db, stored: StoredFile, token: str) -> None:
         db.add(held)
         await db.commit()
         await db.refresh(held)
+    push_service.notify_file_read(held, ok=True)
     await _text_ready(db, held)
 
 
@@ -513,6 +515,7 @@ async def _fail(db, file_id: str, token: str, message: str) -> None:
     stored.error = message
     db.add(stored)
     await db.commit()
+    push_service.notify_file_read(stored, ok=False)
 
 
 async def run_one() -> bool:

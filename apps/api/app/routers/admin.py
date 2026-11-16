@@ -15,6 +15,7 @@ from app.core.config import settings
 from app.core.deps import AdminUser, DbSession, client_ip
 from app.core.security import hash_password
 from app.models.chat import ChatSession, Message
+from app.models.push import PushSent, PushSubscription
 from app.models.user import (
     ApiKey,
     AuditEvent,
@@ -1255,6 +1256,8 @@ async def delete_user(
         (RefreshToken, RefreshToken.user_id),
         (PasswordReset, PasswordReset.user_id),
         (EmailVerification, EmailVerification.user_id),
+        (PushSubscription, PushSubscription.user_id),
+        (PushSent, PushSent.user_id),
     ):
         await db.exec(delete(model).where(column == user.id))
 
