@@ -4267,7 +4267,9 @@ async def _edit_image(
     models = catalogue["models"]
     # a picture a self-hosted strict-local model drew never leaves for an outside editor,
     # whatever the organisation's internal-material rule says
-    made_by = model_service.find(models, str((source.data or {}).get("model") or "")) if source is not None else None
+    made_by = None
+    if source is not None:
+        made_by = model_service.find(models, str((source.data or {}).get("model") or ""))
     if made_by is not None and _strict_model(made_by):
         internal = True
         if not boundary.strict:
