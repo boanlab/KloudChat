@@ -125,6 +125,7 @@ from app.services import (
     grounding,
     hwp_doc,
     hwpx_edit,
+    hwpx_form,
     illustrations,
     imagegen,
     index_cleanup,
@@ -597,6 +598,18 @@ _WRITES_DOCUMENT = re.compile(
     r"작성|써\s{0,2}(?:줘|주세요|줄래)|쓰고|만들어|채워|넣어|고쳐|바꿔|수정|정리해|추가해|옮겨|"
     r"\b(?:write|draft|fill|edit|change|update)\b", re.I)
 #: what a chat with an office document open beside it is told about writing into it
+async def _canned(text: str) -> AsyncIterator[dict[str, Any]]:
+    """A turn whose whole answer is `text`: no model is called."""
+    yield {"type": "delta", "text": text}
+    yield {"type": "usage", "inputTokens": 0, "outputTokens": 0}
+
+
+def _canned_or(text: str, turn: AsyncIterator[dict[str, Any]]) -> AsyncIterator[dict[str, Any]]:
+    return _canned(text) if text else turn
+
+
+#: tool hops a turn that fills a 한글 form may use beyond the usual cap
+_FORM_HOPS = 6
 _OFFICE_RULE = (
     "The document 「{title}」 is open in the editor beside this chat. When the person asks to "
     "write, fill or change a document, do it in that file with {p}_write (a blank or new "
@@ -5386,6 +5399,9 @@ async def _send_message(
                 and "hwpx" in turn_forms.forms and turn_forms.forms["hwpx"].source == "attached"):
             # a 한글 form makes the report the form itself, filled
             payload = payload.model_copy(update={"output_format": "hwp"})
+    #: the whole answer to a request to fill an old `.hwp` as a form (`form_files.hwp_refusal`)
+    hwp_refusal = (form_files.hwp_refusal(turn_forms, payload.content)
+                   if turn_forms is not None else "")
     if published is None and payload.output_format == "pptx" and not session.pending:
         await _pptx_surface(db, user, session)
     if (published is None and not session.pending
@@ -5394,6 +5410,10 @@ async def _send_message(
     #: the surface this turn runs as: a report written as an HWP or Word file is worked on from
     #: here like a chat's office document, its tools and pre-read included
     kind = SessionKind.chat if await _office_report(db, session) else session.kind
+    if hwp_refusal:
+        # nothing is written: the answer is the way to HWPX, said by the chat turn that
+        # makes no model call (`_canned`), whatever the screen the person asked on
+        kind = SessionKind.chat
 
     #: user message being rerun; stored words/attachments replace the client's
     retry_of: Message | None = None
@@ -5811,6 +5831,8 @@ async def _send_message(
     #: the one the pre-read and the chapter count read: open beside the chat, else the
     #: conversation's only one; several and none open, none (the tools ask which)
     office_target: Artifact | None = None
+    #: the turn fills the person's 한글 form in place (`hwpx_form`)
+    form_turn = False
     office_look_wire: dict | None = None
     if kind is SessionKind.chat and requested_model.get("supportsTools"):
         every: list[Artifact] = []
@@ -7142,7 +7164,7 @@ async def _send_message(
             messages = _with_system_rule(messages, deck_purpose.note())
         if office_target.kind is ArtifactKind.hwp and (office_target.data or {}).get("form"):
             # the HWP document is the person's 한글 form: filled in place, never replaced
-            from app.services import hwpx_form
+            form_turn = True
 
             try:
                 mark = form_marks.read(office_doc.read(office_target)) or {}
@@ -7217,6 +7239,12 @@ async def _send_message(
                 preset_call=preset_call,
                 source_tools=(frozenset({source_fetch[0]}) if source_fetch is not None
                               else frozenset()),
+                hop_bonus=_FORM_HOPS if form_turn else 0,
+                form_card=office_target.id if form_turn and office_target is not None else None,
+                canned_answer=hwp_refusal,
+                bare_deck=(session.kind is SessionKind.slides and office_target is not None
+                           and office_target.kind is ArtifactKind.pptx
+                           and (office_target.data or {}).get("slides", 2) <= 1),
                 preset_empty_answer=not_covered,
                 freshness_request=content if fresh_fact else None,
                 caveat_request=(
@@ -7775,6 +7803,13 @@ async def _answer_turn(
     preset_call: tuple[str, dict[str, Any]] | None = None,
     #: tools the answer is made of (`agent.run_turn`)
     source_tools: frozenset[str] = frozenset(),
+    hop_bonus: int = 0,
+    #: the turn fills the person's 한글 form in place: that document's id (`hwpx_form`)
+    form_card: str | None = None,
+    #: the whole answer, no model call (`form_files.hwp_refusal`)
+    canned_answer: str = "",
+    #: a slides turn whose deck is still only the blank cover when it starts
+    bare_deck: bool = False,
     #: whole answer when that material search finds nothing
     preset_empty_answer: str | None = None,
     freshness_request: str | None = None,
@@ -7925,7 +7960,7 @@ async def _answer_turn(
         )
     try:
         async for event in _until_stopped(
-            agent_service.run_turn(
+            _canned_or(canned_answer, agent_service.run_turn(
                 model["id"],
                 freshness.with_answer_policy(
                     messages, model, current_fact=bool(freshness_request), advice=advice,
@@ -7957,13 +7992,14 @@ async def _answer_turn(
                 ),
                 preset_call=preset_call,
                 **({"source_tools": source_tools} if source_tools else {}),
+                **({"hop_bonus": hop_bonus} if hop_bonus else {}),
                 **({"preset_empty_answer": preset_empty_answer} if preset_empty_answer else {}),
                 **({"freshness_request": freshness_request} if freshness_request else {}),
                 **({"caveat_request": caveat_request} if caveat_request else {}),
                 **({"material_given": True} if carries_material else {}),
                 **({"cited_material": cited_material} if cited_material else {}),
                 **({"deep_search": True} if _deep_search(skill_keys, skill_specs) else {}),
-            ),
+            )),
             stopping,
         ):
             if event["type"] == "freshness_abstention":
@@ -8134,6 +8170,21 @@ async def _answer_turn(
         # what the reply says it did to the document, held to the versions actually saved
         content += said
         yield chat_service.sse({"type": "delta", "text": said})
+    if form_card and content.strip() and not failed and not office_claims.saved_by(ctx):
+        # a 한글 form turn that saved nothing says so, in so many words, and asks for what is
+        # missing; the form's own card stays beside it (a reply telling the person to type it
+        # in is the failure this replaces)
+        said = hwpx_form.nothing_saved(content, (ctx.hwp or {}).get("refused") or "")
+        if said:
+            yield chat_service.sse({"type": "retract", "text": content})
+            content = said
+            yield chat_service.sse({"type": "delta", "text": said})
+    if bare_deck and content.strip() and not failed and not office_claims.saved_by(ctx):
+        # a deck that is still only its cover: said plainly, not left to a promise to retry
+        said = ("\n\n(확인: 슬라이드가 하나도 쓰이지 않아 문서는 표지 한 장뿐입니다. "
+                "같은 요청을 다시 보내면 처음부터 다시 씁니다.)")
+        content += said
+        yield chat_service.sse({"type": "delta", "text": said})
     if consent is not None:
         if content.strip() and not failed and (note := consent.note(korean=not _english(
                 ctx.request))) and note.strip() not in content:
@@ -8261,6 +8312,10 @@ async def _answer_turn(
             yield chat_service.sse(
                 {"type": "artifact", "artifactId": saved["id"], "deliberate": True}
             )
+    if form_card and not office_made and not failed:
+        # nothing saved: the form's own card still opens beside the answer
+        office_made.append(form_card)
+        yield chat_service.sse({"type": "artifact", "artifactId": form_card, "deliberate": True})
     made_ids = [*([new_artifact] if new_artifact else []), *office_made]
 
     title: str | None = None

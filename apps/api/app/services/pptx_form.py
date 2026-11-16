@@ -18,6 +18,7 @@ from __future__ import annotations
 import copy
 import io
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -26,6 +27,7 @@ from pptx import Presentation
 from pptx.util import Emu
 
 from app.services import form_profile
+from app.services.office_edit import BLANK
 
 log = logging.getLogger(__name__)
 
@@ -105,8 +107,35 @@ def _layouts_by_class(profile: dict) -> dict[str, list[dict]]:
     return out
 
 
-def _pick(by_class: dict[str, list[dict]], kind: str) -> tuple[dict | None, bool]:
-    """(layout, exact) for a slide kind."""
+_FIGURE = re.compile(r"\d")
+
+
+def named_role(kind: str, data: dict) -> str:
+    """The layout role (by name) a slide of this kind and content asks for, or ``."""
+    if kind == "closing":
+        return "closing"
+    title = str(data.get("title") or "")
+    if re.search(r"목차|차례|agenda|contents", title, re.I) and kind == "text":
+        return "agenda"
+    if kind == "drawn" and data.get("rows") and not data.get("chart"):
+        return "table"
+    bullets = [str(b) for b in data.get("bullets") or [] if str(b).strip()]
+    if (kind == "text" and 2 <= len(bullets) <= 4 and not data.get("body")
+            and all(len(b) <= 30 and _FIGURE.search(b) for b in bullets)):
+        return "numbers"
+    return ""
+
+
+def _pick(by_class: dict[str, list[dict]], kind: str,
+          data: dict | None = None) -> tuple[dict | None, bool]:
+    """(layout, exact) for a slide kind: a layout named for it (마무리, 표 전용, 핵심 숫자,
+    목차) first, then the kind's classes."""
+    role = named_role(kind, data or {})
+    if role:
+        named = next((lay for group in by_class.values() for lay in group
+                      if lay.get("role") == role), None)
+        if named is not None:
+            return named, True
     wanted = _WANTS[kind]
     for rank, name in enumerate(wanted):
         if by_class.get(name):
@@ -332,6 +361,35 @@ def _remove_slides(prs, keep: set[int]) -> None:
         ids.remove(entry)
 
 
+def clamp(slide: Any, size: tuple[int, int]) -> None:
+    """Every shape and table of a slide kept inside the slide: one that runs past an edge is
+    moved in, then scaled down (a table's columns and rows with it)."""
+    width, height = size
+    margin = int(min(width, height) * 0.02)
+    for shape in slide.shapes:
+        if shape.left is None or shape.width is None or shape.height is None:
+            continue
+        right, bottom = shape.left + shape.width, shape.top + shape.height
+        if right <= width - margin and bottom <= height and shape.left >= 0 and shape.top >= 0:
+            continue
+        room_w = width - 2 * margin
+        room_h = height - margin
+        factor = min(1.0, room_w / max(shape.width, 1), room_h / max(shape.height, 1))
+        if getattr(shape, "has_table", False) and shape.has_table:
+            table = shape.table
+            for column in table.columns:
+                column.width = Emu(int(column.width * factor))
+            for row in table.rows:
+                row.height = Emu(int(row.height * factor))
+            shape.width = Emu(sum(c.width for c in table.columns))
+            shape.height = Emu(sum(r.height for r in table.rows))
+        else:
+            shape.width = Emu(int(shape.width * factor))
+            shape.height = Emu(int(shape.height * factor))
+        shape.left = Emu(max(margin, min(shape.left, width - margin - shape.width)))
+        shape.top = Emu(max(0, min(shape.top, height - margin - shape.height)))
+
+
 def write(form: bytes, title: str, slides: list[dict], *,
           tokens: dict[str, str] | None = None, profile: dict | None = None,
           name: str = "form.pptx") -> tuple[bytes, Followed]:
@@ -364,7 +422,7 @@ def write(form: bytes, title: str, slides: list[dict], *,
     targets: list[int] = []
     for number, (data_slide, scratch) in enumerate(zip(written, rendered, strict=True), 1):
         kind = kind_of(data_slide)
-        chosen, exact = _pick(by_class, kind)
+        chosen, exact = _pick(by_class, kind, data_slide)
         if chosen is None or chosen["index"] >= len(every):
             raise FormWriteError("양식의 레이아웃을 읽지 못했습니다.")
         layout = every[chosen["index"]]
@@ -380,6 +438,9 @@ def write(form: bytes, title: str, slides: list[dict], *,
         bullets = [str(b) for b in data_slide.get("bullets") or [] if str(b).strip()]
         area = _body_area(chosen, size)
         accent, ink = look["accent"], look["ink"]
+        if kind == "closing" and (not heading.strip() or BLANK.fullmatch(heading.strip())):
+            # a closing line is not a fact to leave blank: the form's own closing words
+            heading = "감사합니다"
         if kind in ("cover", "closing", "section"):
             if holders["title"]:
                 holders["title"][0].text_frame.text = heading or (title if kind == "cover"
@@ -416,6 +477,8 @@ def write(form: bytes, title: str, slides: list[dict], *,
             slide.notes_slide.notes_text_frame.text = notes
     _remove_slides(prs, set(targets))
     prs.slide_width, prs.slide_height = Emu(size[0]), Emu(size[1])
+    for slide in prs.slides:
+        clamp(slide, size)
     followed.slides = len(targets)
     out = io.BytesIO()
     prs.save(out)

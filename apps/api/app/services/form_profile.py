@@ -23,7 +23,7 @@ from app.services.files import open_capped_zip
 from app.services.office_edit import BLANK
 
 #: profile version; a stored profile of another version is read again
-VERSION = 1
+VERSION = 3
 
 #: score at or above which a file is a form, at or below which it is material
 FORM_AT = 0.6
@@ -179,6 +179,22 @@ _LAYOUT_NAMES = (
 )
 
 
+#: what a layout is called for, by its name: the writer's kinds pick these before the generic
+#: class (`pptx_form._pick`)
+_ROLE_NAMES = (
+    (re.compile(r"마무리|감사|끝맺|closing|thank|q\s?&\s?a|\bend\b", re.I), "closing"),
+    (re.compile(r"목차|차례|agenda|contents|outline", re.I), "agenda"),
+    (re.compile(r"핵심\s{0,2}(?:숫자|수치|지표)|key\s{0,2}(?:figure|number|metric)|kpi|big\s{0,2}number",
+                re.I), "numbers"),
+    (re.compile(r"표\s{0,2}전용|table|표$", re.I), "table"),
+)
+
+
+def layout_role(name: str) -> str:
+    """What a layout's name says it is for (`closing`, `agenda`, `numbers`, `table`), or ``."""
+    return next((role for pattern, role in _ROLE_NAMES if pattern.search(name or "")), "")
+
+
 def _box(sp: etree._Element, size: tuple[int, int]) -> list[float] | None:
     off = sp.find(f".//{{{_A}}}xfrm/{{{_A}}}off")
     ext = sp.find(f".//{{{_A}}}xfrm/{{{_A}}}ext")
@@ -309,6 +325,7 @@ def _pptx(data: bytes, name: str) -> dict[str, Any]:
                 layouts.append({
                     "index": len(layouts), "master": master_index, "name": layout_name,
                     "part": part, "class": layout_class(layout_name, holders),
+                    "role": layout_role(layout_name),
                     "placeholders": holders,
                 })
         slides: list[dict[str, Any]] = []
@@ -524,7 +541,8 @@ def _hwpx(data: bytes, name: str) -> dict[str, Any]:
             if text and not _FILL.fullmatch(text):
                 continue
             label = cells.get((r, c - 1)) or cells.get((r - 1, c)) or ""
-            if label and len(label) <= 20 and not _FILL.fullmatch(label):
+            label = re.sub(r"\s+", " ", label).strip()
+            if label and len(label) <= 40 and not _FILL.fullmatch(label):
                 found += 1
                 if len(fields) < 120:
                     fields.append({"table": table.id, "row": r, "col": c,

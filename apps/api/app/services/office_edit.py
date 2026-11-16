@@ -5,7 +5,7 @@ filled value, op arguments, and the numbered outline the model reads (`hwpx_edit
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 #: A blank left for the person: 「[기관명]」, 「[YYYY. MM. DD.]」; not 「[1]」 citations.
 BLANK = re.compile(r"\[(?!\d{1,3}\])[^\[\]\n]{1,40}\]")
@@ -32,6 +32,8 @@ class Result:
     data: bytes
     #: one Korean line per applied op
     changes: list[str]
+    #: what was left out or put back, and why (a 한글 form's fixed lines, `hwpx_form.Guard`)
+    notes: list[str] = field(default_factory=list)
 
 
 #: particle pairs: after a final consonant, after a vowel

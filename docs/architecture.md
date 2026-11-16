@@ -1910,7 +1910,9 @@ material that is read. It replaces templates for the look of PowerPoint, Word an
 - **Writing on a PowerPoint form.** `services/pptx_form.py` draws the deck with the house
   renderer in its bare mode (`deck_export.render_on`: no ornaments, no foot, the form's theme
   accent and ink as tokens) into the form's own package, then puts each slide on the form
-  layout its kind maps to. Titles, subtitles and plain bullets go into the layout's
+  layout its kind maps to (a layout named for its use, `closing`, `agenda`, `numbers` or
+  `table` in the profile's `role`, is taken before the generic class, and a slide is kept inside
+  the slide edges, `pptx_form.clamp`). Titles, subtitles and plain bullets go into the layout's
   placeholders; tables, charts, patterns and figures are moved and scaled into the layout's body
   area, with the accent and ink rewritten as theme colours (`schemeClr`) and typefaces left to
   the theme. The form's sample slides go and its slide size stays. Used by the PowerPoint tools
@@ -1921,7 +1923,10 @@ material that is read. It replaces templates for the look of PowerPoint, Word an
   page and type; a house style the form lacks is added on the form's look, and the house
   headings take the form's heading styles). The form's body comes back: the cover before the
   first chapter is kept with its label cells filled from the report head, and under each form
-  chapter (heading 1) the report's chapter of the same name replaces the guidance. A chapter
+  chapter (heading 1) the report's chapter of the same name replaces the guidance: the form's
+  blank tables are filled in place (head row, 합계 row and the unit of each column kept) and its
+  sub-headings (1.1, 1.2) stay over the content of their name; an empty cover value cell becomes
+  a 「[ ]」 blank and the cover's guidance goes. A chapter
   the form lacks is added in the form's heading style, its typed number running on. The
   planner takes the form's chapters as the fixed 목차 (`Request.form_outline`), and the writer
   is told the form is not a source (`form_files.writer_note`). `report_office.file_bytes` uses it
@@ -1930,8 +1935,15 @@ material that is read. It replaces templates for the look of PowerPoint, Word an
   itself becomes the conversation's HWP document (`sessions._hwpx_form_surface`, when a report is
   asked as an HWP file and the conversation follows a 한글 form; `hwpx_form.start` marks it with
   the form's value cells). The turn runs as the office chat, told to fill it in place with the
-  HWP tools and never to replace it (`hwpx_form.rule`); `hwp_doc.describe` counts the filled
-  value cells after each save (`hwpx_form.progress`).
+  HWP tools and never to replace it (`hwpx_form.rule`). The form's own lines (labels, headings,
+  fixed sentences) are kept in the mark (`hwpx_form.snapshot`) and held by code
+  (`hwpx_form.Guard`, applied inside `hwpx_edit.apply`): a write goes after a label or heading
+  and never over it, a hairline spacer row is never written, `fill_fields` writes several
+  labelled values at once, what was left out or put back is returned to the writer, and the
+  fixed lines are checked again after the edits. `hwp_doc.describe` counts the slots that now
+  hold a value after each save (`hwpx_form.progress`). A turn that saved nothing says so and
+  keeps the form's card (`hwpx_form.nothing_saved`); a request to fill an old `.hwp` is answered
+  with the way to HWPX without a model call (`form_files.hwp_refusal`).
 - **The mark.** `services/form_marks.py` writes what was followed (form, source, layouts used,
   stand-ins) into the file's custom properties (an HWPX: the entry `KloudChat/form.json`); `pptx_doc.describe` puts it on the artifact,
   and the answer's card shows 「양식을 따름」 from it.
