@@ -5,7 +5,7 @@ import { ReuseItems } from '@/components/artifacts/ResultActions'
 import { Badge, Button, Card, ConfirmDialog, Dropdown, EmptyState, Input, Modal, ReloadNotice } from '@/components/ui'
 import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
 import { RelTime } from '@/components/ui/RelTime'
-import { LoadMore } from '@/components/ui/ShowMore'
+import { ListPager } from '@/components/ui/ListPager'
 import { ListSkeleton } from '@/components/ui/Skeleton'
 import { artifactsApi, errorMessage, workingDocsApi, type WorkingDocRow, type WorkingKind, type WorkingSort } from '@/lib/api'
 import { ColumnHeader, PhoneSort, useUrlSort, type SortField } from './ListSort'
@@ -348,15 +348,7 @@ export function WorkingDocs({ query, onCount }: { query: string; onCount: (n: nu
                 </div>
               ))}
             </Card>
-            {docs.hasMore && (
-              <LoadMore
-                remaining={docs.total - shown.length}
-                loading={docs.loadingMore}
-                failed={docs.moreFailed}
-                failedText={t('다음 문서를 불러오지 못했습니다.')}
-                onMore={() => void docs.loadMore()}
-              />
-            )}
+            <ListPager paging={docs.paging} total={docs.total} label={t('작업 문서 페이지')} />
           </>
         )}
       </div>

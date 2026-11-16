@@ -16,7 +16,8 @@ import { MemoryEditor, emptyMemory, memoryTypeTone } from '@/components/memory/M
 import { memoryTypeLabel } from '@/lib/memoryTypes'
 import { cn, formatDateTime, matchesQuery, relativeTime } from '@/lib/utils'
 import { ListSearch, NoMatch } from '@/components/ui/ListSearch'
-import { ShowMore, usePaged } from '@/components/ui/ShowMore'
+import { ListPager } from '@/components/ui/ListPager'
+import { pageOf, usePaging } from '@/lib/usePaging'
 import { useStore } from '@/store/useStore'
 import type { MemoryEntry, MemoryType } from '@/types'
 import { useT } from '@/lib/useT'
@@ -38,7 +39,8 @@ export function MemoryPage({ embedded = false }: { embedded?: boolean } = {}) {
     .filter((m) => filter === 'all' || m.type === filter)
     .filter((m) => matchesQuery(query, m.name, m.description, m.body))
   const ordered = [...visible].sort((a, b) => Number(b.pinned) - Number(a.pinned))
-  const { visible: sorted, hidden, more } = usePaged(ordered, [filter, query, memories.length])
+  const paging = usePaging(ordered.length, [filter, query])
+  const sorted = pageOf(ordered, paging)
 
   return (
     <>
@@ -155,7 +157,7 @@ export function MemoryPage({ embedded = false }: { embedded?: boolean } = {}) {
             )
           })}
         </div>
-        <ShowMore hidden={hidden} onMore={more} />
+        <ListPager paging={paging} total={ordered.length} label={t('메모리 페이지')} />
       </PageFrame>
 
       <ConfirmDialog

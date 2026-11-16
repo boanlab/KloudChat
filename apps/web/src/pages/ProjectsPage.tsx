@@ -18,7 +18,8 @@ import {
 } from '@/components/ui'
 import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
 import { ListSearch, NoMatch } from '@/components/ui/ListSearch'
-import { ShowMore, usePaged } from '@/components/ui/ShowMore'
+import { ListPager } from '@/components/ui/ListPager'
+import { pageOf, usePaging } from '@/lib/usePaging'
 import { matchesQuery } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { NAME_LIMIT } from '@/lib/limits'
@@ -62,7 +63,8 @@ export function ProjectsPage() {
     currentLocale(),
   )
   const pick = useBulkSelect(found)
-  const { visible, hidden, more } = usePaged(found, [query])
+  const paging = usePaging(found.length, [query, order])
+  const visible = pageOf(found, paging)
 
   useEffect(() => {
     void ensureWorkspace()
@@ -192,7 +194,7 @@ export function ProjectsPage() {
             ))}
           </div>
           {found.length === 0 && <NoMatch />}
-          <ShowMore hidden={hidden} onMore={more} />
+          <ListPager paging={paging} total={found.length} label={t('프로젝트 목록 페이지')} />
           </>
         )}
       </PageBody>

@@ -1,3 +1,5 @@
+import { ListPager } from '@/components/ui/ListPager'
+import { pageOf, usePaging } from '@/lib/usePaging'
 import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react'
 import { useMemo, type ReactNode } from 'react'
 import { currentLocale } from '@/lib/i18n'
@@ -106,6 +108,7 @@ export function DataTable<R>({
   cellClassName = 'px-3 py-2',
   rowClassName,
   minWidth,
+  pageSize,
 }: {
   id: string
   rows: readonly R[]
@@ -123,6 +126,8 @@ export function DataTable<R>({
   cellClassName?: string
   rowClassName?: (row: R) => string | undefined
   minWidth?: string
+  /** Rows per page when the table can run long; the pager hides while one page holds them all. */
+  pageSize?: number
 }) {
   const keys = useMemo(() => columns.filter((c) => c.sortable !== false).map((c) => c.key), [columns])
   const [sort, onSort] = useTableSort(id, { keys, initial: initialSort, param })
@@ -134,8 +139,13 @@ export function DataTable<R>({
     return sortRows(rows, value, sort.dir, currentLocale())
   }, [rows, columns, sort])
 
+  const t = useT()
+  const paging = usePaging(sorted.length, [sort?.key, sort?.dir, rows.length], pageSize ?? Number.MAX_SAFE_INTEGER)
+  const shown = pageSize ? pageOf([...sorted], paging) : sorted
+
   if (rows.length === 0 && empty !== undefined) return <>{empty}</>
   return (
+    <>
     <div
       className={cn('overflow-x-auto rounded-card border border-line', maxHeight && 'overflow-y-auto', className)}
       style={maxHeight ? { maxHeight } : undefined}
@@ -174,7 +184,7 @@ export function DataTable<R>({
           </tr>
         </thead>
         <tbody>
-          {sorted.map((r, i) => (
+          {shown.map((r, i) => (
             <tr key={rowKey(r, i)} className={cn('border-t border-line', rowClassName?.(r))}>
               {columns.map((c) => (
                 <td
@@ -194,5 +204,7 @@ export function DataTable<R>({
         </tbody>
       </table>
     </div>
+    <ListPager paging={paging} total={sorted.length} label={t('{label} 페이지').replace('{label}', label)} />
+    </>
   )
 }

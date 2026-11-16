@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Button, Modal, ReloadNotice } from '@/components/ui'
-import { LoadMore } from '@/components/ui/ShowMore'
+import { ListPager } from '@/components/ui/ListPager'
 import type { FileRow } from '@/lib/api'
 import { useT } from '@/lib/useT'
 import { FileBoxFilter, FileLine } from './FileBoxList'
@@ -96,15 +96,7 @@ export function FileBoxPicker({
             )
           })
         )}
-        {box.hasMore && (
-          <LoadMore
-            remaining={box.total - shown.length}
-            loading={box.loadingMore}
-            failed={box.moreFailed}
-            failedText={t('다음 파일을 불러오지 못했습니다.')}
-            onMore={() => void box.loadMore()}
-          />
-        )}
+        <ListPager paging={box.paging} total={box.total} label={t('파일 페이지')} />
       </div>
     </Modal>
   )

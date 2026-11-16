@@ -194,3 +194,26 @@ async def test_a_bots_conversations_page_to_the_oldest_for_the_owner_and_the_adm
                 {"cursor": "%%%"}, {"limit": 500}):
         response = await world.client.get(admin_path, params={**why, **bad})
         assert response.status_code == 422, (bad, response.text)
+
+
+async def test_numbered_pages_ask_by_offset_and_agree_with_the_cursor_walk(world):
+    """A numbered page (`offset`) holds the rows the cursor walk reaches at the same spot, and
+    the total does not move; the screens jump to any page by number."""
+    start = utcnow() - timedelta(days=1)
+    async with world.local() as db:
+        for n in range(9):
+            db.add(StoredFile(id=f"u{n:031d}", user_id="owner", name=f"회의록 {n}.txt",
+                              created_at=start + timedelta(minutes=n)))
+        await db.commit()
+    world.as_("owner")
+
+    walked, _ = await _walk(world.client, "/files/page", box="true", limit=4)
+    ids = [f["id"] for f in walked]
+    for page in range(3):
+        body = (await world.client.get(
+            "/files/page", params={"box": "true", "limit": 4, "offset": page * 4})).json()
+        assert [f["id"] for f in body["items"]] == ids[page * 4:page * 4 + 4]
+        assert body["total"] == 9
+    # past the end: no rows, the total still told
+    past = (await world.client.get("/files/page", params={"box": "true", "limit": 4, "offset": 40})).json()
+    assert past["items"] == [] and past["total"] == 9 and past["next"] is None

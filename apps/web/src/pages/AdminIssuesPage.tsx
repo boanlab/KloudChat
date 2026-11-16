@@ -1,3 +1,4 @@
+import { Pager } from '@/components/ui/Pager'
 import { ArrowLeft, Eye, Flag, Image as ImageIcon, Layers, Search } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -24,7 +25,7 @@ import type { SessionKind } from '@/types'
 import { ListSkeleton } from '@/components/ui/Skeleton'
 
 const STATUSES: IssueStatus[] = ['received', 'checking', 'resolved', 'on_hold']
-const PAGE_SIZE = 30
+const PAGE_SIZE = 25
 
 const UPDATE_ERROR: Record<string, string> = {
   hold_reason_required: '보류하려면 사유를 적어 주세요.',
@@ -77,7 +78,6 @@ function IssueList() {
     return () => clearTimeout(timer)
   }, [load])
 
-  const pages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1
   const reset = <T,>(set: (v: T) => void) => (v: T) => {
     set(v)
     setPage(1)
@@ -136,12 +136,8 @@ function IssueList() {
             {data?.items.map((row) => <IssueListRow key={row.id} row={row} onOpen={() => navigate(`/admin/issues/${row.id}`)} />)}
           </ul>
         )}
-        {data && pages > 1 && (
-          <div className="mt-3 flex items-center justify-end gap-2 text-sm">
-            <Button size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>{t('이전 페이지')}</Button>
-            <span className="tabular-nums text-muted">{page} / {pages}</span>
-            <Button size="sm" disabled={page >= pages} onClick={() => setPage(page + 1)}>{t('다음 페이지')}</Button>
-          </div>
+        {data && data.total > PAGE_SIZE && (
+          <Pager page={page} size={PAGE_SIZE} total={data.total} onPage={setPage} label={t('신고 페이지')} />
         )}
       </PageBody>
     </>

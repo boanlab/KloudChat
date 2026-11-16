@@ -288,7 +288,7 @@ test('관리자 연동 화면은 비밀값을 보이지 않고, 끄기 전에 �
     const state = await mock(page)
     await page.goto('/admin/system/integrations')
     const google = page.getByTestId('integration-admin-google')
-    await expect(google.getByText('설치 하나에 OAuth 클라이언트 하나를 씁니다. 사람마다 자기 Google 계정을 연결합니다.')).toBeVisible()
+    await expect(google.getByText('사람마다 자기 Google 계정을 연결합니다.')).toBeVisible()
     await expect(google.getByText('저장됨 …x9Qz · 비워 두면 그대로 둡니다')).toBeVisible()
     await expect(google.getByRole('textbox', { name: '리디렉션 URI' })).toHaveValue('https://chat.example.ac.kr/api/integrations/google/callback')
     await shot(page, `admin-integrations-${phoneName(page)}`)

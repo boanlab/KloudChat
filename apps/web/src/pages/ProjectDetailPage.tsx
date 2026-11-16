@@ -1,4 +1,6 @@
 import { previewSentence } from '@/lib/previewText'
+import { ListPager } from '@/components/ui/ListPager'
+import { pageOf, usePaging } from '@/lib/usePaging'
 import { ArrowLeft, Brain, CircleAlert, ExternalLink, FileText, HardDrive, Link2, Loader2, MoreHorizontal, Pencil, Plus, RefreshCw, Sparkles, Trash2, Upload, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -193,6 +195,14 @@ export function ProjectDetailPage() {
     if (project && !dirty) setInstructions(project.instructions)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project?.id, project?.instructions])
+
+  // Pages of the long tabs; hooks stay above the early return.
+  const sessionsPaging = usePaging(
+    project ? sessions.filter((c) => c.projectId === project.id && !c.unsent).length : 0,
+    [projectId],
+  )
+  const filesPaging = usePaging(project?.files.length ?? 0, [projectId])
+  const memoriesPaging = usePaging(project ? memories.filter((m) => m.scope === project.id).length : 0, [projectId])
 
   if (!project) {
     return (
@@ -616,7 +626,7 @@ export function ProjectDetailPage() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                {projectSessions.map((c) => {
+                {pageOf(projectSessions, sessionsPaging).map((c) => {
                   const meta = kindMeta[c.kind]
                   const KindIcon = meta.icon
                   return (
@@ -656,6 +666,7 @@ export function ProjectDetailPage() {
                     </Card>
                   )
                 })}
+                <ListPager paging={sessionsPaging} total={projectSessions.length} label={t('작업 페이지')} />
                 </div>
               )}
             </div>
@@ -757,7 +768,8 @@ export function ProjectDetailPage() {
                   )}
                 />
               ) : (
-                project.files.map((f) => (
+                <>
+                {pageOf(project.files, filesPaging).map((f) => (
                   <Card key={f.id} className="px-4 py-2.5" data-knowledge={f.id}>
                     {/* On a phone the name keeps the first line; the actions wrap under it. */}
                     <div className="flex items-center gap-x-3 gap-y-1 max-sm:flex-wrap">
@@ -857,7 +869,9 @@ export function ProjectDetailPage() {
                       </div>
                     )}
                   </Card>
-                ))
+                ))}
+                <ListPager paging={filesPaging} total={project.files.length} label={t('참고 파일 페이지')} />
+                </>
               )}
               {(unindexed || reindexing) && (
                 <div className="flex justify-end">
@@ -967,7 +981,7 @@ export function ProjectDetailPage() {
                 />
               ) : (
                 <div className="space-y-2">
-                  {projectMemories.map((m) => (
+                  {pageOf(projectMemories, memoriesPaging).map((m) => (
                     <Card key={m.id} className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <span className="min-w-0 truncate font-mono text-sm text-accent">
@@ -1001,6 +1015,7 @@ export function ProjectDetailPage() {
                       )}
                     </Card>
                   ))}
+                  <ListPager paging={memoriesPaging} total={projectMemories.length} label={t('메모리 페이지')} />
                 </div>
               )}
             </div>

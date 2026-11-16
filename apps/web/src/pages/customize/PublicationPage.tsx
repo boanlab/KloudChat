@@ -10,7 +10,7 @@ import { useStore } from '@/store/useStore'
 import { PublicationSettingsForm } from '@/components/publishing/PublicationSettingsForm'
 import { ScopePicker } from '@/components/publishing/ScopePicker'
 import { Badge, Button, Card, ConfirmDialog, EmptyState, Field, Input, LoadingState, ReloadNotice, ResourceStatus, Select, Tabs } from '@/components/ui'
-import { LoadMore } from '@/components/ui/ShowMore'
+import { ListPager } from '@/components/ui/ListPager'
 import {
   ApiError,
   errorMessage,
@@ -37,7 +37,7 @@ import {
   VISIBILITY_LABEL,
   type SettingsDraft,
 } from '@/lib/publishing'
-import { useCursorList } from '@/lib/useCursorList'
+import { useServerPages } from '@/lib/useServerPages'
 import { useResource } from '@/lib/useResource'
 import { useT } from '@/lib/useT'
 import { cn, formatDate } from '@/lib/utils'
@@ -443,10 +443,16 @@ function ConversationsTab({ pub }: { pub: Publication }) {
   const t = useT()
   const [open, setOpen] = useState<(BotConversationRow & { messages: BotTranscriptMessage[] }) | null>(null)
   // A page at a time: a busy bot holds far more than one screen.
-  const list = useCursorList((cursor) => publicationsApi.conversationsPage(pub.id, { cursor, limit: 50 }), [pub.id])
+  const list = useServerPages<BotConversationRow>({
+    keys: [pub.id],
+    fetch: async (offset, limit) => {
+      const page = await publicationsApi.conversationsPage(pub.id, { limit, offset })
+      return { items: page.items, total: page.total }
+    },
+  })
   const rows = list.rows
   if (list.failed) return <ReloadNotice onRetry={() => void list.load()} />
-  if (rows === null) return <LoadingState />
+  if (list.loading) return <LoadingState />
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted">
@@ -461,6 +467,7 @@ function ConversationsTab({ pub }: { pub: Publication }) {
         <EmptyState icon={<Upload size={18} />} title={t('보낸 대화가 없습니다')} />
       ) : (
         <div className="grid gap-4 lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
+          <div className="min-w-0">
           <ul className="space-y-1" data-testid="publication-conversations">
             {rows.map((row) => (
               <li key={row.id}>
@@ -479,18 +486,9 @@ function ConversationsTab({ pub }: { pub: Publication }) {
                 </button>
               </li>
             ))}
-            {list.hasMore && (
-              <li>
-                <LoadMore
-                  remaining={list.total - rows.length}
-                  loading={list.loadingMore}
-                  failed={list.moreFailed}
-                  failedText={t('다음 대화를 불러오지 못했습니다.')}
-                  onMore={() => void list.loadMore()}
-                />
-              </li>
-            )}
           </ul>
+          <ListPager paging={list.paging} total={list.total} label={t('대화 페이지')} />
+          </div>
           <Card className="min-w-0 p-4">
             {open ? (
               <div className="space-y-4" data-testid="publication-transcript">

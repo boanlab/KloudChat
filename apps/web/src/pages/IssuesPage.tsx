@@ -1,11 +1,12 @@
 import { ChevronRight, Flag, Image as ImageIcon, Layers, MessageCircleQuestionMark, Plus } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useLocation, useSearchParams } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import { IssueThread, StatusBadge } from '@/components/issues/IssueThread'
 import { Badge, Button, EmptyState, ReloadNotice, Tabs } from '@/components/ui'
-import { LoadMore } from '@/components/ui/ShowMore'
+import { ListPager } from '@/components/ui/ListPager'
+import { useServerPages } from '@/lib/useServerPages'
 import { issuesApi, type IssueDetail, type IssueRow } from '@/lib/api'
 import { KIND_LABEL, useIssues } from '@/lib/issues'
 import { useT } from '@/lib/useT'
@@ -13,7 +14,7 @@ import { cn, formatDateTime } from '@/lib/utils'
 import { ListSkeleton } from '@/components/ui/Skeleton'
 
 /** Reports per page. */
-const ISSUE_PAGE = 30
+const ISSUE_PAGE = 25
 
 type IssueFilter = 'all' | 'unread'
 
@@ -26,61 +27,30 @@ export function IssuesPage() {
   const filter: IssueFilter = params.get('unread') === '1' ? 'unread' : 'all'
   const dialogOpen = useIssues((s) => s.open)
   const refreshUnread = useIssues((s) => s.refreshUnread)
-  const [rows, setRows] = useState<IssueRow[] | null>(null)
-  const [total, setTotal] = useState(0)
-  const [unread, setUnread] = useState(0)
-  const [next, setNext] = useState<string | null>(null)
-  const [failed, setFailed] = useState(false)
-  const [loadingMore, setLoadingMore] = useState(false)
-  const [moreFailed, setMoreFailed] = useState(false)
   const [openId, setOpenId] = useState<string | null>(null)
-  // Only the latest request's answer is shown: a filter change outruns an earlier page.
-  const asked = useRef(0)
-
-  const load = useCallback(() => {
-    const ticket = ++asked.current
-    setFailed(false)
-    setMoreFailed(false)
-    issuesApi.page({ limit: ISSUE_PAGE, unread: filter === 'unread' }).then(
-      (page) => {
-        if (ticket !== asked.current) return
-        setRows(page.items)
-        setTotal(page.total)
-        setUnread(page.unread)
-        setNext(page.next)
-      },
-      () => ticket === asked.current && setFailed(true),
-    )
-  }, [filter])
-
-  const loadMore = async () => {
-    if (!next || loadingMore) return
-    const ticket = asked.current
-    setLoadingMore(true)
-    setMoreFailed(false)
-    try {
-      const page = await issuesApi.page({ limit: ISSUE_PAGE, unread: filter === 'unread', cursor: next })
-      if (ticket !== asked.current) return
-      setRows((held) => [...(held ?? []), ...page.items.filter((row) => !held?.some((h) => h.id === row.id))])
-      setTotal(page.total)
-      setUnread(page.unread)
-      setNext(page.next)
-    } catch {
-      if (ticket === asked.current) setMoreFailed(true)
-    } finally {
-      setLoadingMore(false)
-    }
-  }
+  const list = useServerPages<IssueRow, number>({
+    keys: [filter],
+    size: ISSUE_PAGE,
+    fetch: async (offset, limit) => {
+      const page = await issuesApi.page({ limit, offset, unread: filter === 'unread' })
+      return { items: page.items, total: page.total, counts: page.unread }
+    },
+  })
+  const { load, setRows, setCounts } = list
+  const total = list.total
+  const unread = list.counts ?? 0
+  const failed = list.failed
+  const rows = list.loading || failed ? null : list.rows
 
   // Again after the dialog closes, so a new report shows.
   useEffect(() => {
-    if (!dialogOpen) load()
+    if (!dialogOpen) void load(true)
   }, [dialogOpen, load])
 
   const markSeen = (id: string) => {
     // Still listed under 새 답변 until the filter is asked again: the open one does not vanish.
-    setRows((list) => list?.map((r) => (r.id === id ? { ...r, unread: false } : r)) ?? list)
-    setUnread((n) => Math.max(0, n - 1))
+    setRows((held) => held.map((r) => (r.id === id ? { ...r, unread: false } : r)))
+    setCounts((n) => Math.max(0, (n ?? 0) - 1))
     void refreshUnread()
   }
 
@@ -109,7 +79,6 @@ export function IssuesPage() {
           <Tabs<IssueFilter>
             value={filter}
             onChange={(next) => {
-              setRows(null)
               setOpenId(null)
               setParams(next === 'unread' ? { unread: '1' } : {}, { replace: true, state: sessionId ? { sessionId } : null })
             }}
@@ -119,7 +88,7 @@ export function IssuesPage() {
             ]}
           />
         </div>
-        {failed && <ReloadNotice onRetry={load} />}
+        {failed && <ReloadNotice onRetry={() => void load()} />}
         {rows === null && !failed ? (
           <ListSkeleton />
         ) : rows && rows.length === 0 ? (
@@ -145,15 +114,7 @@ export function IssuesPage() {
                 />
               ))}
             </ul>
-            {next && (
-              <LoadMore
-                remaining={total - shown.length}
-                loading={loadingMore}
-                failed={moreFailed}
-                failedText={t('다음 문의·신고를 불러오지 못했습니다.')}
-                onMore={() => void loadMore()}
-              />
-            )}
+            <ListPager paging={list.paging} total={total} label={t('문의·신고 페이지')} />
           </>
         ) : null}
       </PageBody>

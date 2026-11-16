@@ -452,7 +452,7 @@ export function AdminUsagePage() {
                 rowKey={(r) => r.id}
                 label={t('사용자별')}
                 initialSort={{ key: 'credits', dir: 'desc' }}
-                maxHeight="32rem"
+                pageSize={25}
                 className="rounded-none border-0"
                 headClassName="bg-panel text-xs text-faint"
                 cellClassName="py-1.5 pr-3"

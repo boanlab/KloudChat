@@ -70,13 +70,16 @@ test('아티팩트 목록은 한 페이지씩 오고, 개수와 검색은 전체
   const cards = page.getByTestId('artifact-row')
   await expect(cards).toHaveCount(rows.length, { timeout: 20_000 })
 
-  // Anchored: the sidebar links to 「모든 대화 보기」, which is not this button.
-  const more = page.getByRole('button', { name: /^\d+개 더 보기$/ })
-  await expect(more).toBeVisible({ timeout: 20_000 })
-  await more.click()
-  await expect(cards).not.toHaveCount(rows.length, { timeout: 20_000 })
-  const grown = await cards.count()
-  expect(grown).toBeGreaterThan(rows.length)
+  // Numbered pages: 다음 turns to the second page, which asks the server by offset.
+  const next = page.getByRole('navigation', { name: '아티팩트 페이지' }).getByRole('button', { name: '다음 페이지' })
+  await expect(next).toBeVisible({ timeout: 20_000 })
+  const second = page.waitForResponse((r) => r.url().includes('/api/artifacts/gallery?') && r.url().includes('offset=') && r.ok())
+  await next.click()
+  const more = ((await (await second).json()) as { items: { id: string }[] }).items
+  expect(more.length).toBeGreaterThan(0)
+  expect(more.some((row) => rows.some((first) => first.id === row.id))).toBe(false)
+  await expect(cards).toHaveCount(more.length, { timeout: 20_000 })
+  await page.getByRole('navigation', { name: '아티팩트 페이지' }).getByRole('button', { name: '1쪽' }).click()
 
   const searched = page.waitForResponse(
     (r) => r.url().includes('/api/artifacts/gallery?') && r.url().includes('q=') && r.ok(),

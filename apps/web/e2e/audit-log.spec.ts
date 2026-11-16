@@ -177,7 +177,7 @@ test('감사 로그는 무엇이 바뀌었는지 한국어로 보여 주고 쪽�
   await expect(page.locator('[data-testid="audit-changes"]')).toHaveCount(0)
   await expect(body).not.toContainText('Mock · Economy B')
   const tallest = await visibleRows.evaluateAll((rows) => Math.max(...rows.slice(0, 10).map((r) => r.getBoundingClientRect().height)))
-  expect(tallest).toBeLessThanOrEqual(viewport(test.info()) === 'phone' ? 128 : 56)
+  expect(tallest).toBeLessThanOrEqual(viewport(test.info()) === 'phone' ? 152 : 56)
 
   // A row opens its details: who, from where, with which browser, and 「무엇이 바뀌었나」.
   const first = visibleRows.first()

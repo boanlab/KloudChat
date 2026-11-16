@@ -21,7 +21,7 @@ import {
 } from '@/components/ui'
 import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
 import { RelTime } from '@/components/ui/RelTime'
-import { LoadMore } from '@/components/ui/ShowMore'
+import { ListPager } from '@/components/ui/ListPager'
 import { ListSkeleton } from '@/components/ui/Skeleton'
 import { artifactsApi, errorMessage, type GallerySection, type GallerySort } from '@/lib/api'
 import { reusable } from '@/lib/reuse'
@@ -327,15 +327,7 @@ export function ArtifactsPage() {
                   )
                 })}
               </Card>
-              {gallery.hasMore && (
-                <LoadMore
-                  remaining={gallery.total - shown.length}
-                  loading={gallery.loadingMore}
-                  failed={gallery.moreFailed}
-                  failedText={t('다음 아티팩트를 불러오지 못했습니다.')}
-                  onMore={() => void gallery.loadMore()}
-                />
-              )}
+              <ListPager paging={gallery.paging} total={gallery.total} label={t('아티팩트 페이지')} />
             </>
           )}
         </div>

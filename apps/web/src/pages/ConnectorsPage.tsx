@@ -31,7 +31,8 @@ import { kindMeta } from '@/lib/kinds'
 import { cn, matchesQuery, relativeTime } from '@/lib/utils'
 import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
 import { ListSearch, NoMatch } from '@/components/ui/ListSearch'
-import { ShowMore, usePaged } from '@/components/ui/ShowMore'
+import { ListPager } from '@/components/ui/ListPager'
+import { pageOf, usePaging } from '@/lib/usePaging'
 import { useStore } from '@/store/useStore'
 import type { CatalogEntry } from '@/lib/api'
 import type { Connector, ConnectorStatus } from '@/types'
@@ -469,8 +470,8 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
   const empty = tab === 'installed' ? installed.length === 0 : catalog.length === 0
   // 기본 제공 copies cannot be removed, so they cannot be picked.
   const pick = useBulkSelect(installedList.filter((c) => !c.byDefault))
-  const installedPage = usePaged(installedList, [query])
-  const catalogPage = usePaged(catalogList, [query])
+  const installedPaging = usePaging(installedList.length, [query])
+  const catalogPaging = usePaging(catalogList.length, [query])
 
   return (
     <>
@@ -526,7 +527,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
               }}
             />
             <div className="grid gap-3 sm:grid-cols-2" data-testid="connector-list">
-                  {installedPage.visible.map((c) => (
+                  {pageOf(installedList, installedPaging).map((c) => (
                     <ConnectorCard
                       key={c.id}
                       connector={c}
@@ -543,17 +544,17 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
                   ))}
             </div>
             {installedList.length === 0 && <NoMatch />}
-            <ShowMore hidden={installedPage.hidden} onMore={installedPage.more} />
+            <ListPager paging={installedPaging} total={installedList.length} label={t('연결한 커넥터 페이지')} />
             </>
           ) : (
             <>
             <div className="grid gap-3 sm:grid-cols-2" data-testid="connector-catalog">
-              {catalogPage.visible.map((e) => (
+              {pageOf(catalogList, catalogPaging).map((e) => (
                 <CatalogCard key={e.slug} entry={e} onNeedsCredentials={setCredentialsFor} />
               ))}
             </div>
             {catalogList.length === 0 && <NoMatch />}
-            <ShowMore hidden={catalogPage.hidden} onMore={catalogPage.more} />
+            <ListPager paging={catalogPaging} total={catalogList.length} label={t('커넥터 목록 페이지')} />
             </>
           )}
         </div>

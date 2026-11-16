@@ -1,3 +1,5 @@
+import { ListPager } from '@/components/ui/ListPager'
+import { pageOf, usePaging } from '@/lib/usePaging'
 import {
   BookOpenCheck, CalendarRange, FileQuestion, FileText, GalleryVerticalEnd,
   ListChecks, Loader2, MoreHorizontal, Network, RefreshCw, ShieldCheck, SpellCheck, Trash2,
@@ -44,6 +46,7 @@ export function StudioTab({ projectId }: { projectId: string }) {
   const [asking, setAsking] = useState<StudioKind | null>(null)
   const [open, setOpen] = useState<StudioItem | null>(null)
   const [removing, setRemoving] = useState<StudioItem | null>(null)
+  const itemsPaging = usePaging(items?.length ?? 0, [projectId])
   const [error, setError] = useState<string | null>(null)
 
   const loadItems = useCallback(() => shelfApi.studio(projectId).then(setItems), [projectId])
@@ -145,7 +148,7 @@ export function StudioTab({ projectId }: { projectId: string }) {
       <div className="space-y-2">
         <p className="text-base font-medium">{t('만든 결과')}</p>
         {items?.length === 0 && <p className="text-sm text-muted">{t('아직 만든 결과가 없습니다.')}</p>}
-        {(items ?? []).map((item) => {
+        {pageOf(items ?? [], itemsPaging).map((item) => {
           const Icon = ICONS[item.kind]
           return (
             <Card key={item.id} className="flex items-center gap-3 px-3 py-2.5" data-studio-item={item.id} data-state={item.state}>
@@ -189,6 +192,7 @@ export function StudioTab({ projectId }: { projectId: string }) {
             </Card>
           )
         })}
+        <ListPager paging={itemsPaging} total={items?.length ?? 0} label={t('만든 결과 페이지')} />
       </div>
 
       {asking && (
