@@ -160,3 +160,16 @@ def test_nothing_is_asked_when_every_paper_is_cited(monkeypatch):
 def test_an_unrelated_request_skips_the_stage():
     bundle = Bundle(request=Request(text="보고서 써 줘", model="m", api_key="k"))
     assert report_stages.PaperCites().skip(bundle)
+
+
+def test_a_paper_the_writer_saw_only_as_a_list_entry_is_still_a_project_paper():
+    from app.services import paper_cites
+
+    sources = [{"id": "a", "ordinal": 1, "title": "Paged memory for serving"},
+               {"id": "b", "ordinal": 2, "title": "Heavy-hitter cache eviction"}]
+    project = [
+        {"id": "a", "name": "2309.06180.pdf", "state": "truncated", "listed": False},
+        {"id": "b", "name": "2306.14048.pdf", "state": "truncated", "listed": True},
+    ]
+    assert [p.ordinal for p in paper_cites.papers_of(project, sources)] == [1, 2]
+    assert paper_cites.file_ids(project, sources) == {1: "a", 2: "b"}

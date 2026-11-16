@@ -100,7 +100,9 @@ def papers_of(project_sources: list[dict] | None, sources: list[dict] | None) ->
     titles = {int(s.get("ordinal") or 0): str(s.get("title") or "") for s in sources or []}
     rows: list[tuple[int, str, str]] = []
     for item in project_sources or []:
-        if item.get("state") not in ("included", "truncated") or item.get("listed"):
+        # a paper the model saw only as a 「자료 목록」 entry (a long project: most papers) is
+        # still the project's paper: it is the likeliest one to go uncited
+        if item.get("state") not in ("included", "truncated"):
             continue
         name = str(item.get("name") or "")
         paper = item.get("paper") or {}
@@ -116,6 +118,13 @@ def papers_of(project_sources: list[dict] | None, sources: list[dict] | None) ->
         out.append(Paper(ordinal, title, name,
                          _marks(title, [t for t in all_titles if t != title])))
     return out
+
+
+def file_ids(project_sources: list[dict] | None, sources: list[dict] | None) -> dict[int, str]:
+    """Citation number -> the stored file's id, for reading a paper's text from the project."""
+    ordinals = {str(s.get("id") or ""): int(s.get("ordinal") or 0) for s in sources or []}
+    return {ordinals[str(item.get("id") or "")]: str(item.get("id"))
+            for item in project_sources or [] if ordinals.get(str(item.get("id") or ""))}
 
 
 def names(text: str, paper: Paper) -> bool:

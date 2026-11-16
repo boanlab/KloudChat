@@ -2806,6 +2806,26 @@ def paper_paragraphs(answer: str, wanted: dict[int, str], sections: int) -> dict
     return out
 
 
+async def _stored_texts(ids: dict[int, str]) -> dict[int, str]:
+    """Citation number -> the opening of that project file's stored text (the first pages: title,
+    abstract, introduction), for papers the writer was not given whole."""
+    if not ids:
+        return {}
+    from app.core.db import SessionLocal
+    from app.models.workspace import StoredFile
+
+    out: dict[int, str] = {}
+    try:
+        async with SessionLocal() as db:
+            for number, file_id in ids.items():
+                row = await db.get(StoredFile, file_id)
+                if row is not None and row.text:
+                    out[number] = row.text[:6000]
+    except Exception as exc:  # noqa: BLE001 — the repair then runs on what it has
+        log.warning("project paper text unreadable: %s", exc)
+    return out
+
+
 class PaperCites(Base):
     """A request that cites the project's papers on a topic: every paper that belongs to it is
     cited at least once. A relevant paper no `[n]` cites gets one targeted paragraph from the
@@ -2840,6 +2860,11 @@ class PaperCites(Base):
         if not body:
             return
         full = paper_cites.texts_of(material, papers, most=400_000)
+        # papers the writer saw only as list entries: their own text, read from the project
+        missing = {p.ordinal for p in [*certain, *maybe] if not full.get(p.ordinal)}
+        if missing:
+            ids = paper_cites.file_ids(req.project_sources, bundle.material.sources)
+            full.update(await _stored_texts({n: ids[n] for n in missing if n in ids}))
         opening = {n: t[:1800] for n, t in full.items()}
         listing = "\n\n".join(
             f"[{p.ordinal}] {p.shown}{' (MUST)' if p in certain else ''}\n"
