@@ -284,10 +284,12 @@ async function botRoutes(
         visitor: { id: 'vk', label: 'VK1234', member: false, blocked: false, blockedAt: null, byKey: true } })
       const old = row('s'.padEnd(32, '9'), '지난해 주차 문의', '2025-03-02T01:00:00.000Z')
       if (url.searchParams.get('date_to') === '2025-03-31') return json({ items: [old], total: 1, next: null })
-      // 26 conversations at 25 a page: the old one is on page 2
-      if (url.searchParams.get('offset') === '25') return json({ items: [old], total: 26, next: null })
+      // 26 conversations; the old one is the last, so it is on a later page at any page size
       const filler = Array.from({ length: 24 }, (_, i) => row(`f${i}`.padEnd(32, '0'), `주차 문의 ${i + 1}`, at))
-      return json({ items: [row(SID, '휴학 신청 기한', at), ...filler], total: 26, next: 'p2' })
+      const all = [row(SID, '휴학 신청 기한', at), ...filler, old]
+      const start = Number(url.searchParams.get('offset') ?? 0)
+      const limit = Number(url.searchParams.get('limit') ?? 50)
+      return json({ items: all.slice(start, start + limit), total: all.length, next: null })
     }
     if (path === `/admin/publications/${PUB}/conversations` && method === 'GET') {
       return json([{ id: SID, title: '휴학 신청 기한', sharedAt: null, viewable: false, updatedAt: at, turns: 1,
@@ -1084,7 +1086,9 @@ test('an administrator reads conversations only after giving a reason', async ({
   expect(asked.length).toBe(2)
   // Past the first page, and by date: an old conversation is reachable.
   const list = page.getByTestId('admin-conversation-list')
-  await page.getByRole('navigation', { name: '대화 페이지' }).getByRole('button', { name: '다음 페이지' }).click()
+  const pages = page.getByRole('navigation', { name: '대화 페이지' })
+  // the old one is the 26th: page 2 of 15, page 3 of 10 (a narrow screen)
+  await pages.getByRole('button', { name: page.viewportSize()!.width < 640 ? '3쪽' : '2쪽' }).click()
   await expect(list).toContainText('지난해 주차 문의')
   await card.getByLabel('종료일').fill('2025-03-31')
   await card.getByRole('button', { name: '날짜로 찾기' }).click()

@@ -3,9 +3,6 @@ import { useServerPages } from '@/lib/useServerPages'
 import { toArtifact } from '@/store/useStore'
 import type { Artifact } from '@/types'
 
-/** Rows per page of the 아티팩트 page. */
-const PAGE = 25
-
 type Counts = Partial<Record<GallerySection, number>>
 
 /**
@@ -18,7 +15,6 @@ export function useGallery(section: GallerySection | null, query: string, sort: 
   const list = useServerPages<Artifact, Counts>({
     keys: [section ?? '', q, sort, dir],
     debounce: Boolean(q),
-    size: PAGE,
     fetch: async (offset, limit) => {
       const page = await galleryApi.page({ section, q, sort, dir, limit, offset })
       return { items: page.items.map(toArtifact), total: page.total, counts: page.counts }

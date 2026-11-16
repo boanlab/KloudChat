@@ -14,7 +14,6 @@ import { cn, formatDateTime } from '@/lib/utils'
 import { ListSkeleton } from '@/components/ui/Skeleton'
 
 /** Reports per page. */
-const ISSUE_PAGE = 25
 
 type IssueFilter = 'all' | 'unread'
 
@@ -30,7 +29,6 @@ export function IssuesPage() {
   const [openId, setOpenId] = useState<string | null>(null)
   const list = useServerPages<IssueRow, number>({
     keys: [filter],
-    size: ISSUE_PAGE,
     fetch: async (offset, limit) => {
       const page = await issuesApi.page({ limit, offset, unread: filter === 'unread' })
       return { items: page.items, total: page.total, counts: page.unread }

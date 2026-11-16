@@ -117,7 +117,7 @@ test('작업 문서 lists each document once, newest edit first, and filters, so
   await page.goto('/files')
   await page.getByRole('tab', { name: /작업 문서/ }).click()
   await expect(page).toHaveURL(/\/files\?tab=working$/)
-  await expect(rows(page)).toHaveCount(25)
+  await expect(rows(page)).toHaveCount(15)
   // the badge counts every document, not the page
   await expect(page.getByRole('tab', { name: /작업 문서\s*57/ })).toHaveAttribute('aria-selected', 'true')
   await expect(rows(page).first()).toContainText('직원 연수 공문')
@@ -129,15 +129,15 @@ test('작업 문서 lists each document once, newest edit first, and filters, so
   await expect(rows(page).filter({ hasText: '연수 결과 보고' })).toContainText('대화 없음')
 
   const pager = page.getByRole('navigation', { name: '작업 문서 페이지' })
-  await expect(pager).toContainText('1–25 / 전체 57건')
-  await pager.getByRole('button', { name: '3쪽' }).click()
-  await expect(rows(page)).toHaveCount(7)
+  await expect(pager).toContainText('1–15 / 전체 57건')
+  await pager.getByRole('button', { name: '4쪽' }).click()
+  await expect(rows(page)).toHaveCount(12)
   await pager.getByRole('button', { name: '1쪽' }).click()
-  await expect(rows(page)).toHaveCount(25)
+  await expect(rows(page)).toHaveCount(15)
 
   // one format, then a title search over it; the format chips keep their counts
   await page.getByRole('button', { name: /^웹 보고서/ }).click()
-  await expect(rows(page)).toHaveCount(25)
+  await expect(rows(page)).toHaveCount(15)
   await expect(page.getByRole('button', { name: /^PowerPoint 문서\s*1/ })).toBeVisible()
   await page.getByLabel('파일 검색').fill('성과')
   await expect(rows(page)).toHaveCount(1)
@@ -155,7 +155,7 @@ test('작업 문서 lists each document once, newest edit first, and filters, so
   await expect(heading('제목')).toHaveAttribute('aria-sort', 'ascending')
   await expect(heading('마지막 수정')).toHaveAttribute('aria-sort', 'none')
   await expect(rows(page).first()).toContainText('2027 사업 계획')
-  expect(asked).toContain('?sort=title&dir=asc&limit=25')
+  expect(asked).toContain('?sort=title&dir=asc&limit=15')
   // the same heading again turns it round; the keyboard works it too
   await heading('제목').getByRole('button').focus()
   await page.keyboard.press('Enter')
@@ -174,7 +174,7 @@ test('작업 문서 lists each document once, newest edit first, and filters, so
 test('작업 문서 opens each kind in its editor, downloads it, renames and deletes it', async ({ page }, info) => {
   const { unexpected, asked, renamed, deleted } = await fixture(page, info)
   await page.goto('/files?tab=working')
-  await expect(rows(page)).toHaveCount(25)
+  await expect(rows(page)).toHaveCount(15)
 
   // its own format: the office file as kept, a web report as Markdown
   const saving = page.waitForEvent('download')
@@ -224,7 +224,7 @@ test('on a phone 작업 문서 keeps each title whole and its controls under it 
   test.skip((page.viewportSize()?.width ?? 0) > 640, 'phone width')
   const { unexpected } = await fixture(page, info)
   await page.goto('/files?tab=working')
-  await expect(rows(page)).toHaveCount(25)
+  await expect(rows(page)).toHaveCount(10)
   const row = rows(page).first()
   const title = row.getByRole('button', { name: '직원 연수 공문', exact: true })
   const open = row.getByRole('button', { name: '직원 연수 공문 편집기에서 열기' })

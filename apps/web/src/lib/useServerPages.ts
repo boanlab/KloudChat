@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { LIST_PAGE_SIZE, usePaging } from '@/lib/usePaging'
+import { usePaging } from '@/lib/usePaging'
 
 /** What a numbered-page endpoint answers. */
 export type PageAnswer<T, C> = { items: T[]; total: number; counts?: C }
@@ -13,7 +13,7 @@ export function useServerPages<T extends { id: string }, C = undefined>({
   enabled = true,
   keys,
   debounce = false,
-  size = LIST_PAGE_SIZE,
+  size,
   fetch,
 }: {
   enabled?: boolean
@@ -39,7 +39,7 @@ export function useServerPages<T extends { id: string }, C = undefined>({
       const ticket = ++asked.current
       setFailed(false)
       try {
-        const answer = await ask.current(paging.offset, size)
+        const answer = await ask.current(paging.offset, paging.size)
         if (ticket !== asked.current) return
         setRows(answer.items)
         setCounts(answer.counts)
@@ -49,7 +49,7 @@ export function useServerPages<T extends { id: string }, C = undefined>({
         if (ticket === asked.current) setFailed(true)
       }
     },
-    [paging.offset, size, filterKey],
+    [paging.offset, paging.size, filterKey],
   )
 
   useEffect(() => {

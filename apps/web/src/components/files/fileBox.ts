@@ -7,7 +7,6 @@ export type FileBoxTab = FileOrigin | 'working'
 export type FileBoxCounts = Record<FileOrigin, number> & { working?: number }
 
 /** Rows per file-box page. */
-export const FILE_PAGE = 25
 
 /**
  * The account's files of one origin, a numbered page at a time, uploaded and made in conversations
@@ -25,7 +24,6 @@ export function useFileBox(
     enabled,
     keys: [origin, q, sort, dir],
     debounce: Boolean(q),
-    size: FILE_PAGE,
     fetch: async (offset, limit) => {
       const page = await filesApi.page({ box: true, origin, q, sort, dir, limit, offset })
       return { items: page.items, total: page.total, counts: page.counts }
@@ -50,7 +48,7 @@ export function useFileBox(
 
   /** A file uploaded here, on top; counted under its origin. */
   const addRow = (row: FileRow) => {
-    setRows((held) => [row, ...held.filter((h) => h.id !== row.id)].slice(0, FILE_PAGE))
+    setRows((held) => [row, ...held.filter((h) => h.id !== row.id)].slice(0, list.paging.size))
     setCounts((c) => {
       const base = c ?? { upload: 0, generated: 0 }
       return { ...base, [originOf(row)]: base[originOf(row)] + 1 }

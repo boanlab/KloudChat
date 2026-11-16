@@ -1,6 +1,5 @@
 import { useServerPages } from '@/lib/useServerPages'
 import { workingDocsApi, type SortDir, type WorkingDocRow, type WorkingKind, type WorkingSort } from '@/lib/api'
-import { FILE_PAGE } from './fileBox'
 
 /** The kinds 「작업 문서」 lists, in the order its format chips show them. */
 export const WORKING_KINDS: { kind: WorkingKind; label: string }[] = [
@@ -23,7 +22,6 @@ export function useWorkingDocs(enabled: boolean, kind: WorkingKind | null, query
     enabled,
     keys: [kind ?? '', q, sort, dir],
     debounce: Boolean(q),
-    size: FILE_PAGE,
     fetch: async (offset, limit) => {
       const page = await workingDocsApi.page({ kind, q, sort, dir, limit, offset })
       return { items: page.items, total: page.total, counts: page.counts }
