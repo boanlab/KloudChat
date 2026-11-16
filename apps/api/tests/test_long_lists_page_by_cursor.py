@@ -215,5 +215,6 @@ async def test_numbered_pages_ask_by_offset_and_agree_with_the_cursor_walk(world
         assert [f["id"] for f in body["items"]] == ids[page * 4:page * 4 + 4]
         assert body["total"] == 9
     # past the end: no rows, the total still told
-    past = (await world.client.get("/files/page", params={"box": "true", "limit": 4, "offset": 40})).json()
+    far = {"box": "true", "limit": 4, "offset": 40}
+    past = (await world.client.get("/files/page", params=far)).json()
     assert past["items"] == [] and past["total"] == 9 and past["next"] is None

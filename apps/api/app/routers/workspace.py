@@ -635,7 +635,8 @@ async def page_files(
     total = int((await db.exec(select(func.count()).select_from(StoredFile).where(*conds))).one())
     column, how = _FILE_SORT[sort]
     tag = f"{sort}.{dir}"
-    order, past = _keyset(col(column), col(StoredFile.id), how, dir, tag, None if offset else cursor)
+    order, past = _keyset(
+        col(column), col(StoredFile.id), how, dir, tag, None if offset else cursor)
     if past is not None:
         conds.append(past)
     rows = list((await db.exec(
