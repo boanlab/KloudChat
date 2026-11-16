@@ -35,7 +35,7 @@ from app.services import (
 )
 from app.services.chat import ChatStreamError, step_label, step_title
 from app.services.context import instruction_part, literature_request
-from app.services.tools import arithmetic, deferred
+from app.services.tools import arithmetic, deferred, json_repair
 from app.services.tools.base import SearchEvidence, Tool, ToolContext, ToolResult, to_openai
 
 log = logging.getLogger(__name__)
@@ -1705,20 +1705,76 @@ def _states_operands(request: str | None) -> bool:
     return len(re.findall(r"\d[\d,.]*", request or "")) >= 2
 
 
+#: what the reply is told when the server saved a draft in the model's place
+_DRAFT_SAVED = (
+    "{tool} 호출이 반복해서 실패했고 호출 한도가 가까워, 서버가 마지막으로 보낸 내용을 "
+    "초안으로 저장했습니다. 저장 결과: {result}\n도구는 더 쓸 수 없습니다. 답에서 이 파일은 "
+    "「초안」이며 완성본이 아니라고 분명히 말하고, 파일에 실제로 든 것(위 결과의 장 수·차트·"
+    "그림)과 빠졌거나 줄인 부분만 말하세요. 사람이 고치길 원하면 다시 요청하면 된다고 안내하세요."
+)
+_DRAFT_SAVED_EN = (
+    "The {tool} call kept failing and the tool calls were about to run out, so the server saved "
+    "the last content you sent as a DRAFT. Saved: {result}\nNo more tools. In the answer say "
+    "plainly that this file is a draft, not the finished document, and state only what the "
+    "file really holds (the slide, chart and picture counts above) and what is missing or "
+    "shortened. Say the person can ask again to finish it."
+)
+
+
+def _size_of(arguments: dict[str, Any] | None) -> int:
+    return len(json.dumps(arguments or {}, ensure_ascii=False))
+
+
+def _draft_of(tool: Tool, raw: str) -> dict[str, Any] | None:
+    """What of a call's arguments `tool` would save as a draft (`Tool.draft`): read from the
+    text as sent, or from the whole part of a cut-off one; None when nothing."""
+    if tool.draft is None:
+        return None
+    try:
+        parsed = json.loads(raw or "{}")
+    except ValueError:
+        salvaged = json_repair.repair(raw)
+        parsed = salvaged[0] if salvaged else None
+    if not isinstance(parsed, dict):
+        return None
+    try:
+        return tool.draft(parsed)
+    except Exception:  # noqa: BLE001 — a draft is a fallback; it never breaks the turn
+        log.info("%s: draft arguments not made", tool.name, exc_info=True)
+        return None
+
+
+#: said after a write whose arguments were read back from a cut-off call
+_CUT_ARGUMENTS = (
+    "\n주의: 보낸 인자가 중간에 잘려, 온전히 받은 부분(앞쪽 슬라이드)만 저장했습니다. 빠진 "
+    "슬라이드가 있으면 지금 파일 장 수를 그대로 말하고, 더 쓰려면 pptx_read 뒤 pptx_edit의 "
+    "add_slide로 3~4장씩 나누어 더하세요(한 번에 길게 보내지 마세요)."
+)
+
+
 async def _run_tool(tool: Tool, arguments: str, ctx: ToolContext) -> ToolResult:
+    cut_note = ""
     try:
         parsed = json.loads(arguments or "{}")
     except json.JSONDecodeError:
-        cut = len(arguments or "") > 1500 and not (arguments or "").rstrip().endswith(("}", "]"))
-        return ToolResult(
-            content=(
-                "오류: 인자가 중간에 끊겨 JSON이 아닙니다. 한 번에 쓸 수 있는 길이를 넘었습니다: "
-                "내용을 나눠 더 짧게 여러 번 호출하세요 (문서는 앞 부분만 쓰고, 나머지는 "
-                "문서 읽기 뒤 편집 도구로 더하세요)."
-                if cut else
-                f"오류: 인자를 JSON으로 해석할 수 없습니다: {arguments[:200]}"),
-            failed=True,
-        )
+        # a long write call cut off before its end (the model's output limit): a tool that
+        # can save a draft reads back what is whole of it, never what was cut
+        salvaged = json_repair.repair(arguments) if tool.draft is not None else None
+        if salvaged is None:
+            cut = len(arguments or "") > 1500 and not (arguments or "").rstrip().endswith(
+                ("}", "]"))
+            return ToolResult(
+                content=(
+                    "오류: 인자가 중간에 끊겨 JSON이 아닙니다. 한 번에 쓸 수 있는 길이를 "
+                    "넘었습니다: 내용을 나눠 더 짧게 여러 번 호출하세요 (문서는 앞 부분만 "
+                    "쓰고, 나머지는 "
+                    "문서 읽기 뒤 편집 도구로 더하세요)."
+                    if cut else
+                    f"오류: 인자를 JSON으로 해석할 수 없습니다: {arguments[:200]}"),
+                failed=True,
+            )
+        parsed, _cut = salvaged
+        cut_note = _CUT_ARGUMENTS
     if not isinstance(parsed, dict):
         return ToolResult(content="오류: 인자는 객체여야 합니다.", failed=True)
     if tool.name == "web_search" and literature_request(ctx.request):
@@ -1746,9 +1802,10 @@ async def _run_tool(tool: Tool, arguments: str, ctx: ToolContext) -> ToolResult:
             failed=True,
         )
 
-    if isinstance(output, ToolResult):
-        return output
-    return ToolResult(content=str(output))
+    result = output if isinstance(output, ToolResult) else ToolResult(content=str(output))
+    if cut_note and not result.failed:
+        result.content += cut_note
+    return result
 
 
 async def run_turn(
@@ -1949,6 +2006,11 @@ async def run_turn(
     called: set[tuple[str, str]] = set()
     #: writes the tool refused, by (tool, arguments): how often; one identical repeat still runs
     failed_writes: dict[tuple[str, str], int] = {}
+    #: per write tool that can save a draft (`Tool.draft`): the fullest arguments it was sent
+    #: this turn, as the draft's, how many sends in a row it refused, and whether one saved
+    draft_pool: dict[str, dict[str, Any]] = {}
+    write_refused: dict[str, int] = {}
+    write_saved: set[str] = set()
     # Arithmetic gate evidence only; futures coalesce duplicates, results detached before masking.
     arithmetic_evidence: dict[tuple[str, str], asyncio.Future[ToolResult | None]] = {}
     #: Tool URLs in numbering order, after the numbers earlier answers gave theirs (a later
@@ -2874,6 +2936,15 @@ async def run_turn(
                 # what was searched, so a 0-result search can be read
                 **({"query": query} if (query := searched_query(call)) else {}),
             }
+            if tool is not None and tool.draft is not None:
+                if result.failed:
+                    write_refused[tool.name] = write_refused.get(tool.name, 0) + 1
+                else:
+                    write_refused[tool.name] = 0
+                    write_saved.add(tool.name)
+                best = _draft_of(tool, call["arguments"])
+                if best is not None and _size_of(best) >= _size_of(draft_pool.get(tool.name)):
+                    draft_pool[tool.name] = best
             if not result.failed and call["name"] == "fetch_url":
                 # the page under its address: a check reads a cited [[n]](url) against it
                 ctx.outputs.append(f"{_fetched_url(call)}\n{result.content}".lstrip())
@@ -2943,6 +3014,43 @@ async def run_turn(
             yield {"type": "delta", "text": terminal_text}
             ended_by_tool = True
             break
+
+        if not closing:
+            # a write the model cannot get right is saved from its own arguments as a draft
+            # when the calls are about to run out (any model), or after two refusals in a row
+            # (self-hosted and small models: a strong model's retries are its own to spend)
+            for name, best in list(draft_pool.items()):
+                tool = by_name.get(name)
+                refused = write_refused.get(name, 0)
+                if tool is None or name in write_saved or refused < 1:
+                    continue
+                last_calls = hop >= settings.max_tool_hops - 1
+                stuck = refused >= 2 and model_tier.group(model) != model_tier.STRONG_EXTERNAL
+                if not (last_calls or stuck):
+                    continue
+                draft_pool.pop(name)
+                made = await _run_tool(
+                    tool, json.dumps({**best, "__draft__": True}, ensure_ascii=False), ctx)
+                yield {
+                    "type": "step",
+                    "id": f"h{hop}_draft",
+                    "label": visible_label(tool, name, done=True),
+                    "status": "error" if made.failed else "done",
+                    "detail": "초안 저장" if not made.failed else (made.detail or ""),
+                    **(made.trace or {}),
+                }
+                log.info("%s saved as a draft by the server after %d refusals at hop %d "
+                         "(failed=%s)", name, refused, hop, made.failed)
+                if made.failed:
+                    continue
+                write_saved.add(name)
+                conversation.append({"role": "user", "content": _note(
+                    _DRAFT_SAVED, _DRAFT_SAVED_EN, reply_korean).format(
+                        tool=name, result=made.content)})
+                closing = True
+                break
+            if closing:
+                continue
 
         if close_after_tools:
             close_after_tools = False

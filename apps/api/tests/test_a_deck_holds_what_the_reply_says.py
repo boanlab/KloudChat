@@ -154,7 +154,7 @@ async def test_the_count_is_read_from_the_opening_when_material_follows():
         await tool._prepare({"title": "t", "slides": [{"title": str(i)} for i in range(14)]}, ctx)
 
 
-def test_a_wide_figure_takes_the_slide_and_its_lines_go_to_the_notes():
+def test_a_wide_figure_takes_the_width_and_keeps_its_lines_in_a_strip_under_it():
     from PIL import Image
 
     out = io.BytesIO()
@@ -162,9 +162,12 @@ def test_a_wide_figure_takes_the_slide_and_its_lines_go_to_the_notes():
     data = _deck([{"title": "성능", "bullets": ["처리량 2~4배"],
                    "image": {"data": out.getvalue(), "caption": "Figure 12"}}])
     slide = Presentation(io.BytesIO(data)).slides[1]
-    assert "처리량 2~4배" in slide.notes_slide.notes_text_frame.text
+    # the result stays on the slide, under the picture, which keeps the slide's width
     picture = next(s for s in slide.shapes if s.shape_type == 13)
+    line = next(s for s in slide.shapes
+                if s.has_text_frame and "처리량 2~4배" in s.text_frame.text)
     assert picture.width > Presentation(io.BytesIO(data)).slide_width * 0.6
+    assert line.top >= picture.top + picture.height - 1
 
 
 async def test_chart_values_sent_as_strings_are_numbers_and_words_are_gaps():

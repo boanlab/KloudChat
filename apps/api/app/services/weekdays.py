@@ -278,7 +278,10 @@ def fix_weekdays(text: str, *, context: str = "",
                 not explicit and wd in stated.get((day.year, day.month, day.day), set())):
             continue
         # right in a year the person names
-        if not explicit and any(_weekday_in(y, day.month, day.day) == wd for y in named):
+        # (a date within the sure window of today is the clock's year: a far-off year named
+        # elsewhere in the material — a 2028 plan — never makes a wrong weekday right)
+        if not explicit and abs((day - today).days) > _SURE_DAYS and any(
+                _weekday_in(y, day.month, day.day) == wd for y in named):
             continue
         if not sure:
             # far from today, no year: may be right for the other year

@@ -8,8 +8,11 @@ import logging
 import re
 from typing import Any
 
+from sqlmodel import or_, select
+
 from app.core.db import SessionLocal
-from app.services import deck_export, pptx_doc, pptx_ops
+from app.models.workspace import StoredFile
+from app.services import deck_export, deck_numbers, pptx_doc, pptx_ops
 from app.services import pptx_edit as edits
 from app.services.tools.office import Toolset, tools_for
 
@@ -161,6 +164,45 @@ def _build(args: dict[str, Any], look: Any = None) -> tuple[str, bytes]:
     return title, pptx_doc.deck(title, subtitle, slides, closing)
 
 
+def draft_args(args: dict[str, Any]) -> dict[str, Any] | None:
+    """The arguments of a draft made from a `pptx_write` call the model could not get right
+    (`Tool.draft`): every slide that has a title kept, a chart that cannot be drawn or a
+    table that does not fit written as lines of text, a missing title filled with the slide's
+    number. Nothing is invented: a slide the arguments do not have stays missing. None when
+    the call holds no slide at all."""
+    slides = _slides_of(args)
+    if not slides:
+        return None
+    width, height = deck_export.table_room()
+    fixed: list[dict[str, Any]] = []
+    for index, slide in enumerate(slides[:pptx_doc.MAX_WRITE], 1):
+        slide = dict(slide)
+        bullets = slide.get("bullets")
+        if isinstance(bullets, str):
+            bullets = [line.strip(" -•\t") for line in bullets.splitlines() if line.strip()]
+        slide["bullets"] = [str(b) for b in bullets] if isinstance(bullets, list) else []
+        if not str(slide.get("title") or "").strip():
+            slide["title"] = f"슬라이드 {index}"
+        if slide.get("chart") is not None and _chart_problem(index, slide["chart"]):
+            slide.pop("chart", None)
+        rows = slide.get("rows")
+        if rows is not None:
+            usable = isinstance(rows, list) and all(isinstance(r, list) for r in rows)
+            cells = [[str(c) for c in row] for row in rows if row] if usable else []
+            if not cells or slide.get("chart"):
+                slide.pop("rows", None)
+            elif not deck_export.table_fit(cells, width, height)[2]:
+                # a table too long for the slide even at the smallest type: its lines
+                slide.pop("rows", None)
+                slide["bullets"] += [" | ".join(row) for row in cells][:6]
+        if not isinstance(slide.get("image"), dict):
+            slide.pop("image", None)
+        fixed.append(slide)
+    title = " ".join(str(args.get("title") or "").split())[:120] or fixed[0]["title"]
+    return {"title": title, "subtitle": str(args.get("subtitle") or ""),
+            "closing": str(args.get("closing") or ""), "slides": fixed}
+
+
 def _overflow_problem(args: dict[str, Any]) -> str:
     """Which slides' text runs past its place even at the smallest type, laid out as the file
     will be (`deck_export.overflowing_slides`), or ``: a slide of long bullets beside a
@@ -218,10 +260,57 @@ def count_problem(request: str, args: dict[str, Any], *, slack: int = 0) -> str:
             "맞춰 다시 쓰세요.")
 
 
+async def _source_texts(ctx: Any) -> list[str]:
+    """The material a deck's numbers are held to: the text of the conversation's and the
+    project's files, and what the turn's tools returned (figure captions, passages)."""
+    texts = [str(item) for item in [*getattr(ctx, "outputs", []), *getattr(ctx, "searched", [])]
+             if isinstance(item, str)]
+    texts.append(str(getattr(ctx, "request", "") or ""))
+    scope = []
+    if getattr(ctx, "session_id", ""):
+        scope.append(StoredFile.session_id == ctx.session_id)
+    if getattr(ctx, "project_id", ""):
+        scope.append(StoredFile.project_id == ctx.project_id)
+    if scope:
+        try:
+            async with SessionLocal() as db:
+                rows = (await db.exec(
+                    select(StoredFile.text).where(StoredFile.user_id == ctx.user_id, or_(*scope))
+                )).all()
+        except Exception:  # noqa: BLE001 — a check on numbers never stops a write
+            log.info("pptx_write: source texts not read", exc_info=True)
+            rows = []
+        texts += [str(row) for row in rows if row]
+    return texts
+
+
+def _promote_numbers(slides: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[int]]:
+    """A picture slide whose figures (numbers with a unit) are only in its speaker notes gets
+    up to two of those short note lines on the slide: a result shown as a picture alone
+    leaves the audience without its numbers. The notes keep them."""
+    out: list[dict[str, Any]] = []
+    promoted: list[int] = []
+    for index, slide in enumerate(slides, 1):
+        notes = str(slide.get("notes") or "")
+        bullets = [str(b) for b in slide.get("bullets") or [] if str(b).strip()]
+        if (isinstance(slide.get("image"), dict) and notes and not slide.get("rows")
+                and not slide.get("chart") and not deck_numbers.claims([{"bullets": bullets}])):
+            lines = [seg.strip(" -•\t") for seg in re.split(r"(?<=[.!?。다요])\s+|\n+", notes)]
+            lines = [seg for seg in lines if 0 < len(seg) <= 90 and deck_numbers.claims(
+                [{"bullets": [seg]}])]
+            if lines:
+                slide = {**slide, "bullets": [*bullets, *lines[:2]]}
+                promoted.append(index)
+        out.append(slide)
+    return out, promoted
+
+
 async def _prepare(args: dict[str, Any], ctx: Any) -> dict[str, Any]:
     """The arguments checked against the turn and completed: the slide count the person
     asked, and each slide's `image.file` (a picture the person attached, or a figure
-    `pdf_figures` cut from a project paper) read into the slide."""
+    `pdf_figures` cut from a project paper) read into the slide. A draft the server saves
+    (`__draft__`) is only completed, never sent back."""
+    draft = args.get("__draft__") is True
     slides = _slides_of(args)
     args = {**args, "slides": [
         {**slide, "chart": _chart_values(slide["chart"])}
@@ -236,12 +325,21 @@ async def _prepare(args: dict[str, Any], ctx: Any) -> dict[str, Any]:
         raise ValueError("slides가 빈 배열로 왔습니다. 보낸 배열이 올바른 JSON이 아니면 이렇게 "
                          "됩니다: 글자는 모두 큰따옴표로 감싸고, 차트의 없는 값은 null로(「집계 "
                          "중」 같은 글자를 수 자리에 쓰지 말고), 끝에 쉼표를 남기지 말고 "
-                         "[{title, bullets: [...]}, …] 꼴로 다시 보내세요.")
+                         "[{title, bullets: [...]}, …] 꼴로 다시 보내세요. 글이 아주 길면 줄이세요"
+                         "(슬라이드당 줄 3~5개).")
+    record = getattr(ctx, "pptx", None)
+    record = record if isinstance(record, dict) else {}
     asked = getattr(ctx, "asked", "") or getattr(ctx, "request", "") or ""
     # the person's own words come first; material the turn appended after them can hide the
     # count from the instruction scope, so the opening paragraph is read on its own as well
     opening = asked.strip().split("\n\n", 1)[0]
     notes: list[str] = []
+    # numbers against the material (once refused, then said): range ends and numbers no
+    # source text has
+    found = deck_numbers.Findings([], [])
+    if not draft:
+        found = deck_numbers.check(args["slides"], await _source_texts(ctx))
+    number_lines = found.lines()
     if count_problem(asked, args) or (
             count_problem(opening, args) if opening != asked.strip() else ""):
         # one slide off (a closing slide added) is said, not sent back: each send-back costs
@@ -251,19 +349,36 @@ async def _prepare(args: dict[str, Any], ctx: Any) -> dict[str, Any]:
     if problem := count_problem(asked, args, slack=1) or (
             count_problem(opening, args, slack=1) if opening != asked.strip() else ""):
         notes = [note for note in notes if not note.startswith("장 수가 요청과 한 장")]
-        record = getattr(ctx, "pptx", None)
-        if not isinstance(record, dict) or not record.get("count_refused"):
-            if isinstance(record, dict):
-                record["count_refused"] = True
+        if draft or record.get("count_refused"):
+            # asked once already (or a draft): a deck of another size beats no deck; the
+            # reply says the size
+            notes.append(f"장 수가 요청과 다릅니다: 파일은 {_total(args)}장입니다. 답에 실제 장 "
+                         "수를 그대로 말하세요.")
+        else:
+            record["count_refused"] = True
+            if number_lines and not record.get("numbers_refused"):
+                # one send-back for both, not two
+                record["numbers_refused"] = True
+                problem += "\n" + "\n".join(number_lines)
             raise ValueError(problem)
-        # asked once already: a deck of another size beats no deck; the reply says the size
-        notes.append(f"장 수가 요청과 다릅니다: 파일은 {_total(args)}장입니다. 답에 실제 장 "
-                     "수를 그대로 말하세요.")
+    if number_lines:
+        if not record.get("numbers_refused") and not record.get("count_refused"):
+            record["numbers_refused"] = True
+            raise ValueError("\n".join(number_lines) + "\n고친 값으로 pptx_write를 다시 보내세요"
+                             "(자료에 있는 수치만; 그대로 두려면 같은 인자를 한 번 더 보내면 "
+                             "저장됩니다).")
+        notes.append("저장은 했지만 " + " ".join(number_lines) + " 고치려면 pptx_read 뒤 "
+                     "pptx_edit로 그 줄만 고치거나, 답에 그 수치가 자료에 없다고 밝히세요.")
     if problem := _overflow_problem(args):
         # said, not refused: a long deck sent back for its length as well as its count ran a
         # small model out of turns with no file at all; the writer may rewrite (replace: true)
         notes.append(problem + " 다시 쓰려면 replace: true로 고쳐 쓰고, 아니면 답에 그 "
                      "슬라이드를 줄여야 한다고 말하세요.")
+    args["slides"], promoted = _promote_numbers(args["slides"])
+    if promoted:
+        notes.append("그림만 있던 슬라이드 " + ", ".join(f"{n}장" for n in promoted) + "에 메모의 "
+                     "수치 줄을 슬라이드 본문으로 올렸습니다: 결과의 수치는 bullets에 써야 "
+                     "합니다(메모에만 두지 마세요).")
     wanted = [str((slide.get("image") or {}).get("file") or "").strip()
               for slide in args["slides"] if isinstance(slide.get("image"), dict)]
     wanted = [name for name in wanted if name]
@@ -272,25 +387,37 @@ async def _prepare(args: dict[str, Any], ctx: Any) -> dict[str, Any]:
     from app.services.tools.office import _pictures
 
     async with SessionLocal() as db:
-        found = await _pictures(db, ctx, [{"op": "insert_picture", "file": name}
-                                          for name in wanted])
+        found_pictures = await _pictures(db, ctx, [{"op": "insert_picture", "file": name}
+                                                   for name in wanted])
     slides = []
     missing = []
     for index, slide in enumerate(args["slides"], 1):
         image = slide.get("image")
         if isinstance(image, dict) and (name := str(image.get("file") or "").strip()):
-            if name not in found:
+            if name not in found_pictures:
                 # the slide is written without it (one unknown picture must not lose the
                 # deck), and the result says which picture is not in the file
                 missing.append(f"slides[{index}] 「{name}」")
                 slide = {key: value for key, value in slide.items() if key != "image"}
             else:
-                slide = {**slide, "image": {**image, "data": found[name][1]}}
+                slide = {**slide, "image": {**image, "data": found_pictures[name][1]}}
         slides.append(slide)
     if missing:
         notes.append(f"그림을 찾지 못해 넣지 않은 곳: {', '.join(missing)}. 이 그림들은 파일에 "
                      "없으니 넣었다고 말하지 마세요(pdf_figures로 잘라 온 그림 이름만 쓸 수 "
                      "있습니다).")
+    # a wide figure keeps three lines under it; lines with figures that did not fit are
+    # in the speaker notes only: said, so the writer splits the slide
+    for index, slide in enumerate(slides, 1):
+        data = (slide.get("image") or {}).get("data") if isinstance(slide.get("image"), dict) \
+            else None
+        bullets = [str(b) for b in slide.get("bullets") or [] if str(b).strip()]
+        if data and bullets and pptx_doc._wide(data):
+            _kept, moved = pptx_doc.strip_split(bullets)
+            if lost := [line for line in moved if deck_numbers.claims([{"bullets": [line]}])]:
+                notes.append(f"슬라이드 {index}: 넓은 그림 아래에는 세 줄까지 들어가 수치 줄 "
+                             f"{len(lost)}개가 메모로만 갔습니다: 수치 줄을 세 줄 안으로 줄이거나 "
+                             "그림 슬라이드를 둘로 나누세요.")
     return {**args, "slides": slides, NOTES: notes}
 
 
@@ -387,7 +514,15 @@ TOOLS = tools_for(Toolset(
         "beside the chat, NOT in this file. A picture goes in as {title, image: {file, "
         "caption}, bullets?} with `file` the name or id of an image in this conversation (one "
         "the person attached, or a figure pdf_figures cut from a project paper); caption it "
-        "with the source's own caption (「Figure 2. … (Kwon et al., 2023)」). "
+        "with the source's own caption (「Figure 2. … (Kwon et al., 2023)」). A slide with a "
+        "picture keeps its key text on the slide: put the result's numbers in `bullets` (two or "
+        "three short lines, each with its number and what it compares, e.g. 「처리량 2.2배 "
+        "(Orca Oracle 대비)」); under a wide figure up to three lines stay, beside a tall one they "
+        "sit in a column. `notes` are the speaker's words, never the only place a result or a "
+        "number is. Every number with a unit (%, 배, ×, GB, ms, tokens) must be one the "
+        "material has, and a range stays a range (「20.4–38.2%」, not 「최대 20.4%」). "
+        "Send a long deck compactly (three to five short lines a slide, notes of a sentence or "
+        "two): one call carrying very long text can be cut off before it ends. "
         "The slide count the person asked is the whole file: the cover and the closing slide "
         "count (「8장」 = cover + 7, or cover + 6 + closing). Tables: at most about six rows of "
         "short cells a slide; split a longer one over two slides. The tool reports what the "
@@ -462,6 +597,7 @@ TOOLS = tools_for(Toolset(
     build=_build,
     look_for=_look,
     prepare=_prepare,
+    draft=draft_args,
     contents=edits.contents,
 ))
 PPTX_READ, PPTX_EDIT, PPTX_WRITE, PPTX_RESTORE = TOOLS

@@ -6,6 +6,7 @@ writes itself is the `deck` kind (`deck.py`), which also downloads as `.pptx`.""
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -112,9 +113,12 @@ def deck(
                        "size": "large"}
             if bullets and _wide(image["data"]):
                 # a wide figure (a row of plots) beside text shrinks to a strip nobody can
-                # read: it takes the slide, and its lines go to the speaker notes
-                notes = "\n".join([entry["notes"], *bullets]).strip()
-                entry.update(layout="bullets", bullets=[], image=picture, notes=notes)
+                # read: it takes the slide's width, and a few short lines (the results, the
+                # numbers) sit in a strip under it; the rest go to the speaker notes
+                kept, moved = strip_split(bullets)
+                notes = "\n".join([entry["notes"], *moved]).strip()
+                entry.update(layout="bullets", bullets=kept,
+                             image={**picture, "strip": True}, notes=notes)
             else:
                 entry.update(layout="bullets", bullets=bullets, image=picture)
         elif rows:
@@ -130,6 +134,21 @@ def deck(
     # `to_pptx` leaves no master bullet under a plain line (`written_bullets_only`)
     # `overflow` gets each slide whose text runs past its place at the floor size
     return deck_export.to_pptx(title, made, tokens=tokens, template=template, overflow=overflow)
+
+
+#: lines kept visible under a wide figure
+STRIP_LINES = 3
+_DIGIT = re.compile(r"\d")
+
+
+def strip_split(bullets: list[str]) -> tuple[list[str], list[str]]:
+    """`(kept, moved)`: of a wide figure's lines, up to `STRIP_LINES` stay on the slide
+    (those with a number first, in their order) and the rest go to the speaker notes, so a
+    result's numbers are never only in the notes while a plainer line stays on the slide."""
+    ranked = sorted(range(len(bullets)), key=lambda i: (not _DIGIT.search(bullets[i]), i))
+    keep = set(ranked[:STRIP_LINES])
+    return ([b for i, b in enumerate(bullets) if i in keep],
+            [b for i, b in enumerate(bullets) if i not in keep])
 
 
 def _wide(data: bytes) -> bool:
