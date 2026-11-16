@@ -1765,8 +1765,9 @@ async def _run_tool(tool: Tool, arguments: str, ctx: ToolContext) -> ToolResult:
                 ("}", "]"))
             return ToolResult(
                 content=(
-                    "오류: 인자가 중간에 끊겨 JSON이 아닙니다. 한 번에 쓸 수 있는 길이를 넘었습니다: "
-                    "내용을 나눠 더 짧게 여러 번 호출하세요 (문서는 앞 부분만 쓰고, 나머지는 "
+                    "오류: 인자가 중간에 끊겨 JSON이 아닙니다. 한 번에 쓸 수 있는 길이를 "
+                    "넘었습니다: 내용을 나눠 더 짧게 여러 번 호출하세요 (문서는 앞 부분만 "
+                    "쓰고, 나머지는 "
                     "문서 읽기 뒤 편집 도구로 더하세요)."
                     if cut else
                     f"오류: 인자를 JSON으로 해석할 수 없습니다: {arguments[:200]}"),
