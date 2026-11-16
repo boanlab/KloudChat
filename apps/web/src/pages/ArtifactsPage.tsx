@@ -285,7 +285,7 @@ export function ArtifactsPage() {
                         </div>
                       </div>
                       <div role="cell" className="max-sm:hidden">{label}</div>
-                      <div role="cell" className="text-right text-sm tabular-nums text-muted max-sm:hidden" title={t('버전 {n}개').replace('{n}', String(a.version))}>
+                      <div role="cell" className="text-right text-sm tabular-nums text-muted max-sm:hidden" title={t.n('버전 {n}개', a.version)}>
                         v{a.version}
                       </div>
                       <div role="cell" className="text-sm text-muted max-sm:hidden"><RelTime iso={a.updatedAt} /></div>

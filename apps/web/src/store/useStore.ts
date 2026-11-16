@@ -102,7 +102,7 @@ import type {
 import { fileSize, uid } from '@/lib/utils'
 import { reportFileKind } from '@/lib/documentRequest'
 import { DEFAULT_PASSWORD_MIN } from '@/lib/formCheck'
-import { currentLang, translate, type Lang } from '@/lib/i18n'
+import { currentLang, translator, type Lang } from '@/lib/i18n'
 import { counters } from '@/lib/usage'
 import { setMaxUploadMb, setMediaUpload } from '@/lib/uploadLimit'
 import { LeaveCancelled, leaveOffice, officeDirty, saveOpenOffice } from '@/lib/officeGuard'
@@ -111,7 +111,7 @@ import { imageModelId, type ImageEditSource } from '@/lib/imageEdit'
 import { leaveOnSignOut } from '@/lib/push'
 
 /** Store-side translation (no hooks here); only strings that reach the screen. */
-const tr = (text: string) => translate(currentLang(), text)
+const tr = translator(currentLang)
 
 /** Send options per user message, for an immediate retry; the server persists the durable subset. */
 const sentWith = new Map<string, SendOptions>()

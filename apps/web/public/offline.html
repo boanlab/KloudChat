@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#5b53e8" />
-    <title>KloudChat · 오프라인</title>
+    <title>KloudChat · Offline</title>
     <style>
       :root { color-scheme: light dark; }
       body {
@@ -16,6 +16,7 @@
         background: Canvas;
         color: CanvasText;
       }
+      [hidden] { display: none !important; }
       main { max-width: 22rem; padding: 1.5rem; text-align: center; }
       h1 { font-size: 1.25rem; margin: 0 0 0.5rem; }
       p { margin: 0 0 1.25rem; opacity: 0.75; line-height: 1.5; }
@@ -31,10 +32,24 @@
     </style>
   </head>
   <body>
-    <main>
+    <main lang="ko" id="ko">
       <h1>인터넷에 연결되어 있지 않습니다</h1>
-      <p>연결되면 다시 열어 주세요. <span lang="en">You are offline; reopen once connected.</span></p>
+      <p>연결되면 다시 열어 주세요.</p>
       <a href="/">다시 열기</a>
     </main>
+    <main lang="en" id="en" hidden>
+      <h1>You are offline</h1>
+      <p>Reopen once you are connected.</p>
+      <a href="/">Reopen</a>
+    </main>
+    <script>
+      // The browser's language picks the wording; Korean when it is Korean or unknown.
+      var english = !/^ko/i.test(navigator.language || 'ko')
+      document.getElementById('en').hidden = !english
+      document.getElementById('ko').hidden = english
+      document.documentElement.lang = english ? 'en' : 'ko'
+      if (english) document.title = 'KloudChat · Offline'
+      else document.title = 'KloudChat · 오프라인'
+    </script>
   </body>
 </html>

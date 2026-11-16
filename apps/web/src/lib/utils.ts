@@ -74,6 +74,10 @@ export function formatDateTime(iso: string | null | undefined) {
   if (!iso) return '—'
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return '—'
+  // English: 「Nov 16, 2026, 9:15:07 PM」, not the numeric 「11/16/2026」 whose order differs by country
+  if (currentLang() === 'en') {
+    return d.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'medium', timeZone: serviceTimeZone() })
+  }
   return d.toLocaleString(currentLocale(), { timeZone: serviceTimeZone() })
 }
 

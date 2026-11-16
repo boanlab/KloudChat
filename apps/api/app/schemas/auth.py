@@ -76,6 +76,8 @@ class Preferences(Wire):
     push_events: dict[str, bool] = Field(default_factory=dict)
     #: conversation titles in notices about internal or strict-local material
     push_internal_titles: bool = False
+    #: the language of the screen the person last chose; notices are worded in it. "" = Korean
+    ui_language: Literal["", "ko", "en"] = ""
 
     @field_validator("push_events")
     @classmethod

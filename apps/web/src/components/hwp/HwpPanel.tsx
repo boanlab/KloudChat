@@ -116,7 +116,7 @@ function StartingNote({ attempt }: { attempt: number }) {
       data-testid="hwp-starting"
     >
       {t('한글 편집기를 불러오는 중…')}
-      {s >= 3 && ` ${t('{n}초').replace('{n}', String(s))}`}
+      {s >= 3 && ` ${t.n('{n}초', s)}`}
       {s >= SLOW_START_S && (
         <span className="mt-1 block">{t('처음 열 때는 1분 가까이 걸릴 수 있습니다.')}</span>
       )}
@@ -227,7 +227,7 @@ export function HwpPanel({
     startEditor(
       host.current!,
       START_TIMEOUT_MS,
-      t('편집기가 {n}초 안에 열리지 않았습니다.').replace('{n}', String(START_TIMEOUT_MS / 1000)),
+      t.n('편집기가 {n}초 안에 열리지 않았습니다.', START_TIMEOUT_MS / 1000),
     )
       .then((instance) => {
         if (gone) {

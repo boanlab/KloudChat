@@ -1,6 +1,7 @@
 /** Forms never disable submit: an empty required field gets focus and a message under it. */
 
 import { translate, type Lang } from './i18n'
+import type { Translator } from '@/lib/useT'
 
 /** The password rule until `/auth/config` answers, and against a server that does not say. */
 export const DEFAULT_PASSWORD_MIN = 10
@@ -60,6 +61,6 @@ export function checkRequired<K extends string>(
 }
 
 /** 「비밀번호는 10자 이상이어야 합니다.」, or null when `value` meets the rule. */
-export function passwordProblem(t: (text: string) => string, value: string, minLength: number): string | null {
-  return value.length >= minLength ? null : t('비밀번호는 {n}자 이상이어야 합니다.').replace('{n}', String(minLength))
+export function passwordProblem(t: Translator, value: string, minLength: number): string | null {
+  return value.length >= minLength ? null : t.n('비밀번호는 {n}자 이상이어야 합니다.', minLength)
 }

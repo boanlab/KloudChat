@@ -323,7 +323,7 @@ export function AuditLog({ onTotal, account: initialAccount = '' }: {
                   className="cursor-pointer whitespace-nowrap hover:bg-elevated focus-visible:bg-elevated focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
                 >
                   <td className="px-4 py-2 tabular-nums text-muted">{formatDateTime(e.at)}</td>
-                  <td className="truncate px-4 py-2" title={e.actor}>
+                  <td className="truncate px-4 py-2" title={t(e.actor)}>
                     {t(e.actor)}
                   </td>
                   <td className="px-4 py-2">
@@ -350,7 +350,7 @@ export function AuditLog({ onTotal, account: initialAccount = '' }: {
               >
                 <div className="text-sm tabular-nums text-muted">{formatDateTime(e.at)}</div>
                 <ActionCell row={e} modelName={modelName} />
-                <p className="min-w-0 truncate text-sm" title={e.actor}>
+                <p className="min-w-0 truncate text-sm" title={t(e.actor)}>
                   {t(e.actor)}
                 </p>
                 <p className="flex min-w-0 gap-x-2 text-xs text-faint">

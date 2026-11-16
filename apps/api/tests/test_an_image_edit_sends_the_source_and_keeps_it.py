@@ -210,6 +210,11 @@ async def stack(tmp_path, monkeypatch):
                             "kind": "image", "prompt": "빨간 정사각형", "aspect": "1:1",
                             "model": DRAWER["id"],
                             "src": f"{settings.api_prefix}/files/f-made/content"}))
+        db.add(Artifact(id="a-inside", user_id="me", session_id="s1", kind=ArtifactKind.image,
+                        title="내부에서 그림", data={
+                            "kind": "image", "prompt": "내부에서 그림", "aspect": "1:1",
+                            "model": "strict-local/z-image-turbo",
+                            "src": f"{settings.api_prefix}/files/f-made/content"}))
         await db.commit()
 
     class Stack:
@@ -335,3 +340,17 @@ async def test_another_accounts_picture_is_not_found(stack):
                 "s1", ImageRequest(prompt="x", model=EDITOR["id"],
                                    source_artifact_id="a-theirs"), me, db, None)
     assert refused.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_a_picture_a_strict_local_model_drew_stays_inside(stack):
+    stack.policy["policy"] = Governance(internal_data_strict_local=False)
+    async with stack.db() as db:
+        me = await db.get(User, "me")
+        with pytest.raises(HTTPException) as refused:
+            await sessions.generate_images(
+                "s1", ImageRequest(prompt="배경만 파랗게", model=EDITOR["id"],
+                                   source_artifact_id="a-inside"), me, db, None)
+    assert refused.value.status_code == 409
+    assert refused.value.detail == "image_edit_strict_local"
+    assert stack.calls == []

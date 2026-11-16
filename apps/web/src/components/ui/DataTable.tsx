@@ -54,7 +54,7 @@ export function SortHeader({
               : t('{column} 내림차순으로 정렬됨').replace('{column}', name)
         }
         className={cn(
-          'group/sort -mx-1.5 inline-flex items-center gap-1 rounded-control px-1.5 py-1 whitespace-nowrap transition-colors hover:bg-line/40 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent',
+          'group/sort -mx-1.5 inline-flex [text-transform:inherit] items-center gap-1 rounded-control px-1.5 py-1 whitespace-nowrap transition-colors hover:bg-line/40 hover:text-fg focus-visible:outline-2 focus-visible:outline-accent',
           align === 'right' && 'flex-row-reverse',
           active && 'text-fg',
           buttonClassName,

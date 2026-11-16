@@ -5,6 +5,7 @@ import { useMarkUnsaved } from '@/lib/unsaved'
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 import type { Project } from '@/types'
+import type { Translator } from '@/lib/useT'
 
 /** The mark migration 0091 leaves on a 지침 written from a theme. */
 const FROM_THEME = '(테마에서 옮김)'
@@ -13,7 +14,7 @@ const FACES: Record<string, string> = { serif: '명조', gothic: '고딕' }
 const DENSITY: Record<string, string> = { compact: '촘촘하게', normal: '보통', airy: '여유 있게' }
 
 /** The values the writers read from a 지침, as chips. */
-function readChips(reading: BriefReading, t: (key: string) => string): { key: string; text: string; colour?: string }[] {
+function readChips(reading: BriefReading, t: Translator): { key: string; text: string; colour?: string }[] {
   const spec = reading.spec
   const out: { key: string; text: string; colour?: string }[] = []
   if (spec.accent) out.push({ key: 'accent', text: t('강조 {value}').replace('{value}', spec.accent), colour: spec.accent })
@@ -37,7 +38,7 @@ function readChips(reading: BriefReading, t: (key: string) => string): { key: st
     if (table.length) out.push({ key: 'table', text: `${t('표')}: ${table.join(', ')}`, colour: spec.table.colour })
   }
   if (spec.density) out.push({ key: 'density', text: `${t('밀도')}: ${t(DENSITY[spec.density] ?? spec.density)}` })
-  if (spec.max_bullets) out.push({ key: 'bullets', text: t('글머리 {n}개까지').replace('{n}', String(spec.max_bullets)) })
+  if (spec.max_bullets) out.push({ key: 'bullets', text: t.n('글머리 {n}개까지', spec.max_bullets) })
   if (spec.page_size || spec.orientation) {
     out.push({ key: 'page', text: [spec.page_size, spec.orientation === 'landscape' ? t('가로') : spec.orientation ? t('세로') : ''].filter(Boolean).join(' ') })
   }

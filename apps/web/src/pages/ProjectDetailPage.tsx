@@ -54,6 +54,7 @@ import { AddTextModal } from '@/components/shelf/AddTextModal'
 import { NotesTab } from '@/components/shelf/NotesTab'
 import { SourceGuide } from '@/components/shelf/SourceGuide'
 import { StudioTab } from '@/components/shelf/StudioTab'
+import type { Translator } from '@/lib/useT'
 
 type Tab = 'sessions' | 'knowledge' | 'studio' | 'notes' | 'skills' | 'memory'
 
@@ -1057,7 +1058,7 @@ export function ProjectDetailPage() {
 
 /** Why a page could not be kept, and what instead; inside the dialog. */
 /** A project conversation's second line: its latest message, else what it made, else its kind. */
-function sessionLine(session: Session, t: (text: string) => string): string {
+function sessionLine(session: Session, t: Translator): string {
   const said = previewSentence(session.preview)
   if (said) return said
   const made = session.made
@@ -1065,11 +1066,11 @@ function sessionLine(session: Session, t: (text: string) => string): string {
     const noun = { image: '그림 {n}장', video: '영상 {n}개', narration: '내레이션 {n}개', music: '음악 {n}곡' }[made.kind]
     return t(noun).replace('{n}', String(made.count))
   }
-  if (session.messageCount > 0) return t('메시지 {n}개').replace('{n}', String(session.messageCount))
+  if (session.messageCount > 0) return t.n('메시지 {n}개', session.messageCount)
   return t(kindMeta[session.kind].label)
 }
 
-function urlFailure(err: unknown, t: (text: string) => string): string {
+function urlFailure(err: unknown, t: Translator): string {
   const detail = err instanceof ApiError ? err.detail : ''
   if (detail === '주소의 호스트를 찾을 수 없습니다.') {
     return t('이 주소를 열 수 없습니다(호스트 없음). 주소를 확인하거나 PDF로 저장해 올리세요.')

@@ -58,3 +58,8 @@ export function nodeOf(subject: string): string {
   const at = subject.lastIndexOf(' · ')
   return at < 0 ? subject : subject.slice(at + 3)
 }
+
+/** A component's name as the collector writes it, with its Korean marks in the reader's language. */
+export function componentName(name: string, t: (text: string) => string): string {
+  return name.replace(/\((다른 인스턴스|수집)\)/g, (_, w: string) => `(${t(w)})`)
+}

@@ -18,9 +18,10 @@ import { doingPhrase, donePhrase, failedPhrase, runSeconds, stageLabel, stageTon
 import { useT } from '@/lib/useT'
 import { downloadFile } from '@/lib/api'
 import { collapsedStepNames } from '@/lib/stepNames'
+import type { Translator } from '@/lib/useT'
 
 /** A step label in the screen's language; a stage's 「이름 · 결과」 label part by part. */
-function stepLabel(t: (text: string) => string, label: string): string {
+function stepLabel(t: Translator, label: string): string {
   const whole = t(label)
   if (whole !== label || !label.includes(' · ')) return whole
   return label
@@ -43,10 +44,10 @@ function useElapsed(since: number | undefined, live: boolean) {
 }
 
 /** 「55초」, 「1분 5초」: how long a finished run took. */
-function durationWords(seconds: number, t: (text: string) => string): string {
+function durationWords(seconds: number, t: Translator): string {
   const m = Math.floor(seconds / 60)
   const sec = seconds % 60
-  if (m === 0) return t('{n}초').replace('{n}', String(sec))
+  if (m === 0) return t.n('{n}초', sec)
   if (sec === 0) return t('{m}분').replace('{m}', String(m))
   return t('{m}분 {s}초').replace('{m}', String(m)).replace('{s}', String(sec))
 }
@@ -60,7 +61,7 @@ function headline(
   kind: SessionKind | undefined,
   run: PipelineRun | undefined,
   awaiting: string | null | undefined,
-  t: (text: string) => string,
+  t: Translator,
 ): string {
   if (phase === 'live') return t(doingPhrase(kind, run))
   if (phase === 'waiting') return t(waitingPhrase(kind, awaiting ? { stage: awaiting } : null))

@@ -203,7 +203,7 @@ export function ShareButton({
                 {share.scope === 'link' ? <Globe size={10} /> : <Users size={10} />}
                 {share.scope === 'link' ? t('계정 없이 열림') : t('계정 필요')}
               </Badge>
-              <span>{t('{n}회 열람').replace('{n}', String(share.views))}</span>
+              <span>{t.n('{n}회 열람', share.views)}</span>
               <span className="text-faint">
                 {artifact
                   ? t('이 아티팩트만 보입니다 — 대화·프로젝트 파일·메모리는 포함되지 않습니다.')
@@ -302,7 +302,7 @@ function ShareViews({ shareId }: { shareId: string }) {
               {v.name && v.email && <span className="text-sm text-muted">{v.email}</span>}
               <span className="ml-auto text-sm text-faint tabular-nums">
                 {when(v.lastAt)}
-                {v.opens > 1 && ` · ${t('{n}회').replace('{n}', String(v.opens))}`}
+                {v.opens > 1 && ` · ${t.n('{n}회', v.opens)}`}
               </span>
               <span className="flex w-full flex-wrap items-center gap-x-2 text-sm text-muted">
                 {v.region && (

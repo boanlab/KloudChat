@@ -2605,7 +2605,7 @@ export function DeckPanel({
           title={t('{list}번 장').replace('{list}', weakSlides.map((i) => i + 1).join(', '))}
         >
           <TriangleAlert size={13} className="text-warn" />
-          {t('확인 필요 {n}장').replace('{n}', String(weakSlides.length))}
+          {t.n('확인 필요 {n}장', weakSlides.length)}
         </Button>
       )}
       {overflowRisks.length > 0 && (
@@ -2975,7 +2975,7 @@ export function DeckPanel({
                   <TriangleAlert size={14} className="shrink-0 text-warn" />
                   <span className="min-w-0 flex-1">
                     {t('이 레이아웃에 보이지 않는 내용을 지우지 않고 보관했습니다: {what}').replace('{what}', [
-                      held.lines > 0 ? t('문장 {n}개').replace('{n}', String(held.lines)) : '',
+                      held.lines > 0 ? t.n('문장 {n}개', held.lines) : '',
                       held.chart ? t('차트') : '',
                     ].filter(Boolean).join(', '))}
                   </span>

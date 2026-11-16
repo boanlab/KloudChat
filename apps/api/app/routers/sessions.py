@@ -4264,9 +4264,16 @@ async def _edit_image(
     internal = stored.origin != "generated" or bool((source.data or {}).get("internalSource")
                                                      if source is not None else False)
     policy = await _require_egress_policy()
+    models = catalogue["models"]
+    # a picture a self-hosted strict-local model drew never leaves for an outside editor,
+    # whatever the organisation's internal-material rule says
+    made_by = model_service.find(models, str((source.data or {}).get("model") or "")) if source is not None else None
+    if made_by is not None and _strict_model(made_by):
+        internal = True
+        if not boundary.strict:
+            boundary = _MediaBoundary(True, payload.prompt, "internal_data", [])
     if internal and not boundary.strict and policy.internal_data_strict_local:
         boundary = _MediaBoundary(True, payload.prompt, "internal_data", [])
-    models = catalogue["models"]
     asked = payload.model or (session.model if session.kind == SessionKind.image else "") or ""
     asked_model = model_service.find(models, asked)
     editors = [m for m in models if m.get("editsImages")]

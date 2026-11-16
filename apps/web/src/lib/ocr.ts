@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { filesApi, type FileRow } from '@/lib/api'
 import { isWatching, mediaNote, type MediaFields } from '@/lib/media'
+import type { Translator } from '@/lib/useT'
 
 /** What a file row says about its scanned pages being read (`services/ocr_jobs.py`). */
 interface OcrFields extends MediaFields {
@@ -17,7 +18,7 @@ export const isReading = (file: OcrFields) =>
 /** One short line on a file's reading, or null; failures shown by the file's own error. */
 export function ocrNote(
   file: OcrFields,
-  t: (key: string) => string,
+  t: Translator,
 ): { text: string; tone: 'busy' | 'warn' | 'quiet' } | null {
   // an audio/video file says how far its reading is instead
   if (file.mediaState) return mediaNote(file, t)
@@ -33,9 +34,9 @@ export function ocrNote(
   }
   if (file.ocrState !== 'done') return null
   const parts = [t('OCR로 읽음')]
-  if (done < total) parts.push(t('앞 {n}쪽까지').replace('{n}', String(done)))
+  if (done < total) parts.push(t.n('앞 {n}쪽까지', done))
   if (file.ocrReview) {
-    parts.push(t('확인 필요 {n}쪽').replace('{n}', String(file.ocrReview)))
+    parts.push(t.n('확인 필요 {n}쪽', file.ocrReview))
     return { text: parts.join(' · '), tone: 'warn' }
   }
   return { text: parts.join(' · '), tone: 'quiet' }

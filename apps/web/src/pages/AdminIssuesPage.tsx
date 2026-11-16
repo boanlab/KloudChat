@@ -159,7 +159,7 @@ function IssueListRow({ row, onOpen }: { row: IssueRow; onOpen: () => void }) {
             <span>{row.reporter ? `${row.reporter.name} · ${row.reporter.email}` : ''}</span>
             <span>{formatDateTime(row.createdAt)}</span>
             {row.assignee && <span>{t('담당자')}: {row.assignee.name}</span>}
-            {row.replies ? <span>{t('답변 {n}개').replace('{n}', String(row.replies))}</span> : null}
+            {row.replies ? <span>{t.n('답변 {n}개', row.replies)}</span> : null}
           </span>
         </span>
         <span className="flex shrink-0 items-center gap-1.5 text-faint">
@@ -307,8 +307,8 @@ function IssueDetailView({ id }: { id: string }) {
                   <p className="text-sm text-muted">
                     {detail.snapshot?.title || t('제목 없는 대화')}
                     {' · '}
-                    {t('메시지 {n}개').replace('{n}', String(detail.snapshot?.messages ?? 0))}
-                    {detail.snapshot && detail.snapshot.artifacts > 0 && ` · ${t('아티팩트 {n}개').replace('{n}', String(detail.snapshot.artifacts))}`}
+                    {t.n('메시지 {n}개', detail.snapshot?.messages ?? 0)}
+                    {detail.snapshot && detail.snapshot.artifacts > 0 && ` · ${t.n('아티팩트 {n}개', detail.snapshot.artifacts)}`}
                   </p>
                   <p className="text-xs text-faint">{t('세션 사본을 열면 감사 기록에 남습니다.')}</p>
                   {opening ? <SnapshotLoading /> : (

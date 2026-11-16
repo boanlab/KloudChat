@@ -279,8 +279,8 @@ function IssueForm() {
             {sessionKind && kindMeta[sessionKind] ? `${t(kindMeta[sessionKind].label)} · ` : ''}
             <span className="font-medium text-fg">{info.title || t('제목 없는 대화')}</span>
             {' · '}
-            {t('메시지 {n}개').replace('{n}', String(info.messageCount))}
-            {info.artifactCount > 0 && ` · ${t('아티팩트 {n}개').replace('{n}', String(info.artifactCount))}`}
+            {t.n('메시지 {n}개', info.messageCount)}
+            {info.artifactCount > 0 && ` · ${t.n('아티팩트 {n}개', info.artifactCount)}`}
           </p>
           <label className="flex items-start gap-2 text-base">
             <input

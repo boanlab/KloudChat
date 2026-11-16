@@ -64,7 +64,7 @@ export function MediaResult({
   const videos = artifacts.filter((a): a is VideoArtifact => a.kind === 'video')
 
   const modelLabel = (id: string) => models.find((m) => m.id === id)?.label ?? id
-  const charge = credits > 0 ? t('{n} 크레딧 차감됨').replace('{n}', credits.toLocaleString()) : ''
+  const charge = credits > 0 ? t.n('{n} 크레딧 차감됨', credits) : ''
   const caption = (parts: string[]) => (
     <p className="mt-1.5 text-xs text-faint">{[...parts, charge].filter(Boolean).join(' · ')}</p>
   )
@@ -211,6 +211,7 @@ export function MediaResult({
                       name: img.prompt || img.title,
                       origin: img.internalSource ? 'upload' : 'generated',
                       internal: img.internalSource,
+                      madeBy: img.model,
                     }}
                   />
                 ))}
@@ -229,7 +230,7 @@ export function MediaResult({
           </div>
           {images.length === 1 && <ImageVersions image={first!} />}
           {caption([
-            t('{n}장').replace('{n}', String(images.length)),
+            t.n('{n}장', images.length),
             modelLabel(images[0].model),
           ])}
           {/* Prompt actually sent; editable, resendable. */}
@@ -290,7 +291,7 @@ export function MediaResult({
           <div className="mt-1.5 flex items-center gap-2">
             <span className="min-w-0 flex-1 text-xs text-faint">
               {[
-                t('{n}초').replace('{n}', String(v.durationSec)),
+                t.n('{n}초', v.durationSec),
                 v.aspect,
                 modelLabel(v.model),
                 charge,
@@ -332,7 +333,7 @@ export function MediaResult({
           </div>
           {caption([
             t(audioKindLabel[a.audioKind]),
-            a.durationSec > 0 ? t('{n}초').replace('{n}', String(a.durationSec)) : '',
+            a.durationSec > 0 ? t.n('{n}초', a.durationSec) : '',
             modelLabel(a.model),
           ].filter(Boolean))}
         </div>

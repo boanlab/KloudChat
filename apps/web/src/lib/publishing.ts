@@ -5,6 +5,7 @@ import { create } from 'zustand'
 import { ApiError, BASE_URL, botsApi, publicationsApi } from '@/lib/api'
 import type { BotChannel, BotListItem, BotLimits, BotVisibility, Publication, PublicationSettings, PublicationStatus, ShowProcess } from '@/lib/api'
 import { useStore } from '@/store/useStore'
+import type { Translator } from '@/lib/useT'
 
 /** Why an agent cannot be published as it stands. */
 export const PROBLEM_LABEL: Record<string, string> = {
@@ -81,7 +82,7 @@ export const VISIBILITY_HINT: Record<BotVisibility, string> = {
 }
 
 /** The owner's view of a request: what is waiting, or why it was refused. */
-export function reviewLine(pub: Publication, t: (s: string) => string): string {
+export function reviewLine(pub: Publication, t: Translator): string {
   const asked = pub.requestedVisibility ? t(VISIBILITY_LABEL[pub.requestedVisibility]) : ''
   if (pub.reviewState === 'pending') {
     if (asked && pub.pendingVersionId) return t('{scope}와 새 판을 관리자가 확인하고 있습니다.').replace('{scope}', asked)
@@ -97,16 +98,16 @@ export function reviewLine(pub: Publication, t: (s: string) => string): string {
 }
 
 /** Notice before the first question; asks consent with 「대화 열람」 on; accountless visitors learn it stays in this browser. */
-export function noticeLines(view: 'off' | 'on', days: number, t: (s: string) => string, signedIn = true): string[] {
+export function noticeLines(view: 'off' | 'on', days: number, t: Translator, signedIn = true): string[] {
   const lines =
     view === 'on'
       ? [
           t('입력 내용은 이 챗봇을 만든 사람 계정으로 처리·기록됩니다.'),
-          t('이 챗봇을 만든 사람이 대화 내용을 볼 수 있습니다. {n}일 뒤 지워집니다.').replace('{n}', String(days)),
+          t.n('이 챗봇을 만든 사람이 대화 내용을 볼 수 있습니다. {n}일 뒤 지워집니다.', days),
         ]
       : [t('입력 내용은 이 챗봇을 만든 사람 계정으로 처리·기록됩니다(개선을 위해 개인정보를 가린 통계로만 보입니다).')]
   if (!signedIn) {
-    if (view !== 'on') lines.push(t('대화는 마지막 질문 뒤 {n}일이 지나면 지워집니다.').replace('{n}', String(days)))
+    if (view !== 'on') lines.push(t.n('대화는 마지막 질문 뒤 {n}일이 지나면 지워집니다.', days))
     lines.push(t('로그인하지 않으면 이 브라우저에서만 대화를 이어 볼 수 있습니다. 쿠키를 지우면 대화를 다시 열 수 없습니다.'))
   }
   lines.push(t('개인정보를 입력하지 마세요.'))
@@ -114,14 +115,14 @@ export function noticeLines(view: 'off' | 'on', days: number, t: (s: string) => 
 }
 
 /** A refused question, in words a visitor can act on. */
-export function botErrorMessage(err: unknown, t: (s: string) => string, maxChars?: number): string {
+export function botErrorMessage(err: unknown, t: Translator, maxChars?: number): string {
   const code = err instanceof ApiError ? err.detail : ''
   const wait = err instanceof ApiError ? err.retryAfter : undefined
   switch (code) {
     case 'visitor_rate_limited':
       // The minute's limit says how long is left; a day's says tomorrow.
       return wait && wait <= 120
-        ? t('질문을 너무 자주 보냈습니다. {n}초 뒤에 다시 보내 주세요.').replace('{n}', String(wait))
+        ? t.n('질문을 너무 자주 보냈습니다. {n}초 뒤에 다시 보내 주세요.', wait)
         : t('질문을 너무 자주 보냈습니다. 잠시 뒤 다시 보내 주세요.')
     case 'visitor_daily_limit':
       return t('오늘 보낼 수 있는 질문을 다 보냈습니다. 내일 다시 이용해 주세요.')

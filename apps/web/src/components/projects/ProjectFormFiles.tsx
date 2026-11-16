@@ -7,6 +7,7 @@ import { errorCode, filesApi, formsApi, type FileRow, type FormKind } from '@/li
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 import type { Project } from '@/types'
+import type { Translator } from '@/lib/useT'
 
 const SLOTS: { kind: FormKind; label: string; accept: string }[] = [
   { kind: 'pptx', label: 'PowerPoint', accept: '.pptx,.potx' },
@@ -24,12 +25,12 @@ const REFUSALS: Record<string, string> = {
 }
 
 /** What a saved form holds, one line. */
-function summary(row: FileRow, t: (key: string) => string): string {
+function summary(row: FileRow, t: Translator): string {
   const form = row.form
   if (!form) return ''
   if (form.kind === 'pptx') {
     return [
-      form.layouts !== undefined && t('레이아웃 {n}개').replace('{n}', String(form.layouts)),
+      form.layouts !== undefined && t.n('레이아웃 {n}개', form.layouts),
       form.font,
       form.accent,
       form.size,
@@ -37,16 +38,16 @@ function summary(row: FileRow, t: (key: string) => string): string {
   }
   if (form.kind === 'docx') {
     return [
-      form.sections ? t('장 {n}개').replace('{n}', String(form.sections)) : t('장 제목 스타일 없음'),
+      form.sections ? t.n('장 {n}개', form.sections) : t('장 제목 스타일 없음'),
       form.header && t('머리글'),
       form.cover && t('표지'),
-      form.fields ? t('채울 칸 {n}개').replace('{n}', String(form.fields)) : '',
+      form.fields ? t.n('채울 칸 {n}개', form.fields) : '',
     ].filter(Boolean).join(' · ')
   }
   if (form.kind === 'hwpx') {
     return [
-      t('채울 칸 {n}개').replace('{n}', String(form.fields ?? 0)),
-      form.tables ? t('표 {n}개').replace('{n}', String(form.tables)) : '',
+      t.n('채울 칸 {n}개', form.fields ?? 0),
+      form.tables ? t.n('표 {n}개', form.tables) : '',
     ].filter(Boolean).join(' · ')
   }
   return ''
@@ -109,7 +110,7 @@ export function FormFilesField({
         const row = known.find((file) => file.id === value[slot.kind])
         return (
           <div key={slot.kind} className="space-y-1.5" data-testid={`form-slot-${slot.kind}`}>
-            <p className="text-sm font-medium text-muted">{slot.label}</p>
+            <p className="text-sm font-medium text-muted">{t(slot.label)}</p>
             {row ? (
               <div className="flex items-center gap-2 rounded-control border border-line bg-panel px-2.5 py-2">
                 <FileStack size={16} className="shrink-0 text-accent" />
@@ -144,7 +145,7 @@ export function FormFilesField({
                 size="sm"
                 variant="ghost"
                 disabled={busy !== null}
-                aria-label={t('{kind} 양식을 파일함에서 고르기').replace('{kind}', slot.label)}
+                aria-label={t('{kind} 양식을 파일함에서 고르기').replace('{kind}', t(slot.label))}
                 onClick={() => setPicking(slot.kind)}
               >
                 <FolderOpen size={13} />
@@ -155,7 +156,7 @@ export function FormFilesField({
                 type="file"
                 accept={slot.accept}
                 hidden
-                aria-label={t('{kind} 양식 올리기').replace('{kind}', slot.label)}
+                aria-label={t('{kind} 양식 올리기').replace('{kind}', t(slot.label))}
                 onChange={(e) => {
                   const file = e.target.files?.[0]
                   e.target.value = ''

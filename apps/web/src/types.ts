@@ -285,6 +285,8 @@ export interface Preferences {
   pushEvents?: Partial<Record<PushEvent, boolean>>
   /** Conversation titles in notices about internal or strict-local material. */
   pushInternalTitles?: boolean
+  /** The screen language last chosen; notices follow it. */
+  uiLanguage?: '' | 'ko' | 'en'
 }
 
 export type PushEvent = 'job_done' | 'job_failed' | 'shared' | 'review' | 'decided' | 'issue' | 'credits'

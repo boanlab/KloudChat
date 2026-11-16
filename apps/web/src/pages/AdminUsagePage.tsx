@@ -341,14 +341,14 @@ export function AdminUsagePage() {
                     label: m.model,
                     value: m.credits,
                     sub: [
-                      t('{n}회').replace('{n}', String(m.requests)),
+                      t.n('{n}회', m.requests),
                       t('{n}명').replace('{n}', String(m.users)),
                       m.units && m.unit === 'seconds'
-                        ? t('{n}초 받아씀').replace('{n}', m.units.toLocaleString())
+                        ? t.n('{n}초 받아씀', m.units)
                         : m.units && m.unit === 'chunks'
-                          ? t('{n}청크 색인').replace('{n}', m.units.toLocaleString())
+                          ? t.n('{n}청크 색인', m.units)
                           : m.units && m.unit === 'pages'
-                            ? t('{n}쪽 글자 읽음').replace('{n}', m.units.toLocaleString())
+                            ? t.n('{n}쪽 글자 읽음', m.units)
                             : '',
                     ]
                       .filter(Boolean)
@@ -382,7 +382,7 @@ export function AdminUsagePage() {
                     <div className="flex items-baseline justify-between text-base">
                       <span>
                         {t('올린 파일과 만든 이미지·클립')}{' '}
-                        <span className="text-faint">· {t('{n}개').replace('{n}', storage.files.toLocaleString())}</span>
+                        <span className="text-faint">· {t.n('{n}개', storage.files)}</span>
                       </span>
                       <span className="tabular-nums">{bytes(storage.usedBytes)}</span>
                     </div>
@@ -407,7 +407,7 @@ export function AdminUsagePage() {
                         <span className="tabular-nums">{bytes(storage.orphanBytes)}</span>
                         <span className="text-faint">
                           {' '}
-                          · {t('{n}개').replace('{n}', storage.orphanFiles.toLocaleString())}
+                          · {t.n('{n}개', storage.orphanFiles)}
                           {storage.reclaimAt > 0 &&
                             ` · ${t('디스크가 {pct}% 차면 오래된 것부터 자동으로 지웁니다').replace('{pct}', String(Math.round(storage.reclaimAt * 100)))}`}
                         </span>

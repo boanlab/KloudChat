@@ -78,8 +78,7 @@ export function ProposalCard({
           ))}
         </ul>
         <p className="mt-2 text-sm text-muted">
-          {t('{n}장 · 약 {c} 크레딧 · {m}')
-            .replace('{n}', String(drawn.length))
+          {t.n('{n}장 · 약 {c} 크레딧 · {m}', drawn.length)
             .replace('{c}', credits.toLocaleString())
             .replace('{m}', pending.figureModel ?? '')}
         </p>
@@ -184,7 +183,7 @@ export function ProposalCard({
               {streaming ? <Loader2 size={13} className="animate-spin" /> : null}
               {t('답하고 계속')}
               {answered && blanks > 0 && (
-                <span className="font-normal opacity-80">· {t('빈칸 {n}개').replace('{n}', String(blanks))}</span>
+                <span className="font-normal opacity-80">· {t.n('빈칸 {n}개', blanks)}</span>
               )}
             </Button>
             <Button

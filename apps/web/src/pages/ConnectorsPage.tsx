@@ -121,7 +121,7 @@ function ConnectorCard({
       )}
 
       <div className="mb-3 mt-3 flex flex-wrap gap-1.5">
-        <Badge>{t('도구 {n}').replace('{n}', String(connector.tools.length))}</Badge>
+        <Badge>{t.n('도구 {n}', connector.tools.length)}</Badge>
         {writeTools > 0 && (
           <Badge tone="warn">
             <Lock size={10} />

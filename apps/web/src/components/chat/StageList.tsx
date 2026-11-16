@@ -128,7 +128,7 @@ function Evidence({ evidence }: { evidence: StageEvidence }) {
       )}
       {evidence.changes && evidence.changes.length > 0 && (
         <div>
-          <p className="mb-1 font-medium text-muted">{t('바꾼 곳 {n}개').replace('{n}', String(evidence.changes.length))}</p>
+          <p className="mb-1 font-medium text-muted">{t.n('바꾼 곳 {n}개', evidence.changes.length)}</p>
           <ul className="space-y-1">
             {evidence.changes.map((change, i) => (
               <li key={i} className="rounded-control border border-line bg-panel px-2 py-1">
@@ -388,10 +388,10 @@ export function StageList({
           {skipped.every(notApplicable)
             ? showSkipped
               ? t('해당 없는 단계 숨기기')
-              : t('해당 없는 단계 {n}개').replace('{n}', String(skipped.length))
+              : t.n('해당 없는 단계 {n}개', skipped.length)
             : showSkipped
               ? t('실행하지 않은 단계 숨기기')
-              : t('실행하지 않은 단계 {n}개').replace('{n}', String(skipped.length))}
+              : t.n('실행하지 않은 단계 {n}개', skipped.length)}
         </button>
       )}
     </div>

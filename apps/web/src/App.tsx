@@ -102,6 +102,18 @@ function useAllowanceRefresh() {
   }, [resetsAt, refreshMe])
 }
 
+/** Tells the server which language the screen is in, so notices to this account follow it. */
+function useLanguageSync() {
+  const lang = useStore((s) => s.lang)
+  const saved = useStore((s) => s.user?.preferences?.uiLanguage)
+  const signedIn = useStore((s) => !!s.user)
+  const updateProfile = useStore((s) => s.updateProfile)
+  useEffect(() => {
+    if (!signedIn || (saved ?? '') === (lang === 'ko' && !saved ? '' : lang)) return
+    void updateProfile({ preferences: { uiLanguage: lang } }).catch(() => undefined)
+  }, [lang, saved, signedIn, updateProfile])
+}
+
 /** Pending → active lands at home rather than on whatever URL the tab was covering. */
 function useHomeAfterApproval(status: string | undefined) {
   const navigate = useNavigate()
@@ -180,6 +192,7 @@ function Authenticated() {
   const status = useStore((s) => s.user?.status)
   const role = useStore((s) => s.user?.role)
   useAllowanceRefresh()
+  useLanguageSync()
   useHomeAfterApproval(status)
   useLandingAfterSignIn(authenticated, authLoading, role)
 

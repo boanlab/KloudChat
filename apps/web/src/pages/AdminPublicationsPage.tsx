@@ -173,7 +173,7 @@ function PublicationList() {
                   <span className="min-w-0 flex-1 basis-60">
                     <span className="block truncate text-base font-medium">{row.title}</span>
                     <span className="block truncate text-xs text-faint">
-                      {row.ownerName} · {row.ownerEmail} · {t('대화 {n}개').replace('{n}', String(row.conversations))}
+                      {row.ownerName} · {row.ownerEmail} · {t.n('대화 {n}개', row.conversations)}
                     </span>
                   </span>
                   <span className="flex flex-wrap items-center gap-1.5">
@@ -421,7 +421,7 @@ function ReviewView({ id }: { id: string }) {
                 <ul className="space-y-1">
                   {data.knowledge.map((file) => (
                     <li key={file.name} className="text-sm">
-                      {file.name} <span className="text-faint">· {t('{n}자').replace('{n}', file.chars.toLocaleString())}</span>
+                      {file.name} <span className="text-faint">· {t.n('{n}자', file.chars)}</span>
                       {file.findings.length > 0 && (
                         <span className="ml-2 inline-flex items-center gap-1 text-warn">
                           <AlertTriangle size={13} aria-hidden />
@@ -613,7 +613,7 @@ function ConversationsCard({ id }: { id: string }) {
                   >
                     <span className="block truncate">{row.title || t('제목 없음')}</span>
                     <span className="block text-xs text-faint">
-                      {formatDateTime(row.updatedAt)} · {t('질문 {n}개').replace('{n}', String(row.turns ?? 0))}
+                      {formatDateTime(row.updatedAt)} · {t.n('질문 {n}개', row.turns ?? 0)}
                       {row.visitor?.byKey && ` · ${t('API·MCP 키')}`}
                     </span>
                   </button>

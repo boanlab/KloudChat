@@ -159,7 +159,7 @@ export function RunView({ agent, onEditStep }: { agent: Agent; onEditStep: (id: 
                 <span className="text-muted">
                   {when(r.startedAt)}
                   {r.requestText ? ` · ${r.requestText}` : ''}
-                  {r.attachments ? ` · ${t('첨부 {n}개').replace('{n}', String(r.attachments))}` : ''}
+                  {r.attachments ? ` · ${t.n('첨부 {n}개', r.attachments)}` : ''}
                 </span>
               </button>
             </li>

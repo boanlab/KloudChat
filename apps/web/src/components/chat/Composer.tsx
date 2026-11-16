@@ -390,7 +390,7 @@ function AvOptions() {
         value={avOptions.durationSec}
         options={audio ? AUDIO_DURATIONS : VIDEO_DURATIONS}
         onChange={(v) => setAvOptions({ durationSec: v })}
-        format={(v) => t('{n}초').replace('{n}', String(v))}
+        format={(v) => t.n('{n}초', v)}
       />
     </>
   )
@@ -2075,7 +2075,7 @@ export function Composer({
                 icon={<Plug size={15} />}
                 label={
                   activeConnectors.length
-                    ? t('커넥터 {n}개').replace('{n}', String(activeConnectors.length))
+                    ? t.n('커넥터 {n}개', activeConnectors.length)
                     : t('커넥터')
                 }
                 submenu
@@ -2149,7 +2149,7 @@ export function Composer({
                     serverNote(s) ??
                     (recommended.has(s.id)
                       ? t('이 프로젝트 스킬')
-                      : t('약 {n} 토큰').replace('{n}', s.estimatedTokens.toLocaleString()))
+                      : t.n('약 {n} 토큰', s.estimatedTokens))
                   }
                   onClick={() => toggleSkill(s.id, selected)}
                 >
@@ -2608,7 +2608,7 @@ export function Composer({
                   f.error ??
                   (reading
                     ? reading.text
-                    : t('{n} 토큰').replace('{n}', f.tokens.toLocaleString()))
+                    : t.n('{n} 토큰', f.tokens))
                 }
               >
                 {isReading(f) || isWatching(f) ? (
@@ -2667,7 +2667,7 @@ export function Composer({
                 className="flex items-center gap-1.5 rounded-control border border-line bg-elevated px-1.5 py-0.5 text-xs"
               >
                 <FileText size={10} className="text-faint" />
-                {t('붙여 넣은 텍스트 · {n}자').replace('{n}', text.length.toLocaleString())}
+                {t.n('붙여 넣은 텍스트 · {n}자', text.length)}
                 <button type="button" onClick={() => openPasted(at)} className="text-accent hover:underline">
                   {t('펼치기')}
                 </button>
@@ -2759,7 +2759,7 @@ export function Composer({
                 : kind === 'image' && FIGURE_STYLES[imageOptions.style]
                   // A figure is drawn by the text model, not priced as a picture.
                   ? t('도식은 글 모델이 씁니다 · 이미지 요금이 아닙니다')
-                  : t('예상 {n} 크레딧').replace('{n}', estimate.toLocaleString())}
+                  : t.n('예상 {n} 크레딧', estimate)}
             </span>
           </div>
         )}

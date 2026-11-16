@@ -163,6 +163,13 @@ def wants(user: User, event: str) -> bool:
     return chosen.get(event, EVENTS.get(event, False))
 
 
+def _english(user: User) -> bool:
+    try:
+        return Preferences.of(user).ui_language == "en"
+    except ValueError:
+        return False
+
+
 def _internal_titles(user: User) -> bool:
     try:
         return Preferences.of(user).push_internal_titles
@@ -209,6 +216,42 @@ JOB_TITLES: dict[str, tuple[str, str]] = {
 }
 GENERIC_BODY = "KloudChat에서 확인하세요"
 
+#: the notices' fixed wording in English, for people whose screen is in English
+EN_WORDS: dict[str, str] = {
+    "보고서가 완성됐습니다": "Your report is ready",
+    "보고서를 만들지 못했습니다": "The report could not be made",
+    "슬라이드가 완성됐습니다": "Your slides are ready",
+    "슬라이드를 만들지 못했습니다": "The slides could not be made",
+    "웹 페이지가 완성됐습니다": "Your web page is ready",
+    "웹 페이지를 만들지 못했습니다": "The web page could not be made",
+    "문서가 완성됐습니다": "Your document is ready",
+    "문서를 만들지 못했습니다": "The document could not be made",
+    "심층 조사가 끝났습니다": "Your deep research is done",
+    "심층 조사를 끝내지 못했습니다": "The deep research could not be finished",
+    "영상·음성 읽기가 끝났습니다": "Reading your video or audio is done",
+    "영상·음성을 읽지 못했습니다": "The video or audio could not be read",
+    "영상이 완성됐습니다": "Your video is ready",
+    "영상을 만들지 못했습니다": "The video could not be made",
+    "스튜디오 결과물이 완성됐습니다": "Your studio result is ready",
+    "스튜디오 결과물을 만들지 못했습니다": "The studio result could not be made",
+    "에이전트 체인이 끝났습니다": "Your agent chain is done",
+    "에이전트 체인이 멈췄습니다": "Your agent chain stopped",
+    GENERIC_BODY: "Check it in KloudChat",
+    "알림이 켜졌습니다": "Notifications are on",
+    "이 기기로 알림을 받습니다": "This device will receive notifications",
+    "이번 달 크레딧이 90%를 넘었습니다": "You have used over 90% of this month's credits",
+    "문의에 답변이 달렸습니다": "Your inquiry has a reply",
+    "문의 처리 상태가 바뀌었습니다": "The status of your inquiry changed",
+    "문의·신고": "Inquiries and reports",
+    "공유 에이전트 승인 요청이 왔습니다": "A shared agent is waiting for approval",
+    "공유 에이전트가 승인됐습니다": "Your shared agent was approved",
+    "공유 에이전트 요청이 반려됐습니다": "Your shared agent request was declined",
+    "에이전트 공개 승인 요청이 왔습니다": "An agent publication is waiting for approval",
+    "에이전트 공개가 승인됐습니다": "Your agent publication was approved",
+    "에이전트 공개 요청이 반려됐습니다": "Your agent publication request was declined",
+    "방문자가 대화를 보냈습니다": "A visitor sent you a conversation",
+}
+
 
 @dataclass(frozen=True)
 class Notice:
@@ -227,8 +270,11 @@ class Notice:
         if self.internal and not _internal_titles(user):
             label = ""
         body = label[:80] if label else GENERIC_BODY
+        title = self.title
+        if _english(user):
+            title, body = EN_WORDS.get(title, title), EN_WORDS.get(body, body)
         url = self.url if self.url.startswith("/") and not self.url.startswith("//") else "/"
-        return {"title": self.title, "body": body, "url": url, "tag": self.tag or self.event}
+        return {"title": title, "body": body, "url": url, "tag": self.tag or self.event}
 
 
 # ── sending ────────────────────────────────────────────────────────────────

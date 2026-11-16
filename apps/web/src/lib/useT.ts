@@ -1,12 +1,16 @@
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useStore } from '@/store/useStore'
-import { translate, translateIn } from './i18n'
+import { translateIn, translator, type Translator } from './i18n'
+
+export type { Translator }
 
 /** Translator for the current language; missing strings return the Korean. */
-export function useT(): (text: string) => string {
+export function useT(): Translator {
   const lang = useStore((s) => s.lang)
   // Stable while the language is: effects that list `t` must not re-run every render.
-  return useCallback((text: string) => translate(lang, text), [lang])
+  return useMemo(() => {
+    return translator(() => lang)
+  }, [lang])
 }
 
 /** A translator for words whose English depends on the screen: `useTIn('hub')('탐색')` → Explore. */

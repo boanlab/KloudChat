@@ -1,11 +1,13 @@
 /** Dictionary keyed on the Korean source string; missing entries render the Korean. */
 import { EN_INTEGRATIONS } from './i18nIntegrations'
 import { EN_UI } from './i18nUi'
+import { EN_CATALOG } from './i18nCatalog'
 
 export type Lang = 'ko' | 'en'
 
 const EN: Record<string, string> = {
   ...EN_UI,
+  ...EN_CATALOG,
   // 이미지 고치기
   '이미지 고치기': 'Edit image',
   '모델 바꾸기': 'Switch model',
@@ -15,6 +17,8 @@ const EN: Record<string, string> = {
   '고칠 내용을 입력창에 적습니다': 'Write the change in the composer',
   '고칠 수 있는 모델로 바꾸기': 'Switch to a model that edits',
   'strict-local 대화라 외부 모델로 고칠 수 없습니다.': 'A strict-local conversation cannot edit with an external model.',
+  'strict-local 모델이 그린 그림이라 외부 모델로 고칠 수 없습니다.':
+    'A strict-local model drew this picture, so no external model can edit it.',
   '내부 자료라 외부 모델로 고칠 수 없습니다.': 'Internal material cannot go to an external model to edit.',
   '고칠 수 있는 이미지 모델이 없습니다.': 'No image model here can edit.',
   '이 모델({model})은 그리기만 합니다.': 'This model ({model}) only draws.',
@@ -48,7 +52,7 @@ const EN: Record<string, string> = {
   '문서 형식 설정을 따름': 'Follow the document format\'s settings',
   '켜면 문서 형식의 계산·검사·구조를 이 에이전트에서 바꿉니다.': 'When on, this agent changes the document format\'s calculations, checks and structure.',
   '문서 형식·기본 과정이 묻는 질문': 'Questions the document format and base process ask',
-  '슬라이드 마스터·글꼴·색: 양식 그대로': 'Slide master, fonts and colours: as in the form',
+  '슬라이드 마스터·글꼴·색: 양식 그대로': 'Slide master, fonts and colors: as in the form',
   '모양': 'Look',
   '파일·스킬·웹 검색·커넥터·에이전트': 'Files, skills, web search, connectors, agents',
   '웹 보고서·한글·Word로 씁니다. 양식 파일을 붙이면 그 양식에 맞춥니다': 'Written as a web report, Hangul or Word. Attach a form file to follow it',
@@ -59,9 +63,9 @@ const EN: Record<string, string> = {
   '문서 형식을 찾을 수 없습니다. 형식·디자인에서 다시 고르세요.': 'Document format not found. Pick it again under Format & design.',
   '아티팩트가 이 형식으로 나옵니다': 'Artifacts come out in this format',
   '이 대화의 말투를 디자인 지침에 맞춥니다': 'This conversation\'s tone follows the design brief',
-  '보고서의 말투와 색, 서체를 디자인 지침에 맞춥니다': 'The report\'s tone, colours and type follow the design brief',
-  '슬라이드의 말투와 색, 서체를 디자인 지침에 맞춥니다': 'The slides\' tone, colours and type follow the design brief',
-  '이미지의 색과 스타일을 디자인 지침에 맞춥니다': 'Images\' colours and style follow the design brief',
+  '보고서의 말투와 색, 서체를 디자인 지침에 맞춥니다': 'The report\'s tone, colors and type follow the design brief',
+  '슬라이드의 말투와 색, 서체를 디자인 지침에 맞춥니다': 'The slides\' tone, colors and type follow the design brief',
+  '이미지의 색과 스타일을 디자인 지침에 맞춥니다': 'Images\' colors and style follow the design brief',
   '강조 {value}': 'Accent {value}',
   '글자 {value}': 'Text {value}',
   '본문 {face}': 'Body {face}',
@@ -105,7 +109,7 @@ const EN: Record<string, string> = {
   '머리글': 'Header',
   '채울 칸 {n}개': '{n} cells to fill',
   '{name}을 어떻게 쓸까요': 'How should {name} be used?',
-  '이 파일의 레이아웃·글꼴·색에 맞춰 씁니다': 'Write on this file\'s layouts, fonts and colours',
+  '이 파일의 레이아웃·글꼴·색에 맞춰 씁니다': 'Write on this file\'s layouts, fonts and colors',
   '이 파일의 내용을 자료로 읽습니다': 'Read this file\'s content as material',
   '양식?': 'Form?',
   '양식': 'Form',
@@ -116,7 +120,7 @@ const EN: Record<string, string> = {
   '에이전트 기본': 'agent default',
   '프로젝트 기본': 'project default',
   '양식을 따름': 'Followed the form',
-  '슬라이드 마스터·테마 글꼴·테마 색: 양식 그대로': 'Slide master, theme fonts and theme colours: as in the form',
+  '슬라이드 마스터·테마 글꼴·테마 색: 양식 그대로': 'Slide master, theme fonts and theme colors: as in the form',
   '쓴 레이아웃: {list}': 'Layouts used: {list}',
   '{n}번 슬라이드: 양식에 맞는 레이아웃이 없어 「{layout}」에 놓음': 'Slide {n}: the form has no layout for it, so it went on “{layout}”',
   '양식으로 쓰려면 HWPX로': 'Save as HWPX to use as a form',
@@ -177,7 +181,7 @@ const EN: Record<string, string> = {
   '퀴즈': 'Quiz',
   '객관식·단답형, 해설과 출처 포함': 'Multiple choice and short answer, with explanations and sources',
   '플래시카드': 'Flashcards',
-  '앞면·뒷면 카드로 외우기': 'Front-and-back cards to memorise',
+  '앞면·뒷면 카드로 외우기': 'Front-and-back cards to memorize',
   '웹페이지': 'Web page',
   '녹음': 'Recording',
   '직접 쓴 메모': 'Written here',
@@ -355,7 +359,7 @@ const EN: Record<string, string> = {
   '한 일': 'Did',
   '넘긴 것': 'Handed on',
   '규칙으로': 'By a rule',
-  'AI 판단으로': 'By AI judgement',
+  'AI 판단으로': 'By AI judgment',
   '판단 방식': 'How it decides',
   '갈래': 'Branches',
   '이어지는 단계': 'Leads to',
@@ -375,7 +379,7 @@ const EN: Record<string, string> = {
   '입력창에서 턴마다 바꿀 수 있습니다.': 'Can be changed per turn in the composer.',
   '메모리 사용': 'Use memory',
   '끄면 내 메모리를 읽지도, 새로 만들지도 않습니다.': 'When off, your memory is neither read nor added to.',
-  '사용할 화면, 모델, 출력 언어, 웹 검색, 메모리, 다양성, 색': 'Screens, model, output language, web search, memory, variety, colour',
+  '사용할 화면, 모델, 출력 언어, 웹 검색, 메모리, 다양성, 색': 'Screens, model, output language, web search, memory, variety, color',
   '서버가 쓰기 전후에 계산·검사합니다': 'The server calculates and checks around the writing',
   '외부 대체로 답함': 'Answered by external fallback',
   '대체 모델로 답함': 'Answered by fallback model',
@@ -445,7 +449,7 @@ const EN: Record<string, string> = {
   '웹·논문을 깊이 찾아 자세한 조사 결과를 냅니다(5~15분).': 'Searches the web and papers in depth for a detailed finding (5–15 minutes).',
   '출처가 달린 긴 조사 보고서를 씁니다(10~30분).': 'Writes a long, sourced research report (10–30 minutes).',
   '검색 엔진 하나로 찾은 결과 목록을 그대로 가져옵니다.': 'Returns the raw result list from one search engine.',
-  '색인해 둔 문서 모음에서 찾아 요약합니다.': 'Searches an indexed document collection and summarises it.',
+  '색인해 둔 문서 모음에서 찾아 요약합니다.': 'Searches an indexed document collection and summarizes it.',
   '쓸 수 있는 검색 엔진 목록을 보여 줍니다.': 'Lists the search engines available.',
   '쓸 수 있는 조사 방식 목록을 보여 줍니다.': 'Lists the research strategies available.',
   '조사 서버의 현재 설정을 보여 줍니다.': 'Shows the research server\'s current settings.',
@@ -470,7 +474,7 @@ const EN: Record<string, string> = {
   '오디오 기본 모델은 비워 둘 수 없습니다.': 'The default audio model cannot be left empty.',
   '동영상 기본 모델은 비워 둘 수 없습니다.': 'The default video model cannot be left empty.',
   '제목·기억·요약 모델': 'Titles, memories and summaries model',
-  '대화 제목을 짓고, 기억할 내용을 뽑고, 긴 대화를 요약합니다.': 'Names conversations, picks out what to remember and summarises long conversations.',
+  '대화 제목을 짓고, 기억할 내용을 뽑고, 긴 대화를 요약합니다.': 'Names conversations, picks out what to remember and summarizes long conversations.',
   '대화의 모델을 그대로 사용': 'Use the conversation\'s own model',
   '코드 작성 모델': 'Code-writing model',
   '파일을 읽고 계산하는 코드(run_code)를 씁니다.': 'Writes the code that reads files and calculates (run_code).',
@@ -489,7 +493,7 @@ const EN: Record<string, string> = {
   '보조 작업 모델': 'Side-work models',
   '대화 내용을 읽으므로 이 인스턴스가 운영하는 모델만 고를 수 있습니다.': 'It reads conversation content, so only models this instance runs can be chosen.',
   '자체 호스팅 모델이 답하기 전에 생각': 'Self-hosted models think before answering',
-  '켜면 생각하는 모델이 답하기 전에 추론합니다. 판정은 정확해지지만 호출마다 수십 초에서 수 분이 더 걸립니다.': 'On, a thinking model reasons before it answers. Judgements get more exact, but each call takes tens of seconds to minutes longer.',
+  '켜면 생각하는 모델이 답하기 전에 추론합니다. 판정은 정확해지지만 호출마다 수십 초에서 수 분이 더 걸립니다.': 'On, a thinking model reasons before it answers. Judgments get more exact, but each call takes tens of seconds to minutes longer.',
   '외부 모델이 답하기 전에 생각': 'External models think before answering',
   '끄면 외부 모델에 추론을 끄라고 요청합니다. 요청을 거절하는 모델은 그대로 생각합니다.': 'Off, external models are asked not to reason. A model that refuses the request thinks anyway.',
   '바로 적용됩니다. 진행 중인 대화는 다음 메시지부터 바뀝니다.': 'Applies at once. Ongoing conversations change from their next message.',
@@ -944,9 +948,9 @@ const EN: Record<string, string> = {
   '첨부·프로젝트 자료': 'Attachments and project files',
   '입력 중인 글': 'Your draft',
   '도구 정의': 'Tool definitions',
-  '오래된 대화는 요약되어 이어집니다': 'Older messages are summarised to keep going',
+  '오래된 대화는 요약되어 이어집니다': 'Older messages are summarized to keep going',
   '앞선 메시지 {n}개': '{n} earlier messages',
-  '요약 전까지 {n} 토큰 남음': '{n} tokens left before summarising',
+  '요약 전까지 {n} 토큰 남음': '{n} tokens left before summarizing',
   '모델 {model} · 창 {window} 토큰': 'Model {model} · {window}-token window',
   '외부 모델은 토큰을 다르게 세어 창을 작게 잡습니다': 'an external model counts tokens differently, so the window is taken smaller',
   'Auto가 턴마다 모델을 고릅니다. 마지막으로 답한 모델 기준입니다': 'Auto picks the model each turn. Shown for the model that answered last',
@@ -1009,7 +1013,7 @@ const EN: Record<string, string> = {
   '가져오려던 순서를 찾을 수 없습니다. 진행 과정에서 다시 고르세요.': 'The order to import was not found. Choose again under Process.',
   '고를 수 없는 기본 과정입니다. 진행 과정에서 다시 고르세요.': 'That base process cannot be chosen. Choose again under Process.',
   '진행 과정에서 기본 과정을 골라 주세요.': 'Choose a base process under Process.',
-  '이 기본 과정은 직접 구성할 수 없습니다. 기본 과정 그대로 쓰세요.': 'This base process cannot be customised. Use it as it is.',
+  '이 기본 과정은 직접 구성할 수 없습니다. 기본 과정 그대로 쓰세요.': 'This base process cannot be customized. Use it as it is.',
   '마지막 단계가 만드는 것과 이 에이전트가 만드는 것이 다릅니다. 진행 과정의 「이 에이전트가 만드는 것」을 확인하세요.': 'The last step makes something other than what this agent makes. Check “What this agent makes” under Process.',
   '진행 과정의 단계를 확인해 주세요. 문제가 있는 단계에 이유가 적혀 있습니다.': 'Check the process steps. Each step with a problem says why.',
   // Skill server checks and scripts; missing-information questions
@@ -1072,7 +1076,7 @@ const EN: Record<string, string> = {
   '기본 제공 스크립트로 답을 점검하거나, 검사 스킬로 쓰거나, 스크립트를 실행합니다.': 'Check answers with built-in scripts, use it as a check skill, or run scripts.',
   '스크립트가 있어 관리자가 승인한 뒤에 다른 사람에게 공유됩니다.': 'It has scripts, so it is shared with others once an administrator approves it.',
   '공유가 반려됐습니다.': 'Sharing was declined.',
-  '카탈로그 전용 항목(status)은 무시했어요.': 'Ignored the catalogue-only field (status).',
+  '카탈로그 전용 항목(status)은 무시했어요.': 'Ignored the catalog-only field (status).',
   '실행할 스크립트가 없어 run_skill_script 를 뺐어요.': 'Removed run_skill_script: there is no script to run.',
   '파이썬이 아닌 스크립트와 scripts/ 밖의 스크립트는 제외했어요.': 'Left out scripts that are not Python or not under scripts/.',
   '네트워크에 접속하는 모듈을 씁니다. 샌드박스에서는 외부로 나가지 못할 수 있습니다.': 'Uses a networking module. The sandbox may not let it reach outside.',
@@ -1091,7 +1095,7 @@ const EN: Record<string, string> = {
   '모르는 스크립트 이름은 uses 에서 뺐어요.': 'Removed unknown script names from uses.',
   '모르는 copy_kinds 값은 뺐어요.': 'Removed unknown copy_kinds values.',
   '파이썬이 아닌 스크립트 · 제외': 'Not a Python script · left out',
-  '위험한 지시·숨은 문자·키·스크립트 동작을 검사합니다. 모든 위험을 찾지는 못합니다.': 'Checks for risky instructions, hidden characters, keys and script behaviour. Not every risk can be found.',
+  '위험한 지시·숨은 문자·키·스크립트 동작을 검사합니다. 모든 위험을 찾지는 못합니다.': 'Checks for risky instructions, hidden characters, keys and script behavior. Not every risk can be found.',
   '스크립트 {n}개 · 코드 실행 샌드박스에서만 실행': '{n} scripts · run only in the code sandbox',
   '스크립트가 있는 스킬은 관리자가 승인한 뒤에 다른 사람에게 공유됩니다.': 'A skill with scripts is shared with others once an administrator approves it.',
   '모두': 'All',
@@ -1157,7 +1161,7 @@ const EN: Record<string, string> = {
   '스킬과 도구': 'Skills and tools',
   '쓸 수 있는 스킬과 도구를 좁힙니다': 'Narrow the skills and tools it may use',
   '고급': 'Advanced',
-  '카드와 목록에서 이 에이전트를 알아보는 색입니다.': 'The colour that marks this agent on cards and lists.',
+  '카드와 목록에서 이 에이전트를 알아보는 색입니다.': 'The color that marks this agent on cards and lists.',
   '대화 종류, 사용한 모델, 에이전트·진행 과정, 단계 상태와 실패 사유, 아티팩트 판 번호': 'Conversation type, models used, agent and its process, stage status and failure reasons, artifact version numbers',
   '에이전트·진행 과정': 'Agent & process',
   '「추가로 할 일」에서 고르는 묶음': 'Bundles picked under “Extra work”',
@@ -1209,7 +1213,7 @@ const EN: Record<string, string> = {
   '직접 구성한 순서를 「이 순서를 묶음으로 저장」하거나, 여기서 만들어 보세요.': 'Save a custom order as a bundle, or make one here.',
   '공유된 묶음': 'Shared bundles',
   '이 묶음을 체크해 둔 에이전트는 다음에 저장할 때 이 묶음 없이 저장됩니다.': 'Agents that ticked this bundle are saved without it the next time.',
-  '테마는 문서와 슬라이드의 색·글꼴·글쓰기 규칙입니다. 에이전트 설정과 패널의 편집 › 테마에서 고릅니다.': 'A theme is a document\'s or deck\'s colours, typeface and writing rules. Pick one in an agent\'s settings or in the panel\'s Edit › Theme.',
+  '테마는 문서와 슬라이드의 색·글꼴·글쓰기 규칙입니다. 에이전트 설정과 패널의 편집 › 테마에서 고릅니다.': 'A theme is a document\'s or deck\'s colors, typeface and writing rules. Pick one in an agent\'s settings or in the panel\'s Edit › Theme.',
   '쓰기 전에 준비하기': 'Prepare before writing',
   '빠진 정보를 먼저 묻고, 날짜·금액을 미리 계산해 둡니다.': 'Asks for what is missing first and works out dates and amounts ahead.',
   '빠진 정보 먼저 묻기': 'Ask for missing information first',
@@ -1242,7 +1246,7 @@ const EN: Record<string, string> = {
   '목록에 보이기': 'Show in the list',
   '설치할 수 있게 켜기': 'Enabled for installing',
   '끄면 멤버 카탈로그에 나오지 않지만, 설치된 것은 계속 동작합니다.':
-    'When off, members no longer see it in the catalogue; what is already installed keeps working.',
+    'When off, members no longer see it in the catalog; what is already installed keeps working.',
   '켜 두면 모든 사용자에게 설치됩니다. 사용자는 끌 수 있지만 지울 수는 없습니다.':
     'When on, it is installed for everyone. People can switch it off but not remove it.',
   '사람마다 자격증명을 받아야 하는 항목은 기본 제공할 수 없습니다.':
@@ -1264,9 +1268,9 @@ const EN: Record<string, string> = {
   '진행 과정이 문서나 답을 남기지 못했습니다.': 'The process left no document or answer.',
   '진행 과정에 에이전트 단계가 하나는 있어야 합니다.': 'The process needs at least one agent step.',
   '진행 과정 승인': 'Process approved',
-  '커넥터 카탈로그 저장': 'Connector catalogue saved',
+  '커넥터 카탈로그 저장': 'Connector catalog saved',
   '허용 실행 명령 저장': 'Allowed commands saved',
-  '커넥터 카탈로그 삭제': 'Connector catalogue entry removed',
+  '커넥터 카탈로그 삭제': 'Connector catalog entry removed',
   '진행 과정 반려': 'Process rejected',
   '이 대화에서 정한 것:': 'Settled in this conversation:',
   // Templates and themes
@@ -1275,9 +1279,9 @@ const EN: Record<string, string> = {
   '{kind} 템플릿': '{kind} template',
   '아티팩트가 이 템플릿으로 나옵니다': 'the artifact comes out in this template',
   '이 대화의 말투를 이 테마에 맞춥니다': 'this conversation takes its voice from the theme',
-  '보고서의 말투와 색, 서체를 이 테마에 맞춥니다': 'the report takes its voice, colour and type from the theme',
-  '슬라이드의 말투와 색, 서체를 이 테마에 맞춥니다': 'the slides take their voice, colour and type from the theme',
-  '이미지의 색과 스타일을 이 테마에 맞춥니다': 'images take their colour and style from the theme',
+  '보고서의 말투와 색, 서체를 이 테마에 맞춥니다': 'the report takes its voice, color and type from the theme',
+  '슬라이드의 말투와 색, 서체를 이 테마에 맞춥니다': 'the slides take their voice, color and type from the theme',
+  '이미지의 색과 스타일을 이 테마에 맞춥니다': 'images take their color and style from the theme',
   '조건에 맞는 템플릿이 없습니다.': 'No template matches.',
   '템플릿': 'Template',
   '조건에 맞는 테마가 없습니다.': 'No theme matches.',
@@ -1380,7 +1384,7 @@ const EN: Record<string, string> = {
   '지연(초)': 'Latency (s)',
   '게이트웨이의 /metrics에서 읽습니다.': 'Read from the gateway\'s /metrics.',
   '응답': 'Up',
-  'GPU 사용률': 'GPU utilisation',
+  'GPU 사용률': 'GPU utilization',
   '온도': 'Temperature',
   '전력': 'Power',
   '노드 CPU': 'Node CPU',
@@ -1650,6 +1654,8 @@ const EN: Record<string, string> = {
   '사용량': 'Usage',
   '설정': 'Settings',
   '시스템': 'System',
+  '다른 인스턴스': 'other instance',
+  '수집': 'collector',
   '사용자': 'Users',
   '거버넌스': 'Governance',
   '접근 제한': 'Access denied',
@@ -1694,7 +1700,7 @@ const EN: Record<string, string> = {
   '모델을 바꾸지 못했습니다. 잠시 후 다시 시도하세요.': 'Couldn\'t switch the model. Try again shortly.',
   '기본값으로 저장': 'Save as default',
   '새 대화가 지금 고른 항목으로 시작합니다.': 'New conversations will start on this choice.',
-  '기관 정책에 따라 strict-local로 시작합니다': 'Starts as strict-local per organisation policy',
+  '기관 정책에 따라 strict-local로 시작합니다': 'Starts as strict-local per organization policy',
   '기본 모델 설정(strict-local)에 따라 시작합니다': 'Starts in strict-local, your default model setting',
   '관리자 기본 설정에 따라 strict-local로 시작합니다': 'Starts in strict-local, the administrator\'s default',
   '쓸 수 있는 외부 모델이 없어 strict-local로 시작합니다': 'Starts in strict-local: no external model is available to you',
@@ -1748,7 +1754,7 @@ const EN: Record<string, string> = {
   '표의 모델 중 지금 쓸 수 있는 것이 없어 Super Agent를 제공하지 못합니다.': 'No model in the table is available right now, so Super Agent cannot be offered.',
   '간단한 질문': 'Simple question',
   '일반 대화': 'General chat',
-  '번역·요약·다듬기': 'Translate, summarise, polish',
+  '번역·요약·다듬기': 'Translate, summarize, polish',
   '최신 정보 검색': 'Current facts (search)',
   '긴 자료': 'Long material',
   '복잡한 추론': 'Complex reasoning',
@@ -1782,8 +1788,8 @@ const EN: Record<string, string> = {
 
   // ── Auto cost routing ──────────────────────────────────────────────
   'Auto · 비용 절약': 'Auto · Save credits',
-  'Auto · 품질 우선': 'Auto · Favour quality',
-  'Auto 품질 우선 라우팅': 'Auto · favour quality',
+  'Auto · 품질 우선': 'Auto · Favor quality',
+  'Auto 품질 우선 라우팅': 'Auto · favor quality',
   '복잡하다고 분류된 요청만 지정한 상위 모델로 보내고, 그 밖에는 사용자가 선택한 모델을 유지합니다. 데이터가 지금보다 멀리 나가지는 않습니다.':
     'Sends only requests classified as demanding to a stronger model you name, and keeps the chosen model for everything else. Nothing travels further than it already does.',
   '상향 모델 우선순위': 'Upgrade model priority',
@@ -1794,11 +1800,11 @@ const EN: Record<string, string> = {
   '상향 모델 선택': 'Choose a model',
   '이 모델을 상향 목록에서 뺍니다': 'Remove this model from the upgrade list',
   '선택한 상향 모델이 없습니다. 품질 우선 Auto 는 표시되지 않습니다.':
-    'No models chosen. Auto · Favour quality will not be offered.',
+    'No models chosen. Auto · Favor quality will not be offered.',
   '복잡한 요청만 상위 모델로 보냅니다. 데이터는 지금보다 멀리 나가지 않습니다.': 'Sends only complex requests to the stronger model. Data goes no further than now.',
   '관리자가 상향할 모델을 지정하지 않았습니다.': 'The administrator has named no model to upgrade to.',
   '관리자가 Auto 품질 우선을 켜지 않았습니다.':
-    'The administrator has not turned Auto · favour quality on.',
+    'The administrator has not turned Auto · favor quality on.',
   'Auto 비용 절약 라우팅': 'Auto cost-saving routing',
   '모델 자동 라우팅': 'Automatic model routing',
   '질문 난이도에 맞는 모델을 사용해 불필요한 고비용 모델 호출을 줄입니다.':
@@ -2043,7 +2049,7 @@ const EN: Record<string, string> = {
   '도구 권한': 'Tool access',
   '도구 설정': 'Tool settings',
   '동영상': 'Video',
-  '동작': 'Behaviour',
+  '동작': 'Behavior',
   '되돌리기': 'Restore',
   '로그아웃': 'Sign out',
   '로그인': 'Sign in',
@@ -2102,7 +2108,7 @@ const EN: Record<string, string> = {
   '설명': 'Description',
   '소리': 'Sound',
   '소스': 'Source',
-  '수채화': 'Watercolour',
+  '수채화': 'Watercolor',
   '정확한 도식': 'Exact figure',
   '프롬프트 그대로': 'Prompt as written',
   '스킬 관리': 'Manage skills',
@@ -2211,8 +2217,8 @@ const EN: Record<string, string> = {
   '참조': 'Reference',
   '첨부': 'Attach',
   '출처': 'Source',
-  '취소됨': 'Cancelled',
-  '카탈로그': 'Catalogue',
+  '취소됨': 'Canceled',
+  '카탈로그': 'Catalog',
   '켜짐': 'On',
   '코드': 'Code',
   '크레딧': 'Credits',
@@ -2330,7 +2336,7 @@ const EN: Record<string, string> = {
   '비밀번호 바꾸기': 'Change password',
   // ── lists · settings · administration ───────────────────────────────
   '오늘': 'Today',
-  '이전': 'Earlier',
+  '이전': 'Previous',
   'Codex · OpenAI 호환 도구': 'Codex · OpenAI-compatible tools',
   '이 계정이 쓴 크레딧입니다. 매달 1일에 배정량으로 다시 채워집니다.': 'What this account has spent. It refills to the allowance on the 1st of each month.',
   '이전 대화': 'Earlier conversations',
@@ -2879,8 +2885,8 @@ const EN: Record<string, string> = {
   '{n}번째 절 복제': 'Duplicate section {n}',
   '마지막 한 절은 지울 수 없습니다. 보고서는 파일함 › 작업 문서에서 지웁니다.': 'The last section cannot be deleted. Delete the report under File box › Working documents.',
   '{n}번째 절 지움': 'Delete section {n}',
-  '문서 색 변경': 'Change the document\'s colour',
-  '색을 바꾸지 못했습니다.': 'Could not change the colour.',
+  '문서 색 변경': 'Change the document\'s color',
+  '색을 바꾸지 못했습니다.': 'Could not change the color.',
   '서식 편집': 'Edit the format',
   '실제로 확인한 원문의 정보를 적으세요. 본문에 번호를 붙이면 위치가 연결됩니다.': 'Enter a source you actually checked. Cite its number in the text to link it.',
   '자료 제목': 'Source title',
@@ -2926,14 +2932,14 @@ const EN: Record<string, string> = {
   '기울임': 'Italic',
   '밑줄': 'Underline',
   '취소선': 'Strikethrough',
-  '글자색': 'Text colour',
-  '글자색 빠른 선택': 'Pick a text colour',
+  '글자색': 'Text color',
+  '글자색 빠른 선택': 'Pick a text color',
   '빨강': 'Red',
   '파랑': 'Blue',
   '초록': 'Green',
-  '회색': 'Grey',
+  '회색': 'Gray',
   '형광펜': 'Highlight',
-  '색 지우기': 'Clear the colour',
+  '색 지우기': 'Clear the color',
   '줄간격': 'Line spacing',
   '글머리 기호': 'Bulleted list',
   '번호 매기기': 'Numbered list',
@@ -3050,11 +3056,11 @@ const EN: Record<string, string> = {
   '흑백': 'Mono',
   '제목, 절 번호, 표 머리 선, 핵심 수치에 쓰는 색': 'Used for the title, section numbers, table head rules and key figures',
   '제목 밑줄과 번호 붙은 절, 선명한 절 구분': 'A rule under the title, numbered sections, clear breaks',
-  '색면 표지 띠와 강조색 절 제목': 'A colour band on the cover and accent section titles',
-  '먹색 제목과 회색 절 제목, 넓은 여백': 'Ink title, grey section titles, wide margins',
-  '강조색 고르기': 'Choose the accent colour',
+  '색면 표지 띠와 강조색 절 제목': 'A color band on the cover and accent section titles',
+  '먹색 제목과 회색 절 제목, 넓은 여백': 'Ink title, gray section titles, wide margins',
+  '강조색 고르기': 'Choose the accent color',
   '제목 밑줄, 표 머리, 번호, 표지에 쓰는 색': 'Used for title rules, table heads, numbers and the cover',
-  '직접 고른 색': 'Custom colour',
+  '직접 고른 색': 'Custom color',
   '직접 고르기': 'Choose',
   '파스텔': 'Pastel',
   '숲': 'Forest',
@@ -3066,17 +3072,17 @@ const EN: Record<string, string> = {
   '주황': 'Orange',
   '보라': 'Violet',
   '먹': 'Ink',
-  '흰 바탕, 위쪽 색 띠, 선과 넓은 여백': 'White ground, a colour band on top, rules and wide margins',
-  '옅은 색과 절제된 제목, 모서리의 동그라미': 'Pale colour, quiet headings, a circle in the corner',
-  '강한 색면 표지와 큰 번호': 'A strong colour cover and big numerals',
-  '왼쪽 색면과 큰 번호, 회색 선': 'A colour panel on the left, big numerals, grey rules',
-  '차가운 회색 바탕, 분할 표지, 얇은 선': 'Cool grey ground, split cover, thin rules',
+  '흰 바탕, 위쪽 색 띠, 선과 넓은 여백': 'White ground, a color band on top, rules and wide margins',
+  '옅은 색과 절제된 제목, 모서리의 동그라미': 'Pale color, quiet headings, a circle in the corner',
+  '강한 색면 표지와 큰 번호': 'A strong color cover and big numerals',
+  '왼쪽 색면과 큰 번호, 회색 선': 'A color panel on the left, big numerals, gray rules',
+  '차가운 회색 바탕, 분할 표지, 얇은 선': 'Cool gray ground, split cover, thin rules',
   '연한 보랏빛 바탕과 둥근 모서리': 'Pale lavender ground and rounded corners',
-  '초록빛 바탕과 색면 표지, 왼쪽 세로 띠': 'Green-tinted ground, colour cover, a bar down the left',
+  '초록빛 바탕과 색면 표지, 왼쪽 세로 띠': 'Green-tinted ground, color cover, a bar down the left',
   '종이 바탕에 테두리 선, 넓은 행간': 'Paper ground with a frame and open leading',
-  '검정 선과 큰 제목, 강조색 없음': 'Black rules, large titles, no accent colour',
+  '검정 선과 큰 제목, 강조색 없음': 'Black rules, large titles, no accent color',
   '어두운 바탕에 빛나는 강조색': 'Glowing accent on a dark ground',
-  '왼쪽 색면과 큰 번호': 'A colour panel on the left and a large number',
+  '왼쪽 색면과 큰 번호': 'A color panel on the left and a large number',
   '크림색 종이 바탕과 둥근 상자': 'Cream paper ground and rounded boxes',
   '검정 선과 큰 제목': 'Black rules and large titles',
   '같은 내용, 다른 인상': 'Same words, another impression',
@@ -3113,11 +3119,11 @@ const EN: Record<string, string> = {
   '여러 장 서식': 'Format several slides',
   '{n}장 선택': '{n} selected',
   '일괄 강조색': 'Accent for all selected',
-  '선택 장에 색 적용': 'Apply the colour to the selected slides',
+  '선택 장에 색 적용': 'Apply the color to the selected slides',
   '일괄 글자 크기': 'Type size for all selected',
   '크기 적용': 'Apply the size',
   '장별 서식 초기화': 'Clear per-slide formatting',
-  '덱 기본색으로 저장': 'Save as the deck\'s colour',
+  '덱 기본색으로 저장': 'Save as the deck\'s color',
   '끝내기': 'Done',
   '그림 선택됨': 'Image selected',
   '제목 선택됨': 'Title selected',
@@ -3135,16 +3141,16 @@ const EN: Record<string, string> = {
   '한 장에 넣기 어렵습니다.': 'This is a lot for one slide.',
   '내용을 다음 장으로 나누기': 'Move some of it to a new slide',
   '두 장으로 나누기': 'Split in two',
-  '색상 도구': 'Colour tools',
+  '색상 도구': 'Color tools',
   '이 장의 강조색': 'This slide\'s accent',
   '도구막대 강조색': 'Accent',
   '선택한 글자 서식': 'Formatting for the selection',
   '선택 영역': 'Selection',
   '선택한 글자 굵게': 'Bold the selection',
-  '선택한 글자 기울임': 'Italicise the selection',
+  '선택한 글자 기울임': 'Italicize the selection',
   '선택한 글자 밑줄': 'Underline the selection',
   '선택한 글자 크기': 'Size of the selection',
-  '선택한 글자 색': 'Colour of the selection',
+  '선택한 글자 색': 'Color of the selection',
   '선택한 글자 서식 지우기': 'Clear the selection\'s formatting',
   '레이아웃': 'Layout',
   '도구막대 레이아웃': 'Layout',
@@ -3176,7 +3182,7 @@ const EN: Record<string, string> = {
   '격자·카드': 'Grids & cards',
   '목록': 'Lists',
   '흐름·단계': 'Flows & stages',
-  '비교·분석': 'Compare & analyse',
+  '비교·분석': 'Compare & analyze',
   '수치·차트': 'Numbers & charts',
   '한 문장': 'One line',
   '단 편집': 'Edit columns',
@@ -3347,7 +3353,7 @@ const EN: Record<string, string> = {
     'A stored key is never shown back. Leave this blank to keep the current one.',
   '비밀번호 변경': 'Change password',
   '공개 주소의 MCP 서버를 등록합니다. 사내 서버는 관리자가 카탈로그에 올립니다.':
-    'Register an MCP server at a public address. An administrator adds in-house servers to the catalogue.',
+    'Register an MCP server at a public address. An administrator adds in-house servers to the catalog.',
   '명령으로 실행하는 서버는 관리자가 허용한 명령만 등록할 수 있습니다.':
     'A server run as a command can use only a command an administrator allowed.',
   '이 서버에는 환경 변수를 넣을 수 없습니다.': 'This server cannot take environment variables.',
@@ -3501,7 +3507,7 @@ const EN: Record<string, string> = {
   '탐지된 개인정보 범주': 'Categories found',
   '편집으로 돌아가기': 'Back to editing',
   '프록시가 self-hosted이며 외부 대체 모델이 없다고 명시한 모델만 선택할 수 있습니다. 현재 모델 카탈로그의 위→아래 순서로 우선 사용합니다.':
-    'Only models the proxy declares self-hosted with no external fallback can be chosen. Used top to bottom in the order of the current catalogue.',
+    'Only models the proxy declares self-hosted with no external fallback can be chosen. Used top to bottom in the order of the current catalog.',
   '현재 프록시가 strict-local로 선언한 모델이 없습니다. 사용자는 마스킹 또는 편집만 선택할 수 있습니다.':
     'The proxy currently declares no strict-local model, so masking and editing are the only choices.',
   '확인 후 외부 원문 전송': 'Original sent outside after confirmation',
@@ -3610,7 +3616,7 @@ const EN: Record<string, string> = {
   '이 요청만 다른 모델로': 'Run this one on',
   '현재 모델': 'Current',
   '모델이 응답하지 않아 요청을 중단했습니다. 다른 모델로 다시 생성해 보세요.':
-    'The model stopped responding, so the request was cancelled. Try another model.',
+    'The model stopped responding, so the request was canceled. Try another model.',
   '이 모델은 지금 이 화면에서 쓸 수 없습니다. 모델을 바꿔 다시 시도하세요.':
     'That model cannot be used on this surface right now. Pick another and try again.',
   'strict-local 이미지 모델': 'strict-local image model',
@@ -3667,7 +3673,7 @@ const EN: Record<string, string> = {
   '종료': 'End',
   '다른 기기 모두 로그아웃': 'Sign out everywhere else',
   '이 로그인 종료': 'End this sign-in',
-  '지금 로그인된 브라우저입니다. 모르는 항목은 바로 종료하세요.': 'Browsers signed in now. End any you do not recognise.',
+  '지금 로그인된 브라우저입니다. 모르는 항목은 바로 종료하세요.': 'Browsers signed in now. End any you do not recognize.',
   '{n}분 동안 사용하지 않으면 자동으로 로그아웃됩니다.':
     'Signed out automatically after {n} minutes of inactivity.',
   '현재 기기를 제외한 모든 로그인이 해제됩니다.':
@@ -3691,7 +3697,7 @@ const EN: Record<string, string> = {
   '접속 기록을 불러오지 못했습니다.': 'Could not load the access log.',
   '아직 기록이 없습니다.': 'Nothing recorded yet.',
   '알 수 없음': 'Unknown',
-  '접속과 보안 변경 기록입니다. 모르는 접속이 있으면 비밀번호를 바꾸세요.': 'Sign-ins and security changes. Change your password if you see one you do not recognise.',
+  '접속과 보안 변경 기록입니다. 모르는 접속이 있으면 비밀번호를 바꾸세요.': 'Sign-ins and security changes. Change your password if you see one you do not recognize.',
   '로그인된 기기 페이지': 'Sign-in pages',
   '접속 기록 페이지': 'Access log pages',
   '계정 필요': 'Account required',
@@ -3775,7 +3781,7 @@ const EN: Record<string, string> = {
   '최저': 'cheapest',
   '추가할 서버가 없습니다': 'No servers to add',
   '카탈로그에서 필요한 서비스를 추가하거나, MCP 서버 주소를 직접 등록하세요.':
-    'Add a service from the catalogue, or register an MCP server address yourself.',
+    'Add a service from the catalog, or register an MCP server address yourself.',
   '컨텍스트의 약': 'about',
   '크레딧이 차감되지 않았습니다': 'Nothing was charged',
   '키가 발급되었습니다': 'Key issued',
@@ -3843,7 +3849,7 @@ const EN: Record<string, string> = {
   '글자를 고를 수 있는 PDF(텍스트 PDF)의 표를 쪽을 넘어 이어 붙이고 반복 머리글을 지워 엑셀 시트로 옮깁니다. 스캔한 PDF(이미지)는 읽지 못합니다.':
     'Moves the tables in a text PDF (one whose text can be selected) into Excel sheets, joining tables that continue across pages and dropping repeated headers. Scanned PDFs (images) cannot be read.',
   '첨부한 PDF의 표(거래내역, 단가표, 명세서 등)를 엑셀로 옮기거나 표의 숫자로 계산해야 할 때.':
-    'When the tables in an attached PDF (statements, price lists, itemised bills) must go into Excel or be calculated with.',
+    'When the tables in an attached PDF (statements, price lists, itemized bills) must go into Excel or be calculated with.',
   '스크립트': 'Scripts',
   '정해진 스크립트를 샌드박스에서 첨부 파일에 실행합니다.':
     'Runs these fixed scripts on attached files in the sandbox.',
@@ -3915,6 +3921,11 @@ const EN: Record<string, string> = {
   '사전 계산(수정 반영) 해당 없음': 'Pre-calculation (revision) not applicable',
   '새 대화': 'New chat',
   '아티팩트 열기': 'Open artifact',
+  '보고서 열기': 'Open report',
+  '덱 열기': 'Open deck',
+  '이미지 열기': 'Open image',
+  '테스트 알림을 보내는 중…': 'Sending a test notification…',
+  '미디어 열기': 'Open media',
   '1단계': '1 step',
   '문서 읽기': 'Read document',
   '아티팩트 생성': 'Create artifact',
@@ -4025,9 +4036,9 @@ const EN: Record<string, string> = {
   '글꼴 크기 줄이기': 'Decrease font size',
   '글꼴 크기 늘리기': 'Increase font size',
   '기울임꼴': 'Italic',
-  '텍스트 색상': 'Text colour',
+  '텍스트 색상': 'Text color',
   '왼쪽 맞춤': 'Align left',
-  '가운데 맞춤': 'Align centre',
+  '가운데 맞춤': 'Align center',
   '오른쪽 맞춤': 'Align right',
   '양쪽 맞춤': 'Justify',
   '새 슬라이드': 'New slide',
@@ -4122,8 +4133,8 @@ const EN: Record<string, string> = {
   '앞 질문을 보내는 중입니다.': 'Still sending the previous question.',
   '템플릿: {name}': 'Template: {name}',
   '이 대화의 템플릿': 'This conversation\'s template',
-  '질문과 자료가 이 기관 밖으로 나가지 않는 모델입니다': 'Questions and files never leave this organisation with this model',
-  '기관이 운영하지만 외부로 넘기지 않는다는 확인은 없는 모델입니다': 'Run by the organisation, but not confirmed to keep everything inside',
+  '질문과 자료가 이 기관 밖으로 나가지 않는 모델입니다': 'Questions and files never leave this organization with this model',
+  '기관이 운영하지만 외부로 넘기지 않는다는 확인은 없는 모델입니다': 'Run by the organization, but not confirmed to keep everything inside',
   '개인정보가 없으면 외부 모델로 바꿔 답할 수 있는 모델입니다': 'May hand the question to an external model when it holds no personal data',
   '외부 업체가 운영하는 모델입니다': 'Run by an outside provider',
   '자료가 어디서 처리되는지 확인되지 않은 모델입니다': 'Where this model processes data is not confirmed',
@@ -4208,7 +4219,7 @@ const EN: Record<string, string> = {
 
   // ── where a theme applies ─────────────────────────────────────────
   '말투는 대화·보고서·슬라이드에, 색과 서체는 슬라이드와 보고서 표지에, 스타일은 이미지에 적용됩니다. 오디오·동영상에는 적용되지 않습니다.':
-    'The voice reaches chat, reports and slides; colour and type reach slides and report covers; style reaches pictures. Audio and video are untouched.',
+    'The voice reaches chat, reports and slides; color and type reach slides and report covers; style reaches pictures. Audio and video are untouched.',
 
   // ── what went into this turn ──────────────────────────────────────
   '외 {n}건': 'and {n} more',
@@ -4216,7 +4227,7 @@ const EN: Record<string, string> = {
   '메모리 {n}건 참고': 'Drew on {n} memories',
   '메모리 {n}건 저장': 'Saved {n} memories',
   '자동 메모리에 추가됨': 'Added to automatic memory',
-  '앞선 대화 {n}개 메시지를 요약해 전달': 'Summarised {n} earlier messages for the model',
+  '앞선 대화 {n}개 메시지를 요약해 전달': 'Summarized {n} earlier messages for the model',
   '앞선 대화 {n}개 메시지는 길이 때문에 생략': '{n} earlier messages left out for length',
   '모델의 문맥 길이를 넘어 오래된 턴은 요약으로 대신했습니다':
     'The conversation outgrew the model’s context window, so older turns went in as a summary',
@@ -4285,11 +4296,11 @@ const EN: Record<string, string> = {
   '기능': 'Features',
   '메일': 'Mail',
 
-  // ── template catalogue ────────────────────────────────────────────
+  // ── template catalog ────────────────────────────────────────────
   '서식': 'Formatting',
   '파일 첨부': 'A file attached',
   '도식을 만들지 못했습니다.': 'The figure could not be made.',
-  '아티팩트의 구성을 고릅니다. 색과 글꼴은 테마가 정합니다.': 'Pick how the artifact is structured. The theme sets its colours and fonts.',
+  '아티팩트의 구성을 고릅니다. 색과 글꼴은 테마가 정합니다.': 'Pick how the artifact is structured. The theme sets its colors and fonts.',
   '이 도식은 그릴 수 없습니다. 단계를 줄여 다시 시도해 주세요.': 'This figure cannot be drawn. Try again with fewer steps.',
   '지금은 도식을 그릴 수 없습니다. 잠시 뒤 다시 시도해 주세요.': 'Figures cannot be drawn right now. Try again in a moment.',
   '「{name}」로 그립니다. 고쳐 써도 되며, 만들기를 눌러야 크레딧이 듭니다.': 'Drawn as a {name}. Edit freely; credits are used only when you press Make.',
@@ -4298,8 +4309,8 @@ const EN: Record<string, string> = {
   '보고서의 mermaid 블록에 붙여 넣거나 직접 고칠 수 있습니다': 'Paste it into a report\'s mermaid block, or edit it by hand',
   '소스 복사': 'Copy source',
   '도식을 그리지 못했습니다.': 'The figure could not be drawn.',
-  '덱 색 고르기': 'Choose deck colour',
-  '색': 'Colour',
+  '덱 색 고르기': 'Choose deck color',
+  '색': 'Color',
   '인상': 'Impression',
   '장 목록을 접었다 폅니다': 'Show or hide the slide list',
   '편집하기 좋은 한 줄 문서로 봅니다': 'Show it as one flowing document, easier to edit',
@@ -4314,7 +4325,7 @@ const EN: Record<string, string> = {
   // ── reading a theme from a document ──────────────────────────────
   '문서에서 가져오기': 'Read from a document',
   '지난 공문이나 보고서를 올리면 색·서체·문체를 읽어 초안을 만듭니다. 저장은 확인한 뒤에 합니다.':
-    'Upload an earlier letter or report, and its colours, type and voice become a draft. Nothing is saved until you have read it.',
+    'Upload an earlier letter or report, and its colors, type and voice become a draft. Nothing is saved until you have read it.',
   '문서 올리기': 'Upload a document',
   'hwpx · docx · pdf · 텍스트': 'hwpx · docx · pdf · text',
   '주소에서 읽기': 'Read from a URL',
@@ -4398,7 +4409,7 @@ const EN: Record<string, string> = {
   '강조색': 'Accent',
   '본문색': 'Body',
   '보조색': 'Secondary',
-  '{label} 색상 코드': '{label} colour code',
+  '{label} 색상 코드': '{label} color code',
   '서체': 'Typeface',
   '고딕 — 발표·화면': 'Gothic — slides and screen',
   '명조 — 보고서·인쇄': 'Serif — reports and print',
@@ -5051,12 +5062,12 @@ const EN: Record<string, string> = {
   '0이면 없음. 요청한 쪽수가 먼저': '0 for none. A page count in the request wins',
   '개조식 문체': 'Bullet style (개조식)',
   '제안요청서의 쪽수 제한 따르기': 'Follow the RFP\'s page limit',
-  '한 줄에 하나. 예: 판단에는 근거 수치를 붙인다.': 'One per line. e.g. Back every judgement with a figure.',
+  '한 줄에 하나. 예: 판단에는 근거 수치를 붙인다.': 'One per line. e.g. Back every judgment with a figure.',
   '자료끼리 값이 다를 때': 'When the material disagrees',
   '비워 두면 어느 값을 썼는지와 그 이유를 적게 합니다.': 'Empty: the writer says which value it used and why.',
   '기본 템플릿을 불러오지 못했습니다.': 'Could not load the built-in template.',
   '새 템플릿': 'New template',
-  '문서 템플릿은 무엇을 받을지, 어떤 형식과 순서로 쓸지, 쓰기 전후에 무엇을 확인할지를 정합니다. 모양은 테마의 색과 글꼴로 그립니다.': 'A document template sets what to bring, the format and order to write in, and what to check before and after writing. It is drawn in the theme\'s colours and fonts.',
+  '문서 템플릿은 무엇을 받을지, 어떤 형식과 순서로 쓸지, 쓰기 전후에 무엇을 확인할지를 정합니다. 모양은 테마의 색과 글꼴로 그립니다.': 'A document template sets what to bring, the format and order to write in, and what to check before and after writing. It is drawn in the theme\'s colors and fonts.',
   '기본 템플릿에서 시작': 'Start from a built-in template',
   '고르면 그 템플릿의 모든 설정이 채워집니다. 고친 뒤 저장합니다.': 'Picking one fills in all of its settings. Edit, then save.',
   '빈 템플릿': 'Blank template',
@@ -5119,8 +5130,8 @@ const EN: Record<string, string> = {
   '필수 표마다 열 이름을 두 개 이상 적으세요.': 'Give each required table at least two columns.',
   'DOCX 또는 HWPX 파일만 올릴 수 있습니다.': 'Only DOCX or HWPX files.',
   '예시 문서를 읽지 못했습니다.': 'Could not read the sample document.',
-  '카탈로그 항목 편집': 'Edit catalogue entry',
-  '카탈로그 항목 추가': 'Add catalogue entry',
+  '카탈로그 항목 편집': 'Edit catalog entry',
+  '카탈로그 항목 추가': 'Add catalog entry',
   '설치된 커넥터가 이 이름으로 항목을 찾습니다.': 'Installed connectors find their entry by this name.',
   '연결 방식': 'Transport',
   '명령 실행 (stdio)': 'Run a command (stdio)',
@@ -5139,12 +5150,12 @@ const EN: Record<string, string> = {
   '그 주소의 도구': 'Tool at that address',
   '고르세요': 'Choose',
   '쓸 화면': 'Surfaces',
-  '카탈로그를 불러오지 못했습니다.': 'Could not load the catalogue.',
+  '카탈로그를 불러오지 못했습니다.': 'Could not load the catalog.',
   '사용자가 직접 등록할 수 있는 실행 명령': 'Commands members may register themselves',
   '한 줄에 명령 하나. 사용자가 적은 명령이 인자까지 똑같은 줄만 실행되고, 환경 변수는 넣을 수 없습니다.': 'One command per line. A member\'s command runs only when it matches a line argument for argument, and it cannot take environment variables.',
   '게이트웨이 키': 'Gateway key',
   '숨김': 'Hidden',
-  '카탈로그에서 빠져 새로 설치할 수 없습니다. 이미 설치한 사람의 커넥터는 남지만 게이트웨이 키는 더 이상 들어가지 않습니다.': 'It leaves the catalogue and can no longer be installed. Installed copies stay but no longer get the gateway key.',
+  '카탈로그에서 빠져 새로 설치할 수 없습니다. 이미 설치한 사람의 커넥터는 남지만 게이트웨이 키는 더 이상 들어가지 않습니다.': 'It leaves the catalog and can no longer be installed. Installed copies stay but no longer get the gateway key.',
   '슬러그는 영문 소문자·숫자·하이픈으로 적으세요.': 'Use lowercase letters, digits and hyphens for the slug.',
   '이미 있는 슬러그입니다.': 'That slug is taken.',
   '설치된 커넥터가 슬러그로 찾으므로 슬러그는 바꿀 수 없습니다.': 'Installed connectors find the entry by its slug, so it cannot change.',
@@ -5157,7 +5168,7 @@ const EN: Record<string, string> = {
   '템플릿 설정을 따름': 'Follows the template',
   '이 에이전트에서 따로 정하기': 'Set for this agent',
   '끄면 템플릿(또는 문서 형식)이 정한 계산·검사·구조를 그대로 씁니다. 켜면 그 값에서 시작해 바꿉니다.': 'Off: the template\'s (or document format\'s) calculations, checks and structure apply as they are. On: start from them and change them.',
-  '커넥터 카탈로그': 'Connector catalogue',
+  '커넥터 카탈로그': 'Connector catalog',
   '사용자가 설치할 수 있는 MCP 서버입니다. stdio 서버는 여기서만 추가합니다.': 'MCP servers users can install. stdio servers can be added only here.',
   // Answer stage names (Korean keys sent by the server)
   '다른 모델로 답 쓰기': 'Answer written by another model',
@@ -5276,12 +5287,12 @@ const EN: Record<string, string> = {
   '갈래 이름': 'Branch name',
   '{name} 갈래 빼기': 'Remove branch {name}',
   '갈래 {n}': 'Branch {n}',
-  '갈래 추가 (AI 판단에서 {n}개까지)': 'Add branch (up to {n} with AI judgement)',
+  '갈래 추가 (AI 판단에서 {n}개까지)': 'Add branch (up to {n} with AI judgment)',
   '앞 단계로 되돌아가는 선(반복)은 막습니다. 값이 없으면 「아니오」로 갑니다.': 'Lines back to an earlier step (loops) are blocked. With no value, it goes to “No”.',
   '앞 단계로 되돌아가는 선(반복)은 막습니다. 판단 모델이 갈래를 고르지 못하면 마지막 갈래로 갑니다.': 'Lines back to an earlier step (loops) are blocked. If the judge model cannot pick, it takes the last branch.',
   '대화의 요청과 첨부를 받아 첫 단계로 넘깁니다.': 'Takes the conversation\'s request and attachments and hands them to the first step.',
   '대화·첨부로': 'From conversation',
-  'AI 판단': 'AI judgement',
+  'AI 판단': 'AI judgment',
   '앞 단계로 되돌아가는 선(반복)은 이을 수 없습니다.': 'A line back to an earlier step (a loop) cannot be drawn.',
   '조직 공개': 'Shared with org',
   '나만 보기': 'Only me',
@@ -5319,21 +5330,21 @@ const EN: Record<string, string> = {
   '답이 자료로 다 답하지 못했다고 말하면, 에이전트에 적은 담당 부서·연락처를 적힌 그대로 덧붙입니다(없으면 「담당 부서에 문의해 주세요」).': 'When the answer says the material does not fully cover the question, appends the responsible office and contact exactly as written in the agent (or “Please contact the responsible office” when there is none).',
   '광고·홍보 문구를 채널 글자 수 한도(네이버·카카오·메타·구글·유튜브·인스타그램·링크드인)로 재고, 근거가 필요한 표현(최상급·비교·보장·질병 효능·후기·긴급성)과 자료에 없는 숫자를 찾아 줍니다.': 'Measures ad and promo copy against channel character limits (Naver, Kakao, Meta, Google, YouTube, Instagram, LinkedIn) and flags claims that need support (superlatives, comparisons, guarantees, health claims, testimonials, urgency) and numbers not in the material.',
   '이미 쓴 한국어 글의 맞춤법·띄어쓰기를 한글 맞춤법·표준어 규정에 따라 바로잡고, 뜻과 사실은 그대로 둔 채 문장을 다듬고 어투(합니다체·해요체·개조식)를 맞춥니다. 바꾼 곳마다 원문→수정과 이유를 남기고, 뜻이 바뀔 수 있는 수정은 따로 표시합니다.': 'Corrects spelling and spacing in finished Korean text to the official orthography and standard-language rules, polishes sentences without changing meaning or facts, and evens out the register (formal, polite, or bullet style). Every change is listed as original → revised with a reason, and changes that could alter meaning are marked separately.',
-  '엑셀·CSV를 코드로 전 행 읽어 정한 열을 뽑고 항목별로 집계한 표와 차트를 만들고, 지우거나 바꾼 행은 원본 → 정리 후 → 분석 포함 행 수로 남깁니다. 답의 숫자는 실행 결과에서만 옮깁니다.': 'Reads every row of an Excel/CSV file in code, pulls the chosen columns and builds per-item tallies and charts, recording dropped or changed rows as original → cleaned → analysed row counts. Numbers in the answer come only from the run output.',
+  '엑셀·CSV를 코드로 전 행 읽어 정한 열을 뽑고 항목별로 집계한 표와 차트를 만들고, 지우거나 바꾼 행은 원본 → 정리 후 → 분석 포함 행 수로 남깁니다. 답의 숫자는 실행 결과에서만 옮깁니다.': 'Reads every row of an Excel/CSV file in code, pulls the chosen columns and builds per-item tallies and charts, recording dropped or changed rows as original → cleaned → analyzed row counts. Numbers in the answer come only from the run output.',
   '「다음 주 금요일」「이번 달 말」「2주 뒤」 같은 상대 날짜를 회의일·메일 발신일 기준으로 풀고, 경력 기간(겹침 제외)·영업일·납기를 셉니다.': 'Resolves relative dates such as “next Friday”, “end of this month” or “in two weeks” against the meeting or email date, and counts career spans (overlaps removed), business days and deadlines.',
   '보고서·메모·자료로 발표용 슬라이드를 구성합니다. 한 장에 주장 하나, 결론을 맨 앞에, 장마다 본문을 쓰고, 자료에 없는 수치는 지어내지 않습니다.': 'Builds a presentation from reports, memos and material: one point per slide, conclusion first, body text on every slide, and no figures the material does not contain.',
-  '「심층 리서치」 커넥터로 웹·arXiv를 여러 번 반복 탐색해 출처가 달린 조사 결과를 받아, 질문에 맞게 정리합니다. 몇 분에서 수십 분 걸리므로 깊이 있는 조사가 필요할 때만 씁니다.': 'Uses the Deep research connector to search the web and arXiv repeatedly, then organises the sourced findings around the question. Takes minutes to tens of minutes, so use it only when real depth is needed.',
+  '「심층 리서치」 커넥터로 웹·arXiv를 여러 번 반복 탐색해 출처가 달린 조사 결과를 받아, 질문에 맞게 정리합니다. 몇 분에서 수십 분 걸리므로 깊이 있는 조사가 필요할 때만 씁니다.': 'Uses the Deep research connector to search the web and arXiv repeatedly, then organizes the sourced findings around the question. Takes minutes to tens of minutes, so use it only when real depth is needed.',
   '메모와 요청으로 계획서·결과 보고·기안·공문·안내문처럼 기관에서 올리는 문서의 초안을 씁니다. 자료에 없는 날짜·금액·이름은 지어내지 않고 그 값 없이도 맞는 문장으로 쓰며, 검색하지 않고 그림은 요청할 때만 넣습니다.': 'Drafts the documents an institution files — plans, result reports, proposals, official letters, notices — from memos and requests. Dates, amounts and names not in the material are never invented; sentences are written to work without them. No searching, and pictures only on request.',
   '긴 메모·메일·회의 내용을 윗사람이 한 장에서 판단할 개조식 보고(□ ○ - ㆍ)로 바꿉니다. 맨 위 핵심 두 줄, 현황 → 문제점 및 검토 → 향후 조치 및 결정 요청 → 붙임, 기본 1쪽.': 'Turns long memos, emails or meeting notes into a one-page bullet-style briefing (□ ○ - ㆍ) a manager can decide from: two key lines on top, then status → issues and review → next steps and decisions requested → attachments. One page by default.',
   '문서를 쓰기 전에, 템플릿과 에이전트가 정해 둔 「빠진 정보 질문」(회의 일시·참석자, 보고 대상·보고자, 대안별 가격, 분석 기준 등) 중 자료가 답하지 않는 것을 찾아 한 번에 묻습니다.': 'Before writing, finds which of the template\'s and agent\'s missing-information questions (meeting date and attendees, audience and author, prices per option, analysis criteria, …) the material does not answer, and asks them all at once.',
   '글에서 「~하는 것이 중요합니다」「다양한」「효과적으로」「혁신적인」「~라고 할 수 있습니다」 같은 상투어·군더더기·번역투·AI 투를 찾아, 자료에 있는 구체적인 말로 바꾸거나 지웁니다. 자료에 없는 사실은 지어내지 않고 [구체적 수치] 같은 빈칸으로 남깁니다.': 'Finds stock phrases, filler, translationese and AI-sounding wording (“it is important to…”, “various”, “effectively”, “innovative”, “it can be said that…”) and replaces them with concrete words from the material or removes them. Facts not in the material are never invented; they are left as blanks like [specific figure].',
-  '다 쓴 문서·답의 수치·날짜·시각·이름·기관·직함·제품명이 요청·자료·사용자 답·코드 계산값에 있는지 대조하고, 근거 없는 값은 대괄호 빈칸으로 바꿉니다.': 'Checks the numbers, dates, times, names, organisations, titles and product names in a finished document or answer against the request, material, user answers and computed values, and turns unsupported values into bracketed blanks.',
+  '다 쓴 문서·답의 수치·날짜·시각·이름·기관·직함·제품명이 요청·자료·사용자 답·코드 계산값에 있는지 대조하고, 근거 없는 값은 대괄호 빈칸으로 바꿉니다.': 'Checks the numbers, dates, times, names, organizations, titles and product names in a finished document or answer against the request, material, user answers and computed values, and turns unsupported values into bracketed blanks.',
   '조직 안 공지·제도 변경 안내·시스템 점검 안내·주간 진행 보고(3P)·자주 묻는 질문을 사내 메일·메신저·공문체로 씁니다. 한 줄 요지부터 바뀌는 것·대상·시점·할 일·문의처 순서로 쓰고, 날짜·요일·연락처·수치가 자료와 맞는지 스크립트로 점검합니다. 자료에 없는 일정·담당자·연락처는 빈칸으로 두고 묻습니다.': 'Writes in-house notices, policy changes, maintenance notices, weekly progress reports (3P) and FAQs for company email, messenger or official letters. Starts with a one-line gist, then what changes, who, when, what to do and whom to ask, and checks in a script that dates, weekdays, contacts and figures match the material. Schedules, owners and contacts not in the material are left blank and asked about.',
   '회의·인터뷰·강의의 녹음 전사본·메모와 후속 메일로 결정·실행 항목(할 일·담당·기한·비고, 메일이 있으면 출처)·미결이 남는 회의록을 씁니다. 회의록 템플릿에 쓰고, 상대 날짜는 서버가 회의일 기준으로 풉니다.': 'Writes minutes that keep decisions, action items (task, owner, due date, notes, and the source email if any) and open issues from recording transcripts, notes and follow-up emails of meetings, interviews or lectures. Written in the minutes template; relative dates are resolved by the server against the meeting date.',
   '대안 2~5개를 요청한 기준 그대로 견주고 반드시 하나를 권고하는 보고서를 씁니다. 부가세·할인·부대비를 계산해 조건을 먼저 판정하고, 비용은 서버가 계산한 첫해·이듬해 값으로, 가중치가 없으면 점수를 만들지 않고, 자료끼리 다른 값은 출처와 함께 나란히 적습니다.': 'Writes a report that weighs 2–5 options on exactly the criteria asked and always recommends one. Applies VAT, discounts and extra costs to check conditions first, uses the server\'s first- and second-year costs, makes no scores without weights, and lists conflicting values side by side with their sources.',
   '개인정보 가리기': 'Mask personal data',
   '답과 문서에 들어간 휴대전화 번호·개인 이메일·주민등록번호·카드 번호를 [전화번호]·[이메일]·[주민번호]·[카드번호]로 가립니다. 기관 대표번호·부서 메일과 에이전트에 적은 담당 부서·연락처는 그대로 둡니다.': 'Masks mobile numbers, personal emails, resident registration numbers and card numbers in answers and documents as [전화번호], [이메일], [주민번호] and [카드번호]. Main switchboard numbers, team emails and the contact written in the agent are left as they are.',
-  '행사·성과·출시·협약 자료로 기자가 바로 받아 쓸 수 있는 보도자료를 씁니다. 제목·부제, 육하원칙 리드, 중요한 것부터 내려가는 본문, 자료에 있는 사람의 발언만 인용, 기관 소개와 문의처까지. 자료에 없는 수치·발언은 만들지 않습니다.': 'Writes a press release reporters can run as is from material on an event, result, launch or agreement: headline and subhead, a lead covering the five Ws, a body in order of importance, quotes only from people in the material, and an organisation profile and contact. Figures and quotes not in the material are never made up.',
+  '행사·성과·출시·협약 자료로 기자가 바로 받아 쓸 수 있는 보도자료를 씁니다. 제목·부제, 육하원칙 리드, 중요한 것부터 내려가는 본문, 자료에 있는 사람의 발언만 인용, 기관 소개와 문의처까지. 자료에 없는 수치·발언은 만들지 않습니다.': 'Writes a press release reporters can run as is from material on an event, result, launch or agreement: headline and subhead, a lead covering the five Ws, a body in order of importance, quotes only from people in the material, and an organization profile and contact. Figures and quotes not in the material are never made up.',
   '견적 항목(수량×단가, MM×월 단가)을 원 단위로 합쳐 공급가액(VAT 별도)·부가세·합계(VAT 포함)·할인·예산 대비 여유·1인당 금액·시나리오를 계산하고, 금액을 한글로도 적습니다.': 'Totals quote lines (quantity × unit price, MM × monthly rate) in won to work out supply value (excl. VAT), VAT, total (incl. VAT), discounts, headroom against the budget, per-person amounts and scenarios, and writes amounts out in Korean words too.',
   '학칙·규정·업무 지침에서 질문에 맞는 조항을 찾아 근거를 [n]으로 달아 답하고, 시행일 기준을 밝히며, 자료에 없는 내용은 그렇다고 말하고 담당 부서로 안내합니다.': 'Finds the clauses in school rules, regulations or work guidelines that answer the question and cites them as [n], states the effective date it is based on, and says so and points to the responsible office when the material does not cover something.',
   '기업 조사·경쟁사 분석·시장 규모·산업 분석 글에서 숫자마다 출처·날짜가 있는지(없으면 가정·출처 미확인 표시), 오래된 출처, 근거 없는 일반론, 비교표의 출처 없는 칸·근거 없는 우위 판정을 코드로 찾고, PESTEL·5 Forces·세분화 틀을 검사해 표로 그립니다.': 'In company research, competitor analysis, market sizing or industry analysis, checks in code that every number has a source and date (otherwise marked as an assumption or unconfirmed), and finds stale sources, unsupported generalities, and unsourced cells or unsupported superiority calls in comparison tables. Checks PESTEL, Five Forces and segmentation frameworks and draws them as tables.',
@@ -5342,7 +5353,7 @@ const EN: Record<string, string> = {
   '한국어↔영어(요청하면 다른 언어도) 글을 빠짐없이 옮깁니다. 이름·숫자·단위·표·목록·코드는 그대로 두고, 같은 용어는 끝까지 같은 말로 옮기며, 뜻이 둘로 읽히는 곳만 짧게 적습니다. 직역·의역과 격식체·평어체를 고를 수 있습니다.': 'Translates between Korean and English (other languages on request) without leaving anything out. Names, numbers, units, tables, lists and code stay as they are, a term is rendered the same way throughout, and only genuinely ambiguous spots get a short note. Literal or free, formal or plain — your choice.',
   '엑셀 파일 만들기': 'Make an Excel file',
   '대화에 붙여 넣은 표, 첨부한 CSV·엑셀, 코드로 계산한 표를 내려받을 수 있는 엑셀(.xlsx) 파일로 만듭니다. 합계 행과 계산 열은 수식으로 넣고, 원하면 엑셀 차트도 붙입니다.': 'Turns a table pasted in the conversation, an attached CSV/Excel file or a table computed in code into a downloadable Excel (.xlsx) file. Total rows and computed columns go in as formulas, and an Excel chart can be added on request.',
-  'YouTube 주소를 주면 「YouTube 전사」 커넥터로 자막(없으면 음성 전사)을 받아, 그 전사문만으로 요약·핵심 정리·인용을 합니다. 전사문에 없는 내용은 쓰지 않습니다.': 'Give it a YouTube link and it fetches the captions (or a speech transcript when there are none) through the YouTube transcript connector, then summarises, picks out key points and quotes from that transcript alone. Nothing outside the transcript is added.',
+  'YouTube 주소를 주면 「YouTube 전사」 커넥터로 자막(없으면 음성 전사)을 받아, 그 전사문만으로 요약·핵심 정리·인용을 합니다. 전사문에 없는 내용은 쓰지 않습니다.': 'Give it a YouTube link and it fetches the captions (or a speech transcript when there are none) through the YouTube transcript connector, then summarizes, picks out key points and quotes from that transcript alone. Nothing outside the transcript is added.',
   // Built-in agents
   '자기소개서·경력기술서': 'Cover letter & career statement',
   '채용공고와 내 경험 자료로 글자 수 제한에 맞는 자기소개서 문항 답(채팅)이나 경력기술서(보고서)가 필요할 때': 'When you need cover-letter answers that fit the character limits (chat) or a career statement (report), from a job posting and your experience',
@@ -5365,16 +5376,44 @@ const EN: Record<string, string> = {
   '이 키로 호출하는 코드는 곧바로 거절됩니다. 되돌릴 수 없습니다.': 'Code calling with this key is refused at once. This cannot be undone.',
 }
 
+/** A translator whose `n(text, count)` also fills 「{n}」 and picks the English singular for one. */
+export interface Translator {
+  (text: string): string
+  n: (text: string, count: number) => string
+}
+
+export function translator(lang: () => Lang): Translator {
+  const t = ((text: string) => translate(lang(), text)) as Translator
+  t.n = (text, count) => translateCount(lang(), text, count)
+  return t
+}
+
 export function translate(lang: Lang, text: string): string {
   if (lang === 'ko') return text
   return EN[text] ?? text
+}
+
+/** English singular of the counted word after `{n}`: 「1 uses」 is wrong, 「1 use」 right. */
+function singular(word: string): string {
+  if (/(ss|us|is)$/i.test(word) || !/s$/i.test(word)) return word
+  if (/^people$/i.test(word)) return word.replace(/people/i, (m) => (m[0] === 'P' ? 'Person' : 'person'))
+  if (/ies$/i.test(word)) return word.slice(0, -3) + 'y'
+  if (/(sses|xes|ches|shes)$/i.test(word)) return word.slice(0, -2)
+  return word.slice(0, -1)
+}
+
+/** A counted phrase (「{n}회 사용」): the English noun after `{n}` is singular for one. Korean as is. */
+export function translateCount(lang: Lang, text: string, n: number): string {
+  let out = translate(lang, text)
+  if (lang !== 'ko' && n === 1) out = out.replace(/\{n\}(\s?)([A-Za-z]+)/, (_, sp: string, w: string) => `{n}${sp}${singular(w)}`)
+  return out.replace('{n}', n.toLocaleString(lang === 'ko' ? 'ko-KR' : 'en-US'))
 }
 
 /** Context-dependent English, keyed `context|Korean` (hub 「탐색」 = explore, 「개요」 = overview). */
 const EN_IN: Record<string, string> = {
   'hub|탐색': 'Explore',
   'hub|개요': 'Overview',
-  'colour|직접 고르기': 'Pick a colour',
+  'colour|직접 고르기': 'Pick a color',
   'period|직접 지정': 'Custom range',
   'searchConsent|허용': 'Allow',
   'reportComment|새 메모': 'New comment',

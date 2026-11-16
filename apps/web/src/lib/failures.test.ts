@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { refusalSentence } from '@/lib/failures'
+import { translator } from '@/lib/i18n'
 
-const t = (text: string) => text
+const t = translator(() => 'ko')
 
 describe('refusal sentences', () => {
   it('does not call a server failure a refusal', () => {

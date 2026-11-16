@@ -14,6 +14,8 @@ export interface ImageEditSource {
   origin: 'upload' | 'generated'
   /** Made from a picture the person gave. */
   internal?: boolean
+  /** The model that drew the picture, when known (a strict-local one keeps it inside). */
+  madeBy?: string | null
 }
 
 /** Why the picture cannot be changed here, and the model that could change it when that helps. */
@@ -60,6 +62,7 @@ export function editBlock({
   models,
   internal,
   internalRule,
+  madeBy,
   t,
 }: {
   session:
@@ -76,12 +79,17 @@ export function editBlock({
   internal: boolean
   /** The organisation keeps internal material on strict-local models. */
   internalRule: boolean
+  /** The model that drew the picture; a strict-local model's picture never goes to an outside editor. */
+  madeBy?: string | null
   t: T
 }): EditBlock {
   const editors = editingModels(models)
   const current = models.find((m) => m.id === session?.model)
   const strictTurn = !!current?.strictLocal && session?.kind !== 'image'
   const inside = (m: ModelInfo) => m.strictLocal
+  if (madeBy && models.find((m) => m.id === madeBy)?.strictLocal && !editors.some(inside)) {
+    return { reason: t('strict-local 모델이 그린 그림이라 외부 모델로 고칠 수 없습니다.'), switchTo: null }
+  }
   if (strictTurn) {
     return editors.some(inside) ? null : { reason: t('strict-local 대화라 외부 모델로 고칠 수 없습니다.'), switchTo: null }
   }
@@ -97,8 +105,14 @@ export function editBlock({
   if (!usable.length) return { reason: t('고칠 수 있는 이미지 모델이 없습니다.'), switchTo: null }
   return {
     reason: model
-      ? t('이 모델({model})은 그리기만 합니다.').replace('{model}', model.name || model.label)
+      ? t('이 모델({model})은 그리기만 합니다.').replace('{model}', shortName(model))
       : t('이미지 모델을 고르세요.'),
     switchTo: usable[0],
   }
+}
+
+/** The model's name for a sentence: no vendor, and no trailing parenthesis (it nests in the sentence's own). */
+function shortName(model: ModelInfo): string {
+  const name = (model.name || model.label).replace(/\s*\([^)]*\)\s*$/, '').trim()
+  return name || model.name || model.label
 }

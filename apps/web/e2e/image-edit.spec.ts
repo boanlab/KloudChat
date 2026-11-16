@@ -250,7 +250,13 @@ test('그리기만 하는 모델이면 고치기가 꺼지고 이유를 말하�
   await page.goto(`/s/${imageSession}`)
   const edit = page.getByTestId('image-edit').last()
   await expect(edit).toHaveAttribute('aria-disabled', 'true')
-  await expect(edit).toHaveAttribute('title', '이 모델(Draw Only)은 그리기만 합니다.')
+  const tip = page.getByTestId('image-edit-tip').last()
+  await expect(tip).toHaveText('이 모델(Draw Only)은 그리기만 합니다.')
+  await expect(edit).toHaveAttribute('aria-describedby', (await tip.getAttribute('id')) ?? '')
+  // the reason shows on keyboard focus, not only on hover
+  await expect(tip).toBeHidden()
+  await edit.focus()
+  await expect(tip).toBeVisible()
   // a tap says it too, and nothing is put in the composer (`aria-disabled` takes the tap; Playwright
   // counts it as not enabled)
   await edit.click({ force: true })
@@ -277,7 +283,7 @@ test('strict-local 대화의 그림은 외부 모델로 고치지 않는다', as
   await page.goto(`/s/${strictSession}`)
   const edit = page.getByTestId('image-edit').last()
   await expect(edit).toHaveAttribute('aria-disabled', 'true')
-  await expect(edit).toHaveAttribute('title', 'strict-local 대화라 외부 모델로 고칠 수 없습니다.')
+  await expect(page.getByTestId('image-edit-tip').last()).toHaveText('strict-local 대화라 외부 모델로 고칠 수 없습니다.')
   // no switch: changing the model would not let the picture out
   await expect(page.getByTestId('image-edit-switch')).toHaveCount(0)
   // an attached picture has the action too, off for the same reason

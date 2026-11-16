@@ -282,7 +282,7 @@ export function DocMarksLayer({
       >
         <span className="flex min-w-0 items-center gap-1.5" aria-live="polite">
           <span className="inline-block size-2.5 shrink-0 rounded-sm bg-warn/40" aria-hidden />
-          <span>{t('빈칸 {n}개').replace('{n}', String(blanks))}</span>
+          <span>{t.n('빈칸 {n}개', blanks)}</span>
           <span className="text-faint" aria-hidden>·</span>
           <CircleAlert size={12} className="shrink-0 text-danger" aria-hidden />
           <span>{t('확인할 곳 {n}개').replace('{n}', String(checks))}</span>

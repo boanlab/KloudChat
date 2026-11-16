@@ -110,7 +110,7 @@ export function SkillUploadPage() {
     if (fresh.length === 0) return
     const next = [...files, ...fresh]
     if (next.length > MAX_FILES) {
-      setError(t('한 번에 {n}개까지 올릴 수 있습니다.').replace('{n}', String(MAX_FILES)))
+      setError(t.n('한 번에 {n}개까지 올릴 수 있습니다.', MAX_FILES))
       return
     }
     void check(next)
@@ -143,7 +143,7 @@ export function SkillUploadPage() {
         text:
           made.length === 1
             ? t('「{name}」 스킬을 올렸습니다.').replace('{name}', made[0].name)
-            : t('스킬 {n}개를 올렸습니다.').replace('{n}', String(made.length)),
+            : t.n('스킬 {n}개를 올렸습니다.', made.length),
       })
       navigate(made.length === 1 ? `/customize/skills/${made[0].id}` : '/customize?tab=skills&view=mine', { replace: true })
     } catch (err) {
@@ -281,7 +281,7 @@ function PreviewCard({ file, preview, onRemove }: { file: File; preview?: SkillI
             {preview &&
               (preview.ok ? (
                 <Badge tone={warns.length ? 'warn' : 'success'}>
-                  {warns.length ? t('주의 {n}건').replace('{n}', String(warns.length)) : t('문제 없음')}
+                  {warns.length ? t.n('주의 {n}건', warns.length) : t('문제 없음')}
                 </Badge>
               ) : (
                 <Badge tone="danger">{t('올릴 수 없음')}</Badge>
@@ -292,7 +292,7 @@ function PreviewCard({ file, preview, onRemove }: { file: File; preview?: SkillI
           {preview?.ok && (
             <p className="mt-1.5 flex flex-wrap gap-1.5">
               <Badge>v{preview.version}</Badge>
-              <Badge>{t('약 {n} 토큰').replace('{n}', preview.estimatedTokens.toLocaleString())}</Badge>
+              <Badge>{t.n('약 {n} 토큰', preview.estimatedTokens)}</Badge>
               {preview.requiredTools.map((tool) => (
                 <Badge key={tool} className="font-mono">
                   {tool}
@@ -319,7 +319,7 @@ function PreviewCard({ file, preview, onRemove }: { file: File; preview?: SkillI
       {preview && (preview.scripts?.length ?? 0) > 0 && (
         <div className="mt-3 space-y-1.5" data-testid="skill-preview-scripts">
           <p className="text-sm font-medium text-muted">
-            {t('스크립트 {n}개 · 코드 실행 샌드박스에서만 실행').replace('{n}', String(preview.scripts?.length ?? 0))}
+            {t.n('스크립트 {n}개 · 코드 실행 샌드박스에서만 실행', preview.scripts?.length ?? 0)}
           </p>
           <ul className="space-y-1.5">
             {preview.scripts?.map((script) => (
