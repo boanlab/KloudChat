@@ -1,5 +1,5 @@
 import { WandSparkles } from 'lucide-react'
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { Button } from '@/components/ui'
 import { editBlock, imageModelId, type ImageEditSource } from '@/lib/imageEdit'
 import { cn } from '@/lib/utils'
@@ -45,8 +45,10 @@ export function ImageEditAction({
     models,
     internal: source.origin === 'upload' || !!source.internal,
     internalRule,
+    madeBy: source.madeBy,
     t,
   })
+  const tipId = useId()
   const label = t('이미지 고치기')
   const switchTo = block?.switchTo
   const switchModel = () => {
@@ -70,21 +72,40 @@ export function ImageEditAction({
     if (onStart) onStart(full)
     else setImageEdit(full)
   }
+  const button = (
+    <Button
+      variant="ghost"
+      size={iconOnly ? 'icon' : 'sm'}
+      data-testid="image-edit"
+      aria-disabled={block ? 'true' : undefined}
+      aria-describedby={block ? tipId : undefined}
+      aria-label={iconOnly ? t('{name} 고치기').replace('{name}', source.name) : undefined}
+      title={block ? undefined : t('고칠 내용을 입력창에 적습니다')}
+      className={cn(block && 'cursor-not-allowed text-muted opacity-70', className)}
+      onClick={start}
+    >
+      <WandSparkles size={13} />
+      {!iconOnly && label}
+    </Button>
+  )
   return (
     <>
-      <Button
-        variant="ghost"
-        size={iconOnly ? 'icon' : 'sm'}
-        data-testid="image-edit"
-        aria-disabled={block ? 'true' : undefined}
-        aria-label={iconOnly ? t('{name} 고치기').replace('{name}', source.name) : undefined}
-        title={block?.reason ?? t('고칠 내용을 입력창에 적습니다')}
-        className={cn(block && 'cursor-not-allowed opacity-45', className)}
-        onClick={start}
-      >
-        <WandSparkles size={13} />
-        {!iconOnly && label}
-      </Button>
+      {block ? (
+        // the reason shows on hover, keyboard focus and a tap, and the button names it to a screen reader
+        <span className="group relative inline-flex">
+          {button}
+          <span
+            id={tipId}
+            role="tooltip"
+            data-testid="image-edit-tip"
+            className="pointer-events-none absolute bottom-full right-0 z-30 mb-1 hidden w-max max-w-[16rem] rounded-md border border-line bg-elevated px-2.5 py-1.5 text-xs text-fg shadow-lg group-focus-within:block group-hover:block"
+          >
+            {block.reason}
+          </span>
+        </span>
+      ) : (
+        button
+      )}
       {switchTo && !iconOnly && (
         <Button variant="ghost" size="sm" data-testid="image-edit-switch" title={switchTo.label} onClick={() => {
           setSaid(false)

@@ -88,11 +88,6 @@ export function NotificationsTab() {
 
   return (
     <div className="space-y-8">
-      {note && (
-        <p role={note.alert ? 'alert' : 'status'} className={note.alert ? 'text-base text-danger' : 'text-base text-faint'}>
-          {note.text}
-        </p>
-      )}
       <section className="space-y-3" aria-labelledby="notify-device">
         <h2 id="notify-device" className="text-base font-semibold">
           {t('이 기기')}
@@ -100,6 +95,11 @@ export function NotificationsTab() {
         <p className="text-base text-muted" data-testid="notify-device-state">
           {deviceLine}
         </p>
+        {note && (
+          <p role={note.alert ? 'alert' : 'status'} className={note.alert ? 'text-base text-danger' : 'text-base text-faint'}>
+            {note.text}
+          </p>
+        )}
         {support === 'ok' && permission !== 'denied' && (
           <div className="flex flex-wrap gap-2">
             {subscribed ? (
@@ -108,6 +108,7 @@ export function NotificationsTab() {
                   disabled={busy}
                   onClick={() =>
                     void run(async () => {
+                      setNote({ text: t('테스트 알림을 보내는 중…') })
                       const { sent } = await pushApi.test()
                       setNote({ text: sent ? t('테스트 알림을 보냈습니다.') : t('테스트 알림을 보내지 못했습니다.') })
                     })

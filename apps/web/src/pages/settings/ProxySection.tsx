@@ -104,7 +104,7 @@ export function ProxySection({
               setProbe({
                 ok: result.ok,
                 detail: result.ok
-                  ? t('연결됨 · 모델 {n}종').replace('{n}', String(result.models ?? 0))
+                  ? t.n('연결됨 · 모델 {n}종', result.models ?? 0)
                   : (result.detail ?? t('연결하지 못했습니다.')),
               })
               await reload()
@@ -200,7 +200,7 @@ export function ProxySection({
         <Card className="border-warn/30 bg-warn/5 p-4">
           <p className="flex items-center gap-1.5 text-base font-medium text-warn">
             <TriangleAlert size={14} />
-            {t('가격을 알 수 없어 숨긴 모델 {n}개').replace('{n}', String(settings!.unpricedModels.length))}
+            {t.n('가격을 알 수 없어 숨긴 모델 {n}개', settings!.unpricedModels.length)}
           </p>
           <p className="mt-1 text-base text-muted">
             {t('프록시가 서빙하지만 단가를 보고하지 않습니다. 추정치로 과금하지 않기 위해 목록에서 빼두었습니다. 쓰려면 제공자의 가격표를 확인해 MODEL_OVERRIDES 에 실제 단가를 넣으세요.')}

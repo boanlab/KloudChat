@@ -396,3 +396,28 @@ def test_device_labels():
     assert label("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/140.0 Safari/537.36 "
                  "Edg/140.0") == "Edge · Windows"
     assert label("") == "브라우저"
+
+
+def test_a_notice_follows_the_language_the_person_chose():
+    from app.models.user import User
+    from app.services import push
+
+    notice = push.Notice(event="job_done", title="보고서가 완성됐습니다", label="")
+    korean = User(id="u", email="u@example.test", name="u", password_hash="x")
+    assert push.Notice.payload(notice, korean)["title"] == "보고서가 완성됐습니다"
+    english = User(id="e", email="e@example.test", name="e", password_hash="x",
+                   preferences={"ui_language": "en"})
+    out = push.Notice.payload(notice, english)
+    assert out["title"] == "Your report is ready" and out["body"] == "Check it in KloudChat"
+    # a conversation's own title is never translated
+    named = push.Notice(event="job_done", title="보고서가 완성됐습니다", label="내 보고서")
+    assert push.Notice.payload(named, english)["body"] == "내 보고서"
+
+
+def test_a_subscription_may_carry_the_screens_language():
+    from app.routers.push import SubscriptionIn
+
+    keys = {"p256dh": "B" * 87, "auth": "a" * 22}
+    endpoint = "https://fcm.googleapis.com/fcm/send/x1"
+    assert SubscriptionIn(endpoint=endpoint, keys=keys).language is None
+    assert SubscriptionIn(endpoint=endpoint, keys=keys, language="en").language == "en"

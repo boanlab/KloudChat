@@ -156,14 +156,13 @@ export function StudioDialog({
               <p className="text-muted">{t('몇 분 걸릴 수 있습니다.')}</p>
             )}
             <p>
-              {t('자료 {n}개 · 읽는 양 약 {in} 토큰 · 쓰는 양 약 {out} 토큰')
-                .replace('{n}', String(estimate.sources))
+              {t.n('자료 {n}개 · 읽는 양 약 {in} 토큰 · 쓰는 양 약 {out} 토큰', estimate.sources)
                 .replace('{in}', formatTokens(estimate.inputTokens))
                 .replace('{out}', formatTokens(estimate.outputTokens))}
             </p>
             <p className="font-medium">
               {estimate.credits > 0
-                ? t('약 {n} 크레딧 (최대 {max})').replace('{n}', String(estimate.credits)).replace('{max}', String(estimate.maxCredits))
+                ? t.n('약 {n} 크레딧 (최대 {max})', estimate.credits).replace('{max}', String(estimate.maxCredits))
                 : t('크레딧 없음 (안에서 돌아가는 모델)')}
             </p>
             {estimate.partial.length > 0 && (

@@ -636,7 +636,7 @@ export function AdminUsersPage() {
           onConfirm={() => bulk && void runBulk(bulk)}
           title={
             bulk === 'approve'
-              ? t('{n}명을 승인할까요?').replace('{n}', String(tickedPending.length))
+              ? t.n('{n}명을 승인할까요?', tickedPending.length)
               : t('{n}명의 가입을 반려할까요?').replace('{n}', String(tickedPending.length))
           }
           description={
@@ -935,7 +935,7 @@ export function AdminUsersPage() {
                   <Input
                     value={draftPassword}
                     onChange={(e) => setDraftPassword(e.target.value)}
-                    placeholder={t('{n}자 이상').replace('{n}', String(passwordMinLength))}
+                    placeholder={t.n('{n}자 이상', passwordMinLength)}
                     aria-label={t('새 비밀번호')}
                     autoComplete="off"
                     className="font-mono"
@@ -1296,7 +1296,7 @@ function CreditDialog({
           label={t('월 크레딧')}
           hint={
             valid
-              ? t('{n} 크레딧 · 0~100,000,000 · 이번 달 사용량은 그대로 유지됩니다.').replace('{n}', parsed.toLocaleString())
+              ? t.n('{n} 크레딧 · 0~100,000,000 · 이번 달 사용량은 그대로 유지됩니다.', parsed)
               : t('0~100,000,000 크레딧 · 이번 달 사용량은 그대로 유지됩니다.')
           }
           error={invalid ? t('0부터 100,000,000 사이의 정수로 입력하세요.') : null}
@@ -1327,7 +1327,7 @@ function CreditDialog({
         {user && (
           <div className="space-y-1.5 rounded-control border border-line bg-elevated px-3 py-2.5 text-base text-muted">
             <p>
-              {t('현재 주기 사용량 {n} 크레딧').replace('{n}', user.creditsUsed.toLocaleString())} ·{' '}
+              {t.n('현재 주기 사용량 {n} 크레딧', user.creditsUsed)} ·{' '}
               {t('{date} 리필').replace('{date}', formatDate(user.cycleResetsAt))}
             </p>
             {/* The proxy copy sits above the real limit as a backstop. */}

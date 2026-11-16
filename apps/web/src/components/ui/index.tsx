@@ -131,7 +131,7 @@ export function Select({ className, children, ...props }: ComponentProps<'select
   return (
     <div className="relative">
       <select
-        className={cn(fieldBase, 'h-9 cursor-pointer appearance-none pr-9', className)}
+        className={cn(fieldBase, 'h-9 cursor-pointer appearance-none truncate pr-9 [text-overflow:ellipsis]', className)}
         {...props}
         {...aria}
       >

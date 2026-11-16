@@ -1,4 +1,5 @@
 import { isMediaFile, mediaApi, mediaSeconds, type MediaInfo } from '@/lib/api'
+import type { Translator } from '@/lib/useT'
 
 /** What a file row says about its audio/video being read (`services/video_jobs.py`). */
 export interface MediaFields {
@@ -33,7 +34,7 @@ export function secondsOf(stamp: string): number | null {
 /** One short line on a video's reading, or null; failures shown by the file's own error. */
 export function mediaNote(
   file: MediaFields,
-  t: (key: string) => string,
+  t: Translator,
 ): { text: string; tone: 'busy' | 'warn' | 'quiet' } | null {
   if (file.mediaState === 'queued') return { text: t('영상 읽기 대기 중'), tone: 'busy' }
   if (file.mediaState === 'running') {
@@ -143,7 +144,7 @@ export function linkTimestamps(text: string, given: VideoRef[]): string {
 /** Before a long audio/video goes up: what reading it will take, or why it cannot be read. */
 export async function mediaPreflight(
   file: File,
-  t: (key: string) => string,
+  t: Translator,
 ): Promise<{ note: string | null; refusal: string | null; seconds?: number }> {
   if (!isMediaFile(file)) return { note: null, refusal: null }
   const seconds = await mediaSeconds(file)
@@ -153,7 +154,7 @@ export async function mediaPreflight(
   if (!estimate.allowed) {
     return {
       note: null,
-      refusal: t('영상이 너무 깁니다. {n}분 이하로 나눠 올려 주세요.').replace('{n}', String(estimate.maxMinutes)),
+      refusal: t.n('영상이 너무 깁니다. {n}분 이하로 나눠 올려 주세요.', estimate.maxMinutes),
       seconds,
     }
   }

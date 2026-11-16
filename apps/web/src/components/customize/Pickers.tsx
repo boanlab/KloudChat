@@ -603,9 +603,9 @@ export function AgentSkillList({
   const pinnedTokens = activeSkillIds.reduce((sum, id) => sum + tokensOf(id), 0)
   const pinWhy = (id: string) =>
     activeSkillIds.length >= AGENT_SKILL_MAX
-      ? t('항상 적용은 {n}개까지입니다.').replace('{n}', String(AGENT_SKILL_MAX))
+      ? t.n('항상 적용은 {n}개까지입니다.', AGENT_SKILL_MAX)
       : activeSkillIds.length > 0 && pinnedTokens + tokensOf(id) > AGENT_SKILL_TOKENS
-        ? t('항상 적용 스킬은 합계 약 {n} 토큰까지입니다.').replace('{n}', AGENT_SKILL_TOKENS.toLocaleString())
+        ? t.n('항상 적용 스킬은 합계 약 {n} 토큰까지입니다.', AGENT_SKILL_TOKENS)
         : ''
   const listWith = (id: string) => (skillIds === null || skillIds.includes(id) ? skillIds : [...skillIds, id])
   const pin = (id: string) => {

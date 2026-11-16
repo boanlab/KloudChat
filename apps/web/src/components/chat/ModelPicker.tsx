@@ -1,3 +1,4 @@
+import type { Translator } from '@/lib/useT'
 import {
   Check,
   ChevronDown,
@@ -20,7 +21,7 @@ import { useT } from '@/lib/useT'
 import { isSuperEntry, isSuperMode, superLaneTitle } from '@/lib/superAgent'
 
 /** Price label in the modality's own unit; text models quote both directions. */
-function rateLabel(m: ModelInfo, t: (s: string) => string): string {
+function rateLabel(m: ModelInfo, t: Translator): string {
   if (m.modality === 'image') return t('{n} 크레딧 / 장').replace('{n}', (m.creditPerImage ?? m.creditCost).toLocaleString())
   if (m.modality === 'video') {
     // Rate varies by resolution and sound, so the range is shown.
@@ -29,15 +30,15 @@ function rateLabel(m: ModelInfo, t: (s: string) => string): string {
     const low = Math.min(...rates)
     const high = Math.max(...rates)
     return low === high
-      ? t('{n} 크레딧 / 초').replace('{n}', low.toLocaleString())
+      ? t.n('{n} 크레딧 / 초', low)
       : t('{low}~{high} 크레딧 / 초')
           .replace('{low}', low.toLocaleString())
           .replace('{high}', high.toLocaleString())
   }
   if (m.modality === 'audio') {
     return m.creditPerCall
-      ? t('{n} 크레딧 / 회').replace('{n}', m.creditPerCall.toLocaleString())
-      : t('{n} 크레딧').replace('{n}', m.creditCost.toLocaleString())
+      ? t.n('{n} 크레딧 / 회', m.creditPerCall)
+      : t.n('{n} 크레딧', m.creditCost)
   }
   if (m.creditCost === 0 && m.inputCreditCost === 0) {
     return t('무료')

@@ -19,7 +19,7 @@ export function StudioReader({ item, onClose }: { item: StudioItem | null; onClo
       <div className="flex flex-wrap items-center gap-2">
         {content.strict && <Badge tone="success">strict-local</Badge>}
         <span className="text-sm text-muted">
-          {t('자료 {n}개에서').replace('{n}', String(content.sources.length))}
+          {t.n('자료 {n}개에서', content.sources.length)}
         </span>
         {item.sessionId && item.artifactId && (
           <Button size="sm" className="ml-auto" onClick={() => navigate(`/s/${item.sessionId}?artifact=${item.artifactId}`)}>

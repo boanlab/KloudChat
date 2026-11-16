@@ -28,6 +28,12 @@ import { useStore } from '@/store/useStore'
 const tabOf = (asked: string | null): FileBoxTab =>
   asked === 'working' ? 'working' : asked === 'made' ? 'generated' : 'upload'
 
+/** The model of the image conversation a picture was made in. */
+function imageSessionModel(sessions: { id: string; kind: string; model?: string | null }[], id: string | null) {
+  const s = id ? sessions.find((c) => c.id === id) : undefined
+  return s?.kind === 'image' ? (s.model ?? null) : null
+}
+
 export function FilesPage() {
   const t = useT()
   const [params, setParams] = useSearchParams()
@@ -257,6 +263,7 @@ export function FilesPage() {
                               src: fileSrc(row.id),
                               name: row.name,
                               origin: row.origin === 'generated' ? 'generated' : 'upload',
+                              madeBy: row.origin === 'generated' ? imageSessionModel(sessions, row.sessionId) : null,
                             }}
                             onStart={(source) => void editIn(row, source)}
                           />

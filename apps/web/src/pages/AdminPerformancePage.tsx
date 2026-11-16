@@ -145,7 +145,7 @@ export function AdminPerformancePage() {
           <span className="text-lg font-semibold">{statusLabel(status, t)}</span>
           <span className="text-sm text-muted">
             {data?.verdicts.length
-              ? t('판단 {n}건').replace('{n}', String(data.verdicts.length))
+              ? t.n('판단 {n}건', data.verdicts.length)
               : t('기준을 넘은 항목이 없습니다')}
           </span>
           {data?.collector.lastSampleAt && (

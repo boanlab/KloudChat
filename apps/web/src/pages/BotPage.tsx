@@ -212,7 +212,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
   const ask = async (question: string) => {
     if (!bot || busy || !question.trim()) return
     if (question.length > bot.maxInputChars) {
-      setError(t('질문이 너무 깁니다. {n}자 안으로 줄여 주세요.').replace('{n}', String(bot.maxInputChars)))
+      setError(t.n('질문이 너무 깁니다. {n}자 안으로 줄여 주세요.', bot.maxInputChars))
       return
     }
     setError(null)
@@ -506,7 +506,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
         )}
       </ul>
       <p className="px-1 text-xs text-faint">
-        {t('대화는 마지막 질문 뒤 {n}일이 지나면 지워집니다.').replace('{n}', String(bot.retentionDays))}
+        {t.n('대화는 마지막 질문 뒤 {n}일이 지나면 지워집니다.', bot.retentionDays)}
       </p>
     </nav>
   )

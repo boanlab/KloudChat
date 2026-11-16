@@ -196,7 +196,7 @@ function AgentSkills({ agent, editable, props }: { agent: Agent; editable: boole
                 )}
               </div>
             </div>
-            {full && <p className="text-xs text-faint">{t('항상 적용은 {n}개까지입니다.').replace('{n}', String(MAX_ACTIVE))}</p>}
+            {full && <p className="text-xs text-faint">{t.n('항상 적용은 {n}개까지입니다.', MAX_ACTIVE)}</p>}
           </div>
         )
       })}

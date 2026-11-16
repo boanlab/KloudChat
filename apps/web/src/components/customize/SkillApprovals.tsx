@@ -38,7 +38,7 @@ export function SkillApprovals() {
             <Card key={skill.id} className="space-y-2 p-4" data-testid="skill-approval">
               <div className="flex items-start justify-between gap-2">
                 <p className="min-w-0 text-base font-semibold">{skill.name}</p>
-                <Badge>{t('스크립트 {n}개').replace('{n}', String(skill.scriptFiles?.length ?? 0))}</Badge>
+                <Badge>{t.n('스크립트 {n}개', skill.scriptFiles?.length ?? 0)}</Badge>
               </div>
               <p className="text-sm text-faint">{ownerName}</p>
               {skill.description && <p className="text-sm text-muted">{skill.description}</p>}

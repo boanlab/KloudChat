@@ -146,7 +146,7 @@ export function SkillDetailPage() {
             </div>
           )}
           <p className="flex flex-wrap gap-1.5">
-            <Badge>{t('약 {n} 토큰').replace('{n}', skill.estimatedTokens.toLocaleString())}</Badge>
+            <Badge>{t.n('약 {n} 토큰', skill.estimatedTokens)}</Badge>
             <Badge>v{skill.version}</Badge>
             {skill.scripts?.map((script) => (
               <Badge key={script} title={t('정해진 스크립트를 샌드박스에서 첨부 파일에 실행합니다.')}>

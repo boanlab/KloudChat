@@ -29,7 +29,7 @@ export function JobCard({ job }: { job: Job }) {
           />
         </div>
         <p className="mt-2 text-xs text-faint">
-          {t('예상 {n} 크레딧 · 완료 시에만 차감됩니다').replace('{n}', job.creditsEstimated.toLocaleString())}
+          {t.n('예상 {n} 크레딧 · 완료 시에만 차감됩니다', job.creditsEstimated)}
         </p>
       </div>
     )

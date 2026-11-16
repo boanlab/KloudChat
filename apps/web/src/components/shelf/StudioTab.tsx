@@ -161,8 +161,8 @@ export function StudioTab({ projectId }: { projectId: string }) {
               >
                 <span className="block truncate text-base font-medium">{item.title}</span>
                 <span className="block text-xs text-faint">
-                  {t(STUDIO_KINDS[item.kind].name)} · {t('자료 {n}개').replace('{n}', String(item.sourceIds.length))} · {relativeTime(item.createdAt)}
-                  {item.credits > 0 && ` · ${t('{n} 크레딧').replace('{n}', String(item.credits))}`}
+                  {t(STUDIO_KINDS[item.kind].name)} · {t.n('자료 {n}개', item.sourceIds.length)} · {relativeTime(item.createdAt)}
+                  {item.credits > 0 && ` · ${t.n('{n} 크레딧', item.credits)}`}
                 </span>
                 {item.state === 'failed' && <span className="block text-xs text-danger">{shelfFailure(item.error, t)}</span>}
               </button>

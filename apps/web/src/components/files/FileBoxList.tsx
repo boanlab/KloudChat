@@ -130,13 +130,13 @@ export function FileLine({
     <button
       type="button"
       onClick={onOpen}
-      className="block min-h-6 max-w-full truncate text-left text-base font-medium hover:underline max-sm:line-clamp-2 max-sm:whitespace-normal max-sm:break-all"
+      className="block min-h-6 max-w-full truncate text-left text-base font-medium hover:underline max-sm:line-clamp-2 max-sm:whitespace-normal max-sm:[overflow-wrap:anywhere]"
       title={row.name}
     >
       {row.name}
     </button>
   ) : (
-    <p className="truncate text-base font-medium max-sm:line-clamp-2 max-sm:whitespace-normal max-sm:break-all" title={row.name}>{row.name}</p>
+    <p className="truncate text-base font-medium max-sm:line-clamp-2 max-sm:whitespace-normal max-sm:[overflow-wrap:anywhere]" title={row.name}>{row.name}</p>
   )
   return (
     // A phone moves the controls under the name, so the name keeps the row's width.

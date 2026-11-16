@@ -311,7 +311,7 @@ export function Sidebar() {
             {t(label)}
             {to === '/customize' && botNews > 0 && (
               <span
-                aria-label={t('확인할 챗봇 {n}개').replace('{n}', String(botNews))}
+                aria-label={t.n('확인할 챗봇 {n}개', botNews)}
                 className="ml-auto rounded-control bg-accent px-1.5 text-xs font-medium text-white"
               >
                 {botNews}

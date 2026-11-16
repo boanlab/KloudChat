@@ -199,7 +199,7 @@ export function HistoryPage() {
       <h1 className="text-2xl font-semibold tracking-tight" data-history-top="">{t('대화 기록')}</h1>
       {!!everyone && (
         <p className="mt-1 text-base text-muted" data-history-total="">
-          {t('대화 {n}개').replace('{n}', everyone.toLocaleString())}
+          {t.n('대화 {n}개', everyone)}
         </p>
       )}
 
@@ -247,7 +247,7 @@ export function HistoryPage() {
 
       {done !== null && (
         <p className="mt-3 rounded-control border border-line bg-elevated px-3 py-2 text-base text-muted">
-          {t('{n}개의 대화를 삭제했습니다.').replace('{n}', String(done))}
+          {t.n('{n}개의 대화를 삭제했습니다.', done)}
         </p>
       )}
 
@@ -360,7 +360,7 @@ export function HistoryPage() {
           setWithFiles(false)
         }}
         title={t('모든 대화를 삭제할까요?')}
-        description={t('대화 {n}개와 그 안의 모든 메시지가 사라집니다.').replace('{n}', String(everyone ?? total))}
+        description={t.n('대화 {n}개와 그 안의 모든 메시지가 사라집니다.', everyone ?? total)}
       >
         <div className="flex items-start gap-2 rounded-card border border-danger/30 bg-danger/5 px-3 py-2.5 text-base text-danger">
           <TriangleAlert size={14} className="mt-0.5 shrink-0" />

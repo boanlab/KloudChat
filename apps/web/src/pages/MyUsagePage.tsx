@@ -1,3 +1,4 @@
+import type { Translator } from '@/lib/useT'
 import { useEffect, useState } from 'react'
 import { PageBody } from '@/components/layout/AppShell'
 import { Button, Card, EmptyState, LoadingState } from '@/components/ui'
@@ -144,7 +145,7 @@ export function MyUsagePage() {
                   <div
                     key={d.date}
                     className="group relative flex min-w-0 flex-1 flex-col"
-                    title={`${d.date} · ${t('{n}회').replace('{n}', String(d.requests))} · ${t('{n} 크레딧').replace('{n}', d.credits.toLocaleString())}`}
+                    title={`${d.date} · ${t.n('{n}회', d.requests)} · ${t.n('{n} 크레딧', d.credits)}`}
                   >
                     <span className="h-4 shrink-0 truncate text-center text-2xs tabular-nums text-faint">
                       {d.value > 0 && daily.length <= 14 ? d.value.toLocaleString() : ''}
@@ -163,8 +164,8 @@ export function MyUsagePage() {
                       {dated ? d.date.slice(5) : ''}
                     </span>
                     <span className="pointer-events-none absolute -top-7 left-1/2 z-10 hidden -translate-x-1/2 rounded bg-panel px-1.5 py-0.5 text-xs whitespace-nowrap shadow group-hover:block">
-                      {d.date.slice(5)} · {t('{n}회').replace('{n}', String(d.requests))} ·{' '}
-                      {t('{n} 크레딧').replace('{n}', d.credits.toLocaleString())}
+                      {d.date.slice(5)} · {t.n('{n}회', d.requests)} ·{' '}
+                      {t.n('{n} 크레딧', d.credits)}
                     </span>
                   </div>
                 )
@@ -185,7 +186,7 @@ export function MyUsagePage() {
                       {k.name} <span className="font-mono text-sm text-faint">{k.preview}</span>
                     </span>
                     <span className="shrink-0 tabular-nums">
-                      {t('{n} 크레딧').replace('{n}', k.credits.toLocaleString())}
+                      {t.n('{n} 크레딧', k.credits)}
                       {k.budgetUsd > 0 && (
                         <span className="text-faint">
                           {' '}
@@ -211,7 +212,7 @@ export function MyUsagePage() {
                     <span className="shrink-0 tabular-nums">
                       {m.credits.toLocaleString()}{' '}
                       <span className="text-faint">
-                        · {t('{n}회').replace('{n}', String(m.requests))}
+                        · {t.n('{n}회', m.requests)}
                         {unitsLabel(m.units, m.unit, t) && ` · ${unitsLabel(m.units, m.unit, t)}`}
                       </span>
                     </span>
@@ -233,7 +234,7 @@ export function MyUsagePage() {
                     <span className="text-muted">{surface(s.kind)}</span>
                     <span className="shrink-0 tabular-nums">
                       {s.credits.toLocaleString()}{' '}
-                      <span className="text-faint">· {t('{n}회').replace('{n}', String(s.requests))}</span>
+                      <span className="text-faint">· {t.n('{n}회', s.requests)}</span>
                     </span>
                   </li>
                 ))}
@@ -248,10 +249,10 @@ export function MyUsagePage() {
 }
 
 /** Free-model work: seconds transcribed, chunks embedded, pages read. */
-function unitsLabel(units: number | undefined, unit: string | undefined, t: (s: string) => string): string {
+function unitsLabel(units: number | undefined, unit: string | undefined, t: Translator): string {
   if (!units) return ''
-  if (unit === 'seconds') return t('{n}초 받아씀').replace('{n}', units.toLocaleString())
-  if (unit === 'chunks') return t('{n}청크 색인').replace('{n}', units.toLocaleString())
-  if (unit === 'pages') return t('{n}쪽 글자 읽음').replace('{n}', units.toLocaleString())
+  if (unit === 'seconds') return t.n('{n}초 받아씀', units)
+  if (unit === 'chunks') return t.n('{n}청크 색인', units)
+  if (unit === 'pages') return t.n('{n}쪽 글자 읽음', units)
   return ''
 }

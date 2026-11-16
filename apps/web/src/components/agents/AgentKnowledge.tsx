@@ -338,7 +338,7 @@ export function AgentKnowledge({
                       </span>
                     )}
                     <span className="shrink-0 text-xs text-faint tabular-nums">
-                      {t('{n} 토큰').replace('{n}', f.tokens.toLocaleString())}
+                      {t.n('{n} 토큰', f.tokens)}
                     </span>
                   </>
                 )}

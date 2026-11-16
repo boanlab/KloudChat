@@ -1,3 +1,4 @@
+import type { Translator } from '@/lib/useT'
 import {
   Calculator,
   Check,
@@ -137,14 +138,14 @@ function modelPresentation(
 function costRoutePresentation(
   route: CostRouting,
   models: ModelInfo[],
-  t: (text: string) => string,
+  t: Translator,
 ): { label: string; title: string } {
   const requested = modelPresentation(route.requestedModel, models, t)
   const selected = modelPresentation(route.selectedModel, models, t)
   const executed = modelPresentation(route.executedModel, models, t)
   const decision = costRouteDecisionLabel(route, t)
   const saved = route.estimatedCreditsSaved
-    ? ` · ${t('예상 {n} 크레딧 절약').replace('{n}', route.estimatedCreditsSaved.toLocaleString())}`
+    ? ` · ${t.n('예상 {n} 크레딧 절약', route.estimatedCreditsSaved)}`
     : ''
   const visibleModels = [
     `${t('요청 모델')}: ${requested.label}`,
@@ -998,10 +999,10 @@ function MessageItemInner({
                 {formatTokens(tokenTotals(message.usage).output)} out ·{' '}
                 {toolAnswer ? (
                   <span className="whitespace-nowrap">
-                    {t('답변 {n} 크레딧').replace('{n}', message.usage.credits.toLocaleString())}
+                    {t.n('답변 {n} 크레딧', message.usage.credits)}
                   </span>
                 ) : freshness || message.usage.credits > 0 ? (
-                  t('{n} 크레딧').replace('{n}', message.usage.credits.toLocaleString())
+                  t.n('{n} 크레딧', message.usage.credits)
                 ) : (
                   <span
                     title={

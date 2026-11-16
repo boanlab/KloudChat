@@ -12,7 +12,7 @@ export function PasswordRule({ value, minLength }: { value: string; minLength: n
       <li className={cn('flex items-center gap-1.5', met ? 'text-success' : 'text-faint')}>
         {met ? <Check size={13} aria-hidden /> : <Circle size={11} aria-hidden />}
         <span>
-          {t('{n}자 이상').replace('{n}', String(minLength))}
+          {t.n('{n}자 이상', minLength)}
           {value.length > 0 && !met && (
             <span> · {t('지금 {n}자').replace('{n}', String(value.length))}</span>
           )}

@@ -1,3 +1,4 @@
+import type { Translator } from '@/lib/useT'
 import { useMemo } from 'react'
 import type { BotListItem } from '@/lib/api'
 import { agentKinds } from '@/lib/kinds'
@@ -234,13 +235,13 @@ export function filterItems(rows: HubItem[], filter: ItemFilter, translate: (s: 
 }
 
 /** 「제작: 공식 · n회 추가」 for 탐색, 「n회 사용 · 켜짐」 for 내 항목. */
-export function itemMeta(item: HubItem, view: 'mine' | 'explore', t: (s: string) => string): string {
+export function itemMeta(item: HubItem, view: 'mine' | 'explore', t: Translator): string {
   const parts: string[] = []
   if (view === 'explore') {
     if (item.maker) parts.push(`${t('제작')}: ${t(item.maker)}`)
-    if (item.installs > 0) parts.push(t('{n}회 추가').replace('{n}', item.installs.toLocaleString()))
+    if (item.installs > 0) parts.push(t.n('{n}회 추가', item.installs))
   } else {
-    if (item.runs !== null) parts.push(t('{n}회 사용').replace('{n}', item.runs.toLocaleString()))
+    if (item.runs !== null) parts.push(t.n('{n}회 사용', item.runs))
     else if (item.origin) {
       if (item.origin.edited) parts.push(t('내가 수정함'))
       parts.push(`${t('원본')}: ${t(item.origin.from)}`)

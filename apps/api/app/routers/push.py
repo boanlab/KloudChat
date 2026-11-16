@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import Field
@@ -11,6 +12,7 @@ from sqlmodel import select
 
 from app.core.deps import CurrentUser, DbSession
 from app.models.push import PushSubscription
+from app.models.user import User
 from app.schemas.auth import Wire
 from app.services import push as push_service
 
@@ -28,6 +30,8 @@ class SubscriptionKeys(Wire):
 class SubscriptionIn(Wire):
     endpoint: str = Field(min_length=12, max_length=1000)
     keys: SubscriptionKeys
+    #: the screen's language on this device; notices to the account are worded in it
+    language: Literal["ko", "en"] | None = None
 
 
 class EndpointIn(Wire):
@@ -125,6 +129,11 @@ async def subscribe(payload: SubscriptionIn, request: Request, user: CurrentUser
         row.auth = payload.keys.auth
         row.device = label
     db.add(row)
+    if payload.language:
+        owner = await db.get(User, user.id)
+        if owner is not None:
+            owner.preferences = {**(owner.preferences or {}), "ui_language": payload.language}
+            db.add(owner)
     await db.flush()
     count = (
         await db.exec(

@@ -118,7 +118,7 @@ export function SnapshotView({ reportId, snapshot }: { reportId: string; snapsho
                   {isPinned && <Badge tone="accent"><Pin size={11} />{t('신고한 아티팩트')}</Badge>}
                   {artifact.versions.length > 0 && (
                     <span className="text-faint">
-                      {t('판 기록 {n}개').replace('{n}', String(artifact.versions.length))}
+                      {t.n('판 기록 {n}개', artifact.versions.length)}
                     </span>
                   )}
                   {artifact.blobCopied && (

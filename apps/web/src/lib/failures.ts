@@ -1,7 +1,8 @@
 import { ApiError, errorCode, errorMessage, type StreamEvent } from '@/lib/api'
+import type { Translator } from '@/lib/useT'
 
 /** Sentences for API refusal codes and stream `error` events; unknown codes shown in brackets. */
-type T = (text: string) => string
+type T = Translator
 
 const SKILLS = '선택한 스킬을 이 요청에 적용할 수 없습니다. 스킬 선택을 바꿔 다시 시도하세요.'
 
@@ -125,7 +126,7 @@ export function withRetryWait(sentence: string, err: unknown, t: T): string {
   const wait = err instanceof ApiError ? err.retryAfter : undefined
   if (!wait) return sentence
   const when = wait < 120
-    ? t('{n}초 뒤에 다시 보낼 수 있습니다.').replace('{n}', String(wait))
+    ? t.n('{n}초 뒤에 다시 보낼 수 있습니다.', wait)
     : t('{n}분 뒤에 다시 보낼 수 있습니다.').replace('{n}', String(Math.ceil(wait / 60)))
   return `${sentence} ${when}`
 }

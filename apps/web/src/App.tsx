@@ -10,7 +10,7 @@ import { NewVersionBar } from '@/components/layout/NewVersionBar'
 import { setBotEmbedded } from '@/lib/api'
 import { SHARED_AGENTS_PATH } from '@/lib/publishing'
 import { kindOrder } from '@/lib/kinds'
-import { registerServiceWorker } from '@/lib/push'
+import { registerServiceWorker, syncThisDevice } from '@/lib/push'
 import { HomePage } from '@/pages/HomePage'
 import { LoginPage } from '@/pages/LoginPage'
 import { PendingApprovalPage } from '@/pages/PendingApprovalPage'
@@ -102,6 +102,21 @@ function useAllowanceRefresh() {
   }, [resetsAt, refreshMe])
 }
 
+/** A subscribed browser tells the server the screen's language again when it changes, so
+ *  notices follow it (a browser that is not subscribed sends nothing). */
+function useLanguageSync() {
+  const lang = useStore((s) => s.lang)
+  const signedIn = useStore((s) => !!s.user)
+  const first = useRef(true)
+  useEffect(() => {
+    if (first.current) {
+      first.current = false
+      return
+    }
+    if (signedIn) void syncThisDevice()
+  }, [lang, signedIn])
+}
+
 /** Pending → active lands at home rather than on whatever URL the tab was covering. */
 function useHomeAfterApproval(status: string | undefined) {
   const navigate = useNavigate()
@@ -180,6 +195,7 @@ function Authenticated() {
   const status = useStore((s) => s.user?.status)
   const role = useStore((s) => s.user?.role)
   useAllowanceRefresh()
+  useLanguageSync()
   useHomeAfterApproval(status)
   useLandingAfterSignIn(authenticated, authLoading, role)
 

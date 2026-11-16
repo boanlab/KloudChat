@@ -194,7 +194,7 @@ function IssueItem({
           <span className="mt-1 block truncate text-base">{row.body}</span>
           <span className="mt-0.5 block text-xs text-faint">
             {formatDateTime(row.createdAt)}
-            {row.replies ? ` · ${t('답변 {n}개').replace('{n}', String(row.replies))}` : ''}
+            {row.replies ? ` · ${t.n('답변 {n}개', row.replies)}` : ''}
           </span>
         </span>
       </button>

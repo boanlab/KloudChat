@@ -425,7 +425,7 @@ export function AdminGovernancePage() {
                   </div>
                   {swept !== null && (
                     <p className="mt-2 text-base text-warn">
-                      {t('기간이 지난 본문 {n}건을 지웠습니다.').replace('{n}', swept.toLocaleString())}
+                      {t.n('기간이 지난 본문 {n}건을 지웠습니다.', swept)}
                     </p>
                   )}
                 </Card>

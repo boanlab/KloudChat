@@ -47,7 +47,7 @@ function translatorCalls(file: string, src = readFileSync(file, 'utf8')): Call[]
   for (const m of src.matchAll(/\b(\w+)\s*=\s*useTIn\(\s*['"]([^'"]+)['"]\s*\)/g)) contexts.set(m[1], m[2])
   const names = ['t', 'tr', ...contexts.keys()].join('|')
   // A standalone identifier (not `.t(`, `split(`, `xt(`), optional chaining allowed.
-  const direct = new RegExp(String.raw`(?<![\w$.])(${names})\s*(?:\?\.)?\(\s*${LITERAL}`, 'g')
+  const direct = new RegExp(String.raw`(?<![\w$.])(${names})(?:\.n)?\s*(?:\?\.)?\(\s*${LITERAL}`, 'g')
   for (const m of src.matchAll(direct)) push(m.index!, contexts.get(m[1]) ?? null, m[2])
   // `t(cond ? '…' : '…')`: both branches.
   const ternary = new RegExp(String.raw`(?<![\w$.])(${names})\(\s*${CONDITION}\?\s*${LITERAL}\s*:\s*${LITERAL}\s*,?\s*\)`, 'g')

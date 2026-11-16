@@ -261,7 +261,7 @@ export function PublicationPage() {
                       ? t('대화 열람: 방문자가 동의한 뒤의 대화')
                       : t('통계와 방문자가 보낸 대화만')}
                   </p>
-                  <p className="text-sm text-muted">{t('대화는 마지막 질문 뒤 {n}일이 지나면 지워집니다.').replace('{n}', String(pub.retentionDays))}</p>
+                  <p className="text-sm text-muted">{t.n('대화는 마지막 질문 뒤 {n}일이 지나면 지워집니다.', pub.retentionDays)}</p>
                 </Card>
               </div>
               <Card className="space-y-1 p-4">
@@ -361,7 +361,7 @@ function StatsTab({ id }: { id: string }) {
     <Select value={String(days)} onChange={(e) => setDays(Number(e.target.value))} aria-label={t('기간')} className="w-32">
       {[7, 30, 90].map((d) => (
         <option key={d} value={d}>
-          {t('최근 {n}일').replace('{n}', String(d))}
+          {t.n('최근 {n}일', d)}
         </option>
       ))}
     </Select>
@@ -461,7 +461,7 @@ function ConversationsTab({ pub }: { pub: Publication }) {
           : t('방문자가 「만든 사람에게 보내기」로 보낸 대화만 보입니다. 개인정보는 가려서 보입니다.')}
       </p>
       {rows.length > 0 && (
-        <p className="text-sm text-faint">{t('대화 {n}개').replace('{n}', list.total.toLocaleString())}</p>
+        <p className="text-sm text-faint">{t.n('대화 {n}개', list.total)}</p>
       )}
       {rows.length === 0 ? (
         <EmptyState icon={<Upload size={18} />} title={t('보낸 대화가 없습니다')} />
@@ -481,7 +481,7 @@ function ConversationsTab({ pub }: { pub: Publication }) {
                 >
                   <span className="block truncate">{row.title || t('제목 없음')}</span>
                   <span className="block text-xs text-faint">
-                    {row.sharedAt ? t('보낸 날 {date}').replace('{date}', day(row.sharedAt)) : t('대화 열람')} · {t('질문 {n}개').replace('{n}', String(row.turns ?? 0))}
+                    {row.sharedAt ? t('보낸 날 {date}').replace('{date}', day(row.sharedAt)) : t('대화 열람')} · {t.n('질문 {n}개', row.turns ?? 0)}
                   </span>
                 </button>
               </li>
@@ -632,7 +632,7 @@ function VersionsTab({
                 {outside && v.approvedAt && !v.pending && <Badge>{t('승인됨')}</Badge>}
               </p>
               <p className="text-sm text-faint">
-                {day(v.createdAt)} · {t('자료 {n}개').replace('{n}', String(v.summary.knowledge?.length ?? 0))} · {v.model}
+                {day(v.createdAt)} · {t.n('자료 {n}개', v.summary.knowledge?.length ?? 0)} · {v.model}
                 {v.note && ` · ${v.note}`}
               </p>
             </div>

@@ -131,7 +131,7 @@ export function ArtifactPreview({
               <AudioLines size={18} className="shrink-0 text-accent" />
               <span className="min-w-0 flex-1 truncate text-sm">{artifact.title}</span>
               <span className="shrink-0 text-xs text-faint">
-              {t('{n}초').replace('{n}', String(artifact.durationSec))}
+              {t.n('{n}초', artifact.durationSec)}
             </span>
             </>
           )}
@@ -152,7 +152,7 @@ export function ArtifactPreview({
         <div className="size-full overflow-hidden bg-white px-5 py-4 text-[#1a1a1a]">
           <p className="mb-0.5 truncate text-lg font-semibold">{artifact.title}</p>
           <p className="mb-3 text-xs text-[#6b6b6b]">
-            {t('{n}개 절').replace('{n}', String(artifact.sections.length))}
+            {t.n('{n}개 절', artifact.sections.length)}
           </p>
           {artifact.sections.slice(0, 3).map((section) => (
             <div key={section.id} className="mb-2">
@@ -669,12 +669,12 @@ export function MediaPanel({
         ? [
             [t('프롬프트'), artifact.prompt],
             [t('유형'), t(audioKindLabel[artifact.audioKind])],
-            [t('길이'), t('{n}초').replace('{n}', String(artifact.durationSec))],
+            [t('길이'), t.n('{n}초', artifact.durationSec)],
             [t('모델'), artifact.model],
           ]
         : [
             [t('프롬프트'), artifact.prompt],
-            [t('길이'), t('{n}초').replace('{n}', String(artifact.durationSec))],
+            [t('길이'), t.n('{n}초', artifact.durationSec)],
             [t('비율'), artifact.aspect],
             [t('모델'), artifact.model],
           ]

@@ -254,7 +254,7 @@ export function WorkingDocs({ query, onCount }: { query: string; onCount: (n: nu
                       data-testid="working-doc-open"
                       onClick={() => void open(row)}
                       disabled={opening === row.id}
-                      className="block min-h-6 max-w-full truncate text-left text-base font-medium hover:underline max-sm:line-clamp-2 max-sm:whitespace-normal max-sm:break-all"
+                      className="block min-h-6 max-w-full truncate text-left text-base font-medium hover:underline max-sm:line-clamp-2 max-sm:whitespace-normal max-sm:[overflow-wrap:anywhere]"
                       title={row.title}
                     >
                       {row.title || t('제목 없는 문서')}
@@ -262,14 +262,14 @@ export function WorkingDocs({ query, onCount }: { query: string; onCount: (n: nu
                     <p className="flex min-w-0 flex-wrap items-center gap-x-2 text-xs text-faint">
                       {/* a wide screen has these in their own columns */}
                       <span className="sm:hidden"><Badge>{t(KIND_LABEL[row.kind])}</Badge></span>
-                      <span className="sm:hidden" title={t('버전 {n}개').replace('{n}', String(row.version))}>v{row.version}</span>
+                      <span className="sm:hidden" title={t.n('버전 {n}개', row.version)}>v{row.version}</span>
                       <span className="sm:hidden"><RelTime iso={row.updatedAt} /></span>
                       <DocPlace row={row} />
                     </p>
                   </div>
                   </div>
                   <div role="cell" className="max-sm:hidden"><Badge>{t(KIND_LABEL[row.kind])}</Badge></div>
-                  <div role="cell" className="text-right text-sm tabular-nums text-muted max-sm:hidden" title={t('버전 {n}개').replace('{n}', String(row.version))}>
+                  <div role="cell" className="text-right text-sm tabular-nums text-muted max-sm:hidden" title={t.n('버전 {n}개', row.version)}>
                     v{row.version}
                   </div>
                   <div role="cell" className="text-sm text-muted max-sm:hidden"><RelTime iso={row.updatedAt} /></div>

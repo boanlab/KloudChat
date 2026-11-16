@@ -724,7 +724,7 @@ export interface PushDevice {
 export const pushApi = {
   config: () => call<{ publicKey: string; events: Record<string, boolean> }>('/push/config'),
   devices: () => call<PushDevice[]>('/push/subscriptions'),
-  subscribe: (sub: { endpoint: string; keys: { p256dh: string; auth: string } }) =>
+  subscribe: (sub: { endpoint: string; keys: { p256dh: string; auth: string }; language?: 'ko' | 'en' }) =>
     call<PushDevice>('/push/subscriptions', body(sub)),
   remove: (id: string) => call<void>(`/push/subscriptions/${id}`, { method: 'DELETE' }),
   unsubscribe: (endpoint: string) => call<void>('/push/unsubscribe', body({ endpoint })),

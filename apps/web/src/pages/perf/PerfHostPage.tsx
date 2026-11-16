@@ -5,7 +5,7 @@ import { currentLocale } from '@/lib/i18n'
 import { useT } from '@/lib/useT'
 import { cn, serviceTimeZone } from '@/lib/utils'
 import { statusLabel, usePerfOverview } from './data'
-import { fmt, num } from './format'
+import { componentName, fmt, num } from './format'
 import {
   ChartCard,
   CollectorNote,
@@ -49,7 +49,7 @@ export function PerfHostPage() {
           <span className="text-lg font-semibold">{statusLabel(status, t)}</span>
           <span className="text-sm text-muted">
             {data?.verdicts.length
-              ? t('판단 {n}건').replace('{n}', String(data.verdicts.length))
+              ? t.n('판단 {n}건', data.verdicts.length)
               : t('기준을 넘은 항목이 없습니다')}
           </span>
           {data?.collector.lastSampleAt && (
@@ -120,7 +120,7 @@ export function PerfHostPage() {
             empty={t('컨테이너 지표가 없습니다.')}
             head={[t('컴포넌트'), t('CPU 코어'), t('최고'), t('메모리'), t('최고'), t('한도 대비'), t('네트워크 ↓/↑'), t('디스크 읽기/쓰기')]}
             rows={data.components.map((c) => [
-              c.name,
+              componentName(c.name, t),
               fmt(c.cpuCores, ''),
               fmt(c.cpuCoresPeak, ''),
               fmt(c.memBytes, 'bytes'),
@@ -141,7 +141,7 @@ export function PerfHostPage() {
             empty={t('복제본 표본이 없습니다.')}
             head={[t('복제본'), t('스트림'), t('최고'), t('진행 중 턴'), t('요청/분'), t('5xx'), t('응답 p95')]}
             rows={data.replicas.map((r) => [
-              r.name,
+              componentName(r.name, t),
               num(r.streams, 0),
               fmt(r.streamsPeak, ''),
               fmt(r.turns, ''),
