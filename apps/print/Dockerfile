@@ -8,7 +8,7 @@
 # size of full Chromium. The library list is what `ldd` reports the shell
 # links against; `playwright install --with-deps` would add ~130 MB for a
 # desktop Chromium.
-FROM python:3.12-slim
+FROM python:3.15-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
