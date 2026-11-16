@@ -3112,7 +3112,13 @@ turns) is complex when any of these holds, read from signals the app already com
 | `tools` | a deck asked for a chart over an attached data table (native chart from data), or for a paper's own figures with a PDF at hand (`_ASKS_FIGURES`, `pdf_figures`) | either |
 | `long_source` | characters of text in those source files | `LONG_CONTEXT_BYTES // 3` (20,000) |
 
-A simple document stays on the `document` row (27B, thinking default). The route note carries
+A simple document stays on the `document` row (27B, thinking default). The same rule covers the
+office files (HWPX, Word, PowerPoint), which run as chat turns: the report and deck screens always
+send the model they show, so for those conversations the stored mode decides (`super_turn` ignores
+`payload.model` there; a model picked by hand already made the conversation `manual`), and the
+turn is classified as a document turn (`Turn.kind` is the conversation's), so only the
+`document` and `complex_document` rows apply, never the hard-class rows. Before this, an
+office-file turn on Super Agent skipped the router and ran on the screen's default model. The route note carries
 `row: complex_document`, `complexReason` and `complexSignals`; the answer's processing row reads
 「이번 답: DeepSeek V4 Flash · 복잡한 문서 · 양식을 따름」. A model picked by hand is never moved.
 Revisions keep the first version's writer and row (`_first_document_route`): a complex document

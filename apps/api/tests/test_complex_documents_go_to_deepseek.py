@@ -658,3 +658,99 @@ async def test_a_report_written_as_an_office_file_routes_as_a_chat_turn_to_deeps
     # no signals: the ordinary class route, none of this
     model, note, _ = await route(sa.DocSignals())
     assert "complexReason" not in note and note.get("row") != "complex_document"
+
+
+# ── the office-file path: a form turn the class rules call `long` or `reasoning` ─────────────
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("office", [SessionKind.slides, SessionKind.report])
+@pytest.mark.parametrize("text", [
+    "이 양식에 맞춰 발표 자료를 채워 줘. 위험도 짚어 줘",
+    "이 복학원서를 첨부한 정보로 채워 줘.",
+    "회의록 원문입니다. 매출과 비용 항목을 정리했습니다.\n" * 600 + "\n이 양식에 맞춰 채워 줘",
+])
+async def test_a_form_turn_on_the_office_path_goes_to_the_complex_row_whatever_its_class(
+        monkeypatch, office, text) -> None:
+    import test_super_agent_turns as turns
+
+    ext = turns.DEEPSEEK
+    monkeypatch.setattr(turns, "CATALOGUE", [*CATALOGUE, ext])
+    out = await turns._turn(monkeypatch, text, office=office, doc=FORM,
+                            classify="reasoning")
+    call = out["calls"][0]
+    # the table's hard-class rows name the external DeepSeek; the complex row wins over them
+    assert call["model"] == LOCAL_DS["id"]
+    assert out["route"]["row"] == "complex_document"
+    assert out["route"]["complexSignals"] == ["form"]
+    assert call["fallback_model"] == LOCAL_27B["id"]
+    # the note is stored on the question and the answer, and audited
+    assert out["audits"] and out["audits"][0].event_metadata["row"] == "complex_document"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("office", [SessionKind.slides, SessionKind.report])
+async def test_the_web_clients_model_field_does_not_keep_an_office_turn_off_super_agent(
+        monkeypatch, office) -> None:
+    """The report and deck screens always send the model they show; a conversation on Super
+    Agent is routed by its mode (the observed bug: form turns ran on the external DeepSeek with
+    no route note)."""
+    import test_super_agent_turns as turns
+
+    monkeypatch.setattr(turns, "CATALOGUE", [*CATALOGUE, turns.DEEPSEEK])
+    out = await turns._turn(monkeypatch, "이 양식에 맞춰 채워 줘", office=office, doc=FORM,
+                            payload_model=turns.DEEPSEEK["id"])
+    assert out["calls"][0]["model"] == LOCAL_DS["id"] and out["route"]["row"] == "complex_document"
+    # a simple office turn is a document turn too: the `document` row, never the hard-class rows
+    out = await turns._turn(monkeypatch, "이 슬라이드를 위험 분석 중심으로 고쳐 줘", office=office,
+                            doc=sa.DocSignals(), payload_model=turns.DEEPSEEK["id"])
+    assert out["calls"][0]["model"] == LOCAL_27B["id"]
+    assert out["route"]["taskClass"] == "document" and "row" not in out["route"]
+    assert out["audits"]
+
+
+@pytest.mark.asyncio
+async def test_a_turn_behind_two_running_ones_shows_the_line_then_the_fallback_writes(
+        monkeypatch) -> None:
+    monkeypatch.setattr(complex_turn.settings, "complex_document_slots", 2)
+    monkeypatch.setattr(complex_turn.settings, "complex_document_wait_sec", 0.2)
+    monkeypatch.setattr(complex_turn, "POLL_SEC", 0.02)
+    holders = [complex_turn.Plan(LOCAL_DS["id"], LOCAL_27B["id"], queued=True) for _ in range(2)]
+    for holder in holders:
+        await _drain(holder)
+    plan = complex_turn.Plan(LOCAL_DS["id"], LOCAL_27B["id"], queued=True)
+
+    async def events():
+        yield 'data: {"type": "section", "content": "본문"}\n\n'
+        yield 'data: {"type": "done"}\n\n'
+
+    out = [json.loads(c.removeprefix("data: ")) async for c in sessions._with_slot(plan, events())]
+    labels = [e.get("label") for e in out if e.get("id") == "complex-queue"]
+    assert labels[0] == "대기 중 · 1번째" and labels[-1] == "다른 모델로 쓰기"
+    assert plan.use_fallback and plan.slot is None
+    assert out[-1]["type"] == "done"
+    # the turns holding slots are untouched, and one finishing lets the next turn in
+    await complex_turn.release(holders[0])
+    nxt = complex_turn.Plan(LOCAL_DS["id"], LOCAL_27B["id"], queued=True)
+    await _drain(nxt)
+    assert nxt.slot is not None and not nxt.use_fallback
+
+
+@pytest.mark.asyncio
+async def test_a_failing_complex_model_hands_a_report_to_the_document_model(monkeypatch) -> None:
+    """The fallback check that needs no dead model id in the table: a fake failing model."""
+    from app.services import report
+
+    _plan()
+    seen: list[str] = []
+
+    async def on(model, messages, api_key, max_tokens):
+        seen.append(model)
+        if model == LOCAL_DS["id"]:
+            raise httpx.ReadTimeout("silent")
+        return "본문", {"inputTokens": 1, "outputTokens": 1}
+
+    monkeypatch.setattr(report, "_complete_on", on)
+    assert (await report._complete(LOCAL_DS["id"], [], "key", 100))[0] == "본문"
+    assert seen == [LOCAL_DS["id"], LOCAL_27B["id"]]
+    assert LOCAL_DS["id"] in model_health.unhealthy()

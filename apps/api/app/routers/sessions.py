@@ -1749,9 +1749,10 @@ async def _super_route(
     mode = str(getattr(session.routing_mode, "value", session.routing_mode))
     rules = super_agent.normalise_rules(policy.super_agent_rules)
     allowed = set(user.allowed_models or [])
+    #: a document conversation's office-file turn is a document turn whatever its surface
     turn = super_agent.Turn(
         text=content,
-        kind=kind.value,
+        kind=session.kind.value if doc is not None else kind.value,
         history=_super_history(history),
         web_search=web_search if web_search in (True, "auto") else False,
         attachments=bool(attachments),
@@ -1817,7 +1818,7 @@ async def _super_route(
         complex_reasons = []
     needs_tools = (decision.task_class not in ("simple", "transform", "document") or tool_bound
                    or row_class == super_agent.MATERIAL_CLASS
-                   or (complex_row and kind is SessionKind.chat))
+                   or (kind is SessionKind.chat and doc is not None))
     chosen: dict | None = None
     how = "rule"
     sticky_id = (
@@ -5671,10 +5672,14 @@ async def _send_message(
         # kept on the conversation like its model: the next turn and a reload start from it
         session.reasoning_mode = _stored_reasoning(payload.reasoning)
     #: Super Agent picks this turn's model (`_super_route`); a turn-level model pick wins
+    #: A report or deck conversation always sends the model its screen shows (`streamReport`,
+    #: `streamDeck`), so for it the conversation's mode decides, not that field: a model
+    #: picked by hand has already made the conversation `manual`. (Before this, a form or other
+    #: office-file turn on Super Agent never reached the router.)
     super_turn = bool(
         kind is SessionKind.chat
         and session.routing_mode in _SUPER_MODES
-        and payload.model is None
+        and (payload.model is None or session.kind in (SessionKind.report, SessionKind.slides))
         and published is None
     )
 
