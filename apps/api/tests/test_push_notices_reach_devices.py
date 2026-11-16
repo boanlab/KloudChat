@@ -412,3 +412,12 @@ def test_a_notice_follows_the_language_the_person_chose():
     # a conversation's own title is never translated
     named = push.Notice(event="job_done", title="보고서가 완성됐습니다", label="내 보고서")
     assert push.Notice.payload(named, english)["body"] == "내 보고서"
+
+
+def test_a_subscription_may_carry_the_screens_language():
+    from app.routers.push import SubscriptionIn
+
+    keys = {"p256dh": "B" * 87, "auth": "a" * 22}
+    assert SubscriptionIn(endpoint="https://fcm.googleapis.com/fcm/send/x1", keys=keys).language is None
+    assert SubscriptionIn(endpoint="https://fcm.googleapis.com/fcm/send/x1", keys=keys,
+                          language="en").language == "en"

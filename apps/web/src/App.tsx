@@ -10,7 +10,7 @@ import { NewVersionBar } from '@/components/layout/NewVersionBar'
 import { setBotEmbedded } from '@/lib/api'
 import { SHARED_AGENTS_PATH } from '@/lib/publishing'
 import { kindOrder } from '@/lib/kinds'
-import { registerServiceWorker } from '@/lib/push'
+import { registerServiceWorker, syncThisDevice } from '@/lib/push'
 import { HomePage } from '@/pages/HomePage'
 import { LoginPage } from '@/pages/LoginPage'
 import { PendingApprovalPage } from '@/pages/PendingApprovalPage'
@@ -102,16 +102,19 @@ function useAllowanceRefresh() {
   }, [resetsAt, refreshMe])
 }
 
-/** Tells the server which language the screen is in, so notices to this account follow it. */
+/** A subscribed browser tells the server the screen's language again when it changes, so
+ *  notices follow it (a browser that is not subscribed sends nothing). */
 function useLanguageSync() {
   const lang = useStore((s) => s.lang)
-  const saved = useStore((s) => s.user?.preferences?.uiLanguage)
   const signedIn = useStore((s) => !!s.user)
-  const updateProfile = useStore((s) => s.updateProfile)
+  const first = useRef(true)
   useEffect(() => {
-    if (!signedIn || (saved ?? '') === (lang === 'ko' && !saved ? '' : lang)) return
-    void updateProfile({ preferences: { uiLanguage: lang } }).catch(() => undefined)
-  }, [lang, saved, signedIn, updateProfile])
+    if (first.current) {
+      first.current = false
+      return
+    }
+    if (signedIn) void syncThisDevice()
+  }, [lang, signedIn])
 }
 
 /** Pending → active lands at home rather than on whatever URL the tab was covering. */

@@ -1,6 +1,7 @@
 /** Service worker, notification permission and this device's web push subscription. */
 import { pushApi } from './api'
 import type { Preferences, PushEvent } from '@/types'
+import { currentLang } from './i18n'
 
 /** Settings order; on by default for job results and shared conversations. */
 export const PUSH_EVENTS: PushEvent[] = ['job_done', 'job_failed', 'shared', 'review', 'decided', 'issue', 'credits']
@@ -142,7 +143,7 @@ export async function subscribeThisDevice(): Promise<boolean> {
   sub ??= await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key })
   const json = sub.toJSON()
   if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) return false
-  const device = await pushApi.subscribe({ endpoint: json.endpoint, keys: { p256dh: json.keys.p256dh, auth: json.keys.auth } })
+  const device = await pushApi.subscribe({ endpoint: json.endpoint, keys: { p256dh: json.keys.p256dh, auth: json.keys.auth }, language: currentLang() })
   rememberDevice(device.id)
   return true
 }
@@ -165,7 +166,7 @@ export async function syncThisDevice(): Promise<void> {
   const json = sub.toJSON()
   if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) return
   const device = await pushApi
-    .subscribe({ endpoint: json.endpoint, keys: { p256dh: json.keys.p256dh, auth: json.keys.auth } })
+    .subscribe({ endpoint: json.endpoint, keys: { p256dh: json.keys.p256dh, auth: json.keys.auth }, language: currentLang() })
     .catch(() => null)
   if (device) rememberDevice(device.id)
 }
