@@ -130,7 +130,12 @@ def endpoint_allowed(endpoint: str) -> bool:
         return parts.scheme in ("https", "http")
     if parts.scheme != "https":
         return False
-    return any(host == s or host.endswith("." + s) for s in PUSH_HOST_SUFFIXES)
+    if any(host == s or host.endswith("." + s) for s in PUSH_HOST_SUFFIXES):
+        return True
+    # Chrome also hands out FCM addresses on Google's own hosts (e.g. jmt17.google.com/fcm/send/…)
+    return (host == "google.com" or host.endswith(".google.com")) and parts.path.startswith(
+        ("/fcm/", "/wp/")
+    )
 
 
 # ── who gets what ──────────────────────────────────────────────────────────

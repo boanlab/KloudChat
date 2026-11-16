@@ -329,6 +329,14 @@ async def test_event_switches_and_defaults(stack, monkeypatch):
     assert len(seen) == 2
 
 
+def test_chromes_google_hosted_fcm_addresses_are_accepted_only_on_the_fcm_path():
+    assert push.endpoint_allowed("https://jmt17.google.com/fcm/send/abc")
+    assert push.endpoint_allowed("https://fcm.googleapis.com/wp/abc")
+    assert not push.endpoint_allowed("https://mail.google.com/mail/u/0")
+    assert not push.endpoint_allowed("https://evil.example/fcm/send/abc")
+    assert not push.endpoint_allowed("https://google.com.evil.example/fcm/send/abc")
+
+
 def test_the_settings_accept_only_known_events():
     assert Preferences(push_events={"job_done": False}).push_events == {"job_done": False}
     with pytest.raises(ValueError):
