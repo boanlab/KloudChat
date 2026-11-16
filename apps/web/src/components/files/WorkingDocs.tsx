@@ -74,9 +74,12 @@ function DocPlace({ row }: { row: WorkingDocRow }) {
         </Link>
       )}
       {row.sessionId ? (
+        // a conversation named like its document says nothing more; the chat icon opens it
+        (row.sessionTitle || '') !== row.title && (
         <Link to={`/s/${row.sessionId}`} className="inline-block max-w-full truncate align-middle leading-6 hover:text-fg hover:underline">
           {row.sessionTitle || t('제목 없는 대화')}
         </Link>
+        )
       ) : (
         <span className="truncate">{t('대화 없음')}</span>
       )}
@@ -165,7 +168,7 @@ export function WorkingDocs({ query, onCount }: { query: string; onCount: (n: nu
       {/* A phone puts the order under the format chips, so the chips keep the row's width. */}
       <div className="mt-3 flex flex-col gap-2">
         <div className="flex min-w-0 flex-wrap gap-1.5" role="group" aria-label={t('형식')}>
-          {[{ kind: null, label: '모든 형식' }, ...WORKING_KINDS].map((row) => (
+          {[{ kind: null, label: '모든 형식' }, ...WORKING_KINDS.map((k) => ({ kind: k.kind, label: KIND_LABEL[k.kind] }))].map((row) => (
             <button
               key={row.kind ?? 'all'}
               type="button"
@@ -281,7 +284,7 @@ export function WorkingDocs({ query, onCount }: { query: string; onCount: (n: nu
                     >
                       {opening === row.id ? <Loader2 size={14} className="animate-spin" /> : <FilePenLine size={14} />}
                     </Button>
-                    {row.sessionId && (
+                    {row.sessionId ? (
                       <Button
                         variant="ghost"
                         size="icon"
@@ -291,6 +294,8 @@ export function WorkingDocs({ query, onCount }: { query: string; onCount: (n: nu
                       >
                         <MessageSquare size={14} />
                       </Button>
+                    ) : (
+                      <span className="size-8 shrink-0 max-sm:hidden" aria-hidden />
                     )}
                     <Button
                       variant="ghost"
@@ -301,7 +306,7 @@ export function WorkingDocs({ query, onCount }: { query: string; onCount: (n: nu
                     >
                       <Download size={14} />
                     </Button>
-                    {(row.kind === 'report' || row.kind === 'deck') && (
+                    {(row.kind === 'report' || row.kind === 'deck') ? (
                       // 이걸로 새로 시작 · 새 대화에 첨부, as beside a chat; they read the id, kind
                       // and title only
                       <Dropdown
@@ -314,6 +319,9 @@ export function WorkingDocs({ query, onCount }: { query: string; onCount: (n: nu
                       >
                         <ReuseItems artifact={row as unknown as Artifact} />
                       </Dropdown>
+                    ) : (
+                      // keeps the icon columns lined up with the rows that have the menu
+                      <span className="size-8 shrink-0 max-sm:hidden" aria-hidden />
                     )}
                     <Button
                       variant="ghost"

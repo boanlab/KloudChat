@@ -122,13 +122,7 @@ export function ProjectsPage() {
           <EmptyState
             icon={<Boxes size={18} />}
             title={t('아직 프로젝트가 없습니다')}
-            description={t('자주 하는 작업을 묶어 두면 매번 설명하지 않아도 됩니다.')}
-            action={
-              <Button variant="primary" onClick={() => setOpen(true)}>
-                <Plus size={16} />
-          {t('새 프로젝트')}
-              </Button>
-            }
+            description={t('위의 새 프로젝트로 자주 하는 작업을 묶어 두면 매번 설명하지 않아도 됩니다.')}
           />
         ) : (
           <>

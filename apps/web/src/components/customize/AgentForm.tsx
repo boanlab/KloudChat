@@ -733,7 +733,7 @@ export function AgentForm({
               </Select>
             </Field>
           )}
-          <Field label={t('기본 양식 파일')} hint={t('프로젝트 양식보다 앞서고, 대화에 첨부한 양식보다는 뒤입니다.')}>
+          <Field label={t('기본 양식 파일')} hint={t('프로젝트 양식보다 앞서고 대화에 첨부한 양식보다는 뒤이며, 비워 둔 칸은 기본 구조와 디자인을 씁니다.')}>
             <FormFilesField
               value={draft.formFiles ?? {}}
               onSet={(kind, row) => edit({ ...draft, formFiles: { ...(draft.formFiles ?? {}), [kind]: row ? row.id : null } })}

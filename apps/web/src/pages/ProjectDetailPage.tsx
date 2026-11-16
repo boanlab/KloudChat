@@ -1,3 +1,4 @@
+import { previewSentence } from '@/lib/previewText'
 import { ArrowLeft, Brain, CircleAlert, ExternalLink, FileText, HardDrive, Link2, Loader2, MoreHorizontal, Pencil, Plus, RefreshCw, Sparkles, Trash2, Upload, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -671,8 +672,9 @@ export function ProjectDetailPage() {
                 <div className="min-w-[min(100%,12rem)] flex-1">
                   <p className="text-base font-medium">{t('참고 파일')}</p>
                   <p className="text-sm text-muted">
-                    {t('총 {n} 토큰').replace('{n}', formatTokens(totalTokens))} · {t('컨텍스트의 약')}{' '}
-                    {Math.round((totalTokens / 200_000) * 100)}%
+                    {t('총 {n} 토큰 · 한 번에 읽는 양의 약 {pct}%')
+                      .replace('{n}', formatTokens(totalTokens))
+                      .replace('{pct}', String(Math.round((totalTokens / 200_000) * 100)))}
                   </p>
                 </div>
                 <input
@@ -1041,13 +1043,8 @@ export function ProjectDetailPage() {
 /** Why a page could not be kept, and what instead; inside the dialog. */
 /** A project conversation's second line: its latest message, else what it made, else its kind. */
 function sessionLine(session: Session, t: (text: string) => string): string {
-  const said = session.preview
-    ?.replace(/\s*\[\d+(?:[,\s]+\d+)*\]/g, '')
-    .replace(/(^|\s)(?:#{1,6}|[-*>]|\d+\.)\s+/g, '$1')
-    .replace(/[*_`~]+/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-  if (said) return said.slice(0, 90)
+  const said = previewSentence(session.preview)
+  if (said) return said
   const made = session.made
   if (made) {
     const noun = { image: '그림 {n}장', video: '영상 {n}개', narration: '내레이션 {n}개', music: '음악 {n}곡' }[made.kind]

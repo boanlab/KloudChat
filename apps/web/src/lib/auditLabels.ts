@@ -287,7 +287,14 @@ export function changedFields(row: AuditRow): string[] {
 }
 
 /** Row target as words; settings changes name their sections. */
-export function targetParts(row: AuditRow): string[] {
+export function targetParts(row: AuditRow, modelName?: (id: string) => string): string[] {
+  // A routing row's target is the conversation id: say which model was picked instead.
+  if (row.action.startsWith('routing.')) {
+    const picked = row.metadata?.selectedModel
+    return typeof picked === 'string' && picked ? [modelName ? modelName(picked) : picked] : []
+  }
+  // A sign-in or sign-up row would only repeat the account.
+  if (row.target === row.actor) return []
   if (row.action === 'settings.update') {
     const recorded = row.metadata?.sections
     const sections = Array.isArray(recorded)

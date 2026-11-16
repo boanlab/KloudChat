@@ -1,6 +1,10 @@
 /** English for the Google and Slack connections: 설정 › 연결, the admin setup, write cards and the Drive picker (merged into `EN`). */
 export const EN_INTEGRATIONS: Record<string, string> = {
   // audit log
+  '사람마다 자기 Google 계정을 연결합니다.': 'Each person connects their own Google account.',
+  '사람마다 자기 Slack 계정을 연결합니다.': 'Each person connects their own Slack account.',
+  '시스템 › 메일 탭의 「서비스 주소」를 먼저 적으세요. 연동 로그인 후 돌아올 주소입니다.': 'First set the "Service address" on System › Mail; integration sign-ins return to it.',
+  '서명 보안 비밀번호': 'Signing secret',
   '외부 계정 연결': 'External account connected',
   '외부 계정 연결 해제': 'External account disconnected',
   '외부 연동 설정 변경': 'Integration settings changed',

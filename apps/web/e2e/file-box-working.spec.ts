@@ -134,7 +134,7 @@ test('작업 문서 lists each document once, newest edit first, and filters, so
   // one format, then a title search over it; the format chips keep their counts
   await page.getByRole('button', { name: /^웹 보고서/ }).click()
   await expect(rows(page)).toHaveCount(50)
-  await expect(page.getByRole('button', { name: /^PowerPoint\s*1/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: /^PowerPoint 문서\s*1/ })).toBeVisible()
   await page.getByLabel('파일 검색').fill('성과')
   await expect(rows(page)).toHaveCount(1)
   await expect(rows(page)).toContainText('분기 성과 보고서')

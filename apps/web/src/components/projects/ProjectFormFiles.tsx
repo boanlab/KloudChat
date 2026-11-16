@@ -128,7 +128,7 @@ export function FormFilesField({
                 </Button>
               </div>
             ) : (
-              <p className="text-sm text-faint">{t('양식 없음 — 기본 구조와 디자인으로 씁니다')}</p>
+              <p className="text-sm text-faint">{t('없음')}</p>
             )}
             <div className="flex flex-wrap gap-1.5">
               <Button
@@ -190,7 +190,7 @@ export function ProjectFormFiles({ project }: { project: Project }) {
       <div>
         <p className="text-base font-medium">{t('기본 양식 파일')}</p>
         <p className="text-sm text-muted">
-          {t('이 프로젝트의 파일이 따를 양식입니다. 대화에 첨부한 양식이 우선합니다.')}
+          {t('이 프로젝트의 파일이 따를 양식이며, 비워 둔 칸은 기본 구조와 디자인을 쓰고 대화에 첨부한 양식이 우선합니다.')}
         </p>
       </div>
       <FormFilesField

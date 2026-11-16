@@ -45,7 +45,7 @@ export function IntegrationsSection() {
       {!data.baseUrl && (
         <p role="alert" className="flex items-start gap-1.5 rounded-control border border-warn/25 bg-warn/5 px-3 py-2 text-base text-warn">
           <TriangleAlert size={14} className="mt-0.5 shrink-0" />
-          {t('메일 탭의 서비스 주소를 먼저 적으세요. 로그인 후 돌아올 주소가 됩니다.')}
+          {t('시스템 › 메일 탭의 「서비스 주소」를 먼저 적으세요. 연동 로그인 후 돌아올 주소입니다.')}
         </p>
       )}
       {data.providers.map((p) => (
@@ -102,8 +102,8 @@ function ProviderCard({ provider, onSaved }: { provider: AdminIntegration; onSav
           </p>
           <p className="text-sm text-muted">
             {google
-              ? t('설치 하나에 OAuth 클라이언트 하나를 씁니다. 사람마다 자기 Google 계정을 연결합니다.')
-              : t('설치 하나에 Slack 앱 하나를 씁니다. 사람마다 자기 Slack 계정을 연결합니다.')}
+              ? t('사람마다 자기 Google 계정을 연결합니다.')
+              : t('사람마다 자기 Slack 계정을 연결합니다.')}
           </p>
         </div>
         <Switch
@@ -121,11 +121,11 @@ function ProviderCard({ provider, onSaved }: { provider: AdminIntegration; onSav
         </div>
       </Field>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label={google ? t('클라이언트 ID') : t('Client ID')}>
+        <Field label={t('클라이언트 ID')}>
           <Input value={clientId} onChange={(e) => setClientId(e.target.value)} className="font-mono text-sm" />
         </Field>
         <Field
-          label={google ? t('클라이언트 보안 비밀번호') : t('Client Secret')}
+          label={t('클라이언트 보안 비밀번호')}
           hint={provider.clientSecretSet ? t('저장됨 {preview} · 비워 두면 그대로 둡니다').replace('{preview}', provider.clientSecretPreview) : undefined}
         >
           <PasswordInput value={secret} onChange={(e) => setSecret(e.target.value)} autoComplete="off" />
@@ -141,7 +141,7 @@ function ProviderCard({ provider, onSaved }: { provider: AdminIntegration; onSav
           </>
         ) : (
           <Field
-            label={t('Signing Secret')}
+            label={t('서명 보안 비밀번호')}
             hint={provider.signingSecretSet ? t('저장됨 · 비워 두면 그대로 둡니다') : t('공개 에이전트 봇이 받는 이벤트를 확인합니다.')}
           >
             <PasswordInput value={signing} onChange={(e) => setSigning(e.target.value)} autoComplete="off" />

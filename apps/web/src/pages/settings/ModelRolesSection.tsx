@@ -219,9 +219,7 @@ export function ModelRolesSection({
         <div className="min-w-0 flex-1">
           <p className="text-base font-medium">{t('작업별 모델')}</p>
           <p className="text-sm text-muted">
-            {t('화면별 기본 모델과 보조 작업 모델을 정합니다. 사용자가 고른 모델이 우선합니다.')}
-            {' '}
-            {t('챗·보고서·슬라이드는 Super Agent가 기본입니다. 모델을 고르면 새 대화가 그 모델로 시작합니다.')}
+            {t('화면별 기본 모델과 보조 작업 모델을 정합니다(챗·보고서·슬라이드는 Super Agent가 기본이고, 사용자가 고른 모델이 우선합니다).')}
           </p>
         </div>
       </div>

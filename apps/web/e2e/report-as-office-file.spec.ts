@@ -84,7 +84,7 @@ async function fixture(page: Page, kind: Kind, start = '/new/chat') {
         data: { format: kind === 'hwp' ? 'hwpx' : 'docx', size: file.length, text: '2027년 사업계획' },
       }
       const answer = first
-        ? '6개 섹션의 보고서를 한글 문서로 만들었습니다. 옆 편집기에서 바로 고치거나, 고칠 곳을 말해 주세요.'
+        ? '6개 섹션의 보고서를 한글 문서로 작성했습니다. 옆 편집기에서 바로 고치거나, 고칠 곳을 말해 주세요.'
         : '3장을 두 문단으로 줄였습니다.'
       messages = [
         ...messages,
