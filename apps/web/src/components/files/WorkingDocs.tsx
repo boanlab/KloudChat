@@ -295,7 +295,7 @@ export function WorkingDocs({ query, onCount }: { query: string; onCount: (n: nu
                         <MessageSquare size={14} />
                       </Button>
                     ) : (
-                      <span className="size-8 shrink-0 max-sm:hidden" aria-hidden />
+                      <span className="size-8 shrink-0" aria-hidden />
                     )}
                     <Button
                       variant="ghost"
@@ -321,7 +321,7 @@ export function WorkingDocs({ query, onCount }: { query: string; onCount: (n: nu
                       </Dropdown>
                     ) : (
                       // keeps the icon columns lined up with the rows that have the menu
-                      <span className="size-8 shrink-0 max-sm:hidden" aria-hidden />
+                      <span className="size-8 shrink-0" aria-hidden />
                     )}
                     <Button
                       variant="ghost"

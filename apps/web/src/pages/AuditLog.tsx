@@ -301,10 +301,10 @@ export function AuditLog({ onTotal, account: initialAccount = '' }: {
           <table className="hidden w-full table-fixed text-base lg:table">
             <colgroup>
               <col className="w-[15.5rem]" />
-              <col className="w-[20%]" />
+              <col className="w-[21%]" />
               <col />
-              <col className="w-[16%]" />
-              <col className="w-[13rem]" />
+              <col className="w-[19%]" />
+              <col className="w-[12rem]" />
             </colgroup>
             <thead className="sticky top-0 z-[1] border-b border-line bg-panel text-left text-xs tracking-wide text-faint uppercase">
               <tr>
