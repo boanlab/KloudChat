@@ -418,6 +418,6 @@ def test_a_subscription_may_carry_the_screens_language():
     from app.routers.push import SubscriptionIn
 
     keys = {"p256dh": "B" * 87, "auth": "a" * 22}
-    assert SubscriptionIn(endpoint="https://fcm.googleapis.com/fcm/send/x1", keys=keys).language is None
-    assert SubscriptionIn(endpoint="https://fcm.googleapis.com/fcm/send/x1", keys=keys,
-                          language="en").language == "en"
+    endpoint = "https://fcm.googleapis.com/fcm/send/x1"
+    assert SubscriptionIn(endpoint=endpoint, keys=keys).language is None
+    assert SubscriptionIn(endpoint=endpoint, keys=keys, language="en").language == "en"
