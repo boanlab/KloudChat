@@ -5395,8 +5395,8 @@ export function translate(lang: Lang, text: string): string {
 
 /** English singular of the counted word after `{n}`: 「1 uses」 is wrong, 「1 use」 right. */
 function singular(word: string): string {
-  if (/(ss|us|is)$/i.test(word) || !/s$/i.test(word)) return word
   if (/^people$/i.test(word)) return word.replace(/people/i, (m) => (m[0] === 'P' ? 'Person' : 'person'))
+  if (/(ss|us|is)$/i.test(word) || !/s$/i.test(word)) return word
   if (/ies$/i.test(word)) return word.slice(0, -3) + 'y'
   if (/(sses|xes|ches|shes)$/i.test(word)) return word.slice(0, -2)
   return word.slice(0, -1)
