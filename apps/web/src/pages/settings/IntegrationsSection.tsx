@@ -200,11 +200,21 @@ function ProviderCard({ provider, onSaved }: { provider: AdminIntegration; onSav
 
       {!google && (provider.workspaces?.length ?? 0) > 0 && (
         <div>
-          <p className="mb-1 text-base font-medium">{t('앱이 설치된 워크스페이스')}</p>
+          <p className="text-base font-medium">{t('앱이 설치된 워크스페이스')}</p>
+          <p className="mb-1 text-sm text-muted">{t('우리 조직으로 표시한 곳에서만 공개 에이전트가 구성원에게 하듯 답합니다.')}</p>
           <ul className="space-y-1 text-base">
             {provider.workspaces!.map((w) => (
               <li key={w.teamId} className="flex flex-wrap items-center gap-2">
                 <span className="min-w-0 flex-1">{w.name || w.teamId}</span>
+                <label className="flex items-center gap-1.5 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(w.internal)}
+                    disabled={busy}
+                    onChange={async (e) => onSaved(await integrationsApi.adminMarkSlack(w.teamId, e.target.checked))}
+                  />
+                  {t('우리 조직 워크스페이스')}
+                </label>
                 <span className="text-sm text-faint">{formatDateTime(w.installedAt)}</span>
                 <Button
                   size="sm"

@@ -251,6 +251,18 @@ def notify(user_id: str | None, notice: Notice) -> None:
 
 
 async def _safe_deliver(user_id: str, notice: Notice) -> None:
+    """Web push and Slack side by side: a slow or failing one never holds back the other."""
+    jobs = [_push_only(user_id, notice)]
+    if notice.event != "test":
+        # Slack, for people who turned it on; opt-in, `internal` honoured, never raises
+        from app.services.integrations import slack_notify
+
+        jobs.append(slack_notify.deliver(user_id, notice.title, notice.label, notice.url,
+                                         notice.internal))
+    await asyncio.gather(*jobs, return_exceptions=True)
+
+
+async def _push_only(user_id: str, notice: Notice) -> None:
     try:
         await deliver(user_id, notice)
     except Exception as exc:  # noqa: BLE001 — a notice must never disturb the job

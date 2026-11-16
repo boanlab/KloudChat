@@ -126,13 +126,14 @@ async def confirm(db: AsyncSession, user: User, row: IntegrationAction,
     if executor is None:
         raise ActionRefused("unknown_action", 422)
     payload = dict(row.payload or {})
-    if edits:
-        if extra := sorted(set(edits) - executor.editable):
-            raise ActionRefused(f"not_editable:{','.join(extra)}", 422)
-        try:
-            payload = executor.edit(payload, edits) if executor.edit else {**payload, **edits}
-        except ValueError as exc:
-            raise ActionRefused(str(exc), 422) from None
+    edits = edits or {}
+    if extra := sorted(set(edits) - executor.editable):
+        raise ActionRefused(f"not_editable:{','.join(extra)}", 422)
+    try:
+        # checked even with no edits: what the card would send must still be sendable
+        payload = executor.edit(payload, edits) if executor.edit else {**payload, **edits}
+    except ValueError as exc:
+        raise ActionRefused(str(exc), 422) from None
     account = await accounts.account(db, user.id, row.provider)
     if account is None or account.status != "connected":
         raise ActionRefused("not_connected")

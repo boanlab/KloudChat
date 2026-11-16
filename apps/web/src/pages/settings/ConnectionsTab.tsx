@@ -6,6 +6,7 @@ import { errorMessage, integrationsApi, type IntegrationProvider, type Integrati
 import { relativeTime } from '@/lib/utils'
 import { FEATURE_SENTENCE } from '@/lib/integrations'
 import { useT } from '@/lib/useT'
+import { SlackNotifyChoice } from './SlackNotifyChoice'
 
 const NAMES: Record<IntegrationProvider, string> = { google: 'Google 드라이브', slack: 'Slack' }
 
@@ -167,6 +168,9 @@ export function ConnectionsTab() {
                         <li key={f}>· {t(FEATURE_SENTENCE[`${row.provider}.${f}`])}</li>
                       ))}
                   </ul>
+                )}
+                {row.provider === 'slack' && c?.status === 'connected' && c.features.includes('notify') && (
+                  <SlackNotifyChoice prefs={c.prefs} onSaved={() => void load()} />
                 )}
               </Card>
             )

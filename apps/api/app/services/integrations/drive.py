@@ -288,7 +288,7 @@ async def _run_export(db: AsyncSession, _user: User, row: IntegrationAccount,
 
 
 def _edit_format(payload: dict[str, Any], edits: dict[str, Any]) -> dict[str, Any]:
-    fmt = str(edits.get("format") or "")
+    fmt = str(edits.get("format") or payload.get("format") or "")
     if fmt not in (payload.get("formats") or []):
         raise ValueError("bad_format")
     return {**payload, "format": fmt}

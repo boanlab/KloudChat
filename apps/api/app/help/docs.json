@@ -535,6 +535,13 @@
 "lang": "ko",
 "path": "chat/bots",
 "title": "챗봇 공개",
+"heading": "Slack에서 답하기",
+"text": "관리자가 Slack 봇을 켜 두었다면 공개 화면의 **Slack** 카드에서 내가 속한 채널을 고릅니다. 그 채널에 앱을 초대하고 앱을 부르면(@) 스레드에 답합니다. 공개한 사람의 계정과 크레딧으로 처리되고 처음 답할 때 그렇다고 알립니다. 다른 조직과 공유된 채널은 외부 공개로 보고, 관리자가 외부 공개를 승인한 뒤에만 답합니다."
+},
+{
+"lang": "ko",
+"path": "chat/bots",
+"title": "챗봇 공개",
 "heading": "만든 사람이 보는 것",
 "text": "관리 화면(내 에이전트 화면의 **챗봇** → **관리**)에는 다음이 보입니다.\n\n- **통계**: 질문 수, 대화 수, 방문자 수, 자주 나온 주제, 답하지 못한 질문(개인정보를 가린 문장), 👍👎.\n- **보낸 대화**: 방문자가 **만든 사람에게 보내기**로 보낸 대화만, 개인정보를 가린 채. **대화 열람**을 켠 챗봇은 방문자가 동의한 뒤의 대화도 보입니다. 상담·민원처럼 대화 기록이 업무인 챗봇에만 켭니다.\n- **설정**의 **복사 허용**: 기본은 꺼짐(잠금)입니다. 켜면 구성원이 지시문까지 내 에이전트로 가져갈 수 있습니다. 지시를 보여 주고 싶지 않으면 끈 채로 둡니다.\n- 방문자는 이름 대신 「방문자 ABC123」처럼 보이고, 로그인했는지만 표시됩니다. 보낸 대화에서 **이 방문자 차단**을 누르면 그 방문자는 더 이상 질문할 수 없습니다. **설정**의 **차단한 방문자**에서 풉니다.\n\n관리자가 남용 확인을 위해 대화를 열람하면 **개요**의 **관리자 열람 기록**에 날짜와 사유가 남습니다.\n\n챗봇이 멈추거나(크레딧 소진, 관리자 중지 등) 관리자가 요청을 결정하면 사이드바 **사용자 지정**에 숫자가 붙습니다."
 },
@@ -1131,7 +1138,7 @@
 "path": "personal/settings",
 "title": "설정",
 "heading": "연결",
-"text": "내 Google 드라이브와 Slack 계정을 연결합니다. 관리자가 켠 서비스만 보이고, 연결은 내 계정에만 쓰입니다(개인 gmail.com 계정도 됩니다).\n\n- **Google 드라이브**: 입력창의 **+ › 드라이브에서 가져오기**나 프로젝트 **지식 › 드라이브**에서 Google 파일 선택 창으로 고른 파일만 앱이 엽니다. 드라이브의 다른 파일은 보지 않습니다. 가져온 파일의 새로 고침 단추는 드라이브에서 바뀐 내용을 다시 가져옵니다.\n- **드라이브에 저장**처럼 밖으로 쓰는 일은 답 아래 확인 카드에서 **확인**을 눌러야 보냅니다.\n- 드라이브 내용은 내부 자료로 다룹니다. 관리자가 내부 자료를 strict-local로 두면 내부 모델만 읽습니다.\n- **연결 해제**는 권한을 되돌리고 저장한 토큰을 지웁니다. 가져온 파일은 남습니다."
+"text": "내 Google 드라이브와 Slack 계정을 연결합니다. 관리자가 켠 서비스만 보이고, 연결은 내 계정에만 쓰입니다(개인 gmail.com 계정도 됩니다).\n\n- **Google 드라이브**: 입력창의 **+ › 드라이브에서 가져오기**나 프로젝트 **지식 › 드라이브**에서 Google 파일 선택 창으로 고른 파일만 앱이 엽니다. 드라이브의 다른 파일은 보지 않습니다. 가져온 파일의 새로 고침 단추는 드라이브에서 바뀐 내용을 다시 가져옵니다.\n- **드라이브에 저장**처럼 밖으로 쓰는 일은 답 아래 확인 카드에서 **확인**을 눌러야 보냅니다.\n- 드라이브 내용은 내부 자료로 다룹니다. 관리자가 내부 자료를 strict-local로 두면 내부 모델만 읽습니다.\n- **Slack**: 내가 속한 채널만 읽고, 메시지는 확인 카드에서 채널과 내용을 확인한 뒤에만 보냅니다. **긴 작업이 끝나면 Slack으로 알림**을 켜면 나에게 보내는 메시지나 고른 채널로 알립니다. 워크스페이스에 앱을 설치할 수 없다면 Slack 관리자에게 요청하세요.\n- **연결 해제**는 권한을 되돌리고 저장한 토큰을 지웁니다. 가져온 파일은 남습니다."
 },
 {
 "lang": "ko",
@@ -2271,6 +2278,13 @@
 "lang": "en",
 "path": "chat/bots",
 "title": "Publishing a chatbot",
+"heading": "Answering in Slack",
+"text": "When the administrator has turned on the Slack bot, pick a channel you are in on the **Slack** card of the publication screen. Invite the app to that channel; mention it (@) and it answers in the thread. Answers run on the publisher's account and credits, and the first answer says so. A channel shared with another organisation counts as an outside audience and is answered only after an administrator approves outside publication."
+},
+{
+"lang": "en",
+"path": "chat/bots",
+"title": "Publishing a chatbot",
 "heading": "What the publisher sees",
 "text": "The management page (**Chatbot** → **Manage** on your agent's page) shows:\n\n- **Statistics**: questions, conversations, visitors, frequent topics, unanswered questions (sentences with personal details masked), 👍👎.\n- **Sent conversations**: only conversations a visitor sent with **Send to the maker**, personal details masked. With **Conversation access** on, conversations after the visitor's consent show too. Turn it on only for chatbots whose conversations are the work itself, such as counselling or complaints.\n- **Allow copies** under **Settings**: off (locked) by default. Turn it on and members can take the chatbot, instructions included, as their own agent. Leave it off to keep the instructions to yourself.\n- Visitors show as \"Visitor ABC123\" with only whether they signed in. **Block this visitor** on a sent conversation stops them from asking; unblock them under **Settings** → **Blocked visitors**.\n\nWhen an administrator reads conversations to check abuse, the date and reason appear under **Administrator reads** on **Overview**.\n\nWhen a chatbot stops (credits used up, paused by an administrator and so on) or an administrator decides a request, a number appears next to **Customize** in the sidebar."
 },
@@ -2867,7 +2881,7 @@
 "path": "personal/settings",
 "title": "Settings",
 "heading": "Connections",
-"text": "Connect your own Google Drive and Slack accounts. Only services the administrator turned on appear, and a connection is used for your account only (a personal gmail.com account works too).\n\n- **Google Drive**: the app opens only the files you pick in Google's file picker, from **+ › Import from Drive** in the composer or **Knowledge › Drive** in a project. It never sees the rest of your Drive. The refresh button on an imported file brings in what changed in Drive.\n- Anything written outside, such as **Save to Drive**, is sent only after you press **Confirm** on the card under the answer.\n- Drive content is internal material: where the administrator keeps internal material strict-local, only internal models read it.\n- **Disconnect** revokes the grant and deletes the stored tokens. Imported files stay."
+"text": "Connect your own Google Drive and Slack accounts. Only services the administrator turned on appear, and a connection is used for your account only (a personal gmail.com account works too).\n\n- **Google Drive**: the app opens only the files you pick in Google's file picker, from **+ › Import from Drive** in the composer or **Knowledge › Drive** in a project. It never sees the rest of your Drive. The refresh button on an imported file brings in what changed in Drive.\n- Anything written outside, such as **Save to Drive**, is sent only after you press **Confirm** on the card under the answer.\n- Drive content is internal material: where the administrator keeps internal material strict-local, only internal models read it.\n- **Slack**: the app reads only channels you are in, and sends a message only after you check the channel and text on the card. Turn on **Notify me in Slack when a long job finishes** to get a message to yourself or in a channel you pick. If you can't install the app in your workspace, ask your Slack admin.\n- **Disconnect** revokes the grant and deletes the stored tokens. Imported files stay."
 },
 {
 "lang": "en",

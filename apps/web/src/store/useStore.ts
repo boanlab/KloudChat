@@ -320,6 +320,8 @@ interface State {
   dictationEnabled: boolean
   /** The administrator turned on Google Drive with Picker: 「드라이브에서 가져오기」 is offered. */
   drivePicker: boolean
+  /** Published agents may answer in Slack channels. */
+  slackBot: boolean
   /** The admin's web search in strict-local turns: ask first, queries only, or never. */
   strictLocalWebSearch: SearchConsentMode
   /** The admin keeps internal material (attachments, uploaded pictures) on strict-local models. */
@@ -1180,6 +1182,7 @@ export const useStore = create<State>((set, get) => ({
   idleTimeoutMinutes: 0,
   dictationEnabled: false,
   drivePicker: false,
+  slackBot: false,
 
   bootstrap: async () => {
     if (inFlight) return inFlight
@@ -1209,6 +1212,7 @@ export const useStore = create<State>((set, get) => ({
               idleTimeoutMinutes: c.idleTimeoutMinutes ?? 0,
               dictationEnabled: Boolean(c.dictationEnabled),
               drivePicker: Boolean(c.integrations?.drivePicker),
+              slackBot: Boolean(c.integrations?.slackBot),
               passwordMinLength: c.password?.minLength ?? DEFAULT_PASSWORD_MIN,
             })
             armIdleWatch(c.idleTimeoutMinutes ?? 0, () => void idleSignOut(get))
@@ -2579,6 +2583,7 @@ export const useStore = create<State>((set, get) => ({
       idleTimeoutMinutes: c.idleTimeoutMinutes ?? 0,
       dictationEnabled: Boolean(c.dictationEnabled),
       drivePicker: Boolean(c.integrations?.drivePicker),
+      slackBot: Boolean(c.integrations?.slackBot),
       passwordMinLength: c.password?.minLength ?? DEFAULT_PASSWORD_MIN,
       strictLocalWebSearch: c.privacy?.strictLocalWebSearch ?? 'ask',
       internalDataStrictLocal: Boolean(c.privacy?.internalDataStrictLocal),

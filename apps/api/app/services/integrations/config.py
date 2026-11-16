@@ -32,7 +32,7 @@ GOOGLE_IDENTITY = ("openid", "email")
 
 #: feature → Slack user-token scopes (the person's own token)
 SLACK_USER_FEATURES: dict[str, tuple[str, ...]] = {
-    "read": ("channels:read", "groups:read", "channels:history", "groups:history"),
+    "read": ("channels:read", "groups:read", "channels:history", "groups:history", "users:read"),
     "post": ("channels:read", "groups:read", "chat:write"),
     "notify": (),
     "bot": (),
@@ -168,4 +168,4 @@ async def offered() -> dict[str, bool]:
     google = await get(GOOGLE)
     slack = await get(SLACK)
     return {"drivePicker": google.allows("drive") and google.picker,
-            "slack": slack.usable}
+            "slack": slack.usable, "slackBot": slack.allows("bot")}

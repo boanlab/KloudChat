@@ -56,6 +56,7 @@ Connect your own Google Drive and Slack accounts. Only services the administrato
 - **Google Drive**: the app opens only the files you pick in Google's file picker, from **+ › Import from Drive** in the composer or **Knowledge › Drive** in a project. It never sees the rest of your Drive. The refresh button on an imported file brings in what changed in Drive.
 - Anything written outside, such as **Save to Drive**, is sent only after you press **Confirm** on the card under the answer.
 - Drive content is internal material: where the administrator keeps internal material strict-local, only internal models read it.
+- **Slack**: the app reads only channels you are in, and sends a message only after you check the channel and text on the card. Turn on **Notify me in Slack when a long job finishes** to get a message to yourself or in a channel you pick. If you can't install the app in your workspace, ask your Slack admin.
 - **Disconnect** revokes the grant and deletes the stored tokens. Imported files stay.
 
 ## API keys

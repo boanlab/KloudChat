@@ -3,6 +3,7 @@ administrator, and the OAuth callback the provider sends people back to."""
 
 from __future__ import annotations
 
+import json
 import logging
 import secrets
 from typing import Any
@@ -15,16 +16,18 @@ from sqlmodel import col, func, select
 from app.core.config import settings
 from app.core.deps import AdminUser, CurrentUser, DbSession, client_ip
 from app.models.chat import ChatSession
-from app.models.integrations import IntegrationAccount, SlackWorkspace
+from app.models.integrations import IntegrationAccount, SlackBotChannel, SlackWorkspace
+from app.models.publishing import Publication
 from app.models.user import User
 from app.models.workspace import StoredFile
 from app.schemas.auth import Wire
 from app.schemas.workspace import FileOut
 from app.services import settings_store
-from app.services.integrations import accounts, actions, config, drive
+from app.services.integrations import accounts, actions, config, drive, slack_bot
 from app.services.integrations import tools as _tools  # noqa: F401 — registers the writes
 from app.services.integrations.google import Google
 from app.services.integrations.http import ProviderError
+from app.services.integrations.slack import Slack
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/integrations", tags=["integrations"])
@@ -223,6 +226,171 @@ async def drive_imports(user: CurrentUser, db: DbSession, file_ids: str = Query(
     return await drive.imports_of(db, user, ids)
 
 
+# ── Slack ────────────────────────────────────────────────────────────────
+
+
+async def _slack_account(db: DbSession, user, *features: str):
+    cfg = await config.get(config.SLACK)
+    if not cfg.usable or not any(cfg.allows(f) for f in features):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="feature_off")
+    row = await accounts.account(db, user.id, config.SLACK)
+    if row is None or row.status != "connected":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                            detail="reconnect_required" if row is not None else "not_connected")
+    if not any(accounts.granted(row, f) for f in features if cfg.allows(f)):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="scope_missing")
+    return cfg, row
+
+
+@router.get("/slack/channels")
+async def slack_channels(user: CurrentUser, db: DbSession) -> list[dict[str, Any]]:
+    """Channels the person is in, for the card's and the notice's channel pickers."""
+    _, row = await _slack_account(db, user, "post", "read")
+    try:
+        found = await Slack(db, row).channels()
+    except ProviderError as exc:
+        raise _refused(exc) from None
+    return [{"id": c.get("id"), "name": c.get("name"), "private": bool(c.get("is_private")),
+             "shared": bool(c.get("is_ext_shared") or c.get("is_shared"))} for c in found]
+
+
+class SlackNotify(Wire):
+    on: bool
+    #: "" = my direct messages
+    channel: str = Field(default="", max_length=40)
+
+
+@router.put("/slack/notify")
+async def slack_notify_choice(payload: SlackNotify, user: CurrentUser,
+                              db: DbSession) -> dict[str, Any]:
+    """Whether (and where) a long job's notice goes to Slack."""
+    _, row = await _slack_account(db, user, "notify")
+    name = ""
+    if payload.channel:
+        try:
+            channel = await Slack(db, row).resolve(payload.channel)
+        except ProviderError as exc:
+            raise _refused(exc) from None
+        name = str(channel.get("name") or "")
+    chosen = str(channel["id"]) if payload.channel else ""
+    row.prefs = {**(row.prefs or {}),
+                 "notify": {"on": payload.on, "channel": chosen, "name": name}}
+    db.add(row)
+    await db.commit()
+    return row.prefs
+
+
+@router.post("/slack/events")
+async def slack_events(request: Request) -> dict[str, Any]:
+    """Slack's Events API: signed by the app's signing secret; a published agent answers its
+    @mentions in a thread, after this returns (Slack waits 3 seconds)."""
+    if int(request.headers.get("content-length") or 0) > 1_000_000:
+        raise HTTPException(status_code=413, detail="too_large")
+    raw = await request.body()
+    cfg = await config.get(config.SLACK)
+    if not slack_bot.verify(cfg.signing_secret, request.headers.get("X-Slack-Request-Timestamp",
+                                                                     ""),
+                            raw, request.headers.get("X-Slack-Signature", "")):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="bad_signature")
+    try:
+        payload = json.loads(raw or b"{}")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="bad_json") from None
+    if payload.get("type") == "url_verification":
+        return {"challenge": str(payload.get("challenge") or "")}
+    if request.headers.get("X-Slack-Retry-Num"):
+        # Slack retries an event it thinks we missed; the first delivery already runs
+        return {}
+    if payload.get("type") == "event_callback" and cfg.allows("bot"):
+        slack_bot.handle(payload)
+    return {}
+
+
+async def _own_publication(db: DbSession, user, publication_id: str) -> Publication:
+    pub = await db.get(Publication, publication_id)
+    if pub is None or pub.owner_id != user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    return pub
+
+
+def _bot_channel(row: SlackBotChannel, pub: Publication, internal: bool) -> dict[str, Any]:
+    shared = row.shared or not internal
+    return {"id": row.id, "channelId": row.channel_id, "name": row.channel_name,
+            "shared": shared, "createdAt": row.created_at,
+            "blocked": slack_bot.allowed(pub, shared)}
+
+
+async def _internal_teams(db: DbSession) -> set[str]:
+    return {w.team_id for w in (await db.exec(select(SlackWorkspace).where(
+        col(SlackWorkspace.internal) == True))).all()}  # noqa: E712
+
+
+@router.get("/slack/bots/{publication_id}/channels")
+async def slack_bot_channels(publication_id: str, user: CurrentUser,
+                             db: DbSession) -> list[dict[str, Any]]:
+    pub = await _own_publication(db, user, publication_id)
+    rows = (await db.exec(select(SlackBotChannel).where(
+        SlackBotChannel.publication_id == pub.id))).all()
+    internal = await _internal_teams(db)
+    return [_bot_channel(r, pub, r.team_id in internal) for r in rows]
+
+
+class SlackBotLink(Wire):
+    channel: str = Field(min_length=1, max_length=200)
+
+
+@router.post("/slack/bots/{publication_id}/channels", status_code=status.HTTP_201_CREATED)
+async def slack_bot_link(publication_id: str, payload: SlackBotLink, request: Request,
+                         user: CurrentUser, db: DbSession) -> dict[str, Any]:
+    """The published agent answers @mentions in this channel (one the publisher is in, in a
+    workspace where the app is installed). A channel shared with another organisation is an
+    outside audience: answered only once an administrator approved the bot for outside."""
+    pub = await _own_publication(db, user, publication_id)
+    cfg, row = await _slack_account(db, user, "post", "read")
+    if not cfg.allows("bot"):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="feature_off")
+    if not await accounts.bot_token(db, row.team_id):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="app_not_installed")
+    try:
+        channel = await Slack(db, row).resolve(payload.channel)
+    except ProviderError as exc:
+        raise _refused(exc) from None
+    taken = (await db.exec(select(SlackBotChannel).where(
+        SlackBotChannel.team_id == row.team_id,
+        SlackBotChannel.channel_id == str(channel["id"])))).first()
+    if taken is not None and taken.publication_id != pub.id:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="channel_taken")
+    link = taken or SlackBotChannel(team_id=row.team_id, channel_id=str(channel["id"]),
+                                    publication_id=pub.id, added_by=user.id)
+    link.channel_name = str(channel.get("name") or "")[:200]
+    link.shared = bool(channel.get("is_ext_shared") or channel.get("is_shared"))
+    db.add(link)
+    accounts.audit(db, user.id, "integration.slack_bot_channel", pub.id,
+                   detail=f"add:{link.channel_id}",
+                   metadata={"publication": pub.id, "channel": link.channel_id,
+                             "shared": link.shared}, ip=client_ip(request),
+                   user_agent=request.headers.get("User-Agent", ""))
+    await db.commit()
+    await db.refresh(link)
+    return _bot_channel(link, pub, link.team_id in await _internal_teams(db))
+
+
+@router.delete("/slack/bots/{publication_id}/channels/{link_id}",
+               status_code=status.HTTP_204_NO_CONTENT)
+async def slack_bot_unlink(publication_id: str, link_id: str, request: Request,
+                           user: CurrentUser, db: DbSession):
+    pub = await _own_publication(db, user, publication_id)
+    link = await db.get(SlackBotChannel, link_id)
+    if link is None or link.publication_id != pub.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    accounts.audit(db, user.id, "integration.slack_bot_channel", pub.id,
+                   detail=f"remove:{link.channel_id}",
+                   metadata={"publication": pub.id, "channel": link.channel_id},
+                   ip=client_ip(request), user_agent=request.headers.get("User-Agent", ""))
+    await db.delete(link)
+    await db.commit()
+
+
 # ── writes waiting for the person (confirmation cards) ───────────────────
 
 
@@ -296,8 +464,8 @@ async def _admin_view(db: DbSession, provider: str) -> dict[str, Any]:
             "signingSecretSet": bool(cfg.signing_secret),
             "installScopes": cfg.install_scopes(),
             "eventsUrl": await config.slack_events_url(),
-            "workspaces": [{"teamId": w.team_id, "name": w.name, "installedAt": w.created_at}
-                           for w in workspaces],
+            "workspaces": [{"teamId": w.team_id, "name": w.name, "installedAt": w.created_at,
+                            "internal": w.internal} for w in workspaces],
         })
     return view
 
@@ -375,6 +543,29 @@ async def admin_save(provider: str, payload: ProviderSetup, request: Request, ad
         # off for the whole organisation: everyone's grant is revoked
         await accounts.revoke_provider(db, provider, actor_id=admin.id)
     return await _admin_view(db, provider)
+
+
+class WorkspaceMark(Wire):
+    internal: bool
+
+
+@admin_router.put("/slack/workspaces/{team_id}")
+async def admin_slack_workspace(team_id: str, payload: WorkspaceMark, request: Request,
+                                admin: AdminUser, db: DbSession) -> dict[str, Any]:
+    """Marks a workspace the organisation's own: published agents answer there as for
+    members; in any other workspace only bots approved for outside audiences answer."""
+    row = await db.get(SlackWorkspace, team_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_installed")
+    row.internal = payload.internal
+    db.add(row)
+    accounts.audit(db, admin.id, "integration.settings", "slack",
+                   detail=f"workspace:{team_id}:{'internal' if payload.internal else 'outside'}",
+                   metadata={"provider": "slack", "workspace": team_id,
+                             "internal": payload.internal},
+                   ip=client_ip(request), user_agent=request.headers.get("User-Agent", ""))
+    await db.commit()
+    return await _admin_view(db, config.SLACK)
 
 
 @admin_router.delete("/slack/workspaces/{team_id}")
