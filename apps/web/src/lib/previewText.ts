@@ -16,7 +16,7 @@ export function previewSentence(raw: string | null | undefined): string {
     .trim()
   // one verb for every document sentence
   text = text.replace(/문서로 만들었습니다/g, '문서로 작성했습니다')
-  const end = text.search(/[.!?。]\s|다\.\s/)
+  const end = text.search(/[.!?。](?:\s|$)/)
   if (end >= 0) text = text.slice(0, end + 1)
   return text.length > 90 ? `${text.slice(0, 89)}…` : text
 }
