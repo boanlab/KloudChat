@@ -3058,6 +3058,7 @@ V4.1 Flash at high effort by the owner's decision of 2026-11-14:
 | calc, code, long, reasoning, current | DeepSeek V4.1 Flash | strict Flash (no search for current) | high | hard turns: thinking Flash matched (8.3–8.5) but sometimes left nothing; DeepSeek searches and cites best (8.7 vs Flash 6.3) |
 | document | Qwen3.8 27B | strict 27B | default | 6.0 free vs GLM-5.3 6.7 at ~800 credits |
 | material (a row, not a class) | — (the class's own row) | — (the class's own row) | high | moves nothing by default: on the re-run strict DeepSeek scored 7.6 vs thinking Flash 7.7 over files (8.2 with passback) at ~50 s more to the first text |
+| complex_document (a row, not a class) | self-hosted DeepSeek V4 Flash (`local/`) | strict DeepSeek V4 Flash | high | form-following with the 27B was unreliable (label overwrites, wrong cells, tool-limit hits); see "Complex documents" below |
 | escalation | DeepSeek V4.1 Flash | strict DeepSeek V4 Flash | high | never empty; 9/10 where thinking Flash left nothing; strict 「틀렸어, 다시」 6.7 vs Flash 6.2 |
 
 The strict `escalation` pick comes from the owner's decision of 2026-11-14,
@@ -3091,6 +3092,62 @@ to the `material` row (`route.row`), in a column where that row names a model, e
 (`simple`), a document and a retry (`escalation`), which keep their rows; the class stays what
 the request is. By default neither column names a model, so nothing moves (an override row's
 empty column keeps the class's row; the admin may fill or empty either column). 빠르게 still sends the turn to the `chat` row, 깊게 to `escalation`.
+
+**Complex documents (the `complex_document` row).** Documents are routed by what they ask of
+the writer, not only by the surface (owner decision 2026-11-15: Super Agent is the default, so
+complex document work goes to DeepSeek). The row is a proper table row like `material`: an
+override row (`OVERRIDE_ROWS`), editable per column and effort in 설정 › 시스템 › 라우팅
+(「복잡한 문서」), defaults `local/deepseek-v4-flash` / `strict-local/deepseek-v4-flash` at
+effort `high` (the gateway spills `local/` to the external twin only when the self-hosted server
+is saturated; `strict-local/` never leaves). An empty column moves nothing there. A document
+turn (a report or deck session, including its HWPX, Word and PowerPoint files, which run as chat
+turns) is complex when any of these holds, read from signals the app already computes
+(`sessions._document_signals`, `super_agent.complexity`; every threshold is a constant in
+`super_agent.py`):
+
+| Reason (`complexReason`) | Signal | Threshold |
+|---|---|---|
+| `form` | a form file is followed: attached, or the conversation's, agent's or project's saved one (`form_files`), of kind pptx, docx or hwpx | any |
+| `coverage` | an each-item request (`coverage.asks_each`) over source files, or simply many source files (attached, project and agent files counted once) | 2 files with the ask (the `Coverage` stage's floor); 6 files without |
+| `tools` | a deck asked for a chart over an attached data table (native chart from data), or for a paper's own figures with a PDF at hand (`_ASKS_FIGURES`, `pdf_figures`) | either |
+| `long_source` | characters of text in those source files | `LONG_CONTEXT_BYTES // 3` (20,000) |
+
+A simple document stays on the `document` row (27B, thinking default). The same rule covers the
+office files (HWPX, Word, PowerPoint), which run as chat turns: the report and deck screens always
+send the model they show, so for those conversations the stored mode decides (`super_turn` ignores
+`payload.model` there; a model picked by hand already made the conversation `manual`), and the
+turn is classified as a document turn (`Turn.kind` is the conversation's), so only the
+`document` and `complex_document` rows apply, never the hard-class rows. Before this, an
+office-file turn on Super Agent skipped the router and ran on the screen's default model. The route note carries
+`row: complex_document`, `complexReason` and `complexSignals`; the answer's processing row reads
+「이번 답: DeepSeek V4 Flash · 복잡한 문서 · 양식을 따름」. A model picked by hand is never moved.
+Revisions keep the first version's writer and row (`_first_document_route`): a complex document
+stays on DeepSeek whatever its revision brings, and a 27B document is not moved by a later form.
+The reasoning chip steers the row's effort only: 빠르게 turns thinking off but keeps DeepSeek (a
+form must not silently go back to the 27B, which breaks it), 깊게 raises it to the highest level.
+When the row's model cannot write the turn (failed lately in `model_health`, not served, window
+too small) the pick goes to the `document` row's model, not the table's fallback list, and the
+note says `skipped`.
+
+*Same-turn fallback.* The fallback writer is the `document` row's model in the turn's column
+(`super_agent.complex_fallback`, inside the boundary: the strict 27B for `super_strict`), thinking
+as that row says. A chat-path turn (office files) takes it through `agent.run_turn(fallback_model=…)`
+(the machinery above: refused, dropped stream, 240 s silent; the 「깊이 생각하는 중」 row shows while
+it thinks). A report or deck pipeline makes whole-answer calls (`report._complete`,
+`deck._complete`, `page._complete`) that go through `complex_turn.run_call`: a call that fails or
+takes longer than `complex_document_call_sec` (480 s) is asked again on the fallback, the failed
+model is marked in `model_health`, and the turn's later calls go straight to the fallback. The
+pipeline turn shows 「깊이 생각하는 중」 from its start until its first output.
+
+*Slots.* The DeepSeek server holds 8 sequences and chat shares them, so at most
+`COMPLEX_DOCUMENT_SLOTS` (default 2, 0 = no cap) complex turns on a self-hosted model run at
+once across all API replicas. A slot is a Postgres session-level advisory lock
+(`complex_turn.LOCK_BASE + i`) on a connection of its own, so a replica that dies releases its
+slots with its connection; without Postgres (tests) the cap is per process. The stream
+(`_survive_disconnect` → `_with_slot`) takes a slot before the turn starts, shows 「대기 중 · n번째」
+(n counts the waiting turns of this replica) while it waits, and gives the slot back however the
+turn ends. After `COMPLEX_DOCUMENT_WAIT_SEC` (120 s) without a slot the fallback writes the turn
+(`route.fallbackReason: queue`). There is no migration: the caps are environment settings.
 
 **Failure inside a strict turn.** DeepSeek V4 Flash is served across both GB10 nodes
 (tensor-parallel 2), so either node down takes it away, and the gateway refuses strict aliases
@@ -3144,8 +3201,9 @@ choice made before a conversation exists goes with its creation.
   data or internal material) at effort `high`, skipping the classifier and stickiness; when
   that model cannot answer the turn (not served, not allowed) the class's own pick answers at
   effort `high`. A report or deck keeps its writer: the `document` row's model for a first
-  version, the first writer for revisions (`_first_document_model`), under every choice; `deep`
-  raises only its effort, to the highest level it takes (`highest`), and `fast` sets `none`.
+  version (or the `complex_document` row's, for a complex one), the first writer for revisions
+  (`_first_document_model`), under every choice; `deep` raises only its effort, to the highest
+  level it takes (`highest`), and `fast` sets `none`.
 - **A model picked by hand** (`super_agent.manual_effort`): `auto` sends nothing (the
   deployment's thinking switches), `fast` sends effort `none` (the lowest level where reasoning
   is mandatory), `deep` the highest level the model offers (`reasoning.effort` = its last

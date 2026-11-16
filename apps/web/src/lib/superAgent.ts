@@ -86,7 +86,7 @@ export function superLaneTitle(mode: 'super' | 'super_strict'): string {
 }
 
 /** Rows that move a turn rather than name a class's own model: empty keeps the class's row. */
-export const SUPER_OVERRIDE_ROWS: ReadonlySet<SuperAgentClass> = new Set(['material'])
+export const SUPER_OVERRIDE_ROWS: ReadonlySet<SuperAgentClass> = new Set(['material', 'complex_document'])
 
 /** What a task class reads as under an answer and in the admin table. */
 export const SUPER_CLASS_LABEL: Record<SuperAgentClass, string> = {
@@ -100,6 +100,7 @@ export const SUPER_CLASS_LABEL: Record<SuperAgentClass, string> = {
   reasoning: '복잡한 추론',
   document: '보고서·슬라이드',
   material: '내부 자료 작업',
+  complex_document: '복잡한 문서',
   escalation: '다시 요청·빈 답 뒤',
 }
 
@@ -113,6 +114,14 @@ export const SUPER_EFFORT_LABEL: Record<SuperAgentRoute['effort'], string> = {
   highest: '추론 최대',
 }
 
+/** Why a document counted as complex, as the answer's line says it. */
+const COMPLEX_REASON_LABEL: Record<NonNullable<SuperAgentRoute['complexReason']>, string> = {
+  form: '양식을 따름',
+  coverage: '자료를 모두 다룸',
+  tools: '차트·그림 작업',
+  long_source: '긴 자료',
+}
+
 /**
  * 「이번 답: Qwen3.8 Flash · 간단한 질문」 and the why behind it (title text).
  * `label` names the model that answered (privacy routing may have moved it).
@@ -123,7 +132,9 @@ export function superRouteLabel(
   t: (s: string) => string,
 ): { label: string; title: string } {
   const answered = modelLabel(route.fallbackModel ?? route.boundaryModel ?? route.selectedModel)
-  const why = [t(SUPER_CLASS_LABEL[route.taskClass] ?? route.taskClass)]
+  const complex = route.row === 'complex_document'
+  const why = [t(SUPER_CLASS_LABEL[complex ? 'complex_document' : route.taskClass] ?? route.taskClass)]
+  if (complex && route.complexReason) why.push(t(COMPLEX_REASON_LABEL[route.complexReason] ?? route.complexReason))
   if (route.row === 'material') why.push(t('내부 자료라 자료에 강한 모델'))
   if (route.source === 'escalated') why.push(t('더 강한 설정으로 다시'))
   else if (route.source === 'sticky') why.push(t('앞 답과 같은 모델'))
@@ -133,7 +144,12 @@ export function superRouteLabel(
   if (route.strictReason === 'personal_data') why.push(t('개인정보 감지로 내부 모델'))
   else if (route.strictReason === 'internal_data') why.push(t('내부 자료라 내부 모델'))
   if (route.fallbackModel) {
-    why.push(t('{model} 모델이 응답하지 않아 이어 씀').replace('{model}', modelLabel(route.selectedModel)))
+    why.push(
+      t(route.fallbackReason === 'queue' ? '{model} 모델 차례가 길어 대신 씀' : '{model} 모델이 응답하지 않아 이어 씀').replace(
+        '{model}',
+        modelLabel(route.selectedModel),
+      ),
+    )
   } else if (route.skipped) {
     why.push(t('{model} 모델은 최근 응답하지 않아 건너뜀').replace('{model}', modelLabel(route.skipped)))
   }

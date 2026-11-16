@@ -163,6 +163,7 @@ export type SuperAgentClass =
   | 'reasoning'
   | 'document'
   | 'material'
+  | 'complex_document'
   | 'escalation'
 
 /** What a session produced, as measurements so the row can be phrased in the reader's language. */
@@ -328,9 +329,12 @@ export interface SuperAgentRoute {
   boundaryModel?: string
   /** The writer failed mid-turn and this strict-local model carried the turn on. */
   fallbackModel?: string
-  fallbackReason?: 'timeout' | 'busy' | 'error' | 'failed'
+  fallbackReason?: 'timeout' | 'busy' | 'error' | 'failed' | 'queue'
   /** The row's model failed lately and the pick went past it. */
   skipped?: string
+  /** Why a complex document turn moved to the `complex_document` row (`complexSignals[0]`). */
+  complexReason?: 'form' | 'coverage' | 'tools' | 'long_source'
+  complexSignals?: ('form' | 'coverage' | 'tools' | 'long_source')[]
   strictReason?: 'personal_data' | 'internal_data'
   classifierModel?: string
   classifierConfidence?: number
@@ -660,6 +664,8 @@ export interface Step {
   summarised?: boolean
   /** A write to Google Drive or Slack waiting for the person's confirmation card. */
   confirm?: { actionId: string; kind: string; provider: 'google' | 'slack' }
+  /** Place in line of a complex document turn waiting for a slot on the in-house server. */
+  queuePosition?: number
 }
 
 /** An answer a rerun replaced; kept so the reader can page back to it. */

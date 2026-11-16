@@ -361,3 +361,61 @@ test('in a narrow column the composer shortens the model name inside its row', a
   expect(pick!.x + pick!.width).toBeLessThanOrEqual(sent!.x + 0.5)
   expect(sent!.x + sent!.width).toBeLessThanOrEqual(box.x + box.width + 0.5)
 })
+
+test('복잡한 문서 줄은 표에 보이고, 모델을 바꿔 저장하면 그 줄만 고친다 @phone', async ({ page }) => {
+  const state = await mockApp(page)
+  await page.goto('/admin/system/routing')
+  const row = page.getByRole('row', { name: /복잡한 문서/ })
+  await expect(row).toBeVisible()
+  await expect(page.getByLabel('복잡한 문서 · Super Agent 모델')).toHaveValue('local/flash')
+  await expect(page.getByLabel('복잡한 문서 · strict-local 모델')).toHaveValue('strict-local/flash')
+  await expect(page.getByLabel('복잡한 문서 · 추론 강도')).toHaveValue('high')
+  // one short line says what the row is for
+  await expect(page.getByText('양식을 따르거나 자료가 많은 문서는 「복잡한 문서」 줄의 모델이 쓰고')).toBeVisible()
+  // like 「내부 자료 작업」, an empty column is allowed: the row then moves nothing there
+  await expect(page.getByLabel('복잡한 문서 · Super Agent 모델').locator('option', { hasText: '작업 종류의 모델 그대로' })).toHaveCount(1)
+  await page.getByLabel('복잡한 문서 · 추론 강도').selectOption('low')
+  await page.getByRole('button', { name: 'Super Agent 설정 저장' }).click()
+  await expect(page.getByText('저장했습니다.')).toBeVisible()
+  expect(state.governancePuts.at(-1)).toMatchObject({
+    superAgentRules: { complex_document: { effort: 'low' } },
+  })
+})
+
+test('복잡한 문서 답은 줄에 경로와 이유를 말한다 @phone', async ({ page }) => {
+  await mockApp(page, 'super', {
+    mode: 'super', taskClass: 'document', source: 'document', reasonCode: 'document_surface',
+    selectedModel: 'local/flash', effort: 'high', pick: 'rule', tools: 'full', routerVersion: 'v',
+    row: 'complex_document', complexReason: 'form', complexSignals: ['form'],
+  })
+  await page.goto(`/s/${sessionId}`)
+  await setWebSearch(page, '끔')
+  await page.getByLabel('프롬프트 입력').fill('이 양식에 맞춰 보고서를 채워 줘')
+  await page.getByLabel('프롬프트 입력').press('Enter')
+  if ((page.viewportSize()?.width ?? 1440) < 640) {
+    await page.getByRole('button', { name: /처리 내역 \d+건/ }).click()
+  }
+  await expect(page.getByText('이번 답: Mock · Flash · 복잡한 문서 · 양식을 따름')).toBeVisible()
+})
+
+test('복잡한 문서가 차례를 기다리는 동안 「대기 중 · n번째」 줄을 보이고, 오래 생각하는 동안에도 멈춘 것처럼 보이지 않는다 @phone', async ({ page }) => {
+  await mockApp(page, 'super', {
+    mode: 'super', taskClass: 'document', source: 'document', reasonCode: 'document_surface',
+    selectedModel: 'local/flash', effort: 'high', pick: 'rule', tools: 'full', routerVersion: 'v',
+    row: 'complex_document', complexReason: 'long_source', complexSignals: ['long_source'],
+  }, undefined, {
+    steps: [
+      { category: 'thinking', id: 'complex-queue', label: '대기 중 · 2번째', queuePosition: 2, status: 'running', detail: '복잡한 문서는 자체 서버에서 한 번에 2건만 돌립니다.' },
+      { category: 'thinking', id: 'writer-thinking', label: '깊이 생각하는 중', status: 'running', detail: 'local/flash 모델은 문서를 쓰기 전에 오래 생각합니다' },
+    ],
+  })
+  await page.goto(`/s/${sessionId}`)
+  await setWebSearch(page, '끔')
+  await page.getByLabel('프롬프트 입력').fill('긴 자료로 보고서를 써 줘')
+  await page.getByLabel('프롬프트 입력').press('Enter')
+  if ((page.viewportSize()?.width ?? 1440) < 640) {
+    await page.getByRole('button', { name: /처리 내역 \d+건/ }).click()
+  }
+  await expect(page.getByText('대기 중 · 2번째')).toBeVisible()
+  await expect(page.getByText('깊이 생각하는 중')).toBeVisible()
+})

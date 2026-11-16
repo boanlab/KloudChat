@@ -67,7 +67,9 @@ class _Db(_NoWriteDb):
 
 async def _turn(monkeypatch, text: str, *, mode: str = "super", history: list | None = None,
                 policy: Governance | None = None, project: str | None = None,
-                classify: str | None = None, web_search=False, answer_stub=None) -> dict:
+                classify: str | None = None, web_search=False, answer_stub=None,
+                office: SessionKind | None = None, payload_model: str | None = None,
+                doc: sa.DocSignals | None = None) -> dict:
     def no_network(*_args, **_kwargs):
         pytest.fail("unexpected network access")
 
@@ -80,6 +82,9 @@ async def _turn(monkeypatch, text: str, *, mode: str = "super", history: list | 
     monkeypatch.setattr(settings_store, "all_values", no_stored_settings)
     user = User(email="p@example.test", password_hash="h", name="P", monthly_credits=10_000)
     session = ChatSession(user_id=user.id, model="", routing_mode=mode, project_id=project)
+    if office is not None:
+        # a report or deck conversation whose office file is open: the turn runs as a chat turn
+        session.kind, session.artifact_id = office, "office-file"
     await _patch_guard_dependencies(monkeypatch, session=session, models=CATALOGUE, blocks=[])
     db = _Db(session, user)
     calls: list[dict] = []
@@ -129,6 +134,17 @@ async def _turn(monkeypatch, text: str, *, mode: str = "super", history: list | 
         return "http://answer.invalid", "answer-key"
 
     monkeypatch.setattr(sessions_router.answer_plan, "wanted", lambda *_args: False)
+    if office is not None:
+        async def office_file(*_args, **_kwargs):
+            return object()
+
+        async def signals(*_args, **_kwargs):
+            return doc
+
+        monkeypatch.setattr(sessions_router, "_office_report", office_file)
+        # the office file is the document: no outline or question card first
+        monkeypatch.setattr(sessions_router, "_plans_first", lambda *_args: False)
+        monkeypatch.setattr(sessions_router, "_document_signals", signals)
     monkeypatch.setattr(sessions_router, "_history", history_rows)
     monkeypatch.setattr(sessions_router.governance, "current_for_egress", current)
     monkeypatch.setattr(sessions_router.super_agent, "classify_with_model", classify_stub)
@@ -145,7 +161,8 @@ async def _turn(monkeypatch, text: str, *, mode: str = "super", history: list | 
     monkeypatch.setattr(sessions_router, "_enrich_memory", nothing)
 
     response = await sessions_router.send_message(
-        session.id, SendMessage(content=text, web_search=web_search), _request(), user, db)
+        session.id, SendMessage(content=text, web_search=web_search, model=payload_model),
+        _request(), user, db)
     if not hasattr(response, "body_iterator"):
         return {"response": response, "calls": calls, "db": db, "classifier": classifier_calls}
     events = [json.loads(chunk.removeprefix("data: ")) async for chunk in response.body_iterator]

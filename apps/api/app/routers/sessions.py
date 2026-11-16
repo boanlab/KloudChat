@@ -108,7 +108,9 @@ from app.services import (
     calculation_policy,
     chart_code,
     check_skills,
+    complex_turn,
     conversation_summary,
+    coverage,
     date_rules,
     design_templates,
     docx_doc,
@@ -1572,6 +1574,7 @@ def _turn_reasoning_fields(
     rescue: dict | None = None,
     rescue_effort: str = "default",
     fallback: dict | None = None,
+    fallback_effort: str | None = None,
 ) -> tuple[dict[str, dict[str, Any]] | None, dict[str, Any]]:
     """`(fields by model, note)`: the writer's reasoning fields for `thinking.TURN_REASONING`
     (None leaves the deployment's) and what the answer's line says (`routing.reasoning`).
@@ -1580,7 +1583,7 @@ def _turn_reasoning_fields(
     깊게 the writer cannot act on is marked `unsupported` rather than shown as a level."""
     if super_route is not None:
         fields = _super_reasoning(model, str(super_route.get("effort") or "default"), rescue,
-                                  rescue_effort, fallback)
+                                  rescue_effort, fallback, fallback_effort)
     else:
         effort = super_agent.manual_effort(mode, model)
         wanted = super_agent.reasoning_fields(str(model["id"]), effort, model)
@@ -1610,12 +1613,15 @@ def _super_history(history: list[Message]) -> tuple[tuple[str, str, dict | None]
 
 def _super_reasoning(
     model: dict, effort: str, rescue: dict | None, rescue_effort: str,
-    fallback: dict | None = None,
+    fallback: dict | None = None, fallback_effort: str | None = None,
 ) -> dict[str, dict[str, Any]] | None:
     """Effort fields by model for `agent.TURN_REASONING`; None leaves the deployment's. The
-    writer's fallback (`_super_fallback`) carries on at the writer's effort."""
+    writer's fallback (`_super_fallback`) carries on at the writer's effort, or at
+    `fallback_effort` (a complex document's fallback is the `document` row's model, which
+    thinks as that row says)."""
     fields: dict[str, dict[str, Any]] = {}
-    for row, level in ((fallback, effort), (rescue, rescue_effort), (model, effort)):
+    for row, level in ((fallback, fallback_effort or effort), (rescue, rescue_effort),
+                       (model, effort)):
         if row is not None and (wanted := super_agent.reasoning_fields(
                 str(row["id"]), level, row)):
             fields[str(row["id"])] = wanted
@@ -1646,12 +1652,26 @@ def _super_rescue(
 
 def _super_fallback(
     route: dict[str, Any] | None, *, user: User, catalogue: list[dict], writer: dict,
-    strict_local: bool, needs_tools: bool,
+    strict_local: bool, needs_tools: bool, rules_raw: Any = None,
+    kind: str = SessionKind.chat.value,
 ) -> dict | None:
     """Who carries a strict-local Super Agent turn on, in the same turn, when its writer fails
     (refused, unreachable, a broken stream, nothing shown within its patience): the first
     strict fallback (Qwen3.8 Flash) when the writer is another model; never one that may leave."""
-    if route is None or not strict_local:
+    if route is None:
+        return None
+    if route.get("row") == super_agent.COMPLEX_CLASS:
+        # a complex document turn: the `document` row's model behind the complex row's, inside
+        # the turn's boundary (the strict column for a strict-local turn)
+        rules = super_agent.normalise_rules(rules_raw)
+        found = super_agent.complex_fallback(
+            rules, _allowed_models(user, catalogue, kind=kind), writer, kind=kind,
+            strict=strict_local or route.get("mode") == super_agent.SUPER_STRICT,
+            allowed=set(user.allowed_models or []), needs_tools=needs_tools,
+            skip=model_health.unhealthy(),
+        )
+        return found if found is None or not _widens_boundary(found, writer) else None
+    if not strict_local or kind != SessionKind.chat.value:
         return None
     return super_agent.strict_fallback(
         _allowed_models(user, catalogue, kind=SessionKind.chat.value), writer, kind="chat",
@@ -1683,13 +1703,20 @@ async def _material_present(
     return bool(shelf)
 
 
-def _first_document_model(history: list[Message]) -> str | None:
-    """The model that wrote this document session's first version: its revisions keep it."""
+def _first_document_route(history: list[Message]) -> dict[str, Any] | None:
+    """The route note of this document session's first version: its revisions keep its writer
+    (and its row: a complex document stays complex)."""
     for message in history:
         route = (message.routing or {}).get("superAgent") if message.routing else None
         if isinstance(route, dict) and route.get("selectedModel"):
-            return str(route["selectedModel"])
+            return route
     return None
+
+
+def _first_document_model(history: list[Message]) -> str | None:
+    """The model that wrote this document session's first version: its revisions keep it."""
+    route = _first_document_route(history)
+    return str(route["selectedModel"]) if route else None
 
 
 async def _super_route(
@@ -1709,19 +1736,23 @@ async def _super_route(
     pictures: bool = False,
     reasoning_mode: str = super_agent.AUTO,
     integrations: bool = False,
+    doc: super_agent.DocSignals | None = None,
 ) -> tuple[dict, dict[str, Any], str]:
     """Super Agent turn: `(model, route note, effort)`.
 
     Rules first; the short-payload classifier only when they cannot tell (and never with
     personal data in the turn). `super_strict`, internal material and personal data pick from
     the strict-local column, so privacy routing has nothing left to move. The reasoning chip
-    (`reasoning_mode`) steers the row and effort (`super_agent.steer`)."""
+    (`reasoning_mode`) steers the row and effort (`super_agent.steer`). `doc`: what a document
+    turn's signals say (`super_agent.complexity`); a complex one moves to the
+    `complex_document` row, and a document's revisions keep the first version's row."""
     mode = str(getattr(session.routing_mode, "value", session.routing_mode))
     rules = super_agent.normalise_rules(policy.super_agent_rules)
     allowed = set(user.allowed_models or [])
+    #: a document conversation's office-file turn is a document turn whatever its surface
     turn = super_agent.Turn(
         text=content,
-        kind=kind.value,
+        kind=session.kind.value if doc is not None else kind.value,
         history=_super_history(history),
         web_search=web_search if web_search in (True, "auto") else False,
         attachments=bool(attachments),
@@ -1772,10 +1803,22 @@ async def _super_route(
                     classified.task_class, "classifier", "classified",
                     confidence=classified.confidence, signals=decision.signals,
                 )
+    complex_reasons: list[str] = []
+    first_route = _first_document_route(history) if doc is not None else None
+    if first_route is not None:
+        # a revision keeps the first version's writer, and so its row
+        if first_route.get("row") == super_agent.COMPLEX_CLASS:
+            complex_reasons = list(first_route.get("complexSignals") or ["form"])
+    else:
+        complex_reasons = super_agent.complexity(doc)
     row_class, effort = super_agent.steer(rules, decision, reasoning_mode, material=material,
-                                          strict=strict)
+                                          strict=strict, complex_doc=bool(complex_reasons))
+    complex_row = row_class == super_agent.COMPLEX_CLASS
+    if not complex_row:
+        complex_reasons = []
     needs_tools = (decision.task_class not in ("simple", "transform", "document") or tool_bound
-                   or row_class == super_agent.MATERIAL_CLASS)
+                   or row_class == super_agent.MATERIAL_CLASS
+                   or (kind is SessionKind.chat and doc is not None))
     chosen: dict | None = None
     how = "rule"
     sticky_id = (
@@ -1783,10 +1826,13 @@ async def _super_route(
         else str((super_agent._previous_route(turn.history) or {}).get("selectedModel") or "")
         if decision.source == "sticky" else None
     ) if row_class == decision.task_class else None
+    if complex_row and first_route is not None:
+        sticky_id = str(first_route["selectedModel"])
     checks = dict(kind=kind.value, strict=strict, allowed=allowed,
                   context_bytes=turn.context_bytes, needs_tools=needs_tools,
                   needs_vision=pictures)
-    if row_class != decision.task_class and reasoning_mode == super_agent.DEEP:
+    if (row_class == super_agent.ESCALATION_CLASS and row_class != decision.task_class
+            and reasoning_mode == super_agent.DEEP):
         # the escalation row's own model, inside the turn's boundary; where it cannot answer
         # this turn (not served, not this surface's), the class's own pick at effort high
         rule = rules[super_agent.ESCALATION_CLASS]
@@ -1801,12 +1847,25 @@ async def _super_route(
         candidate = model_service.find(catalogue, sticky_id)
         if sticky_id not in skip and super_agent.usable_for(candidate, **checks):
             chosen, how = candidate, "sticky"
+    complex_wanted = (rules[super_agent.COMPLEX_CLASS]["strictModel" if strict else "model"]
+                      if complex_row else "")
     if chosen is None:
         chosen, how = super_agent.pick(
             rules, row_class, catalogue, kind=kind.value, strict=strict,
             allowed=allowed, context_bytes=turn.context_bytes, needs_tools=needs_tools,
             needs_vision=pictures, default=default, skip=skip,
         )
+        if complex_row and how != "rule":
+            # the complex row's model cannot write this turn (failed lately, not served, too
+            # small a window): the `document` row's model does, not the table's fallback list
+            complex_row, complex_reasons = False, []
+            row_class = decision.task_class if decision.task_class == "document" else "document"
+            effort = effort if reasoning_mode != super_agent.AUTO else rules["document"]["effort"]
+            chosen, how = super_agent.pick(
+                rules, row_class, catalogue, kind=kind.value, strict=strict,
+                allowed=allowed, context_bytes=turn.context_bytes, needs_tools=needs_tools,
+                needs_vision=pictures, default=default, skip=skip,
+            )
     if chosen is None and strict and mode != super_agent.SUPER_STRICT:
         # no strict-local model here: privacy routing decides on the ordinary pick
         chosen, how = super_agent.pick(
@@ -1831,7 +1890,7 @@ async def _super_route(
     route = super_agent.route_metadata(
         mode=mode, decision=decision, selected=chosen, effort=effort, how=how,
         classified=classified, classifier_model=classifier_id if classified else None,
-        tools=tools,
+        tools=tools, complex_reasons=complex_reasons,
     )
     if reasoning_mode != super_agent.AUTO:
         route["reasoningMode"] = reasoning_mode
@@ -1839,7 +1898,8 @@ async def _super_route(
         # the row the chip or the material moved the turn to (the class stays what the
         # request is)
         route["row"] = row_class
-    wanted = (rules.get(row_class) or {}).get("strictModel" if strict else "model")
+    wanted = complex_wanted if (complex_wanted and not complex_row) else (
+        rules.get(row_class) or {}).get("strictModel" if strict else "model")
     if wanted and wanted in skip and chosen["id"] != wanted:
         # the row's model failed lately: the pick went past it rather than wait on it
         route["skipped"] = wanted
@@ -1976,6 +2036,58 @@ def _brings_material(content: str) -> bool:
     return len(pasted_material(content or "")) >= 1500
 
 
+async def _document_signals(
+    db: AsyncSession, user: User, session: ChatSession, *, request: str,
+    attachments: list[str] | None, turn_forms: form_files.TurnForms | None,
+    output_format: str | None,
+) -> super_agent.DocSignals:
+    """What a document turn's complexity is read from (`super_agent.complexity`): the form it
+    follows, the source files it works from and their size, whether it asks about each, and
+    the tool-heavy deck asks (a native chart over an attached table, a paper's own figures)."""
+    kinds = set(_form_kinds_of(session.kind, output_format, request))
+    if session.kind is SessionKind.report:
+        if _report_output(output_format or "", request) == "hwp":
+            kinds.add("hwpx")
+        opened = await db.get(Artifact, session.artifact_id) if session.artifact_id else None
+        if opened is not None:
+            kinds.add({ArtifactKind.hwp: "hwpx", ArtifactKind.docx: "docx"}.get(opened.kind, ""))
+    elif session.kind is SessionKind.slides and session.artifact_id:
+        opened = await db.get(Artifact, session.artifact_id)
+        if opened is not None and opened.kind is ArtifactKind.pptx:
+            kinds.add("pptx")
+    slots = session.form_files or {}
+    agent = await db.get(WorkspaceAgent, session.agent_id) if session.agent_id else None
+    project = await db.get(Project, session.project_id) if session.project_id else None
+    forms = []
+    for kind in sorted(kinds - {""}):
+        saved = slots.get(kind) != "" and (
+            (agent is not None and (agent.form_files or {}).get(kind))
+            or (project is not None and (project.form_files or {}).get(kind)))
+        if kind in ((turn_forms.forms if turn_forms else None) or {}) or slots.get(kind) or saved:
+            forms.append(kind)
+    rows: list[StoredFile] = []
+    if attachments:
+        rows = list((await db.exec(select(StoredFile).where(
+            col(StoredFile.id).in_(list(attachments)), StoredFile.user_id == user.id))).all())
+    shelf, _ = await _knowledge_shelf(db, user, session, None)
+    names = {name for name, _text, _url in shelf}
+    sources = len(names) + sum(1 for row in rows if row.name not in names
+                               and (row.text or not (row.mime or "").startswith("image/")))
+    chars = sum(len(text) for _name, text, _url in shelf) + sum(
+        len(row.text or "") for row in rows if row.name not in names)
+    deck = session.kind is SessionKind.slides
+    has_pdf = any(n.lower().endswith(".pdf") for n in names) or any(
+        r.name.lower().endswith(".pdf") or (r.mime or "").lower() == "application/pdf"
+        for r in rows)
+    return super_agent.DocSignals(
+        forms=tuple(forms), sources=sources, source_chars=chars,
+        asks_each=coverage.asks_each(_ask_of(request)),
+        chart_data=bool(deck and deck_service._CHART_WORDS.search(_ask_of(request))
+                        and _table_attachments(rows)),
+        paper_figures=bool(deck and has_pdf and _ASKS_FIGURES.search(_ask_of(request))),
+    )
+
+
 async def _document_super_route(
     *,
     db: DbSession,
@@ -1989,6 +2101,7 @@ async def _document_super_route(
     history: list[Message],
     request: str,
     reasoning_mode: str = super_agent.AUTO,
+    doc: super_agent.DocSignals | None = None,
 ) -> tuple[dict, bool, dict[str, Any] | None] | JSONResponse:
     """Super Agent's document writer: the table's document model, kept for the whole revision
     chain; strict-local for the strict entry, internal material or personal data."""
@@ -1996,7 +2109,7 @@ async def _document_super_route(
     chosen, route, _effort = await _super_route(
         db=db, user=user, session=session, policy=policy, catalogue=usable, default=model,
         history=history, content=request, kind=session.kind, web_search=False,
-        attachments=attachments, tool_bound=False, reasoning_mode=reasoning_mode,
+        attachments=attachments, tool_bound=False, reasoning_mode=reasoning_mode, doc=doc,
     )
     strict = _strict_model(chosen)
     if (
@@ -2047,6 +2160,7 @@ async def _document_route(
     history: list[Message],
     request: str,
     reasoning_mode: str = super_agent.AUTO,
+    doc: super_agent.DocSignals | None = None,
 ) -> tuple[dict, bool, dict[str, Any] | None] | JSONResponse:
     """Report/deck writer, strict-local flag, route note; internal → strict-local twin."""
     allowed = set(user.allowed_models or [])
@@ -2054,7 +2168,7 @@ async def _document_route(
         return await _document_super_route(
             db=db, user=user, session=session, policy=policy, catalogue=catalogue,
             model=model, blocks=blocks, attachments=attachments, history=history,
-            request=request, reasoning_mode=reasoning_mode,
+            request=request, reasoning_mode=reasoning_mode, doc=doc,
         )
     if (
         policy.internal_data_strict_local
@@ -5558,10 +5672,14 @@ async def _send_message(
         # kept on the conversation like its model: the next turn and a reload start from it
         session.reasoning_mode = _stored_reasoning(payload.reasoning)
     #: Super Agent picks this turn's model (`_super_route`); a turn-level model pick wins
+    #: A report or deck conversation always sends the model its screen shows (`streamReport`,
+    #: `streamDeck`), so for it the conversation's mode decides, not that field: a model
+    #: picked by hand has already made the conversation `manual`. (Before this, a form or other
+    #: office-file turn on Super Agent never reached the router.)
     super_turn = bool(
         kind is SessionKind.chat
         and session.routing_mode in _SUPER_MODES
-        and payload.model is None
+        and (payload.model is None or session.kind in (SessionKind.report, SessionKind.slides))
         and published is None
     )
 
@@ -5694,6 +5812,11 @@ async def _send_message(
                             or integration_tools),
             reasoning_mode=reasoning_mode,
             integrations=bool(integration_tools),
+            # a report or deck written as an office file runs here as a chat turn
+            doc=(await _document_signals(
+                db, user, session, request=content, attachments=payload.attachments,
+                turn_forms=turn_forms, output_format=payload.output_format)
+                 if session.kind in (SessionKind.report, SessionKind.slides) else None),
         )
         requested_model = model
 
@@ -6304,6 +6427,10 @@ async def _send_message(
             db=db, user=user, session=session, policy=policy, catalogue=catalogue_models,
             model=model, blocks=workspace.blocks, attachments=payload.attachments,
             history=history, request=content, reasoning_mode=reasoning_mode,
+            doc=(await _document_signals(
+                db, user, session, request=content, attachments=payload.attachments,
+                turn_forms=turn_forms, output_format=payload.output_format)
+                 if session.routing_mode in _SUPER_MODES else None),
         )
         if isinstance(decided, JSONResponse):
             return decided
@@ -6467,20 +6594,40 @@ async def _send_message(
                       writer=model, strict_local=strict_local)
         if super_route is not None else (None, "default")
     )
-    #: who carries the turn on when its strict-local writer fails mid-turn
+    #: the Super Agent route of a document turn is in its routing note
+    document_route = (document_routing or {}).get("superAgent") if kind is not SessionKind.chat \
+        else None
+    turn_route = super_route if super_route is not None else document_route
+    complex_turn_route = bool(turn_route and turn_route.get("row") == super_agent.COMPLEX_CLASS)
+    #: who carries the turn on when its writer fails mid-turn: a strict-local chat turn's
+    #: Qwen3.8 Flash, a complex document turn's `document` row model
     writer_fallback = (
-        _super_fallback(super_route, user=user, catalogue=catalogue_models, writer=model,
-                        strict_local=strict_local, needs_tools=bool(tools))
-        if kind is SessionKind.chat else None
+        _super_fallback(turn_route, user=user, catalogue=catalogue_models, writer=model,
+                        strict_local=strict_local, needs_tools=bool(tools),
+                        rules_raw=policy.super_agent_rules, kind=kind.value)
+        if kind is SessionKind.chat or complex_turn_route else None
+    )
+    #: the fallback of a complex document thinks as the `document` row says, the chip steering
+    fallback_effort = (
+        {super_agent.FAST: "none", super_agent.DEEP: super_agent.HIGHEST}.get(
+            reasoning_mode,
+            super_agent.normalise_rules(policy.super_agent_rules)["document"]["effort"])
+        if complex_turn_route else None
     )
     #: the writer's reasoning fields and the answer line's note (the chip, the route's effort)
     turn_reasoning, reasoning_note = _turn_reasoning_fields(
-        reasoning_mode, model,
-        super_route if super_route is not None
-        else (document_routing or {}).get("superAgent") if kind is not SessionKind.chat
-        else None,
-        super_rescue, rescue_effort, writer_fallback,
+        reasoning_mode, model, turn_route, super_rescue, rescue_effort, writer_fallback,
+        fallback_effort,
     )
+    if complex_turn_route:
+        # the turn's slot and fallback; its stream takes the slot first (`_survive_disconnect`)
+        complex_turn.PLAN.set(complex_turn.Plan(
+            primary=model["id"], fallback=writer_fallback["id"] if writer_fallback else None,
+            surface="chat" if kind is SessionKind.chat else "document",
+            korean=agent_service._writes_korean(content, []),
+            queued=str(model["id"]).startswith(("local/", "strict-local/"))))
+    else:
+        complex_turn.PLAN.set(None)
     if reasoning_note != {"mode": super_agent.AUTO, "effort": "default"}:
         # 자동 with nothing sent is the behaviour before the chip: no note to show
         if privacy_resolution is not None:
@@ -7529,12 +7676,54 @@ async def _heartbeat(events: AsyncIterator[str]) -> AsyncIterator[str]:
 def _survive_disconnect(events: AsyncIterator[str]) -> AsyncIterator[str]:
     """Turn response: survives a departed reader, heartbeats while silent, route record first;
     owns the request's turn claim from here (kept fresh, released at the end)."""
+    if (plan := complex_turn.PLAN.get()) is not None and plan.queued and complex_turn.capped():
+        # a complex document turn on the self-hosted server takes one of its few slots first
+        events = _with_slot(plan, events)
     if (record := _ROUTE.get()) is not None:
         _ROUTE.set(None)
         events = _routed(record, events)
     claim = _TURN_CLAIM.get()
     _TURN_CLAIM.set(None)
     return _heartbeat(_detached(events, claim))
+
+
+#: what a document pipeline's first real output is: the long think is over
+_DOCUMENT_OUTPUT = frozenset({"section", "slide", "delta", "artifact", "report", "text", "done",
+                              "error"})
+
+
+async def _with_slot(plan: complex_turn.Plan, events: AsyncIterator[str]) -> AsyncIterator[str]:
+    """Holds a complex document turn until it has a slot (「대기 중 · n번째」), runs it, and gives
+    the slot back however it ends. A report or deck pipeline then shows 「깊이 생각하는 중」
+    until its first output (a chat turn's own loop shows it)."""
+    thinking_open = False
+    try:
+        async for step in complex_turn.wait_for_slot(plan):
+            yield chat_service.sse(step)
+        if plan.surface == "document" and not plan.use_fallback and plan.fallback:
+            thinking_open = True
+            yield chat_service.sse({
+                "type": "step", "category": "thinking", "id": "writer-thinking",
+                "label": "깊이 생각하는 중", "status": "running",
+                "detail": (
+                    f"{plan.primary} 모델은 문서를 쓰기 전에 오래 생각합니다(보통 1~3분). "
+                    f"응답하지 않으면 {plan.fallback} 모델이 이어 씁니다" if plan.korean else
+                    f"{plan.primary} thinks at length before it writes (usually 1-3 minutes). "
+                    f"If it does not respond, {plan.fallback} carries on")})
+        async for event in events:
+            if thinking_open:
+                try:
+                    kind = json.loads(event.removeprefix("data: ")).get("type")
+                except ValueError:
+                    kind = None
+                if kind in _DOCUMENT_OUTPUT:
+                    thinking_open = False
+                    yield chat_service.sse({
+                        "type": "step", "category": "thinking", "id": "writer-thinking",
+                        "label": "깊이 생각하는 중", "status": "done"})
+            yield event
+    finally:
+        await complex_turn.release(plan)
 
 
 async def _detached(events: AsyncIterator[str],
@@ -7874,6 +8063,15 @@ async def _answer_turn(
     server_abstention = False
     tool_result_answer = False
     length_check: dict | None = None
+    plan = complex_turn.PLAN.get()
+    if (plan is not None and plan.use_fallback and writer_fallback is not None
+            and model["id"] == plan.primary):
+        # no slot in time (`complex_turn.wait_for_slot`): the fallback writes the whole turn
+        model, writer_fallback = writer_fallback, None
+        actual_model = model["id"]
+        if isinstance(note := (routing or {}).get("superAgent"), dict):
+            routing = {**routing, "superAgent": {
+                **note, "fallbackModel": model["id"], "fallbackReason": "queue"}}
 
     # set by the stop button, not a closed socket
     stopping = asyncio.Event()

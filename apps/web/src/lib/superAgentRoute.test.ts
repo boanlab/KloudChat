@@ -30,3 +30,25 @@ describe('superRouteLabel on the material row', () => {
     expect(superRouteLabel(route, label, t).label).toContain('DeepSeek V4 Flash 모델은 최근 응답하지 않아 건너뜀')
   })
 })
+
+describe('superRouteLabel on the complex document row', () => {
+  const doc: SuperAgentRoute = {
+    ...base, taskClass: 'document', source: 'document', reasonCode: 'document_surface', row: 'complex_document',
+    complexReason: 'form', complexSignals: ['form'],
+  }
+  it('names the row and why the document counted as complex', () => {
+    expect(superRouteLabel(doc, label, t).label).toBe('이번 답: DeepSeek V4 Flash · 복잡한 문서 · 양식을 따름')
+    expect(superRouteLabel({ ...doc, complexReason: 'coverage' }, label, t).label).toContain('자료를 모두 다룸')
+    expect(superRouteLabel({ ...doc, complexReason: 'tools' }, label, t).label).toContain('차트·그림 작업')
+    expect(superRouteLabel({ ...doc, complexReason: 'long_source' }, label, t).label).toContain('긴 자료')
+  })
+  it('says why another model wrote it', () => {
+    const waited = { ...doc, fallbackModel: 'strict-local/qwen3.8-flash', fallbackReason: 'queue' as const }
+    expect(superRouteLabel(waited, label, t).label).toBe(
+      '이번 답: Qwen3.8 Flash · 복잡한 문서 · 양식을 따름 · DeepSeek V4 Flash 모델 차례가 길어 대신 씀')
+  })
+  it('a simple document reads as before', () => {
+    expect(superRouteLabel({ ...doc, row: undefined, complexReason: undefined }, label, t).label).toBe(
+      '이번 답: DeepSeek V4 Flash · 보고서·슬라이드')
+  })
+})

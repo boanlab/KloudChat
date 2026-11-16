@@ -12,8 +12,8 @@ from typing import Any
 import httpx
 
 from app.core.config import settings
-from app.services import design_templates as templates
 from app.services import (
+    complex_turn,
     grounding,
     hangul,
     model_retry,
@@ -23,6 +23,7 @@ from app.services import (
     thinking,
     usage_fields,
 )
+from app.services import design_templates as templates
 from app.services import outline as plan_rules
 from app.services.context import build_document_messages
 from app.services.design_templates import DesignTemplate
@@ -101,8 +102,8 @@ async def _complete(
 ) -> tuple[str, dict[str, int]]:
     """One non-streaming call with 429 retry and one more try on a dropped connection; same
     contract as `deck._complete`."""
-    return await model_retry.once_more(
-        lambda: _complete_once(model, messages, api_key, max_tokens), "page call")
+    return await complex_turn.run_call(model, lambda used: model_retry.once_more(
+        lambda: _complete_once(used, messages, api_key, max_tokens), "page call"))
 
 
 async def _complete_once(
