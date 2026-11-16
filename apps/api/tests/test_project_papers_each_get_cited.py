@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import asyncio
 
+import pytest
+
 from app.pipeline import report_stages
 from app.pipeline.bundle import Bundle, Part, Request
 from app.pipeline.stage import Context
@@ -173,3 +175,23 @@ def test_a_paper_the_writer_saw_only_as_a_list_entry_is_still_a_project_paper():
     ]
     assert [p.ordinal for p in paper_cites.papers_of(project, sources)] == [1, 2]
     assert paper_cites.file_ids(project, sources) == {1: "a", 2: "b"}
+
+
+@pytest.mark.asyncio
+async def test_a_request_to_cite_the_projects_papers_numbers_the_list_only_ones_too(monkeypatch):
+    from app.pipeline.report_stages import Assemble
+    from app.services import research
+
+    items, _ = _project()
+    items = [{**item, "listed": n > 2} for n, item in enumerate(items)]
+
+    bundle = Bundle(request=Request(text=REQUEST, model="m", api_key="k", project_sources=items))
+    bundle.usage.update(inputTokens=0, outputTokens=0)
+    bundle.material.research = research.Findings()
+    try:
+        async for _ in Assemble().run(bundle, Context()):
+            pass
+    except Exception:  # noqa: BLE001 — only the numbered sources matter here
+        pass
+    names = [s.get("fileName") or s.get("title") for s in bundle.material.research.sources]
+    assert len(names) == len(FILES)

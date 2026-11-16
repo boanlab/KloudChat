@@ -280,6 +280,9 @@ class Assemble(Base):
         project_reference_lines: list[str] = []
         # a file seen only in the 「자료 목록」 is a source when the request asks about each one
         each = coverage.asks_each(req.text)
+        # so is every one when the request cites the project's papers: a long project hands the
+        # writer most papers as list lines only, and a paper with no number cannot be cited
+        each = each or paper_cites.asks_project_papers(req.text)
         for item in req.project_sources or []:
             attached = bool(item.get("attached"))
             if item.get("state") not in ("included", "truncated"):
