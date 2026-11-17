@@ -46,6 +46,16 @@ function declaredRows(info: ModelRunInfo, t: T): RunRow[] {
   return rows
 }
 
+/** Whether the picker's ⓘ is worth showing: a quantization (not 「unknown」), KV cache or engine is
+ *  declared. Context, pin and ZDR alone do not earn an icon. */
+export function hasRunDetail(m: ModelInfo): boolean {
+  const info = m.runInfo
+  if (!info) return false
+  return Boolean(
+    (info.quantization && info.quantization.toLowerCase() !== 'unknown') || info.kvCache || info.engine,
+  )
+}
+
 /** The picker's ⓘ panel: declared run facts, then the context window. */
 export function modelRows(m: ModelInfo, t: T): RunRow[] {
   const rows = declaredRows(m.runInfo ?? {}, t)
