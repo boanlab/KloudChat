@@ -175,8 +175,27 @@ def _credits(usd: float) -> int:
     return max(1, round(usd * settings.credits_per_usd))
 
 
-def _label(model_id: str) -> str:
-    """`anthropic/claude-opus-4.8` → `Claude Opus 4.8`; route prefixes in brackets."""
+#: build/date tail (`-0902`, `-20241022`), active-parameter tag (`-a3b`), instruct tag (`-it`)
+_BUILD_WORD = re.compile(r"[0-9]{4,8}")
+_ACTIVE_PARAMS = re.compile(r"a[0-9]+(?:\.[0-9]+)?b", re.IGNORECASE)
+_SIZE_WORD = re.compile(r"[0-9]+(?:\.[0-9]+)?[bm]", re.IGNORECASE)
+
+
+def _noise(word: str, position: int, last: bool) -> bool:
+    """A word the shown name leaves out: a build/date number, `a3b`, a trailing `it`."""
+    if position == 0:
+        return False
+    low = word.lower()
+    return bool(
+        _BUILD_WORD.fullmatch(word)
+        or _ACTIVE_PARAMS.fullmatch(word)
+        or (last and low == "it")
+    )
+
+
+def _label(model_id: str, tidy: bool = True) -> str:
+    """`anthropic/claude-opus-4.8` → `Claude Opus 4.8`; route prefixes in brackets.
+    `tidy` leaves out build numbers, active-parameter tags and `it` (display only; the id stays)."""
     head, _, tail = model_id.rpartition("/")
     # OpenRouter `:free` = zero cost
     if tail.endswith(":free"):
@@ -184,9 +203,10 @@ def _label(model_id: str) -> str:
     if not tail:
         return model_id
     route = f" ({head})" if head in _ROUTES else ""
-    out = []
-    for word in tail.replace("_", "-").split("-"):
-        if not word:
+    words = [w for w in tail.replace("_", "-").split("-") if w]
+    out: list[str] = []
+    for i, word in enumerate(words):
+        if tidy and _noise(word, i, i == len(words) - 1):
             continue
         # `seedream-5-5` is version 5.5, not "5 5"
         if word.isdigit() and len(word) == 1 and out and out[-1].isdigit():
@@ -196,12 +216,36 @@ def _label(model_id: str) -> str:
             out.append(_BRAND_WORDS[word.lower()])
         elif word.lower() in _ACRONYMS:
             out.append(word.upper())
+        elif tidy and _SIZE_WORD.fullmatch(word):
+            out.append(word.upper())
         elif any(ch.isdigit() for ch in word):
-            # version-ish tokens keep shape (4.8, v2, 122b)
+            # version-ish tokens keep shape (4.8, v2)
             out.append(word[0].upper() + word[1:] if word[0].isalpha() else word)
         else:
             out.append(word.capitalize())
     return (" ".join(out) or model_id) + route
+
+
+def _keep_names_apart(rows: list[dict[str, Any]]) -> None:
+    """Two models must not show one name: a tidied name that collides goes back to the full
+    one, and a still-equal one gets the id's tail."""
+    for step in range(2):
+        groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        for row in rows:
+            if "vendor" in row and "name" in row:
+                groups.setdefault((row["vendor"], row["name"]), []).append(row)
+        for group in groups.values():
+            if len(group) < 2:
+                continue
+            for row in group:
+                tail = row["id"].rpartition("/")[2]
+                if step == 0 and row["name"] == _label(row["id"]):
+                    row["name"] = _label(row["id"], tidy=False)
+                elif step == 1:
+                    row["name"] = f"{row['name']} ({tail})"
+                else:
+                    continue
+                row["label"] = _joined(row["vendor"], row["name"])
 
 
 def _shape(entry: dict[str, Any]) -> dict[str, Any] | None:
@@ -285,7 +329,7 @@ def _shape(entry: dict[str, Any]) -> dict[str, Any] | None:
     supported = info.get("supported_openai_params") or []
 
     # `label` = "Vendor · Model"; `name`/`vendor` kept separate
-    name = override.get("label") or _label(model_id)
+    name = override.get("label") or info.get("kchat_label") or _label(model_id)
     vendor = override.get("vendor") or _vendor(model_id, provider)
     data_boundary, strict_local, privacy_only = _data_boundary(info)
     return {
@@ -469,6 +513,7 @@ async def list_models(force: bool = False) -> dict[str, Any]:
             if shaped and shaped["id"] not in proxied_ids:
                 proxied_ids.add(shaped["id"])
                 proxied.append(shaped)
+        _keep_names_apart(proxied)
         for model in proxied:
             cutoffs = declared_cutoffs.get(model["id"], set())
             model["knowledgeCutoff"] = next(iter(cutoffs)) if len(cutoffs) == 1 else None
