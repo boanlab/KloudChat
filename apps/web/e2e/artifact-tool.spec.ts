@@ -7,7 +7,7 @@ test('페이지를 만들어 달라고 하면 아티팩트가 생긴다', async 
   await signIn(page)
   await page.goto('/new/chat')
   await page
-    .getByRole('button', { name: /qwen|glm|claude|gpt|gemini|grok|deepseek|kimi|hy3|mimo/i })
+    .getByRole('button', { name: /qwen|glm|claude|gpt|gemini|grok|deepseek|kimi/i })
     .first()
     .click()
   // A model that calls tools reliably.

@@ -9,7 +9,7 @@ import httpx
 import pytest
 
 from app.routers.sessions import _document_image_model
-from app.services import imagegen
+from app.services import imagegen, models
 from app.services.credits import charge_for_image
 
 _PNG = (
@@ -22,12 +22,13 @@ def test_an_image_only_model_is_asked_for_the_image_alone() -> None:
     for model_id in (
         "bytedance-seed/seedream-5-0-flash",
         "x-ai/grok-imagine-image-2.0",
-        "recraft/recraft-v4.1",
+        "bytedance-seed/seedream-5-5",
     ):
         assert imagegen.modalities_for(model_id) == ["image"]
         assert imagegen.aspects_for(model_id) == list(imagegen.OFFERED_ASPECTS)
     for model_id in (
         "google/gemini-3-pro-image",
+        "google/gemini-nano-banana-2.1",
         "openai/gpt-5-image",
         "openai/gpt-5.4-image-2",
         "strict-local/z-image-turbo",
@@ -36,6 +37,8 @@ def test_an_image_only_model_is_asked_for_the_image_alone() -> None:
     # GPT-5.4 Image 2 keeps the asked ratio (1280x720 for 16:9 in a test draw)
     assert imagegen.honours_aspect("openai/gpt-5.4-image-2")
     assert not imagegen.modalities_for("openai/gpt-5.4") == ["image", "text"]
+    assert imagegen.honours_aspect("bytedance-seed/seedream-5-5")
+    assert imagegen.honours_aspect("google/gemini-nano-banana-2.1")
 
 
 @pytest.mark.asyncio
@@ -104,3 +107,10 @@ def test_a_strict_local_document_draws_only_on_a_strict_local_model() -> None:
         )
         is other
     )
+
+
+def test_a_version_split_by_a_dash_reads_as_one_number() -> None:
+    assert models._label("bytedance-seed/seedream-5-5") == "Seedream 5.5"
+    assert models._label("bytedance-seed/seed-2-1-turbo") == "Seed 2.1 Turbo"
+    assert models._label("google/gemini-4-argon") == "Gemini 4 Argon"
+    assert models._label("openai/gpt-6.1-terra") == "GPT 6.1 Terra"

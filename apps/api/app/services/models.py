@@ -24,12 +24,13 @@ _IMAGE_TOKENS_DEFAULT = 5450
 _IMAGE_TOKENS = {
     "google/gemini-2.5-flash-image": 1290,
     "google/gemini-3-pro-image": 1290,
+    "google/gemini-nano-banana-2.1": 1290,
     "openai/gpt-5-image-mini": 5450,
     "openai/gpt-5-image": 5450,
     # OpenRouter prices these per 1K image as 4,175 tokens
     "bytedance-seed/seedream-5-0-flash": 4175,
     "x-ai/grok-imagine-image-2.0": 4175,
-    "recraft/recraft-v4.1": 4175,
+    "bytedance-seed/seedream-5-5": 4175,
     # one 16:9 picture: 3,866 output tokens, usage.cost $0.127
     "openai/gpt-5.4-image-2": 3866,
 }
@@ -88,8 +89,6 @@ _VENDORS = {
     "perplexity": "Perplexity",
     "deepseek": "DeepSeek",
     "z-ai": "Z.ai",
-    "tencent": "Tencent",
-    "xiaomi": "Xiaomi",
     "moonshotai": "Moonshot",
     "qwen": "Qwen",
     "meta-llama": "Meta",
@@ -188,6 +187,10 @@ def _label(model_id: str) -> str:
     out = []
     for word in tail.replace("_", "-").split("-"):
         if not word:
+            continue
+        # `seedream-5-5` is version 5.5, not "5 5"
+        if word.isdigit() and len(word) == 1 and out and out[-1].isdigit():
+            out[-1] += f".{word}"
             continue
         if word.lower() in _BRAND_WORDS:
             out.append(_BRAND_WORDS[word.lower()])

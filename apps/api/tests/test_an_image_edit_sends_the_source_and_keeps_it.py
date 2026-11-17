@@ -35,7 +35,7 @@ EDITOR = {
     "dataBoundary": "external", "creditCost": 240, "inputCreditCost": 4, "editsImages": True,
 }
 DRAWER = {
-    "id": "recraft/recraft-v4.1", "kinds": ["image"], "modality": "image",
+    "id": "bytedance-seed/seedream-5-5", "kinds": ["image"], "modality": "image",
     "dataBoundary": "external", "creditCost": 17, "editsImages": False,
 }
 STRICT_DRAWER = {
@@ -64,8 +64,9 @@ def _png(colour: tuple[int, int, int], size: int = 64) -> bytes:
 def test_only_models_checked_to_edit_say_they_edit():
     for model_id in imagegen.EDITING_MODELS:
         assert imagegen.edits_images(model_id, {})
-    # took the picture but did not follow the instruction; self-hosted shims draw from text
-    assert not imagegen.edits_images("recraft/recraft-v4.1", {})
+    # not checked, so off until the gateway declares it; self-hosted shims draw from text
+    assert not imagegen.edits_images("google/gemini-nano-banana-2.1", {})
+    assert not imagegen.edits_images("bytedance-seed/seedream-5-5", {})
     assert not imagegen.edits_images("strict-local/z-image-turbo", {})
     assert not imagegen.edits_images("strict-local/qwen-image-2512", {})
     # the gateway's declaration wins either way

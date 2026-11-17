@@ -207,7 +207,7 @@ export function answerText(page: Page, text: string | RegExp) {
  *  The default prefers 3.5/3.6 because 35b sometimes answers without calling tools. */
 export async function pickToolModel(page: Page, name = /qwen3\.8/i) {
   await page
-    .getByRole('button', { name: /qwen|glm|claude|gpt|gemini|grok|deepseek|kimi|hy3|mimo/i })
+    .getByRole('button', { name: /qwen|glm|claude|gpt|gemini|grok|deepseek|kimi/i })
     .first()
     .click()
   const rows = page.getByRole('button', { name })
