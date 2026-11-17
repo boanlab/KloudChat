@@ -29,6 +29,13 @@ def test_the_groups(monkeypatch):
     assert model_tier.group("deepseek/deepseek-v4.1-flash") == model_tier.SMALL_EXTERNAL
     assert model_tier.group(STRONG_EXT) == model_tier.STRONG_EXTERNAL
     assert model_tier.group("anthropic/claude-x") == model_tier.STRONG_EXTERNAL
+    for m in ("mistralai/mistral-large-4-0", "mistralai/mistral-large-2407",
+              "qwen/qwen3-vl-235b-a22b-instruct"):
+        assert model_tier.group(m) == model_tier.STRONG_EXTERNAL, m
+    for m in ("mistralai/mistral-medium-3-5", "mistralai/mistral-small-2603",
+              "mistralai/ministral-8b", "mistralai/codestral-2508", "mistralai/devstral-2",
+              "mistralai/mistral-nemo", "qwen/qwen3.6-35b-a3b", "qwen/qwen3.5-9b"):
+        assert model_tier.group(m) == model_tier.SMALL_EXTERNAL, m
     # the light-setup switch changes the prompt, not the group
     monkeypatch.setenv("KCHAT_LIGHT_WRITERS", L27)
     assert model_tier.strong(L27) and model_tier.group(L27) == model_tier.SELF_HOSTED
