@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ModelInfo } from '@/types'
-import { answerRows, modelRows, policyText, runChip } from './runInfo'
+import { answerRows, hasRunDetail, modelRows, policyText, runChip } from './runInfo'
 
 const t = (s: string) => s
 const base = { id: 'm', label: 'M', contextWindow: 127_000 } as ModelInfo
@@ -63,5 +63,17 @@ describe('answerRows', () => {
       { label: '추론 노력', value: 'high' },
       { label: '시스템 프롬프트 해시', value: 'abc123' },
     ])
+  })
+})
+
+describe('hasRunDetail', () => {
+  it('needs a quantization, KV cache or engine', () => {
+    expect(hasRunDetail(base)).toBe(false)
+    expect(hasRunDetail({ ...base, runInfo: { providerPinned: 'KT', zdr: false } })).toBe(false)
+    expect(hasRunDetail({ ...base, runInfo: { quantization: 'unknown', providerPinned: 'KT' } })).toBe(false)
+    expect(hasRunDetail({ ...base, runInfo: { quantization: 'fp8', providerPinned: 'Wafer' } })).toBe(true)
+    expect(hasRunDetail({ ...base, runInfo: { quantization: 'NVFP4' } })).toBe(true)
+    expect(hasRunDetail({ ...base, runInfo: { kvCache: 'fp8' } })).toBe(true)
+    expect(hasRunDetail({ ...base, runInfo: { engine: 'vLLM 0.33.0' } })).toBe(true)
   })
 })

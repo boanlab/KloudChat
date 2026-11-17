@@ -15,7 +15,7 @@ import {
 import { useState, type ReactNode } from 'react'
 import { Badge, Dropdown, useMenuClose } from '@/components/ui'
 import { InfoButton, InfoPanel, useInfoPanel } from '@/components/ui/InfoPanel'
-import { modelRows, runChip } from '@/lib/runInfo'
+import { hasRunDetail, modelRows, runChip } from '@/lib/runInfo'
 import { cn, formatTokens } from '@/lib/utils'
 import { effectiveModelId, startingRoutingMode, useStore } from '@/store/useStore'
 import type { ModelInfo, RoutingMode, SessionKind } from '@/types'
@@ -92,20 +92,23 @@ function phoneModelLabel(m: ModelInfo, t: (s: string) => string): string {
 function ModelRow({ m, children }: { m: ModelInfo; children: ReactNode }) {
   const t = useT()
   const panel = useInfoPanel()
+  const detail = hasRunDetail(m)
   return (
     <div ref={panel.wrap} className="relative" data-testid="model-row">
       <div className="flex items-start">
         {children}
-        <InfoButton
-          panel={panel}
-          label={t('{name} 실행 정보').replace('{name}', m.name || m.label)}
-          className="mt-1 mr-0.5"
-          testId="model-info-button"
-        />
+        {detail && (
+          <InfoButton
+            panel={panel}
+            label={t('{name} 실행 정보').replace('{name}', m.name || m.label)}
+            className="mt-1 mr-0.5"
+            testId="model-info-button"
+          />
+        )}
       </div>
       <InfoPanel
         panel={panel}
-        rows={modelRows(m, t)}
+        rows={detail ? modelRows(m, t) : []}
         className="mx-2.5 mb-1.5"
         testId="model-info-panel"
       />

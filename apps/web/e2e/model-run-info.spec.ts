@@ -90,24 +90,37 @@ test('자체 호스팅 모델의 상세는 양자화·KV 캐시·엔진을, 미�
   await expect(panel).toContainText('KV 캐시')
   await expect(panel).toContainText('vLLM 0.33.0')
   const ktRow = page.getByTestId('model-row').filter({ hasText: 'Mock · KT' })
-  await ktRow.getByTestId('model-info-button').click()
-  await expect(ktRow.getByTestId('model-info-panel')).toContainText('미공개')
-  await expect(ktRow.getByTestId('model-info-panel')).toContainText('아니요')
+  // 미공개 only: nothing to detail, so no icon (the pin stays as the chip)
+  await expect(ktRow.getByTestId('model-info-button')).toHaveCount(0)
+  await expect(ktRow.getByTestId('model-run-chip')).toHaveText('제공자: KT')
+})
+
+test('양자화·KV 캐시·엔진 중 하나도 없는 모델에는 ⓘ가 없다 @phone', async ({ page }) => {
+  await openPicker(page)
+  const rows = page.getByTestId('model-row')
+  await expect(rows.filter({ hasText: 'Mock · Plain' }).getByTestId('model-info-button')).toHaveCount(0)
+  await expect(rows.filter({ hasText: 'Mock · KT' }).getByTestId('model-info-button')).toHaveCount(0)
+  await expect(rows.filter({ hasText: 'Mock · Flash' }).getByTestId('model-info-button')).toHaveCount(1)
+  await expect(rows.filter({ hasText: 'Mock · Kimi' }).getByTestId('model-info-button')).toHaveCount(1)
+  // an icon-less row is as tall as its text, aligned with the others
+  const box = (await rows.filter({ hasText: 'Mock · Plain' }).boundingBox())!
+  const other = (await rows.filter({ hasText: 'Mock · KT' }).boundingBox())!
+  expect(Math.abs(box.width - other.width)).toBeLessThan(1)
+  expect(box.x).toBeCloseTo(other.x, 0)
 })
 
 test('키보드로 열고 Esc는 상세만 닫고 바깥 클릭으로도 닫힌다', async ({ page }) => {
   await openPicker(page)
-  const row = page.getByTestId('model-row').filter({ hasText: 'Mock · Plain' })
+  const row = page.getByTestId('model-row').filter({ hasText: 'Mock · Flash' })
   const button = row.getByTestId('model-info-button')
   await button.focus()
   await page.keyboard.press('Enter')
   const panel = row.getByTestId('model-info-panel')
   await expect(panel).toBeVisible()
-  // nothing declared: the context window still shows
   await expect(panel).toContainText('최대 컨텍스트')
   await page.keyboard.press('Escape')
   await expect(panel).toHaveCount(0)
-  await expect(page.getByRole('menuitemradio', { name: /Mock · Flash/ })).toBeVisible()
+  await expect(page.getByRole('menuitemradio', { name: /Mock · Kimi/ })).toBeVisible()
   await expect(button).toBeFocused()
   await button.click()
   await expect(panel).toBeVisible()
