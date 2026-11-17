@@ -73,7 +73,7 @@ test('모델 선택기가 LiteLLM 카탈로그를 보여 준다', async ({ page 
   await fillAuthForm(page, 'login', ADMIN)
   await page.goto('/new/chat')
   // Shape of a live catalogue, not a named model: several entries with per-1k pricing.
-  await page.getByRole('button', { name: /qwen|glm|claude|gpt|gemini|grok|deepseek|kimi|hy3|mimo/i }).first().click()
+  await page.getByRole('button', { name: /qwen|glm|claude|gpt|gemini|grok|deepseek|kimi/i }).first().click()
   const priced = page.getByRole('menu').getByText(/1k당 입력|무료/)
   await expect(priced.first()).toBeVisible()
   expect(await priced.count(), '카탈로그 항목 수').toBeGreaterThan(3)

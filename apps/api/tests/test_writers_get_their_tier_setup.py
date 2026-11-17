@@ -27,6 +27,11 @@ SMALL = "local/qwen3.8-27b"
 
 @pytest.mark.parametrize(("model", "strong"), [
     (STRONG, True), ("qwen/qwen3.8-max-0902", True), ("anthropic/claude-sonnet-5", True),
+    ("google/gemini-4-argon", True), ("google/gemini-4-carbon", True),
+    ("qwen/qwen4-max", True), ("openai/gpt-6.1-terra", True), ("moonshotai/kimi-k3.1-pro", True),
+    # workhorse / small variants stay on the guarded path
+    ("google/gemini-4-hydrogen", False), ("nvidia/nemotron-3.5-lightning", False),
+    ("bytedance-seed/seed-2.0-lite", False), ("bytedance-seed/seed-2-1-turbo", False),
     (SMALL, False), ("strict-local/qwen3.8-27b", False), ("deepseek/deepseek-v4.1-flash", False),
     (None, False),
 ])
