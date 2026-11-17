@@ -69,7 +69,9 @@ async def forget_collection(db: AsyncSession, *, collection: str, commit: bool =
     return False
 
 
-async def forget_collections(db: AsyncSession, collections: list[str], *, budget: float = 8.0) -> None:
+async def forget_collections(
+    db: AsyncSession, collections: list[str], *, budget: float = 8.0
+) -> None:
     """Drops many collections at once for a bulk delete: a few at a time, within `budget`
     seconds in all; whatever fails or is still waiting is kept for the retry loop, so a slow
     index never holds the request (and the person's dialog) for a call per conversation."""
