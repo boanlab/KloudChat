@@ -22,6 +22,8 @@ STRONG_MODELS: tuple[str, ...] = (
     "z-ai/glm-5.3",
     "moonshotai/kimi-k3",
     "x-ai/grok-4",
+    "mistralai/mistral-large",
+    "qwen/qwen3-vl-235b",
 )
 
 #: Names that look strong by prefix but are the small variant.
