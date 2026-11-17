@@ -29,7 +29,6 @@ export function RunDetails({
       <InfoPanel
         panel={panel}
         rows={rows}
-        note={t('시스템 프롬프트는 내용 대신 해시를 보여 줍니다.')}
         testId="run-details-panel"
       />
     </div>

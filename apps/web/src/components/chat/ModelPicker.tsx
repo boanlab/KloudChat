@@ -106,7 +106,6 @@ function ModelRow({ m, children }: { m: ModelInfo; children: ReactNode }) {
       <InfoPanel
         panel={panel}
         rows={modelRows(m, t)}
-        note={t('게이트웨이가 알려 준 값을 그대로 보여 줍니다.')}
         className="mx-2.5 mb-1.5"
         testId="model-info-panel"
       />
@@ -588,7 +587,6 @@ function ModelMenu({
                 </Badge>
               )}
             </span>
-            <span className="mt-0.5 block truncate text-sm text-muted">{m.description}</span>
             {/* Wraps between items on a phone; only a long price wraps inside itself. */}
             <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-faint">
               <span className="flex min-w-0 flex-wrap items-center gap-x-1">
