@@ -45,7 +45,7 @@ interface Listing {
 /** Search reads titles and messages. */
 export function HistoryPage() {
   const t = useT()
-  const { deleteSessions } = useStore()
+  const deleteSessions = useStore((s) => s.deleteSessions)
   const navigate = useNavigate()
   // 「대화 기록에서 보기」 carries its words here; words and page live in the address.
   const [params, setParams] = useSearchParams()

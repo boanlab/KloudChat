@@ -142,6 +142,15 @@ test('모든 대화 삭제는 확인을 거치고, 아티팩트는 남긴다', a
   await expect(dialog).toHaveCount(0)
 
   await page.getByRole('button', { name: '모든 대화 삭제' }).click()
+  // The dialog settles fully opaque, and its backdrop is a plain dim: a full-screen
+  // `backdrop-filter` left slow or half-drawn frames on software-rendered browsers.
+  await expect(dialog).toBeVisible()
+  await expect.poll(() => dialog.evaluate((el) => getComputedStyle(el).opacity)).toBe('1')
+  const blur = await page.evaluate(() => {
+    const dim = document.querySelector('[role="dialog"]')?.previousElementSibling
+    return dim ? getComputedStyle(dim).backdropFilter : 'missing'
+  })
+  expect(blur).toBe('none')
   await dialog.getByRole('button', { name: '모두 삭제' }).click()
   await expect(page.getByText(/개의 대화를 삭제했습니다/)).toBeVisible({ timeout: 30_000 })
 

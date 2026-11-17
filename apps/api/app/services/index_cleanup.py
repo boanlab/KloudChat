@@ -69,6 +69,30 @@ async def forget_collection(db: AsyncSession, *, collection: str, commit: bool =
     return False
 
 
+async def forget_collections(
+    db: AsyncSession, collections: list[str], *, budget: float = 8.0
+) -> None:
+    """Drops many collections at once for a bulk delete: a few at a time, within `budget`
+    seconds in all; whatever fails or is still waiting is kept for the retry loop, so a slow
+    index never holds the request (and the person's dialog) for a call per conversation."""
+    pending = {c for c in collections if c}
+    if not pending:
+        return
+    gate = asyncio.Semaphore(8)
+
+    async def one(collection: str) -> None:
+        async with gate:
+            if await index_client.forget_collection(collection=collection):
+                pending.discard(collection)
+
+    tasks = [asyncio.ensure_future(one(c)) for c in pending]
+    _, unfinished = await asyncio.wait(tasks, timeout=budget)
+    for task in unfinished:
+        task.cancel()
+    for collection in pending:
+        await _remember(db, collection, None)
+
+
 async def retry(db: AsyncSession, now: datetime | None = None) -> int:
     """One pass over pending deletes, oldest try first; returns how many landed. Commits."""
     if not await index_client.available():
