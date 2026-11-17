@@ -81,14 +81,12 @@ export function InfoButton({
 export function InfoPanel({
   panel,
   rows,
-  note,
   className,
   testId,
   extra,
 }: {
   panel: ReturnType<typeof useInfoPanel>
   rows: RunRow[]
-  note?: string
   className?: string
   testId?: string
   extra?: ReactNode
@@ -111,7 +109,6 @@ export function InfoPanel({
         ))}
       </dl>
       {extra}
-      {note && <p className="mt-1.5 text-xs text-faint">{note}</p>}
     </div>
   )
 }

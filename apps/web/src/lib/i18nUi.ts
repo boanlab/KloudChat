@@ -165,8 +165,6 @@ export const EN_UI: Record<string, string> = {
   '제공자: {name}': 'Provider: {name}',
   '{name} 실행 정보': '{name} run details',
   '이번 답 실행 정보': 'Run details of this answer',
-  '게이트웨이가 알려 준 값을 그대로 보여 줍니다.': 'Shows the values the gateway reports, as they are.',
-  '시스템 프롬프트는 내용 대신 해시를 보여 줍니다.': 'The system prompt appears as a hash instead of its text.',
   '양자화 (가중치)': 'Quantization (weights)',
   '양자화 (고정 제공자)': 'Quantization (pinned provider)',
   'KV 캐시': 'KV cache',
