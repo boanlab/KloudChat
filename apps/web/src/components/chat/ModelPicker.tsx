@@ -12,8 +12,10 @@ import {
   WandSparkles,
   Wrench,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Badge, Dropdown, useMenuClose } from '@/components/ui'
+import { InfoButton, InfoPanel, useInfoPanel } from '@/components/ui/InfoPanel'
+import { modelRows, runChip } from '@/lib/runInfo'
 import { cn, formatTokens } from '@/lib/utils'
 import { effectiveModelId, startingRoutingMode, useStore } from '@/store/useStore'
 import type { ModelInfo, RoutingMode, SessionKind } from '@/types'
@@ -84,6 +86,32 @@ function phoneModelLabel(m: ModelInfo, t: (s: string) => string): string {
         ? t('외부')
         : ''
   return place ? `${core} · ${place}` : core
+}
+
+/** A model row with its ⓘ: the row selects, the ⓘ only opens the run details beneath it. */
+function ModelRow({ m, children }: { m: ModelInfo; children: ReactNode }) {
+  const t = useT()
+  const panel = useInfoPanel()
+  return (
+    <div ref={panel.wrap} className="relative" data-testid="model-row">
+      <div className="flex items-start">
+        {children}
+        <InfoButton
+          panel={panel}
+          label={t('{name} 실행 정보').replace('{name}', m.name || m.label)}
+          className="mt-1 mr-0.5"
+          testId="model-info-button"
+        />
+      </div>
+      <InfoPanel
+        panel={panel}
+        rows={modelRows(m, t)}
+        note={t('게이트웨이가 알려 준 값을 그대로 보여 줍니다.')}
+        className="mx-2.5 mb-1.5"
+        testId="model-info-panel"
+      />
+    </div>
+  )
 }
 
 type Lane = {
@@ -530,9 +558,10 @@ function ModelMenu({
           {rows.map((m) => {
             const boundaryOf = boundary(m, t)
             const free = m.creditCost === 0 && m.inputCreditCost === 0
+            const chip = runChip(m, t)
             return (
+        <ModelRow key={m.id} m={m}>
         <button
-          key={m.id}
           type="button"
           role="menuitemradio"
           aria-checked={!unresolvedAgentModel && !isSuperMode(autoLane) && m.id === active.id}
@@ -541,7 +570,7 @@ function ModelMenu({
             closeMenu()
           }}
           disabled={selectionPending}
-          className="flex w-full items-start gap-2.5 rounded-control px-2.5 py-2 text-left transition-colors hover:bg-elevated disabled:cursor-not-allowed disabled:opacity-55"
+          className="flex min-w-0 flex-1 items-start gap-2.5 rounded-control px-2.5 py-2 text-left transition-colors hover:bg-elevated disabled:cursor-not-allowed disabled:opacity-55"
         >
           <span className="mt-0.5 w-4 shrink-0 text-accent">
             {!unresolvedAgentModel && m.id === active.id && <Check size={14} />}
@@ -575,6 +604,11 @@ function ModelMenu({
               {m.contextWindow && (
                 <span className="whitespace-nowrap">{formatTokens(m.contextWindow)} ctx</span>
               )}
+              {chip && (
+                <span className="whitespace-nowrap rounded-control border border-line px-1 text-2xs" data-testid="model-run-chip">
+                  {chip}
+                </span>
+              )}
               {m.supportsVision && <Eye size={11} />}
               {m.supportsTools && <Wrench size={11} />}
               {m.modality === 'image' && m.editsImages && (
@@ -586,6 +620,7 @@ function ModelMenu({
             </span>
           </span>
         </button>
+        </ModelRow>
             )
           })}
         </div>

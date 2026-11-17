@@ -654,6 +654,13 @@
 "lang": "ko",
 "path": "chat/models",
 "title": "모델 선택",
+"heading": "실행 정보 ⓘ",
+"text": "항목 끝의 **ⓘ**를 누르면 그 모델의 실행 정보가 열립니다(마우스를 올려도 열리지 않으며, 키보드는 Enter, 닫기는 바깥을 누르거나 Esc). 양자화(가중치), KV 캐시, 서빙 엔진과 버전, 최대 컨텍스트, 제공자 고정과 ZDR 여부, 허용 대상(예: 양자화 공개·ZDR 엔드포인트)이 보입니다. 게이트웨이가 알려 준 값만 나타나며, 제공자가 양자화를 밝히지 않으면 **미공개**로 표시됩니다. 항목에는 알려진 경우에 한해 짧은 칩 하나(예: `NVFP4`, `제공자: KT`)만 붙습니다.\n\n답 아래의 **ⓘ**(제공자 이름 옆)에는 이번 답을 실제로 쓴 제공자·양자화, 대체 모델로 답했는지, 호출 설정(temperature, top_p, seed, max_tokens, 추론 노력)이 표시됩니다. 시스템 프롬프트는 내용 대신 해시만 보입니다. 이 정보는 답을 볼 수 있는 모든 사용자에게 보입니다."
+},
+{
+"lang": "ko",
+"path": "chat/models",
+"title": "모델 선택",
 "heading": "Super Agent",
 "text": "목록 맨 위에 늘 두 항목이 있습니다. 모델이 아니라 대화에 적용하는 모드이며, 챗·보고서·슬라이드의 새 대화는 Super Agent로 시작합니다(관리자가 다른 기본값을 정했거나, 홈에서 모델을 골랐거나, 모델이 정해진 에이전트의 대화는 그 모델로 시작). 이 계정에서 쓸 수 있는 모델이 표에 없으면 그 항목은 보이지 않고 새 대화는 기본 모델로 시작합니다.\n\n| 항목 | 동작 |\n|---|---|\n| Super Agent | 질문마다 작업 종류(간단한 질문, 번역·요약, 계산, 코드, 최신 정보 검색, 복잡한 추론 등)를 가려 알맞은 모델과 추론 강도를 고릅니다. 개인정보나 내부 자료가 있으면 기관 안의 모델을 씁니다. |\n| Super Agent (strict-local) | 같은 방식으로 고르되 기관 안의 strict-local 모델만 씁니다. 질문과 자료가 밖으로 나가지 않으며 웹 검색은 쓰지 않습니다. |\n\n각 항목 아래에 답 하나에 보통 드는 크레딧 범위가 표시됩니다. 답마다 「이번 답: 모델 · 작업 종류」와 그 이유가 처리 내역에 표시됩니다. 「다시」, 「더 자세히」라고 하면 더 강한 설정으로 다시 답하고, 같은 대화의 짧은 후속 질문과 같은 문서의 수정은 같은 모델이 이어 씁니다.\n\n기관 안의 모델로 답하는 대화에서 「다시」·「틀렸어」 뒤의 답과 기본 모델이 담지 못할 만큼 긴 자료는 기관 안의 큰 모델(DeepSeek V4 Flash)이 씁니다. 이 모델은 답을 쓰기 전에 오래 생각해 첫 글자가 나오기까지 보통 1분 안팎 걸리며, 그동안 처리 내역에 「깊이 생각하는 중」이 표시됩니다. 이 모델이 응답하지 않거나 4분 동안 아무것도 내지 않으면 같은 답 안에서 기관 안의 기본 모델이 이어 쓰고, 처리 내역에 그 사실이 남습니다. 답이 밖으로 나가는 일은 없습니다.\n\n보고서와 슬라이드는 평범하면 기관 안의 기본 모델이 쓰지만, 양식(PowerPoint·Word·HWPX)을 따르거나 자료를 여러 건 모두 다뤄야 하거나 차트·논문 그림을 넣거나 자료가 아주 길면 DeepSeek V4 Flash가 씁니다. 처리 내역에 「이번 답: DeepSeek V4 Flash · 복잡한 문서 · 양식을 따름」처럼 이유가 표시됩니다. 오래 걸려도 괜찮은 작업이라 글자가 나오기까지 몇 분 걸릴 수 있고(「깊이 생각하는 중」), 다른 문서가 이미 두 건 돌고 있으면 「대기 중 · n번째」로 기다립니다. 응답하지 않거나 너무 오래 기다리면 기본 모델이 같은 답 안에서 대신 씁니다."
 },
@@ -2392,6 +2399,13 @@
 "title": "Choosing a model",
 "heading": "What the model list shows",
 "text": "| Label | Meaning |\n|---|---|\n| **strict-local** | The model is confirmed to run only on organization servers and to send nothing outside. Selecting it disables web search, page reading, and connectors. |\n| **self-hosted · strict unverified** | The model runs on organization servers, but it is not confirmed that there is no external fallback path. |\n| **May switch to an external provider** | The model normally runs on organization servers, but it may switch to an external service during an outage. |\n| **External provider** | The model is supplied by an external service, so requests are sent outside the organization. |\n| **Boundary unverified** | No information about the processing location is provided for this model. |\n| Price | Input and output credits per 1,000 tokens, or **Free** |\n| Context | How much can be processed at once |\n| 👁 · 🔧 | Image recognition supported · Tool calling supported |\n\nDepending on how the gateway registers models, one model name can appear as two entries that differ only in the data boundary label. Check the label before you select one.\n\nWhen a **May switch to an external provider** model fails to answer and the gateway's fallback model answers instead, the answer carries an **Answered by external fallback** badge (**Answered by fallback model** when the fallback also runs on organization servers). Hover over the badge to see the model you asked for and the one that answered. The same event is recorded in the administrator's audit log as **Fallback model answered**."
+},
+{
+"lang": "en",
+"path": "chat/models",
+"title": "Choosing a model",
+"heading": "Run details (ⓘ)",
+"text": "Press the **ⓘ** at the end of a model's row to open its run details. Hovering does not open it; with the keyboard use Enter, and close it by pressing outside or Esc. It shows the quantization (weights), KV cache, serving engine and version, maximum context, whether the provider is pinned and whether it is ZDR, and what the model is allowed to run on (for example, disclosed quantization · ZDR endpoint). Only what the gateway reports appears; a quantization the provider does not disclose reads **Not disclosed**. The row itself carries at most one short chip, and only when known (for example `NVFP4` or `Provider: KT`).\n\nThe **ⓘ** under an answer (next to the provider name) shows the provider and quantization that actually wrote it, whether a fallback model answered, and the call settings (temperature, top_p, seed, max_tokens, reasoning effort). The system prompt appears as a hash, never its text. Everyone who can read the answer sees this."
 },
 {
 "lang": "en",

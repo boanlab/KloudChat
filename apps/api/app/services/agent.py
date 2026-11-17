@@ -27,6 +27,7 @@ from app.services import (
     model_tier,
     output_language,
     query_terms,
+    run_info,
     scheduling,
     server_notes,
     settings_store,
@@ -119,12 +120,19 @@ class _Accumulator:
         self.fallback_headers: dict[str, str] = {}
         #: the reasoning itself, kept only where it is passed back (`_passes_reasoning`)
         self.reasoning: list[str] | None = None
+        #: provider that answered, as OpenRouter names it in each chunk (via the gateway)
+        self.provider: str | None = None
+        #: the call's settings and system-prompt hash (`run_info.call_settings`)
+        self.call: dict[str, Any] = {}
 
     def add_chunk(self, chunk: dict[str, Any]) -> str | None:
         """Newly emitted visible text, if any."""
         actual_model = chunk.get("model")
         if isinstance(actual_model, str) and actual_model:
             self.actual_model = actual_model
+        provider = chunk.get("provider")
+        if isinstance(provider, str) and provider.strip():
+            self.provider = provider.strip()[:80]
         if chunk.get("usage"):
             u = chunk["usage"]
             self.usage["inputTokens"] += int(u.get("prompt_tokens") or 0)
@@ -259,6 +267,7 @@ async def _stream_once(
         payload["disable_fallbacks"] = True
 
     acc = _Accumulator()
+    acc.call = run_info.call_settings(payload)
     if _passes_reasoning(model):
         acc.reasoning = []
     try:
@@ -2345,6 +2354,10 @@ async def run_turn(
                 "servedBy": served,
                 "attempts": fallback_watch.attempts(acc.fallback_headers),
             }
+        if hop_model == model and (acc.provider or acc.call):
+            # what this answer ran on and with (the last hop of the answering model wins)
+            yield {"type": "run_info", "routedModel": model, "provider": acc.provider,
+                   "call": acc.call}
 
         prerequisite_batch = False
         if preflight_tool:

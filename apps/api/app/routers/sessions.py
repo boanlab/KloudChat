@@ -148,6 +148,7 @@ from app.services import (
     report_office,
     revise,
     richtext,
+    run_info,
     search_consent,
     server_notes,
     settings_store,
@@ -8280,6 +8281,15 @@ async def _answer_turn(
                 fallback = fallback_watch.record(model, str(event["servedBy"]), listed,
                                                  int(event.get("attempts") or 1))
                 routing = {**(routing or {}), "fallback": fallback}
+                yield chat_service.sse({"type": "privacy_route", **routing})
+                continue
+            elif event["type"] == "run_info":
+                try:
+                    listed = (await model_service.list_models())["models"]
+                except Exception:  # noqa: BLE001 — without the catalogue only the call is shown
+                    listed = []
+                routing = {**(routing or {}), "runInfo": run_info.record(
+                    model, event, listed, str((fallback or {}).get("servedBy") or ""))}
                 yield chat_service.sse({"type": "privacy_route", **routing})
                 continue
             elif event["type"] == "privacy_route" and event.get("source") == "tool_output":

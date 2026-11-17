@@ -55,6 +55,8 @@ type Group = {
 const groups: Record<string, Group> = {
   freshness: { files: ['freshness-abstention.spec.ts', 'grounded-answer.spec.ts'], projects: { default: {} } },
   'edit-resend': { files: ['edit-resend-message.spec.ts'], projects: { desktop: { viewport: desktop.viewport }, mobile: narrow } },
+  // the picker's one-chip run info and its ⓘ details, an answer's 「이번 답」 details
+  'run-info': { files: ['model-run-info.spec.ts'], projects: { desktop: baseProfile('desktop'), phone: touchPhone } },
   'super-agent': {
     files: ['super-agent.spec.ts', 'reasoning-chip.spec.ts'],
     projects: { desktop: baseProfile('desktop'), phone: touchPhone },

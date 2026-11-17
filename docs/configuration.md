@@ -182,6 +182,21 @@ reasoning) and their conversations to Super Agent. The API still accepts them fo
   of one to three ordered upgrade models. An upgrade never widens the data
   boundary of the chosen model and keeps the turn's tools.
 
+Run information is declared the same way and is optional everywhere. `GET /models` adds
+`runInfo` to a model when the gateway declares any of `model_info.kchat_quantization`,
+`kchat_kv_cache`, `kchat_engine` (self-hosted: the weights' quantization, the KV-cache dtype,
+the serving engine and version), `kchat_provider_pinned`, `kchat_zdr` and `kchat_run_policy`
+(external: the pinned provider and its quantization, ZDR, and the policy that applies:
+`open_weight_strict` for disclosed-quantization ZDR endpoints, `zdr_only`). A client that does
+not know the field ignores it, and a model that declares nothing has `runInfo: null`. The
+picker shows one chip at most and the rest behind a pressed ⓘ. Each assistant message records
+`routing.runInfo`: the model that answered, the provider the gateway reported for the call
+(OpenRouter's `provider` field, carried through LiteLLM's stream by the gateway's
+`provider_echo` callback), whether a fallback answered, the declared facts of that model, and
+the call settings the app sent (temperature, top_p, seed, max_tokens, reasoning effort, and a
+short hash of the system prompt, never its text). It is public to whoever can read the
+message; no migration is involved, since it lives in the message's existing routing JSON.
+
 A model's boundary comes from the gateway's catalogue metadata
 (`kchat_data_boundary`): `external`; `hybrid`, a `local/` model that runs on
 the organisation's GPUs first but may fall back to an external twin;
