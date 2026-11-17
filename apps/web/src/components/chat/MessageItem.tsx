@@ -50,6 +50,7 @@ import { PinNoteButton } from '@/components/shelf/PinNoteButton'
 import { useT } from '@/lib/useT'
 import { tokenTotals } from '@/lib/usage'
 import { superRouteLabel } from '@/lib/superAgent'
+import { RunDetails } from './RunDetails'
 import { reasoningLine } from '@/lib/reasoning'
 
 function costRouteDecisionLabel(
@@ -747,6 +748,12 @@ function MessageItemInner({
               </Badge>
               )}
           </div>
+        )}
+        {routing?.runInfo && (
+          <RunDetails
+            run={routing.runInfo}
+            modelLabel={(id) => models.find((model) => model.id === id)?.label ?? id}
+          />
         )}
         {timelineShown && (
           <StepTimeline

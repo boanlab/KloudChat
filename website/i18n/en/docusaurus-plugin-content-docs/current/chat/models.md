@@ -25,6 +25,12 @@ Depending on how the gateway registers models, one model name can appear as two 
 
 When a **May switch to an external provider** model fails to answer and the gateway's fallback model answers instead, the answer carries an **Answered by external fallback** badge (**Answered by fallback model** when the fallback also runs on organization servers). Hover over the badge to see the model you asked for and the one that answered. The same event is recorded in the administrator's audit log as **Fallback model answered**.
 
+## Run details (ⓘ)
+
+Press the **ⓘ** at the end of a model's row to open its run details. Hovering does not open it; with the keyboard use Enter, and close it by pressing outside or Esc. It shows the quantization (weights), KV cache, serving engine and version, maximum context, whether the provider is pinned and whether it is ZDR, and what the model is allowed to run on (for example, disclosed quantization · ZDR endpoint). Only what the gateway reports appears; a quantization the provider does not disclose reads **Not disclosed**. The row itself carries at most one short chip, and only when known (for example `NVFP4` or `Provider: KT`).
+
+The **ⓘ** under an answer (next to the provider name) shows the provider and quantization that actually wrote it, whether a fallback model answered, and the call settings (temperature, top_p, seed, max_tokens, reasoning effort). The system prompt appears as a hash, never its text. Everyone who can read the answer sees this.
+
 ## Super Agent
 
 Two entries are always at the top of the list. They apply to the conversation, not to a model, and new chat, report and slides conversations start on Super Agent (unless the administrator set another default, you picked a model on the home screen, or the conversation's agent has its own model). When the table has no model your account may use, the entry is not shown and new conversations start on the default model.

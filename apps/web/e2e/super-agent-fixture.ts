@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import type { RoutingMode, SuperAgentRoute, TurnReasoning } from '../src/types'
+import type { AnswerRunInfo, RoutingMode, SuperAgentRoute, TurnReasoning } from '../src/types'
 
 /** The Super Agent screens answered by fixtures: models, the picker's offer, one conversation,
  *  and a turn that answers with `route` (and `reasoning` on its line). */
@@ -72,6 +72,8 @@ export async function mockApp(
     /** The catalogue's `defaultRoutingByKind` (설정 › 시스템 › 모델); absent: Super Agent. */
     defaultRouting?: Record<string, 'super' | 'super_strict' | 'manual'>
     projectStrict?: boolean
+    /** What the answer says it ran on (`routing.runInfo`). */
+    runInfo?: AnswerRunInfo
     /** Step events the turn streams before its answer (as the server sends them). */
     steps?: Record<string, unknown>[]
   } = {},
@@ -228,6 +230,7 @@ export async function mockApp(
       dataBoundary: 'hybrid',
       ...(route ? { superAgent: route } : {}),
       ...(options.reasoning ? { reasoning: options.reasoning } : {}),
+      ...(options.runInfo ? { runInfo: options.runInfo } : {}),
     }
     state.sessions = state.sessions.map((s) => ({
       ...s,

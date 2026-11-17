@@ -163,6 +163,30 @@ def _data_boundary(info: dict[str, Any]) -> tuple[str, bool, bool]:
     return boundary, strict, privacy_only
 
 
+def _short(value: Any) -> str | None:
+    return value.strip()[:60] if isinstance(value, str) and value.strip() else None
+
+
+def _run_info(info: dict[str, Any]) -> dict[str, Any] | None:
+    """How the model runs, as the gateway declares it (`kchat_*` in model_info), or None.
+
+    Self-hosted: weights quantization, KV-cache dtype, serving engine. External: the pinned
+    provider, its quantization (`unknown` = not disclosed), ZDR and the policy that applies.
+    Declared metadata only; nothing is guessed.
+    """
+    zdr = info.get("kchat_zdr")
+    out = {
+        "quantization": _short(info.get("kchat_quantization")),
+        "kvCache": _short(info.get("kchat_kv_cache")),
+        "engine": _short(info.get("kchat_engine")),
+        "providerPinned": _short(info.get("kchat_provider_pinned")),
+        "zdr": zdr if isinstance(zdr, bool) else None,
+        "policy": _short(info.get("kchat_run_policy")),
+    }
+    out = {k: v for k, v in out.items() if v is not None}
+    return out or None
+
+
 def contained(info: dict[str, Any]) -> bool:
     """Whether declared metadata makes it strict-local."""
     return _data_boundary(info)[1]
@@ -342,6 +366,7 @@ def _shape(entry: dict[str, Any]) -> dict[str, Any] | None:
         "strictLocal": strict_local,
         "privacyOnly": privacy_only,
         "knowledgeCutoff": _knowledge_cutoff(info),
+        "runInfo": _run_info(info),
         "modality": modality,
         "kinds": kinds,
         # per-call/per-image prices for near-zero-output models

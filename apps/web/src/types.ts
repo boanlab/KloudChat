@@ -81,6 +81,41 @@ export interface UserPage {
 
 type Modality = 'chat' | 'image' | 'audio' | 'video'
 
+/** Declared run facts of a model (`kchat_*` in the gateway's model_info). Every field is optional:
+ *  nothing is shown that was not declared. `quantization: 'unknown'` means the provider does not say. */
+export interface ModelRunInfo {
+  /** Weights (self-hosted) or the pinned endpoint's quantization. */
+  quantization?: string
+  kvCache?: string
+  /** Serving engine and version, e.g. 「vLLM 0.33.0」. */
+  engine?: string
+  /** The one provider (or `A|B`) the model is pinned to. */
+  providerPinned?: string
+  zdr?: boolean
+  /** `open_weight_strict` (disclosed quantization and ZDR endpoint), `zdr_only`, `pinned`. */
+  policy?: string
+}
+
+/** What one answer ran on (`routing.runInfo`): public, shown to whoever can read the answer. */
+export interface AnswerRunInfo extends ModelRunInfo {
+  /** The model that answered (the fallback's, when it failed over). */
+  model?: string
+  /** The provider OpenRouter reports for this call. */
+  provider?: string
+  fallback?: boolean
+  call?: {
+    temperature?: number
+    topP?: number
+    seed?: number
+    maxTokens?: number
+    presencePenalty?: number
+    /** The effort or switch the call was sent with (`high`, `off`, ...). */
+    reasoning?: string
+    /** Short hash of the system prompt; never the prompt. */
+    systemPromptHash?: string
+  }
+}
+
 export interface ModelInfo {
   id: string
   /** "Vendor · Model". */
@@ -113,6 +148,8 @@ export interface ModelInfo {
   /** Credits per 1k input tokens; 0 for non-conversational or self-hosted models. */
   inputCreditCost: number
   contextWindow?: number
+  /** How the model runs, as the gateway declares it; absent where nothing is declared. */
+  runInfo?: ModelRunInfo | null
   /** Trusted catalogue metadata only; absent means the training cutoff is unknown. */
   knowledgeCutoff?: string | null
   supportsVision?: boolean
@@ -367,6 +404,8 @@ export interface PrivacyRouting {
   initialAction?: PrivacyAction | 'strict_local' | 'internal_strict_local' | 'none'
   costRouting?: CostRouting
   superAgent?: SuperAgentRoute
+  /** What this answer ran on: provider, quantization, fallback, call settings (`services/run_info`). */
+  runInfo?: AnswerRunInfo
   /** The asked model failed over and LiteLLM's fallback answered (`services/fallback_watch`). */
   fallback?: {
     requestedModel: string
