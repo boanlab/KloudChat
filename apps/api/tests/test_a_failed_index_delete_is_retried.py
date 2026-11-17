@@ -150,3 +150,22 @@ async def test_the_knowledge_search_leaves_a_gone_files_passage_out(monkeypatch)
     tool = builtin.knowledge_tool([("학칙.pdf", living, None)], collection=KEY)
     found = await tool.run({"query": "휴학 신청"})
     assert "전화로" not in found.content and "학기 개시일" in found.content
+
+
+async def test_a_bulk_drop_keeps_what_failed_or_is_slow_and_does_not_wait_on_it(index, monkeypatch):
+    import asyncio
+
+    slow, fast, down = "s" * 32, "f" * 32, "x" * 32
+
+    async def forget_collection(*, collection):
+        if collection == slow:
+            await asyncio.sleep(30)
+        return collection == fast
+
+    monkeypatch.setattr(index_client, "forget_collection", forget_collection)
+    async with index.local() as db:
+        started = asyncio.get_running_loop().time()
+        await index_cleanup.forget_collections(db, [slow, fast, down], budget=0.2)
+        assert asyncio.get_running_loop().time() - started < 5
+        await db.commit()
+    assert sorted(r.collection for r in await _pending(index)) == sorted([slow, down])

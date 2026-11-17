@@ -4802,9 +4802,7 @@ async def delete_sessions(
     counts["artifacts"] = artifacts_deleted
     gone = await delete_session_files(db, ids) if payload.files else 0
     await forget_session_files(db, ids)
-    for row in rows:
-        if row.index_key:
-            await index_cleanup.forget_collection(db, collection=row.index_key)
+    await index_cleanup.forget_collections(db, [row.index_key for row in rows if row.index_key])
 
     await db.exec(delete(ChatSession).where(col(ChatSession.id).in_(ids)))
     db.add(audit_service.deletion(
