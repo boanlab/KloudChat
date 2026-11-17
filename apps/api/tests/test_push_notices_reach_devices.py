@@ -329,6 +329,20 @@ async def test_event_switches_and_defaults(stack, monkeypatch):
     assert len(seen) == 2
 
 
+def test_the_web_defaults_match_the_server_defaults():
+    import re
+    from pathlib import Path
+
+    from app.models.push import PUSH_EVENTS
+
+    src = next(p for p in Path(__file__).resolve().parents
+               if (p / "apps/web/src/lib/push.ts").exists()) / "apps/web/src/lib/push.ts"
+    block = re.search(r"PUSH_DEFAULTS[^{]*\{(.*?)\n\}", src.read_text(), re.S).group(1)
+    web = {k: v == "true" for k, v in re.findall(r"(\w+):\s*(true|false)", block)}
+    assert web == PUSH_EVENTS
+    assert PUSH_EVENTS["credits"] is True
+
+
 def test_chromes_google_hosted_fcm_addresses_are_accepted_only_on_the_fcm_path():
     assert push.endpoint_allowed("https://jmt17.google.com/fcm/send/abc")
     assert push.endpoint_allowed("https://fcm.googleapis.com/wp/abc")
@@ -341,9 +355,9 @@ def test_the_settings_accept_only_known_events():
     assert Preferences(push_events={"job_done": False}).push_events == {"job_done": False}
     with pytest.raises(ValueError):
         Preferences(push_events={"marketing": True})
-    out = Preferences.model_validate({"pushEvents": {"credits": True},
+    out = Preferences.model_validate({"pushEvents": {"credits": False},
                                       "pushInternalTitles": True})
-    assert out.push_events == {"credits": True} and out.push_internal_titles
+    assert out.push_events == {"credits": False} and out.push_internal_titles
 
 
 async def test_the_credit_warning_goes_once_per_cycle(stack, monkeypatch):
@@ -351,7 +365,6 @@ async def test_the_credit_warning_goes_once_per_cycle(stack, monkeypatch):
     async with local() as db:
         db.add(Device().row())
         user = await db.get(User, "me")
-        user.preferences = {"push_events": {"credits": True}}
         db.add(user)
         await db.commit()
     seen = mock_push(monkeypatch, 201)
@@ -366,6 +379,23 @@ async def test_the_credit_warning_goes_once_per_cycle(stack, monkeypatch):
     # allowance) sends nothing
     assert await push.deliver("me", push.Notice(
         event="credits", title="t", once_key="credits:none")) == 0
+
+
+async def test_an_explicit_off_for_the_credit_warning_is_kept(stack, monkeypatch):
+    _, local = stack
+    async with local() as db:
+        db.add(Device().row())
+        user = await db.get(User, "me")
+        user.preferences = {"push_events": {"credits": False}}
+        db.add(user)
+        await db.commit()
+    seen = mock_push(monkeypatch, 201)
+    async with local() as db:
+        user = await db.get(User, "me")
+        credits.settle(db, user, 950, reason="chat.turn")
+        await db.commit()
+    await push.drain()
+    assert seen == []
 
 
 async def test_a_published_bots_visitor_turn_sends_nothing(stack, monkeypatch):

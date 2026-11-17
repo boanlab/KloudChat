@@ -3,7 +3,7 @@ import { pushApi } from './api'
 import type { Preferences, PushEvent } from '@/types'
 import { currentLang } from './i18n'
 
-/** Settings order; on by default for job results and shared conversations. */
+/** Settings order; on by default for job results, shared conversations and the credit warning. */
 export const PUSH_EVENTS: PushEvent[] = ['job_done', 'job_failed', 'shared', 'review', 'decided', 'issue', 'credits']
 export const PUSH_DEFAULTS: Record<PushEvent, boolean> = {
   job_done: true,
@@ -12,7 +12,7 @@ export const PUSH_DEFAULTS: Record<PushEvent, boolean> = {
   review: false,
   decided: false,
   issue: false,
-  credits: false,
+  credits: true,
 }
 
 export function wantsEvent(prefs: Preferences | undefined, event: PushEvent): boolean {
