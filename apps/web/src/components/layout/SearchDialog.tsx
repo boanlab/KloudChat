@@ -325,14 +325,14 @@ export function SearchDialog() {
 
   return (
     <div className="fixed inset-0 z-[150] flex justify-center p-4 pt-[12vh] max-sm:p-0">
-      <div className="fixed inset-0 bg-black/45 backdrop-blur-[2px]" onClick={close} aria-hidden />
+      <div className="fixed inset-0 bg-black/50" onClick={close} aria-hidden />
       <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label={t('검색')}
         onKeyDown={onKeyDown}
-        className="animate-fade-up relative flex max-h-[70vh] w-full max-w-2xl flex-col overflow-hidden rounded-panel border border-line bg-panel shadow-float max-sm:h-full max-sm:max-h-none max-sm:rounded-none max-sm:border-0"
+        className="animate-dialog-in relative flex max-h-[70vh] w-full max-w-2xl flex-col overflow-hidden rounded-panel border border-line bg-panel shadow-float max-sm:h-full max-sm:max-h-none max-sm:rounded-none max-sm:border-0"
       >
         <div className="flex items-center gap-2 border-b border-line px-4 max-sm:px-3">
           <Search size={16} className="shrink-0 text-faint" aria-hidden />

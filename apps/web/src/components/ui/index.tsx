@@ -379,7 +379,7 @@ export function Modal({
     /* `my-auto`, not `items-center`: a centred item taller than the scroller loses its top. */
     // Above dropdowns (z-[100]): a stray open menu must not take dialog clicks.
     <div className="fixed inset-0 z-[150] flex justify-center overflow-y-auto p-4 max-sm:p-2">
-      <div className="fixed inset-0 bg-black/45 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="fixed inset-0 bg-black/50" onClick={onClose} />
       <div
         ref={panelRef}
         role="dialog"
@@ -388,7 +388,7 @@ export function Modal({
         // Focus fallback for a dialog with no focusable child.
         tabIndex={-1}
         className={cn(
-          'animate-fade-up relative my-auto w-full rounded-panel border border-line bg-panel shadow-float outline-none',
+          'animate-dialog-in relative my-auto w-full rounded-panel border border-line bg-panel shadow-float outline-none',
           width,
         )}
       >

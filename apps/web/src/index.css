@@ -228,6 +228,17 @@ body {
   animation: kc-fade-up 0.24s ease-out both;
 }
 
+/* Dialogs: opacity only, no fill-mode and no transform, so the settled state is plain
+   styling and no compositor layer is left holding a half-drawn frame. */
+@keyframes kc-dialog-in {
+  from {
+    opacity: 0;
+  }
+}
+.animate-dialog-in {
+  animation: kc-dialog-in 0.12s ease-out;
+}
+
 @keyframes kc-blink {
   0%,
   100% {
