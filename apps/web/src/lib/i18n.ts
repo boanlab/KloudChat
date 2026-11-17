@@ -1674,6 +1674,7 @@ const EN: Record<string, string> = {
   '사용할 기능': 'Features',
   '사용자에게 어떤 화면을 열어 둘지 정합니다.': 'Choose which surfaces are available to users.',
   '항상 켜져 있습니다.': 'Always on.',
+  'Super Agent를 API 모델로 열기': 'Offer Super Agent as an API model',
   '생성할 때마다 크레딧이 나갑니다.': 'Each generation spends credits.',
   '생성할 때마다 크레딧이 나갑니다. 동영상은 특히 비쌉니다.':
     'Each generation spends credits — video especially.',
@@ -2513,6 +2514,7 @@ const EN: Record<string, string> = {
   '{name} 자격증명': '{name} credentials',
   '{name} 제거': 'Remove {name}',
   '{name} 폐기': 'Revoke {name}',
+  '{name} 복사': 'Copy {name}',
   '{name} 활성화': 'Enable {name}',
   '{n} 월': '{n} / month',
   '{n} 크레딧': '{n} credits',

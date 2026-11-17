@@ -556,6 +556,8 @@ export interface SystemSettings {
   contact: { email: string; source: 'database' | 'admin' }
   /** Chat always included. */
   enabledKinds: string[]
+  /** Super Agent answers as a model on the API (`kloudchat/super-agent`). */
+  apiSuperAgentEnabled: boolean
   /** Empty `domains`: any; `verifyEmail`: mailed link first. */
   signup: {
     mode: 'open' | 'approval' | 'closed'
@@ -655,6 +657,7 @@ export const authConfig = {
       /** Where 관리자에게 문의 goes. Empty when nobody can be named. */
       contactEmail: string
       enabledKinds: string[]
+      apiSuperAgentEnabled?: boolean
       privacy: {
         externalDataGuard: boolean
         allowUserRawExternal: boolean
@@ -744,6 +747,7 @@ export const adminApi = {
     masterKey?: string
     brandName?: string
     enabledKinds?: string
+    apiSuperAgentEnabled?: string
     backendBaseUrl?: string
     toolsSearchUrl?: string
     toolsFetchUrl?: string

@@ -2466,6 +2466,26 @@ The master key never travels this path, and a call without credentials gets a
 401 from upstream. Responses are relayed chunk by chunk, so streaming passes
 through intact.
 
+**Super Agent as a model.** `POST /llm/v1/chat/completions` with `model`
+`kloudchat/super-agent` or `kloudchat/super-agent-strict-local` is answered by the app
+(`services/super_api.py`, one chat turn per request; reports and slides are not offered).
+The key's owner comes from the gateway's `/key/info` (the owner in the key's metadata, kept
+60 seconds under the key's hash), so no stored secret is decrypted and an unknown key gets
+the gateway's own 401. The whole `messages` list is routed by the same table, classifier,
+picks, efforts and `model_health` skips as a turn in the app, as a chat turn whatever it
+says about documents; `tools` limit the pick to models that call functions; personal data
+moves the ordinary variant to the strict-local column, or masks it where none serves; the
+strict-local variant never leaves (`503 strict_local_unavailable`). The request then goes
+on under the caller's own key with the chosen model and its reasoning fields, once (one
+retry on another model if the gateway answers 5xx before any byte), so budget, allow-list
+and credits are the gateway's and nothing is charged twice. The answer keeps the requested
+`model` and adds `kloudchat.route` (`model`, `row`, `effort`, `strictLocal`, `fallback`);
+a stream carries it once on the usage chunk (or the finishing one) and every response has
+the `X-KloudChat-Route` header. `GET /llm/v1/models` lists the two ids (`owned_by:
+kloudchat`) for accounts that can use them. The switch is `system_settings`
+`api_super_agent_enabled` (default on; 설정 › 시스템 › 기능); off, both ids answer
+`404 model_not_found`.
+
 Calls made with a member's key reach the proxy without passing through a
 turn, so `api_key_usage.watch` reads them back: every five minutes it pulls each
 issued key's rows (revoked keys included) from LiteLLM's `/spend/logs/v2`,

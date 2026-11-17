@@ -20,6 +20,9 @@ class SystemSettingsIn(Wire):
     #: CSV of surfaces (report,slides,image,av); chat always on
     enabled_kinds: str | None = None
 
+    #: "1" on, "0" off: Super Agent as a model on the API
+    api_super_agent_enabled: str | None = None
+
     #: gateway; blank per-feature addresses derived from it
     backend_base_url: str | None = None
     tools_search_url: str | None = None

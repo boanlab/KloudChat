@@ -62,6 +62,9 @@ ENABLED_KINDS = "kinds.enabled"
 OPTIONAL_KINDS = ("report", "slides", "image", "av")
 DEFAULT_ENABLED_KINDS = ("report", "slides")
 
+#: "1"/"0"; unset = on: the `kloudchat/super-agent` model ids on the /llm proxy
+API_SUPER_AGENT_ENABLED = "api_super_agent_enabled"
+
 #: "1"/"0"; unset = on when a reader exists
 OCR_ENABLED = "ocr.enabled"
 #: "both" (engine, then vision for unsure pages), "engine", "vision"
@@ -384,6 +387,12 @@ async def contact_email(db: AsyncSession) -> str:
         )
     ).first()
     return row.email if row else ""
+
+
+async def api_super_agent_enabled() -> bool:
+    """Whether the Super Agent model ids answer on the /llm proxy (default on)."""
+    values = await all_values()
+    return (values.get(API_SUPER_AGENT_ENABLED) or "1").strip() != "0"
 
 
 async def enabled_kinds() -> list[str]:

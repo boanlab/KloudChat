@@ -53,6 +53,44 @@ curl "$OPENAI_BASE_URL/chat/completions" \
 
 `reasoning` 이 `null` 인 모델은 단계를 받지 않으며, 보낸 단계는 무시됩니다. 목록에 없는 단계를 보내면 가까운 단계로 처리됩니다. 단계가 높을수록 출력 토큰과 크레딧이 늘어납니다.
 
+## Super Agent 모델
+
+`kloudchat/super-agent` 를 모델 이름으로 보내면 질문에 맞는 모델과 추론 단계를 서버가 골라 답합니다. `kloudchat/super-agent-strict-local` 은 내부 모델로만 답합니다. 채팅 한 번(요청 하나, 답 하나)에만 쓰며, 보고서와 슬라이드는 지원하지 않습니다. 두 id 는 설정 → **API 키** 와 `GET /llm/v1/models` 에 나옵니다.
+
+```bash
+curl "$OPENAI_BASE_URL/chat/completions" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" -H "Content-Type: application/json" \
+  -d '{"model": "kloudchat/super-agent", "messages": [{"role": "user", "content": "안녕하세요"}]}'
+```
+
+```python
+from openai import OpenAI
+
+client = OpenAI(base_url="https://<서비스 주소>/llm/v1", api_key="<내 API 키>")
+reply = client.chat.completions.create(
+    model="kloudchat/super-agent",
+    messages=[{"role": "user", "content": "안녕하세요"}],
+)
+print(reply.choices[0].message.content)
+```
+
+응답의 `model` 은 보낸 id 그대로이고, 실제로 답한 모델은 `kloudchat.route` 에 있습니다. 스트리밍에서는 usage 청크에 한 번 들어가며, 응답 헤더 `X-KloudChat-Route` 에도 같은 내용이 있습니다.
+
+```json
+{"model": "kloudchat/super-agent",
+ "kloudchat": {"route": {"model": "local/qwen3.8-flash", "row": "simple", "effort": "none", "strictLocal": false, "fallback": false}}}
+```
+
+| 필드 | 뜻 |
+|---|---|
+| `model` | 실제로 답한 모델 |
+| `row` | 고른 규칙 표의 행 |
+| `effort` | 적용한 추론 단계 |
+| `strictLocal` | 내부 모델이면 `true` |
+| `fallback` | 규칙의 모델 대신 다른 모델로 갔으면 `true` |
+
+`tools` 를 보내면 함수 호출을 받는 모델로만 보냅니다. 개인정보가 들어 있으면 내부 모델로 보내거나 가려서 보냅니다. `-strict-local` 에 쓸 내부 모델이 없으면 `503 strict_local_unavailable` 입니다. 관리자가 끄면 두 id 는 `404 model_not_found` 입니다.
+
 ## AI 에이전트 연동
 
 ![AI 에이전트 연동](/img/guide/agent-setup.png)

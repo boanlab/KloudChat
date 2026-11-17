@@ -25,16 +25,20 @@ export function FeaturesSection({
   const t = useT()
   const refreshConfig = useStore((s) => s.refreshConfig)
   const [enabled, setEnabled] = useState<SessionKind[]>([])
+  const [apiSuper, setApiSuper] = useState(true)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    if (settings) setEnabled(settings.enabledKinds as SessionKind[])
+    if (!settings) return
+    setEnabled(settings.enabledKinds as SessionKind[])
+    setApiSuper(settings.apiSuperAgentEnabled ?? true)
   }, [settings])
 
   const dirty =
     !!settings &&
-    JSON.stringify([...enabled].sort()) !==
-      JSON.stringify([...(settings.enabledKinds as SessionKind[])].sort())
+    (JSON.stringify([...enabled].sort()) !==
+      JSON.stringify([...(settings.enabledKinds as SessionKind[])].sort()) ||
+      apiSuper !== (settings.apiSuperAgentEnabled ?? true))
   useMarkUnsaved('system.features', dirty)
 
   if (!settings) return null
@@ -49,6 +53,7 @@ export function FeaturesSection({
     try {
       await adminApi.updateSettings({
         enabledKinds: OPTIONAL.filter((k) => enabled.includes(k)).join(','),
+        apiSuperAgentEnabled: apiSuper ? '1' : '0',
       })
       await onSaved()
       await refreshConfig()
@@ -86,6 +91,16 @@ export function FeaturesSection({
           </label>
         )
       })}
+
+      <label className="flex cursor-pointer items-center gap-3 rounded-control border border-line px-3 py-2.5">
+        <input
+          type="checkbox"
+          checked={apiSuper}
+          onChange={() => setApiSuper((on) => !on)}
+          className="size-4 accent-[var(--accent)]"
+        />
+        <span className="text-base font-medium">{t('Super Agent를 API 모델로 열기')}</span>
+      </label>
 
       <div className="flex items-center gap-2">
         <Button
