@@ -147,6 +147,7 @@ _SETTING_SECTION: dict[str, str] = {
     "brand_name": "branding",
     "contact_email": "branding",
     "enabled_kinds": "features",
+    "api_super_agent_enabled": "features",
     "backend_base_url": "tools",
     "tools_search_url": "tools",
     "tools_fetch_url": "tools",
@@ -206,6 +207,9 @@ async def _ocr_settings(values: dict[str, str]) -> dict:
 
 async def _check_ocr(payload: SystemSettingsIn) -> None:
     """OCR guard: pages only to strict-local vision models."""
+    if payload.api_super_agent_enabled is not None and (
+            payload.api_super_agent_enabled.strip() not in ("0", "1")):
+        raise HTTPException(status_code=422, detail="api_super_agent_enabled_invalid")
     if payload.ocr_enabled is not None and payload.ocr_enabled.strip() not in ("", "0", "1"):
         raise HTTPException(status_code=422, detail="ocr_enabled_invalid")
     if payload.ocr_mode is not None and payload.ocr_mode.strip() not in ("", *ocr.MODES):
@@ -405,6 +409,7 @@ async def get_settings(admin: AdminUser, db: DbSession):
             "verificationActive": signup.verification,
         },
         "enabledKinds": await settings_store.enabled_kinds(),
+        "apiSuperAgentEnabled": await settings_store.api_super_agent_enabled(),
         "tools": {
             "backendBaseUrl": values.get(settings_store.BACKEND_BASE_URL, ""),
             "features": [
@@ -463,6 +468,7 @@ async def put_settings(
     for field, key in (
         ("brand_name", settings_store.BRAND_NAME),
         ("enabled_kinds", settings_store.ENABLED_KINDS),
+        ("api_super_agent_enabled", settings_store.API_SUPER_AGENT_ENABLED),
         ("backend_base_url", settings_store.BACKEND_BASE_URL),
         ("tools_search_url", settings_store.TOOLS_SEARCH_URL),
         ("tools_fetch_url", settings_store.TOOLS_FETCH_URL),

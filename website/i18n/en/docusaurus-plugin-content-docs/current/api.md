@@ -53,6 +53,44 @@ Each model takes its own levels. Check the `reasoning` field on each model in `G
 
 A model whose `reasoning` is `null` takes no level, and any level sent is ignored. A level not in the list is handled as a nearby one. Higher levels use more output tokens and credits.
 
+## Super Agent models
+
+Send `kloudchat/super-agent` as the model name and the server picks the model and reasoning effort that fit the question. `kloudchat/super-agent-strict-local` answers only on internal models. They are for one chat turn (one request, one answer); reports and slides are not offered. Both ids appear under Settings → **API keys** and in `GET /llm/v1/models`.
+
+```bash
+curl "$OPENAI_BASE_URL/chat/completions" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" -H "Content-Type: application/json" \
+  -d '{"model": "kloudchat/super-agent", "messages": [{"role": "user", "content": "Hello"}]}'
+```
+
+```python
+from openai import OpenAI
+
+client = OpenAI(base_url="https://<service-address>/llm/v1", api_key="<your-api-key>")
+reply = client.chat.completions.create(
+    model="kloudchat/super-agent",
+    messages=[{"role": "user", "content": "Hello"}],
+)
+print(reply.choices[0].message.content)
+```
+
+The response's `model` stays the id you sent; the model that actually answered is in `kloudchat.route`. In a stream it comes once, on the usage chunk, and the response header `X-KloudChat-Route` carries the same note.
+
+```json
+{"model": "kloudchat/super-agent",
+ "kloudchat": {"route": {"model": "local/qwen3.8-flash", "row": "simple", "effort": "none", "strictLocal": false, "fallback": false}}}
+```
+
+| Field | Meaning |
+|---|---|
+| `model` | The model that actually answered |
+| `row` | The row of the rules table that was chosen |
+| `effort` | The reasoning effort applied |
+| `strictLocal` | `true` for an internal model |
+| `fallback` | `true` when another model went in place of the rule's model |
+
+A request with `tools` goes only to a model that takes function calls. Personal data is sent to an internal model or masked. `-strict-local` returns `503 strict_local_unavailable` when no internal model can serve it. When an administrator switches it off, both ids return `404 model_not_found`.
+
 ## AI agent integration
 
 ![AI agent integration](/img/guide/agent-setup.png)

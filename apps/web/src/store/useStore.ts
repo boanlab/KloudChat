@@ -599,6 +599,8 @@ interface State {
   refreshConfig: () => Promise<void>
   /** Chat is always among them. */
   enabledKinds: SessionKind[]
+  /** Super Agent is callable as a model on the API. */
+  apiSuperAgent: boolean
   avOptions: {
     mode: 'video' | 'audio'
     aspect: string
@@ -1209,6 +1211,7 @@ export const useStore = create<State>((set, get) => ({
             set({
               brand: c.brand,
               enabledKinds: (c.enabledKinds ?? ['chat']) as SessionKind[],
+              apiSuperAgent: Boolean(c.apiSuperAgentEnabled),
               idleTimeoutMinutes: c.idleTimeoutMinutes ?? 0,
               dictationEnabled: Boolean(c.dictationEnabled),
               drivePicker: Boolean(c.integrations?.drivePicker),
@@ -2580,6 +2583,7 @@ export const useStore = create<State>((set, get) => ({
     set({
       brand: c.brand,
       enabledKinds: (c.enabledKinds ?? ['chat']) as SessionKind[],
+      apiSuperAgent: Boolean(c.apiSuperAgentEnabled),
       idleTimeoutMinutes: c.idleTimeoutMinutes ?? 0,
       dictationEnabled: Boolean(c.dictationEnabled),
       drivePicker: Boolean(c.integrations?.drivePicker),
@@ -2631,6 +2635,7 @@ export const useStore = create<State>((set, get) => ({
   },
   passwordMinLength: DEFAULT_PASSWORD_MIN,
   enabledKinds: ['chat', 'report', 'slides'],
+  apiSuperAgent: false,
   avOptions: {
     mode: 'video',
     aspect: '16:9',

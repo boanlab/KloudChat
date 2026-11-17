@@ -723,6 +723,7 @@ async def auth_config(db: DbSession):
         "brand": await settings_store.brand(),
         "contactEmail": await settings_store.contact_email(db),
         "enabledKinds": await settings_store.enabled_kinds(),
+        "apiSuperAgentEnabled": await settings_store.api_super_agent_enabled(),
         "privacy": {
             "externalDataGuard": policy.external_data_guard,
             # internal material (an uploaded picture to edit, too) stays on strict-local models

@@ -8,10 +8,14 @@ import { useStore } from '@/store/useStore'
 import { copyText } from '@/lib/clipboard'
 import { useT } from '@/lib/useT'
 
+/** Models the app itself answers on the API (`routers/llm.py`). */
+const SUPER_MODEL_IDS = ['kloudchat/super-agent', 'kloudchat/super-agent-strict-local']
+
 /** Full key shown once at creation, last four after. */
 export function KeysTab() {
   const t = useT()
-  const { apiKeys, loadApiKeys, createApiKey, revokeApiKey, user } = useStore()
+  const { apiKeys, loadApiKeys, createApiKey, revokeApiKey, user, apiSuperAgent } = useStore()
+  const [copiedModel, setCopiedModel] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
@@ -68,6 +72,27 @@ export function KeysTab() {
               <Badge key={m}>{m}</Badge>
             ))}
           </div>
+        </Card>
+      )}
+
+      {apiSuperAgent && (
+        <Card className="space-y-2 p-3.5">
+          {SUPER_MODEL_IDS.map((id) => (
+            <div key={id} className="flex items-center gap-2">
+              <code className="min-w-0 flex-1 overflow-x-auto rounded-control border border-line bg-elevated px-3 py-1.5 font-mono text-sm">
+                {id}
+              </code>
+              <Button
+                aria-label={t('{name} 복사').replace('{name}', id)}
+                onClick={async () => {
+                  if (await copyText(id)) setCopiedModel(id)
+                }}
+              >
+                <Copy size={14} />
+                {copiedModel === id ? t('복사됨') : t('복사')}
+              </Button>
+            </div>
+          ))}
         </Card>
       )}
 
