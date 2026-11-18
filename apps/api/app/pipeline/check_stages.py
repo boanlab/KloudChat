@@ -970,20 +970,21 @@ async def _hand_back(bundle: Bundle, *, material: str, computed: list[str],
     # its upper model for all of them (the writer takes any the call leaves out)
     texts: dict[int, str | None] = {}
     now = doc_stages.CURRENT.get()
-    if worst and now is not None and now.model("repair"):
+    batched = [n for n in worst if len(notes[n]) <= deck_rules.BATCH_NOTE_CHARS]
+    if batched and now is not None and now.model("repair"):
         batch, first = await deck_rules.batched_slides(
             [deck_rules.rewrite_prompt(
                 request=req.text, slides=slides, target_id=str(slides[n].get("id") or ""),
-                note=notes[n], keep_layout=True)[0] for n in worst],
+                note=notes[n], keep_layout=True)[0] for n in batched],
             stage="repair", model=req.model, api_key=req.api_key, request=req.text,
             trusted_context=None, untrusted_context=[material, *[c for c in computed if c]],
-            research_rule="", titles=[str(slides[n].get("title")) for n in worst],
+            research_rule="", titles=[str(slides[n].get("title")) for n in batched],
             usage=bundle.usage)
         bundle.usage["inputTokens"] = bundle.usage.get("inputTokens", 0) + int(
             first.get("inputTokens", 0))
         bundle.usage["outputTokens"] = bundle.usage.get("outputTokens", 0) + int(
             first.get("outputTokens", 0))
-        texts = dict(zip(worst, batch, strict=True))
+        texts = dict(zip(batched, batch, strict=True))
     for n in worst:
         slide = slides[n]
         note = notes[n]
@@ -993,7 +994,8 @@ async def _hand_back(bundle: Bundle, *, material: str, computed: list[str],
                 request=req.text, slides=slides, target_id=str(slide.get("id") or ""),
                 model=req.model, api_key=req.api_key, note=note,
                 material=[material, *[c for c in computed if c]], keep_layout=True,
-                text=texts.get(n))
+                text=texts.get(n),
+                stage="repair" if n not in texts else None, stage_usage=bundle.usage)
         except Exception as exc:  # noqa: BLE001 — the slide stays; the code marks it
             log.info("hand-back of slide %d failed: %s", n, exc)
             continue

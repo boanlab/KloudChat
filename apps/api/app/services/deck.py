@@ -3493,12 +3493,16 @@ async def _draw(figure: dict, image_model: dict | None, api_key: str) -> dict | 
 _UPPER_MATERIAL_CHARS = 2_500
 #: slides one batched repair call carries at most
 REPAIR_BATCH = 6
+#: a slide whose note is longer than this is written one by one, not in a batch
+BATCH_NOTE_CHARS = 500
 
 _BATCH_PROMPT = """Write the {n} slides below in one answer. Each has its own instructions: follow
 each exactly. Answer with ONE JSON object and nothing outside it:
 {{"slides": [<the JSON object for slide 1>, <for slide 2>, ...]}}
 The i-th element holds exactly the fields that slide's instructions ask for, in the order
-given; always {n} elements.
+given; always {n} elements. A line headed "Why this slide is rewritten now" is an
+instruction to you, never text for the slide: do not write it, quote it or paraphrase it on
+the slide.
 
 {parts}"""
 
@@ -3529,14 +3533,44 @@ async def batched_slides(
 
     limit = settings.document_upper_calls
     text, spent = await doc_stages.staged(
-        _complete, stage, model, build, api_key, min(9000, 520 * n + 400), usage, limit=limit)
-    rows = _json_object(text).get("slides")
+        _complete, stage, model, build, api_key, min(9000, _BATCH_TOKENS * n + 600), usage,
+        limit=limit)
     out: list[str | None] = [None] * n
-    if isinstance(rows, list):
-        for i, row in enumerate(rows[:n]):
-            if isinstance(row, dict) and row:
-                out[i] = json.dumps(row, ensure_ascii=False)
+    for i, row in enumerate(_batch_rows(text)[:n]):
+        if row:
+            out[i] = json.dumps(row, ensure_ascii=False)
     return out, spent
+
+
+#: answer tokens one slide of a batched call may take (a table or a pattern slide runs long)
+_BATCH_TOKENS = 700
+
+
+def _batch_rows(text: str) -> list[dict]:
+    """The slide objects of a batched answer: the whole answer's `slides`, else (an answer cut
+    off by its token budget) the entries that came whole before the cut."""
+    data = _json_object(text)
+    rows = data.get("slides")
+    if isinstance(rows, list):
+        return [r if isinstance(r, dict) and r else {} for r in rows] if any(
+            isinstance(r, dict) and r for r in rows) else []
+    start = re.search(r'"slides"\s*:\s*\[', text or "")
+    if not start:
+        return []
+    out: list[dict] = []
+    decoder = json.JSONDecoder()
+    pos = start.end()
+    while pos < len(text):
+        while pos < len(text) and text[pos] in " \n\t\r,":
+            pos += 1
+        try:
+            row, pos = decoder.raw_decode(text, pos)
+        except ValueError:
+            break
+        if not isinstance(row, dict):
+            break
+        out.append(row)
+    return out
 
 
 async def _write_slides(
@@ -4244,7 +4278,8 @@ async def _write_slides(
     # slide that call left out, are the writer's
     repaired: dict[int, str | None] = {}
     if needs and (now := doc_stages.CURRENT.get()) is not None and now.model("repair"):
-        chosen = sorted(needs)[:REPAIR_BATCH]
+        # a slide with a long note (many things to put right) is written on its own
+        chosen = [i for i in sorted(needs) if len(needs[i]) <= BATCH_NOTE_CHARS][:REPAIR_BATCH]
         texts, first = await batched_slides(
             [rewrite_prompt(request=request, slides=slides, target_id=str(slides[i].get("id")),
                             note=needs[i])[0] for i in chosen],
@@ -4267,6 +4302,9 @@ async def _write_slides(
                 request=request, slides=slides, target_id=str(slide.get("id")),
                 model=model, api_key=api_key, material=[*(untrusted_context or []), *given_extra],
                 note=needs[index], text=repaired.get(index),
+                # one left out of the batch for its long note is written on its own by the
+                # upper model (within the deck's cap); one the batch failed is the writer's
+                stage="repair" if index not in repaired else None, stage_usage=usage,
             )
         except Exception as exc:  # noqa: BLE001 — the slide stands, the gate reports it
             log.info("slide %s not rewritten for %r: %s", index + 1, needs[index][:30], exc)
@@ -5075,9 +5113,10 @@ async def write(
         yield {"type": "usage", **usage}
         return
     title, subtitle, plan = _parse_outline(text)
+    unsound = False
     if plan and not sane_outline(plan, request):
         log.info("deck outline rejected as unsound (%d items), asking once more", len(plan))
-        plan = []
+        plan, unsound = [], True
     accent = fixed_accent or _theme_accent(text, suggested_accent)
     # grounded before the variety check
     plan = suggest_patterns(
@@ -5148,6 +5187,11 @@ async def write(
         log.info("deck outline unreadable, asking once more; reply began: %r", head)
         try:
             retry_text, retry_spent = await ask(
+                "\n\nThe previous structure was rejected: write every slide title in the "
+                "language of the request (Korean for a Korean request; only proper nouns and "
+                "system names stay as they are), each title different, with no planning notes "
+                "in them. Output only one JSON object."
+                if unsound else
                 "\n\nThe previous answer could not be read. Output only one JSON object, with "
                 "no explanation, preamble or code fence."
             )
@@ -6362,6 +6406,50 @@ async def rewrite_slide(
         material=material, typed=typed, notes_only=notes_only)
 
 
+#: A line of text this like a line of the note it was written under is the note, not the slide.
+_ECHO_RATIO = 0.8
+_ECHO_MIN_CHARS = 8
+
+
+def _plain(text: str) -> str:
+    return re.sub(r"[\W_]+", "", str(text or "")).lower()
+
+
+def strip_note_echo(slide: dict[str, Any], note: str) -> dict[str, Any]:
+    """The slide without the lines that repeat a line of `note` (the instruction it was
+    rewritten under): a writer sometimes puts 「7장은 필수 요소로 확인」 on the slide it was told
+    that about. A line counts as the note's when its letters equal a note line's, or one holds
+    the other and they are of about the same length, or they are 80% alike."""
+    from difflib import SequenceMatcher
+
+    lines = [p for p in (_plain(x) for x in re.split(r"[.\n。;]+|(?<=[」』])\s", note or ""))
+             if len(p) >= _ECHO_MIN_CHARS]
+    if not lines:
+        return slide
+
+    def echoes(text: Any) -> bool:
+        mine = _plain(text)
+        if len(mine) < _ECHO_MIN_CHARS:
+            return False
+        for line in lines:
+            if mine == line:
+                return True
+            shorter, longer = sorted((mine, line), key=len)
+            if shorter in longer and len(shorter) / len(longer) >= _ECHO_RATIO:
+                return True
+            if SequenceMatcher(None, mine, line).ratio() >= _ECHO_RATIO:
+                return True
+        return False
+
+    out = dict(slide)
+    if isinstance(out.get("bullets"), list):
+        out["bullets"] = [b for b in out["bullets"] if not echoes(b)]
+    for key in ("body", "notes"):
+        if isinstance(out.get(key), str) and echoes(out[key]):
+            out[key] = ""
+    return out
+
+
 def rewrite_prompt(*, request: str, slides: list[dict], target_id: str, note: str = "",
                    typed: str = "", keep_layout: bool = False) -> tuple[str, str, int]:
     """`(prompt, layout, room)` of one slide's rewrite."""
@@ -6503,6 +6591,8 @@ def _finish_rewrite(text: str, usage: dict, *, target: dict, layout: str, reques
     # verdicts belonged to the old text
     result.pop("factCheck", None)
     result.pop("textScale", None)
+    # no line of the note it was rewritten under stays on the slide
+    result = strip_note_echo(result, note)
     fitted = auto_fit(result)
     # keeps deck body size unless it must shrink
     own = float(fitted.get("textScale") or 1.0)
