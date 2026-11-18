@@ -1482,7 +1482,11 @@ def search_plan(toggle: bool | str, request: str) -> tuple[bool, str | None]:
 
 
 def language_rule(request: str) -> str:
-    """English-output rule for plainly English requests."""
+    """English-output rule for plainly English requests. A Korean ask over pasted English
+    material (a paper's abstract) is a Korean request: the ask decides, not the material."""
+    ask = instruction_part(request)
+    if len(ask.strip()) >= 20 and len(ask) < len(request):
+        request = ask
     hangul = len(_HANGUL.findall(request))
     latin = len(_LATIN.findall(request))
     if latin < 40 or hangul * 4 > latin:
