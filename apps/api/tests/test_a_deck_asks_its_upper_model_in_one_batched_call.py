@@ -114,3 +114,11 @@ def test_a_focused_digest_puts_the_sentences_about_the_slide_first() -> None:
     plain = source_digest.digest_one(text)
     focused = source_digest.digest_one(text, "cache hit rate experiment")
     assert "93%" in focused and "93%" not in plain
+
+
+def test_the_count_a_deck_is_named_with_is_the_total_beside_a_parts_count() -> None:
+    ask = ("전 직원 대상 정보보안 기본 교육 슬라이드 8장을 만들어 줘. 피싱, 비밀번호·MFA, "
+           "사고 발생 시 신고 절차, 퀴즈 1장 포함.")
+    assert deck.requested_slides(ask) == 8
+    # two counts both named with the deck stay no total
+    assert deck.requested_slides("슬라이드 8장 또는 슬라이드 10장") is None

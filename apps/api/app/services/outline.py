@@ -152,6 +152,9 @@ def _count_found(request: str, units: tuple[str, ...], *, maximum: int
     pattern = rf"(?<![\d.+~제-])(\d{{1,3}}|(?<![가-힣])(?:{words})) ?(?:개 ?)?(?:{unit})"
     found: set[int] = set()
     authoritative: list[int] = []
+    #: counts said straight after the deck's own noun (「슬라이드 8장」), unlike a part's
+    #: (「퀴즈 1장」)
+    named: set[int] = set()
     one_into = False
     for match in re.finditer(pattern, request):
         prefix = request[max(0, match.start() - 8) : match.start()].rstrip()
@@ -189,8 +192,14 @@ def _count_found(request: str, units: tuple[str, ...], *, maximum: int
         if value == 1 and suffix.startswith("으로"):
             one_into = True
         found.add(value)
+        if re.search(r"(?:슬라이드|페이지|발표\s?자료|PPT|ppt|덱)\s?$",
+                     request[max(0, match.start() - 12):match.start()]):
+            named.add(value)
     if authoritative:
         return authoritative[-1], True
+    if len(found) > 1 and len(named) == 1:
+        # 「슬라이드 8장 … 퀴즈 1장 포함」: the count the deck is named with is the total
+        return next(iter(named)), False
     if len(found) > 1 and 1 in found and one_into:
         # 「한 장으로」 beside another count: merge, not total
         found.discard(1)
