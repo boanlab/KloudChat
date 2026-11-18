@@ -46,6 +46,7 @@ from app.services import (
     scheduling,
     settings_store,
     slide_patterns,
+    source_digest,
     thinking,
     units,
     usage_fields,
@@ -2982,7 +2983,7 @@ def _chart_unit(unit: str) -> str:
     return head if len(head) <= _UNIT_CHARS else ""
 
 
-def _clean_chart(value: Any) -> dict[str, Any] | None:
+def _clean_chart(value: Any, max_series: int = _MAX_SERIES) -> dict[str, Any] | None:
     """Drawable chart or `None`; series cut to the shortest paired length."""
     if not isinstance(value, dict):
         return None
@@ -2993,7 +2994,7 @@ def _clean_chart(value: Any) -> dict[str, Any] | None:
     categories = [c for c in categories if c][:_MAX_CATEGORIES]
 
     series: list[dict[str, Any]] = []
-    for item in (value.get("series") or [])[:_MAX_SERIES]:
+    for item in (value.get("series") or [])[:max_series]:
         if not isinstance(item, dict):
             continue
         numbers: list[float] = []
@@ -3124,6 +3125,188 @@ def chart_from_material(title: str, material: list[str]) -> dict[str, Any] | Non
                         best = (score, chart)
             block = []
     return best[1] if best else None
+
+
+# --- charts built by code from a pasted table ---------------------------------------------------
+
+#: series a chart read from a table may plot (a model-written chart keeps `_MAX_SERIES`)
+_CODE_SERIES = 4
+#: a line of prose that has commas, not a comma-separated row: it ends a sentence, or its
+#: commas are thousands separators (a row of a pasted CSV has neither)
+_PROSE_LINE = re.compile(r"[.。!?]\s*$|(?<![\d,])\d{1,3},\d{3}(?![\d,])")
+_TOTAL_HEADER = re.compile(r"^(?:합계|총계|총합|계|total|sum)$", re.I)
+_UNIT_LINE = re.compile(r"단위\s?[:：]\s?([^,)）(（]{1,10})")
+_OWN_UNIT = re.compile(r"[(（]\s?([^()（）]{1,6})\s?[)）]\s*$")
+
+
+def _stem_overlap(left: str, right: str) -> bool:
+    """Two words share a stem of two characters or more (「분기별」 and 「분기」)."""
+    left, right = re.sub(r"\s", "", left), re.sub(r"\s", "", right)
+    return len(left) >= 2 and len(right) >= 2 and (left in right or right in left)
+
+
+def material_tables(texts: list[str]) -> list[dict[str, Any]]:
+    """Tables in the material as `{title, unit, header, rows}`: pipe tables and comma-separated
+    runs (a pasted CSV), the line above a table as its title. Cells stay text."""
+    found: list[dict[str, Any]] = []
+    for text in texts:
+        lines = (text or "").splitlines()
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
+            piped = line.startswith("|") and line.endswith("|")
+            commas = line.count(",")
+            if not piped and (commas < 2 or _PROSE_LINE.search(line)):
+                i += 1
+                continue
+            mark = line.count("|") if piped else commas
+            j = i
+            block: list[str] = []
+            while j < len(lines):
+                cur = lines[j].strip()
+                same = (cur.startswith("|") and cur.endswith("|") and cur.count("|") == mark) \
+                    if piped else (cur.count(",") == mark and not cur.startswith("|")
+                                   and not _PROSE_LINE.search(cur))
+                if not same:
+                    break
+                block.append(cur)
+                j += 1
+            if len(block) >= 3:
+                if piped:
+                    rows = [[c.strip() for c in b.strip("|").split("|")] for b in block
+                            if not all(re.fullmatch(r":?-{2,}:?", c.strip())
+                                       for c in b.strip("|").split("|") if c.strip())]
+                else:
+                    rows = [[c.strip() for c in b.split(",")] for b in block]
+                above = lines[i - 1].strip() if i else ""
+                unit = (_UNIT_LINE.search(above)
+                        or _UNIT_LINE.search(" ".join(lines[max(0, i - 3):i])))
+                found.append({"title": above, "unit": unit.group(1).strip() if unit else "",
+                              "header": rows[0], "rows": rows[1:]})
+            i = max(j, i + 1)
+    return found
+
+
+def _components(columns: dict[int, list[float | None]], total: int) -> list[int]:
+    """Columns whose values add up to `total`'s in every row they are all given (at least two
+    such rows), the most columns first; empty when none do."""
+    others = [j for j in columns if j != total]
+    best: list[int] = []
+    for size in range(len(others), 1, -1):
+        for combo in _combinations(others, size):
+            rows = [r for r in range(len(columns[total]))
+                    if columns[total][r] is not None
+                    and all(columns[j][r] is not None for j in combo)]
+            if len(rows) >= 2 and all(
+                    abs(sum(columns[j][r] for j in combo) - columns[total][r]) < 0.5
+                    for r in rows):
+                return list(combo)
+        if best:
+            break
+    return best
+
+
+def _combinations(items: list[int], size: int) -> list[tuple[int, ...]]:
+    from itertools import combinations
+
+    return list(combinations(items, size))
+
+
+def code_chart(title: str, material: list[str]) -> dict[str, Any] | None:
+    """The chart a table in the material gives for a slide titled `title`, read by code: its
+    categories are the first column's, its series the columns that carry the slide's measure
+    (a column whose header shares a stem with the title), else the parts that make up the
+    table's total column (the products of a revenue total), else every numeric column with the
+    table's unit; never a total, and never a column in another unit (「신규 계약(개사)」).
+    A column's gap (a figure still being counted) ends its series there. `None` when no table
+    fits; the model writes the slide's title and takeaway, never the figures."""
+    words = re.findall(r"[가-힣A-Za-z]{2,}", title or "")
+    best: tuple[int, dict[str, Any]] | None = None
+    for table in material_tables(material):
+        header, rows = table["header"], table["rows"]
+        width = len(header)
+        rows = [r for r in rows if len(r) == width]
+        columns = {j: [_number(r[j]) for r in rows] for j in range(1, width)}
+        numeric = [j for j, values in columns.items() if sum(v is not None for v in values) >= 2]
+        if len(rows) < 2 or not numeric:
+            continue
+        totals = [j for j in numeric if _TOTAL_HEADER.match(re.sub(r"\s", "", header[j]))]
+        total = totals[0] if totals else None
+        if total is None:
+            for j in numeric:
+                if _components({k: columns[k] for k in numeric}, j):
+                    total = j
+                    break
+        own = {j for j in numeric if _OWN_UNIT.search(header[j])
+               and _OWN_UNIT.search(header[j]).group(1).strip() != table["unit"]}
+        usable = [j for j in numeric if j != total and j not in own]
+        named = [j for j in usable if any(_stem_overlap(w, header[j]) for w in words)]
+        if named:
+            picked = named
+        elif total is not None and (parts := _components(
+                {j: columns[j] for j in numeric}, total)):
+            picked = [j for j in parts if j in usable]
+        else:
+            picked = []
+        categories_in = [r[0] for r in rows]
+        score = sum(any(_stem_overlap(w, h) for h in [*header, table["title"], *categories_in])
+                    for w in words)
+        if not picked or score == 0:
+            continue
+        picked = picked[:_CODE_SERIES]
+        unit = table["unit"] or ""
+        if not unit and (m := _OWN_UNIT.search(header[picked[0]])):
+            unit = m.group(1)
+        chart = _clean_chart({
+            "kind": "line" if all(re.search(r"분기|월|\d{4}|Q[1-4]|주차", c) for c in categories_in
+                                  if c) else "bar",
+            "unit": unit,
+            "categories": [r[0] for r in rows if r[0]],
+            "series": [{"name": re.sub(r"\s{0,2}[(（][^()（）]*[)）]\s*$", "", header[j]),
+                        "values": [v if v is not None else None for v in columns[j]]}
+                       for j in picked],
+        }, _CODE_SERIES)
+        if chart and (best is None or score > best[0]):
+            best = (score, chart)
+    return best[1] if best else None
+
+
+def place_code_charts(slides: list[dict[str, Any]], request: str,
+                      material: list[str]) -> list[int]:
+    """The charts of a deck, from the material's tables: a chart slide's figures are replaced by
+    the table's (the model's are never trusted over the table), and a request for a chart with
+    none drawn turns the slide whose title shares the most stems with that table into one.
+    Indices of slides changed."""
+    changed: list[int] = []
+    for index, slide in enumerate(slides):
+        if slide.get("layout") != "chart":
+            continue
+        drawn = code_chart(str(slide.get("title") or ""), material)
+        if drawn and drawn != slide.get("chart"):
+            slide["chart"] = drawn
+            changed.append(index)
+    if changed or any(s.get("layout") == "chart" for s in slides):
+        return changed
+    if not _CHART_WORDS.search(request or ""):
+        return changed
+    scored: list[tuple[int, int, dict[str, Any]]] = []
+    for index, slide in enumerate(slides):
+        if str(slide.get("layout")) in _STRUCTURAL or index == 0:
+            continue
+        title = str(slide.get("title") or "")
+        drawn = code_chart(title, material)
+        if drawn:
+            hits = sum(_stem_overlap(w, t) for w in re.findall(r"[가-힣A-Za-z]{2,}", title)
+                       for t in re.findall(r"[가-힣A-Za-z]{2,}", request))
+            scored.append((hits, -index, {"index": index, "chart": drawn}))
+    if scored:
+        pick = max(scored, key=lambda x: (x[0], x[1]))[2]
+        slide = slides[pick["index"]]
+        for key in ("bullets", "body", "rows", "metrics", "bands", "steps", "cards", "timeline"):
+            slide.pop(key, None)
+        slide["layout"], slide["chart"] = "chart", pick["chart"]
+        changed.append(pick["index"])
+    return changed
 
 
 _MAX_METRICS = 4
@@ -3650,9 +3833,10 @@ async def _write_slides(
             else:
                 slide["body"] = line[:120]
         elif slide["layout"] == "chart":
-            chart = _clean_chart(data.get("chart")) or chart_from_material(
-                str(slide.get("title") or ""), [request, *(untrusted_context or []), *given_extra]
-            )
+            tables = [request, *(untrusted_context or []), *given_extra]
+            # the figures come from the table, read by code; the model's chart is the fallback
+            chart = code_chart(str(slide.get("title") or ""), tables) or _clean_chart(
+                data.get("chart")) or chart_from_material(str(slide.get("title") or ""), tables)
             if chart:
                 slide["chart"] = chart
             else:
@@ -3848,6 +4032,12 @@ async def _write_slides(
         )
     # the writer's internal text off first, so emptied notes are filled below
     internal = set(strip_internal_text(slides))
+    # charts read from the material's tables by code (never the model's figures)
+    placed_charts = place_code_charts(
+        slides, request, [request, *(untrusted_context or []), *given_extra])
+    if placed_charts:
+        log.info("deck charts set from the material's tables: %s", placed_charts)
+    internal |= set(placed_charts)
     # dropped request numbers restored onto a related slide
     touched = internal | (
         set(restate_missing_facts(slides, request))
@@ -4032,6 +4222,11 @@ async def _write_slides(
         if recomputed:
             log.warning("deck values set back to the computed ones: %s", recomputed[:12])
     for index in sorted(touched):
+        yield {"type": "slide", "slide": auto_fit(slides[index]), "done": True}
+    # a rewrite above may have redrawn a chart from the model's figures: the table's stand
+    for index in place_code_charts(
+            slides, request, [request, *(untrusted_context or []), *given_extra]):
+        touched.add(index)
         yield {"type": "slide", "slide": auto_fit(slides[index]), "done": True}
     before = list(slides)
     if computed and (charts := place_gantt_charts(slides, request,
@@ -4634,6 +4829,7 @@ async def write(
                 "approved deck plan has %d slides against a requested %d: %s",
                 len(plan), wanted, " · ".join(item["title"] for item in plan),
             )
+
         # derived numbers from code
         computed = ""
         # unasked values only from the person's own words and files, never search pages
@@ -4699,10 +4895,11 @@ async def write(
             yield event
         return
 
-    async def ask(nudge: str = "") -> tuple[str, dict[str, int]]:
-        # the storyline is the plan stage: the upper model when the turn has one
+    async def ask(nudge: str = "", stage: str | None = "plan") -> tuple[str, dict[str, int]]:
+        # the storyline is the plan stage: the upper model when the turn has one; a retry
+        # that only varies the layouts is the planner model's own (`stage=None`)
         return await doc_stages.staged(
-            _complete, "plan", outline_model or model,
+            _complete, stage, outline_model or model,
             lambda used: build_document_messages(
                 SessionKind.slides,
                 _OUTLINE_PROMPT.format(
@@ -4728,7 +4925,8 @@ async def write(
                 + nudge,
                 request=request,
                 trusted_context=trusted_context,
-                untrusted_context=document_context,
+                # the storyline needs what the sources are and hold, not every sentence
+                untrusted_context=source_digest.digest(document_context),
                 research_rule=research_rule,
                 model=used,
             ),
@@ -4805,7 +5003,8 @@ async def write(
                 "\n\nThe previous structure leaned on one layout. Redo it. "
                 "Use each of the following layouts at least once, and do not use the same "
                 "layout on three slides in a row: "
-                + " / ".join(missing)
+                + " / ".join(missing),
+                stage=None,
             )
         except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
             log.warning("deck outline retry failed: %s", exc)

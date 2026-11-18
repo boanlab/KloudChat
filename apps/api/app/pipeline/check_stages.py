@@ -15,6 +15,7 @@ from app.pipeline.stage import Base, Context, Wait
 from app.services import (
     check_skills,
     copy_check,
+    doc_stages,
     gap_questions,
     key_figures,
     output_language,
@@ -879,6 +880,8 @@ class DeckGrounding(Base):
         handed = await _hand_back(bundle, material=material, computed=computed, options=options)
         for slide in handed:
             yield {"type": "slide", "slide": slide, "done": True}
+        # a hand-back may have redrawn a chart from the model's figures: the table's stand
+        deck_rules.place_code_charts(bundle.document.sections, bundle.request.text, [material])
         current = bundle.document.sections
         slides, found = ground_slides(
             current, material=material, computed=computed, options=options)
@@ -961,10 +964,13 @@ async def _hand_back(bundle: Bundle, *, material: str, computed: list[str],
             "it, rather than guess; a chart plots only given values, and its title names "
             "what the chart plots.")
         try:
+            # a slide with figures the material does not hold is the repair stage's
+            doc_stages.note_trigger(bundle.usage, "repair", "unsourced_figures")
             written, spent = await deck_rules.rewrite_slide(
                 request=req.text, slides=slides, target_id=str(slide.get("id") or ""),
                 model=req.model, api_key=req.api_key, note=note,
-                material=[material, *[c for c in computed if c]], keep_layout=True)
+                material=[material, *[c for c in computed if c]], keep_layout=True,
+                stage="repair", stage_usage=bundle.usage)
         except Exception as exc:  # noqa: BLE001 — the slide stays; the code marks it
             log.info("hand-back of slide %d failed: %s", n, exc)
             continue
