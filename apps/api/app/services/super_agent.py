@@ -744,6 +744,44 @@ def steer(rules: dict[str, dict[str, str]], decision: Decision, mode: str, *,
     return row, effort
 
 
+#: A cited work's own marker: an arXiv id or a DOI. A pasted paper's front matter carries its
+#: authors' contact emails, which are the paper's, not the person's.
+_CITED_WORK = re.compile(r"arxiv[:.\s]*\d{4}\.\d{4,5}|\bdoi[:\s]*10\.\d{4,9}/|\b10\.\d{4,9}/\S+",
+                         re.IGNORECASE)
+
+
+def personal_for_routing(found: list[Any], texts: dict[str, list[str]]) -> list[Any]:
+    """`found` (privacy findings, `governance.findings`) as the router reads them: an email
+    address found only in text that is a cited work (an arXiv id or DOI stands in it, as in a
+    pasted paper's front matter) is the paper's authors' contact line, not the person's data,
+    and does not send the turn to the strict column. Every other category, and an email that
+    does not follow a cited work's marker closely (the person's own address, a contact in a
+    memo), still does. `texts` maps a finding's `source` to its texts."""
+    kept = []
+    for finding in found:
+        if finding.category == "email" and all(
+                _authors_contact(text) for text in texts.get(finding.source, []) if text.strip()):
+            continue
+        kept.append(finding)
+    return kept
+
+
+#: How far after a cited work's marker its authors' contact emails may stand.
+_FRONT_MATTER_CHARS = 1500
+_EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+
+
+def _authors_contact(text: str) -> bool:
+    """Whether every email in `text` stands within a paper's front matter: after a cited
+    work's marker, within `_FRONT_MATTER_CHARS`, and with no Korean in between (the person's
+    own words, an address they give, are no part of an English paper's front matter)."""
+    marks = [m.start() for m in _CITED_WORK.finditer(text)]
+    return bool(marks) and all(
+        any(0 <= m.start() - mark <= _FRONT_MATTER_CHARS
+            and not re.search(r"[가-힣]", text[mark:m.start()]) for mark in marks)
+        for m in _EMAIL.finditer(text))
+
+
 def stage_effort(rules: dict[str, dict[str, str]], stage: str, mode: str) -> str:
     """The effort a report or deck stage's call is sent with: its row's, the chip steering it
     (`fast` without thinking where it can be turned off, `deep` at the highest level)."""
@@ -956,6 +994,7 @@ __all__ = [
     "reasoning_fields",
     "route_metadata",
     "STAGE_ROWS",
+    "personal_for_routing",
     "stage_effort",
     "stage_pick",
     "stored_rules",

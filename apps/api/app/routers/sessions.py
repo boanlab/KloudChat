@@ -1765,9 +1765,12 @@ async def _super_route(
         ),
     )
     decision = super_agent.classify(turn)
-    personal = governance.findings(
-        {"current_input": content, "conversation_history": [m.content for m in history]},
-        legacy=policy.pii_masking,
+    router_sources = {"current_input": content,
+                      "conversation_history": [m.content for m in history]}
+    # a pasted paper's authors' contact emails are the paper's, not the person's data
+    personal = super_agent.personal_for_routing(
+        governance.findings(router_sources, legacy=policy.pii_masking),
+        {"current_input": [content], "conversation_history": [m.content or "" for m in history]},
     )
     internal = policy.internal_data_strict_local and (integrations or _internal_data_present(
         session, None, attachments, history
