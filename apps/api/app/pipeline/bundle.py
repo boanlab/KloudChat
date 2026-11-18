@@ -192,6 +192,8 @@ class Document:
     #: `## heading\nbody` per section, fed to the next
     written: list[str] = field(default_factory=list)
     long_form: bool = False
+    #: sections the upper model writes, by index with the reason (`doc_stages.hard_report_sections`)
+    hard: dict[int, str] = field(default_factory=dict)
     head_block: dict | None = None
     #: chat: streamed and finished answer
     streamed: str = ""

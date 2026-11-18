@@ -880,7 +880,8 @@ async def _validated_super_rules(raw: dict | None) -> dict:
     catalogue = {m["id"]: m for m in (await model_service.list_models())["models"]}
     changed = super_agent.stored_rules(raw)
     for name, rule in changed.items():
-        kind = "report" if name in ("document", super_agent.COMPLEX_CLASS) else "chat"
+        kind = ("report" if name in ("document", super_agent.COMPLEX_CLASS,
+                                     *super_agent.STAGE_ROWS.values()) else "chat")
         # an override row's empty column keeps the class's own row: nothing to check
         rule = {key: value for key, value in rule.items()
                 if value or key == "effort" or name not in super_agent.OVERRIDE_ROWS}

@@ -26,7 +26,7 @@ from app.services import settings_store
 
 log = logging.getLogger(__name__)
 
-ROUTER_VERSION = "super-agent-2026-11-15.v1"
+ROUTER_VERSION = "super-agent-2026-11-18.v1"
 
 SUPER = "super"
 SUPER_STRICT = "super_strict"
@@ -43,6 +43,13 @@ CLASSES: tuple[str, ...] = (
     "long",
     "reasoning",
     "document",
+    #: not a request's class: the three stages of a report or deck turn that go to a stronger
+    #: model while the `document` row's model writes the ordinary parts (`doc_stages`): the
+    #: outline or storyline, the sections or slides the objective signals mark as hard, and
+    #: the ones whose checks fail
+    "document_plan",
+    "document_hard",
+    "document_repair",
     #: not a request's class: the row a turn over internal material (`material_turn`) moves
     #: to, in a column where the row names a model
     "material",
@@ -142,6 +149,28 @@ DEFAULT_RULES: dict[str, dict[str, str]] = {
         "strictModel": "strict-local/deepseek-v4-flash",
         "effort": "high",
     },
+    # staged routing of a report or deck (owner decision 2026-11-18): the 27B alone wrote poor
+    # documents (garbled terms, unwritten sections, invented clauses, wrong slide counts; 3.8
+    # and 5.3 of 10 on the 2026-11-17 benchmark) while a stronger open-weight model scored
+    # 5.5-6.5, so one model never writes the whole document. The outline or storyline, the
+    # sections the objective signals mark as hard and the ones whose checks fail go to the
+    # upper model; the `document` row's model writes the rest. The strict column stays
+    # inside: self-hosted DeepSeek V4 Flash (slow, so these calls stay few and short).
+    "document_plan": {
+        "model": "z-ai/glm-5.3",
+        "strictModel": "strict-local/deepseek-v4-flash",
+        "effort": "low",
+    },
+    "document_hard": {
+        "model": "z-ai/glm-5.3",
+        "strictModel": "strict-local/deepseek-v4-flash",
+        "effort": "default",
+    },
+    "document_repair": {
+        "model": "z-ai/glm-5.3",
+        "strictModel": "strict-local/deepseek-v4-flash",
+        "effort": "default",
+    },
     # a thinking flash answer came back empty 3 times in 14; DeepSeek with reasoning on
     # never did (9 of 10 on those prompts); strict: self-hosted DeepSeek V4 Flash, 6.7 vs
     # flash's 6.2 on 「틀렸어, 다시」 turns (owner decision 2026-11-14)
@@ -152,9 +181,17 @@ DEFAULT_RULES: dict[str, dict[str, str]] = {
     },
 }
 
+#: The stage rows of a report or deck turn, by the stage's name (`doc_stages.STAGES`).
+STAGE_ROWS: dict[str, str] = {
+    "plan": "document_plan",
+    "hard": "document_hard",
+    "repair": "document_repair",
+}
+
 #: Rows that move a turn rather than name a class's own model: an empty column leaves the
-#: turn on its class's row.
-OVERRIDE_ROWS = frozenset({"material", "complex_document"})
+#: turn on its class's row. A stage row left empty keeps that stage on the `document` row's
+#: model.
+OVERRIDE_ROWS = frozenset({"material", "complex_document", *STAGE_ROWS.values()})
 
 #: Next picks when a rule's model is not served here (other installations, allowlists).
 _FALLBACKS: tuple[str, ...] = (
@@ -707,6 +744,42 @@ def steer(rules: dict[str, dict[str, str]], decision: Decision, mode: str, *,
     return row, effort
 
 
+def stage_effort(rules: dict[str, dict[str, str]], stage: str, mode: str) -> str:
+    """The effort a report or deck stage's call is sent with: its row's, the chip steering it
+    (`fast` without thinking where it can be turned off, `deep` at the highest level)."""
+    if mode == FAST:
+        return "none"
+    if mode == DEEP:
+        return HIGHEST
+    return rules[STAGE_ROWS[stage]].get("effort", "default")
+
+
+def stage_pick(
+    rules: dict[str, dict[str, str]],
+    stage: str,
+    catalogue: list[dict[str, Any]],
+    *,
+    kind: str,
+    strict: bool,
+    allowed: set[str],
+    writer: dict[str, Any],
+    skip: frozenset[str] = frozenset(),
+) -> dict[str, Any] | None:
+    """The model a report or deck `stage` (`plan`, `hard`, `repair`) runs on, or None when the
+    stage stays with `writer` (the `document` row's pick): the row names none in this column,
+    names the writer itself, or names a model that is not served, not allowed, failed lately
+    or, in a strict turn, not strict-local. A document turn never fails for a missing upper
+    model; it is written as before."""
+    wanted = rules[STAGE_ROWS[stage]]["strictModel" if strict else "model"]
+    if not wanted or wanted == writer.get("id") or wanted in skip:
+        return None
+    model = next((m for m in catalogue if str(m.get("id")) == wanted), None)
+    if not usable_for(model, kind=kind, strict=strict, allowed=allowed, context_bytes=0,
+                      needs_tools=False, needs_vision=False):
+        return None
+    return model
+
+
 def manual_effort(mode: str, model: dict[str, Any] | None) -> str:
     """The writer's effort for a model picked by hand: its configured default under `auto`
     (and on a model whose reasoning cannot be steered), none under `fast`, its highest level
@@ -757,7 +830,8 @@ def estimate(
     resolves here."""
     seen: dict[str, int] = {}
     for task_class in CLASSES:
-        if task_class in ("document", MATERIAL_CLASS, COMPLEX_CLASS, ESCALATION_CLASS):
+        if task_class in ("document", MATERIAL_CLASS, COMPLEX_CLASS, ESCALATION_CLASS,
+                          *STAGE_ROWS.values()):
             continue
         model, _ = pick(rules, task_class, catalogue, kind="chat", strict=strict, allowed=allowed)
         if model is not None:
@@ -876,6 +950,9 @@ __all__ = [
     "pick",
     "reasoning_fields",
     "route_metadata",
+    "STAGE_ROWS",
+    "stage_effort",
+    "stage_pick",
     "stored_rules",
     "strict_fallback",
     "typical_credits",

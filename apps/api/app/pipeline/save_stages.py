@@ -12,7 +12,7 @@ from app.pipeline import marks as doc_marks
 from app.pipeline import registry
 from app.pipeline.bundle import Bundle
 from app.pipeline.stage import Base, Context
-from app.services import captions, office_finish, output_language
+from app.services import captions, doc_stages, office_finish, output_language
 
 log = logging.getLogger("app.routers.sessions")
 
@@ -323,6 +323,9 @@ class ReportSave(Base):
                 usage.get("outlineInputTokens", 0),
                 usage.get("outlineOutputTokens", 0),
             )
+            # a staged report's upper-model tokens, each stage at its own model's price
+            + (doc_stages.credits(usage, stage_rows.rows, host.charge_for_tokens)
+               if (stage_rows := doc_stages.CURRENT.get()) is not None else 0)
         )
         saved: dict[str, Any] = {"artifactId": None, "credits": credits, "messageId": None}
         async with host.SessionLocal() as db:
@@ -416,7 +419,10 @@ class ReportSave(Base):
                         model=model["id"],
                         steps=host._prelude_steps(turn.get("skills_event"),
                                                   turn.get("context_steps")) or None,
-                        routing=turn.get("routing"),
+                        # a staged report's stages and self-hosted share (`routing.runInfo`)
+                        routing=doc_stages.with_run_info(
+                            turn.get("routing"), usage, model["id"],
+                            (outline_model or {}).get("id", "")),
                     )
                     db.add(message)
                     host.settle(

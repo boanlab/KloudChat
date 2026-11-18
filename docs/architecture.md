@@ -3079,6 +3079,7 @@ V4.1 Flash at high effort by the owner's decision of 2026-11-14:
 | document | Qwen3.8 27B | strict 27B | default | 6.0 free vs GLM-5.3 6.7 at ~800 credits |
 | material (a row, not a class) | — (the class's own row) | — (the class's own row) | high | moves nothing by default: on the re-run strict DeepSeek scored 7.6 vs thinking Flash 7.7 over files (8.2 with passback) at ~50 s more to the first text |
 | complex_document (a row, not a class) | self-hosted DeepSeek V4 Flash (`local/`) | strict DeepSeek V4 Flash | high | form-following with the 27B was unreliable (label overwrites, wrong cells, tool-limit hits); see "Complex documents" below |
+| document_plan, document_hard, document_repair (rows, not classes) | GLM-5.3 (`z-ai/glm-5.3`) | strict DeepSeek V4 Flash | low / default / default | the 27B alone wrote poor documents (3.8 of 10 for reports, 5.3 for decks on the 2026-11-17 benchmark; a stronger open-weight model 5.5–6.5), so one model never writes a whole document; see "Staged documents" below |
 | escalation | DeepSeek V4.1 Flash | strict DeepSeek V4 Flash | high | never empty; 9/10 where thinking Flash left nothing; strict 「틀렸어, 다시」 6.7 vs Flash 6.2 |
 
 The strict `escalation` pick comes from the owner's decision of 2026-11-14,
@@ -3168,6 +3169,65 @@ slots with its connection; without Postgres (tests) the cap is per process. The 
 (n counts the waiting turns of this replica) while it waits, and gives the slot back however the
 turn ends. After `COMPLEX_DOCUMENT_WAIT_SEC` (120 s) without a slot the fallback writes the turn
 (`route.fallbackReason: queue`). There is no migration: the caps are environment settings.
+
+**Staged documents (the `document_plan`, `document_hard` and `document_repair` rows).** On
+the 2026-11-17 benchmark the self-hosted 27B alone wrote poor reports and decks (garbled terms,
+unwritten sections, invented clauses, wrong slide counts, an English deck), while a stronger
+open-weight model scored 5.5–6.5. So in `super` and `super_strict` a report or deck is written in
+stages and no one model writes the whole document (owner decision 2026-11-18). The `document`
+row's model stays the writer of the ordinary sections and slides; three override rows
+(`OVERRIDE_ROWS`, editable per column and effort like the others) name the upper model of a stage:
+
+| Stage | What it does | Where |
+|---|---|---|
+| `plan` (`document_plan`) | the report outline, the deck storyline and its slide-count retries, the cover title | `Outline` stage; `deck.write` `ask` |
+| `hard` (`document_hard`) | the sections or slides the objective signals below mark as hard, one call each, started together | `Draft` and `Sections` stages; `deck._write_slides` |
+| `repair` (`document_repair`) | only what an existing check sends back: an error text, tool call, cut-off or empty section, placeholder or table gaps, a language slip, a format amendment, the verify stage's findings, a retold, empty or unusable slide, a deck check's rewrite (a language slip, long lines, template blanks, a missing summary) | `report_stages` `_staged` and `_repair_complete`; `deck.rewrite_slide(stage="repair")` |
+
+Defaults: `super` column `z-ai/glm-5.3` for all three (effort `low` for the plan, the model's
+default for the others; GLM-5.3 reasons whatever it is told, so its lowest level is sent), the
+strict column `strict-local/deepseek-v4-flash` (self-hosted and slow, so these calls stay few and
+short). To compare another upper model change only a row, for example
+`moonshotai/kimi-k3.1-pro` in the three `super` cells; nothing else needs a code change.
+An empty column switches the stage off: the writer does it.
+
+*What is hard* (`doc_stages`, no model judgement, no phrase lists of its own). A report's
+section is hard by its role, read from the headings with the words `report._section_role`
+already uses: the summary that opens the document (`summary`), the conclusion that closes it
+(`conclusion`), a section that analyses or compares (`analysis`: 비교, 분석, 대안, 옵션, 검토,
+평가), and a section with a table, results or trend role (`figures`) when the material holds
+figures to trace (at least six distinct numbers or a table). A deck's slide is hard when it is a
+data layout (chart, metrics, big number, table) over such material (`data`), or when its title
+is a summary or decision (`summary`); structural slides take no model call. At most half of the
+sections or content slides go up (`HARD_MAX_SHARE`), strongest reason first, so the writer
+always keeps a share. The one-call draft of the report or deck leaves the hard parts out (and
+says they are written separately); hard sections that need no earlier text (all but the
+conclusion) are started together.
+
+*Fallbacks.* A stage whose row names no model, a model that is not served, not allowed, failed
+lately (`model_health`), or is the writer itself, stays with the writer
+(`super_agent.stage_pick`): a document turn never fails for a missing upper model. A call to an
+upper model that fails or answers nothing is asked again on the writer, and the rest of the
+turn's calls of that model go straight to the writer (`doc_stages.staged`); the calls still go
+through `_complete` and its retries (`complex_turn.run_call`, `model_retry`, `thinking`). Each
+stage call is sent its row's reasoning level (the chip steers it: `fast` none, `deep` highest)
+for that call only.
+
+*Privacy.* The picks are made in the turn's column. A turn that went to the strict column (the
+strict entry, personal data, internal material) takes all three stage models from the strict
+column, which accepts strict-local models only (the admin table refuses any other), and the
+router drops any non-strict stage model again before the writer runs. Nothing new leaves in a
+strict turn. In `super` the upper models are external picks like the hard chat classes: the
+user's model allowlist applies, and the gateway applies its OpenRouter policy (ZDR, quantization
+for open-weight models) as for every external pick.
+
+*Observability.* The route note carries `stages` (the model of each stage). Each stage's tokens
+are kept apart in the usage (`usage.stageUsage`, never in the writer's own counts), billed at
+that model's own price, and the stored message's `routing.runInfo` lists each stage's model,
+calls, fallbacks and tokens with what sent work up (`triggers`) and `selfHostedShare` (the share
+of the turn's tokens, input and output, that stayed on the house's servers) and
+`selfHostedOutputShare`. 「이번 답」 details show them. Revisions of an existing document are not
+staged. There is no migration.
 
 **Failure inside a strict turn.** DeepSeek V4 Flash is served across both GB10 nodes
 (tensor-parallel 2), so either node down takes it away, and the gateway refuses strict aliases

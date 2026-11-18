@@ -113,6 +113,7 @@ from app.services import (
     coverage,
     date_rules,
     design_templates,
+    doc_stages,
     docx_doc,
     docx_edit,
     exact_facts,
@@ -2089,6 +2090,25 @@ async def _document_signals(
     )
 
 
+def _document_stage_ids(
+    *, user: User, policy, session: ChatSession, catalogue: list[dict], writer: dict,
+    strict: bool,
+) -> dict[str, str]:
+    """The upper model of each stage of a staged report or deck (`doc_stages`), from the
+    Super Agent table's `document_plan`, `document_hard` and `document_repair` rows in the
+    turn's column. A stage with no usable model is left out: the writer does it."""
+    rules = super_agent.normalise_rules(policy.super_agent_rules)
+    allowed, skip = set(user.allowed_models or []), model_health.unhealthy()
+    found: dict[str, str] = {}
+    for stage in doc_stages.STAGES:
+        picked = super_agent.stage_pick(
+            rules, stage, catalogue, kind=session.kind.value, strict=strict, allowed=allowed,
+            writer=writer, skip=skip)
+        if picked is not None:
+            found[stage] = str(picked["id"])
+    return found
+
+
 async def _document_super_route(
     *,
     db: DbSession,
@@ -2134,6 +2154,9 @@ async def _document_super_route(
                 },
             )
         route = {**route, "boundaryModel": twin["id"], "strictReason": "internal_data"}
+        if stage_ids := _document_stage_ids(user=user, policy=policy, session=session,
+                                            catalogue=usable, writer=twin, strict=True):
+            route["stages"] = stage_ids
         return twin, True, {
             "action": "internal_strict_local",
             "requestedModels": [chosen.get("id")],
@@ -2142,6 +2165,13 @@ async def _document_super_route(
             "dataBoundary": twin.get("dataBoundary") or "self_hosted",
             "superAgent": route,
         }
+    # personal data or internal material (`strictReason`) and the strict entry keep every stage
+    # in the strict column, as they keep the writer
+    if stage_ids := _document_stage_ids(
+            user=user, policy=policy, session=session, catalogue=usable, writer=chosen,
+            strict=strict or session.routing_mode == RoutingMode.super_strict
+            or bool(route.get("strictReason"))):
+        route["stages"] = stage_ids
     note: dict[str, Any] = {"superAgent": route}
     if chosen.get("id") != model.get("id"):
         note = {**_substitution_routing(model, chosen), "action": "none", "superAgent": route}
@@ -5033,6 +5063,9 @@ async def _settle_plan_turn(
         usage.get("outlineInputTokens", 0),
         usage.get("outlineOutputTokens", 0),
     )
+    if (stages := doc_stages.CURRENT.get()) is not None:
+        # the staged outline: the upper model's tokens at its own price
+        credits += doc_stages.credits(usage, stages.rows, charge_for_tokens)
     async with SessionLocal() as db:
         session = await db.get(ChatSession, session_id)
         user = await db.get(User, user_id)
@@ -6627,6 +6660,18 @@ async def _send_message(
         reasoning_mode, model, turn_route, super_rescue, rescue_effort, writer_fallback,
         fallback_effort,
     )
+    #: the staged document's upper models (`doc_stages`): none for a chat turn, a model picked
+    #: by hand or a turn whose route found no usable upper model
+    stage_models = doc_stages.StageModels()
+    if kind is not SessionKind.chat and document_route:
+        stage_models = doc_stages.from_ids(document_route.get("stages"), catalogue_models,
+                                           strict=strict_local)
+        stage_rules = super_agent.normalise_rules(policy.super_agent_rules)
+        for stage, model_id in stage_models.ids.items():
+            stage_models.fields[stage] = super_agent.reasoning_fields(
+                model_id, super_agent.stage_effort(stage_rules, stage, reasoning_mode),
+                stage_models.rows[model_id])
+    doc_stages.CURRENT.set(stage_models or None)
     if complex_turn_route:
         # the turn's slot and fallback; its stream takes the slot first (`_survive_disconnect`)
         complex_turn.PLAN.set(complex_turn.Plan(
@@ -7630,6 +7675,8 @@ async def _settle_stopped_document(*, session_id: str, user_id: str, model: dict
              (outline_model or model, usage.get("outlineInputTokens", 0),
               usage.get("outlineOutputTokens", 0))]
     credits = sum(charge_for_tokens(row, i, o) for row, i, o in spent if i or o)
+    if (stages := doc_stages.CURRENT.get()) is not None:
+        credits += doc_stages.credits(usage, stages.rows, charge_for_tokens)
     try:
         async with SessionLocal() as db:
             user = await db.get(User, user_id)
@@ -9527,6 +9574,9 @@ async def _deck_save(work: PipelineBundle) -> AsyncIterator[dict]:
             usage.get("outlineInputTokens", 0),
             usage.get("outlineOutputTokens", 0),
         )
+        # a staged deck's upper-model tokens, each stage at its own model's price
+        + (doc_stages.credits(usage, stage_rows.rows, charge_for_tokens)
+           if (stage_rows := doc_stages.CURRENT.get()) is not None else 0)
     )
     saved: dict[str, Any] = {"artifactId": None, "credits": credits, "messageId": None}
     async with SessionLocal() as db:
@@ -9608,7 +9658,9 @@ async def _deck_save(work: PipelineBundle) -> AsyncIterator[dict]:
                     usage={**usage, "credits": credits},
                     model=model["id"],
                     steps=_prelude_steps(skills_event, context_steps) or None,
-                    routing=routing,
+                    # a staged deck's stages and self-hosted share (`routing.runInfo`)
+                    routing=doc_stages.with_run_info(
+                        routing, usage, model["id"], (outline_model or {}).get("id", "")),
                 )
                 db.add(message)
                 settle(

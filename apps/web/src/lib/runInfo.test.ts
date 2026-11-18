@@ -66,6 +66,17 @@ describe('answerRows', () => {
   })
 })
 
+describe('answerRows of a staged document', () => {
+  it('shows the self-hosted share and each stage with its model and tokens', () => {
+    const rows = answerRows({
+      selfHostedShare: 0.834,
+      stages: [{ stage: 'hard', model: 'z-ai/glm-5.3', inputTokens: 1000, outputTokens: 500, calls: 2, fallbacks: 0 }],
+    }, (id) => `label ${id}`, t)
+    expect(rows).toContainEqual({ label: '자체 서버 비중', value: '83%' })
+    expect(rows.find((r) => r.label === '어려운 부분')?.value).toContain('label z-ai/glm-5.3')
+  })
+})
+
 describe('hasRunDetail', () => {
   it('needs a quantization, KV cache or engine', () => {
     expect(hasRunDetail(base)).toBe(false)
