@@ -28,6 +28,7 @@ from typing import Any
 
 import httpx
 
+from app.core.config import settings
 from app.services import model_health, thinking, usage_fields
 
 log = logging.getLogger(__name__)
@@ -37,7 +38,7 @@ STAGES: tuple[str, ...] = ("plan", "hard", "repair")
 
 #: At most this share of a report's sections (or a deck's content slides) is marked hard: the
 #: writer keeps the rest, so the upper model never writes a whole document either.
-HARD_MAX_SHARE = 0.5
+HARD_MAX_SHARE = 0.5  # the default of `settings.document_hard_share`
 #: A source carries numbers worth tracing when this many distinct figures stand in it.
 SOURCE_NUMBERS_MIN = 6
 
@@ -45,7 +46,8 @@ SOURCE_NUMBERS_MIN = 6
 #: section a table in `report._section_role`).
 ANALYSIS_WORDS: tuple[str, ...] = ("비교", "분석", "대안", "옵션", "검토", "평가")
 #: Reasons a section or slide is hard, strongest first (the order the cap keeps).
-HARD_REASONS: tuple[str, ...] = ("summary", "conclusion", "analysis", "figures", "data")
+HARD_REASONS: tuple[str, ...] = ("summary", "conclusion", "analysis", "figures", "data",
+                                 "body")
 
 #: Deck layouts that carry numbers, and so are hard when the source has figures.
 DATA_LAYOUTS = frozenset({"chart", "metrics", "big-number", "table"})
@@ -316,7 +318,10 @@ def source_has_figures(material: str) -> bool:
 
 
 def _cap(count: int) -> int:
-    return max(1, math.floor(count * HARD_MAX_SHARE)) if count > 1 else 0
+    share = min(1.0, max(0.0, settings.document_hard_share))
+    if share <= 0:
+        return 0
+    return max(1, min(count - 1, math.floor(count * share + 1e-9))) if count > 1 else 0
 
 
 def hard_report_sections(headings: list[str], material: str) -> dict[int, str]:
@@ -344,6 +349,9 @@ def hard_report_sections(headings: list[str], material: str) -> dict[int, str]:
             found[index] = "analysis"
         elif figures and (has(report._COMPARE_WORDS) or has(report._TREND_WORDS)):
             found[index] = "figures"
+        elif settings.document_hard_share > HARD_MAX_SHARE:
+            # a share above the default takes plain sections too, last
+            found[index] = "body"
     order = sorted(found, key=lambda i: (HARD_REASONS.index(found[i]), i))
     keep = set(order[:_cap(total)])
     return {i: r for i, r in sorted(found.items()) if i in keep}
@@ -366,6 +374,8 @@ def hard_slides(slides: list[dict[str, Any]], material: str) -> dict[int, str]:
             found[index] = "summary"
         elif figures and str(slide.get("layout")) in DATA_LAYOUTS:
             found[index] = "data"
+        elif settings.document_hard_share > HARD_MAX_SHARE:
+            found[index] = "body"
     order = sorted(found, key=lambda i: (HARD_REASONS.index(found[i]), i))
     keep = set(order[:_cap(len(content))])
     return {i: r for i, r in sorted(found.items()) if i in keep}

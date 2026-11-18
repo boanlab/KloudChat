@@ -1499,6 +1499,24 @@ def language_rule(request: str) -> str:
     )
 
 
+def korean_over_foreign_material(request: str, material: list[str] | None) -> str:
+    """The rule for a Korean ask over material that is mostly English (a pasted paper): the
+    writer follows the material's language unless told, so it is told."""
+    ask = instruction_part(request)
+    if len(_HANGUL.findall(ask)) * 4 <= len(_LATIN.findall(ask)) or not ask.strip():
+        return ""
+    text = "\n".join(material or []) + "\n" + request[len(ask):]
+    latin, hangul = len(_LATIN.findall(text)), len(_HANGUL.findall(text))
+    if latin < 400 or hangul * 4 > latin:
+        return ""
+    return (
+        "The request is in Korean and the material is in English. Write every title, heading, "
+        "bullet, table cell and note in Korean, translating what the material says; keep only "
+        "proper nouns, system names and established English terms in English. Never answer "
+        "in English because the material is."
+    )
+
+
 def build_document_messages(
     kind: SessionKind,
     prompt: str,
@@ -1520,6 +1538,9 @@ def build_document_messages(
     if research_rule:
         trusted.append(research_rule)
     if not _agent_language(trusted) and (rule := language_rule(request)):
+        trusted.append(rule)
+    elif not _agent_language(trusted) and (rule := korean_over_foreign_material(
+            request, untrusted_context)):
         trusted.append(rule)
     messages = [
         {

@@ -109,6 +109,9 @@ class Settings(BaseSettings):
     #: DeepSeek, across all API replicas; the rest wait in line. The server holds 8 sequences and
     #: chat shares them. 0 = no cap. Env: COMPLEX_DOCUMENT_SLOTS.
     complex_document_slots: int = 2
+    #: The most a report's sections (or a deck's content slides) the upper model may write, as a
+    #: share (`doc_stages`); the writer keeps the rest. Env: DOCUMENT_HARD_SHARE.
+    document_hard_share: float = 0.5
     #: Seconds a complex document turn waits for a slot before the `document` row's model writes
     #: it instead. Env: COMPLEX_DOCUMENT_WAIT_SEC.
     complex_document_wait_sec: float = 120.0
