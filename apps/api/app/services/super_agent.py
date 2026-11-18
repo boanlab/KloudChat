@@ -892,7 +892,12 @@ def reasoning_fields(model_id: str, effort: str, model: dict[str, Any] | None = 
     on = effort in ("low", "high", HIGHEST)
     if self_hosted:
         if "deepseek" in model_id:
-            return {"chat_template_kwargs": {"thinking": on}}
+            # `low` is a level of its own on the server (about a third of the thinking of the
+            # default); the other levels are the template's switch, as before
+            fields: dict[str, Any] = {"thinking": on}
+            if effort == "low":
+                fields["reasoning_effort"] = "low"
+            return {"chat_template_kwargs": fields}
         return thinking.template_switch_on(model_id) if on else thinking.template_switch(model_id)
     reasoning = (model or {}).get("reasoning") or {}
     offered = list(reasoning.get("efforts") or [])

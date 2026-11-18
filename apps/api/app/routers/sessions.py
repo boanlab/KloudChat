@@ -6668,9 +6668,14 @@ async def _send_message(
                                            strict=strict_local)
         stage_rules = super_agent.normalise_rules(policy.super_agent_rules)
         for stage, model_id in stage_models.ids.items():
+            level = super_agent.stage_effort(stage_rules, stage, reasoning_mode)
+            if level == "default" and "deepseek" in model_id and model_id.startswith(
+                    ("local/", "strict-local/")):
+                # a self-hosted DeepSeek thinks by default, at a length that eats a stage's
+                # short answer budget: its stages are sent the lowest level unless the row says
+                level = "low"
             stage_models.fields[stage] = super_agent.reasoning_fields(
-                model_id, super_agent.stage_effort(stage_rules, stage, reasoning_mode),
-                stage_models.rows[model_id])
+                model_id, level, stage_models.rows[model_id])
     doc_stages.CURRENT.set(stage_models or None)
     if complex_turn_route:
         # the turn's slot and fallback; its stream takes the slot first (`_survive_disconnect`)
