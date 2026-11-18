@@ -7671,6 +7671,7 @@ async def _settle_stopped_document(*, session_id: str, user_id: str, model: dict
     """A report or deck stopped before it was stored: no artifact, the question marked stopped
     (like a chat turn stopped before its first word), the tokens spent so far billed."""
     # each model's tokens at its price; a part that spent nothing costs nothing
+    doc_stages.whole_turn(usage)
     spent = [(model, usage.get("inputTokens", 0), usage.get("outputTokens", 0)),
              (outline_model or model, usage.get("outlineInputTokens", 0),
               usage.get("outlineOutputTokens", 0))]
@@ -9564,6 +9565,7 @@ async def _deck_save(work: PipelineBundle) -> AsyncIterator[dict]:
     research_log = (work.wire.get("research") or {}).get("research")
     research_log = dict(research_log) if research_log is not None else None
     written = deck_service.filled(slides)
+    doc_stages.whole_turn(usage)
     credits = (
         0
         if not written

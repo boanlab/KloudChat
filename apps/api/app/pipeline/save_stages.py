@@ -313,6 +313,7 @@ class ReportSave(Base):
                            "heading": section.get("heading"), "content": english, "done": True}
         bundle.document.sections = sections
         written = [s for s in sections if (s.get("content") or "").strip()]
+        doc_stages.whole_turn(usage)
         credits = (
             0
             if not written

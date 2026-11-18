@@ -71,6 +71,9 @@ class StageModels:
     #: it); `{}` leaves thinking off where it can be turned off
     fields: dict[str, dict[str, Any]] = field(default_factory=dict)
     down: set[str] = field(default_factory=set)
+    #: every stage call of the whole turn, as `usage` keeps them per pass: a plan written straight
+    #: on (no card) is a pass of its own whose usage the writing pass never sees
+    ledger: dict[str, Any] = field(default_factory=dict)
 
     def model(self, stage: str | None) -> str:
         """The upper model of `stage`, or "" for the writer."""
@@ -119,8 +122,29 @@ def self_hosted(model_id: str, rows: dict[str, dict[str, Any]] | None = None) ->
 # --- tokens, price and the answer's line ---------------------------------------------------
 
 
+def _both(usage: dict[str, Any]) -> list[dict[str, Any]]:
+    """`usage` and the turn's ledger (when the turn has one and `usage` is not it)."""
+    stages = CURRENT.get()
+    return [usage] if stages is None or usage is stages.ledger else [usage, stages.ledger]
+
+
+def whole_turn(usage: dict[str, Any]) -> dict[str, Any]:
+    """`usage` with the stage tokens and triggers of the whole turn (every pass), in place."""
+    stages = CURRENT.get()
+    if stages is not None:
+        for key in ("stageUsage", "stageTriggers"):
+            if key in stages.ledger:
+                usage[key] = stages.ledger[key]
+    return usage
+
+
 def add_usage(usage: dict[str, Any], stage: str, model: str, spent: dict[str, Any]) -> None:
     """One stage call's tokens on the upper model (never on the writer's own counts)."""
+    for one in _both(usage):
+        _add_usage(one, stage, model, spent)
+
+
+def _add_usage(usage: dict[str, Any], stage: str, model: str, spent: dict[str, Any]) -> None:
     rows = usage.setdefault("stageUsage", {})
     row = rows.setdefault(stage, {"model": model, "inputTokens": 0, "outputTokens": 0,
                                   "calls": 0, "fallbacks": 0})
@@ -132,17 +156,18 @@ def add_usage(usage: dict[str, Any], stage: str, model: str, spent: dict[str, An
 
 def note_fallback(usage: dict[str, Any], stage: str, model: str) -> None:
     """The stage's upper model failed and the writer took the call."""
-    rows = usage.setdefault("stageUsage", {})
-    row = rows.setdefault(stage, {"model": model, "inputTokens": 0, "outputTokens": 0,
-                                  "calls": 0, "fallbacks": 0})
-    row["fallbacks"] += 1
+    for one in _both(usage):
+        rows = one.setdefault("stageUsage", {})
+        row = rows.setdefault(stage, {"model": model, "inputTokens": 0, "outputTokens": 0,
+                                      "calls": 0, "fallbacks": 0})
+        row["fallbacks"] += 1
 
 
 def note_trigger(usage: dict[str, Any], stage: str, why: str) -> None:
     """A check sent something to `stage` (`hard`: a hard part; `repair`: a failed check)."""
-    rows = usage.setdefault("stageTriggers", {})
-    row = rows.setdefault(stage, {})
-    row[why] = int(row.get(why, 0)) + 1
+    for one in _both(usage):
+        row = one.setdefault("stageTriggers", {}).setdefault(stage, {})
+        row[why] = int(row.get(why, 0)) + 1
 
 
 def credits(usage: dict[str, Any], rows: dict[str, dict[str, Any]] | None,
