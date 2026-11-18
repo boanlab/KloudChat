@@ -12,10 +12,8 @@ from test_complex_documents_go_to_deepseek import (
 )
 from test_complex_documents_go_to_deepseek import (
     LOCAL_27B,
-    POLICY,
     STRICT_27B,
     STRICT_DS,
-    USER,
     _route,
 )
 from test_super_agent_turns import _model
