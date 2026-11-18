@@ -70,6 +70,16 @@ export function answerRows(run: AnswerRunInfo, modelLabel: (id: string) => strin
   if (run.provider) rows.push({ label: t('답한 제공자'), value: run.provider })
   rows.push(...declaredRows(run, t))
   rows.push({ label: t('대체 모델로 답함'), value: run.fallback ? t('예') : t('아니요') })
+  if (typeof run.selfHostedShare === 'number') {
+    rows.push({ label: t('자체 서버 비중'), value: `${Math.round(run.selfHostedShare * 100)}%` })
+  }
+  const stageName: Record<string, string> = { plan: '개요', hard: '어려운 부분', repair: '고쳐 쓰기' }
+  for (const s of run.stages ?? []) {
+    rows.push({
+      label: t(stageName[s.stage] ?? s.stage),
+      value: `${modelLabel(s.model)} · ${t('{n}회').replace('{n}', String(s.calls))} · ${formatTokens(s.inputTokens + s.outputTokens)} tokens`,
+    })
+  }
   const c = run.call ?? {}
   const settings: [string, number | string | undefined][] = [
     ['temperature', c.temperature],

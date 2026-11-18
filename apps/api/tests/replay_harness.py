@@ -159,6 +159,8 @@ def pin_recorded_defaults(patch: Patch) -> None:
     # memo's 「캡스톤디자인」 line names the project-proposal genre); the code reads the ask's
     # first paragraph first, which would change those prompts.
     patch(report, "lead_instruction", context.instruction_part)
+    # The records predate the Korean-output rule for a Korean ask over English material.
+    patch(context, "korean_over_foreign_material", lambda request, material: "")
     pin_recorded_prompts(patch)
 
 

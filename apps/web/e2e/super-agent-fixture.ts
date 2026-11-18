@@ -45,6 +45,9 @@ const defaultRules = {
   document: { model: 'local/flash', strictModel: 'strict-local/flash', effort: 'default' },
   material: { model: '', strictModel: '', effort: 'high' },
   complex_document: { model: 'local/flash', strictModel: 'strict-local/flash', effort: 'high' },
+  document_plan: { model: 'external/deep', strictModel: 'strict-local/flash', effort: 'low' },
+  document_hard: { model: 'external/deep', strictModel: 'strict-local/flash', effort: 'default' },
+  document_repair: { model: 'external/deep', strictModel: 'strict-local/flash', effort: 'default' },
   escalation: { model: 'external/deep', strictModel: 'strict-local/flash', effort: 'high' },
 }
 

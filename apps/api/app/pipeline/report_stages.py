@@ -32,6 +32,7 @@ from app.services import (
     design_templates,
     diagrams,
     doc_formats,
+    doc_stages,
     doc_title,
     fact_check,
     figures,
@@ -111,6 +112,29 @@ async def _written(*args, **kwargs) -> tuple[str, dict]:
     dropped (a section otherwise ends 「이 섹션을 쓰지 못했습니다」)."""
     return await model_retry.once_more(lambda: _report()._complete(*args, **kwargs),
                                        "report call")
+
+
+async def _staged(bundle: Bundle, stage: str | None, build, max_tokens: int,
+                  *, writer: str | None = None) -> tuple[str, dict]:
+    """`_written` for a stage of a staged document (`doc_stages`): on the stage's upper model
+    when the turn has one (its tokens kept per stage, the returned `spent` empty), else on
+    `writer` (the writer unless told). `build(model)` makes the messages for the model asked."""
+    req = bundle.request
+    return await doc_stages.staged(
+        lambda model, messages, key, tokens: _written(model, messages, key, tokens), stage,
+        writer or req.model, build, req.api_key, max_tokens, bundle.usage)
+
+
+def _repair_complete(bundle: Bundle):
+    """`report._complete` for the repair stage's calls made with ready messages (the check
+    stages' repairs): the upper model first, the caller's model when that fails."""
+    async def complete(model: str, messages: list[dict], api_key: str,
+                       max_tokens: int) -> tuple[str, dict]:
+        return await doc_stages.staged(
+            _report()._complete, "repair", model, lambda _model: messages, api_key, max_tokens,
+            bundle.usage)
+
+    return complete
 
 
 def _searched(mat) -> bool:
@@ -403,18 +427,18 @@ class Outline(Base):
             each_rule += paper_cites.rule(paper_cites.papers_of(req.project_sources, mat.sources))
 
         async def ask(nudge: str = "") -> tuple[str, dict[str, int]]:
-            return await report._complete(
-                req.outline_model or req.model,
-                _messages(bundle, report._OUTLINE_PROMPT.format(
-                    ask_rule=grounding.ASK_RULE if req.may_ask else grounding.PROCEED_RULE,
-                    lo=wanted or report._MIN_SECTIONS,
-                    hi=wanted or most,
-                    genre=bundle.spec.genre,
-                    request=prompt_request(request, 2000),
-                ) + each_rule + nudge, req.outline_model or req.model),
-                req.api_key,
-                report.outline_tokens(most),
-            )
+            # the outline is the plan stage: the upper model when the turn has one
+            prompt = report._OUTLINE_PROMPT.format(
+                ask_rule=grounding.ASK_RULE if req.may_ask else grounding.PROCEED_RULE,
+                lo=wanted or report._MIN_SECTIONS,
+                hi=wanted or most,
+                genre=bundle.spec.genre,
+                request=prompt_request(request, 2000),
+            ) + each_rule + nudge
+            return await doc_stages.staged(
+                report._complete, "plan", req.outline_model or req.model,
+                lambda model: _messages(bundle, prompt, model), req.api_key,
+                report.outline_tokens(most), bundle.usage)
 
         try:
             text, spent = await ask()
@@ -677,9 +701,10 @@ async def _named_title(bundle: Bundle, title: str) -> str:
     report, req = _report(), bundle.request
     model = req.outline_model or req.model
     try:
-        text, spent = await report._complete(
-            model, _messages(bundle, _TITLE_PROMPT.format(
-                request=prompt_request(req.text, 600)), model), req.api_key, 60)
+        text, spent = await doc_stages.staged(
+            report._complete, "plan", model,
+            lambda used: _messages(bundle, _TITLE_PROMPT.format(
+                request=prompt_request(req.text, 600)), used), req.api_key, 60, bundle.usage)
     except _CAUGHT as exc:
         log.info("report title retry failed: %s", exc)
     else:
@@ -1016,38 +1041,57 @@ class Draft(Base):
     name = "draft"
     kind = "model"
     reads = ("request", "spec.genre", "plan", "material")
-    writes = ("document.long_form", "document.drafted")
+    writes = ("document.long_form", "document.drafted", "document.hard")
 
     async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
         report, req, plan = _report(), bundle.request, bundle.plan
         long_form = report._long_form(req.text)
         bundle.document.long_form = long_form
+        stages = doc_stages.CURRENT.get()
+        if stages is not None and stages.model("hard") and len(plan.headings) > 1:
+            # sections the objective signals mark as hard go to the upper model, one call
+            # each (`Sections`); the writer drafts the rest
+            hard = doc_stages.hard_report_sections(list(plan.headings), _material_text(bundle))
+            bundle.document.hard = hard
+            for why in hard.values():
+                doc_stages.note_trigger(bundle.usage, "hard", why)
+            if hard:
+                log.info("report sections for the upper model: %s",
+                         {plan.headings[i]: why for i, why in hard.items()})
         if long_form:
             yield {"type": "step", "id": "draft", "label": "절마다 길게 쓰는 중", "status": "done"}
             return
         yield {"type": "step", "id": "draft", "label": "초안 쓰는 중", "status": "running"}
         genre, sources = bundle.spec.genre, bundle.material.sources
+        ordinary = [h for i, h in enumerate(plan.headings) if i not in bundle.document.hard]
+        separate = [h for i, h in enumerate(plan.headings) if i in bundle.document.hard]
         try:
+            draft_prompt = report._shaped(
+                report._DRAFT_PROMPT.format(
+                    outline="\n".join(f"## {h}" for h in ordinary),
+                    refs=report._refs_block(sources),
+                    facts=report._FRAME_RULE if plan.frame
+                    else report._facts_line(
+                        req.text, sources, "\n".join(bundle.material.grounds)),
+                    genre=genre,
+                    request=prompt_request(req.text, 1500),
+                ),
+                genre,
+            )
+            if separate:
+                draft_prompt += (
+                    "\n\nThe document's other sections are written separately by another "
+                    "writer: do not write them and do not mention that they exist. They are: "
+                    + " / ".join(separate) + ".")
             draft_text, spent = await _written(
                 req.model,
-                _messages(bundle, report._shaped(
-                    report._DRAFT_PROMPT.format(
-                        outline="\n".join(f"## {h}" for h in plan.headings),
-                        refs=report._refs_block(sources),
-                        facts=report._FRAME_RULE if plan.frame
-                        else report._facts_line(
-                            req.text, sources, "\n".join(bundle.material.grounds)),
-                        genre=genre,
-                        request=prompt_request(req.text, 1500),
-                    ),
-                    genre,
-                ), req.model),
+                _messages(bundle, draft_prompt, req.model),
                 req.api_key,
-                max_tokens=min(11000, 1400 * len(plan.headings)),
+                max_tokens=min(11000, 1400 * len(ordinary)),
             )
             _count(bundle, spent)
             bundle.document.drafted = report._carry_table(
-                req.text, plan.headings, report._split_draft(draft_text, plan.headings))
+                req.text, ordinary, report._split_draft(draft_text, ordinary))
             yield {"type": "step", "id": "draft", "label": "초안 쓰는 중", "status": "done"}
         except _CAUGHT as exc:
             log.warning("report draft failed, writing section by section: %s", exc)
@@ -1075,14 +1119,16 @@ class Sections(Base):
         #: Assumptions section text once written, and its position.
         assumptions: dict = {"text": "", "index": -1}
 
+        hard = bundle.document.hard
+
         async def write_section(index: int, section: dict, written: list[str],
-                                tokens: int = 0):
-            """One section's call; `tokens` overrides its budget."""
+                                tokens: int = 0, stage: str | None = None):
+            """One section's call; `tokens` overrides its budget. A hard section is the hard
+            stage's (upper model); `stage="repair"` writes it again after a failed check."""
+            stage = stage or ("hard" if index in hard else None)
             role = report._section_role(section["heading"], index, len(sections),
                                         "\n".join(written))
-            return await _written(
-                req.model,
-                _messages(bundle, report._shaped(report._SECTION_PROMPT.format(
+            prompt = (report._shaped(report._SECTION_PROMPT.format(
                     heading=section["heading"],
                     outline=outline_text,
                     # tail only: whole doc crowds out the instruction
@@ -1126,10 +1172,9 @@ class Sections(Base):
                     "material's figures, and do not pad it by repeating yourself."
                     if long_form
                     else ""
-                ), req.model),
-                req.api_key,
-                tokens or (2400 if long_form else 1200),
-            )
+                ))
+            return await _staged(bundle, stage, lambda model: _messages(bundle, prompt, model),
+                                 tokens or (2400 if long_form else 1200))
 
         #: sections no call wrote, shown as such (never a blank heading)
         failed: set[int] = set()
@@ -1160,15 +1205,14 @@ class Sections(Base):
             async with gate:
                 return await write_section(index, section, [])
 
-        prefetched = (
-            {
-                index: asyncio.ensure_future(gated(index, section))
-                for index, section in enumerate(sections)
-                if section["heading"] not in drafted and index not in early
-            }
-            if long_form
-            else {}
-        )
+        # a long document starts every section; otherwise the hard sections that need nothing
+        # from the ones before them (the conclusion reads them, so it waits its turn)
+        prefetched = {
+            index: asyncio.ensure_future(gated(index, section))
+            for index, section in enumerate(sections)
+            if section["heading"] not in drafted and index not in early
+            and (long_form or (index in hard and hard[index] != "conclusion"))
+        }
 
         for index, section in enumerate(sections):
             # position in `progress` only; surface renders it
@@ -1198,7 +1242,8 @@ class Sections(Base):
                     log.warning("section %r came back as an error message; written again",
                                 section["heading"])
                     _count(bundle, spent)
-                    body, spent = await write_section(index, section, written)
+                    doc_stages.note_trigger(bundle.usage, "repair", "error_text")
+                    body, spent = await write_section(index, section, written, stage="repair")
                     if report.error_text(body, req.text):
                         raise ValueError("error message in place of the section")
                 if internal_words.has_tool_call(body):
@@ -1206,7 +1251,8 @@ class Sections(Base):
                     log.warning("section %r came back as a tool call; written again",
                                 section["heading"])
                     _count(bundle, spent)
-                    body, spent = await write_section(index, section, written)
+                    doc_stages.note_trigger(bundle.usage, "repair", "tool_call")
+                    body, spent = await write_section(index, section, written, stage="repair")
                     body = internal_words.strip_tool_calls(body)
                     if not body.strip():
                         raise ValueError("tool call in place of the section")
@@ -1221,8 +1267,10 @@ class Sections(Base):
                     log.warning("section %r stops mid-sentence; written again",
                                 section["heading"])
                     _count(bundle, spent)
+                    doc_stages.note_trigger(bundle.usage, "repair", "cut_mid_sentence")
                     again, spent = await write_section(index, section, written,
-                                                       4800 if long_form else 2400)
+                                                       4800 if long_form else 2400,
+                                                       stage="repair")
                     again = internal_words.strip_work_notes(
                         internal_words.strip_tool_calls(again), request=req.text, document=True)
                     if (again.strip() and not report.error_text(again, req.text)
@@ -1232,7 +1280,8 @@ class Sections(Base):
                     # empty, or notes only: written once more, never shipped empty
                     log.warning("section %r came back empty; written again", section["heading"])
                     _count(bundle, spent)
-                    body, spent = await write_section(index, section, written)
+                    doc_stages.note_trigger(bundle.usage, "repair", "empty")
+                    body, spent = await write_section(index, section, written, stage="repair")
                     body = internal_words.strip_work_notes(
                         internal_words.strip_tool_calls(body), request=req.text, document=True)
                     if not body.strip():
@@ -1243,9 +1292,11 @@ class Sections(Base):
                 # one more call with a much larger budget (a model's unswitchable thinking can
                 # take the whole section budget)
                 body = ""
+                doc_stages.note_trigger(bundle.usage, "repair", "failed_call")
                 try:
                     body, spent = await write_section(index, section, written,
-                                                      4800 if long_form else 3000)
+                                                      4800 if long_form else 3000,
+                                                      stage="repair")
                     body = internal_words.strip_work_notes(
                         internal_words.strip_tool_calls(body), request=req.text, document=True)
                     if report.error_text(body, req.text):
@@ -1280,14 +1331,14 @@ class Sections(Base):
             if report.placeholder_heavy(body) and any(re.search(r"\d", m or "")
                                                       for m in document_context):
                 # 「[측정값]」 cells under an attached numeric table: asked once more with the data
+                doc_stages.note_trigger(bundle.usage, "repair", "placeholders")
                 try:
-                    refilled, more = await report._complete(
-                        req.model,
-                        _messages(bundle, report._FILL_PROMPT.format(
-                            heading=section["heading"], body=body[:6000]), req.model),
-                        req.api_key,
-                        1600,
-                    )
+                    refilled, more = await _staged(
+                        bundle, "repair",
+                        lambda model, section=section, body=body: _messages(
+                            bundle, report._FILL_PROMPT.format(
+                                heading=section["heading"], body=body[:6000]), model),
+                        1600)
                 except _CAUGHT as exc:
                     log.info("placeholder refill of %r failed: %s", section["heading"], exc)
                 else:
@@ -1309,15 +1360,16 @@ class Sections(Base):
             material = _material_text(bundle)
             if gaps := table_integrity.problems(section["content"], material):
                 # rows dropped or not adding up: written once more with the defects named
+                doc_stages.note_trigger(bundle.usage, "repair", "table_rows")
                 try:
-                    redone, more = await report._complete(
-                        req.model,
-                        _messages(bundle, report._TABLE_FIX_PROMPT.format(
-                            heading=section["heading"], problems="\n".join(f"- {g}" for g in gaps),
-                            body=section["content"][:6000]), req.model),
-                        req.api_key,
-                        1600,
-                    )
+                    redone, more = await _staged(
+                        bundle, "repair",
+                        lambda model, section=section: _messages(
+                            bundle, report._TABLE_FIX_PROMPT.format(
+                                heading=section["heading"],
+                                problems="\n".join(f"- {g}" for g in gaps),
+                                body=section["content"][:6000]), model),
+                        1600)
                 except _CAUGHT as exc:
                     log.info("table rewrite of %r failed: %s", section["heading"], exc)
                 else:
@@ -1404,14 +1456,15 @@ async def _korean_again(bundle: Bundle, heading: str, body: str,
     given = _slip_vocabulary(bundle)
 
     async def again(i: int, slips: list[str]) -> tuple[int, str]:
+        doc_stages.note_trigger(bundle.usage, "repair", "language_slip")
         try:
-            text, spent = await report._complete(
-                req.model,
+            text, spent = await _staged(
+                bundle, "repair",
                 # the paragraph alone, no material: only its words change
-                build_document_messages(SessionKind.report, report._KOREAN_AGAIN_PROMPT.format(
-                    heading=heading, words=", ".join(f"「{w}」" for w in slips[:8]),
-                    paragraph=paragraphs[i][:4000]), request=req.text, model=req.model),
-                req.api_key,
+                lambda model: build_document_messages(
+                    SessionKind.report, report._KOREAN_AGAIN_PROMPT.format(
+                        heading=heading, words=", ".join(f"「{w}」" for w in slips[:8]),
+                        paragraph=paragraphs[i][:4000]), request=req.text, model=model),
                 min(2400, 200 + len(paragraphs[i])),
             )
         except _CAUGHT as exc:
@@ -2215,7 +2268,8 @@ class Verify(Base):
             bundle.document.sections, still, spent = await verify.verify_and_repair(
                 _doc(bundle),
                 bundle.findings.checks,
-                complete=report._complete,
+                # the repair stage's upper model when the turn has one
+                complete=_repair_complete(bundle),
                 # a strong writer's sentences are repaired by the writer, never a weaker model
                 model=req.reviser,
                 api_key=req.api_key,
@@ -2237,7 +2291,7 @@ class Verify(Base):
             try:
                 bundle.document.sections, unfixed, spent = await verify.repair(
                     _doc(bundle), [dataclasses.replace(f, auto=True) for f in disputed],
-                    complete=report._complete, model=req.reviser, api_key=req.api_key)
+                    complete=_repair_complete(bundle), model=req.reviser, api_key=req.api_key)
                 _count(bundle, spent, planner=True)
                 kept = {(f.section, f.sentence) for f in unfixed}
                 still = [f for f in still if f not in disputed
@@ -2260,7 +2314,7 @@ class Verify(Base):
                 bundle.document.sections, unfixed, spent = await verify.repair(
                     _doc(bundle), [bound_repair(f, bound[id(f)]) if id(f) in bound
                                    else dataclasses.replace(f, auto=True) for f in confirmed],
-                    complete=report._complete, model=req.reviser, api_key=req.api_key,
+                    complete=_repair_complete(bundle), model=req.reviser, api_key=req.api_key,
                     clean=lambda s: units.fix_written_sums(units.fix_written_arithmetic(s)))
                 _count(bundle, spent, planner=True)
                 kept = {(f.section, f.sentence) for f in unfixed}
@@ -2379,14 +2433,14 @@ class FormatAmend(Base):
                 sections[index] = {**sections[index],
                                    "content": content.rstrip() + "\n\n" + amendment.append}
             else:
+                doc_stages.note_trigger(bundle.usage, "repair", f"format:{amendment.code}")
                 try:
-                    amended, spent = await report._complete(
-                        req.model,
-                        [{"role": "user", "content": report._AMEND_PROMPT.format(
-                            instruction=amendment.instruction, content=content)}],
-                        req.api_key,
-                        max_tokens=min(9000, 2 * len(content) + 1500),
-                    )
+                    amended, spent = await _staged(
+                        bundle, "repair",
+                        lambda _model, amendment=amendment, content=content: [
+                            {"role": "user", "content": report._AMEND_PROMPT.format(
+                                instruction=amendment.instruction, content=content)}],
+                        min(9000, 2 * len(content) + 1500))
                     _count(bundle, spent)
                     amended = richtext.detach_tables(report.unwrap_json_prose(amended)).strip()
                     if report.only_added(content, amended):

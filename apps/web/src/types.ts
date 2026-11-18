@@ -97,7 +97,24 @@ export interface ModelRunInfo {
 }
 
 /** What one answer ran on (`routing.runInfo`): public, shown to whoever can read the answer. */
+/** One stage of a staged report or deck: who ran it and what it spent. */
+export interface RunStage {
+  stage: 'plan' | 'hard' | 'repair'
+  model: string
+  inputTokens: number
+  outputTokens: number
+  calls: number
+  /** Calls the writer took because the upper model failed. */
+  fallbacks: number
+}
+
 export interface AnswerRunInfo extends ModelRunInfo {
+  /** A staged document: each stage's model and tokens, what sent work up, the self-hosted share. */
+  stages?: RunStage[]
+  triggers?: Record<string, Record<string, number>>
+  /** Share of the turn's tokens that stayed on the house's own servers (0-1). */
+  selfHostedShare?: number | null
+  selfHostedOutputShare?: number | null
   /** The model that answered (the fallback's, when it failed over). */
   model?: string
   /** The provider OpenRouter reports for this call. */
@@ -201,6 +218,9 @@ export type SuperAgentClass =
   | 'document'
   | 'material'
   | 'complex_document'
+  | 'document_plan'
+  | 'document_hard'
+  | 'document_repair'
   | 'escalation'
 
 /** What a session produced, as measurements so the row can be phrased in the reader's language. */
@@ -375,6 +395,8 @@ export interface SuperAgentRoute {
   complexReason?: 'form' | 'coverage' | 'tools' | 'long_source'
   complexSignals?: ('form' | 'coverage' | 'tools' | 'long_source')[]
   strictReason?: 'personal_data' | 'internal_data'
+  /** The upper model of each stage of a staged report or deck (`document_plan`, `document_hard`, `document_repair`). */
+  stages?: Partial<Record<'plan' | 'hard' | 'repair', string>>
   classifierModel?: string
   classifierConfidence?: number
   classifierInputTokens?: number

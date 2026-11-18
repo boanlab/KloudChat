@@ -86,7 +86,7 @@ export function superLaneTitle(mode: 'super' | 'super_strict'): string {
 }
 
 /** Rows that move a turn rather than name a class's own model: empty keeps the class's row. */
-export const SUPER_OVERRIDE_ROWS: ReadonlySet<SuperAgentClass> = new Set(['material', 'complex_document'])
+export const SUPER_OVERRIDE_ROWS: ReadonlySet<SuperAgentClass> = new Set(['material', 'complex_document', 'document_plan', 'document_hard', 'document_repair'])
 
 /** What a task class reads as under an answer and in the admin table. */
 export const SUPER_CLASS_LABEL: Record<SuperAgentClass, string> = {
@@ -101,6 +101,9 @@ export const SUPER_CLASS_LABEL: Record<SuperAgentClass, string> = {
   document: '보고서·슬라이드',
   material: '내부 자료 작업',
   complex_document: '복잡한 문서',
+  document_plan: '문서 개요·구성',
+  document_hard: '문서의 어려운 부분',
+  document_repair: '문서 고쳐 쓰기',
   escalation: '다시 요청·빈 답 뒤',
 }
 

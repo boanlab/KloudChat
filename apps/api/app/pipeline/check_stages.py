@@ -15,6 +15,7 @@ from app.pipeline.stage import Base, Context, Wait
 from app.services import (
     check_skills,
     copy_check,
+    doc_stages,
     gap_questions,
     key_figures,
     output_language,
@@ -879,9 +880,14 @@ class DeckGrounding(Base):
         handed = await _hand_back(bundle, material=material, computed=computed, options=options)
         for slide in handed:
             yield {"type": "slide", "slide": slide, "done": True}
+        # a hand-back may have redrawn a chart from the model's figures: the table's stand
+        deck_rules.place_code_charts(bundle.document.sections, bundle.request.text, [material])
         current = bundle.document.sections
         slides, found = ground_slides(
             current, material=material, computed=computed, options=options)
+        if len(slides) != len(before):
+            log.warning("deck grounding changed the slide count: %d to %d",
+                        len(before), len(slides))
         slides, placed = mark_misplaced(slides, "\n".join([material, *computed]))
         # a percentage the material neither gives nor works out (「82% of frontier」 → cloud
         # 「100%」): marked, whatever the trace's arithmetic found for it
@@ -948,23 +954,48 @@ async def _hand_back(bundle: Bundle, *, material: str, computed: list[str],
         return []
     worst = sorted(pending, key=lambda n: -len(pending[n]))[:_HAND_BACK]
     kept: list[dict] = []
+    notes: dict[int, str] = {}
     for n in worst:
-        slide = slides[n]
         placed = [v for v in pending[n] if v.endswith(_FOR_THAT_ROW)]
         listed = ", ".join(f"「{v[:60]}」" for v in pending[n] if v not in placed) or (
             "" if placed else "the chart's values")
         said = [f"These on this slide are in none of the material, the sources or the code's "
                 f"results: {listed}."] if listed else []
-        note = " ".join([*said, *(f"{v}." for v in placed)]) + (
+        notes[n] = " ".join([*said, *(f"{v}." for v in placed)]) + (
             " Write the slide again with only figures the material gives "
             "or works out from its numbers. Leave a figure out, or write the item without "
             "it, rather than guess; a chart plots only given values, and its title names "
             "what the chart plots.")
+    # the slides with figures the material does not hold are the repair stage's: one call of
+    # its upper model for all of them (the writer takes any the call leaves out)
+    texts: dict[int, str | None] = {}
+    now = doc_stages.CURRENT.get()
+    batched = [n for n in worst if len(notes[n]) <= deck_rules.BATCH_NOTE_CHARS]
+    if batched and now is not None and now.model("repair"):
+        batch, first = await deck_rules.batched_slides(
+            [deck_rules.rewrite_prompt(
+                request=req.text, slides=slides, target_id=str(slides[n].get("id") or ""),
+                note=notes[n], keep_layout=True)[0] for n in batched],
+            stage="repair", model=req.model, api_key=req.api_key, request=req.text,
+            trusted_context=None, untrusted_context=[material, *[c for c in computed if c]],
+            research_rule="", titles=[str(slides[n].get("title")) for n in batched],
+            usage=bundle.usage)
+        bundle.usage["inputTokens"] = bundle.usage.get("inputTokens", 0) + int(
+            first.get("inputTokens", 0))
+        bundle.usage["outputTokens"] = bundle.usage.get("outputTokens", 0) + int(
+            first.get("outputTokens", 0))
+        texts = dict(zip(batched, batch, strict=True))
+    for n in worst:
+        slide = slides[n]
+        note = notes[n]
         try:
+            doc_stages.note_trigger(bundle.usage, "repair", "unsourced_figures")
             written, spent = await deck_rules.rewrite_slide(
                 request=req.text, slides=slides, target_id=str(slide.get("id") or ""),
                 model=req.model, api_key=req.api_key, note=note,
-                material=[material, *[c for c in computed if c]], keep_layout=True)
+                material=[material, *[c for c in computed if c]], keep_layout=True,
+                text=texts.get(n),
+                stage="repair" if n not in texts else None, stage_usage=bundle.usage)
         except Exception as exc:  # noqa: BLE001 — the slide stays; the code marks it
             log.info("hand-back of slide %d failed: %s", n, exc)
             continue

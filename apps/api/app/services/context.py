@@ -1482,7 +1482,11 @@ def search_plan(toggle: bool | str, request: str) -> tuple[bool, str | None]:
 
 
 def language_rule(request: str) -> str:
-    """English-output rule for plainly English requests."""
+    """English-output rule for plainly English requests. A Korean ask over pasted English
+    material (a paper's abstract) is a Korean request: the ask decides, not the material."""
+    ask = instruction_part(request)
+    if len(ask.strip()) >= 20 and len(ask) < len(request):
+        request = ask
     hangul = len(_HANGUL.findall(request))
     latin = len(_LATIN.findall(request))
     if latin < 40 or hangul * 4 > latin:
@@ -1492,6 +1496,24 @@ def language_rule(request: str) -> str:
         "headings, table headers, bullet points, speaker notes, captions, everything. "
         "The structural rules in the prompt still apply; the Korean style rules "
         "(합니다체, 한글 표기) do not. Do not translate the request's facts into Korean."
+    )
+
+
+def korean_over_foreign_material(request: str, material: list[str] | None) -> str:
+    """The rule for a Korean ask over material that is mostly English (a pasted paper): the
+    writer follows the material's language unless told, so it is told."""
+    ask = instruction_part(request)
+    if len(_HANGUL.findall(ask)) * 4 <= len(_LATIN.findall(ask)) or not ask.strip():
+        return ""
+    text = "\n".join(material or []) + "\n" + request[len(ask):]
+    latin, hangul = len(_LATIN.findall(text)), len(_HANGUL.findall(text))
+    if latin < 400 or hangul * 4 > latin:
+        return ""
+    return (
+        "The request is in Korean and the material is in English. Write every title, heading, "
+        "bullet, table cell and note in Korean, translating what the material says; keep only "
+        "proper nouns, system names and established English terms in English. Never answer "
+        "in English because the material is."
     )
 
 
@@ -1516,6 +1538,9 @@ def build_document_messages(
     if research_rule:
         trusted.append(research_rule)
     if not _agent_language(trusted) and (rule := language_rule(request)):
+        trusted.append(rule)
+    elif not _agent_language(trusted) and (rule := korean_over_foreign_material(
+            request, untrusted_context)):
         trusted.append(rule)
     messages = [
         {

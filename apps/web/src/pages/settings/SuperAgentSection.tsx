@@ -141,7 +141,7 @@ export function SuperAgentSection() {
             {SUPER_CLASSES.map((name) => {
               const rule = rules[name] ?? defaults[name]
               if (!rule) return null
-              const pool = name === 'document' || name === 'complex_document' ? documentModels : chatModels
+              const pool = name === 'document' || name === 'complex_document' || name.startsWith('document_') ? documentModels : chatModels
               const label = t(SUPER_CLASS_LABEL[name])
               return (
                 <tr
@@ -194,6 +194,9 @@ export function SuperAgentSection() {
       </div>
       <p className="text-xs text-faint">
         {t('다시·자세히 요청과 빈 답 뒤에는 「다시 요청·빈 답 뒤」 줄의 모델이 씁니다.')}
+      </p>
+      <p className="text-xs text-faint">
+        {t('보고서·슬라이드는 「보고서·슬라이드」 줄의 모델이 쓰고, 개요·어려운 부분·검사에 걸린 부분만 「문서 개요·구성」「문서의 어려운 부분」「문서 고쳐 쓰기」 줄의 모델이 맡습니다. 줄을 비우면 그 단계도 쓰는 모델이 합니다.')}
       </p>
       <p className="text-xs text-faint">
         {t('양식을 따르거나 자료가 많은 문서는 「복잡한 문서」 줄의 모델이 쓰고, 실패하면 「보고서·슬라이드」 줄의 모델이 잇습니다.')}

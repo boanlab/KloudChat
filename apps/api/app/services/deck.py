@@ -25,6 +25,7 @@ from app.services import (
     diagram_render,
     diagram_shapes,
     diagrams,
+    doc_stages,
     figure_kinds,
     figures,
     grounding,
@@ -45,6 +46,7 @@ from app.services import (
     scheduling,
     settings_store,
     slide_patterns,
+    source_digest,
     thinking,
     units,
     usage_fields,
@@ -2981,7 +2983,7 @@ def _chart_unit(unit: str) -> str:
     return head if len(head) <= _UNIT_CHARS else ""
 
 
-def _clean_chart(value: Any) -> dict[str, Any] | None:
+def _clean_chart(value: Any, max_series: int = _MAX_SERIES) -> dict[str, Any] | None:
     """Drawable chart or `None`; series cut to the shortest paired length."""
     if not isinstance(value, dict):
         return None
@@ -2992,7 +2994,7 @@ def _clean_chart(value: Any) -> dict[str, Any] | None:
     categories = [c for c in categories if c][:_MAX_CATEGORIES]
 
     series: list[dict[str, Any]] = []
-    for item in (value.get("series") or [])[:_MAX_SERIES]:
+    for item in (value.get("series") or [])[:max_series]:
         if not isinstance(item, dict):
             continue
         numbers: list[float] = []
@@ -3123,6 +3125,188 @@ def chart_from_material(title: str, material: list[str]) -> dict[str, Any] | Non
                         best = (score, chart)
             block = []
     return best[1] if best else None
+
+
+# --- charts built by code from a pasted table ---------------------------------------------------
+
+#: series a chart read from a table may plot (a model-written chart keeps `_MAX_SERIES`)
+_CODE_SERIES = 4
+#: a line of prose that has commas, not a comma-separated row: it ends a sentence, or its
+#: commas are thousands separators (a row of a pasted CSV has neither)
+_PROSE_LINE = re.compile(r"[.。!?]\s*$|(?<![\d,])\d{1,3},\d{3}(?![\d,])")
+_TOTAL_HEADER = re.compile(r"^(?:합계|총계|총합|계|total|sum)$", re.I)
+_UNIT_LINE = re.compile(r"단위\s?[:：]\s?([^,)）(（]{1,10})")
+_OWN_UNIT = re.compile(r"[(（]\s?([^()（）]{1,6})\s?[)）]\s*$")
+
+
+def _stem_overlap(left: str, right: str) -> bool:
+    """Two words share a stem of two characters or more (「분기별」 and 「분기」)."""
+    left, right = re.sub(r"\s", "", left), re.sub(r"\s", "", right)
+    return len(left) >= 2 and len(right) >= 2 and (left in right or right in left)
+
+
+def material_tables(texts: list[str]) -> list[dict[str, Any]]:
+    """Tables in the material as `{title, unit, header, rows}`: pipe tables and comma-separated
+    runs (a pasted CSV), the line above a table as its title. Cells stay text."""
+    found: list[dict[str, Any]] = []
+    for text in texts:
+        lines = (text or "").splitlines()
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
+            piped = line.startswith("|") and line.endswith("|")
+            commas = line.count(",")
+            if not piped and (commas < 2 or _PROSE_LINE.search(line)):
+                i += 1
+                continue
+            mark = line.count("|") if piped else commas
+            j = i
+            block: list[str] = []
+            while j < len(lines):
+                cur = lines[j].strip()
+                same = (cur.startswith("|") and cur.endswith("|") and cur.count("|") == mark) \
+                    if piped else (cur.count(",") == mark and not cur.startswith("|")
+                                   and not _PROSE_LINE.search(cur))
+                if not same:
+                    break
+                block.append(cur)
+                j += 1
+            if len(block) >= 3:
+                if piped:
+                    rows = [[c.strip() for c in b.strip("|").split("|")] for b in block
+                            if not all(re.fullmatch(r":?-{2,}:?", c.strip())
+                                       for c in b.strip("|").split("|") if c.strip())]
+                else:
+                    rows = [[c.strip() for c in b.split(",")] for b in block]
+                above = lines[i - 1].strip() if i else ""
+                unit = (_UNIT_LINE.search(above)
+                        or _UNIT_LINE.search(" ".join(lines[max(0, i - 3):i])))
+                found.append({"title": above, "unit": unit.group(1).strip() if unit else "",
+                              "header": rows[0], "rows": rows[1:]})
+            i = max(j, i + 1)
+    return found
+
+
+def _components(columns: dict[int, list[float | None]], total: int) -> list[int]:
+    """Columns whose values add up to `total`'s in every row they are all given (at least two
+    such rows), the most columns first; empty when none do."""
+    others = [j for j in columns if j != total]
+    best: list[int] = []
+    for size in range(len(others), 1, -1):
+        for combo in _combinations(others, size):
+            rows = [r for r in range(len(columns[total]))
+                    if columns[total][r] is not None
+                    and all(columns[j][r] is not None for j in combo)]
+            if len(rows) >= 2 and all(
+                    abs(sum(columns[j][r] for j in combo) - columns[total][r]) < 0.5
+                    for r in rows):
+                return list(combo)
+        if best:
+            break
+    return best
+
+
+def _combinations(items: list[int], size: int) -> list[tuple[int, ...]]:
+    from itertools import combinations
+
+    return list(combinations(items, size))
+
+
+def code_chart(title: str, material: list[str]) -> dict[str, Any] | None:
+    """The chart a table in the material gives for a slide titled `title`, read by code: its
+    categories are the first column's, its series the columns that carry the slide's measure
+    (a column whose header shares a stem with the title), else the parts that make up the
+    table's total column (the products of a revenue total), else every numeric column with the
+    table's unit; never a total, and never a column in another unit (「신규 계약(개사)」).
+    A column's gap (a figure still being counted) ends its series there. `None` when no table
+    fits; the model writes the slide's title and takeaway, never the figures."""
+    words = re.findall(r"[가-힣A-Za-z]{2,}", title or "")
+    best: tuple[int, dict[str, Any]] | None = None
+    for table in material_tables(material):
+        header, rows = table["header"], table["rows"]
+        width = len(header)
+        rows = [r for r in rows if len(r) == width]
+        columns = {j: [_number(r[j]) for r in rows] for j in range(1, width)}
+        numeric = [j for j, values in columns.items() if sum(v is not None for v in values) >= 2]
+        if len(rows) < 2 or not numeric:
+            continue
+        totals = [j for j in numeric if _TOTAL_HEADER.match(re.sub(r"\s", "", header[j]))]
+        total = totals[0] if totals else None
+        if total is None:
+            for j in numeric:
+                if _components({k: columns[k] for k in numeric}, j):
+                    total = j
+                    break
+        own = {j for j in numeric if _OWN_UNIT.search(header[j])
+               and _OWN_UNIT.search(header[j]).group(1).strip() != table["unit"]}
+        usable = [j for j in numeric if j != total and j not in own]
+        named = [j for j in usable if any(_stem_overlap(w, header[j]) for w in words)]
+        if named:
+            picked = named
+        elif total is not None and (parts := _components(
+                {j: columns[j] for j in numeric}, total)):
+            picked = [j for j in parts if j in usable]
+        else:
+            picked = []
+        categories_in = [r[0] for r in rows]
+        score = sum(any(_stem_overlap(w, h) for h in [*header, table["title"], *categories_in])
+                    for w in words)
+        if not picked or score == 0:
+            continue
+        picked = picked[:_CODE_SERIES]
+        unit = table["unit"] or ""
+        if not unit and (m := _OWN_UNIT.search(header[picked[0]])):
+            unit = m.group(1)
+        chart = _clean_chart({
+            "kind": "line" if all(re.search(r"분기|월|\d{4}|Q[1-4]|주차", c) for c in categories_in
+                                  if c) else "bar",
+            "unit": unit,
+            "categories": [r[0] for r in rows if r[0]],
+            "series": [{"name": re.sub(r"\s{0,2}[(（][^()（）]*[)）]\s*$", "", header[j]),
+                        "values": [v if v is not None else None for v in columns[j]]}
+                       for j in picked],
+        }, _CODE_SERIES)
+        if chart and (best is None or score > best[0]):
+            best = (score, chart)
+    return best[1] if best else None
+
+
+def place_code_charts(slides: list[dict[str, Any]], request: str,
+                      material: list[str]) -> list[int]:
+    """The charts of a deck, from the material's tables: a chart slide's figures are replaced by
+    the table's (the model's are never trusted over the table), and a request for a chart with
+    none drawn turns the slide whose title shares the most stems with that table into one.
+    Indices of slides changed."""
+    changed: list[int] = []
+    for index, slide in enumerate(slides):
+        if slide.get("layout") != "chart":
+            continue
+        drawn = code_chart(str(slide.get("title") or ""), material)
+        if drawn and drawn != slide.get("chart"):
+            slide["chart"] = drawn
+            changed.append(index)
+    if changed or any(s.get("layout") == "chart" for s in slides):
+        return changed
+    if not _CHART_WORDS.search(request or ""):
+        return changed
+    scored: list[tuple[int, int, dict[str, Any]]] = []
+    for index, slide in enumerate(slides):
+        if str(slide.get("layout")) in _STRUCTURAL or index == 0:
+            continue
+        title = str(slide.get("title") or "")
+        drawn = code_chart(title, material)
+        if drawn:
+            hits = sum(_stem_overlap(w, t) for w in re.findall(r"[가-힣A-Za-z]{2,}", title)
+                       for t in re.findall(r"[가-힣A-Za-z]{2,}", request))
+            scored.append((hits, -index, {"index": index, "chart": drawn}))
+    if scored:
+        pick = max(scored, key=lambda x: (x[0], x[1]))[2]
+        slide = slides[pick["index"]]
+        for key in ("bullets", "body", "rows", "metrics", "bands", "steps", "cards", "timeline"):
+            slide.pop(key, None)
+        slide["layout"], slide["chart"] = "chart", pick["chart"]
+        changed.append(pick["index"])
+    return changed
 
 
 _MAX_METRICS = 4
@@ -3305,6 +3489,90 @@ async def _draw(figure: dict, image_model: dict | None, api_key: str) -> dict | 
     }
 
 
+#: characters of the material an upper-model slide call reads: the passages about its slides
+_UPPER_MATERIAL_CHARS = 2_500
+#: slides one batched repair call carries at most
+REPAIR_BATCH = 6
+#: a slide whose note is longer than this is written one by one, not in a batch
+BATCH_NOTE_CHARS = 500
+
+_BATCH_PROMPT = """Write the {n} slides below in one answer. Each has its own instructions: follow
+each exactly. Answer with ONE JSON object and nothing outside it:
+{{"slides": [<the JSON object for slide 1>, <for slide 2>, ...]}}
+The i-th element holds exactly the fields that slide's instructions ask for, in the order
+given; always {n} elements. A line headed "Why this slide is rewritten now" is an
+instruction to you, never text for the slide: do not write it, quote it or paraphrase it on
+the slide.
+
+{parts}"""
+
+
+async def batched_slides(
+    prompts: list[str], *, stage: str, model: str, api_key: str, request: str,
+    trusted_context: list[str] | None, untrusted_context: list[str] | None,
+    research_rule: str, titles: list[str], usage: dict[str, Any],
+) -> tuple[list[str | None], dict]:
+    """The answers of several slides' prompts in ONE call of `stage` (the upper model when the
+    turn has one; its passages of the material are the ones about these slides): `(texts,
+    spent)`, a text per prompt (a JSON object) or None for a slide the answer left out, and the
+    writer's own tokens when the writer answered (the upper model's go to the stage)."""
+    n = len(prompts)
+    if not n:
+        return [], {"inputTokens": 0, "outputTokens": 0}
+    body = _BATCH_PROMPT.format(n=n, parts="\n\n".join(
+        f"### Slide {i + 1}\n{p}" for i, p in enumerate(prompts)))
+    focus = " ".join(titles)
+
+    def build(used: str) -> list[dict]:
+        # the upper model reads the passages about these slides, not the whole source
+        material = (source_digest.digest(untrusted_context or [], total=_UPPER_MATERIAL_CHARS,
+                                         focus=focus) if used != model else untrusted_context)
+        return build_document_messages(
+            SessionKind.slides, body, request=request, trusted_context=trusted_context,
+            untrusted_context=material, research_rule=research_rule, model=used)
+
+    limit = settings.document_upper_calls
+    text, spent = await doc_stages.staged(
+        _complete, stage, model, build, api_key, min(9000, _BATCH_TOKENS * n + 600), usage,
+        limit=limit)
+    out: list[str | None] = [None] * n
+    for i, row in enumerate(_batch_rows(text)[:n]):
+        if row:
+            out[i] = json.dumps(row, ensure_ascii=False)
+    return out, spent
+
+
+#: answer tokens one slide of a batched call may take (a table or a pattern slide runs long)
+_BATCH_TOKENS = 700
+
+
+def _batch_rows(text: str) -> list[dict]:
+    """The slide objects of a batched answer: the whole answer's `slides`, else (an answer cut
+    off by its token budget) the entries that came whole before the cut."""
+    data = _json_object(text)
+    rows = data.get("slides")
+    if isinstance(rows, list):
+        return [r if isinstance(r, dict) and r else {} for r in rows] if any(
+            isinstance(r, dict) and r for r in rows) else []
+    start = re.search(r'"slides"\s*:\s*\[', text or "")
+    if not start:
+        return []
+    out: list[dict] = []
+    decoder = json.JSONDecoder()
+    pos = start.end()
+    while pos < len(text):
+        while pos < len(text) and text[pos] in " \n\t\r,":
+            pos += 1
+        try:
+            row, pos = decoder.raw_decode(text, pos)
+        except ValueError:
+            break
+        if not isinstance(row, dict):
+            break
+        out.append(row)
+    return out
+
+
 async def _write_slides(
     *,
     plan: list[dict[str, Any]],
@@ -3361,6 +3629,24 @@ async def _write_slides(
     #: Divider count (divider numbers count dividers).
     divider = 0
 
+    # slides the objective signals mark as hard go to the upper model, one call each; the
+    # writer drafts the rest in one call (`doc_stages`)
+    stages = doc_stages.CURRENT.get()
+    hard: dict[int, str] = {}
+    if stages is not None and stages.model("hard"):
+        hard = doc_stages.hard_slides(
+            slides, "\n".join([request, *(untrusted_context or []), *given_extra]))
+        for why in hard.values():
+            doc_stages.note_trigger(usage, "hard", why)
+        if hard:
+            log.info("deck slides for the upper model: %s",
+                     {slides[i]["title"]: why for i, why in hard.items()})
+    ordinary = [i for i in range(len(slides)) if i not in hard]
+    separate_note = (
+        "\n\nThe deck's other slides are written separately by another writer: do not write "
+        "them and do not mention that they exist. They are: "
+        + " / ".join(str(slides[i]["title"]) for i in sorted(hard)) + "."
+    ) if hard else ""
     # one-call draft keeps the thread; per-slide pass fills gaps
     drafted: dict[int, dict[str, Any]] = {}
     #: Rest-of-deck view for a retold slide's rewrite.
@@ -3373,15 +3659,15 @@ async def _write_slides(
                 SessionKind.slides,
                 _DRAFT_PROMPT.format(
                     outline="\n".join(
-                        f"{i + 1}. {s['title']}  (layout: {s['layout']})"
-                        for i, s in enumerate(slides)
+                        f"{n + 1}. {slides[i]['title']}  (layout: {slides[i]['layout']})"
+                        for n, i in enumerate(ordinary)
                     ),
                     facts=_FRAME_RULE if frame else _facts_line(
                         request, [*(trusted_context or []), *(untrusted_context or [])]),
                     count="4~6" if density == "reading" else "3~4",
                     count_two="6~8" if density == "reading" else "4~6",
                     request=prompt_request(request, 1500),
-                    tail=_FRAME_TAIL if frame else "",
+                    tail=(_FRAME_TAIL if frame else "") + separate_note,
                 ),
                 request=request,
                 trusted_context=trusted_context,
@@ -3390,7 +3676,7 @@ async def _write_slides(
                 model=model,
             ),
             api_key,
-            min(9000, 500 * len(slides) + 600),
+            min(9000, 500 * len(ordinary) + 600),
         )
         usage["inputTokens"] += spent["inputTokens"]
         usage["outputTokens"] += spent["outputTokens"]
@@ -3404,7 +3690,11 @@ async def _write_slides(
             plan_rules.count(usage, more, planned_apart=bool(checker))
         # numbers a slide may use
         given = "\n".join([request, *(untrusted_context or []), *given_extra])
-        drafted = _split_deck_draft(draft_text, slides, _facts_set(given), given)
+        # matched among the slides the draft was asked for (position, then title)
+        drafted = {
+            ordinary[n]: row for n, row in _split_deck_draft(
+                draft_text, [slides[i] for i in ordinary], _facts_set(given), given).items()
+        }
         retold = _retold(slides, drafted)
         # approved slides all ship: retold ones rewritten, not dropped
         if retold:
@@ -3421,6 +3711,68 @@ async def _write_slides(
     except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
         log.warning("deck draft failed, writing slide by slide: %s", exc)
         yield {"type": "step", "id": "draft", "label": "초안 쓰는 중", "status": "error"}
+
+    density_rule = (
+        "\n\nThis material is handed out and read without a presenter. Write so the "
+        "tables, evidence and context can be understood within one slide, and do not hide "
+        "the key explanation in notes only. Do not cram by shrinking the text; keep within "
+        "the readable limits of the current layout."
+        if density == "reading"
+        else "\n\nThis material is explained by a presenter. Keep one key point per slide, "
+        "prefer short phrases and wide margins, and put detailed explanation in notes."
+    )
+
+    def slide_prompt_for(index: int, slide: dict, said: str) -> str:
+        template = _PROMPTS.get(slide["layout"], _BULLETS_PROMPT)
+        return template.format(
+            heading=slide["title"],
+            outline=outline_text,
+            written=said or "(none yet)",
+            # prompts without `{count}` ignore it
+            count=(
+                ("6~8" if slide["layout"] == "two-column" else "4~6")
+                if density == "reading"
+                else ("4~6" if slide["layout"] == "two-column" else "2~4")
+            ),
+            request=prompt_request(request, 1500),
+        ) + density_rule
+
+    def slide_messages_for(index: int, slide: dict, said: str, used: str) -> list[dict]:
+        """One slide's messages for the model `used` (the prompt setup follows its tier)."""
+        return build_document_messages(
+            SessionKind.slides,
+            slide_prompt_for(index, slide, said),
+            request=request,
+            trusted_context=trusted_context,
+            untrusted_context=untrusted_context,
+            research_rule=research_rule,
+            model=used,
+        )
+
+    async def slide_call(index: int, slide: dict, said: str, stage: str | None
+                         ) -> tuple[str, dict]:
+        return await doc_stages.staged(
+            _complete, stage, model,
+            lambda used: slide_messages_for(index, slide, said, used), api_key, 600, usage,
+            limit=settings.document_upper_calls)
+
+    # the hard slides are written in ONE call of the upper model, from what the draft wrote so
+    # far (the slides whose text the call left out are the writer's)
+    hard_context = "\n".join(
+        f"{slides[j]['title']}: {' / '.join(_drafted_text(row).splitlines())}"
+        for j, row in sorted(drafted.items()))[-1500:]
+    hard_ids = [i for i in sorted(hard) if i not in drafted]
+
+    async def hard_batch() -> tuple[dict[int, str | None], dict]:
+        texts, spent = await batched_slides(
+            [slide_prompt_for(i, slides[i], hard_context) for i in hard_ids], stage="hard",
+            model=model, api_key=api_key, request=request, trusted_context=trusted_context,
+            untrusted_context=untrusted_context, research_rule=research_rule,
+            titles=[str(slides[i]["title"]) for i in hard_ids], usage=usage)
+        return dict(zip(hard_ids, texts, strict=True)), spent
+
+    hard_task = asyncio.ensure_future(hard_batch()) if hard_ids else None
+    hard_done: dict[str, Any] = {}
 
     echo_reasks = 0
     for index, slide in enumerate(slides):
@@ -3459,16 +3811,6 @@ async def _write_slides(
             "status": "running",
             "progress": progress,
         }
-        template = _PROMPTS.get(slide["layout"], _BULLETS_PROMPT)
-        density_rule = (
-            "\n\nThis material is handed out and read without a presenter. Write so the "
-            "tables, evidence and context can be understood within one slide, and do not hide "
-            "the key explanation in notes only. Do not cram by shrinking the text; keep within "
-            "the readable limits of the current layout."
-            if density == "reading"
-            else "\n\nThis material is explained by a presenter. Keep one key point per slide, "
-            "prefer short phrases and wide margins, and put detailed explanation in notes."
-        )
         try:
             slide_messages: list[dict] | None = None
             if index in drafted:
@@ -3477,31 +3819,30 @@ async def _write_slides(
                     {"inputTokens": 0, "outputTokens": 0},
                 )
             else:
-                slide_messages = build_document_messages(
-                        SessionKind.slides,
-                        template.format(
-                            heading=slide["title"],
-                            outline=outline_text,
-                            written=(
-                                elsewhere[index][-3000:] if index in elsewhere
-                                else "\n".join(written)[-3000:]
-                            ) or "(none yet)",
-                            # prompts without `{count}` ignore it
-                            count=(
-                                ("6~8" if slide["layout"] == "two-column" else "4~6")
-                                if density == "reading"
-                                else ("4~6" if slide["layout"] == "two-column" else "2~4")
-                            ),
-                            request=prompt_request(request, 1500),
-                        )
-                        + density_rule,
-                        request=request,
-                        trusted_context=trusted_context,
-                        untrusted_context=untrusted_context,
-                        research_rule=research_rule,
-                        model=model,
+                said = (
+                    elsewhere[index][-3000:] if index in elsewhere
+                    else "\n".join(written)[-3000:]
                 )
-                body, spent = await _complete(model, slide_messages, api_key, 600)
+                slide_messages = slide_messages_for(index, slide, said, model)
+                if hard_task is not None and index in hard_ids:
+                    # a hard slide: the batched upper-model call's answer for it
+                    if "texts" not in hard_done:
+                        hard_done["texts"], first = await hard_task
+                        # tokens of the writer, if it answered the batch in the upper model's place
+                        usage["inputTokens"] += first.get("inputTokens", 0)
+                        usage["outputTokens"] += first.get("outputTokens", 0)
+                        usage_fields.add_cached(usage, first)
+                    body = hard_done["texts"].get(index)
+                    spent = {"inputTokens": 0, "outputTokens": 0}
+                    if body is None:
+                        # left out of the batch: the writer writes it
+                        body, spent = await slide_call(index, slide, said, None)
+                else:
+                    # a retold slide is written again: the repair stage's
+                    if index in elsewhere:
+                        doc_stages.note_trigger(usage, "repair", "retold")
+                    body, spent = await slide_call(
+                        index, slide, said, "repair" if index in elsewhere else None)
         except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
             log.warning("deck slide %r failed: %s", slide["title"], exc)
             yield {
@@ -3592,9 +3933,10 @@ async def _write_slides(
             else:
                 slide["body"] = line[:120]
         elif slide["layout"] == "chart":
-            chart = _clean_chart(data.get("chart")) or chart_from_material(
-                str(slide.get("title") or ""), [request, *(untrusted_context or []), *given_extra]
-            )
+            tables = [request, *(untrusted_context or []), *given_extra]
+            # the figures come from the table, read by code; the model's chart is the fallback
+            chart = code_chart(str(slide.get("title") or ""), tables) or _clean_chart(
+                data.get("chart")) or chart_from_material(str(slide.get("title") or ""), tables)
             if chart:
                 slide["chart"] = chart
             else:
@@ -3639,10 +3981,11 @@ async def _write_slides(
             slide["bullets"] = _salvaged_bullets(data)
         if not has_content(slide) and slide_messages is not None:
             # one more ask when the answer had no usable content
+            doc_stages.note_trigger(usage, "repair", "no_content")
             try:
-                again, more = await _complete(
-                    model,
-                    [
+                again, more = await doc_stages.staged(
+                    _complete, "repair", model,
+                    lambda _used, slide_messages=slide_messages, body=body: [
                         *slide_messages,
                         {"role": "assistant", "content": body[:400]},
                         {
@@ -3653,6 +3996,8 @@ async def _write_slides(
                     ],
                     api_key,
                     600,
+                    usage,
+                    limit=settings.document_upper_calls,
                 )
                 usage["inputTokens"] += more["inputTokens"]
                 usage["outputTokens"] += more["outputTokens"]
@@ -3741,6 +4086,8 @@ async def _write_slides(
         }
         yield {"type": "slide", "slide": auto_fit(slide), "done": True}
 
+    if hard_task is not None and not hard_task.done():
+        hard_task.cancel()
     # deck's own figures, planned on written slides; approved pictures kept
     async for event in _draw_figures(
         slides,
@@ -3786,6 +4133,12 @@ async def _write_slides(
         )
     # the writer's internal text off first, so emptied notes are filled below
     internal = set(strip_internal_text(slides))
+    # charts read from the material's tables by code (never the model's figures)
+    placed_charts = place_code_charts(
+        slides, request, [request, *(untrusted_context or []), *given_extra])
+    if placed_charts:
+        log.info("deck charts set from the material's tables: %s", placed_charts)
+    internal |= set(placed_charts)
     # dropped request numbers restored onto a related slide
     touched = internal | (
         set(restate_missing_facts(slides, request))
@@ -3910,19 +4263,48 @@ async def _write_slides(
                 "title that names its subject (「예산과 일정」): 3~4 short items taken from the "
                 "material and the earlier slides, the blank kept as it is in one item (「총 "
                 "예산: [금액]」). Do not invent an amount."))
+    # the slides to rewrite, put in the shape their rewrite asks first
+    table_asks: set[int] = set()
+    as_found = {i: slides[i] for i in needs}
     for index in sorted(needs):
         slide = slides[index]
-        table_ask = str(slide.get("id")) in as_table
-        if table_ask:
+        if str(slide.get("id")) in as_table:
             slides[index] = {**slide, "layout": "table"}
+            table_asks.add(index)
         if str(slide.get("id")) in as_bullets:
             slide = {k: v for k, v in slide.items() if k not in ("metrics", "body")}
-            slides[index] = slide = {**slide, "layout": "bullets"}
+            slides[index] = {**slide, "layout": "bullets"}
+    # the repair stage's upper model rewrites the first of them in ONE call; the rest, and any
+    # slide that call left out, are the writer's
+    repaired: dict[int, str | None] = {}
+    if needs and (now := doc_stages.CURRENT.get()) is not None and now.model("repair"):
+        # a slide with a long note (many things to put right) is written on its own
+        chosen = [i for i in sorted(needs) if len(needs[i]) <= BATCH_NOTE_CHARS][:REPAIR_BATCH]
+        texts, first = await batched_slides(
+            [rewrite_prompt(request=request, slides=slides, target_id=str(slides[i].get("id")),
+                            note=needs[i])[0] for i in chosen],
+            stage="repair", model=model, api_key=api_key, request=request,
+            trusted_context=trusted_context, untrusted_context=[
+                *(untrusted_context or []), *given_extra],
+            research_rule=research_rule, titles=[str(slides[i].get("title")) for i in chosen],
+            usage=usage)
+        usage["inputTokens"] += first.get("inputTokens", 0)
+        usage["outputTokens"] += first.get("outputTokens", 0)
+        usage_fields.add_cached(usage, first)
+        repaired = dict(zip(chosen, texts, strict=True))
+    for index in sorted(needs):
+        table_ask = index in table_asks
+        # a table that comes back without values leaves the slide as it was found
+        slide = as_found[index] if table_ask else slides[index]
+        doc_stages.note_trigger(usage, "repair", "check")
         try:
             fixed, spent = await rewrite_slide(
                 request=request, slides=slides, target_id=str(slide.get("id")),
                 model=model, api_key=api_key, material=[*(untrusted_context or []), *given_extra],
-                note=needs[index],
+                note=needs[index], text=repaired.get(index),
+                # one left out of the batch for its long note is written on its own by the
+                # upper model (within the deck's cap); one the batch failed is the writer's
+                stage="repair" if index not in repaired else None, stage_usage=usage,
             )
         except Exception as exc:  # noqa: BLE001 — the slide stands, the gate reports it
             log.info("slide %s not rewritten for %r: %s", index + 1, needs[index][:30], exc)
@@ -3970,6 +4352,11 @@ async def _write_slides(
             log.warning("deck values set back to the computed ones: %s", recomputed[:12])
     for index in sorted(touched):
         yield {"type": "slide", "slide": auto_fit(slides[index]), "done": True}
+    # a rewrite above may have redrawn a chart from the model's figures: the table's stand
+    for index in place_code_charts(
+            slides, request, [request, *(untrusted_context or []), *given_extra]):
+        touched.add(index)
+        yield {"type": "slide", "slide": auto_fit(slides[index]), "done": True}
     before = list(slides)
     if computed and (charts := place_gantt_charts(slides, request,
                                                   room=gantt_room(request, slides))):
@@ -4010,6 +4397,7 @@ async def _write_slides(
         "status": "done" if not findings else "error",
         **({"detail": quality_detail} if quality_detail else {}),
     }
+    log.info("deck written: %d slides (asked %s)", len(slides), requested_slides(request))
     yield {"type": "deck", "slides": harmonize(slides)}
     yield {"type": "usage", **usage}
 
@@ -4571,6 +4959,9 @@ async def write(
                 "approved deck plan has %d slides against a requested %d: %s",
                 len(plan), wanted, " · ".join(item["title"] for item in plan),
             )
+
+        log.info("deck approved plan: %d slides (asked %s)", len(plan),
+                 requested_slides(request))
         # derived numbers from code
         computed = ""
         # unasked values only from the person's own words and files, never search pages
@@ -4636,10 +5027,12 @@ async def write(
             yield event
         return
 
-    async def ask(nudge: str = "") -> tuple[str, dict[str, int]]:
-        return await _complete(
-            outline_model or model,
-            build_document_messages(
+    async def ask(nudge: str = "", stage: str | None = "plan") -> tuple[str, dict[str, int]]:
+        # the storyline is the plan stage: the upper model when the turn has one; a retry
+        # that only varies the layouts is the planner model's own (`stage=None`)
+        return await doc_stages.staged(
+            _complete, stage, outline_model or model,
+            lambda used: build_document_messages(
                 SessionKind.slides,
                 _OUTLINE_PROMPT.format(
                     ask_rule=grounding.ASK_RULE if may_ask else grounding.PROCEED_RULE,
@@ -4664,13 +5057,15 @@ async def write(
                 + nudge,
                 request=request,
                 trusted_context=trusted_context,
-                untrusted_context=document_context,
+                # the storyline needs what the sources are and hold, not every sentence
+                untrusted_context=source_digest.digest(document_context),
                 research_rule=research_rule,
-                model=outline_model or model,
+                model=used,
             ),
             api_key,
             # scaled with slide count (no JSON truncation)
             max(600, 70 * (wanted or _DEFAULT_MAX) + 300),
+            usage,
         )
 
     yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "running"}
@@ -4718,9 +5113,10 @@ async def write(
         yield {"type": "usage", **usage}
         return
     title, subtitle, plan = _parse_outline(text)
+    unsound = False
     if plan and not sane_outline(plan, request):
         log.info("deck outline rejected as unsound (%d items), asking once more", len(plan))
-        plan = []
+        plan, unsound = [], True
     accent = fixed_accent or _theme_accent(text, suggested_accent)
     # grounded before the variety check
     plan = suggest_patterns(
@@ -4740,7 +5136,8 @@ async def write(
                 "\n\nThe previous structure leaned on one layout. Redo it. "
                 "Use each of the following layouts at least once, and do not use the same "
                 "layout on three slides in a row: "
-                + " / ".join(missing)
+                + " / ".join(missing),
+                stage=None,
             )
         except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
             log.warning("deck outline retry failed: %s", exc)
@@ -4790,6 +5187,11 @@ async def write(
         log.info("deck outline unreadable, asking once more; reply began: %r", head)
         try:
             retry_text, retry_spent = await ask(
+                "\n\nThe previous structure was rejected: write every slide title in the "
+                "language of the request (Korean for a Korean request; only proper nouns and "
+                "system names stay as they are), each title different, with no planning notes "
+                "in them. Output only one JSON object."
+                if unsound else
                 "\n\nThe previous answer could not be read. Output only one JSON object, with "
                 "no explanation, preamble or code fence."
             )
@@ -5963,12 +6365,97 @@ async def rewrite_slide(
     notes_only: bool = False,
     #: the slide keeps its layout whatever the note says (a check's hand-back)
     keep_layout: bool = False,
+    #: a staged deck's repair: the stage whose upper model rewrites, and the turn's usage that
+    #: keeps its tokens (`doc_stages.staged`)
+    stage: str | None = None,
+    stage_usage: dict | None = None,
+    #: the slide's answer, already made (a batched call's): no model call here
+    text: str | None = None,
 ) -> tuple[dict, dict]:
     """Rewrites one slide in deck context → `(slide, usage)`; `typed` checked for layout changes."""
     target = next((s for s in slides if s.get("id") == target_id), None)
     if target is None:
         raise KeyError(target_id)
+    prompt, layout, room = rewrite_prompt(
+        request=request, slides=slides, target_id=target_id, note=note, typed=typed,
+        keep_layout=keep_layout)
+    if text is not None:
+        usage = {"inputTokens": 0, "outputTokens": 0}
+    elif stage and stage_usage is not None:
+        text, usage = await doc_stages.staged(
+            _complete, stage, model,
+            lambda used: build_document_messages(
+                SessionKind.slides, prompt, request=request,
+                untrusted_context=(source_digest.digest(
+                    material or [], total=_UPPER_MATERIAL_CHARS,
+                    focus=str(target.get("title") or "")) if used != model else material),
+                model=used),
+            api_key, room, stage_usage, limit=settings.document_upper_calls)
+    else:
+        text, usage = await _complete(
+            model,
+            build_document_messages(
+                SessionKind.slides, prompt, request=request, untrusted_context=material,
+                model=model,
+            ),
+            api_key,
+            room,
+        )
+    return _finish_rewrite(
+        text, usage, target=target, layout=layout, request=request, slides=slides, note=note,
+        material=material, typed=typed, notes_only=notes_only)
 
+
+#: A line of text this like a line of the note it was written under is the note, not the slide.
+_ECHO_RATIO = 0.8
+_ECHO_MIN_CHARS = 8
+
+
+def _plain(text: str) -> str:
+    return re.sub(r"[\W_]+", "", str(text or "")).lower()
+
+
+def strip_note_echo(slide: dict[str, Any], note: str) -> dict[str, Any]:
+    """The slide without the lines that repeat a line of `note` (the instruction it was
+    rewritten under): a writer sometimes puts 「7장은 필수 요소로 확인」 on the slide it was told
+    that about. A line counts as the note's when its letters equal a note line's, or one holds
+    the other and they are of about the same length, or they are 80% alike."""
+    from difflib import SequenceMatcher
+
+    lines = [p for p in (_plain(x) for x in re.split(r"[.\n。;]+|(?<=[」』])\s", note or ""))
+             if len(p) >= _ECHO_MIN_CHARS]
+    if not lines:
+        return slide
+
+    def echoes(text: Any) -> bool:
+        mine = _plain(text)
+        if len(mine) < _ECHO_MIN_CHARS:
+            return False
+        for line in lines:
+            if mine == line:
+                return True
+            shorter, longer = sorted((mine, line), key=len)
+            if shorter in longer and len(shorter) / len(longer) >= _ECHO_RATIO:
+                return True
+            if SequenceMatcher(None, mine, line).ratio() >= _ECHO_RATIO:
+                return True
+        return False
+
+    out = dict(slide)
+    if isinstance(out.get("bullets"), list):
+        out["bullets"] = [b for b in out["bullets"] if not echoes(b)]
+    for key in ("body", "notes"):
+        if isinstance(out.get(key), str) and echoes(out[key]):
+            out[key] = ""
+    return out
+
+
+def rewrite_prompt(*, request: str, slides: list[dict], target_id: str, note: str = "",
+                   typed: str = "", keep_layout: bool = False) -> tuple[str, str, int]:
+    """`(prompt, layout, room)` of one slide's rewrite."""
+    target = next((s for s in slides if s.get("id") == target_id), None)
+    if target is None:
+        raise KeyError(target_id)
     outline = "\n".join(f"{i + 1}. {s.get('title') or ''}" for i, s in enumerate(slides))
     written = "\n".join(
         f"{s.get('title')}: {' / '.join(s.get('bullets') or []) or (s.get('body') or '')}"
@@ -5991,15 +6478,15 @@ async def rewrite_slide(
         # labelled, else read as request
         prompt += f"\n\nWhy this slide is rewritten now (must be reflected):\n{note.strip()[:600]}"
 
-    text, usage = await _complete(
-        model,
-        build_document_messages(
-            SessionKind.slides, prompt, request=request, untrusted_context=material,
-            model=model,
-        ),
-        api_key,
-        900 if layout in ("table", "chart", "timeline", "two-column") else 600,
-    )
+    room = 900 if layout in ("table", "chart", "timeline", "two-column") else 600
+    return prompt, layout, room
+
+
+def _finish_rewrite(text: str, usage: dict, *, target: dict, layout: str, request: str,
+                    slides: list[dict], note: str, material: list[str] | None, typed: str,
+                    notes_only: bool) -> tuple[dict, dict]:
+    """The rewritten slide from the model's answer `text`: the same fields, id, accent and
+    picture kept, so a rewrite is always one slide for one slide."""
     parsed = _json_object(text)
     if layout in slide_patterns.BY_NAME and not notes_only:
         # pattern rewrite in own shape; id/accent/picture kept, old fields dropped
@@ -6104,6 +6591,8 @@ async def rewrite_slide(
     # verdicts belonged to the old text
     result.pop("factCheck", None)
     result.pop("textScale", None)
+    # no line of the note it was rewritten under stays on the slide
+    result = strip_note_echo(result, note)
     fitted = auto_fit(result)
     # keeps deck body size unless it must shrink
     own = float(fitted.get("textScale") or 1.0)
