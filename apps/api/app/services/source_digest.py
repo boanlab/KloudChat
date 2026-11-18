@@ -46,34 +46,41 @@ def _table_blocks(text: str) -> list[list[str]]:
     return blocks
 
 
-def digest_one(text: str) -> str:
-    """One source's digest: opening, captions, table heads, figure sentences."""
+def _stems(focus: str) -> list[str]:
+    return [w for w in re.findall(r"[가-힣A-Za-z]{2,}", focus or "")]
+
+
+def digest_one(text: str, focus: str = "") -> str:
+    """One source's digest: opening, captions, table heads, figure sentences. With `focus` (the
+    words of the slide or section the digest serves) the figure sentences and tables that share
+    a word with it come first."""
     text = (text or "").strip()
     if len(text) <= WHOLE_UNDER:
         return text
+    words = _stems(focus)
+
+    def near(line: str) -> int:
+        return sum(w in line for w in words)
     parts = [text[:OPENING_CHARS].rstrip()]
-    for block in _table_blocks(text):
+    for block in sorted(_table_blocks(text), key=lambda b: -near(" ".join(b[:TABLE_LINES]))):
         parts.append("\n".join(block[:TABLE_LINES]))
     for line in text.splitlines():
         if _CAPTION.match(line):
             parts.append(line.strip()[:200])
-    seen = 0
-    for sentence in _SENTENCE.split(text[OPENING_CHARS:]):
-        sentence = sentence.strip()
-        if 25 <= len(sentence) <= 260 and re.search(r"\d", sentence) and _FIGURE.search(sentence):
-            parts.append(sentence)
-            seen += 1
-            if seen >= SENTENCES_PER_SOURCE:
-                break
+    figures = [s.strip() for s in _SENTENCE.split(text[OPENING_CHARS:])
+               if 25 <= len(s.strip()) <= 260 and re.search(r"\d", s) and _FIGURE.search(s)]
+    # the sentences about the focus first, the rest in their order
+    figures.sort(key=lambda s: -near(s))
+    parts.extend(figures[:SENTENCES_PER_SOURCE])
     return "\n".join(dict.fromkeys(p for p in parts if p))
 
 
-def digest(sources: list[str], *, total: int = TOTAL_CHARS) -> list[str]:
+def digest(sources: list[str], *, total: int = TOTAL_CHARS, focus: str = "") -> list[str]:
     """`sources` as digests within `total` characters; every source keeps a share."""
     live = [s for s in sources if (s or "").strip()]
     if sum(len(s) for s in live) <= total:
         return live
-    out = [digest_one(s) for s in live]
+    out = [digest_one(s, focus) for s in live]
     over = sum(len(s) for s in out) - total
     if over > 0 and out:
         share = max(400, total // len(out))

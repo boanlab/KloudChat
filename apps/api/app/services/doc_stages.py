@@ -76,6 +76,8 @@ class StageModels:
     #: every stage call of the whole turn, as `usage` keeps them per pass: a plan written straight
     #: on (no card) is a pass of its own whose usage the writing pass never sees
     ledger: dict[str, Any] = field(default_factory=dict)
+    #: calls made to an upper model by the hard and repair stages this turn (a deck's cap)
+    used: int = 0
 
     def model(self, stage: str | None) -> str:
         """The upper model of `stage`, or "" for the writer."""
@@ -262,8 +264,12 @@ async def staged(
     api_key: str,
     max_tokens: int,
     usage: dict[str, Any],
+    *,
+    limit: int | None = None,
 ) -> tuple[str, dict]:
-    """`(text, spent)` of one call of `stage`. On the stage's upper model its tokens go to
+    """`(text, spent)` of one call of `stage`. `limit`: the most upper-model calls the hard and
+    repair stages may make this turn (a deck's cap); past it the writer does the call.
+    On the stage's upper model its tokens go to
     `usage["stageUsage"]` and `spent` comes back empty (the caller's own count adds nothing);
     when that model fails or answers nothing, the writer is asked in its place and its tokens
     are the caller's to count as usual. `build(model)` makes the messages for the model
@@ -272,6 +278,10 @@ async def staged(
     model = stages.model(stage) if stages is not None and stage else ""
     if stages is None or not stage or not model or model == writer:
         return await complete(writer, build(writer), api_key, max_tokens)
+    if limit is not None and stage != "plan":
+        if stages.used >= limit:
+            return await complete(writer, build(writer), api_key, max_tokens)
+        stages.used += 1
     # this stage's own reasoning level for the model, for this call only
     token = thinking.TURN_REASONING.set(
         {**(thinking.TURN_REASONING.get() or {}), model: stages.fields.get(stage) or {}})
@@ -317,8 +327,8 @@ def source_has_figures(material: str) -> bool:
         re.search(r"(?m)^\s*\|.+\|\s*$", text))
 
 
-def _cap(count: int) -> int:
-    share = min(1.0, max(0.0, settings.document_hard_share))
+def _cap(count: int, share: float | None = None) -> int:
+    share = min(1.0, max(0.0, settings.document_hard_share if share is None else share))
     if share <= 0:
         return 0
     return max(1, min(count - 1, math.floor(count * share + 1e-9))) if count > 1 else 0
@@ -377,5 +387,5 @@ def hard_slides(slides: list[dict[str, Any]], material: str) -> dict[int, str]:
         elif settings.document_hard_share > HARD_MAX_SHARE:
             found[index] = "body"
     order = sorted(found, key=lambda i: (HARD_REASONS.index(found[i]), i))
-    keep = set(order[:_cap(len(content))])
+    keep = set(order[:_cap(len(content), settings.document_deck_hard_share)])
     return {i: r for i, r in sorted(found.items()) if i in keep}

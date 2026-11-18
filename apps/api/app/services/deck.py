@@ -3489,6 +3489,56 @@ async def _draw(figure: dict, image_model: dict | None, api_key: str) -> dict | 
     }
 
 
+#: characters of the material an upper-model slide call reads: the passages about its slides
+_UPPER_MATERIAL_CHARS = 2_500
+#: slides one batched repair call carries at most
+REPAIR_BATCH = 6
+
+_BATCH_PROMPT = """Write the {n} slides below in one answer. Each has its own instructions: follow
+each exactly. Answer with ONE JSON object and nothing outside it:
+{{"slides": [<the JSON object for slide 1>, <for slide 2>, ...]}}
+The i-th element holds exactly the fields that slide's instructions ask for, in the order
+given; always {n} elements.
+
+{parts}"""
+
+
+async def batched_slides(
+    prompts: list[str], *, stage: str, model: str, api_key: str, request: str,
+    trusted_context: list[str] | None, untrusted_context: list[str] | None,
+    research_rule: str, titles: list[str], usage: dict[str, Any],
+) -> tuple[list[str | None], dict]:
+    """The answers of several slides' prompts in ONE call of `stage` (the upper model when the
+    turn has one; its passages of the material are the ones about these slides): `(texts,
+    spent)`, a text per prompt (a JSON object) or None for a slide the answer left out, and the
+    writer's own tokens when the writer answered (the upper model's go to the stage)."""
+    n = len(prompts)
+    if not n:
+        return [], {"inputTokens": 0, "outputTokens": 0}
+    body = _BATCH_PROMPT.format(n=n, parts="\n\n".join(
+        f"### Slide {i + 1}\n{p}" for i, p in enumerate(prompts)))
+    focus = " ".join(titles)
+
+    def build(used: str) -> list[dict]:
+        # the upper model reads the passages about these slides, not the whole source
+        material = (source_digest.digest(untrusted_context or [], total=_UPPER_MATERIAL_CHARS,
+                                         focus=focus) if used != model else untrusted_context)
+        return build_document_messages(
+            SessionKind.slides, body, request=request, trusted_context=trusted_context,
+            untrusted_context=material, research_rule=research_rule, model=used)
+
+    limit = settings.document_upper_calls
+    text, spent = await doc_stages.staged(
+        _complete, stage, model, build, api_key, min(9000, 520 * n + 400), usage, limit=limit)
+    rows = _json_object(text).get("slides")
+    out: list[str | None] = [None] * n
+    if isinstance(rows, list):
+        for i, row in enumerate(rows[:n]):
+            if isinstance(row, dict) and row:
+                out[i] = json.dumps(row, ensure_ascii=False)
+    return out, spent
+
+
 async def _write_slides(
     *,
     plan: list[dict[str, Any]],
@@ -3638,24 +3688,26 @@ async def _write_slides(
         "prefer short phrases and wide margins, and put detailed explanation in notes."
     )
 
+    def slide_prompt_for(index: int, slide: dict, said: str) -> str:
+        template = _PROMPTS.get(slide["layout"], _BULLETS_PROMPT)
+        return template.format(
+            heading=slide["title"],
+            outline=outline_text,
+            written=said or "(none yet)",
+            # prompts without `{count}` ignore it
+            count=(
+                ("6~8" if slide["layout"] == "two-column" else "4~6")
+                if density == "reading"
+                else ("4~6" if slide["layout"] == "two-column" else "2~4")
+            ),
+            request=prompt_request(request, 1500),
+        ) + density_rule
+
     def slide_messages_for(index: int, slide: dict, said: str, used: str) -> list[dict]:
         """One slide's messages for the model `used` (the prompt setup follows its tier)."""
-        template = _PROMPTS.get(slide["layout"], _BULLETS_PROMPT)
         return build_document_messages(
             SessionKind.slides,
-            template.format(
-                heading=slide["title"],
-                outline=outline_text,
-                written=said or "(none yet)",
-                # prompts without `{count}` ignore it
-                count=(
-                    ("6~8" if slide["layout"] == "two-column" else "4~6")
-                    if density == "reading"
-                    else ("4~6" if slide["layout"] == "two-column" else "2~4")
-                ),
-                request=prompt_request(request, 1500),
-            )
-            + density_rule,
+            slide_prompt_for(index, slide, said),
             request=request,
             trusted_context=trusted_context,
             untrusted_context=untrusted_context,
@@ -3667,22 +3719,26 @@ async def _write_slides(
                          ) -> tuple[str, dict]:
         return await doc_stages.staged(
             _complete, stage, model,
-            lambda used: slide_messages_for(index, slide, said, used), api_key, 600, usage)
+            lambda used: slide_messages_for(index, slide, said, used), api_key, 600, usage,
+            limit=settings.document_upper_calls)
 
-    # the hard slides are asked together, from what the draft wrote so far
-    hard_gate = asyncio.Semaphore(3)
+    # the hard slides are written in ONE call of the upper model, from what the draft wrote so
+    # far (the slides whose text the call left out are the writer's)
     hard_context = "\n".join(
         f"{slides[j]['title']}: {' / '.join(_drafted_text(row).splitlines())}"
-        for j, row in sorted(drafted.items()))[-3000:]
+        for j, row in sorted(drafted.items()))[-1500:]
+    hard_ids = [i for i in sorted(hard) if i not in drafted]
 
-    async def hard_call(index: int) -> tuple[str, dict]:
-        async with hard_gate:
-            return await slide_call(index, slides[index], hard_context, "hard")
+    async def hard_batch() -> tuple[dict[int, str | None], dict]:
+        texts, spent = await batched_slides(
+            [slide_prompt_for(i, slides[i], hard_context) for i in hard_ids], stage="hard",
+            model=model, api_key=api_key, request=request, trusted_context=trusted_context,
+            untrusted_context=untrusted_context, research_rule=research_rule,
+            titles=[str(slides[i]["title"]) for i in hard_ids], usage=usage)
+        return dict(zip(hard_ids, texts, strict=True)), spent
 
-    hard_tasks = {
-        index: asyncio.ensure_future(hard_call(index))
-        for index in sorted(hard) if index not in drafted
-    }
+    hard_task = asyncio.ensure_future(hard_batch()) if hard_ids else None
+    hard_done: dict[str, Any] = {}
 
     echo_reasks = 0
     for index, slide in enumerate(slides):
@@ -3734,9 +3790,19 @@ async def _write_slides(
                     else "\n".join(written)[-3000:]
                 )
                 slide_messages = slide_messages_for(index, slide, said, model)
-                if index in hard_tasks:
-                    # a hard slide: the upper model's call, started with the others
-                    body, spent = await hard_tasks.pop(index)
+                if hard_task is not None and index in hard_ids:
+                    # a hard slide: the batched upper-model call's answer for it
+                    if "texts" not in hard_done:
+                        hard_done["texts"], first = await hard_task
+                        # tokens of the writer, if it answered the batch in the upper model's place
+                        usage["inputTokens"] += first.get("inputTokens", 0)
+                        usage["outputTokens"] += first.get("outputTokens", 0)
+                        usage_fields.add_cached(usage, first)
+                    body = hard_done["texts"].get(index)
+                    spent = {"inputTokens": 0, "outputTokens": 0}
+                    if body is None:
+                        # left out of the batch: the writer writes it
+                        body, spent = await slide_call(index, slide, said, None)
                 else:
                     # a retold slide is written again: the repair stage's
                     if index in elsewhere:
@@ -3897,6 +3963,7 @@ async def _write_slides(
                     api_key,
                     600,
                     usage,
+                    limit=settings.document_upper_calls,
                 )
                 usage["inputTokens"] += more["inputTokens"]
                 usage["outputTokens"] += more["outputTokens"]
@@ -3985,8 +4052,8 @@ async def _write_slides(
         }
         yield {"type": "slide", "slide": auto_fit(slide), "done": True}
 
-    for task in hard_tasks.values():
-        task.cancel()
+    if hard_task is not None and not hard_task.done():
+        hard_task.cancel()
     # deck's own figures, planned on written slides; approved pictures kept
     async for event in _draw_figures(
         slides,
@@ -4162,20 +4229,44 @@ async def _write_slides(
                 "title that names its subject (「예산과 일정」): 3~4 short items taken from the "
                 "material and the earlier slides, the blank kept as it is in one item (「총 "
                 "예산: [금액]」). Do not invent an amount."))
+    # the slides to rewrite, put in the shape their rewrite asks first
+    table_asks: set[int] = set()
+    as_found = {i: slides[i] for i in needs}
     for index in sorted(needs):
         slide = slides[index]
-        table_ask = str(slide.get("id")) in as_table
-        if table_ask:
+        if str(slide.get("id")) in as_table:
             slides[index] = {**slide, "layout": "table"}
+            table_asks.add(index)
         if str(slide.get("id")) in as_bullets:
             slide = {k: v for k, v in slide.items() if k not in ("metrics", "body")}
-            slides[index] = slide = {**slide, "layout": "bullets"}
+            slides[index] = {**slide, "layout": "bullets"}
+    # the repair stage's upper model rewrites the first of them in ONE call; the rest, and any
+    # slide that call left out, are the writer's
+    repaired: dict[int, str | None] = {}
+    if needs and (now := doc_stages.CURRENT.get()) is not None and now.model("repair"):
+        chosen = sorted(needs)[:REPAIR_BATCH]
+        texts, first = await batched_slides(
+            [rewrite_prompt(request=request, slides=slides, target_id=str(slides[i].get("id")),
+                            note=needs[i])[0] for i in chosen],
+            stage="repair", model=model, api_key=api_key, request=request,
+            trusted_context=trusted_context, untrusted_context=[
+                *(untrusted_context or []), *given_extra],
+            research_rule=research_rule, titles=[str(slides[i].get("title")) for i in chosen],
+            usage=usage)
+        usage["inputTokens"] += first.get("inputTokens", 0)
+        usage["outputTokens"] += first.get("outputTokens", 0)
+        usage_fields.add_cached(usage, first)
+        repaired = dict(zip(chosen, texts, strict=True))
+    for index in sorted(needs):
+        table_ask = index in table_asks
+        # a table that comes back without values leaves the slide as it was found
+        slide = as_found[index] if table_ask else slides[index]
         doc_stages.note_trigger(usage, "repair", "check")
         try:
             fixed, spent = await rewrite_slide(
                 request=request, slides=slides, target_id=str(slide.get("id")),
                 model=model, api_key=api_key, material=[*(untrusted_context or []), *given_extra],
-                note=needs[index], stage="repair", stage_usage=usage,
+                note=needs[index], text=repaired.get(index),
             )
         except Exception as exc:  # noqa: BLE001 — the slide stands, the gate reports it
             log.info("slide %s not rewritten for %r: %s", index + 1, needs[index][:30], exc)
@@ -4268,6 +4359,7 @@ async def _write_slides(
         "status": "done" if not findings else "error",
         **({"detail": quality_detail} if quality_detail else {}),
     }
+    log.info("deck written: %d slides (asked %s)", len(slides), requested_slides(request))
     yield {"type": "deck", "slides": harmonize(slides)}
     yield {"type": "usage", **usage}
 
@@ -4830,6 +4922,8 @@ async def write(
                 len(plan), wanted, " · ".join(item["title"] for item in plan),
             )
 
+        log.info("deck approved plan: %d slides (asked %s)", len(plan),
+                 requested_slides(request))
         # derived numbers from code
         computed = ""
         # unasked values only from the person's own words and files, never search pages
@@ -6231,12 +6325,49 @@ async def rewrite_slide(
     #: keeps its tokens (`doc_stages.staged`)
     stage: str | None = None,
     stage_usage: dict | None = None,
+    #: the slide's answer, already made (a batched call's): no model call here
+    text: str | None = None,
 ) -> tuple[dict, dict]:
     """Rewrites one slide in deck context → `(slide, usage)`; `typed` checked for layout changes."""
     target = next((s for s in slides if s.get("id") == target_id), None)
     if target is None:
         raise KeyError(target_id)
+    prompt, layout, room = rewrite_prompt(
+        request=request, slides=slides, target_id=target_id, note=note, typed=typed,
+        keep_layout=keep_layout)
+    if text is not None:
+        usage = {"inputTokens": 0, "outputTokens": 0}
+    elif stage and stage_usage is not None:
+        text, usage = await doc_stages.staged(
+            _complete, stage, model,
+            lambda used: build_document_messages(
+                SessionKind.slides, prompt, request=request,
+                untrusted_context=(source_digest.digest(
+                    material or [], total=_UPPER_MATERIAL_CHARS,
+                    focus=str(target.get("title") or "")) if used != model else material),
+                model=used),
+            api_key, room, stage_usage, limit=settings.document_upper_calls)
+    else:
+        text, usage = await _complete(
+            model,
+            build_document_messages(
+                SessionKind.slides, prompt, request=request, untrusted_context=material,
+                model=model,
+            ),
+            api_key,
+            room,
+        )
+    return _finish_rewrite(
+        text, usage, target=target, layout=layout, request=request, slides=slides, note=note,
+        material=material, typed=typed, notes_only=notes_only)
 
+
+def rewrite_prompt(*, request: str, slides: list[dict], target_id: str, note: str = "",
+                   typed: str = "", keep_layout: bool = False) -> tuple[str, str, int]:
+    """`(prompt, layout, room)` of one slide's rewrite."""
+    target = next((s for s in slides if s.get("id") == target_id), None)
+    if target is None:
+        raise KeyError(target_id)
     outline = "\n".join(f"{i + 1}. {s.get('title') or ''}" for i, s in enumerate(slides))
     written = "\n".join(
         f"{s.get('title')}: {' / '.join(s.get('bullets') or []) or (s.get('body') or '')}"
@@ -6260,23 +6391,14 @@ async def rewrite_slide(
         prompt += f"\n\nWhy this slide is rewritten now (must be reflected):\n{note.strip()[:600]}"
 
     room = 900 if layout in ("table", "chart", "timeline", "two-column") else 600
-    if stage and stage_usage is not None:
-        text, usage = await doc_stages.staged(
-            _complete, stage, model,
-            lambda used: build_document_messages(
-                SessionKind.slides, prompt, request=request, untrusted_context=material,
-                model=used),
-            api_key, room, stage_usage)
-    else:
-        text, usage = await _complete(
-            model,
-            build_document_messages(
-                SessionKind.slides, prompt, request=request, untrusted_context=material,
-                model=model,
-            ),
-            api_key,
-            room,
-        )
+    return prompt, layout, room
+
+
+def _finish_rewrite(text: str, usage: dict, *, target: dict, layout: str, request: str,
+                    slides: list[dict], note: str, material: list[str] | None, typed: str,
+                    notes_only: bool) -> tuple[dict, dict]:
+    """The rewritten slide from the model's answer `text`: the same fields, id, accent and
+    picture kept, so a rewrite is always one slide for one slide."""
     parsed = _json_object(text)
     if layout in slide_patterns.BY_NAME and not notes_only:
         # pattern rewrite in own shape; id/accent/picture kept, old fields dropped

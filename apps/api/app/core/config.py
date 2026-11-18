@@ -112,6 +112,13 @@ class Settings(BaseSettings):
     #: The most a report's sections (or a deck's content slides) the upper model may write, as a
     #: share (`doc_stages`); the writer keeps the rest. Env: DOCUMENT_HARD_SHARE.
     document_hard_share: float = 0.5
+    #: The same share for a deck's content slides: code charts carry its numbers, so fewer need
+    #: the upper model. Env: DOCUMENT_DECK_HARD_SHARE.
+    document_deck_hard_share: float = 0.3
+    #: Upper-model calls of a deck's hard and repair stages (each is one batched call of
+    #: several slides); a deck needing more has the rest done by the writer. Env:
+    #: DOCUMENT_UPPER_CALLS.
+    document_upper_calls: int = 3
     #: Seconds a complex document turn waits for a slot before the `document` row's model writes
     #: it instead. Env: COMPLEX_DOCUMENT_WAIT_SEC.
     complex_document_wait_sec: float = 120.0
