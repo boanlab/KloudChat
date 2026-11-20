@@ -58,7 +58,7 @@ ANALYSIS = "우리 팀이 모놀리식을 마이크로서비스로 쪼갤지 판
         # 자동 leaves the table as it is
         ("calc", sa.AUTO, "calc", "high"),
         ("simple", sa.AUTO, "simple", "none"),
-        ("document", sa.AUTO, "document", "default"),
+        ("document", sa.AUTO, "document", "none"),
         # 빠르게: a row that reasons gives way to the everyday row; nothing reasons
         ("calc", sa.FAST, "chat", "none"),
         ("reasoning", sa.FAST, "chat", "none"),
@@ -196,14 +196,14 @@ async def test_fast_keeps_the_class_and_names_the_row_it_moved_to() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(("mode", "effort"), [(sa.AUTO, "default"), (sa.FAST, "none"),
+@pytest.mark.parametrize(("mode", "effort"), [(sa.AUTO, "none"), (sa.FAST, "none"),
                                               (sa.DEEP, sa.HIGHEST)])
 async def test_a_document_keeps_its_writer_and_only_its_effort_moves(mode: str,
                                                                     effort: str) -> None:
     picked, route, sent = await _route("분기 실적 보고서 써 줘", mode=mode,
                                        kind=SessionKind.report)
     # the writer 자동 would pick: no switch to the escalation row
-    assert (picked, sent) == ("local/qwen3.8-27b", effort)
+    assert (picked, sent) == ("local/qwen3.8-flash", effort)
     assert "row" not in route
 
 

@@ -1728,6 +1728,8 @@ const EN: Record<string, string> = {
   '대기 끝': 'Its turn came',
   '다른 모델로 쓰기': 'Written by another model',
   '복잡한 문서': 'Complex document',
+  '대시보드·차트': 'Dashboards and charts',
+  '대시보드·차트·그래프를 그리는 코드와 아티팩트는 「대시보드·차트」 줄의 모델이 씁니다.': 'Code and artifacts that draw dashboards, charts or graphs are written by the model on the “Dashboards and charts” row.',
   '문서 개요·구성': 'Document outline and structure',
   '문서의 어려운 부분': 'Hard parts of a document',
   '문서 고쳐 쓰기': 'Document repairs',

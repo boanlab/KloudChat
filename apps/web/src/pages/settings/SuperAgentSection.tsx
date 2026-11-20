@@ -207,6 +207,9 @@ export function SuperAgentSection() {
         {t('다시·자세히 요청과 빈 답 뒤에는 「다시 요청·빈 답 뒤」 줄의 모델이 씁니다.')}
       </p>
       <p className="text-xs text-faint">
+        {t('대시보드·차트·그래프를 그리는 코드와 아티팩트는 「대시보드·차트」 줄의 모델이 씁니다.')}
+      </p>
+      <p className="text-xs text-faint">
         {t('보고서·슬라이드는 「보고서·슬라이드」 줄의 모델이 쓰고, 개요·어려운 부분·검사에 걸린 부분만 「문서 개요·구성」「문서의 어려운 부분」「문서 고쳐 쓰기」 줄의 모델이 맡습니다. 줄을 비우면 그 단계도 쓰는 모델이 합니다.')}
       </p>
       <p className="text-xs text-faint">

@@ -1,7 +1,9 @@
-"""「다시」 turns in strict-local go to self-hosted DeepSeek V4 Flash (owner decision 2026-11-14);
-turns over internal material keep their class's row unless the admin fills the `material` row
-(2026-11-15). When a strict writer other than flash fails mid-turn Qwen3.8 Flash carries the
-same turn on, and a model that failed lately is not picked."""
+"""「다시」 turns in strict-local go to Qwen3.8 Flash thinking at effort high (2026-11-20; the
+self-hosted DeepSeek V4 Flash the row named from 2026-11-14 scored 6.11 to flash's 6.89); turns
+over internal material keep their class's row unless the admin fills the `material` row
+(2026-11-15). When a strict writer other than flash (an admin's pick, here a self-hosted
+DeepSeek) fails mid-turn Qwen3.8 Flash carries the same turn on, and a model that failed lately
+is not picked."""
 
 from __future__ import annotations
 
@@ -21,6 +23,7 @@ from app.services.tools.base import Tool, ToolContext, ToolResult
 
 STRICT_DS = {**_model("strict-local/deepseek-v4-flash", boundary="self_hosted", strict=True,
                       privacy_only=True), "contextWindow": 258_048}
+#: an admin's strict-local pick that is not flash (the built-in table names none)
 #: the admin filled the material row's strict column
 FILLED = Governance(external_data_guard=True, adaptive_classifier_model_id=STRICT_FLASH["id"],
                     super_agent_rules={"material": {"strictModel": STRICT_DS["id"]}})
@@ -46,16 +49,16 @@ def _material(monkeypatch, present: bool = True) -> None:
 # ── the table ────────────────────────────────────────────────────────────────
 
 
-def test_the_table_sends_strict_escalation_to_deepseek_and_keeps_material_rows() -> None:
+def test_the_table_sends_strict_escalation_to_flash_thinking_high_and_keeps_material_rows(
+) -> None:
     rules = sa.DEFAULT_RULES
     # both columns empty: a turn over material keeps its class's row (owner decision 11-15)
     assert rules["material"] == {"model": "", "strictModel": "", "effort": "high"}
-    assert rules["escalation"]["strictModel"] == STRICT_DS["id"]
+    assert rules["escalation"]["strictModel"] == STRICT_FLASH["id"]
     assert rules["escalation"]["effort"] == "high"
-    # every other strict row is unchanged
-    assert {r["strictModel"] for k, r in rules.items()
-            if k not in ("material", "escalation", "document", "complex_document",
-                         *sa.STAGE_ROWS.values())} == {
+    assert sa.rule_effort(rules["escalation"], strict=True) == "high"
+    # every strict row is flash: nothing in the strict column depends on another server
+    assert {r["strictModel"] for k, r in rules.items() if k != "material"} == {
         STRICT_FLASH["id"]}
     assert "material" in sa.CLASSES and "material" in sa.OVERRIDE_ROWS
 
@@ -144,7 +147,7 @@ async def test_a_thanks_over_material_stays_simple(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_asking_again_in_strict_escalates_to_deepseek(monkeypatch) -> None:
+async def test_asking_again_in_strict_escalates_to_flash_thinking_high(monkeypatch) -> None:
     _material(monkeypatch, False)
     history = [
         Message(session_id="s", role=Role.user, content="3년 원리금 계산해 줘"),
@@ -153,9 +156,19 @@ async def test_asking_again_in_strict_escalates_to_deepseek(monkeypatch) -> None
     ]
     out = await _turn(monkeypatch, "틀렸어. 다시 계산해 줘", mode="super_strict",
                       history=history)
-    assert out["route"]["taskClass"] == "escalation"
+    assert out["route"]["taskClass"] == "escalation" and out["route"]["effort"] == "high"
+    assert out["calls"][0]["model"] == STRICT_FLASH["id"]
+    # flash thinks, within its 2000-token budget
+    assert out["calls"][0]["reasoning"][STRICT_FLASH["id"]] == {
+        "chat_template_kwargs": {"enable_thinking": True}, "thinking_token_budget": 2000}
+    # the writer is flash already: nothing behind it
+    assert out["calls"][0]["fallback_model"] is None
+    # an admin's other strict escalation model falls back to flash, not only the rescuer
+    other = Governance(external_data_guard=True, adaptive_classifier_model_id=STRICT_FLASH["id"],
+                       super_agent_rules={"escalation": {"strictModel": STRICT_DS["id"]}})
+    out = await _turn(monkeypatch, "틀렸어. 다시 계산해 줘", mode="super_strict",
+                      history=history, policy=other)
     assert out["calls"][0]["model"] == STRICT_DS["id"]
-    # the escalation writer falls back to flash too, not only the rescuer
     assert out["calls"][0]["fallback_model"] == STRICT_FLASH["id"]
 
 

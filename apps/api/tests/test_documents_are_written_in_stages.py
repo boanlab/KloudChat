@@ -7,16 +7,15 @@ from __future__ import annotations
 
 import httpx
 import pytest
-from test_complex_documents_go_to_deepseek import (
+from test_complex_documents_think_harder_on_flash import (
     CATALOGUE as BASE_CATALOGUE,
 )
-from test_complex_documents_go_to_deepseek import (
+from test_complex_documents_think_harder_on_flash import (
     LOCAL_27B,
     STRICT_27B,
-    STRICT_DS,
     _route,
 )
-from test_super_agent_turns import _model
+from test_super_agent_turns import FLASH, STRICT_FLASH, _model
 
 from app.models.chat import RoutingMode, SessionKind
 from app.models.governance import Governance
@@ -53,10 +52,12 @@ def test_the_table_has_three_stage_rows_with_the_owners_defaults() -> None:
     for row in sa.STAGE_ROWS.values():
         assert row in sa.CLASSES and row in sa.OVERRIDE_ROWS
         assert sa.DEFAULT_RULES[row]["model"] == "z-ai/glm-5.3"
-        assert sa.DEFAULT_RULES[row]["strictModel"] == "strict-local/deepseek-v4-flash"
+        # the strict column stays inside on flash, asked to think briefly (2026-11-20)
+        assert sa.DEFAULT_RULES[row]["strictModel"] == "strict-local/qwen3.8-flash"
+        assert sa.DEFAULT_RULES[row]["strictEffort"] == "low"
     assert sa.DEFAULT_RULES["document_hard"]["effort"] == "default"
-    assert sa.DEFAULT_RULES["document"]["model"] == "local/qwen3.8-27b"
-    assert sa.ROUTER_VERSION.startswith("super-agent-2026-11-18")
+    assert sa.DEFAULT_RULES["document"]["model"] == "local/qwen3.8-flash"
+    assert sa.ROUTER_VERSION.startswith("super-agent-2026-11-20")
 
 
 def test_an_admin_changes_one_row_without_touching_the_others() -> None:
@@ -80,7 +81,24 @@ def test_an_admin_changes_one_row_without_touching_the_others() -> None:
 def test_super_goes_up_and_strict_stays_inside(stage) -> None:
     assert _pick(stage)["id"] == GLM["id"]
     strict = _pick(stage, strict=True, writer=STRICT_27B)
-    assert strict["id"] == STRICT_DS["id"] and sa.strict_model(strict)
+    assert strict["id"] == STRICT_FLASH["id"] and sa.strict_model(strict)
+
+
+@pytest.mark.parametrize("stage", ["plan", "hard", "repair"])
+def test_strict_stages_run_on_the_strict_writers_own_flash_because_they_think(stage) -> None:
+    """The strict writer is flash and so are the strict stage rows: a stage on the writer's own
+    model is a stage only when it asks it to think, which the built-in rows do (low)."""
+    picked = _pick(stage, strict=True, writer=STRICT_FLASH)
+    assert picked is not None and picked["id"] == STRICT_FLASH["id"]
+    level = sa.stage_effort(RULES, stage, sa.AUTO, strict=True)
+    assert level == "low"
+    assert sa.reasoning_fields(picked["id"], level, picked) == {
+        "chat_template_kwargs": {"enable_thinking": True}, "thinking_token_budget": 500}
+    # without the stage's thinking it would be the writer's own call: no stage
+    plain = sa.normalise_rules({sa.STAGE_ROWS[stage]: {"strictEffort": "none"}})
+    assert _pick(stage, strict=True, writer=STRICT_FLASH, rules=plain) is None
+
+
 
 
 def test_a_non_strict_model_in_the_strict_column_is_never_used() -> None:
@@ -109,7 +127,7 @@ def test_the_chip_steers_the_stage_effort() -> None:
 @pytest.mark.parametrize("kind", [SessionKind.report, SessionKind.slides])
 async def test_the_document_route_names_the_stages_and_keeps_the_writer(kind) -> None:
     model, strict, route = await _route(None, kind=kind, catalogue=CATALOGUE)
-    assert model["id"] == LOCAL_27B["id"] and not strict
+    assert model["id"] == FLASH["id"] and not strict
     assert route["stages"] == {s: GLM["id"] for s in doc_stages.STAGES}
 
 
@@ -117,8 +135,9 @@ async def test_the_document_route_names_the_stages_and_keeps_the_writer(kind) ->
 async def test_the_strict_entry_names_only_strict_local_stages() -> None:
     model, strict, route = await _route(None, mode=RoutingMode.super_strict,
                                         catalogue=CATALOGUE)
-    assert model["id"] == STRICT_27B["id"] and strict
-    assert route["stages"] == {s: STRICT_DS["id"] for s in doc_stages.STAGES}
+    # the strict writer is flash, and its stages run on flash too (they ask it to think)
+    assert model["id"] == STRICT_FLASH["id"] and strict
+    assert route["stages"] == {s: STRICT_FLASH["id"] for s in doc_stages.STAGES}
 
 
 @pytest.mark.asyncio
@@ -129,14 +148,14 @@ async def test_personal_data_moves_the_stages_to_the_strict_column() -> None:
         None, policy=policy, catalogue=CATALOGUE,
         request="김민수(주민번호 900101-1234567)의 이직 보고서를 써 줘")
     assert strict and sa.strict_model(model)
-    assert set(route["stages"].values()) == {STRICT_DS["id"]}
+    assert set(route["stages"].values()) == {STRICT_FLASH["id"]}
 
 
 @pytest.mark.asyncio
 async def test_no_usable_upper_model_means_no_stages_and_a_written_document() -> None:
     only_house = [m for m in BASE_CATALOGUE]
     model, _, route = await _route(None, catalogue=only_house)
-    assert model["id"] == LOCAL_27B["id"] and "stages" not in route
+    assert model["id"] == FLASH["id"] and "stages" not in route
 
 
 @pytest.mark.asyncio
@@ -146,9 +165,9 @@ async def test_a_model_picked_by_hand_is_not_staged() -> None:
 
 
 def test_stage_models_drop_non_strict_rows_in_a_strict_turn() -> None:
-    ids = {"plan": GLM["id"], "hard": STRICT_DS["id"]}
+    ids = {"plan": GLM["id"], "hard": STRICT_FLASH["id"]}
     stages = doc_stages.from_ids(ids, CATALOGUE, strict=True)
-    assert stages.ids == {"hard": STRICT_DS["id"]}
+    assert stages.ids == {"hard": STRICT_FLASH["id"]}
     assert doc_stages.from_ids(ids, CATALOGUE).ids == ids
 
 

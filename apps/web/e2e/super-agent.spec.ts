@@ -87,6 +87,9 @@ test('관리자는 작업 종류별 표를 고치고, 거부는 성공으로 보
   const state = await mockApp(page)
   await page.goto('/admin/system/routing')
   await expect(page.getByLabel('코드 · Super Agent 모델')).toBeVisible()
+  // dashboards and charts have a row of their own beside code
+  await expect(page.getByLabel('대시보드·차트 · Super Agent 모델')).toHaveValue('external/deep')
+  await expect(page.getByLabel('대시보드·차트 · strict-local 추론 강도')).toHaveValue('none')
   // Super Agent is always there: no switch to turn it on or off
   await expect(page.getByRole('switch', { name: /Super Agent/ })).toHaveCount(0)
   await expect(page.getByText(/Super Agent (켜기|끄기|보이기)/)).toHaveCount(0)

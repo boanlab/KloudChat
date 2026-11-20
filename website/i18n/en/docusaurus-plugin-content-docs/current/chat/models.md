@@ -37,14 +37,14 @@ Two entries are always at the top of the list. They apply to the conversation, n
 
 | Entry | What it does |
 |---|---|
-| Super Agent | Sorts each question by task (simple question, translation or summary, calculation, code, current facts, complex reasoning and so on) and picks a fitting model and reasoning effort. With personal data or internal material it uses an in-house model. |
+| Super Agent | Sorts each question by task (simple question, translation or summary, calculation, code, dashboards and charts, current facts, complex reasoning and so on) and picks a fitting model and reasoning effort. With personal data or internal material it uses an in-house model. |
 | Super Agent (strict-local) | Picks the same way but only among strict-local in-house models. Questions and material never leave, and the web is not searched. |
 
 Each entry shows the usual credits for one answer. Every answer shows "This answer: model · task type" and the reason in its processing row. Saying "again" or "more detail" answers once more with a stronger setup; short follow-ups in the same conversation and revisions of the same document stay on the same model.
 
-In conversations answered by in-house models, answers after "again" or "that's wrong", and material too long for the default model, are written by a larger in-house model (DeepSeek V4 Flash). It thinks at length before it writes, so the first words usually take about a minute; meanwhile the processing row shows "Thinking it through". If it does not respond or shows nothing for 4 minutes, the in-house default model carries the same answer on, and the processing row says so. Nothing leaves the organisation either way.
+In conversations answered by in-house models, answers after "again" or "that's wrong" are written by the in-house default model thinking harder (high reasoning). If the administrator put another in-house model in the table and it does not respond or shows nothing for 4 minutes, the in-house default model carries the same answer on, and the processing row says so. Nothing leaves the organisation either way.
 
-Reports and slides are written by the in-house default model when they are ordinary, but by DeepSeek V4 Flash when they follow a form (PowerPoint, Word, HWPX), must cover many files, include a chart from data or a paper's figures, or draw on a very long source. The processing row gives the reason, as in "This answer: DeepSeek V4 Flash · Complex document · follows a form". These jobs can take a few minutes before text appears ("Thinking it through"), and if two other documents are already running the processing row shows "Waiting · no. n in line". If the model does not respond or the wait is too long, the default model writes the same answer instead.
+Reports and slides are written by the in-house default model (Qwen3.8 Flash). When they follow a form (PowerPoint, Word, HWPX), must cover many files, include a chart from data or a paper's figures, or draw on a very long source, the same model writes them thinking harder (high reasoning). The processing row gives the reason, as in "This answer: Qwen3.8 Flash · Complex document · follows a form". If the administrator limited how many such documents run at once, the processing row may show "Waiting · no. n in line".
 
 ## The reasoning chip
 

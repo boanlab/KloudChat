@@ -1805,10 +1805,11 @@ async def _super_route(
                 classified is not None
                 and classified.confidence >= super_agent.CLASSIFIER_MIN_CONFIDENCE
             ):
-                decision = super_agent.Decision(
+                # the classifier knows `code` only: code that draws data is `visual`
+                decision = super_agent.visual_class(super_agent.Decision(
                     classified.task_class, "classifier", "classified",
                     confidence=classified.confidence, signals=decision.signals,
-                )
+                ))
     complex_reasons: list[str] = []
     first_route = _first_document_route(history) if doc is not None else None
     if first_route is not None:

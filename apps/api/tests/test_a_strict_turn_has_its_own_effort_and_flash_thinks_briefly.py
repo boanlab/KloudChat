@@ -47,11 +47,18 @@ def test_no_budget_where_thinking_is_off_default_or_not_flash() -> None:
 # -- the strict column's effort -----------------------------------------------------------
 
 
-def test_the_built_in_table_has_no_strict_effort_and_strict_follows_effort() -> None:
+def test_the_built_in_strict_efforts_and_strict_follows_effort_elsewhere() -> None:
     rules = sa.normalise_rules(None)
-    assert all("strictEffort" not in rule for rule in rules.values())
+    # 2026-11-20: the strict column's own efforts where it runs on flash for a row whose
+    # `super` model is another one
+    assert {name: rule["strictEffort"] for name, rule in rules.items()
+            if "strictEffort" in rule} == {
+        "visual": "none", "complex_document": "high", "escalation": "high",
+        "document_plan": "low", "document_hard": "low", "document_repair": "low"}
     for name, rule in rules.items():
-        assert sa.rule_effort(rule, strict=True) == sa.rule_effort(rule) == rule["effort"], name
+        if "strictEffort" not in rule:
+            assert sa.rule_effort(rule, strict=True) == sa.rule_effort(rule) == rule["effort"]
+        assert sa.rule_effort(rule, strict=True) == rule.get("strictEffort", rule["effort"]), name
 
 
 def test_a_strict_effort_applies_only_to_the_strict_column() -> None:

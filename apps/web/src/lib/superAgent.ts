@@ -95,6 +95,7 @@ export const SUPER_CLASS_LABEL: Record<SuperAgentClass, string> = {
   transform: '번역·요약·다듬기',
   calc: '계산',
   code: '코드',
+  visual: '대시보드·차트',
   current: '최신 정보 검색',
   long: '긴 자료',
   reasoning: '복잡한 추론',
