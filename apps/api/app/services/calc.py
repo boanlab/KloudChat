@@ -17,7 +17,9 @@ _ASKS = re.compile(
     r"분산|비율|증가율|감소율|증감|성장률|합계|총액|총합|총\s{0,2}비용|연간\s{0,2}비용|"
     r"(?<![A-Za-z])TCO(?![A-Za-z])|"
     r"(?<![A-Za-z])ROI(?![A-Za-z])|효율|백분율|퍼센트|회귀|상관|차단\s{0,2}주파수|손익|"
-    r"단가|이자|수익률|할인율|환율|검산",
+    r"단가|이자|수익률|할인율|환율|검산|"
+    # the same asks in English (「compute weighted scores」, 「compute growth correctly」)
+    r"\b(?:calculat\w*|comput\w*|weighted|average|growth\s+rate|runway|percentages?|ratio)\b",
     re.I,
 )
 #: Markdown table data row
@@ -39,7 +41,9 @@ PROMPT = """아래 요청과 자료로 문서를 쓰기 전에, 문서에 들어
   있는 부품값·조건으로 공식에서 구한다.
 - 표준 라이브러리(math, statistics)만 쓴다. 입력·파일·네트워크는 쓰지 않는다.
 - 결과는 한 줄에 하나씩 print 한다: 「항목 = 값 단위」. 표가 될 값은 행마다
-  「행 이름 | 열1 = 값 | 열2 = 값」 처럼 한 줄에 적는다. 값은 유효숫자 4자리(정수는 그대로).
+  「행 이름 | 열1 = 값 | 열2 = 값」 처럼 한 줄에 적는다. 값은 일반 숫자 표기로 적는다:
+  금액·인원·건수처럼 정수인 값은 정수 그대로, 소수는 소수 둘째 자리까지 반올림한다.
+  1.369e+04 같은 지수 표기나 :.4g 형식은 쓰지 않는다.
 - 문서에 필요한 값만, 60줄 이내로.
 - When the request asks for the result of a procedure or algorithm run on the material
   (CPU 스케줄링의 FCFS·SJF·SRTF·라운드 로빈, 정렬, 일정·기한 계산), implement that procedure
@@ -73,6 +77,13 @@ _UNASKED = (
 _CITATION = re.compile(
     r"\[\d{1,3}(?:\s{0,2}[-~,]\s{0,2}\d{1,3}){0,8}\](?:\s{0,2}~\s{0,2}\[\d{1,3}\])?")
 
+#: a count of the document's own parts or its audience's year, never an operand: 「12장 정도」,
+#: 「A4 3쪽」, 「3주차」, 「1학년」, 「퀴즈 3문항」, 「예제 1개」
+_STRUCTURE_COUNT = re.compile(
+    r"(?<![\d.,])\d{1,3}\s?"
+    r"(?:장|쪽|페이지|슬라이드|문항|문제|주차|학년|회차|교시|절|개 ?(?=예제|문항))"
+    r"|(?:예제|문항|문제|퀴즈)\s?\d{1,2}\s?개")
+
 #: settle deadline (s); writer proceeds without values after it. Generous: a writer's own
 #: arithmetic on market-size and quote tasks goes 10~100x wrong, and a report takes minutes anyway
 DEADLINE = 240.0
@@ -88,6 +99,8 @@ def needed(request: str, context: list[str] | None = None, *, always: bool = Fal
     if not always and not _ASKS.search(instruction):
         return False
     data = _CITATION.sub(" ", "\n".join([request or "", *(context or [])]))
+    # the size and setting of the document are no data (「12장」 「3주차」 「퀴즈 3문항」)
+    data = _STRUCTURE_COUNT.sub(" ", data)
     return len(_NUMBER.findall(data)) >= 4
 
 
@@ -99,10 +112,27 @@ def _code_of(text: str) -> str:
     return (match.group(1) if match else "").strip()
 
 
+#: a printed float's padding zeros: 「36000.0000」, 「15.7900」
+_PADDED = re.compile(r"(?<![\d.])(\d+)(?:\.0+|(\.\d*?[1-9])0+)(?![\d.])")
+
+
+#: a value printed in exponent notation (「7.744e+06원」)
+_EXPONENT = re.compile(r"(?<![A-Za-z])\d(?:\.\d+)?[eE][+-]\d{1,3}(?!\d)")
+
+
+def _unpadded(line: str) -> str:
+    """A program's `:.4f` padding taken off its numbers (「50.0000 %」 → 「50 %」), so a writer
+    that copies the value never shows 「에어킥 50.0000」."""
+    return _PADDED.sub(lambda m: m.group(1) + (m.group(2) or ""), line)
+
+
 def _lines(stdout: str) -> list[str]:
     out = []
     for line in (stdout or "").splitlines():
-        line = line.strip()
+        line = _unpadded(line.strip())
+        if _EXPONENT.search(line):
+            # 「1.369e+04만원」: four digits of a five-digit sum, never shown to the writer
+            continue
         if line and ("=" in line or line.count("|") >= 2) and len(line) <= 300:
             out.append(line)
     return out[:60]

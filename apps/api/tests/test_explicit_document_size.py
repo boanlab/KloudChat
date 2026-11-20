@@ -411,3 +411,32 @@ def test_a_report_keeps_its_section_count_over_numbers_in_material():
         "- 결과: EM 72.8\n"
     )
     assert report.requested_sections(ask) == 3
+
+
+async def test_a_range_s_top_is_a_ceiling_the_outline_is_asked_back_to(monkeypatch):
+    # round-1 r1d01 (11-20): 「8장 안팎」 (6~10) came back as 13 and 15 slides on both arms
+    shorter = _outline(deck, 9)
+    shorter["title"] = "줄인 구성"
+    calls = _planner(monkeypatch, deck, [_outline(deck, 14), shorter])
+    events = await _plan(deck, "동아리 안내 발표 자료를 8장 안팎으로 만들어 줘")
+    proposal = next(event["plan"] for event in events if event["type"] == "proposal")
+    assert len(calls) == 2 and "6–10 slides" in str(calls[1])
+    assert proposal["title"] == "줄인 구성" and 6 <= len(proposal["slides"]) <= 10
+
+
+async def test_an_outline_inside_its_range_is_not_asked_again(monkeypatch):
+    calls = _planner(monkeypatch, deck, [_outline(deck, 9)])
+    events = await _plan(deck, "동아리 안내 발표 자료를 8장 안팎으로 만들어 줘")
+    assert any(event["type"] == "proposal" for event in events)
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("prompt", "expected"),
+    [
+        ("Make a 6-slide investor update deck in English.", 6),
+        ("Create 8 slides on our Q3 results.", 8),
+    ],
+)
+def test_an_english_ask_counts_its_slides(prompt, expected):
+    assert deck.requested_slides(prompt) == expected

@@ -521,7 +521,11 @@ keep their own cells so check-mark tables look the same. The outline
 also picks the deck's accent from a fixed palette — unless the project wears a
 theme, in which case the palette rule is dropped from the prompt
 entirely and the accent arrives from the project. A slide count stated in the
-request is honoured up to 50.
+request is honoured up to 50 (Korean 「N장」 or English 「a 6-slide deck」, 「8 slides」); a
+number over 50 counts only when said of the deck itself (「슬라이드 60장」, 「총 60장」), so a
+quantity in the material (「컬러 월 300장」) is never a size. A stated range is a floor and a
+ceiling: an outline outside it is asked back once, and one still over the top loses its
+dividers and agenda first, never content.
 
 **The outline can run on a different model.** `governance.outline_model_id`
 names one; empty — the default everywhere — plans with the surface's own model.
@@ -1064,7 +1068,11 @@ quality check step (`quality`) for the reader to check — never passed off as d
 Around it: `key_figures` settles the figures a document set fixes (sale price,
 variable cost, break-even, targets, budget …) once from the material, tells the writer, and
 mends table rows and slides that drift from them; `calc` has the code sandbox
-compute derived values before the prose is written; `units` corrects a money
+compute derived values before the prose is written (only when the request's data holds
+figures — the document's own size and setting, 「12장」 「3주차」 「퀴즈 3문항」, are not
+data — and in plain notation: padding zeros come off, a line in exponent notation is not
+handed over); a power-of-ten slip fix (`report.fix_ledger_magnitudes`) never touches an
+amount the request itself writes; `units` corrects a money
 table's unit label against the amounts the person gave; and
 `quality_gate.report_findings` / `deck_findings` read the finished report or
 deck for form defects — a broken block, a table with no caption, a figure

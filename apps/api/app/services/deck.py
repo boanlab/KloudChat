@@ -1746,10 +1746,14 @@ def _read_back_values(value: Any) -> Any:
     return value
 
 
+#: what a deck's size is counted in; English asks say 「a 6-slide deck」 or 「6 slides」
+_SLIDE_UNITS = ("슬라이드", "페이지", "장", "쪽", "-slide", " slides", "slides")
+
+
 def requested_slides(request: str) -> int | None:
     """Explicit total; may be under the default five."""
     return plan_rules.requested_count(
-        request, ("슬라이드", "페이지", "장", "쪽"), maximum=_MAX_SLIDES
+        request, _SLIDE_UNITS, maximum=_MAX_SLIDES
     )
 
 
@@ -1758,14 +1762,14 @@ def slide_range(request: str) -> tuple[int, int] | None:
     if requested_slides(request):
         return None
     return plan_rules.requested_range(
-        request, ("슬라이드", "페이지", "장", "쪽"), maximum=_MAX_SLIDES
+        request, _SLIDE_UNITS, maximum=_MAX_SLIDES
     )
 
 
 def about_slides(request: str) -> int | None:
     """The number an approximate count states (「5장 정도」 → 5): the outline aims at it."""
     return plan_rules.approximate_count(
-        request, ("슬라이드", "페이지", "장", "쪽"), maximum=_MAX_SLIDES
+        request, _SLIDE_UNITS, maximum=_MAX_SLIDES
     )
 
 
@@ -5236,6 +5240,34 @@ async def write(
             else:
                 log.info("deck outline still short, keeping the first")
         plan = pad_to_floor(plan, needed)
+    # a range's top is a ceiling too: 「8장 안팎」 (6~10) is never a 15-slide deck
+    ceiling = span[1] if span and not wanted else None
+    if plan and ceiling and len(plan) > ceiling:
+        log.info("deck outline long: %d slides for at most %d, asking once more", len(plan),
+                 ceiling)
+        try:
+            retry_text, retry_spent = await ask(
+                f"\n\nThe previous structure had {len(plan)} slides. The request asks for "
+                f"{span[0]}–{span[1]} slides. Redo it within that range: put slides that share a "
+                "topic together and leave out dividers; keep every part the request named."
+            )
+        except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
+            log.warning("deck outline ceiling retry failed: %s", exc)
+        else:
+            plan_rules.count(usage, retry_spent, planned_apart=bool(outline_model))
+            retry_title, retry_subtitle, retry_plan = _parse_outline(retry_text)
+            retry_plan = _named_dividers(
+                _rationed_quotes(_grounded_layouts(retry_plan, request, document_context))
+            )
+            if retry_plan and len(retry_plan) < len(plan) and len(retry_plan) >= (span[0] or 1):
+                title = retry_title or title
+                subtitle = retry_subtitle or subtitle
+                plan = retry_plan
+                accent = fixed_accent or _theme_accent(retry_text, suggested_accent) or accent
+            else:
+                log.info("deck outline still long, keeping the first")
+        # still over: dividers, then the agenda, go first; content is never dropped
+        plan = fit_count(plan, ceiling) if len(plan) > ceiling else plan
     # unreadable outline: one retry
     if not plan:
         # kept for later diagnosis
