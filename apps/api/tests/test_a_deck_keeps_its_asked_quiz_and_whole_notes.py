@@ -65,3 +65,10 @@ def test_the_cover_note_is_a_greeting_without_the_subtitle_phrase() -> None:
     deck.fill_missing_notes(slides, "발표 자료 만들어 줘", title="클린윙 S2 출시 전략",
                             subtitle="경영진 보고용 출시 전략 개요")
     assert slides[0]["notes"] == "안녕하세요. 오늘은 「클린윙 S2 출시 전략」에 대해 발표하겠습니다."
+
+
+def test_a_note_that_is_the_writers_json_is_no_speech() -> None:
+    slides = [{"id": "a", "layout": "bullets", "title": "신고 절차", "bullets": ["즉시 보고"],
+               "notes": '[ { "type": "title'}]
+    deck.strip_internal_text(slides)
+    assert slides[0]["notes"] == ""

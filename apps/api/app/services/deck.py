@@ -2422,7 +2422,7 @@ def strip_json_residue(slides: list[dict]) -> list[int]:
 #: lecture's JSON example names other keys and stays)
 _JSON_FRAGMENT = re.compile(
     r'(?:[\[{]\s{0,4})+\\?"(?:slide_?id|slides|title|subtitle|bullets|layout|notes|'
-    r'speaker_notes|body|rows|chart|items|columns|metrics|id)\\?"\s{0,4}[:,\]}]'
+    r'speaker_notes|body|rows|chart|items|columns|metrics|id|type)\\?"\s{0,4}[:,\]}]'
     r'|\\?"slide_id\\?"')
 #: a spoken sentence's end: punctuation, or a Korean final ending (「…입니다」 「…해요」), not
 #: a noun that ends in the same letter (「…전략 개요」 「…필요」)
