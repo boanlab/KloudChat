@@ -6,6 +6,7 @@ import collections
 import datetime as _datetime
 import hashlib
 import json
+import re
 import sys
 import types
 import uuid
@@ -169,9 +170,26 @@ def pin_recorded_defaults(patch: Patch) -> None:
 PINNED_PROMPTS = FIXTURES / "_pinned_prompts"
 
 
+def _recorded_page_rule(request: str) -> str:
+    """`report.page_length_rule` as the records were made."""
+    from app.services import report
+
+    pages = report.requested_pages(request)
+    if pages is None:
+        return ""
+    lo, hi = pages
+    least, most = lo * report.PAGE_CHARS[0], hi * report.PAGE_CHARS[1]
+    span = f"{lo}–{hi}" if lo != hi else f"{hi}"
+    return (f"Length: the request sets about {span} A4 pages for the whole document — about "
+            f"{least:,}–{most:,} Korean characters of body text across all sections together "
+            "(a table counts as the space it takes). Plan the sections and write to that length: "
+            "fewer, fuller sections rather than many, and leave out detail that does not fit "
+            "rather than run past the pages asked (「A4 2~3쪽」 is never five).")
+
+
 def pin_recorded_prompts(patch: Patch) -> None:
     from app.pipeline import report_stages
-    from app.services import calc, figure_kinds, report, report_checks, verify
+    from app.services import calc, checks, figure_kinds, report, report_checks, verify
 
     def pinned(name: str) -> str:
         return (PINNED_PROMPTS / name).read_text(encoding="utf-8")
@@ -193,6 +211,22 @@ def pin_recorded_prompts(patch: Patch) -> None:
           "자료에 있는 값으로 채우고, 없으면 그 자리 이름을 「[담당자]」 「[금액]」처럼 "
           "대괄호로 남겨라.")
     patch(report_checks, "EMPTY_OWNER", "담당 칸이 비었다 — 이름, 자료에 없으면 「[담당자]」")
+    # The records predate the per-section length (`report.section_targets`), the page rule's
+    # floor, and the item-attribute and owner-blank checks, whose repair calls they lack.
+    patch(report, "section_targets", lambda request, headings: {})
+    patch(report, "page_length_rule", _recorded_page_rule)
+    patch(checks, "CODE_CHECKS", [c for c in checks.CODE_CHECKS
+                                  if c is not checks.item_attributes])
+
+    async def no_owner_findings(doc):
+        return [], {}
+
+    patch(checks, "owner_cells", no_owner_findings)
+    # The restatement trim before 「이는 …」 kept the sentence it points at.
+    patch(report, "_LEANS_BACK", re.compile(
+        r"^(?:[-*+]\s+)?(?:이|그|저|이런|이러한|이와|그런|그러한|그와|두|세|네|이때|그때|이에|이로써|"
+        r"따라서|그러므로|그래서|그러나|하지만|다만|또한|즉|한편|반면|둘째|셋째|넷째|다섯째|"
+        r"마지막으로|나머지)(?=[\s,])"))
     patch(report_checks, "EMPTY_DUE", "기한 칸이 비었다 — 날짜, 자료에 없으면 「[기한]」")
 
 

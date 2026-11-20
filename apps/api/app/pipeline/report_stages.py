@@ -40,6 +40,7 @@ from app.services import (
     hangul,
     illustrations,
     internal_words,
+    item_claims,
     key_figures,
     lint,
     meeting_memo,
@@ -1088,11 +1089,18 @@ class Draft(Base):
                     "\n\nThe document's other sections are written separately by another "
                     "writer: do not write them and do not mention that they exist. They are: "
                     + " / ".join(separate) + ".")
+            # the pages asked, shared out by section (「A4 3~5쪽」 → about 1,300자 each)
+            targets = report.section_targets(req.text, list(plan.headings))
+            mine = {n: targets[i] for n, i in enumerate(
+                i for i, _ in enumerate(plan.headings) if i not in bundle.document.hard)
+                if i in targets}
+            draft_prompt += report.length_block(mine, ordinary)
             draft_text, spent = await _written(
                 req.model,
                 _messages(bundle, draft_prompt, req.model),
                 req.api_key,
-                max_tokens=min(11000, 1400 * len(ordinary)),
+                max_tokens=min(12000 if mine else 11000, max(1400 * len(ordinary),
+                                          sum(mine.values()) + 500 * len(ordinary))),
             )
             _count(bundle, spent)
             bundle.document.drafted = report._carry_table(
@@ -1125,6 +1133,8 @@ class Sections(Base):
         assumptions: dict = {"text": "", "index": -1}
 
         hard = bundle.document.hard
+        # the pages asked, shared out by section; {} when the request sets none
+        targets = report.section_targets(request, list(headings))
 
         async def write_section(index: int, section: dict, written: list[str],
                                 tokens: int = 0, stage: str | None = None):
@@ -1177,9 +1187,12 @@ class Sections(Base):
                     "material's figures, and do not pad it by repeating yourself."
                     if long_form
                     else ""
-                ))
+                )
+                    + (f"\n\n{report.length_line(targets[index])}"
+                       if index in targets and not long_form else ""))
+            room = 2400 if long_form else max(1200, targets.get(index, 0) + 600)
             return await _staged(bundle, stage, lambda model: _messages(bundle, prompt, model),
-                                 tokens or (2400 if long_form else 1200))
+                                 tokens or room)
 
         #: sections no call wrote, shown as such (never a blank heading)
         failed: set[int] = set()
@@ -1363,6 +1376,24 @@ class Sections(Base):
                     api_key=req.api_key, given=f"{section['heading']}\n{_slip_vocabulary(bundle)}")
                 _count(bundle, more, planner=True)
             section["content"] = _cleaned(bundle, index, section, body)
+            if not section["content"].strip():
+                # nothing left once cleaned (its own heading alone, or all of it said before):
+                # written once more, never shipped as an empty section
+                log.warning("section %r empty once cleaned; written again", section["heading"])
+                doc_stages.note_trigger(bundle.usage, "repair", "empty_cleaned")
+                try:
+                    again, more = await write_section(index, section, written, stage="repair")
+                    _count(bundle, more)
+                    again = richtext.detach_tables(report.unwrap_json_prose(
+                        internal_words.strip_work_notes(internal_words.strip_tool_calls(again),
+                                                        request=req.text, document=True)))
+                    section["content"] = _cleaned(bundle, index, section,
+                                                  report.cut_unfinished_tail(again))
+                    body = again
+                except _CAUGHT as exc:
+                    log.warning("section %r not written again: %s", section["heading"], exc)
+                if not section["content"].strip():
+                    section["content"] = FAILED_SECTION
             material = _material_text(bundle)
             if gaps := table_integrity.problems(section["content"], material):
                 # rows dropped or not adding up: written once more with the defects named
@@ -1440,6 +1471,78 @@ class Sections(Base):
                    "message": "보고서의 어느 절도 쓰지 못했습니다. 잠시 뒤 다시 시도해 주세요."}
             yield _usage(bundle)
             raise Stop("every section failed")
+        if not long_form:
+            # a document short of the pages asked: its shortest sections added to once
+            async for event in _lengthened(bundle, sections, targets, outline_text):
+                yield event
+
+
+#: sections one document lengthens at most
+_LENGTHEN_AT_MOST = 4
+
+
+async def _lengthened(bundle: Bundle, sections: list[dict], targets: dict[int, int],
+                      outline: str) -> AsyncIterator[dict]:
+    """Sections well under the length the request's pages give them (`report.short_sections`),
+    added to once by the writer from the material; an answer that changes what was written,
+    or adds nothing, is not taken."""
+    report, req = _report(), bundle.request
+    short = [i for i in report.short_sections(sections, targets)
+             if sections[i].get("content") != FAILED_SECTION][:_LENGTHEN_AT_MOST]
+    if not short:
+        return
+    material = _material_text(bundle) or prompt_request(req.text, 6000)
+    gate = section_gate()
+
+    async def one(index: int):
+        content = str(sections[index].get("content") or "")
+        prompt = report.lengthen_prompt(
+            heading=str(sections[index]["heading"]), content=content,
+            have=report.body_chars(content), want=targets[index], outline=outline,
+            material=material)
+        async with gate:
+            return await _staged(bundle, None, lambda model: _messages(bundle, prompt, model),
+                                 min(6000, targets[index] + len(content) // 2 + 800))
+
+    doc_stages.note_trigger(bundle.usage, "repair", "short_sections")
+    replies = await asyncio.gather(*(one(i) for i in short), return_exceptions=True)
+    for index, reply in zip(short, replies, strict=True):
+        if isinstance(reply, BaseException):
+            log.info("lengthening %r failed: %r", sections[index]["heading"], reply)
+            continue
+        text, spent = reply
+        _count(bundle, spent)
+        before = str(sections[index].get("content") or "")
+        # a figure appended after the prose stays last
+        figure = re.search(r"\n\n!\[[^\]]*\]\([^)]*\)\s*$", before)
+        prose = before[:figure.start()] if figure else before
+        added = richtext.detach_tables(report.unwrap_json_prose(
+            internal_words.strip_work_notes(text, request=req.text, document=True))).strip()
+        # the prompt's 「절:」 label read back, as the first line or before a part it repeats
+        added = report.cut_unfinished_tail(
+            re.sub(r"(?m)^[ \t]*절[ \t]*[:：][ \t]*(?:\n|$)", "", added).strip())
+        if not report.only_added(prose, added):
+            log.info("lengthened %r not taken: existing text changed", sections[index]["heading"])
+            continue
+        # an added sentence holding a value the material does not give (a target, a day, a
+        # threshold the writer set itself) goes, and one leaning on it with it
+        added, unbacked = report.grounded_addition(
+            prose, added, [material], request=req.text,
+            worked="\n".join(str(s.get("content") or "") for s in sections) + "\n" + added)
+        if unbacked:
+            log.info("lengthening %r: %d added sentence(s) without backing cut: %s",
+                     sections[index]["heading"], len(unbacked), unbacked[0][:80])
+        if report.body_chars(added) < report.body_chars(prose) + 200:
+            log.info("lengthened %r not taken", sections[index]["heading"])
+            continue
+        added = _cleaned(bundle, index, sections[index], added)
+        sections[index]["content"] = added + (before[figure.start():] if figure else "")
+        log.info("lengthened %r: %d → %d chars", sections[index]["heading"],
+                 report.body_chars(before), report.body_chars(sections[index]["content"]))
+        yield {"type": "section", "sectionId": sections[index]["id"],
+               "heading": sections[index]["heading"],
+               "content": report.shown_while_writing(sections[index]["content"]),
+               "done": True}
 
 
 def _slip_vocabulary(bundle: Bundle) -> str:
@@ -1979,6 +2082,9 @@ def checks_of(bundle: Bundle) -> tuple[list, list]:
     settled, prepass = bundle.computed.settled, bundle.computed.prepass
     judge = req.judge
     run_checks = list(checks.CODE_CHECKS)
+    if not _records_meeting(bundle):
+        # minutes keep 「미정」 owners the meeting left open; other documents name a department
+        run_checks.append(checks.owner_cells)
     # judge reads figure sentences only when not the writer (writer over-flags itself)
     if req.outline_model and settled:
         run_checks.append(checks.judge_figures(req.outline_model, req.api_key))
@@ -2293,6 +2399,11 @@ class Verify(Base):
             log.exception("verify stage failed")
         bundle.document.sections = keep_blanks(before, bundle.document.sections,
                                                bundle.findings.traced)
+        # a cell still giving an item another item's attribute says the material lacks it
+        bundle.document.sections, unbound = item_claims.settled(bundle.document.sections,
+                                                                _person_given(bundle))
+        if unbound:
+            log.info("cells holding another item's attribute set to 자료 없음: %d", unbound)
         disputed = [f for f in still if f.code == "fact" and not f.auto]
         if disputed and req.strong:
             # the web check's contradictions go back to the strong writer once, evidence

@@ -43,3 +43,12 @@ def test_a_sentence_the_next_one_leans_on_is_not_cut():
              "소득 증빙은 별도로 냅니다.\n")
     kept, cut = report.trim_restatements(alone, EARLIER)
     assert len(cut) == 1 and kept.strip() == "소득 증빙은 별도로 냅니다."
+
+
+def test_a_sentence_opening_with_ineun_keeps_the_one_it_points_at():
+    # 11-25 r11b: the restated sentence went and 「이는 … 69.7%에 해당합니다」 opened a
+    # paragraph pointing at nothing
+    body = ("자격은 직전 학기 12학점 이상 이수와 평점평균 3.8 이상입니다. "
+            "이는 지원자의 절반 정도가 충족하는 수준입니다.\n")
+    kept, cut = report.trim_restatements(body, EARLIER)
+    assert cut == [] and kept == body

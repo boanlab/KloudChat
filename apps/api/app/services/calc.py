@@ -391,17 +391,83 @@ def computed_table(block: str) -> tuple[list[str], list[list[str]]] | None:
     return None
 
 
+def _column(cell: str) -> str:
+    """A column header as compared: no spaces, marks or unit in brackets (「연간 비용(만 원)」)."""
+    text = re.sub(r"\([^()]{0,20}\)|[*_`\s]", "", cell or "")
+    return text.lower()
+
+
+def _covering(title: str, header: list[str]) -> int | None:
+    """The computed column a writer's column title names: the same title, or one starting
+    with the other (「측정」 for 「측정 이득」, never 「7월」 for 「7월→8월 증감률」); None when
+    none does."""
+    mine = _column(title)
+    if not mine:
+        return None
+    for k, other in enumerate(header):
+        theirs = _column(other)
+        if not k or not theirs:
+            continue
+        short, long = sorted((mine, theirs), key=len)
+        # the rest a qualifier of the same measure (「이득」), not another period (「→8월 증감률」)
+        if long.startswith(short) and not re.search(r"[\d→>~\-]", long[len(short):]):
+            return k
+    return None
+
+
+def _same_value(written: str, computed: str) -> bool:
+    """Whether a written cell says the computed value (「1,651」 for 「1651 건」)."""
+    a = re.findall(r"-?\d[\d,]*(?:\.\d+)?", written or "")
+    b = re.findall(r"-?\d[\d,]*(?:\.\d+)?", computed or "")
+    if not a or not b:
+        return False
+    try:
+        return abs(float(a[0].replace(",", "")) - float(b[0].replace(",", ""))) < 1e-9
+    except ValueError:
+        return False
+
+
+def _merged(block_rows: list[list[str]], header: list[str], rows: list[list[str]]
+            ) -> list[list[str]] | None:
+    """A writer's table holding columns the computed table lacks (「7월 | 8월 | 9월」 beside
+    「3분기 합계」), its cells under the computed table's columns set to the computed values and
+    every other cell kept; None when no column is shared."""
+    shared = {j: k for j, h in enumerate(block_rows[0])
+              if j and (k := _covering(h, header)) is not None}
+    if not shared:
+        return None
+    by_key = {_key(r[0]): r for r in rows}
+    out = [block_rows[0]]
+    for row in block_rows[1:]:
+        computed = by_key.get(_key(row[0])) if row else None
+        if computed is None:
+            out.append(row)
+            continue
+        row = list(row)
+        for j, k in shared.items():
+            if j < len(row) and k < len(computed) and not _same_value(row[j], computed[k]):
+                row[j] = computed[k]
+        out.append(row)
+    return out
+
+
+def _rendered(header: list[str], rows: list[list[str]]) -> str:
+    return "\n".join(
+        ["| " + " | ".join(header) + " |", "|" + "---|" * len(header)]
+        + ["| " + " | ".join(r) + " |" for r in rows]
+    )
+
+
 def replace_tables(sections: list[dict], block: str) -> tuple[list[dict], int]:
-    """Tables matching the computed table's first cells, replaced; `(sections, replaced count)`."""
+    """Tables matching the computed table's first cells, replaced; `(sections, replaced count)`.
+    A table with columns the computed one lacks keeps them: only its cells under the computed
+    columns take the computed values (`_merged`)."""
     table = computed_table(block)
     if table is None:
         return sections, 0
     header, rows = table
     keys = {_key(r[0]) for r in rows}
-    rendered = "\n".join(
-        ["| " + " | ".join(header) + " |", "|" + "---|" * len(header)]
-        + ["| " + " | ".join(r) + " |" for r in rows]
-    )
+    rendered = _rendered(header, rows)
     changed = 0
     out = []
     for sec in sections:
@@ -424,8 +490,17 @@ def replace_tables(sections: list[dict], block: str) -> tuple[list[dict], int]:
                 ]
                 body_keys = {_key(r[0]) for r in block_rows[1:]}
                 if len(body_keys) >= 3 and len(body_keys & keys) >= 0.6 * len(body_keys):
-                    result.append(rendered)
-                    changed += 1
+                    extra = [h for h in block_rows[0][1:] if _covering(h, header) is None]
+                    if not extra:
+                        result.append(rendered)
+                        changed += 1
+                    elif (merged := _merged(block_rows, header, rows)) is not None:
+                        width = len(block_rows[0])
+                        result.append(_rendered(merged[0], [
+                            (r + [""] * width)[:width] for r in merged[1:]]))
+                        changed += merged != block_rows
+                    else:
+                        result.extend(lines[i:j])
                 else:
                     result.extend(lines[i:j])
                 i = j
