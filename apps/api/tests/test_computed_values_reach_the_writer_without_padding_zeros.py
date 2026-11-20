@@ -41,3 +41,11 @@ def test_the_document_s_size_and_setting_are_no_data_to_calculate() -> None:
     assert not calc.needed(lecture, [])
     priced = "월 기본료 6만 원, 흑백 3,000장 포함, 초과 장당 10원, 연간 총비용을 계산해 줘. 4대 기준."
     assert calc.needed(priced, [])
+
+
+def test_an_english_request_asking_to_compute_gets_the_calculation_pass() -> None:
+    # round-1 r1r11·r1d11 (11-20): 「compute weighted scores correctly」 and 「compute growth
+    # correctly」 named no Korean calculation word, so the writer did the arithmetic alone
+    ask = ("Use only these facts and compute weighted scores correctly. Weights: cost 30%, "
+           "compliance 30%, integration 20%, service 20%. Vendor P scores 4, 4, 3, 4.")
+    assert calc.needed(ask, [])

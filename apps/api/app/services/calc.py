@@ -17,7 +17,9 @@ _ASKS = re.compile(
     r"분산|비율|증가율|감소율|증감|성장률|합계|총액|총합|총\s{0,2}비용|연간\s{0,2}비용|"
     r"(?<![A-Za-z])TCO(?![A-Za-z])|"
     r"(?<![A-Za-z])ROI(?![A-Za-z])|효율|백분율|퍼센트|회귀|상관|차단\s{0,2}주파수|손익|"
-    r"단가|이자|수익률|할인율|환율|검산",
+    r"단가|이자|수익률|할인율|환율|검산|"
+    # the same asks in English (「compute weighted scores」, 「compute growth correctly」)
+    r"\b(?:calculat\w*|comput\w*|weighted|average|growth\s+rate|runway|percentages?|ratio)\b",
     re.I,
 )
 #: Markdown table data row
