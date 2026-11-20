@@ -1583,19 +1583,22 @@ def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
     # after the arithmetic fixes, so a mark never splits a formula they read
     clean = _unbacked_marked(
         clean, [given_text, *(report._source_text(row) for row in sources or [])],
-        computed=bundle.computed.values or "", grounded=bundle.material.grounded)
+        computed=bundle.computed.values or "", grounded=bundle.material.grounded,
+        worked="\n".join(str(s.get("content") or "") for s in sections[:index]))
     return richtext.tidy_tables(clean)
 
 
-def _unbacked_marked(text: str, evidence: list[str], *, computed: str, grounded: bool) -> str:
+def _unbacked_marked(text: str, evidence: list[str], *, computed: str, grounded: bool,
+                     worked: str = "") -> str:
     """Percentages the sources state or work out stay, the rest marked, never blanked; money
     likewise when the material has no figures (with figures the trace settles it); a count of
-    whole things with a fraction no source states is marked."""
+    whole things with a fraction no source states is marked. `worked`: the sections before
+    this one, whose written formulas back their results here too."""
     report = _report()
     if not grounded:
         text = report._without_invented_money(text, evidence)
     text = report._without_fractional_counts(text, evidence)
-    return report._without_invented_percents(text, [*evidence, computed])
+    return report._without_invented_percents(text, [*evidence, computed], worked)
 
 
 def _figure_says_more(made: dict, sections: list[dict], asked: bool) -> bool:

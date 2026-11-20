@@ -552,6 +552,9 @@ def trace_slides(slides: list[dict], *, material: str, computed: list[str],
                                          "the chart plots")
     for n, slide in enumerate(slides):
         out_of_place = misplaced_cells(slide, "\n".join([material, *computed]))
+        out_of_place += [f"「{value}」 is the material's figure for another named item; "
+                         f"{_FOR_THAT_ITEM}"
+                         for _, value in misbound_values(slide, material, deck_subject(slides))]
         if out_of_place:
             out.setdefault(n, []).extend(out_of_place)
     for n, _ in points:
@@ -560,6 +563,7 @@ def trace_slides(slides: list[dict], *, material: str, computed: list[str],
 
 
 _FOR_THAT_ROW = "put there only what the material gives for that row"
+_FOR_THAT_ITEM = "put there only what the material gives for that item"
 #: label words a value's place in the material is judged by
 _LABEL_WORD = re.compile(r"[가-힣]{2,}|[A-Za-z]{3,}")
 #: material read around a value for its label
@@ -607,6 +611,107 @@ def _misplaced(slide: dict, material: str) -> list[tuple[int, int]]:
     return out
 
 
+#: a named thing with its figures in brackets: 「A사 '에어킥 7'(54만 원, 1.8kg, 50분)」
+_NAMED_SPECS = re.compile(r"['‘\"“「]([^'’\"”」\n]{1,30})['’\"”」]\s?\(([^()\n]{1,200})\)")
+#: what names a thing: its words of two letters or more (「에어킥」, 「S2」)
+_NAME_WORD = re.compile(r"[가-힣]{2,}|[A-Za-z][A-Za-z\d]{1,}|\d+[A-Za-z]+")
+
+
+def _owned_figures(material: str) -> tuple[dict[tuple[float, str], set[str]], set]:
+    """Figures the material gives only as a named thing's own (in the brackets after its
+    quoted name), each with that thing's name words; and the figures it gives elsewhere."""
+    owned: dict[tuple[float, str], set[str]] = {}
+    inside: list[tuple[int, int]] = []
+    for m in _NAMED_SPECS.finditer(material or ""):
+        words = {w.lower() for w in _NAME_WORD.findall(m.group(1))}
+        if not words:
+            continue
+        inside.append(m.span(2))
+        for key in _figures_of(m.group(2)):
+            if key[1]:
+                owned.setdefault(key, set()).update(words)
+    loose = set()
+    for m in value_guard._NUMBER.finditer(material or ""):
+        if not any(a <= m.start() < b for a, b in inside):
+            loose.update(_figures_of(m.group(0)))
+    return owned, loose
+
+
+def _context(slide: dict, path: tuple, text: str) -> set[str]:
+    """The name words a slide value is read under: its own words, the slide's title, its
+    column's title and the other cells of its item (「["34%", "무게"]」)."""
+    parts = [text, *(str(slide.get(k) or "") for k in _TITLES)]
+    if path[0] == "columns":
+        parts.append(str((slide["columns"][path[1]] or {}).get("title") or ""))
+    elif len(path) == 3 and isinstance(slide.get(path[0]), list):
+        item = slide[path[0]][path[1]]
+        parts += [str(c) for c in item] if isinstance(item, list) else []
+    return {w.lower() for part in parts for w in _NAME_WORD.findall(part)}
+
+
+def deck_subject(slides: list[dict]) -> str:
+    """What the deck is about: its first slide's title (「클린윙 S2 신제품 출시 전략」)."""
+    return str((slides[0] if slides else {}).get("title") or "")
+
+
+def misbound_values(slide: dict, material: str, subject: str = "") -> list[tuple[tuple, str]]:
+    """Values in a slide's words that the material gives only as one named thing's figure,
+    read under another named thing and not under it: 「S2 사용 시간 50.0분」 when 50분 is
+    only A사 '에어킥 7''s. As (path, value as written)."""
+    owned, loose = _owned_figures(material)
+    if not owned:
+        return []
+    owners = set().union(*owned.values())
+    out = []
+    for path, text in _slide_leaves(slide):
+        if path[0] in _TITLES:
+            continue
+        named: set[str] | None = None
+        for m in value_guard._NUMBER.finditer(text):
+            keys = [k for k in _figures_of(m.group(0)) if k[1]]
+            if not keys or keys[0] in loose or keys[0] not in owned:
+                continue
+            if named is None:
+                named = _context(slide, path, text)
+                if not _names(named, owners):
+                    # a slide naming no item speaks of what the deck is about
+                    named |= {w.lower() for w in _NAME_WORD.findall(subject)}
+            mine = owned[keys[0]]
+            if not _names(named, mine) and _names(named, owners - mine):
+                out.append((path, m.group(0).strip()))
+    return out
+
+
+def _names(words: set[str], names: set[str]) -> bool:
+    """Whether `words` hold one of `names`, a particle after it too (「스톰라이트는」)."""
+    return any(w.startswith(n) for w in words for n in names)
+
+
+def mark_misbound(slides: list[dict], material: str) -> tuple[list[dict], int]:
+    """`misbound_values` left after the hand-back, marked where they stand."""
+    out, count = [], 0
+    subject = deck_subject(slides)
+    for slide in slides:
+        found = misbound_values(slide, material, subject)
+        if found:
+            slide = dict(slide)
+            for path, value in found:
+                node: object = slide
+                for key in path:
+                    node = node[key]  # type: ignore[index]
+                text = str(node)
+                at = text.find(value)
+                if at < 0:
+                    continue
+                end = value_guard.token_end(text, at + len(value))
+                if _marked(text[end:end + 12]):
+                    continue
+                _set(slide, path, f"{text[:end]}{value_guard.MARK}{text[end:]}")
+                count += 1
+        out.append(slide)
+    return out, count
+
+
 def mark_misplaced(slides: list[dict], material: str) -> tuple[list[dict], int]:
     """`misplaced_cells` left after the hand-back, marked in place."""
     mark = value_guard.MARK
@@ -626,6 +731,48 @@ def mark_misplaced(slides: list[dict], material: str) -> tuple[list[dict], int]:
 
 def _marked(cell: str) -> bool:
     return value_guard.MARK in cell or output_language.EN_MARK in cell
+
+
+#: a slide's heading fields: their words stand as written
+_TITLES = ("title", "subtitle")
+_TITLE_MARK = re.compile(r"\s?\(\s?(?:확인\s?필요|needs checking)\s?\)"
+                         r"|,\s?(?:확인\s?필요|needs checking)(?=\))")
+
+
+def titles_unmarked(slides: list[dict]) -> list[dict]:
+    """Slides whose title and column titles carry no 「(확인 필요)」: a mark inside a heading
+    breaks it (「마케팅 예산 15억 배(확인 필요)분」), so the value it was on is named in the
+    slide's notes instead, where the presenter sees it."""
+    out = []
+    english = deck_rules.deck_language(slides) == "en"
+    for slide in slides:
+        paths = [((key,), slide[key]) for key in _TITLES if isinstance(slide.get(key), str)]
+        paths += [(("columns", i, "title"), column["title"])
+                  for i, column in enumerate(slide.get("columns") or [])
+                  if isinstance(column, dict) and isinstance(column.get("title"), str)]
+        named: list[str] = []
+        slide = dict(slide)
+        for path, text in paths:
+            if not _TITLE_MARK.search(text):
+                continue
+            for m in _TITLE_MARK.finditer(text):
+                value = value_guard.BEFORE_MARK.search(text[max(0, m.start() - 40):m.start()])
+                named.append(value.group(0).strip() if value else text[:40])
+            _set(slide, path, _TITLE_MARK.sub("", text))
+        if named:
+            values = list(dict.fromkeys(named))
+            note = ("Needs checking (title): " + ", ".join(f"“{v}”" for v in values)
+                    + " — the material does not confirm it." if english else
+                    "확인 필요(제목): " + ", ".join(f"「{v}」" for v in values)
+                    + " — 자료로 확인하지 못한 값입니다.")
+            notes = slide.get("notes")
+            if isinstance(notes, list):
+                slide["notes"] = [*notes, note]
+            else:
+                notes = str(notes or "").rstrip()
+                slide["notes"] = f"{notes}\n\n{note}" if notes else note
+        out.append(slide)
+    return out
 
 
 def mark_unbacked_percents(slides: list[dict], texts: list[str], *,
@@ -687,7 +834,7 @@ def edited_percents(slides: list[dict], edited: list[int], *, request: str,
             continue
         marked, count = mark_unbacked_percents([slides[n]], texts, strong=strong)
         if count:
-            slide = marked[0]
+            slide = titles_unmarked(marked)[0]
             slides[n] = (output_language.english_marks(slide)
                          if deck_rules.deck_language(slides) == "en" else slide)
             changed.append(n)
@@ -889,11 +1036,16 @@ class DeckGrounding(Base):
             log.warning("deck grounding changed the slide count: %d to %d",
                         len(before), len(slides))
         slides, placed = mark_misplaced(slides, "\n".join([material, *computed]))
+        # a figure of another named item (「S2 사용 시간 50.0분」, 50분 being A사's)
+        slides, misbound = mark_misbound(slides, material)
+        placed += misbound
         # a percentage the material neither gives nor works out (「82% of frontier」 → cloud
         # 「100%」): marked, whatever the trace's arithmetic found for it
         slides, unbacked = mark_unbacked_percents(slides, [material, *computed],
                                                   strong=bool(bundle.request.strong))
         placed += unbacked
+        # a heading keeps its words; what was marked in it goes to the notes
+        slides = titles_unmarked(slides)
         if deck_rules.deck_language(slides) == "en":
             # an English deck's marks in English
             slides = output_language.english_marks(slides)
@@ -956,7 +1108,7 @@ async def _hand_back(bundle: Bundle, *, material: str, computed: list[str],
     kept: list[dict] = []
     notes: dict[int, str] = {}
     for n in worst:
-        placed = [v for v in pending[n] if v.endswith(_FOR_THAT_ROW)]
+        placed = [v for v in pending[n] if v.endswith((_FOR_THAT_ROW, _FOR_THAT_ITEM))]
         listed = ", ".join(f"「{v[:60]}」" for v in pending[n] if v not in placed) or (
             "" if placed else "the chart's values")
         said = [f"These on this slide are in none of the material, the sources or the code's "

@@ -30,6 +30,10 @@ def _compute(a: float, op: str, b: float) -> float | None:
     return None
 
 
+#: what before a chain makes it the tail of a longer formula: an operator or a closing bracket
+_INSIDE = re.compile(r"(?:[)）]|[+\-−×xX*÷/])\s*$")
+#: a result written in percent
+_PERCENT_AFTER = re.compile(r"\s?%")
 #: term chain before the answer: 「500 + 300 × 2 = 1,100」
 _TERM = re.compile(_NUMBER)
 _CHAIN = re.compile(rf"{_NUMBER}(?:\s*{_OP}\s*{_NUMBER}){{1,12}}\s*{_EQ}\s*{_NUMBER}")
@@ -58,6 +62,10 @@ def findings(text: str, *, where: str = "") -> list[dict[str, str]]:
     out: list[dict[str, str]] = []
     for m in _CHAIN.finditer(text):
         whole = m.group(0)
+        if _INSIDE.search(text[max(0, m.start() - 12):m.start()]):
+            # the tail of a longer formula: 「(1,987 − 1,425) ÷ 1,425 × 100 = 39.4%」 read from
+            # 「1,425 × 100」 is not what the writer computed
+            continue
         eq = list(re.finditer(_EQ, whole))[-1]
         left, right = whole[:eq.start()], whole[eq.end():]
         terms = list(_TERM.finditer(left))
@@ -75,6 +83,10 @@ def findings(text: str, *, where: str = "") -> list[dict[str, str]]:
         readings = [got]
         if scale and not any(t.group(2) for t in terms):
             readings.append(got * _SCALE[scale])
+        if _PERCENT_AFTER.match(right, answer.end(1)) and "%" not in left and any(
+                op in ("÷", "/") for op in ops):
+            # a share written in percent: 「324건 / 562건 = 57.65%」
+            readings.append(got * 100)
         if all(abs(r - c) > max(abs(c), 1.0) * 0.01 for r in readings):
             got = readings[-1]
             out.append(

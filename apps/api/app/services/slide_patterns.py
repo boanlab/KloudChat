@@ -193,7 +193,7 @@ PATTERNS: tuple[Pattern, ...] = (
        left_max=16, right_max=40,
        use="두 대안을 항목별로 맞대어 — A안 대 B안, 기존 대 제안.",
        rules=(
-           "- columns 는 두 개 `{\"title\": 안 이름, \"items\": [특징, ...]}`. "
+           "- columns 는 두 개 `{{\"title\": 안 이름, \"items\": [특징, ...]}}`. "
            "항목 3~5개씩, 같은 관점 순서로."
        ),
        example=(

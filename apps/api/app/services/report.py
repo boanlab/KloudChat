@@ -781,15 +781,18 @@ def _without_invented_money(text: str, evidence: list[str] | None = None) -> str
     return "".join(out)
 
 
-def _without_invented_percents(text: str, evidence: list[str] | None = None) -> str:
+def _without_invented_percents(text: str, evidence: list[str] | None = None,
+                               worked: str = "") -> str:
     """Percentages no source gives nor works out from its figures marked 「(확인 필요)」, never
-    blanked; a share of two given figures of one measure (71억 of 128억 → 55.5%) stays."""
+    blanked; a share of two given figures of one measure (71억 of 128억 → 55.5%) stays, and so
+    does the result of a formula the document writes on given figures (`worked`: the rest of
+    the document)."""
     from app.services import value_guard
 
     if not value_guard.percents_in(text or ""):
         return text
     return value_guard.mark_unbacked_percents(
-        text, value_guard.percent_basis(list(evidence or [])))[0]
+        text, value_guard.percent_basis(list(evidence or [])), worked)[0]
 
 
 #: a count of whole things written with a fraction: 「14.8건」, 「2.5곳」 (not 「3.5개월」)
@@ -797,7 +800,7 @@ _FRACTION_COUNT = re.compile(
     r"(?<![\d,.])\d{1,6}\.\d{1,3}\s?(?:가지|건|개|곳|명|팀|장|대|회)(?!월|년|국|소|사|체|화|선|수)")
 #: a rate or average, where a fraction of a count stands: 「일평균 14.8건」, 「1인당 2.5개」
 _RATE = re.compile(r"평균|(?:인|건|명|개|회|곳|대|일|시간)\s?당|마다|하루|매일|매주|매월|per\b|"
-                   r"average|/\s?[일주월년]", re.I)
+                   r"average|/\s?(?:[일주월년명인]|건(?!수))|÷", re.I)
 
 
 def _without_fractional_counts(text: str, evidence: list[str] | None = None) -> str:
@@ -817,7 +820,10 @@ def _without_fractional_counts(text: str, evidence: list[str] | None = None) -> 
         if text[at:at + len(value_guard.MARK) + 1].lstrip().startswith(value_guard.MARK):
             continue
         clause = re.split(r"[,.;|]\s", line[:m.start() - base])[-1]
+        # a list of rates shares the word of its first item: 「7월은 1인당 59.2건, 8월은 64.8건」
+        sentence = re.split(r"(?<=[.!?])\s", line[:m.start() - base])[-1]
         if re.sub(r"\s+", "", m.group(0)) in given or _RATE.search(clause) \
+                or (_RATE.search(sentence) and "," in sentence[-60:]) \
                 or _RATE.search(line[m.end() - base:m.end() - base + 4]):
             continue
         out.append(value_guard.MARK)
