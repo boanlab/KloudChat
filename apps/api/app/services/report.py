@@ -1721,6 +1721,13 @@ Rules:
   criteria the section is about, what to do and in what order, what to watch for.
 - Never add a figure, name, date, amount, place, cause or event the material does not give.
   A value worked out from given figures shows its formula (「1,716만 ÷ 2,000만 = 85.8%」).
+- Never set a target, deadline, threshold, criterion or rule of your own (「월 100건 이하」,
+  「10월 24일까지 제출」, 「1건 1유형 원칙」): a proposed step names what is done, not a number
+  or a day the material does not give.
+- Add to this section's own subject; do not retell the figures and causes the other
+  sections of the outline cover.
+- Each added paragraph names its subject in its first sentence: never open a paragraph with
+  「이는」 「이러한」 「이로 인해」 pointing at something outside it.
 - No bracket blanks such as 「[담당자]」; an owner is the department or role by what it does
   (「IT 담당 부서」, 「고객센터」).
 - Keep the section's register (「~합니다」) and write in Korean.
@@ -1734,6 +1741,75 @@ def lengthen_prompt(*, heading: str, content: str, have: int, want: int, outline
                     material: str) -> str:
     return _LENGTHEN_PROMPT.format(heading=heading, content=content, have=have, want=want,
                                    outline=outline, material=material[:6000] or "(없음)")
+
+
+#: a bound a sentence sets: 「월 100건 이하」, 「3.8점 이상」
+_BOUND = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s?(?:[가-힣%]{1,3})?\s?(?:이하|이상|미만|초과)")
+
+
+def _own_bound(sentence: str, given: str) -> bool:
+    """Whether `sentence` sets a bound whose number `given` never writes: a value-guard's
+    rounding (「약 500건」 for 538) is no backing for a target."""
+    for m in _BOUND.finditer(sentence):
+        number = m.group(1).replace(",", "")
+        if not re.search(rf"(?<![\d.]){re.escape(number)}(?![\d]|\.\d)", given):
+            return True
+    return False
+
+
+def grounded_addition(before: str, after: str, evidence: list[str], *, request: str = "",
+                      worked: str = "") -> tuple[str, list[str]]:
+    """`(after, cut)`: a lengthened section (`after`, a superset of `before`) with each added
+    sentence whose values the evidence does not back taken out (`value_guard.supported`: a
+    target, day or amount the writer set itself), and an added sentence that leans on one
+    taken out (「이는 …」) with it. What `before` says stays as written; tables and figure
+    lines are left to the document's own checks."""
+    from app.services import value_guard
+
+    def norm(text: str) -> str:
+        return re.sub(r"\s+", " ", text).strip()
+
+    old = norm(before)
+    ev = value_guard.Evidence.of(evidence, answer=after, request=request, worked=worked or after)
+    given = re.sub(r"(?<=\d),(?=\d{3})", "", " ".join([*evidence, request, before]))
+    out: list[str] = []
+    cut: list[str] = []
+    # an added sentence was just taken out: the next added one leaning on it goes too
+    gone = False
+    for line in after.split("\n"):
+        text = line.strip()
+        if not text:
+            out.append(line)
+            continue
+        if text.startswith(("|", "#", "!", "```", "<")) or norm(line) in old:
+            out.append(line)
+            gone = False
+            continue
+        sentences = [x for x in _SPACED_SENTENCE_END.split(line) if x.strip()]
+        kept: list[str] = []
+        for sentence in sentences:
+            words = sentence.strip()
+            if norm(words) in old:
+                kept.append(sentence)
+                gone = False
+                continue
+            body = _LIST_LEAD.sub("", words, count=1)
+            if (gone and _LEANS_BACK.match(body)) or _own_bound(body, given) or not \
+                    value_guard.supported(body, body, 0, ev, 0):
+                cut.append(words)
+                gone = True
+                continue
+            kept.append(sentence)
+            gone = False
+        if len(kept) == len(sentences):
+            out.append(line)
+        elif kept:
+            lead = _LIST_LEAD.match(line).group(0) if kept[0] is sentences[0] else \
+                _LINE_LEAD.match(line).group(0)
+            out.append(lead + " ".join(k.strip() for k in kept))
+    if not cut:
+        return after, []
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip() + "\n", cut
 
 
 def _long_form(request: str) -> bool:
@@ -4781,9 +4857,10 @@ _ASSESSMENT_LINE = re.compile(
 )
 
 
-#: sentence leaning on the one before: 「이 요건은」, 「따라서」, 「둘째,」
+#: sentence leaning on the one before: 「이 요건은」, 「이는」, 「따라서」, 「둘째,」
 _LEANS_BACK = re.compile(
     r"^(?:[-*+]\s+)?(?:이|그|저|이런|이러한|이와|그런|그러한|그와|두|세|네|이때|그때|이에|이로써|"
+    r"이는|이를|이로|이처럼|이같이|이같은|이것[은이을]|그는|그로|그로써|그\s?결과|"
     r"따라서|그러므로|그래서|그러나|하지만|다만|또한|즉|한편|반면|둘째|셋째|넷째|다섯째|"
     r"마지막으로|나머지)(?=[\s,])"
 )

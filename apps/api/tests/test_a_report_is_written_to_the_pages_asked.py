@@ -177,3 +177,49 @@ async def test_a_section_left_empty_once_cleaned_is_written_again(monkeypatch) -
     async for _ in report_stages.Sections().run(bundle, Context(options={})):
         pass
     assert "1,987건" in bundle.document.sections[0]["content"]
+
+
+MATERIAL = ("3분기 고객 문의: 7월 1,303건, 8월 1,425건, 9월 1,987건. 앱 결제 오류 8월 88건, "
+            "9월 412건. 9월 2일 결제 모듈 업데이트 후 9월 9일까지 287건.")
+
+
+def test_an_added_sentence_the_material_does_not_back_is_cut_with_what_leans_on_it() -> None:
+    before = "9월 문의는 1,987건으로 8월 1,425건보다 늘었습니다.\n"
+    after = (before + "\n앱 결제 오류는 8월 88건에서 9월 412건으로 늘었습니다. "
+             "각 부서는 10월 24일까지 실행 계획을 제출해야 합니다. "
+             "이는 경영회의 일정에 맞춘 것입니다.\n\n"
+             "4분기 목표는 결제 오류 월 100건 이하로 둡니다.\n")
+    out, cut = report.grounded_addition(before, after, [MATERIAL], request=ASK)
+    assert before.strip() in out
+    assert "8월 88건에서 9월 412건" in out
+    assert "10월 24일" not in out and "이는 경영회의" not in out
+    assert "100건 이하" not in out
+    assert len(cut) == 3
+
+
+def test_an_addition_from_the_material_alone_is_kept_whole() -> None:
+    before = "9월 문의는 1,987건입니다.\n"
+    after = before + "\n9월 2일 결제 모듈 업데이트 뒤 9월 9일까지 287건이 몰렸습니다.\n"
+    out, cut = report.grounded_addition(before, after, [MATERIAL], request=ASK)
+    assert cut == [] and out == after
+
+
+@pytest.mark.asyncio
+async def test_lengthening_keeps_no_target_the_writer_set_itself(monkeypatch) -> None:
+    bundle = _bundle()
+    first = "현재 임직원 260명이 카카오톡 개인 계정과 이메일을 함께 씁니다."
+    sections = [{"id": f"s{i}", "heading": h,
+                 "content": "요약입니다." if i == 0 else first}
+                for i, h in enumerate(HEADINGS)]
+
+    async def fake(model, messages, api_key, max_tokens):
+        more = "업무 연락이 개인 계정에 섞여 있어 퇴사자 관리가 어렵습니다. " * 20
+        return (f"{first}\n\n{more.strip()}\n\n도입 후 보안 사고는 연 1건 이하로 줄입니다.",
+                {"inputTokens": 1, "outputTokens": 1})
+
+    monkeypatch.setattr(report, "_complete", fake)
+    targets = report.section_targets(ASK, HEADINGS)
+    async for _ in report_stages._lengthened(bundle, sections, targets, ""):
+        pass
+    grown = [s for s in sections[1:] if len(s["content"]) > 600]
+    assert grown and all("1건 이하" not in s["content"] for s in grown)

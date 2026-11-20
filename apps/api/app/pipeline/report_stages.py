@@ -1520,8 +1520,18 @@ async def _lengthened(bundle: Bundle, sections: list[dict], targets: dict[int, i
             internal_words.strip_work_notes(text, request=req.text, document=True))).strip()
         # the prompt's 「절:」 label read back as the section's first line
         added = report.cut_unfinished_tail(re.sub(r"^\s*절\s*[:：]\s*\n?", "", added))
-        if not report.only_added(prose, added) or report.body_chars(added) < (
-                report.body_chars(prose) + 200):
+        if not report.only_added(prose, added):
+            log.info("lengthened %r not taken: existing text changed", sections[index]["heading"])
+            continue
+        # an added sentence holding a value the material does not give (a target, a day, a
+        # threshold the writer set itself) goes, and one leaning on it with it
+        added, unbacked = report.grounded_addition(
+            prose, added, [material], request=req.text,
+            worked="\n".join(str(s.get("content") or "") for s in sections) + "\n" + added)
+        if unbacked:
+            log.info("lengthening %r: %d added sentence(s) without backing cut: %s",
+                     sections[index]["heading"], len(unbacked), unbacked[0][:80])
+        if report.body_chars(added) < report.body_chars(prose) + 200:
             log.info("lengthened %r not taken", sections[index]["heading"])
             continue
         added = _cleaned(bundle, index, sections[index], added)
