@@ -1376,6 +1376,24 @@ class Sections(Base):
                     api_key=req.api_key, given=f"{section['heading']}\n{_slip_vocabulary(bundle)}")
                 _count(bundle, more, planner=True)
             section["content"] = _cleaned(bundle, index, section, body)
+            if not section["content"].strip():
+                # nothing left once cleaned (its own heading alone, or all of it said before):
+                # written once more, never shipped as an empty section
+                log.warning("section %r empty once cleaned; written again", section["heading"])
+                doc_stages.note_trigger(bundle.usage, "repair", "empty_cleaned")
+                try:
+                    again, more = await write_section(index, section, written, stage="repair")
+                    _count(bundle, more)
+                    again = richtext.detach_tables(report.unwrap_json_prose(
+                        internal_words.strip_work_notes(internal_words.strip_tool_calls(again),
+                                                        request=req.text, document=True)))
+                    section["content"] = _cleaned(bundle, index, section,
+                                                  report.cut_unfinished_tail(again))
+                    body = again
+                except _CAUGHT as exc:
+                    log.warning("section %r not written again: %s", section["heading"], exc)
+                if not section["content"].strip():
+                    section["content"] = FAILED_SECTION
             material = _material_text(bundle)
             if gaps := table_integrity.problems(section["content"], material):
                 # rows dropped or not adding up: written once more with the defects named

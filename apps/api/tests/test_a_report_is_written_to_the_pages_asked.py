@@ -155,3 +155,25 @@ def test_a_month_column_is_not_a_computed_rate_that_ends_in_that_month() -> None
              "환불·교환 절차 | 7월->8월 증감률 = 6.67 %\n")
     out, _ = calc.replace_tables([{"heading": "추이", "content": MONTHS}], rates)
     assert "| 412 | 538 | 701 |" in out[0]["content"] and "30.58" not in out[0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_a_section_left_empty_once_cleaned_is_written_again(monkeypatch) -> None:
+    from app.pipeline.stage import Context
+
+    bundle = Bundle(request=Request(text="9월 문의 급증 보고서를 써 줘.",
+                                    model="local/qwen3.8-flash", api_key="k"))
+    bundle.plan.headings = ["9월 급증 분석"]
+    bundle.document.sections = [{"id": "s0", "heading": "9월 급증 분석", "content": ""}]
+    bundle.usage = {"inputTokens": 0, "outputTokens": 0}
+    replies = iter(["## 9월 급증 분석",
+                    "9월 문의는 1,987건으로 8월보다 562건 늘었습니다. 결제 오류가 가장 크게 "
+                    "늘었습니다."])
+
+    async def fake(model, messages, api_key, max_tokens):
+        return next(replies), {"inputTokens": 1, "outputTokens": 1}
+
+    monkeypatch.setattr(report, "_complete", fake)
+    async for _ in report_stages.Sections().run(bundle, Context(options={})):
+        pass
+    assert "1,987건" in bundle.document.sections[0]["content"]
