@@ -17,6 +17,8 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
+from app.services import table_pivots
+
 #: inline mark for a value or paragraph the evidence does not support
 MARK = "(확인 필요)"
 
@@ -67,7 +69,9 @@ _UNITS = ("%p", "%", "퍼센트", "원", "달러", "명", "건", "개월", "개"
 _LATIN_UNITS = ("kcal", "km", "cm", "mm", "kg", "mg", "mL", "ml", "g", "L")
 #: a multiplier glued to its number (「94x」, 「3×」), not a size or a product (「1920x1080」)
 _TIMES = r"(?<=\d)[x×](?![A-Za-z\d]|\s?\d)"
-_UNIT = "|".join([*map(re.escape, _UNITS),
+#: 「15억 배분」, 「배정」, 「배송」: a word, not a multiplier
+_NOT_TIMES = "(?![분정치포송달열경려출상당터제너우추관선합율])"
+_UNIT = "|".join([*(re.escape(u) + (_NOT_TIMES if u == "배" else "") for u in _UNITS),
                   *(f"{re.escape(u)}(?![A-Za-z])" for u in _LATIN_UNITS), _TIMES])
 _NUMBER = re.compile(rf"(?<![A-Za-z\d.,_/#-])(?P<num>{_TERM})(?![\d])\s?(?P<unit>{_UNIT})?")
 _FAMILY = {"퍼센트": "%", "가지": "개", "x": "배", "×": "배"}
@@ -241,6 +245,10 @@ class Evidence:
 
     #: multipliers the evidence works out: the ratio of two figures of one measure
     ratios: list[float] = field(default_factory=list)
+    #: days of the month the evidence writes alone (「24일」), in a month it names
+    bare_days: set[int] = field(default_factory=set)
+    #: what the evidence's data tables work out: totals, group sums, means, gaps, shares
+    pivots: list[float] = field(default_factory=list)
 
     #: the whole document the answer is a part of: its worked formulas count
     worked: str = ""
@@ -274,6 +282,17 @@ class Evidence:
             self.months.add(m)
         self.enumerated = _enumerations(joined)
         self.periods = _periods(joined)
+        for m in _DAY_RANGE.finditer(joined):
+            mo, a, b = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            if 1 <= mo <= 12 and 1 <= a < b <= 31:
+                # both ends are days given; the span is the period's length, counted with
+                # both ends (17~20일 → 4일) or as the gap (3일)
+                self.days.update({(None, mo, a), (None, mo, b)})
+                self.months.add(mo)
+                self.spans.update({b - a + 1, b - a})
+                self.values += [(float(b - a + 1), "일"), (float(b - a), "일")]
+        self.bare_days = {int(m.group(1)) for m in _BARE_DAY.finditer(joined)
+                          if 1 <= int(m.group(1)) <= 31}
         for y, m, d, _ in _days_in(joined):
             self.days.update({(y, m, d), (None, m, d)})
             self.months.add(m)
@@ -298,19 +317,22 @@ class Evidence:
             if 0 < n <= 400:
                 weeks = 7 if unit.startswith("주") else 1
                 self.spans.add(-n if unit in ("개월", "달") else n * weeks)
-        self.values = [*_values(joined), *_converted(joined)]
+        self.values = [*self.values, *_values(joined), *_converted(joined)]
         self.sorted_values = sorted({abs(v) for v, _ in self.values if v})
         self.ratios = _ratios(joined)
         own_rows = [x for r in self.rows for x in r[1]]
         tables = [*_table_sums(joined), *(_table_sums(self.answer) if own_rows else [])]
         self.vat = bool(_VAT.search(joined))
         self.rates = sorted({abs(v) for v, f in self.values if f == "%" and 0 < abs(v) < 100})
+        pivots, shares = table_pivots.aggregates(joined)
+        self.pivots = sorted({*pivots, *shares})
         self.derived = sorted({*_derived(self.sorted_values, vat=self.vat, rates=self.rates),
-                               *_table_sums(joined)})
+                               *_table_sums(joined), *self.pivots})
         self.derived_rows = sorted({
             *_derived(sorted({abs(v) for v, _ in [*self.values, *own_rows] if v}), vat=self.vat,
                       rates=self.rates),
             *tables, *_row_steps(self.rows, {abs(v) for v, _ in _values(self.answer)}),
+            *self.pivots,
         }) if own_rows else self.derived
 
     def _chain(self, rounds: int = 6) -> None:
@@ -337,8 +359,21 @@ class Evidence:
             todo -= added
         self.chained = sorted(known)
 
-    def supports_number(self, value: float, unit: str, raw: str, line: str = "") -> bool:
-        tol = _step(raw) + 1e-9 * max(1.0, abs(value))
+    def supports_number(self, value: float, unit: str, raw: str, line: str = "",
+                        hedged: bool = False) -> bool:
+        if self._supports_number(value, unit, raw, line, hedged):
+            return True
+        for other, factor in _CONVERT.get(_family(unit), ()):
+            # 「2시간」 for the 120분 a tool printed
+            converted = value * factor
+            if converted == int(converted) and self._supports_number(
+                    converted, other, f"{converted:g}", line, hedged):
+                return True
+        return False
+
+    def _supports_number(self, value: float, unit: str, raw: str, line: str = "",
+                         hedged: bool = False) -> bool:
+        tol = _step(raw) * (2 if hedged else 1) + 1e-9 * max(1.0, abs(value))
         family = _family(unit)
         v = abs(value)
         if family in _COUNT_UNIT and v == int(v) and int(v) in self.enumerated:
@@ -385,6 +420,9 @@ class Evidence:
             return True
         if not line.strip().startswith("|") and any((m, d) in days for _, _, days in self.rows):
             return True
+        if d in self.bare_days and m in self.months:
+            # 「복귀가 24일이니까」 in a memo of 11월: 「11월 24일」
+            return True
         return self._moved(y, m, d)
 
     def _moved(self, y: int | None, m: int, d: int) -> bool:
@@ -426,15 +464,25 @@ class Evidence:
         return hit >= 0.7 * len(words)
 
 
+#: a figure said as about so much or as at least so much, so its last place may be cut off
+#: (「43만 원가량」 for 438,277원)
+_HEDGED = re.compile(r"^\s?(?:원|명|건|개|대)?\s?(?:가량|정도|남짓|이상|넘게|쯤|여)")
+_HEDGED_BEFORE = re.compile(r"(?:약|대략|거의|얼추|어림잡아)\s?$")
+#: the same measure in another unit: 「2시간」 = 120분, 「1년」 = 12개월, 「2주」 = 14일
+_CONVERT = {"시간": (("분", 60.0),), "분": (("시간", 1 / 60),), "년": (("개월", 12.0),),
+            "개월": (("년", 1 / 12),), "주": (("일", 7.0),)}
+
+
 #: a worked formula on one line: 「(1,480,000 × 30 × 0.95 + 5,000 × 30) × 1.1 = 46,563,000원」
 _FORMULA = re.compile(
     r"(?P<lhs>[(\d][\d,.\s()×xX*÷/+\-−원대명개건%]*[\d)%원대명개건])\s{0,3}=\s{0,3}"
-    r"(?P<rhs>\d[\d,]*(?:\.\d+)?)")
+    r"(?P<rhs>\d[\d,]*(?:\.\d+)?)(?P<pct>\s?%)?")
 _OPERAND = re.compile(r"\d[\d,]*(?:\.\d+)?%?")
 
 
-def _formulas(answer: str) -> list[tuple[str, list[str], float]]:
-    """`(python expression, operands, stated result)` of the answer's written formulas."""
+def _formulas(answer: str) -> list[tuple[str, list[str], float, bool]]:
+    """`(python expression, operands, stated result, result in %)` of the answer's written
+    formulas."""
     out = []
     lines = [line for line in (answer or "").split("\n") if "=" in line]
     # label words between terms go: 「확정 42,000,000원(부가세 포함) + 보증 연장 45,000원 × 30대」
@@ -453,13 +501,14 @@ def _formulas(answer: str) -> list[tuple[str, list[str], float]]:
         if not re.fullmatch(r"[\d.\s()*/+\-]+", expr) or "**" in expr.replace(" ", ""):
             continue
         try:
-            out.append((expr, operands, float(m.group("rhs").replace(",", ""))))
+            out.append((expr, operands, float(m.group("rhs").replace(",", "")),
+                        bool(m.group("pct"))))
         except ValueError:
             continue
     return out
 
 
-def _worked(formulas: list[tuple[str, list[str], float]], known: set[float],
+def _worked(formulas: list[tuple[str, list[str], float, bool]], known: set[float],
             vat: bool) -> set[float]:
     """Stated results of formulas whose operands are all known (or a rate) and whose
     arithmetic holds."""
@@ -467,7 +516,7 @@ def _worked(formulas: list[tuple[str, list[str], float]], known: set[float],
     shares = {v for v in known if 0 < v < 100}
     rates = {1.0, 100.0, *({1.1, 0.1} if vat else ()),
              *(round(1 - v / 100, 6) for v in shares), *(round(v / 100, 6) for v in shares)}
-    for expr, operands, stated in formulas:
+    for expr, operands, stated, _ in formulas:
         ok = True
         for raw in operands:
             v = float(raw.rstrip("%").replace(",", ""))
@@ -507,6 +556,14 @@ def _url_days(text: str) -> set[tuple[int, int, int]]:
     return out
 
 
+#: 「11월 1일~30일」, 「11월 17~20일」, 「11월 17일부터 20일까지」: one month's days from-to
+_DAY_RANGE = re.compile(r"(?<![\d.])(\d{1,2})\s{0,2}월\s{0,2}(\d{1,2})\s{0,2}(?:일)?"
+                        r"(?:\s{0,2}[~∼〜–-]\s{0,2}|\s{0,2}일\s{0,2}부터\s{0,2})(\d{1,2})\s{0,2}일")
+#: a day of the month written alone (「복귀가 24일이니까」, 「다음 주 수요일, 25일까지」), not a
+#: span of days (「3일간」, 「14일 이내」) nor a part of a fuller date
+_BARE_DAY = re.compile(
+    r"(?<![\d.,/~∼〜–-])(?<!월\s)(?<!월)(\d{1,2})\s?일(?!\s{0,2}(?:간|동안|전|후|뒤|이내|안에|만에|이후|"
+    r"이전|가량|정도|짜리|치|째|마다|씩|이상|이하|넘게|미만|당|연속|분))")
 #: a period: 「11/1~11/30」, 「11월 1일 ~ 30일」, 「2026-11-01 ~ 2026-11-30」
 _PERIOD_SEP = re.compile(r"\s{0,2}[~∼〜–—-]\s{0,2}|\s{0,2}부터\s{0,2}")
 
@@ -518,9 +575,8 @@ def _periods(text: str) -> list[tuple[tuple[int, int], tuple[int, int]]]:
     for (_, m1, d1, (_, e1)), (_, m2, d2, (s2, _)) in zip(days, days[1:], strict=False):
         if _PERIOD_SEP.fullmatch(text[e1:s2]) and (m1, d1) < (m2, d2):
             out.append(((m1, d1), (m2, d2)))
-    # 「11월 1일~30일」: the end day without its month
-    for m in re.finditer(r"(?<![\d.])(\d{1,2})\s{0,2}월\s{0,2}(\d{1,2})\s{0,2}일"
-                         r"\s{0,2}[~∼〜–-]\s{0,2}(\d{1,2})\s{0,2}일", text or ""):
+    # 「11월 1일~30일」, 「11월 17~20일」: the end day without its month
+    for m in _DAY_RANGE.finditer(text or ""):
         mo, a, b = int(m.group(1)), int(m.group(2)), int(m.group(3))
         if 1 <= mo <= 12 and a < b <= 31:
             out.append(((mo, a), (mo, b)))
@@ -829,7 +885,9 @@ def supported(segment: str, line: str, offset: int, ev: Evidence, structure: int
         start, end = offset + m.start("num"), offset + m.end("num")
         if _exempt(line, start, end, raw, unit, ev, structure, header):
             continue
-        if not ev.supports_number(value, unit, raw, line):
+        hedged = bool(_HEDGED.match(line, offset + m.end()) or _HEDGED_BEFORE.search(
+            line[max(0, offset + m.start() - 8):offset + m.start()]))
+        if not ev.supports_number(value, unit, raw, line, hedged):
             return False
     return True
 
@@ -1014,6 +1072,12 @@ def _settle_values(before: str, after: str, ev: Evidence, structure: int,
             out.restored.append(whole.strip())
             pieces.append(old)
             continue
+        if _HEADING.match(line):
+            # a heading keeps its words: the value is named in the check's step, not marked
+            # inside the title (「마케팅 예산 15억 배(확인 필요)분」)
+            out.marked.append(whole.strip())
+            pieces.append(old)
+            continue
         end = _value_end(before, offsets[i1], offsets[i2], e)
         if end in marked_at or before[end:end + len(MARK) + 1].lstrip().startswith(MARK):
             pieces.append(old)
@@ -1031,6 +1095,8 @@ def _settle_values(before: str, after: str, ev: Evidence, structure: int,
 
 
 _TABLE_RULE = re.compile(r"^\s*\|?[\s:\-|]+\|?\s*$")
+#: a markdown heading line
+_HEADING = re.compile(r"^\s{0,3}#{1,6}\s")
 
 
 def _blocks(text: str) -> list[str]:
@@ -1329,6 +1395,10 @@ class Percents:
     given: list[float] = field(default_factory=list)
     #: point gaps of a worked share and a given percentage (7.5% worked, 6.8% given → 0.7%p)
     gaps: list[float] = field(default_factory=list)
+    #: the figures the texts give, and their sums and gaps: what a written formula may use
+    figures: list[float] = field(default_factory=list)
+    #: the figures the texts give as written
+    plain: list[float] = field(default_factory=list)
 
     def backs(self, value: float, raw: str, line: str = "", unit: str = "%",
               approx: bool = False) -> bool:
@@ -1397,7 +1467,8 @@ def percent_basis(texts: Iterable[str]) -> Percents:
         masked = _MONTH_DAY.sub(lambda d: " " * len(d.group(0)), masked)
         in_table = False
         for n, line in enumerate(masked.split("\n")):
-            table = line.lstrip().startswith("|")
+            # a pipe table with or without its outer bars (「유형 | 7월 | 8월」)
+            table = line.lstrip().startswith("|") or line.count("|") >= 2
             if table and not in_table:
                 block += 1
             in_table = table
@@ -1413,8 +1484,9 @@ def percent_basis(texts: Iterable[str]) -> Percents:
                 if family in ("%", "%p"):
                     given.add(value)
                     continue
-                if not value or (not family and value == int(value) and 1900 <= value <= 2100):
-                    # a year
+                if not value or (not family and value == int(value) and 1900 <= value <= 2100
+                                 and "," not in m.group("num")):
+                    # a year (「1,987」 with its thousands comma is a count)
                     continue
                 key = _measure(line, m)
                 if key:
@@ -1443,7 +1515,130 @@ def percent_basis(texts: Iterable[str]) -> Percents:
     for i, a in enumerate(shares):
         for b in shares[i + 1:]:
             out.update((b - a, a / b * 100, (b - a) / a * 100) if a else (b - a,))
-    return Percents(sorted(out), sorted(given), sorted(gaps))
+    joined = "\n".join(t for t in texts if t)
+    # a data table's group shares (「대구 33.5%」 of the regions' sums)
+    out.update(table_pivots.aggregates(joined)[1])
+    plain = sorted({v for g in groups.values() for v in g})[:_PAIRED]
+    sums = {x for i, a in enumerate(plain) for b in plain[i + 1:] for x in (a + b, b - a)} \
+        if len(plain) <= 120 else set()
+    return Percents(sorted(out), sorted(given), sorted(gaps),
+                    sorted({*plain, *sums, *given}), plain)
+
+
+def worked_percents(text: str, basis: Percents) -> list[float]:
+    """The percentages of `worked_results`."""
+    return worked_results(text, basis)[1]
+
+
+def worked_results(text: str, basis: Percents) -> tuple[set[float], list[float]]:
+    """Percentages `text` works out in a written formula whose terms the texts give or one
+    step from them (a sum or gap of two given figures), or a result of another such formula:
+    「(1,987 − 1,425) ÷ 1,425 × 100 = 39.4%」, 「324건 / 562건 = 57.65%」 after
+    「1,987건 - 1,425건 = 562건」."""
+    formulas = _formulas(text or "")
+    if not formulas:
+        return set(), []
+    known = set(basis.figures)
+    found: set[float] = set()
+    formulas = [(tail, re.findall(r"\d[\d.]*", tail), stated, percent)
+                for expr, _, stated, percent in formulas if (tail := _tail(expr))]
+    for _ in range(4):
+        added = False
+        for expr, operands, stated, percent in formulas:
+            if stated in found:
+                continue
+            ok = True
+            for raw in operands:
+                v = float(raw.rstrip("%").replace(",", ""))
+                if raw.endswith("%") or v in (100.0, 1.0):
+                    continue
+                if not any(abs(v - k) <= 0.5 + 1e-9 * v for k in known):
+                    ok = False
+                    break
+            if not ok:
+                continue
+            try:
+                got = eval(compile(expr, "<formula>", "eval"), {"__builtins__": {}}, {})  # noqa: S307
+            except Exception:  # noqa: BLE001 — not arithmetic after all
+                continue
+            if not isinstance(got, (int, float)):
+                continue
+            readings = (got, got * 100) if percent else (got,)
+            tol = max(0.5 * 10 ** -_places(stated), 1e-4 * abs(stated))
+            if any(abs(r - stated) <= tol + 1e-9 for r in readings):
+                found.add(stated)
+                known.add(stated)
+                added = True
+        if not added:
+            break
+    return found, sorted(v for v in found if any(p and v == s for _, _, s, p in formulas))
+
+
+def _sentence_share(text: str, m: re.Match, value: float, basis: Percents,
+                    known: set[float]) -> bool:
+    """Whether a percentage is the share or change of two figures, one written in its own
+    sentence, each given, one step from given ones, or a formula's checked result: 「487건은
+    전체 증가분 562건의 86.65%」, 「2,722건으로 전체의 57.7%」 (of the 4,715 given)."""
+    start = max((b.end() for b in re.finditer(r"[.!?](?:\s|$)|\n", text[:m.start()])),
+                default=0)
+    stop = re.search(r"[.!?](?:\s|$)|\n", text[m.end():])
+    sentence = text[start:m.end() + (stop.start() if stop else len(text))]
+    pool = sorted(known)
+    tol = _step(m.group("num")) + 1e-9
+
+    def is_known(v: float) -> bool:
+        k = bisect.bisect_left(pool, v - 0.5)
+        return k < len(pool) and pool[k] <= v + 0.5
+
+    figures = []
+    for n in _NUMBER.finditer(sentence):
+        if _family(n.group("unit")) in ("%", "%p"):
+            continue
+        try:
+            v = abs(ko_number(n.group("num")))
+        except ValueError:
+            continue
+        if v and is_known(v):
+            figures.append(v)
+    others = {*figures, *basis.plain[:400]}
+    for a in figures:
+        for b in others:
+            if a == b or not b:
+                continue
+            for share in (a / b * 100, (a - b) / b * 100, (b - a) / a * 100 if a else 0):
+                if abs(abs(share) - value) <= tol:
+                    return True
+    return False
+
+
+def _tail(expr: str) -> str:
+    """The formula that ends `expr`: from after the last two figures with no operator between
+    them (「562   324 / 562」 → 「324 / 562」), its brackets balanced; "" when none is left."""
+    tokens = re.findall(r"\d[\d.]*|[()*/+\-]", expr)
+    start = 0
+    for k in range(len(tokens) - 1, 0, -1):
+        if tokens[k][0].isdigit() and (tokens[k - 1][0].isdigit() or tokens[k - 1] == ")"):
+            start = k
+            break
+    kept = tokens[start:]
+    depth = 0
+    for tok in kept:
+        depth += {"(": 1, ")": -1}.get(tok, 0)
+        if depth < 0:
+            return ""
+    if depth:
+        # an opening bracket the formula's own words left unclosed (「(계산: 562 / 1,425」)
+        if not all(t == "(" for t in kept[:depth]):
+            return ""
+        kept = kept[depth:]
+    if not any(t in "*/+-" for t in kept):
+        return ""
+    return " ".join(kept)
+
+
+def _places(value: float) -> int:
+    text = f"{value:.6f}".rstrip("0")
+    return len(text.split(".", 1)[1]) if "." in text else 0
 
 
 def percents_in(text: str) -> list[tuple[re.Match, float, str]]:
@@ -1467,9 +1662,12 @@ def percents_in(text: str) -> list[tuple[re.Match, float, str]]:
 _MARKED = re.compile(r"\s?[(\[]\s?(?:확인\s?필요|needs checking)\s?[)\]]")
 
 
-def mark_unbacked_percents(text: str, basis: Percents) -> tuple[str, int]:
-    """`text` with 「(확인 필요)」 after each percentage `basis` does not back; the count."""
+def mark_unbacked_percents(text: str, basis: Percents, worked: str = "") -> tuple[str, int]:
+    """`text` with 「(확인 필요)」 after each percentage `basis` does not back; the count.
+    `worked`: the whole document, whose written formulas back their results anywhere in it."""
     pieces, at, count = [], 0, 0
+    results, shown = worked_results(f"{worked}\n{text}", basis)
+    known: set[float] | None = None
     for m, value, unit in percents_in(text):
         end = m.end()
         if not m.group("unit"):
@@ -1479,6 +1677,12 @@ def mark_unbacked_percents(text: str, basis: Percents) -> tuple[str, int]:
         line, _ = _line_at(text, m.start())
         if basis.backs(value, m.group("num"), line, unit,
                        bool(_ABOUT.search(text[max(0, m.start() - 16):m.start()]))):
+            continue
+        if any(abs(abs(value) - w) <= _step(m.group("num")) + 1e-9 for w in shown):
+            continue
+        if known is None:
+            known = {*basis.figures, *results}
+        if _sentence_share(text, m, abs(value), basis, known):
             continue
         pieces.append(text[at:end] + MARK)
         at = end

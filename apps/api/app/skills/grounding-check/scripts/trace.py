@@ -54,7 +54,9 @@ _UNIT = "|".join(re.escape(u) for u in UNIT_WORDS) + "|" + _TIMES
 _CURRENCY = {"$": "달러", "₩": "원", "€": "유로", "£": "파운드", "¥": "엔"}
 #: A unit syllable that begins another word: 「62, 주의 45」, 「1일부」, 「3대비」.
 _NOT_UNIT = ("(?<=주)[의요]|(?<=일)[부반]|(?<=분)[석야기의]|(?<=초)[과기]|(?<=회)[의사]|(?<=대)[비상학]"
-             "|(?<=점)검|(?<=부)서|(?<=장)[소비]|(?<=행)사|(?<=팀)장|(?<=종)류|(?<=배)송|(?<=개)[발선]"
+             "|(?<=점)검|(?<=부)서|(?<=장)[소비]|(?<=행)사|(?<=팀)장|(?<=종)류|(?<=개)[발선]"
+             # 「15억 배분」, 「배정」, 「배송」: a word, not a multiplier
+             "|(?<=배)[분정치포송달열경려출상당터제너우추관선합율]"
              "|(?<=명)단|(?<=건)[의물]|(?<=원)[인장]|(?<=부)터")
 #: A number with an optional unit; not inside an identifier (「REQ-03」, 「p95」) nor glued to a number.
 NUMBER = re.compile(
@@ -257,7 +259,9 @@ _EXAMPLE = re.compile(r"(?:\(|^|\s)(?:예\s?[:：)]|예를\s?들(?:어|면)|예�
 _ASSUMED = re.compile(
     r"가정(?:하|해|한|할|합|으로|이며|이고|치|에)|(?:이|으)?라면\s|(?:이|으)?라고\s?(?:하면|치면|보면)"
     r"|대략|어림|추정(?:하면|치|해|하여|으로|값)|(?:으로|로)\s?잡(?:았|고|으면|아|습)|기준으로\s?잡"
-    r"|(?:이|가)\s?(?:된다|이라)고\s?(?:하면|치면)")
+    r"|(?:이|가)\s?(?:된다|이라)고\s?(?:하면|치면)"
+    # a value set as the condition of the sentence: 「4칸이면 2시간」, 「30분이면」
+    r"|\d[\d,.]*\s?[가-힣]{1,3}?이면\s")
 #: 「약 1,430kcal」: an approximation the answer says it is
 _ABOUT = re.compile(r"(?<![가-힣])(?:약|대략|어림잡아|얼추|대충)\s?$")
 #: a heading or bold label naming what follows as assumptions or examples
