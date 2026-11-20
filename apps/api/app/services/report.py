@@ -4418,10 +4418,15 @@ def fix_ledger_magnitudes(text: str, request: str) -> str:
             results.append(value)
     if not results:
         return text
+    # an amount the request itself states is never a slip (「월 15만 원 × 10개월」 beside the
+    # ledger's 150만 is the operand, not 150만 a digit short)
+    stated = {v for m in _AMOUNT_WON.finditer(request or "")
+              if (v := _to_man(m.group(1))) is not None}
 
     def fix(m: re.Match) -> str:
         value = _to_man(m.group(1))
-        if value is None or any(abs(value - r) < 0.5 for r in results):
+        if value is None or any(abs(value - r) < 0.5 for r in results) or any(
+                abs(value - v) < 0.5 for v in stated):
             return m.group(0)
         for r in results:
             for factor in (10, 100, 0.1, 0.01):
