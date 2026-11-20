@@ -1333,6 +1333,44 @@ def person_days(text: str) -> dict[tuple[int | None, int, int], str]:
             mo, d = int(end.group("m")), int(end.group("d"))
             if 1 <= mo <= 12 and 1 <= d <= 31:
                 out.setdefault((int(m.group("y")), mo, d), end.group(0).strip(" ~∼〜-"))
+    # 「11월 17~20일」, 「11/10~11/14」, 「11월 17일부터 20일까지」: every day of a span is theirs
+    for key, written in range_days(text).items():
+        out.setdefault(key, written)
+    return out
+
+
+#: A span of days: 「11월 17~20일」, 「11/10~11/14」, 「2026. 11. 10. ~ 11. 14.」, 「11월 17일부터
+#: 20일까지」. The end names its day, and its month when it is another month.
+_DAY_SPAN = re.compile(
+    r"(?<![\d.])(?:(?P<y>(?:19|20)\d{2})\s{0,2}(?:년|[-./])\s{0,2})?(?P<m>\d{1,2})\s{0,2}(?:월|[/.\-])\s{0,2}"
+    r"(?P<d>\d{1,2})(?!\d)\s{0,2}(?:일|\.)?(?:\s{0,2}\([월화수목금토일]\))?"
+    r"\s{0,3}(?P<sep>[~∼〜–-]|부터)\s{0,3}"
+    r"(?:(?P<m2>\d{1,2})\s{0,2}(?:월|[/.\-])\s{0,2})?(?P<d2>\d{1,2})(?![\d,.:]\d)\s{0,2}(?P<il>일)?")
+
+
+def range_days(text: str) -> dict[tuple[int | None, int, int], str]:
+    """Days inside the spans `text` writes, each as 「11월 18일」 (with its year when given)."""
+    out: dict[tuple[int | None, int, int], str] = {}
+    for m in _DAY_SPAN.finditer(text or ""):
+        if m.group("sep") == "부터" and not (m.group("il") or m.group("m2")):
+            continue  # 「17일부터 3시간」 is no span of days
+        y = int(m.group("y")) if m.group("y") else None
+        mo, d, d2 = int(m.group("m")), int(m.group("d")), int(m.group("d2"))
+        mo2 = int(m.group("m2")) if m.group("m2") else mo
+        try:
+            base = y or 2001  # a year with no 2월 29일 trouble for a span read alone
+            start = dt.date(base, mo, d)
+            end = dt.date(base + (1 if mo2 < mo else 0), mo2, d2)
+        except ValueError:
+            continue
+        if not 0 < (end - start).days <= 62:
+            continue
+        day = start
+        while day <= end:
+            key = (y + day.year - base if y else None, day.month, day.day)
+            written = f"{key[0]}년 " if key[0] else ""
+            out.setdefault(key, f"{written}{day.month}월 {day.day}일")
+            day += dt.timedelta(days=1)
     return out
 
 
@@ -1432,7 +1470,9 @@ def _other_values(line: str, masked: str, sources: Sources, k: int, found: list[
                 return
             found.append(_finding("date", line, k, *m.span()))
             return
-        deadline = bool(re.match(r"[^.\n]{0,16}?(?:까지|마감|기한)", masked[m.end():]))
+        # 「11월 17일부터 20일까지」: a span's first day, not a deadline
+        deadline = bool(re.match(r"[^.\n]{0,16}?(?:까지|마감|기한)", masked[m.end():])) and not \
+            re.match(r"\s{0,3}(?:[~∼〜–-]|부터)", masked[m.end():])
         if (instead := _a_misread_day(y, mo, d, own, deadline)) is not None:
             found.append({**_finding("date", line, k, *m.span()), "placeholder": instead})
 
