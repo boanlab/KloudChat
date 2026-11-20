@@ -78,10 +78,22 @@ def code_models(strict_local: bool) -> list[str]:
     return out
 
 
+_FENCE_OPEN = r"```(?:python|py)?[ \t]{0,8}\n"
+
+
 def unfenced(text: str) -> str:
+    """The code of a model's answer: the first fenced block; a block whose closing fence never
+    came (the answer was cut or the model stopped) is taken to the end, less a closing fence
+    that is only partly there; an answer with no fence is the code as it stands."""
     text = text.strip()
-    match = re.search(r"```(?:python|py)?[ \t]{0,8}\n(.*?)```", text, re.S)
-    return match.group(1).strip() if match else text
+    closed = re.search(_FENCE_OPEN + r"(.*?)```", text, re.S)
+    if closed:
+        return closed.group(1).strip()
+    opened = re.search(r"^" + _FENCE_OPEN + r"(.*)\Z", text, re.S | re.M)
+    if opened:
+        # a last line of one or two backticks is the start of a closing fence
+        return re.sub(r"\n[ \t]*`{1,2}[ \t]*\Z", "", opened.group(1)).strip()
+    return text
 
 
 async def write_code(model: str, messages: list[dict[str, str]], api_key: str) -> str:
