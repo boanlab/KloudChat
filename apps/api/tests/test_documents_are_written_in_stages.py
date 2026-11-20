@@ -221,6 +221,31 @@ async def test_a_stage_call_goes_up_and_its_tokens_are_kept_apart() -> None:
         assert asked[-1] == LOCAL_27B["id"] and spent["inputTokens"] == 100
 
 
+def test_the_writers_own_model_is_a_stage_only_when_the_stage_asks_it_to_think() -> None:
+    rules = sa.normalise_rules({"document_hard": {"model": GLM["id"], "effort": "default"},
+                                "document_plan": {"model": GLM["id"], "effort": "low"}})
+    assert _pick("hard", writer=GLM, rules=rules) is None
+    assert _pick("plan", writer=GLM, rules=rules) == GLM
+
+
+@pytest.mark.asyncio
+async def test_a_stage_on_the_writers_model_with_thinking_is_called_with_its_own_fields() -> None:
+    stages = _stages(plan=GLM["id"], hard=GLM["id"])
+    stages.fields["plan"] = {"reasoning": {"effort": "low"}}
+    stages.fields["hard"] = {}
+    seen: list[dict | None] = []
+
+    async def complete(model, messages, api_key, max_tokens):
+        seen.append(thinking.turn_fields(model))
+        return "답", {"inputTokens": 1, "outputTokens": 1}
+
+    usage: dict = {}
+    await doc_stages.staged(complete, "plan", GLM["id"], lambda m: [], "k", 100, usage)
+    await doc_stages.staged(complete, "hard", GLM["id"], lambda m: [], "k", 100, usage)
+    assert seen == [{"reasoning": {"effort": "low"}}, None]
+    assert "plan" in usage["stageUsage"] and "hard" not in usage["stageUsage"]
+
+
 @pytest.mark.asyncio
 async def test_a_failed_upper_model_is_replaced_by_the_writer_for_the_rest_of_the_turn() -> None:
     stages = _stages(hard=GLM["id"], repair=GLM["id"])

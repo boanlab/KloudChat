@@ -206,6 +206,11 @@ class Settings(BaseSettings):
     self_hosted_chat_thinking: bool = False
     #: Name fragments that get `enable_thinking: false`; others untouched.
     self_hosted_thinking_models: str = "qwen3.8-flash"
+    #: Thinking-token cap (`thinking_token_budget`) sent with `enable_thinking: true` for those
+    #: models, by effort (low / high or deeper); 0 sends no cap. Env:
+    #: SELF_HOSTED_THINKING_BUDGET_LOW / SELF_HOSTED_THINKING_BUDGET_HIGH.
+    self_hosted_thinking_budget_low: int = 500
+    self_hosted_thinking_budget_high: int = 2000
     #: Self-hosted name fragments sent `presence_penalty` (Qwen's own advice against endless
     #: repetition); 27B at the chat temperature loops on lists without it. Empty: none.
     self_hosted_presence_penalty_models: str = "qwen3.8-27b"

@@ -61,7 +61,8 @@ class Governance(SQLModel, table=True):
         default_factory=lambda: _ids(settings.adaptive_quality_models_default),
         sa_column=Column(JSONB, nullable=False, server_default=text("'[]'::jsonb")),
     )
-    #: admin changes to `super_agent.DEFAULT_RULES`: class → {model, strictModel, effort}
+    #: admin changes to `super_agent.DEFAULT_RULES`: class → {model, strictModel, effort,
+    #: strictEffort}
     super_agent_rules: dict = Field(
         default_factory=dict,
         sa_column=Column(JSONB, nullable=False, server_default=text("'{}'::jsonb")),

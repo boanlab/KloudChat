@@ -91,7 +91,7 @@ def test_deep_on_a_hand_picked_model_asks_for_its_highest_level() -> None:
     assert sa.reasoning_fields(DEEPSEEK["id"], sa.HIGHEST, DEEPSEEK) == {
         "reasoning": {"effort": "max"}}
     assert sa.reasoning_fields("strict-local/qwen3.8-flash", sa.HIGHEST) == {
-        "chat_template_kwargs": {"enable_thinking": True}}
+        "chat_template_kwargs": {"enable_thinking": True}, "thinking_token_budget": 2000}
 
 
 @pytest.mark.parametrize(

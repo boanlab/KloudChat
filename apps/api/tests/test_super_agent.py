@@ -270,6 +270,7 @@ async def test_admin_table_stores_changes_and_refuses_bad_picks(monkeypatch) -> 
         ({"code": {"model": "gone/model"}}, "super_agent_model_invalid"),
         ({"poems": {"model": "z-ai/glm-5.3"}}, "super_agent_class_unknown"),
         ({"code": {"effort": "turbo"}}, "super_agent_effort_invalid"),
+        ({"code": {"strictEffort": "turbo"}}, "super_agent_effort_invalid"),
     ):
         with pytest.raises(Exception) as caught:
             await _put(monkeypatch, Governance(), GovernanceIn(super_agent_rules=rules))

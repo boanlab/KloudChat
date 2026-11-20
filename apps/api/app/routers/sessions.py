@@ -6655,7 +6655,8 @@ async def _send_message(
     fallback_effort = (
         {super_agent.FAST: "none", super_agent.DEEP: super_agent.HIGHEST}.get(
             reasoning_mode,
-            super_agent.normalise_rules(policy.super_agent_rules)["document"]["effort"])
+            super_agent.rule_effort(
+                super_agent.normalise_rules(policy.super_agent_rules)["document"], strict_local))
         if complex_turn_route else None
     )
     #: the writer's reasoning fields and the answer line's note (the chip, the route's effort)
@@ -6671,7 +6672,10 @@ async def _send_message(
                                            strict=strict_local)
         stage_rules = super_agent.normalise_rules(policy.super_agent_rules)
         for stage, model_id in stage_models.ids.items():
-            level = super_agent.stage_effort(stage_rules, stage, reasoning_mode)
+            # the stage's column: a strict-local model was picked from the strict column
+            level = super_agent.stage_effort(
+                stage_rules, stage, reasoning_mode,
+                stage_models.rows[model_id].get("strictLocal") is True)
             if level == "default" and "deepseek" in model_id and model_id.startswith(
                     ("local/", "strict-local/")):
                 # a self-hosted DeepSeek thinks by default, at a length that eats a stage's

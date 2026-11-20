@@ -871,7 +871,8 @@ async def _validated_super_rules(raw: dict | None) -> dict:
             detail="super_agent_class_unknown",
         )
     for rule in raw.values():
-        if rule.get("effort") not in (None, *super_agent.EFFORTS):
+        if any(rule.get(key) not in (None, *super_agent.EFFORTS)
+               for key in ("effort", "strictEffort")):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="super_agent_effort_invalid",
@@ -884,7 +885,8 @@ async def _validated_super_rules(raw: dict | None) -> dict:
                                      *super_agent.STAGE_ROWS.values()) else "chat")
         # an override row's empty column keeps the class's own row: nothing to check
         rule = {key: value for key, value in rule.items()
-                if value or key == "effort" or name not in super_agent.OVERRIDE_ROWS}
+                if value or key in ("effort", "strictEffort")
+                or name not in super_agent.OVERRIDE_ROWS}
         model = catalogue.get(merged[name]["model"]) if "model" in rule else None
         if "model" in rule and (model is None or kind not in model.get("kinds", [])):
             raise HTTPException(
