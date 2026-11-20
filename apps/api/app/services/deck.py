@@ -2266,6 +2266,42 @@ def _shown(slide: dict) -> str:
     return _slide_words({k: v for k, v in slide.items() if k not in ("notes", "image")})
 
 
+_KO_COUNT = {"한": 1, "두": 2, "세": 3, "네": 4, "다섯": 5, "여섯": 6, "일곱": 7, "여덟": 8,
+             "아홉": 9, "열": 10}
+#: the questions a quiz is asked with: 「OX 퀴즈 3문제」 「퀴즈 다섯 문항」 「확인 문제 4개」
+_QUIZ_COUNT = re.compile(
+    r"(?:퀴즈|O\s?/?\s?X|확인\s?문제|평가\s?문항)[^\n.]{0,12}?"
+    r"(?<![\d,])(\d{1,2}|한|두|세|네|다섯|여섯|일곱|여덟|아홉|열)\s?(?:개\s?)?(?:문제|문항|개)")
+#: a quiz item on the screen: a question mark, a 「Q1」 or 「1.」 head, or an O/X ask
+_QUESTION = re.compile(r"\?|^\s*(?:Q\s?\d{1,2}|문제\s?\d{1,2}|\d{1,2}\s?[.)]|[①-⑩])|O\s?[/,·]?\s?X|"
+                       r"(?:니까|나요|까요|인가요?|일까|는가)\s*$")
+
+
+def asked_questions(request: str) -> int:
+    """How many quiz questions the request asks for, or 0."""
+    from app.services.context import lead_instruction
+
+    m = _QUIZ_COUNT.search(lead_instruction(request or "") or request or "")
+    if not m:
+        return 0
+    word = m.group(1)
+    return int(word) if word.isdigit() else _KO_COUNT.get(word, 0)
+
+
+def quiz_questions(slides: list[dict], at: int) -> int:
+    """Questions on the quiz slide `at` and every other slide titled a quiz."""
+    count = 0
+    for n, slide in enumerate(slides):
+        if n != at and not _QUIZ_TITLE.search(str(slide.get("title") or "")):
+            continue
+        lines = [line for text in quality_gate._strings(
+            {k: v for k, v in slide.items() if k not in ("notes", "image", "diagram", "id",
+                                                         "title", "layout", "accent")})
+                 for line in str(text).split("\n") if line.strip()]
+        count += sum(1 for line in lines if _QUESTION.search(line))
+    return count
+
+
 def requested_contents(slides: list[dict], request: str) -> dict[int, str]:
     """Slides holding a requested part only in name or notes, with what to add."""
     from app.services.context import instruction_part, lead_instruction
@@ -2283,9 +2319,19 @@ def requested_contents(slides: list[dict], request: str) -> dict[int, str]:
         # question: 「?」, options, or Korean question ending
         asking = r"\?|①|②|O\s?/\s?X|(?:니까|나요|까요|인가요?|일까|는가|시오)(?=[\s.\"']|$)"
         if at is not None and not re.search(asking, _shown(slides[at])):
-            needs[at] = ("This slide is a quiz. Put 2~3 real questions on the screen with options "
-                         "(①~④) or O/X, and put the answers and explanations in the speaker "
-                         "notes. Do not substitute a notice or a summary.")
+            many = asked_questions(request)
+            needs[at] = (f"This slide is a quiz. Put {f'all {many}' if many else '2~3'} real "
+                         "questions on the screen with options (①~④) or O/X, and put the answers "
+                         "and explanations in the speaker notes. Do not substitute a notice or a "
+                         "summary.")
+        elif at is not None and (count := asked_questions(request)) and (
+                have := quiz_questions(slides, at)) < count:
+            # 「OX 퀴즈 3문제」 with two on the screen: the one the slide lost is put back
+            needs[at] = (f"This slide is the quiz the request asks for with {count} questions, "
+                         f"but the screen shows {have}. Put all {count} on the screen, numbered "
+                         f"Q1~Q{count}, each one line with O/X or options; keep the questions "
+                         "already there, and put the answers and explanations in the speaker "
+                         "notes.")
     if _ASKS_DECISION.search(asked):
         at = last_titled(re.compile(r"요청|승인|결정|제안"))
         if at is not None and not (
@@ -2378,19 +2424,27 @@ _JSON_FRAGMENT = re.compile(
     r'(?:[\[{]\s{0,4})+\\?"(?:slide_?id|slides|title|subtitle|bullets|layout|notes|'
     r'speaker_notes|body|rows|chart|items|columns|metrics|id)\\?"\s{0,4}[:,\]}]'
     r'|\\?"slide_id\\?"')
-#: a spoken sentence's end: punctuation, or a Korean final ending (「…입니다」 「…해요」)
-_SPOKEN_END = re.compile(r"(?:[.!?。…]|(?<=[다요죠까]))[\"'」』”’)\]]{0,2}(?=\s|$)")
+#: a spoken sentence's end: punctuation, or a Korean final ending (「…입니다」 「…해요」), not
+#: a noun that ends in the same letter (「…전략 개요」 「…필요」)
+_SPOKEN_END = re.compile(
+    r"(?:[.!?。…]|(?<=니다)|(?<=[아어에예해세지네군래죠]요)|(?<=죠)|(?<=니까)|(?<=[가-힣]다))"
+    r"[\"'」』”’)\]]{0,2}(?=\s|$)")
+#: a note's last word stopping before its verb: 「…돌파한 결과임을」 「…비교하고」
+_CUT_WORD = re.compile(r"[가-힣](?:을|를|은|는|의|에|에서|와|과|으로|로|며|하고|및|등)$")
 
 
 def finished_notes(notes: str) -> str:
     """Notes cut back to their last whole sentence (「… 412ms에서 38ms로」 broke off); notes
-    with no sentence end at all are left as they are."""
+    with no sentence end at all are left as they are, unless they stop before their verb
+    (「…결과임을」): those are empty, for `fill_missing_notes` to say the slide instead."""
     text = (notes or "").rstrip()
     ends = list(_SPOKEN_END.finditer(text))
     if not text or (ends and ends[-1].end() == len(text)):
         return text
-    # no whole sentence at all: nothing to cut back to, kept as written
-    return text[: ends[-1].end()].rstrip() if ends else text
+    if ends:
+        return text[: ends[-1].end()].rstrip()
+    # no whole sentence at all: nothing to cut back to; a broken-off one is no speech
+    return "" if _CUT_WORD.search(text) else text
 
 
 def _leaf_clean(text: str) -> str:
@@ -2779,8 +2833,8 @@ def fill_missing_notes(
             changed.append(index)
             continue
         if layout == "title" or index == 0:
-            lead = f" {subtitle.strip()}" if subtitle.strip() and subtitle.strip() != name else ""
-            note = f"안녕하세요. 오늘은 「{name}」에 대해 발표하겠습니다.{lead}"
+            # the subtitle is a phrase (「경영진 보고용 … 개요」), not a sentence to say after it
+            note = f"안녕하세요. 오늘은 「{name}」에 대해 발표하겠습니다."
         elif layout == "agenda":
             items = [str(b).strip() for b in (slide.get("bullets") or []) if str(b).strip()]
             note = (
@@ -4021,8 +4075,8 @@ async def _write_slides(
         if notes:
             notes = notes_only_given(notes_without_echo(notes, slide), slide, request)
         if slide.get("layout") not in _STRUCTURAL:
-            # < 2 note sentences: re-ask once (per-deck budget)
-            if _sentence_count(notes) < 2 and echo_reasks < 4:
+            # notes short of the 3~5 sentences the draft asks for: re-ask once (per-deck budget)
+            if _sentence_count(notes) < _NOTE_SENTENCES and echo_reasks < 4:
                 echo_reasks += 1
                 try:
                     said, more = await _complete(
@@ -4343,6 +4397,8 @@ async def _write_slides(
     touched |= set(fit_long_bullets(slides))
     # rewritten slides and late fills (a bullet added under the stand-in) cleaned again
     touched |= set(strip_internal_text(slides))
+    # notes a broken-off sentence left empty say the slide's own words
+    touched |= set(fill_missing_notes(slides, request, title=title, subtitle=subtitle))
     # numbers naming computed values take those values
     recomputed: list[str] = []
     if computed:
@@ -6654,6 +6710,10 @@ _MONOTONE = "bullets"
 #: Layouts a drawn figure may replace (steps/timelines draw their own flow).
 _DIAGRAM_LAYOUTS = ("bullets", "two-column", "cards", "bands", "tiles")
 
+
+#: the fewest sentences a content slide's notes say before they are asked for more (the
+#: draft asks for 3~5; the writer often stops at two)
+_NOTE_SENTENCES = 3
 
 _NOTES_PROMPT = """The screen of the "{heading}" slide already reads:
 {shown}

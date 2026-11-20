@@ -207,8 +207,10 @@ Rules:
   sentence that stays true without it, or state an assumption as 「가정」 when a
   calculation needs one; in a table cell write 「미정」 and add one 「확인 필요: …」 line
   under the table. Brackets only for what the person fills in themselves — a signature,
-  contact details, a name only they know (「[작성자]」 「[연락처]」). A 미정 the material
-  itself states stays as written (「미정(다음 회의에서 재논의)」).
+  contact details, the author's own name (「[작성자]」 「[연락처]」). Who owns a task is
+  never a bracket: name the department or role by what the work is (「IT 담당 부서」,
+  「고객센터」, 「물류센터 운영팀」), as a proposal when the material names none, and never a
+  person. A 미정 the material itself states stays as written (「미정(다음 회의에서 재논의)」).
 - A fact taken from the source list (material found by search) gets that source's number
   at the end of the sentence, like [1]. Never use a number that is not on the list. The
   [1], [2] marks in material the user pasted are not sources — do not number that
@@ -249,9 +251,11 @@ Rules:
   bracket blank: write the sentence so it holds without it (「일정은 확정되는 대로
   안내합니다」), state an assumption as 「가정」 when a calculation needs one, and in a table
   cell write 「미정」 with one 「확인 필요: …」 line under the table. Brackets only for what
-  the person fills in themselves — a signature, contact details, a name only they know
-  (「[작성자]」 「[연락처]」). Do not write sentences that add no fact, such as 「기반을 마련했습니다」 or
-  「긍정적인 성과」.
+  the person fills in themselves — a signature, contact details, the author's own name
+  (「[작성자]」 「[연락처]」). Who owns a task is never a bracket: name the department or role
+  by what the work is (「IT 담당 부서」, 「고객센터」), as a proposal when the material names
+  none, and never a person. Do not write sentences that add no fact, such as
+  「기반을 마련했습니다」 or 「긍정적인 성과」.
 - Start each section with a `## 제목` line. Do not add sections that are not in the
   outline and do not drop any. No top-level heading (#); the title is set on the cover.
 - If the first section is 「요약」: what has to be decided, the recommendation, and two
@@ -1624,9 +1628,112 @@ def page_length_rule(request: str) -> str:
     span = f"{lo}–{hi}" if lo != hi else f"{hi}"
     return (f"Length: the request sets about {span} A4 pages for the whole document — about "
             f"{least:,}–{most:,} Korean characters of body text across all sections together "
-            "(a table counts as the space it takes). Plan the sections and write to that length: "
-            "fewer, fuller sections rather than many, and leave out detail that does not fit "
-            "rather than run past the pages asked (「A4 2~3쪽」 is never five).")
+            "(a table counts as the space it takes). Plan the sections and write to that length, "
+            "aiming at the middle of it: fewer, fuller sections rather than many. Falling short "
+            "of the pages fails the request as much as running past them (「A4 2~3쪽」 is "
+            "neither one nor five).")
+
+
+#: sections written short whatever the length: the summary up front
+_SHORT_SECTION = re.compile(r"^\s*(?:\d+[.)]\s*)?(?:요약|개요\s?요약|핵심\s?요약|Summary|Executive)",
+                            re.I)
+#: characters a short section is held to
+SUMMARY_CHARS = 300
+#: the least a full section of a page-set document is written to
+_LEAST_SECTION = 600
+
+
+def section_targets(request: str, headings: list[str]) -> dict[int, int]:
+    """Characters of body text each section is written to when the request sets the pages:
+    the middle of the pages' length (`PAGE_CHARS`) shared by the sections, a 요약 held short.
+    Empty when the request sets no pages."""
+    pages = requested_pages(request)
+    if pages is None or not headings:
+        return {}
+    lo, hi = pages
+    total = round((lo + hi) / 2 * PAGE_CHARS[1])
+    short = [i for i, h in enumerate(headings) if _SHORT_SECTION.search(str(h or ""))]
+    full = [i for i in range(len(headings)) if i not in short]
+    if not full:
+        return {i: max(SUMMARY_CHARS, total // len(headings)) for i in range(len(headings))}
+    share = max(_LEAST_SECTION, (total - SUMMARY_CHARS * len(short)) // len(full))
+    # rounded to fifty: the prompt reads 「about 1,300자」, not 「1,283자」
+    share = int(round(share / 50) * 50)
+    return {i: (SUMMARY_CHARS if i in short else share) for i in range(len(headings))}
+
+
+def length_line(target: int) -> str:
+    """The prompt line holding one section to `target` characters."""
+    return (f"Length: write this section to about {target:,} Korean characters of body text "
+            f"(between {int(target * 0.85):,} and {int(target * 1.25):,}; a table counts as "
+            "the space it takes). Reach it by unfolding what the material and the request give "
+            "— what each fact means for the reader, the reasons and conditions it states, how "
+            "the items compare, what to do and in what order — never by repeating yourself or "
+            "adding figures, names, dates or causes the material does not have.")
+
+
+def length_block(targets: dict[int, int], headings: list[str]) -> str:
+    """The draft prompt's per-section lengths."""
+    if not targets:
+        return ""
+    rows = "\n".join(f"- {headings[i]}: about {n:,}자" for i, n in sorted(targets.items())
+                     if i < len(headings))
+    return ("\n\nLength of each section (Korean characters of body text, tables included; "
+            "within 15% either way). Reach it from the material, never by repeating:\n" + rows)
+
+
+def body_chars(content: str) -> int:
+    """A section's body length as the page shows it: pictures and table rules left out."""
+    text = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", content or "")
+    text = re.sub(r"^\s*\|?[\s:|-]+\|?\s*$", "", text, flags=re.M)
+    return len(re.sub(r"[ \t]+", " ", text).strip())
+
+
+def short_sections(sections: list[dict], targets: dict[int, int]) -> list[int]:
+    """Sections written well under their length when the document as a whole falls short of
+    the pages asked, shortest against its length first."""
+    if not targets:
+        return []
+    have = {i: body_chars(str(sections[i].get("content") or ""))
+            for i in targets if i < len(sections)}
+    if sum(have.values()) >= 0.9 * sum(targets[i] for i in have):
+        return []
+    short = [i for i, n in have.items() if targets[i] > SUMMARY_CHARS and n < 0.8 * targets[i]
+             and str(sections[i].get("content") or "").strip()]
+    return sorted(short, key=lambda i: have[i] / targets[i])
+
+
+_LENGTHEN_PROMPT = """Below is the "{heading}" section of a report. It has about {have:,}
+characters; the request's pages need about {want:,} for this section. Add to it until it
+reaches that length.
+
+Full outline (other sections own their parts; do not write them here):
+{outline}
+
+Material and request:
+{material}
+
+Rules:
+- Do not change or delete a single character of the existing sentences, tables and figure
+  lines. Only add: new paragraphs, or sentences at the end of a paragraph.
+- Add substance from the material and the request only: what each given fact means for the
+  reader, the reasons and conditions the material states, how the items compare on the
+  criteria the section is about, what to do and in what order, what to watch for.
+- Never add a figure, name, date, amount, place, cause or event the material does not give.
+  A value worked out from given figures shows its formula (「1,716만 ÷ 2,000만 = 85.8%」).
+- No bracket blanks such as 「[담당자]」; an owner is the department or role by what it does
+  (「IT 담당 부서」, 「고객센터」).
+- Keep the section's register (「~합니다」) and write in Korean.
+- Answer with the whole section body only (no heading, no explanation).
+
+절:
+{content}"""
+
+
+def lengthen_prompt(*, heading: str, content: str, have: int, want: int, outline: str,
+                    material: str) -> str:
+    return _LENGTHEN_PROMPT.format(heading=heading, content=content, have=have, want=want,
+                                   outline=outline, material=material[:6000] or "(없음)")
 
 
 def _long_form(request: str) -> bool:

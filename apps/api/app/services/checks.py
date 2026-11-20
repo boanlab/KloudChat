@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.services import key_figures, quality_gate, stated_days, stated_policy, units
+from app.services import item_claims, key_figures, quality_gate, stated_days, stated_policy, units
 from app.services.verify import Check, Doc, Finding, model_check
 
 
@@ -167,6 +167,36 @@ async def stated_dates(doc: Doc):
     return found, {}
 
 
+async def item_attributes(doc: Doc):
+    """A named item given what the material says only of other items (「C안 | 국내 데이터센터」
+    when only A and B have one)."""
+    material = doc.given or doc.material
+    found = [
+        Finding(f.section, f.line, "item_attribute", item_claims.why(f), rank=1,
+                still=lambda s, m=material, f=f: item_claims.still_misbound(
+                    str(doc.sections[f.section].get("content") or ""), f.line, s, m))
+        for f in item_claims.misbound(doc.sections, material)
+    ]
+    return found, {}
+
+
+async def owner_cells(doc: Doc):
+    """A task's owner left as a bracket blank (「[담당자]」) where a department could be named,
+    and its deadline (「[기한]」) where the material's schedule could place it."""
+    owner, due = item_claims.OWNER_BLANK, item_claims.DUE_BLANK
+    lines = dict.fromkeys(item_claims.owner_blanks(doc.sections)
+                          + item_claims.owner_blanks(doc.sections, due))
+    found = []
+    for i, line in lines:
+        why = " ".join(text for blank, text in ((owner, item_claims.OWNER_WHY),
+                                                 (due, item_claims.DUE_WHY))
+                       if blank.search(line))
+        found.append(Finding(i, line, "owner_blank" if owner.search(line) else "due_blank",
+                             why, rank=3,
+                             still=lambda s: bool(owner.search(s) or due.search(s))))
+    return found, {}
+
+
 CODE_CHECKS: list[Check] = [numbers, metrics, innards, figures, scaled_metrics, stated_rules,
-                            stated_dates]
+                            stated_dates, item_attributes]
 

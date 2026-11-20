@@ -28,7 +28,7 @@ Rules:
 - Answer a table row (starting with 「|」) with a row of the same number of cells.
 - Do not make up names, dates, amounts or figures that are not in the material; rewrite the
   sentence so it holds without them (a table cell: 「미정」). Keep existing bracket blanks
-  as they are.
+  as they are, unless the problem named is that blank.
 - Answer each item with the fixed sentence alone, as it will stand in the document: no
   note on what you changed, left out or why.
 - If you judge the finding wrong (e.g. the sentence is about a different case), answer
