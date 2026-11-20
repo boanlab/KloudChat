@@ -1099,7 +1099,7 @@ class Draft(Base):
                 req.model,
                 _messages(bundle, draft_prompt, req.model),
                 req.api_key,
-                max_tokens=min(12000, max(1400 * len(ordinary),
+                max_tokens=min(12000 if mine else 11000, max(1400 * len(ordinary),
                                           sum(mine.values()) + 500 * len(ordinary))),
             )
             _count(bundle, spent)
