@@ -398,14 +398,19 @@ def _column(cell: str) -> str:
 
 
 def _covering(title: str, header: list[str]) -> int | None:
-    """The computed column a writer's column title names: the same title, or one holding the
-    other (「측정」 for 「측정 이득」); None when none does."""
+    """The computed column a writer's column title names: the same title, or one starting
+    with the other (「측정」 for 「측정 이득」, never 「7월」 for 「7월→8월 증감률」); None when
+    none does."""
     mine = _column(title)
     if not mine:
         return None
     for k, other in enumerate(header):
         theirs = _column(other)
-        if k and theirs and (mine == theirs or mine in theirs or theirs in mine):
+        if not k or not theirs:
+            continue
+        short, long = sorted((mine, theirs), key=len)
+        # the rest a qualifier of the same measure (「이득」), not another period (「→8월 증감률」)
+        if long.startswith(short) and not re.search(r"[\d→>~\-]", long[len(short):]):
             return k
     return None
 

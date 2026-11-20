@@ -146,3 +146,12 @@ def test_a_table_of_the_computed_columns_only_is_still_replaced() -> None:
               "| 환불·교환 절차 | 1071 |\n")
     out, changed = calc.replace_tables([{"heading": "합계", "content": totals}], COMPUTED)
     assert changed == 1 and "1651 건" in out[0]["content"]
+
+
+def test_a_month_column_is_not_a_computed_rate_that_ends_in_that_month() -> None:
+    rates = ("# 코드로 계산한 값\n"
+             "배송 지연 | 7월->8월 증감률 = 30.58 %\n"
+             "상품 불량 | 7월->8월 증감률 = -3.41 %\n"
+             "환불·교환 절차 | 7월->8월 증감률 = 6.67 %\n")
+    out, _ = calc.replace_tables([{"heading": "추이", "content": MONTHS}], rates)
+    assert "| 412 | 538 | 701 |" in out[0]["content"] and "30.58" not in out[0]["content"]
