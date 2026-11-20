@@ -274,9 +274,14 @@ async def staged(
     when that model fails or answers nothing, the writer is asked in its place and its tokens
     are the caller's to count as usual. `build(model)` makes the messages for the model
     asked (the prompt setup follows the model's tier)."""
+    from app.services.super_agent import applied_effort
+
     stages = CURRENT.get()
     model = stages.model(stage) if stages is not None and stage else ""
-    if stages is None or not stage or not model or model == writer:
+    # the writer's own model is the writer's call, unless the stage asks it to think
+    if stages is None or not stage or not model or (
+        model == writer and applied_effort(stages.fields.get(stage)) in ("default", "none")
+    ):
         return await complete(writer, build(writer), api_key, max_tokens)
     if limit is not None and stage != "plan":
         if stages.used >= limit:

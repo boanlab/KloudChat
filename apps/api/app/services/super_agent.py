@@ -76,8 +76,9 @@ HIGHEST = "highest"
 #: Built-in table, from the 2026-11-13 evaluation (docs/architecture.md, "Super Agent").
 #: `model`: the `super` entry's pick; `strictModel`: the `super_strict` entry's pick (must be
 #: strict-local); `effort`: reasoning effort for the writer call ("default" leaves the
-#: deployment's own setting). A pick that is not served or not allowed falls back along
-#: `_FALLBACKS`, then to the surface default.
+#: deployment's own setting); `strictEffort` (optional, not in the built-in table): the effort of
+#: the strict column, falling back to `effort`. A pick that is not served or not allowed falls
+#: back along `_FALLBACKS`, then to the surface default.
 DEFAULT_RULES: dict[str, dict[str, str]] = {
     # flash answers short and everyday turns as well as the larger models (8.4 of 10)
     "simple": {
@@ -293,9 +294,10 @@ def normalise_rules(raw: Any) -> dict[str, dict[str, str]]:
             value = rule.get(key)
             if isinstance(value, str) and (value.strip() or name in OVERRIDE_ROWS):
                 rules[name][key] = value.strip()[:200]
-        effort = rule.get("effort")
-        if effort in EFFORTS:
-            rules[name]["effort"] = effort
+        for key in ("effort", "strictEffort"):
+            effort = rule.get(key)
+            if effort in EFFORTS:
+                rules[name][key] = effort
     return rules
 
 
@@ -702,9 +704,17 @@ def complex_fallback(
     return model
 
 
-def effort_for(rules: dict[str, dict[str, str]], decision: Decision) -> str:
-    rule = rules.get(decision.task_class) or rules["chat"]
+def rule_effort(rule: dict[str, str], strict: bool = False) -> str:
+    """A row's effort in the turn's column: `strictEffort` in a strict-local turn where the
+    row sets one, otherwise `effort`."""
+    if strict and rule.get("strictEffort") in EFFORTS:
+        return rule["strictEffort"]
     return rule.get("effort", "default")
+
+
+def effort_for(rules: dict[str, dict[str, str]], decision: Decision, strict: bool = False) -> str:
+    rule = rules.get(decision.task_class) or rules["chat"]
+    return rule_effort(rule, strict)
 
 
 def steer(rules: dict[str, dict[str, str]], decision: Decision, mode: str, *,
@@ -727,11 +737,11 @@ def steer(rules: dict[str, dict[str, str]], decision: Decision, mode: str, *,
             return COMPLEX_CLASS, "none"
         if mode == DEEP:
             return COMPLEX_CLASS, HIGHEST
-        return COMPLEX_CLASS, rules[COMPLEX_CLASS].get("effort", "default")
-    row, effort = decision.task_class, effort_for(rules, decision)
+        return COMPLEX_CLASS, rule_effort(rules[COMPLEX_CLASS], strict)
+    row, effort = decision.task_class, effort_for(rules, decision, strict)
     if (material and row not in _MATERIAL_KEEPS
             and rules.get(MATERIAL_CLASS, {}).get("strictModel" if strict else "model")):
-        row, effort = MATERIAL_CLASS, rules[MATERIAL_CLASS].get("effort", "default")
+        row, effort = MATERIAL_CLASS, rule_effort(rules[MATERIAL_CLASS], strict)
     if mode == FAST:
         reasons = effort in ("low", "high")
         return ("chat" if reasons else row), "none"
@@ -782,14 +792,15 @@ def _authors_contact(text: str) -> bool:
         for m in _EMAIL.finditer(text))
 
 
-def stage_effort(rules: dict[str, dict[str, str]], stage: str, mode: str) -> str:
+def stage_effort(rules: dict[str, dict[str, str]], stage: str, mode: str,
+                 strict: bool = False) -> str:
     """The effort a report or deck stage's call is sent with: its row's, the chip steering it
     (`fast` without thinking where it can be turned off, `deep` at the highest level)."""
     if mode == FAST:
         return "none"
     if mode == DEEP:
         return HIGHEST
-    return rules[STAGE_ROWS[stage]].get("effort", "default")
+    return rule_effort(rules[STAGE_ROWS[stage]], strict)
 
 
 def stage_pick(
@@ -808,8 +819,12 @@ def stage_pick(
     names the writer itself, or names a model that is not served, not allowed, failed lately
     or, in a strict turn, not strict-local. A document turn never fails for a missing upper
     model; it is written as before."""
-    wanted = rules[STAGE_ROWS[stage]]["strictModel" if strict else "model"]
-    if not wanted or wanted == writer.get("id") or wanted in skip:
+    row = rules[STAGE_ROWS[stage]]
+    wanted = row["strictModel" if strict else "model"]
+    # the writer's own model stays the writer's call unless the stage asks it to think
+    # (a stage row with effort low/high on the same model is a real stage)
+    same = wanted == writer.get("id") and rule_effort(row, strict) in ("default", "none")
+    if not wanted or same or wanted in skip:
         return None
     model = next((m for m in catalogue if str(m.get("id")) == wanted), None)
     if not usable_for(model, kind=kind, strict=strict, allowed=allowed, context_bytes=0,
@@ -936,7 +951,18 @@ def reasoning_fields(model_id: str, effort: str, model: dict[str, Any] | None = 
             if effort == "low":
                 fields["reasoning_effort"] = "low"
             return {"chat_template_kwargs": fields}
-        return thinking.template_switch_on(model_id) if on else thinking.template_switch(model_id)
+        if not on:
+            return thinking.template_switch(model_id)
+        fields = thinking.template_switch_on(model_id)
+        budget = (
+            settings.self_hosted_thinking_budget_low
+            if effort == "low"
+            else settings.self_hosted_thinking_budget_high
+        )
+        if fields and budget > 0:
+            # vLLM caps the thinking at this many tokens, then closes it and answers
+            fields["thinking_token_budget"] = budget
+        return fields
     reasoning = (model or {}).get("reasoning") or {}
     offered = list(reasoning.get("efforts") or [])
     if effort == "none":
@@ -988,6 +1014,7 @@ __all__ = [
     "complex_fallback",
     "complexity",
     "effort_for",
+    "rule_effort",
     "estimate",
     "normalise_rules",
     "pick",

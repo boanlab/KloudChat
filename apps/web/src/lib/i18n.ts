@@ -1753,6 +1753,7 @@ const EN: Record<string, string> = {
   '{class} · Super Agent 모델': '{class} · Super Agent model',
   '{class} · strict-local 모델': '{class} · strict-local model',
   '{class} · 추론 강도': '{class} · reasoning effort',
+  '{class} · strict-local 추론 강도': '{class} · strict-local reasoning effort',
   '다시·자세히 요청과 빈 답 뒤에는 「다시 요청·빈 답 뒤」 줄의 모델이 씁니다.': 'Retries, “more detail” requests and empty answers go to the model on the “After a retry request or empty answer” row.',
   '무료 strict-local 분류 모델이 없어 애매한 질문은 규칙의 기본값으로 보냅니다.': 'No free strict-local classifier is available, so unclear requests follow the rules’ default.',
   'Super Agent 설정을 저장하지 못했습니다.': 'Couldn\'t save the Super Agent settings.',

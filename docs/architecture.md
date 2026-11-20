@@ -3061,12 +3061,15 @@ under 0.6 keeps the rule's answer. The classifier is never called when the turn 
 personal data.
 
 **The table.** `DEFAULT_RULES` maps every class to a model for `super`, a strict-local model
-for `super_strict`, and an effort (`default`, `none`, `low`, `high`); the admin edits it in
+for `super_strict`, and an effort (`default`, `none`, `low`, `high`) with an optional
+`strictEffort` for the strict-local column (absent: `effort` applies there too); the admin edits it in
 설정 › 시스템 › 라우팅 and only changes are stored (`governance.super_agent_rules`). Effort
 becomes the request fields of the routed writer only (`agent.TURN_REASONING`): OpenRouter
 `reasoning.effort` for external models (the lowest offered level when a model cannot turn
 reasoning off), the vLLM template switch for self-hosted ones (`enable_thinking` for Qwen,
-`thinking` for DeepSeek). A table model that is not served, not allowed, too small for the
+`thinking` for DeepSeek). For Qwen the switch carries a `thinking_token_budget` (500 at `low`,
+2000 at `high` and deeper; `SELF_HOSTED_THINKING_BUDGET_LOW/HIGH`, 0 sends none) so a thinking
+call cannot run away. A table model that is not served, not allowed, too small for the
 conversation, without tools a class needs or without vision for pictures falls back along a
 short list, then to the surface default. Defaults come from the 2026-11-13 evaluation (31
 scenarios, judged blind by Sonnet and Opus separately), with hard classes moved to DeepSeek
@@ -3189,7 +3192,9 @@ default for the others; GLM-5.3 reasons whatever it is told, so its lowest level
 strict column `strict-local/deepseek-v4-flash` (self-hosted and slow, so these calls stay few and
 short). To compare another upper model change only a row, for example
 `moonshotai/kimi-k3.1-pro` in the three `super` cells; nothing else needs a code change.
-An empty column switches the stage off: the writer does it.
+An empty column switches the stage off: the writer does it. So does a stage whose model is the
+writer's own, unless the stage's effort asks it to think (`low` or `high`): then it is a real stage
+on the same model, called with its own reasoning fields (`stage_pick`, `doc_stages.staged`).
 
 *What is hard* (`doc_stages`, no model judgement, no phrase lists of its own). A report's
 section is hard by its role, read from the headings with the words `report._section_role`
