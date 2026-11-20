@@ -95,6 +95,11 @@ _CAUGHT = (httpx.HTTPError, KeyError, IndexError, ValueError)
 PLAN_RESEARCH = "research"
 
 
+def section_gate() -> asyncio.Semaphore:
+    """How many sections of a long report are written at once (`DOCUMENT_SECTION_CONCURRENCY`)."""
+    return asyncio.Semaphore(max(1, settings.document_section_concurrency))
+
+
 def public_plan(plan: dict[str, Any]) -> dict[str, Any]:
     """The proposal as the browser sees it: without the carried findings."""
     return {k: v for k, v in plan.items() if k != PLAN_RESEARCH}
@@ -1198,8 +1203,9 @@ class Sections(Base):
             except _CAUGHT as exc:
                 log.info("assumptions section not written first: %s", exc)
 
-        # long: sections started 4 at a time, taken in order (trim runs in order); short: one draft
-        gate = asyncio.Semaphore(4)
+        # long: sections started `document_section_concurrency` at a time, taken in order (trim
+        # runs in order); short: one draft
+        gate = section_gate()
 
         async def gated(index: int, section: dict):
             async with gate:

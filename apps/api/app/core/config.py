@@ -119,6 +119,9 @@ class Settings(BaseSettings):
     #: several slides); a deck needing more has the rest done by the writer. Env:
     #: DOCUMENT_UPPER_CALLS.
     document_upper_calls: int = 3
+    #: Sections of a long report (`report_stages`) written at the same time, at least 1. Env:
+    #: DOCUMENT_SECTION_CONCURRENCY.
+    document_section_concurrency: int = Field(default=4, ge=1)
     #: Seconds a complex document turn waits for a slot before the `document` row's model writes
     #: it instead. Env: COMPLEX_DOCUMENT_WAIT_SEC.
     complex_document_wait_sec: float = 120.0
