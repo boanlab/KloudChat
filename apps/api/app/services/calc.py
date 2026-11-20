@@ -74,6 +74,12 @@ _UNASKED = (
 _CITATION = re.compile(
     r"\[\d{1,3}(?:\s{0,2}[-~,]\s{0,2}\d{1,3}){0,8}\](?:\s{0,2}~\s{0,2}\[\d{1,3}\])?")
 
+#: a count of the document's own parts or its audience's year, never an operand: 「12장 정도」,
+#: 「A4 3쪽」, 「3주차」, 「1학년」, 「퀴즈 3문항」, 「예제 1개」
+_STRUCTURE_COUNT = re.compile(
+    r"(?<![\d.,])\d{1,3}\s?(?:장|쪽|페이지|슬라이드|문항|문제|주차|학년|회차|교시|절|개 ?(?=예제|문항))"
+    r"|(?:예제|문항|문제|퀴즈)\s?\d{1,2}\s?개")
+
 #: settle deadline (s); writer proceeds without values after it. Generous: a writer's own
 #: arithmetic on market-size and quote tasks goes 10~100x wrong, and a report takes minutes anyway
 DEADLINE = 240.0
@@ -89,6 +95,8 @@ def needed(request: str, context: list[str] | None = None, *, always: bool = Fal
     if not always and not _ASKS.search(instruction):
         return False
     data = _CITATION.sub(" ", "\n".join([request or "", *(context or [])]))
+    # the size and setting of the document are no data (「12장」 「3주차」 「퀴즈 3문항」)
+    data = _STRUCTURE_COUNT.sub(" ", data)
     return len(_NUMBER.findall(data)) >= 4
 
 

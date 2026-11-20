@@ -30,3 +30,14 @@ def test_a_value_in_exponent_notation_never_reaches_the_writer() -> None:
 def test_the_calculation_prompt_asks_for_plain_numbers() -> None:
     assert "유효숫자 4자리" not in calc.PROMPT
     assert "지수 표기" in calc.PROMPT
+
+
+def test_the_document_s_size_and_setting_are_no_data_to_calculate() -> None:
+    # round-1 r1d02 (11-20): 「1학년 … 3주차 … 12장 … 예제 1개 … 퀴즈 3문항」 read as four
+    # figures; the calculation pass made up its own demand and supply lines and both arms
+    # showed an equilibrium (16원, 68개) no slide's equations give
+    lecture = ("대학교 1학년 경제학원론 3주차 강의 「수요와 공급」 슬라이드를 12장 정도로 만들어 줘. "
+               "간단한 계산 예제 1개(수요식·공급식으로 균형 가격·수량 구하기), 마지막에 퀴즈 3문항.")
+    assert not calc.needed(lecture, [])
+    priced = "월 기본료 6만 원, 흑백 3,000장 포함, 초과 장당 10원, 연간 총비용을 계산해 줘. 4대 기준."
+    assert calc.needed(priced, [])
