@@ -435,6 +435,18 @@ def _fix_products(text: str) -> tuple[str, dict[str, str]]:
     results: list[tuple[float, str, str]] = []
     out = _KO_EXPRESSION.sub(work, text)
     _KO_EXPRESSION.sub(keep, out)
+    # a figure the text works out itself (「16,500,000 − 15,000,000 = 1,500,000」, 「13,500,000
+    # × 0.1 = 1,350,000」) is its own value, never a slipped restatement of a result ten times it
+    worked: set[float] = set()
+    for expression in (_KO_EXPRESSION, _SUM_EXPRESSION):
+        for e in expression.finditer(out):
+            # its result and its operands alike: 「13,500,000 × 0.1」 states 13,500,000 too
+            for raw in [e.group("rhs"), *(t.group("num") for t in _TOKEN.finditer(e.group("lhs"))
+                                          if t.group("num"))]:
+                try:
+                    worked.add(_ko_number(raw))
+                except ValueError:
+                    continue
     for stated, written, unit in results:
         if not unit:
             continue
@@ -452,7 +464,7 @@ def _fix_products(text: str) -> tuple[str, dict[str, str]]:
                     value = _ko_number(figure.group(1))
                 except ValueError:
                     continue
-                if value and value != stated and any(
+                if value and value != stated and value not in worked and any(
                     abs(value * 10**k - stated) < 0.5 for k in (-3, -2, -1, 1, 2, 3)
                 ):
                     sentence = sentence[: figure.start(1)] + written + sentence[figure.end(1):]
