@@ -166,7 +166,20 @@ def test_another_named_items_figure_on_a_slide_is_still_marked():
     slides = [{"id": "a", "layout": "bullets", "title": "S2 개선점",
                "bullets": ["S2 사용 시간 50.0분으로 확대", "S1 누적 판매 8만 2천 대",
                            "에어킥 7은 50분, 스톰라이트는 45분"]}]
+    # the hand-back asks for it first
+    assert any("another named item" in v for v in check_stages.trace_slides(
+        slides, material=SPECS, computed=[""], options={}).get(0, []))
     out, count = check_stages.mark_misbound(slides, SPECS)
     assert count == 1
     assert out[0]["bullets"] == ["S2 사용 시간 50.0분(확인 필요)으로 확대",
                                  "S1 누적 판매 8만 2천 대", "에어킥 7은 50분, 스톰라이트는 45분"]
+
+
+def test_every_slide_shape_can_be_handed_back_for_a_rewrite():
+    from app.services import deck
+
+    for layout in deck._PROMPTS:
+        slides = [{"id": "a", "layout": layout, "title": "비교", "notes": "n"}]
+        prompt, _, _ = deck.rewrite_prompt(request="r", slides=slides, target_id="a",
+                                           note="fix", keep_layout=True)
+        assert "비교" in prompt
