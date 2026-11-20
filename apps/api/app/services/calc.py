@@ -41,8 +41,9 @@ PROMPT = """아래 요청과 자료로 문서를 쓰기 전에, 문서에 들어
   있는 부품값·조건으로 공식에서 구한다.
 - 표준 라이브러리(math, statistics)만 쓴다. 입력·파일·네트워크는 쓰지 않는다.
 - 결과는 한 줄에 하나씩 print 한다: 「항목 = 값 단위」. 표가 될 값은 행마다
-  「행 이름 | 열1 = 값 | 열2 = 값」 처럼 한 줄에 적는다. 값은 일반 숫자 표기로 적는다: 금액·인원·건수처럼 정수인 값은 정수 그대로, 소수는 소수 둘째
-  자리까지 반올림한다. 1.369e+04 같은 지수 표기나 :.4g 형식은 쓰지 않는다.
+  「행 이름 | 열1 = 값 | 열2 = 값」 처럼 한 줄에 적는다. 값은 일반 숫자 표기로 적는다:
+  금액·인원·건수처럼 정수인 값은 정수 그대로, 소수는 소수 둘째 자리까지 반올림한다.
+  1.369e+04 같은 지수 표기나 :.4g 형식은 쓰지 않는다.
 - 문서에 필요한 값만, 60줄 이내로.
 - When the request asks for the result of a procedure or algorithm run on the material
   (CPU 스케줄링의 FCFS·SJF·SRTF·라운드 로빈, 정렬, 일정·기한 계산), implement that procedure
@@ -79,7 +80,8 @@ _CITATION = re.compile(
 #: a count of the document's own parts or its audience's year, never an operand: 「12장 정도」,
 #: 「A4 3쪽」, 「3주차」, 「1학년」, 「퀴즈 3문항」, 「예제 1개」
 _STRUCTURE_COUNT = re.compile(
-    r"(?<![\d.,])\d{1,3}\s?(?:장|쪽|페이지|슬라이드|문항|문제|주차|학년|회차|교시|절|개 ?(?=예제|문항))"
+    r"(?<![\d.,])\d{1,3}\s?"
+    r"(?:장|쪽|페이지|슬라이드|문항|문제|주차|학년|회차|교시|절|개 ?(?=예제|문항))"
     r"|(?:예제|문항|문제|퀴즈)\s?\d{1,2}\s?개")
 
 #: settle deadline (s); writer proceeds without values after it. Generous: a writer's own
