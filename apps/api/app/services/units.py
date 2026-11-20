@@ -609,7 +609,11 @@ def _fix_equal_sums(text: str, printed: list[float], fixes: dict[str, str]) -> s
             return m.group(0)
         value = _evaluate(lhs)
         # terms 1000× apart without a product: missing quantity, skip
-        added = [_ko_number(t.group("num")) for t in _TOKEN.finditer(lhs) if t.group("num")]
+        try:
+            added = [_ko_number(t.group("num")) for t in _TOKEN.finditer(lhs) if t.group("num")]
+        except ValueError:
+            # a term it cannot read (「1만 1000만」): the sum is left as written, never a crash
+            return m.group(0)
         apart = added and min(added) and max(added) / min(added) >= 1000
         if apart and not re.search(r"[×x*÷]", lhs):
             return m.group(0)
