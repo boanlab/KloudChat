@@ -258,7 +258,18 @@ keyset `cursor`, per-section `counts`) holds what is viewed or run directly — 
 drawn figure with its source). Reports and decks of every format are `document`s, listed in
 파일함 › 작업 문서; generated pictures, sound and video are `media`, listed in 파일함 › 만든
 파일 by their files. An answer's inline code block is part of the answer: only a file the
-model makes with `create_artifact` becomes a code artifact. The inline blocks an older
+model makes with `create_artifact` becomes a code artifact — except that a
+program or page the person asked to be made is saved for the model when it
+wrote one and never called the tool (`services/code_file_save.py`, after the
+turn). The turn must have made no artifact of its own, the request must ask
+to make something and carry no code of the person's own, and the text must be
+file-shaped: a full HTML document, or code in a programming language with an
+entry point, tests or several top-level definitions (10 lines), or 12 lines
+when the request itself says code, script, program, file, class or app. The
+source is the answer's largest such block, else the largest such program a
+successful `execute_code` run used this turn (a model that ran its script and
+then answered in prose leaves the code nowhere else). A snippet shown to
+explain something stays in the chat, and the answer text is never rewritten. The inline blocks an older
 extractor stored are `snippet`s (migration 0092: a code or HTML body without the `kind` key
 every `create_artifact` file and designed page has); they stay for their conversation's panel
 and are listed nowhere — not in `GET /artifacts`, its counts, the gallery or search. An old

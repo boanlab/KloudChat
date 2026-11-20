@@ -90,6 +90,9 @@ class ToolContext:
     strict_local: bool = False
     #: Sandbox state for this turn's code tools.
     sandbox: dict[str, Any] = field(default_factory=dict)
+    #: Programs `execute_code` ran without failing this turn, in run order; the source of a file
+    #: the model ran but never saved (`code_file_save`).
+    code_runs: list[str] = field(default_factory=list)
     #: Tool outputs in call order; number sources for `check_skills`.
     outputs: list[str] = field(default_factory=list)
     #: Web search results; evidence for the post-writing value guard, not number sources.

@@ -523,9 +523,12 @@ async def execute_code(args: dict[str, Any], ctx: ToolContext | None = None) -> 
         content = "실행되었지만 출력이 없습니다. 결과를 보려면 print() 를 쓰세요."
     else:
         content = sandbox.report(result, outputs, notes)
+    failed = bool(result.crashed or (result.stderr.strip() and not result.stdout.strip()))
+    if ctx is not None and not failed:
+        ctx.code_runs.append(code)
     return ToolResult(
         content=content,
-        failed=bool(result.crashed or (result.stderr.strip() and not result.stdout.strip())),
+        failed=failed,
         detail=_outputs_detail(outputs) or None,
         outputs=[{k: row[k] for k in ("id", "name", "size")} for row in outputs] or None,
     )
