@@ -290,13 +290,14 @@ async def resolve(
                 classified is not None
                 and classified.confidence >= super_agent.CLASSIFIER_MIN_CONFIDENCE
             ):
-                decision = super_agent.Decision(
+                # the classifier knows `code` only: code that draws data is `visual`
+                decision = super_agent.visual_class(super_agent.Decision(
                     classified.task_class,
                     "classifier",
                     "classified",
                     confidence=classified.confidence,
                     signals=decision.signals,
-                )
+                ))
     row, effort = super_agent.steer(rules, decision, super_agent.AUTO, strict=strict)
 
     def pick(strict_column: bool):

@@ -3059,10 +3059,19 @@ Super Agent (strict-local) before anything is sent), and a chat handed off to a 
 Existing conversations keep their stored mode.
 
 **Task class first, by rules.** Each turn is sorted into `simple`, `chat`, `transform`
-(translate, summarise, proofread), `calc`, `code`, `current` (facts that change; search
-switched on), `long` (large pasted material or conversation), `reasoning` or `document`
+(translate, summarise, proofread), `calc`, `code`, `visual`, `current` (facts that change;
+search switched on), `long` (large pasted material or conversation), `reasoning` or `document`
 (report and deck sessions). Rules read only the ask, not material pasted with it
-(`split_ask`): a meeting memo that mentions 「코드 프리즈」 is not a coding task. Calculation and
+(`split_ask`): a meeting memo that mentions 「코드 프리즈」 is not a coding task. `code` covers
+code words (`_CODE`) and requests to build something that runs (`super_agent.builds`: an app, a
+web page, a game, an HTML file, a program in a named language, a chart; 「계산기 웹앱 만들어줘」,
+「파이썬 정렬 알고리즘 짜줘」), but not a plan or list about one (「앱 기획서 작성해 줘」). `visual` is
+a `code` request that draws data (`super_agent.draws_data`: 대시보드, 차트, 그래프, 시각화,
+dashboard, chart, graph, plot, visualisation; a graph of nodes and edges, a flowchart are not),
+such as 「월별 매출 표로 대시보드 만들어줘」 or 「차트로 그려 줘」; a question about a chart that asks
+for nothing to be built (「이 차트가 뭘 뜻하는지 설명해줘」) stays where it was. The classifier knows
+`code` only; its `code` for a request that draws data becomes `visual` too
+(`super_agent.visual_class`). Calculation and
 current-fact cues reuse `calculation_policy` and `freshness`. Only a turn the rules cannot
 place (short or unmarked) goes to the classifier: a zero-cost strict-local model
 (`adaptive_classifier_model_id`, else the table's strict `simple` model) that receives the
@@ -3084,28 +3093,33 @@ call cannot run away. A table model that is not served, not allowed, too small f
 conversation, without tools a class needs or without vision for pictures falls back along a
 short list, then to the surface default. Defaults come from the 2026-11-13 evaluation (31
 scenarios, judged blind by Sonnet and Opus separately), with hard classes moved to DeepSeek
-V4.1 Flash at high effort by the owner's decision of 2026-11-14:
+V4.1 Flash at high effort by the owner's decision of 2026-11-14, and on 2026-11-20 every row
+the evaluations allowed moved onto the self-hosted Qwen3.8 Flash (no default names the
+self-hosted DeepSeek V4 Flash or Qwen3 Coder Next any more; an admin may still put any served
+model in a cell). Effort `low`/`high` on Flash means a 500/2000-token thinking budget.
 
-| Class | `super` | `super_strict` | Effort | Why |
+| Class | `super` | `super_strict` | Effort (`super` / strict) | Why |
 |---|---|---|---|---|
 | simple, chat, transform | Qwen3.8 Flash | strict Flash | none | Flash matched every larger model (8.5/8.2 of 10) |
-| calc, code, long, reasoning, current | DeepSeek V4.1 Flash | strict Flash (no search for current) | high | hard turns: thinking Flash matched (8.3–8.5) but sometimes left nothing; DeepSeek searches and cites best (8.7 vs Flash 6.3) |
-| document | Qwen3.8 27B | strict 27B | default | 6.0 free vs GLM-5.3 6.7 at ~800 credits |
+| calc, long, reasoning, current | DeepSeek V4.1 Flash | strict Flash (no search for current) | high | hard turns: thinking Flash matched (8.3–8.5) but sometimes left nothing; DeepSeek searches and cites best (8.7 vs Flash 6.3) |
+| code | Qwen3.8 Flash | strict Flash | none | 46 artifact prompts × 3 runs, Playwright checks and blind judges, Flash vs DeepSeek V4.1 Flash high (2026-11-20): calculators 7.30 vs 7.70, shop and landing pages 7.41 vs 6.85, games 7.27 vs 7.53, Python 6.44 vs 5.81 (the external model lost artifacts), forms 6.33 vs 7.00 |
+| visual | DeepSeek V4.1 Flash | strict Flash | high / none | dashboards were the one artifact kind Flash clearly lost (6.81 vs 7.96, same run) |
+| document | Qwen3.8 Flash | strict Flash | none | Flash's body judged 1.0–1.5 above the 27B's (blind Sonnet, 12 tasks × 3) at the same speed and cost; the strict column end to end (body Flash none, stages Flash low) 5.92 vs the 27B column's 4.53, no failures under the 300 s rule, no external call (2026-11-20) |
 | material (a row, not a class) | — (the class's own row) | — (the class's own row) | high | moves nothing by default: on the re-run strict DeepSeek scored 7.6 vs thinking Flash 7.7 over files (8.2 with passback) at ~50 s more to the first text |
-| complex_document (a row, not a class) | self-hosted DeepSeek V4 Flash (`local/`) | strict DeepSeek V4 Flash | high | form-following with the 27B was unreliable (label overwrites, wrong cells, tool-limit hits); see "Complex documents" below |
-| document_plan, document_hard, document_repair (rows, not classes) | GLM-5.3 (`z-ai/glm-5.3`) | strict DeepSeek V4 Flash | low / default / default | the 27B alone wrote poor documents (3.8 of 10 for reports, 5.3 for decks on the 2026-11-17 benchmark; a stronger open-weight model 5.5–6.5), so one model never writes a whole document; see "Staged documents" below |
-| escalation | DeepSeek V4.1 Flash | strict DeepSeek V4 Flash | high | never empty; 9/10 where thinking Flash left nothing; strict 「틀렸어, 다시」 6.7 vs Flash 6.2 |
+| complex_document (a row, not a class) | Qwen3.8 Flash | strict Flash | high / high | forms and attachments task set (2026-11-20): Flash high 6.28 vs self-hosted DeepSeek V4 Flash high 5.70 over its successes, 4.11 with failures as 0 (DeepSeek failed 28% under the 300 s rule, Flash never); see "Complex documents" below |
+| document_plan, document_hard, document_repair (rows, not classes) | GLM-5.3 (`z-ai/glm-5.3`) | strict Flash | low / default / default; strict low | the 27B alone wrote poor documents (3.8 of 10 for reports, 5.3 for decks on the 2026-11-17 benchmark; a stronger open-weight model 5.5–6.5), so one model never writes a whole document; strict stages on the strict writer's own model run because they ask it to think (see "Staged documents" below) |
+| escalation | DeepSeek V4.1 Flash | strict Flash | high / high | never empty; 9/10 where thinking Flash left nothing; strict: Flash high 6.89 vs strict DeepSeek V4 Flash high 6.11 over 18 dialogues × 3 (2026-11-20), with more garbled terms and mixed languages |
 
-The strict `escalation` pick comes from the owner's decision of 2026-11-14,
-after a strict-column comparison (26 scenarios, 3 runs each, the app's envelope and tools,
-judged blind by Sonnet): self-hosted DeepSeek V4 Flash with thinking on did not beat thinking
-Flash on reasoning, calculation, code, long pasted text or current facts (6.7 vs 6.9 overall,
-2–5× slower), so those rows stay on Flash; it was slightly better as the 「다시」 writer and
-clearly better on very long material. Questions over attached documents first looked
-clearly better (8.6 vs 6.9) but not on a re-run (7.6 vs 7.7; 8.2 with passback, first text
-p50 60 s vs 9 s), so on 2026-11-15 the owner kept them on Flash: the `material` row exists
-for an admin to fill, and is empty by default. Material too long for Flash's window still
-reaches DeepSeek through the size check (`usable_for`, the last-resort pick by window).
+The strict column first kept the self-hosted DeepSeek V4 Flash for `escalation` (owner decision
+of 2026-11-14, after a strict-column comparison of 26 scenarios × 3 judged blind by Sonnet:
+DeepSeek with thinking on did not beat thinking Flash on reasoning, calculation, code, long
+pasted text or current facts, 6.7 vs 6.9 overall, 2–5× slower, but was slightly better as the
+「다시」 writer). The 2026-11-20 re-run with Flash's thinking budget reversed that, and the row is
+on Flash. Questions over attached documents first looked clearly better on DeepSeek (8.6 vs
+6.9) but not on a re-run (7.6 vs 7.7; 8.2 with passback, first text p50 60 s vs 9 s), so on
+2026-11-15 the owner kept them on Flash: the `material` row exists for an admin to fill, and is
+empty by default. Material too long for Flash's window reaches a larger model through the size
+check (`usable_for`, the last-resort pick by window).
 
 **Escalation, de-escalation, stickiness.** 「다시」, 「더 자세히」, 「틀렸어」 and the like, or an
 empty or failed previous answer, move the turn to the `escalation` row; that row's model also
@@ -3129,12 +3143,14 @@ the request is. By default neither column names a model, so nothing moves (an ov
 empty column keeps the class's row; the admin may fill or empty either column). 빠르게 still sends the turn to the `chat` row, 깊게 to `escalation`.
 
 **Complex documents (the `complex_document` row).** Documents are routed by what they ask of
-the writer, not only by the surface (owner decision 2026-11-15: Super Agent is the default, so
-complex document work goes to DeepSeek). The row is a proper table row like `material`: an
-override row (`OVERRIDE_ROWS`), editable per column and effort in 설정 › 시스템 › 라우팅
-(「복잡한 문서」), defaults `local/deepseek-v4-flash` / `strict-local/deepseek-v4-flash` at
-effort `high` (the gateway spills `local/` to the external twin only when the self-hosted server
-is saturated; `strict-local/` never leaves). An empty column moves nothing there. A document
+the writer, not only by the surface (owner decision 2026-11-15). The row is a proper table
+row like `material`: an override row (`OVERRIDE_ROWS`), editable per column and effort in
+설정 › 시스템 › 라우팅 (「복잡한 문서」), defaults `local/qwen3.8-flash` /
+`strict-local/qwen3.8-flash` at effort `high` in both columns (a 2000-token thinking budget;
+the `document` row writes ordinary documents on the same model without thinking). Until
+2026-11-20 the row was the self-hosted DeepSeek V4 Flash, which Flash high beat on the forms
+and attachments task set (6.28 vs 5.70, DeepSeek failing 28% under the 300 s rule). An empty
+column moves nothing there. A document
 turn (a report or deck session, including its HWPX, Word and PowerPoint files, which run as chat
 turns) is complex when any of these holds, read from signals the app already computes
 (`sessions._document_signals`, `super_agent.complexity`; every threshold is a constant in
@@ -3147,7 +3163,7 @@ turns) is complex when any of these holds, read from signals the app already com
 | `tools` | a deck asked for a chart over an attached data table (native chart from data), or for a paper's own figures with a PDF at hand (`_ASKS_FIGURES`, `pdf_figures`) | either |
 | `long_source` | characters of text in those source files | `LONG_CONTEXT_BYTES // 3` (20,000) |
 
-A simple document stays on the `document` row (27B, thinking default). The same rule covers the
+A simple document stays on the `document` row (Flash, thinking off). The same rule covers the
 office files (HWPX, Word, PowerPoint), which run as chat turns: the report and deck screens always
 send the model they show, so for those conversations the stored mode decides (`super_turn` ignores
 `payload.model` there; a model picked by hand already made the conversation `manual`), and the
@@ -3155,18 +3171,19 @@ turn is classified as a document turn (`Turn.kind` is the conversation's), so on
 `document` and `complex_document` rows apply, never the hard-class rows. Before this, an
 office-file turn on Super Agent skipped the router and ran on the screen's default model. The route note carries
 `row: complex_document`, `complexReason` and `complexSignals`; the answer's processing row reads
-「이번 답: DeepSeek V4 Flash · 복잡한 문서 · 양식을 따름」. A model picked by hand is never moved.
+「이번 답: Qwen3.8 Flash · 복잡한 문서 · 양식을 따름」. A model picked by hand is never moved.
 Revisions keep the first version's writer and row (`_first_document_route`): a complex document
-stays on DeepSeek whatever its revision brings, and a 27B document is not moved by a later form.
-The reasoning chip steers the row's effort only: 빠르게 turns thinking off but keeps DeepSeek (a
-form must not silently go back to the 27B, which breaks it), 깊게 raises it to the highest level.
+stays complex whatever its revision brings, and a simple document is not moved by a later form.
+The reasoning chip steers the row's effort only: 빠르게 turns thinking off but keeps the row's
+model (a form must not silently go to another writer), 깊게 raises it to the highest level.
 When the row's model cannot write the turn (failed lately in `model_health`, not served, window
 too small) the pick goes to the `document` row's model, not the table's fallback list, and the
 note says `skipped`.
 
 *Same-turn fallback.* The fallback writer is the `document` row's model in the turn's column
-(`super_agent.complex_fallback`, inside the boundary: the strict 27B for `super_strict`), thinking
-as that row says. A chat-path turn (office files) takes it through `agent.run_turn(fallback_model=…)`
+(`super_agent.complex_fallback`, inside the boundary), thinking as that row says. With the
+built-in table both rows are Flash, so there is none (the same model again would not help); an
+admin who puts another model in the complex row gets the `document` row's Flash behind it. A chat-path turn (office files) takes it through `agent.run_turn(fallback_model=…)`
 (the machinery above: refused, dropped stream, 240 s silent; the 「깊이 생각하는 중」 row shows while
 it thinks). A report or deck pipeline makes whole-answer calls (`report._complete`,
 `deck._complete`, `page._complete`) that go through `complex_turn.run_call`: a call that fails or
@@ -3174,9 +3191,12 @@ takes longer than `complex_document_call_sec` (480 s) is asked again on the fall
 model is marked in `model_health`, and the turn's later calls go straight to the fallback. The
 pipeline turn shows 「깊이 생각하는 중」 from its start until its first output.
 
-*Slots.* The DeepSeek server holds 8 sequences and chat shares them, so at most
-`COMPLEX_DOCUMENT_SLOTS` (default 2, 0 = no cap) complex turns on a self-hosted model run at
-once across all API replicas. A slot is a Postgres session-level advisory lock
+*Slots.* A slow self-hosted model that chat shares must not have all its sequences taken by
+long document tool loops, so with `COMPLEX_DOCUMENT_SLOTS` set at most that many complex turns
+on a self-hosted model run at once across all API replicas. The default is 0 (no cap) since
+2026-11-20: the cap of 2 was for the single 8-sequence DeepSeek server, while the built-in row is
+now Flash, which serves these turns like any other document, and with no fallback behind it
+(see above) a capped Flash turn would only wait in line. A slot is a Postgres session-level advisory lock
 (`complex_turn.LOCK_BASE + i`) on a connection of its own, so a replica that dies releases its
 slots with its connection; without Postgres (tests) the cap is per process. The stream
 (`_survive_disconnect` → `_with_slot`) takes a slot before the turn starts, shows 「대기 중 · n번째」
@@ -3200,8 +3220,9 @@ row's model stays the writer of the ordinary sections and slides; three override
 
 Defaults: `super` column `z-ai/glm-5.3` for all three (effort `low` for the plan, the model's
 default for the others; GLM-5.3 reasons whatever it is told, so its lowest level is sent), the
-strict column `strict-local/deepseek-v4-flash` (self-hosted and slow, so these calls stay few and
-short). To compare another upper model change only a row, for example
+strict column `strict-local/qwen3.8-flash` with `strictEffort` `low` for all three (a
+500-token thinking budget; the strict writer is Flash too, so these stages run only because they
+ask it to think, as below). To compare another upper model change only a row, for example
 `moonshotai/kimi-k3.1-pro` in the three `super` cells; nothing else needs a code change.
 An empty column switches the stage off: the writer does it. So does a stage whose model is the
 writer's own, unless the stage's effort asks it to think (`low` or `high`): then it is a real stage
@@ -3245,8 +3266,8 @@ of the turn's tokens, input and output, that stayed on the house's servers) and
 `selfHostedOutputShare`. 「이번 답」 details show them. Revisions of an existing document are not
 staged. There is no migration.
 
-**Failure inside a strict turn.** DeepSeek V4 Flash is served across both GB10 nodes
-(tensor-parallel 2), so either node down takes it away, and the gateway refuses strict aliases
+**Failure inside a strict turn.** A strict-local model other than Flash (an admin's pick; the
+built-in table names none) may be served by fewer nodes, and the gateway refuses strict aliases
 outright (503 `strict_local_unavailable`) while vLLM has requests waiting. A strict Super Agent
 turn whose writer is not Qwen3.8 Flash therefore carries a same-turn fallback
 (`_super_fallback`, `agent.run_turn(fallback_model=…)`): when the writer's call is refused,
@@ -3259,7 +3280,7 @@ strict-local. The switch is a `writer_fallback` event: the answer's route note g
 writer spent bill on its own ledger line. The failed model is marked in `model_health` (60 s
 after a busy refusal, 300 s otherwise, per process) and left out of Super Agent picks, rescuers
 and the 깊게 route meanwhile, so the next turns go to Flash at once (`route.skipped` says so).
-Within a tool loop the self-hosted DeepSeek writer gets its own reasoning back on each tool
+Within a tool loop a self-hosted DeepSeek writer (no longer in the built-in table; an admin may pick one) gets its own reasoning back on each tool
 call (`reasoning_content`, `agent._passes_reasoning`; no other model is sent it): on
 「다시」 turns it no longer re-derives figures at every step (judged 7.7 vs 6.6, ~20% fewer
 output tokens, first text p50 85 s vs 143 s). DeepSeek's first visible text takes ~50 s on material turns and 85 s on 「다시」 turns (Flash ~6–20 s): the step list shows a

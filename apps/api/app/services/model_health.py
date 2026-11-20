@@ -3,8 +3,8 @@
 A writer that failed a turn (the gateway refused it, the server was unreachable, the stream
 broke, or it showed nothing within its patience) is left out of Super Agent picks for a while:
 briefly when the gateway only said it was busy (`strict_local_unavailable`: vLLM has requests
-waiting), longer when it looked down (DeepSeek V4 Flash runs across both GB10 nodes, so either
-node down takes it away). Per process; a restart forgets, and the next turn finds out again.
+waiting), longer when it looked down (a model served across several nodes goes when any of
+them does). Per process; a restart forgets, and the next turn finds out again.
 """
 
 from __future__ import annotations

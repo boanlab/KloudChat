@@ -105,10 +105,12 @@ class Settings(BaseSettings):
     research_timeout_sec: float = 1800.0
     max_tool_hops: int = 8
     chat_stall_sec: int = 180
-    #: Complex document turns (`super_agent.complexity`) that may run at once on the self-hosted
-    #: DeepSeek, across all API replicas; the rest wait in line. The server holds 8 sequences and
-    #: chat shares them. 0 = no cap. Env: COMPLEX_DOCUMENT_SLOTS.
-    complex_document_slots: int = 2
+    #: Complex document turns (`super_agent.complexity`) that may run at once on a self-hosted
+    #: complex row model, across all API replicas; the rest wait in line. 0 = no cap (the
+    #: default since 2026-11-20: the built-in row is Qwen3.8 Flash, which serves these turns like
+    #: any other document; the cap of 2 was for a single 8-sequence DeepSeek server). Set it when
+    #: the row names a slow self-hosted model that chat shares. Env: COMPLEX_DOCUMENT_SLOTS.
+    complex_document_slots: int = 0
     #: The most a report's sections (or a deck's content slides) the upper model may write, as a
     #: share (`doc_stages`); the writer keeps the rest. Env: DOCUMENT_HARD_SHARE.
     document_hard_share: float = 0.5

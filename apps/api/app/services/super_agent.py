@@ -26,7 +26,7 @@ from app.services import settings_store
 
 log = logging.getLogger(__name__)
 
-ROUTER_VERSION = "super-agent-2026-11-18.v1"
+ROUTER_VERSION = "super-agent-2026-11-20.v1"
 
 SUPER = "super"
 SUPER_STRICT = "super_strict"
@@ -39,6 +39,8 @@ CLASSES: tuple[str, ...] = (
     "transform",
     "calc",
     "code",
+    #: code or an artifact that draws data: a dashboard, a chart, a graph (`draws_data`)
+    "visual",
     "current",
     "long",
     "reasoning",
@@ -73,12 +75,13 @@ REASONING_MODES: tuple[str, ...] = (AUTO, FAST, DEEP)
 #: Not an admin effort: the highest level the model takes (`deep` on a hand-picked model).
 HIGHEST = "highest"
 
-#: Built-in table, from the 2026-11-13 evaluation (docs/architecture.md, "Super Agent").
+#: Built-in table, from the 2026-11-13 evaluation (docs/architecture.md, "Super Agent"), with
+#: every row it could moved onto the self-hosted Qwen3.8 Flash on 2026-11-20.
 #: `model`: the `super` entry's pick; `strictModel`: the `super_strict` entry's pick (must be
 #: strict-local); `effort`: reasoning effort for the writer call ("default" leaves the
-#: deployment's own setting); `strictEffort` (optional, not in the built-in table): the effort of
-#: the strict column, falling back to `effort`. A pick that is not served or not allowed falls
-#: back along `_FALLBACKS`, then to the surface default.
+#: deployment's own setting); `strictEffort` (optional): the effort of the strict column,
+#: falling back to `effort`. A pick that is not served or not allowed falls back along
+#: `_FALLBACKS`, then to the surface default.
 DEFAULT_RULES: dict[str, dict[str, str]] = {
     # flash answers short and everyday turns as well as the larger models (8.4 of 10)
     "simple": {
@@ -104,10 +107,24 @@ DEFAULT_RULES: dict[str, dict[str, str]] = {
         "strictModel": "strict-local/qwen3.8-flash",
         "effort": "high",
     },
+    # code and artifacts on self-hosted flash without reasoning (2026-11-20; 46 artifact
+    # prompts x3 runs, Playwright checks and blind judges, flash vs external DeepSeek V4.1
+    # Flash high): calculators 7.30 vs 7.70, shop and landing pages 7.41 vs 6.85, games 7.27
+    # vs 7.53, Python 6.44 vs 5.81 (the external model lost artifacts), forms 6.33 vs 7.00.
+    # Dashboards were clearly worse on flash (6.81 vs 7.96): they have the `visual` row.
     "code": {
+        "model": "local/qwen3.8-flash",
+        "strictModel": "strict-local/qwen3.8-flash",
+        "effort": "none",
+    },
+    # code or artifacts that draw data (dashboards, charts, graphs): the one artifact kind
+    # flash clearly lost on, 6.81 vs DeepSeek V4.1 Flash high's 7.96 (2026-11-20, the run of
+    # the `code` row); the strict column stays on flash without reasoning, as `code`'s does
+    "visual": {
         "model": "deepseek/deepseek-v4.1-flash",
         "strictModel": "strict-local/qwen3.8-flash",
         "effort": "high",
+        "strictEffort": "none",
     },
     "current": {
         "model": "deepseek/deepseek-v4.1-flash",
@@ -124,61 +141,71 @@ DEFAULT_RULES: dict[str, dict[str, str]] = {
         "strictModel": "strict-local/qwen3.8-flash",
         "effort": "high",
     },
+    # the body of a report or deck on flash without reasoning (2026-11-20): flash's body
+    # judged 1.0-1.5 above the 27B's (blind Sonnet, 12 tasks x3) at the same speed and cost;
+    # the strict column end to end (body flash none, stages flash low with a 500-token
+    # thinking budget) scored 5.92 against the 27B column's 4.53, with no failures under the
+    # 300 s rule and no external call
     "document": {
-        "model": "local/qwen3.8-27b",
-        "strictModel": "strict-local/qwen3.8-27b",
-        "effort": "default",
+        "model": "local/qwen3.8-flash",
+        "strictModel": "strict-local/qwen3.8-flash",
+        "effort": "none",
     },
     # turns over attached, project or agent files: both columns empty, so they keep their
-    # class's row. Self-hosted DeepSeek V4 Flash judged 8.6 vs thinking flash 6.9 on the first
-    # run but 7.6 vs 7.7 on the re-run (8.2 with its reasoning passed back), at ~50 s more to
-    # the first text; the owner kept them on flash (2026-11-15). An admin may fill the row.
+    # class's row (owner decision 2026-11-15: thinking flash and the self-hosted DeepSeek
+    # judged 7.7 vs 7.6 on the re-run, DeepSeek ~50 s slower). An admin may fill the row.
     "material": {
         "model": "",
         "strictModel": "",
         "effort": "high",
     },
     # complex document work (a form followed, many source files, tool-heavy decks, a long
-    # source) goes to DeepSeek V4 Flash (owner decision 2026-11-15): the 27B followed HWPX,
-    # Word and PowerPoint forms unreliably (labels overwritten, wrong cells, tool-limit hits).
-    # `local/` is self-hosted first and spills to the external twin only when the server is
-    # saturated (the gateway's own behaviour); the strict column never leaves. Slow is fine:
-    # the document row's model carries the turn on when this one fails or stays silent, and
-    # at most `settings.complex_document_slots` such turns run at once (`complex_turn`).
+    # source) on flash with reasoning high, a 2000-token thinking budget (2026-11-20; forms
+    # and attachments task set): flash high 6.28 vs the self-hosted DeepSeek V4 Flash high's
+    # 5.70 over its successes and 4.11 with its failures as 0 (DeepSeek failed 28% under the
+    # 300 s rule, flash never). The 27B followed HWPX, Word and PowerPoint forms unreliably,
+    # which is why these turns have a row of their own (owner decision 2026-11-15).
     "complex_document": {
-        "model": "local/deepseek-v4-flash",
-        "strictModel": "strict-local/deepseek-v4-flash",
+        "model": "local/qwen3.8-flash",
+        "strictModel": "strict-local/qwen3.8-flash",
         "effort": "high",
+        "strictEffort": "high",
     },
-    # staged routing of a report or deck (owner decision 2026-11-18): the 27B alone wrote poor
-    # documents (garbled terms, unwritten sections, invented clauses, wrong slide counts; 3.8
-    # and 5.3 of 10 on the 2026-11-17 benchmark) while a stronger open-weight model scored
-    # 5.5-6.5, so one model never writes the whole document. The outline or storyline, the
-    # sections the objective signals mark as hard and the ones whose checks fail go to the
-    # upper model; the `document` row's model writes the rest. The strict column stays
-    # inside: self-hosted DeepSeek V4 Flash (slow, so these calls stay few and short).
+    # staged routing of a report or deck (owner decision 2026-11-18): one model never writes
+    # the whole document. The outline or storyline, the sections the objective signals mark
+    # as hard and the ones whose checks fail go to the upper model; the `document` row's
+    # model writes the rest. The strict column stays inside on flash with reasoning low (a
+    # 500-token thinking budget): the strict writer's own model, so these stages run only
+    # because they ask it to think (`stage_pick`); 5.92 vs 4.53 end to end (2026-11-20, see
+    # `document`)
     "document_plan": {
         "model": "z-ai/glm-5.3",
-        "strictModel": "strict-local/deepseek-v4-flash",
+        "strictModel": "strict-local/qwen3.8-flash",
         "effort": "low",
+        "strictEffort": "low",
     },
     "document_hard": {
         "model": "z-ai/glm-5.3",
-        "strictModel": "strict-local/deepseek-v4-flash",
+        "strictModel": "strict-local/qwen3.8-flash",
         "effort": "default",
+        "strictEffort": "low",
     },
     "document_repair": {
         "model": "z-ai/glm-5.3",
-        "strictModel": "strict-local/deepseek-v4-flash",
+        "strictModel": "strict-local/qwen3.8-flash",
         "effort": "default",
+        "strictEffort": "low",
     },
     # a thinking flash answer came back empty 3 times in 14; DeepSeek with reasoning on
-    # never did (9 of 10 on those prompts); strict: self-hosted DeepSeek V4 Flash, 6.7 vs
-    # flash's 6.2 on 「틀렸어, 다시」 turns (owner decision 2026-11-14)
+    # never did (9 of 10 on those prompts; owner decision 2026-11-14). Strict: flash with
+    # reasoning high, a 2000-token thinking budget, 6.89 vs the strict-local DeepSeek V4
+    # Flash high's 6.11 over 18 dialogues x3 (2026-11-20), though with more garbled terms and
+    # mixed languages
     "escalation": {
         "model": "deepseek/deepseek-v4.1-flash",
-        "strictModel": "strict-local/deepseek-v4-flash",
+        "strictModel": "strict-local/qwen3.8-flash",
         "effort": "high",
+        "strictEffort": "high",
     },
 }
 
@@ -351,6 +378,85 @@ _REASONING = re.compile(
     r"derive|strategy|root cause|why does|probability)",
     re.IGNORECASE,
 )
+#: Building something that runs (an app, a page, a game, an HTML file, a program in a named
+#: language, a chart): an artifact request, which `_CODE`'s code words alone miss
+#: (「계산기 웹앱 만들어줘」, 「파이썬 정렬 알고리즘 짜줘」, 「Make a todo app in React」).
+#: A plan, a list or a document about the thing, standing between it and the verb, is not
+#: building it (「앱 기획서 작성해 줘」, 「파이썬 공부 계획 짜줘」); 「할 일 목록 앱 만들어줘」
+#: still is.
+_BUILD_VERB = r"(?:만들|짜\s*(?:줘|주|서|봐|고)|구현|작성|개발|코딩)"
+_NOT_BUILD_KO = (r"기획|계획|보고서|제안서|문서|명세|요구\s*사항|아이디어|이름|목록|추천|"
+                 r"전략|후기|리뷰")
+_NOT_BUILD_EN = r"plan|proposal|report|spec(?:ification)?|ideas?|names?|list|review"
+#: what may stand between the thing and the verb: anything but the end of a sentence or a plan
+_GAP = r"(?:(?!" + _NOT_BUILD_KO + r")[^.!?\n])"
+_BUILD = re.compile(
+    r"(?:(?:웹\s*앱|앱|어플|애플리케이션|게임|웹\s*사이트|사이트|홈\s*페이지|"
+    r"(?:웹|랜딩|메인|소개|상품|로그인|회원\s*가입)\s*페이지|대시보드|위젯|계산기|목업|"
+    r"코드|알고리즘|스크립트|차트|그래프)" + _GAP + r"{0,15}?" + _BUILD_VERB + r"|"
+    r"(?:파이썬|python|자바스크립트|javascript|타입스크립트|typescript|자바|java|c\+\+|러스트|"
+    r"rust|코틀린|kotlin|스위프트|swift|리액트|react|vue|html|css|sql)" + _GAP + r"{0,30}?"
+    + _BUILD_VERB + r"|"
+    r"\bhtml\s*(?:파일|한\s*파일|하나|페이지)|"
+    r"\b(?:build|make|create|write|code|develop|implement)\b"
+    r"(?:\s+(?!(?:" + _NOT_BUILD_EN + r")\b)[\w'-]+){0,4}?\s+"
+    r"(?:apps?|applications?|web\s*apps?|websites?|sites?|(?:web|landing|home)\s*pages?|"
+    r"dashboards?|games?|widgets?|html|scripts?|programs?|components?|calculators?|charts?|"
+    r"graphs?|plots?)\b)",
+    re.IGNORECASE,
+)
+#: What draws data: a dashboard, a chart, a graph, a visualisation (「흐름도」·「flowchart」 are
+#: diagrams, not data).
+_VISUAL = re.compile(
+    r"대시보드|(?<!플로우)(?<!플로우 )(?<!순서)차트|그래프|시각화|\bdashboards?\b|\bcharts?\b|"
+    r"\bgraphs?\b|\bvisuali[sz](?:e|es|ed|ing|ation|ations)\b|\bplot(?:s|ting|ted)?\b|"
+    r"\bdata\s*viz\b",
+    re.IGNORECASE,
+)
+#: 그래프 and graph as a structure (nodes and edges), not a picture of data.
+_GRAPH_WORD = re.compile(r"그래프|\bgraphs?\b", re.IGNORECASE)
+_GRAPH_STRUCTURE = re.compile(
+    r"그래프\s*(?:탐색|이론|알고리즘|순회|자료\s*구조|데이터베이스|DB|신경망)|"
+    r"(?:지식|방향|무방향|가중치?|계산|연결)\s*그래프|graphql|langgraph|"
+    r"\bgraph\s*(?:theory|traversal|algorithms?|search|database|db|neural)\b|"
+    r"\b(?:knowledge|directed|undirected|weighted|computation(?:al)?|dependency|call)\s+graphs?\b|"
+    r"\b(?:bfs|dfs)\b|다익스트라|dijkstra|최단\s*경로|shortest\s+paths?|위상\s*정렬|topological|"
+    r"노드|간선|정점|\bvert(?:ex|ices)\b",
+    re.IGNORECASE,
+)
+#: Asking for a chart to be drawn is asking for one to be made (「차트로 그려 줘」, 「Plot …」).
+_DRAW = re.compile(
+    r"(?:차트|그래프|시각화|대시보드)[^.!?\n]{0,8}?(?:그려|보여\s*(?:줘|주)|나타내\s*(?:줘|주)|"
+    r"표현해\s*(?:줘|주))|"
+    r"^\s*(?:please\s+|can you\s+|could you\s+)?(?:plot|visuali[sz]e|chart|graph)\s+"
+    r"(?!vs\b|or\b|and\b)\w|"
+    r"\bdraw\s+(?:me\s+)?(?:a|an|the)?\s*(?:[\w-]+\s+){0,3}(?:charts?|graphs?|plots?|dashboards?)\b",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def draws_data(ask: str) -> bool:
+    """Whether `ask` names a dashboard, chart, graph or visualisation of data (a graph of nodes
+    and edges is not one)."""
+    found = [m.group(0) for m in _VISUAL.finditer(ask)]
+    if found and _GRAPH_STRUCTURE.search(ask):
+        found = [word for word in found if not _GRAPH_WORD.fullmatch(word)]
+    return bool(found)
+
+
+def builds(ask: str) -> bool:
+    """Whether `ask` asks for something that runs to be made (`_BUILD`) or a chart drawn."""
+    return bool(_BUILD.search(ask) or _DRAW.search(ask))
+
+
+def visual_class(decision: Decision) -> Decision:
+    """A `code` decision whose request draws data (the `visual` signal) moves to the `visual`
+    row; anything else stays. For the classifier's answer, which knows `code` only."""
+    if decision.task_class == "code" and "visual" in decision.signals:
+        return Decision("visual", decision.source, decision.reason_code,
+                        confidence=decision.confidence, ambiguous=decision.ambiguous,
+                        signals=decision.signals)
+    return decision
 
 
 @dataclass(frozen=True, slots=True)
@@ -437,8 +543,12 @@ def classify(turn: Turn) -> Decision:
     if _ACK.match(text):
         return Decision("simple", "deescalated" if previous else "rule", "acknowledgement")
     signals: list[str] = []
-    if _CODE.search(ask) or "```" in text:
+    if _CODE.search(ask) or "```" in text or builds(ask):
         signals.append("code")
+    if draws_data(ask):
+        # code that draws data goes to the `visual` row (and so does the classifier's `code`
+        # for such a request, `visual_class`); a question about a chart stays where it was
+        signals.append("visual")
     # a question about pasted material is answered from it, unless search was switched on
     if turn.web_search is True or (not material and freshness.current_fact_required(ask)):
         signals.append("current")
@@ -455,6 +565,8 @@ def classify(turn: Turn) -> Decision:
     if "current" in signals and turn.web_search is True and "```" not in text:
         # search switched on: the answer stands on what it finds
         return Decision("current", "rule", "web_search_on", signals=signals)
+    if "code" in signals and "visual" in signals:
+        return Decision("visual", "rule", "visual_request", signals=signals)
     if "code" in signals:
         return Decision("code", "rule", "code_markers", signals=signals)
     if "current" in signals:
@@ -477,7 +589,8 @@ def classify(turn: Turn) -> Decision:
     if _GREETING.match(text) and len(text) <= 80:
         return Decision("simple", "rule", "greeting")
     if len(text) <= 60:
-        return Decision("simple", "rule", "short_request", ambiguous=True)
+        return Decision("simple", "rule", "short_request", ambiguous=True,
+                        signals=signals)
     if len(text) >= 600:
         return Decision("reasoning", "rule", "long_request", ambiguous=True, signals=signals)
     return Decision("chat", "rule", "no_markers", ambiguous=True, signals=signals)
@@ -490,7 +603,8 @@ Classes:
 - chat: everyday question answerable from general knowledge in a few paragraphs.
 - transform: translate, summarise, proofread or reformat text the person supplied.
 - calc: arithmetic or numeric work on numbers the person supplied.
-- code: write, fix, explain or review code, queries or configuration.
+- code: write, fix, explain or review code, queries or configuration, or build an app,
+  a web page, a game, a dashboard or a chart.
 - current: needs facts that change over time (news, prices, schedules, latest versions).
 - reasoning: multi-step analysis, design, decision, proof, law/tax/medical/finance advice,
   or anything where a shallow answer would mislead.
@@ -668,8 +782,9 @@ def strict_fallback(
     skip: frozenset[str] = frozenset(),
 ) -> dict[str, Any] | None:
     """The strict-local model that carries a turn on when `writer` fails mid-turn: the first
-    usable `_STRICT_FALLBACKS` model ahead of the writer in that list (Qwen3.8 Flash for
-    DeepSeek V4 Flash); None when the writer is that model already."""
+    usable `_STRICT_FALLBACKS` model ahead of the writer in that list (Qwen3.8 Flash for any
+    other strict-local writer an admin put in the table); None when the writer is that model
+    already."""
     by_id = {str(m.get("id")): m for m in catalogue}
     for model_id in _STRICT_FALLBACKS:
         if model_id == writer.get("id"):
@@ -694,7 +809,8 @@ def complex_fallback(
 ) -> dict[str, Any] | None:
     """The model that carries a complex document turn on, in the same turn, when its writer
     fails, stays silent or waits too long for a slot: the `document` row's pick in the turn's
-    column (the 27B by default); None when that is the writer itself or nothing serves."""
+    column; None when that is the writer itself (the built-in table writes both rows on
+    Qwen3.8 Flash, so its complex turns have none) or nothing serves."""
     wanted = rules["document"]["strictModel" if strict else "model"]
     model = next((m for m in catalogue if m.get("id") == wanted), None)
     if (model is None or model.get("id") == writer.get("id") or model.get("id") in skip
@@ -731,7 +847,7 @@ def steer(rules: dict[str, dict[str, str]], decision: Decision, mode: str, *,
     A complex document turn (`complex_doc`) moves to the `complex_document` row where that row
     names a model in the turn's column. The chip steers its effort only, never its model:
     `fast` writes without thinking (the form still goes to the model that can follow it, not to
-    the 27B), `deep` at the highest level."""
+    the `document` row's), `deep` at the highest level."""
     if complex_doc and rules.get(COMPLEX_CLASS, {}).get("strictModel" if strict else "model"):
         if mode == FAST:
             return COMPLEX_CLASS, "none"
@@ -1009,10 +1125,12 @@ __all__ = [
     "Decision",
     "Turn",
     "classifier_payload",
+    "builds",
     "classify",
     "classify_with_model",
     "complex_fallback",
     "complexity",
+    "draws_data",
     "effort_for",
     "rule_effort",
     "estimate",
@@ -1028,4 +1146,5 @@ __all__ = [
     "strict_fallback",
     "typical_credits",
     "usable_for",
+    "visual_class",
 ]

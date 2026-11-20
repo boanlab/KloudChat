@@ -212,6 +212,7 @@ export type SuperAgentClass =
   | 'transform'
   | 'calc'
   | 'code'
+  | 'visual'
   | 'current'
   | 'long'
   | 'reasoning'

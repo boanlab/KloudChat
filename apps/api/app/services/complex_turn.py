@@ -1,12 +1,15 @@
-"""Complex document turns on the self-hosted DeepSeek: a shared slot cap and a same-turn fallback.
+"""Complex document turns on a self-hosted model: an optional shared slot cap and a same-turn
+fallback.
 
-The DeepSeek server holds 8 sequences and chat shares them, so a long document tool loop must
-not take them all. At most `settings.complex_document_slots` complex document turns
-(`super_agent.complexity`) run on it at once, across API replicas: a slot is a Postgres
-session-level advisory lock held on a connection of its own, so a replica that dies lets go of
-its slots with its connection. A turn that finds none waits, shown as 「대기 중 · n번째」, for at
-most `settings.complex_document_wait_sec`; then the `document` row's model writes it instead
-(`Plan.use_fallback`). Without Postgres (tests, a single-process run) the cap is per process.
+A slow self-hosted model that chat shares (a single server with few sequences) must not have
+all its sequences taken by long document tool loops. With `settings.complex_document_slots` set
+(0 by default: the built-in complex row is Qwen3.8 Flash, which needs no cap), at most that many
+complex document turns (`super_agent.complexity`) run on it at once, across API replicas: a
+slot is a Postgres session-level advisory lock held on a connection of its own, so a replica
+that dies lets go of its slots with its connection. A turn that finds none waits, shown as
+「대기 중 · n번째」, for at most `settings.complex_document_wait_sec`; then the `document` row's
+model writes it instead (`Plan.use_fallback`). Without Postgres (tests, a single-process run)
+the cap is per process.
 
 The same `Plan` carries the fallback for the whole-answer calls of the report and deck
 pipelines (`run_call`): a refused, dropped or too slow call is asked again on the fallback model,

@@ -39,6 +39,7 @@ const defaultRules = {
   transform: { model: 'local/flash', strictModel: 'strict-local/flash', effort: 'none' },
   calc: { model: 'external/deep', strictModel: 'strict-local/flash', effort: 'high' },
   code: { model: 'external/deep', strictModel: 'strict-local/flash', effort: 'high' },
+  visual: { model: 'external/deep', strictModel: 'strict-local/flash', effort: 'high', strictEffort: 'none' },
   current: { model: 'external/deep', strictModel: 'strict-local/flash', effort: 'none' },
   long: { model: 'external/deep', strictModel: 'strict-local/flash', effort: 'high' },
   reasoning: { model: 'external/deep', strictModel: 'strict-local/flash', effort: 'high' },
