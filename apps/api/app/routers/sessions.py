@@ -1052,13 +1052,23 @@ def _auto_image_model(user: User, catalogue: dict) -> dict | None:
 
 
 def _allowed_models(user: User, catalogue: list[dict], *, kind: str) -> list[dict]:
-    """Models allowed for this account and surface; empty allowlist = whole catalogue."""
+    """Models allowed for this account and surface; empty allowlist = whole catalogue.
+    `image_edit` is no surface: the picture models that change a given picture (`editsImages`),
+    edit-only ones included."""
     allowed = set(user.allowed_models or [])
     return [
         model
         for model in catalogue
-        if kind in model.get("kinds", []) and (not allowed or model.get("id") in allowed)
+        if (
+            model.get("editsImages") is True if kind == _IMAGE_EDIT
+            else kind in model.get("kinds", [])
+        )
+        and (not allowed or model.get("id") in allowed)
     ]
+
+
+#: `_allowed_models` kind of an image edit
+_IMAGE_EDIT = "image_edit"
 
 
 @dataclass(slots=True)
@@ -1086,7 +1096,10 @@ async def _media_boundary(
     """The chat turn's egress rules for media calls, without the decision dialog."""
     policy = await _require_egress_policy()
     current = model_service.find(catalogue, session.model or "")
-    if current is not None and _strict_model(current):
+    # a Super Agent strict-local conversation keeps its pictures inside whatever model it last held
+    if (current is not None and _strict_model(current)) or (
+        session.routing_mode == RoutingMode.super_strict
+    ):
         return _MediaBoundary(True, text, "strict_session", [])
     if policy.internal_data_strict_local and _internal_data_present(
         session, None, None, await _history(db, session.id)
@@ -1157,7 +1170,7 @@ def _media_model(
     usable = sorted(_allowed_models(user, catalogue, kind=kind), key=model_service.fallback_order)
     if boundary.strict:
         usable = [m for m in usable if _strict_model(m)]
-        if kind == "image":
+        if kind in ("image", _IMAGE_EDIT):
             return model_service.find(usable, asked or "") or model_service.strict_image_model(
                 usable, Preferences.of(user).strict_image_model
             )
@@ -4291,8 +4304,10 @@ async def _edit_image(
 
     The source picture leaves for the model as an attachment would: a picture the person gave
     (an upload, or one made from it) is internal material, kept inside under the
-    internal-material rule; a strict-local conversation keeps it inside too. No self-hosted model
-    edits, so both are refused with their reason.
+    internal-material rule; a strict-local conversation (a Super Agent strict one included)
+    keeps it inside too. Kept inside, the edit goes to a strict-local model that edits, picked
+    for the turn whatever picture model the person draws with; with none it is refused
+    (`image_edit_strict_local`).
     """
     stored, source = await _edit_source(db, user, payload)
     boundary = await _media_gate(db, user, request, session, catalogue["models"],
@@ -4315,12 +4330,15 @@ async def _edit_image(
     asked = payload.model or (session.model if session.kind == SessionKind.image else "") or ""
     asked_model = model_service.find(models, asked)
     editors = [m for m in models if m.get("editsImages")]
+    # kept inside, `_media_model` takes only a strict-local editor: an asked picture model that
+    # does not edit, or one outside, gives way to it
     model = _media_model(
-        user, editors, kind="image", boundary=boundary, asked=asked,
+        user, editors, kind=_IMAGE_EDIT, boundary=boundary, asked=asked,
         default=(catalogue.get("defaultModelByKind") or {}).get("image"),
     )
     if model is None or (
-        asked_model is not None and "image" in asked_model.get("kinds", [])
+        not boundary.strict
+        and asked_model is not None and "image" in asked_model.get("kinds", [])
         and not asked_model.get("editsImages")
     ):
         if boundary.strict:
