@@ -75,3 +75,21 @@ def test_a_planned_quiz_or_no_quiz_asked_leaves_the_plan_alone():
 def test_a_count_inside_the_asked_range_needs_no_note():
     assert deck.count_note(_ASK, 12) == "" and deck.count_note(_ASK, 9) == ""
     assert "13장" in deck.count_note(_ASK, 13)
+
+
+_PRINT_ASK = (
+    "중·고등학교 행정실 대상 복합기 렌탈 영업 제안 발표 자료를 7~9장으로 만들어 줘. 아래 수치만.\n"
+    "- 학교 현황: 연간 출력 흑백 36만 장·컬러 4만 장\n"
+    "- 제안: 월 기본료 대당 6만 원(흑백 월 3,000장·컬러 월 300장 포함)"
+)
+
+
+def test_a_printing_quantity_in_the_brief_is_not_the_deck_size():
+    # round-1 r1d05 (11-20): 「컬러 월 300장」 was read as a 300-slide total, capped at 50,
+    # and both arms wrote a 50-slide deck for 「7~9장」
+    assert deck.requested_slides(_PRINT_ASK) is None
+    assert deck.slide_range(_PRINT_ASK) == (7, 9)
+
+
+def test_a_total_above_the_maximum_said_of_the_deck_is_still_capped():
+    assert deck.requested_slides("발표 자료 슬라이드 60장으로 만들어 줘") == 50

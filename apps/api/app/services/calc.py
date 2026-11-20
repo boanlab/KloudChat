@@ -39,7 +39,8 @@ PROMPT = """아래 요청과 자료로 문서를 쓰기 전에, 문서에 들어
   있는 부품값·조건으로 공식에서 구한다.
 - 표준 라이브러리(math, statistics)만 쓴다. 입력·파일·네트워크는 쓰지 않는다.
 - 결과는 한 줄에 하나씩 print 한다: 「항목 = 값 단위」. 표가 될 값은 행마다
-  「행 이름 | 열1 = 값 | 열2 = 값」 처럼 한 줄에 적는다. 값은 유효숫자 4자리(정수는 그대로).
+  「행 이름 | 열1 = 값 | 열2 = 값」 처럼 한 줄에 적는다. 값은 일반 숫자 표기로 적는다: 금액·인원·건수처럼 정수인 값은 정수 그대로, 소수는 소수 둘째
+  자리까지 반올림한다. 1.369e+04 같은 지수 표기나 :.4g 형식은 쓰지 않는다.
 - 문서에 필요한 값만, 60줄 이내로.
 - When the request asks for the result of a procedure or algorithm run on the material
   (CPU 스케줄링의 FCFS·SJF·SRTF·라운드 로빈, 정렬, 일정·기한 계산), implement that procedure
@@ -99,10 +100,27 @@ def _code_of(text: str) -> str:
     return (match.group(1) if match else "").strip()
 
 
+#: a printed float's padding zeros: 「36000.0000」, 「15.7900」
+_PADDED = re.compile(r"(?<![\d.])(\d+)(?:\.0+|(\.\d*?[1-9])0+)(?![\d.])")
+
+
+#: a value printed in exponent notation (「7.744e+06원」)
+_EXPONENT = re.compile(r"(?<![A-Za-z])\d(?:\.\d+)?[eE][+-]\d{1,3}(?!\d)")
+
+
+def _unpadded(line: str) -> str:
+    """A program's `:.4f` padding taken off its numbers (「50.0000 %」 → 「50 %」), so a writer
+    that copies the value never shows 「에어킥 50.0000」."""
+    return _PADDED.sub(lambda m: m.group(1) + (m.group(2) or ""), line)
+
+
 def _lines(stdout: str) -> list[str]:
     out = []
     for line in (stdout or "").splitlines():
-        line = line.strip()
+        line = _unpadded(line.strip())
+        if _EXPONENT.search(line):
+            # 「1.369e+04만원」: four digits of a five-digit sum, never shown to the writer
+            continue
         if line and ("=" in line or line.count("|") >= 2) and len(line) <= 300:
             out.append(line)
     return out[:60]

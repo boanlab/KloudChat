@@ -149,7 +149,8 @@ def _count_found(request: str, units: tuple[str, ...], *, maximum: int
     request = " ".join(request.split())
     words = "|".join(sorted(_COUNT_WORDS, key=len, reverse=True))
     unit = "|".join(re.escape(value) for value in units)
-    pattern = rf"(?<![\d.+~제-])(\d{{1,3}}|(?<![가-힣])(?:{words})) ?(?:개 ?)?(?:{unit})"
+    # 「3,000장」: the thousands of a figure, never a count
+    pattern = rf"(?<![\d.,+~제-])(\d{{1,3}}|(?<![가-힣])(?:{words})) ?(?:개 ?)?(?:{unit})"
     found: set[int] = set()
     authoritative: list[int] = []
     #: counts said straight after the deck's own noun (「슬라이드 8장」), unlike a part's
@@ -183,6 +184,11 @@ def _count_found(request: str, units: tuple[str, ...], *, maximum: int
         raw = match.group(1)
         value = int(raw) if raw.isdigit() else _COUNT_WORDS[raw]
         if not value:
+            continue
+        deck_named = re.search(r"(?:슬라이드|페이지|발표\s?자료|PPT|ppt|덱)\s?$",
+                               request[max(0, match.start() - 12):match.start()])
+        if value > maximum and not (deck_named or prefix.endswith(("총", "전체"))):
+            # 「흑백 월 300장」: a quantity in the material, more than any deck holds
             continue
         value = min(value, maximum)
         if prefix.endswith(("총", "전체", "표지 포함", "표지포함", "장수는", "장수")):
