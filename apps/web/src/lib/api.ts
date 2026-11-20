@@ -515,6 +515,8 @@ export interface SuperAgentRule {
   model: string
   strictModel: string
   effort: 'default' | 'none' | 'low' | 'high'
+  /** The strict-local column's effort; absent: `effort` applies there too. */
+  strictEffort?: 'default' | 'none' | 'low' | 'high'
 }
 
 export const modelsApi = {

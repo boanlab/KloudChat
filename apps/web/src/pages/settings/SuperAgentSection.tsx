@@ -170,6 +170,17 @@ export function SuperAgentSection() {
                       {options(strictOnly(pool), rule.strictModel, SUPER_OVERRIDE_ROWS.has(name), true)}
                     </Select>
                     {rate(strictOnly(pool), rule.strictModel)}
+                    <Select
+                      className="mt-1 min-w-[10.5em]"
+                      aria-label={t('{class} · strict-local 추론 강도').replace('{class}', label)}
+                      value={rule.strictEffort ?? rule.effort}
+                      onChange={(event) =>
+                        setRule(name, { strictEffort: event.target.value as SuperAgentRule['effort'] })}
+                    >
+                      {EFFORTS.map((effort) => (
+                        <option key={effort} value={effort}>{t(SUPER_EFFORT_LABEL[effort])}</option>
+                      ))}
+                    </Select>
                   </td>
                   <td className="py-2 max-sm:block max-sm:p-0">
                     <span className="mb-1 hidden text-xs text-faint max-sm:block" aria-hidden>{t('추론 강도')}</span>
