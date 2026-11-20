@@ -4075,7 +4075,7 @@ async def _write_slides(
         if notes:
             notes = notes_only_given(notes_without_echo(notes, slide), slide, request)
         if slide.get("layout") not in _STRUCTURAL:
-            # notes short of the 3~5 sentences the draft asks for: re-ask once (per-deck budget)
+            # notes under two sentences: re-ask once (per-deck budget)
             if _sentence_count(notes) < _NOTE_SENTENCES and echo_reasks < 4:
                 echo_reasks += 1
                 try:
@@ -6711,9 +6711,9 @@ _MONOTONE = "bullets"
 _DIAGRAM_LAYOUTS = ("bullets", "two-column", "cards", "bands", "tiles")
 
 
-#: the fewest sentences a content slide's notes say before they are asked for more (the
-#: draft asks for 3~5; the writer often stops at two)
-_NOTE_SENTENCES = 3
+#: the fewest sentences a content slide's notes say before they are asked for more (three
+#: re-asked more notes than it fixed: each re-ask is new model text a check never reads)
+_NOTE_SENTENCES = 2
 
 _NOTES_PROMPT = """The screen of the "{heading}" slide already reads:
 {shown}
