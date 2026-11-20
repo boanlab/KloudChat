@@ -223,3 +223,23 @@ async def test_lengthening_keeps_no_target_the_writer_set_itself(monkeypatch) ->
         pass
     grown = [s for s in sections[1:] if len(s["content"]) > 600]
     assert grown and all("1건 이하" not in s["content"] for s in grown)
+
+
+@pytest.mark.asyncio
+async def test_the_prompt_label_read_back_mid_answer_is_not_kept(monkeypatch) -> None:
+    bundle = _bundle()
+    first = "현재 임직원 260명이 카카오톡 개인 계정과 이메일을 함께 씁니다."
+    sections = [{"id": f"s{i}", "heading": h,
+                 "content": "요약입니다." if i == 0 else first}
+                for i, h in enumerate(HEADINGS)]
+
+    async def fake(model, messages, api_key, max_tokens):
+        more = "업무 연락이 개인 계정에 섞여 있어 퇴사자 관리가 어렵습니다. " * 20
+        return f"{more.strip()}\n\n절:\n{first}", {"inputTokens": 1, "outputTokens": 1}
+
+    monkeypatch.setattr(report, "_complete", fake)
+    targets = report.section_targets(ASK, HEADINGS)
+    async for _ in report_stages._lengthened(bundle, sections, targets, ""):
+        pass
+    grown = [s for s in sections[1:] if len(s["content"]) > 600]
+    assert grown and all("절:" not in s["content"] for s in grown)

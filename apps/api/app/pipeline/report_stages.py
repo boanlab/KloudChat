@@ -1518,8 +1518,9 @@ async def _lengthened(bundle: Bundle, sections: list[dict], targets: dict[int, i
         prose = before[:figure.start()] if figure else before
         added = richtext.detach_tables(report.unwrap_json_prose(
             internal_words.strip_work_notes(text, request=req.text, document=True))).strip()
-        # the prompt's 「절:」 label read back as the section's first line
-        added = report.cut_unfinished_tail(re.sub(r"^\s*절\s*[:：]\s*\n?", "", added))
+        # the prompt's 「절:」 label read back, as the first line or before a part it repeats
+        added = report.cut_unfinished_tail(
+            re.sub(r"(?m)^[ \t]*절[ \t]*[:：][ \t]*(?:\n|$)", "", added).strip())
         if not report.only_added(prose, added):
             log.info("lengthened %r not taken: existing text changed", sections[index]["heading"])
             continue
