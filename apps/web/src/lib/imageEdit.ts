@@ -1,5 +1,5 @@
 import { BASE_URL } from '@/lib/api'
-import type { ModelInfo, SessionKind } from '@/types'
+import type { ModelInfo, RoutingMode, SessionKind } from '@/types'
 
 /** The picture 「이미지 고치기」 starts from; the composer of `sessionId` carries it. */
 export interface ImageEditSource {
@@ -36,9 +36,10 @@ export function fileSrc(fileId: string): string {
   return `${BASE_URL}/files/${fileId}/content`
 }
 
-/** Picture models this account may use that change a given picture. */
+/** Picture models this account may use that change a given picture, edit-only ones (on no
+ *  surface: they draw nothing new) included. */
 export function editingModels(models: ModelInfo[]): ModelInfo[] {
-  return models.filter((m) => m.kinds.includes('image') && m.editsImages === true)
+  return models.filter((m) => m.modality === 'image' && m.editsImages === true)
 }
 
 /** The picture model an edit in this conversation goes to: an image conversation's own, else
@@ -53,8 +54,10 @@ export function imageModelId(
 
 /**
  * The server's rules (`_edit_image`), read ahead so the action can say why it is off: a
- * strict-local conversation and internal material (under the internal-material rule) keep the
- * picture inside, where no model edits; otherwise the picked model has to edit.
+ * strict-local conversation (a Super Agent strict one too), a picture a strict-local model drew
+ * and internal material (under the internal-material rule) keep the picture inside, where the
+ * server picks a strict-local model that edits and refuses when there is none; otherwise the
+ * picked model has to edit.
  */
 export function editBlock({
   session,
@@ -69,6 +72,7 @@ export function editBlock({
     | {
         kind: SessionKind
         model?: string | null
+        routingMode?: RoutingMode
         projectId?: string | null
         messages?: { attachments?: unknown[] }[]
       }
@@ -85,23 +89,27 @@ export function editBlock({
 }): EditBlock {
   const editors = editingModels(models)
   const current = models.find((m) => m.id === session?.model)
-  const strictTurn = !!current?.strictLocal && session?.kind !== 'image'
   const inside = (m: ModelInfo) => m.strictLocal
-  if (madeBy && models.find((m) => m.id === madeBy)?.strictLocal && !editors.some(inside)) {
-    return { reason: t('strict-local 모델이 그린 그림이라 외부 모델로 고칠 수 없습니다.'), switchTo: null }
+  // kept inside, the server picks the strict-local editor itself, whatever picture model is picked
+  const insideEditor = editors.some(inside)
+  const strictSession = !!current?.strictLocal || session?.routingMode === 'super_strict'
+  const strictTurn = strictSession && session?.kind !== 'image'
+  if (madeBy && models.find((m) => m.id === madeBy)?.strictLocal) {
+    return insideEditor ? null : { reason: t('strict-local 모델이 그린 그림이라 외부 모델로 고칠 수 없습니다.'), switchTo: null }
   }
-  if (strictTurn) {
-    return editors.some(inside) ? null : { reason: t('strict-local 대화라 외부 모델로 고칠 수 없습니다.'), switchTo: null }
-  }
+  if (strictSession && insideEditor) return null
+  if (strictTurn) return { reason: t('strict-local 대화라 외부 모델로 고칠 수 없습니다.'), switchTo: null }
   const internalTurn =
     internalRule &&
     (internal || !!session?.projectId || (session?.messages ?? []).some((m) => (m.attachments?.length ?? 0) > 0))
-  if (internalTurn && !editors.some(inside)) {
-    return { reason: t('내부 자료라 외부 모델로 고칠 수 없습니다.'), switchTo: null }
+  if (internalTurn) {
+    return insideEditor ? null : { reason: t('내부 자료라 외부 모델로 고칠 수 없습니다.'), switchTo: null }
   }
   const model = models.find((m) => m.id === modelId)
   if (model?.editsImages) return null
-  const usable = internalTurn ? editors.filter(inside) : editors.filter((m) => !m.strictLocal).concat(editors.filter(inside))
+  // a model to switch the picture pick to draws too: an edit-only one would leave nothing to draw with
+  const drawing = editors.filter((m) => m.kinds.includes('image'))
+  const usable = drawing.filter((m) => !m.strictLocal).concat(drawing.filter(inside))
   if (!usable.length) return { reason: t('고칠 수 있는 이미지 모델이 없습니다.'), switchTo: null }
   return {
     reason: model

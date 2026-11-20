@@ -230,26 +230,43 @@ def modalities_for(model_id: str) -> list[str]:
 #: Picture models that change a given picture as told, checked on 2026-11-15 with one edit call
 #: each through the gateway (a red square with a white disc, "make only the background blue").
 #: OpenRouter lists image input for all five external models; Recraft V4.1 took the picture but
-#: kept the background red and refuses `image_config` on edits, so it is left out. The
-#: self-hosted shims draw from the text alone (Z-Image drew an unrelated icon). Read only when
-#: the gateway's `model_info` does not say (`kchat_edits_images`).
+#: kept the background red and refuses `image_config` on edits, so it is left out. Of the
+#: self-hosted shims, Z-Image and Qwen-Image draw from the text alone (Z-Image drew an unrelated
+#: icon); Qwen-Image-Edit 2511 is the one that edits (its shim sends the picture of the last
+#: user message to vLLM-Omni's `/v1/images/edits`; one edit through the gateway, 2026-11-20).
+#: Read only when the gateway's `model_info` does not say (`kchat_edits_images`).
 EDITING_MODELS = frozenset(
     {
         "google/gemini-3-pro-image",
         "openai/gpt-5.4-image-2",
         "bytedance-seed/seedream-5-0-flash",
         "x-ai/grok-imagine-image-2.0",
+        "strict-local/qwen-image-edit-2511",
     }
 )
+
+#: Picture models that only change a given picture: their shim refuses a request that carries
+#: none (Qwen-Image-Edit 2511 answers 400), so they are never asked for a new picture. Read
+#: only when the gateway's `model_info` does not say (`kchat_draws_images`).
+EDIT_ONLY_MODELS = frozenset({"strict-local/qwen-image-edit-2511"})
 
 
 def edits_images(model_id: str, info: dict[str, Any] | None = None) -> bool:
     """Whether this picture model can change a given picture: the gateway's `kchat_edits_images`
-    when declared, else `EDITING_MODELS`; strict-local models only when declared."""
+    when declared, else `EDITING_MODELS`."""
     declared = (info or {}).get("kchat_edits_images")
     if isinstance(declared, bool):
         return declared
     return model_id in EDITING_MODELS
+
+
+def draws_images(model_id: str, info: dict[str, Any] | None = None) -> bool:
+    """Whether this picture model draws from a prompt alone: the gateway's `kchat_draws_images`
+    when declared, else every model outside `EDIT_ONLY_MODELS`."""
+    declared = (info or {}).get("kchat_draws_images")
+    if isinstance(declared, bool):
+        return declared
+    return model_id not in EDIT_ONLY_MODELS
 
 
 #: the longest side a source picture is sent at; larger ones are scaled down first
@@ -529,10 +546,12 @@ def store(user_id: str, image: GeneratedImage) -> tuple[str, str]:
 
 __all__ = [
     "EDITING_MODELS",
+    "EDIT_ONLY_MODELS",
     "GeneratedImage",
     "ImageError",
     "SourceImage",
     "compose_prompt",
+    "draws_images",
     "edit_prompt",
     "edits_images",
     "generate",

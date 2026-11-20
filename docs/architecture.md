@@ -36,11 +36,20 @@ instruction (`imagegen.generate(source=…)`), without `image_config` so the pic
 shape. Only catalogue models with `editsImages` draw an edit: the gateway's
 `model_info.kchat_edits_images` when declared, else `imagegen.EDITING_MODELS`, the models checked
 with one real edit call each (Gemini 3 Pro Image, GPT-5.4 Image 2, Seedream 5.0 Flash, Grok
-Imagine Image 2.0; Recraft V4.1 takes a picture but did not follow the instruction, and the
-self-hosted shims draw from text only). The source picture is egress like an attachment: a
-strict-local conversation, or an uploaded picture (or one made from it) under
-`internal_data_strict_local`, keeps it inside, and since no strict-local model edits the call is
-refused with `image_edit_strict_local`; a picked model that only draws gets
+Imagine Image 2.0, and the self-hosted Qwen-Image-Edit 2511; Recraft V4.1 takes a picture but
+did not follow the instruction, and the self-hosted Z-Image and Qwen-Image draw from text only).
+A model that only edits (`drawsImages` false: the gateway's `model_info.kchat_draws_images`
+when declared, else `imagegen.EDIT_ONLY_MODELS`) is on no surface — its catalogue `kinds` drop
+`image` — so no picker, default or strict-local pick asks it for a new picture; Qwen-Image-Edit
+2511's shim refuses a request without a picture. Its shim takes the picture from the last user
+message's `image_url` part, which must be a data URL, and calls vLLM-Omni `/v1/images/edits`.
+The source picture is egress like an attachment: a strict-local conversation (a Super Agent
+`super_strict` one too, whatever model the conversation last held), a picture a strict-local
+model drew, or an uploaded picture (or one made from it) under `internal_data_strict_local`
+keeps it inside. Kept inside, the edit runs on a strict-local model that edits (`_media_model`
+with the `image_edit` pseudo-kind, which lists models by `editsImages`), whatever picture
+model the person picked, so the picture never reaches an external model; with none the call
+is refused with `image_edit_strict_local`. Outside, a picked model that only draws gets
 `image_model_cannot_edit`. The result is a new image artifact whose `data.editOf` names the
 source (kept as it was), `data.lineage` the line's first picture and `data.editVersion` its
 number; the charge is a picture's, in the ledger as `image.edit`. No model behind the gateway's

@@ -296,6 +296,11 @@ def _shape(entry: dict[str, Any]) -> dict[str, Any] | None:
         modality = mapped if mapped else "chat"
 
     kinds = override.get("kinds") or _KINDS_FOR.get(modality, ["chat"])
+    # a picture model that only changes a given picture is on no surface: nothing asks it for a
+    # new picture, and edits find it by `editsImages`
+    draws = modality != "image" or imagegen.draws_images(model_id, info)
+    if not draws:
+        kinds = [kind for kind in kinds if kind != "image"]
     provider = (
         override.get("provider")
         or info.get("litellm_provider")
@@ -384,6 +389,8 @@ def _shape(entry: dict[str, Any]) -> dict[str, Any] | None:
         "aspects": imagegen.aspects_for(model_id) if modality == "image" else [],
         # changes a given picture (`imagegen.edits_images`); generation-only models do not
         "editsImages": modality == "image" and imagegen.edits_images(model_id, info),
+        # draws a new picture from a prompt (`imagegen.draws_images`); false for edit-only models
+        "drawsImages": modality == "image" and draws,
         "creditCost": credit_cost,
         "inputCreditCost": input_credit_cost,
         "contextWindow": context,
@@ -433,6 +440,7 @@ def _adapter_entries() -> list[dict[str, Any]]:
             "creditPerImage": 0,
             "aspects": imagegen.aspects_for(m["id"]) if m["modality"] == "image" else [],
             "editsImages": False,
+            "drawsImages": m["modality"] == "image",
         }
         for m in ADAPTER_MODELS
     ]

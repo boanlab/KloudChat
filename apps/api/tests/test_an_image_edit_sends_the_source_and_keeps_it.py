@@ -1,7 +1,8 @@
 """이미지 고치기: a picture changed as told by a model that edits. The source goes to the model as
 an image content part, the result is a new version linked to it (the source kept as it was),
 billed like a picture; models that only draw are refused, and strict-local or internal material
-keeps the picture inside, where no model edits."""
+keeps the picture inside, refused here where no strict-local model edits (with one:
+test_a_strict_local_picture_is_edited_inside)."""
 
 from __future__ import annotations
 
@@ -64,7 +65,7 @@ def _png(colour: tuple[int, int, int], size: int = 64) -> bytes:
 def test_only_models_checked_to_edit_say_they_edit():
     for model_id in imagegen.EDITING_MODELS:
         assert imagegen.edits_images(model_id, {})
-    # not checked, so off until the gateway declares it; self-hosted shims draw from text
+    # not checked, so off until the gateway declares it; the self-hosted drawers draw from text
     assert not imagegen.edits_images("google/gemini-nano-banana-2.1", {})
     assert not imagegen.edits_images("bytedance-seed/seedream-5-5", {})
     assert not imagegen.edits_images("strict-local/z-image-turbo", {})

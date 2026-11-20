@@ -156,6 +156,8 @@ export interface ModelInfo {
   aspects?: string[]
   /** Image only: changes a given picture as told (「이미지 고치기」); generation-only models do not. */
   editsImages?: boolean
+  /** Image only: draws a new picture from a prompt; false for an edit-only model, which is on no surface. */
+  drawsImages?: boolean
   /** Flat credits per call, for models billed per clip rather than per token. */
   creditPerCall?: number
   /** Which of the five surfaces may select this model. */
