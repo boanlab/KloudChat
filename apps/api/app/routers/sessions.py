@@ -108,6 +108,7 @@ from app.services import (
     calculation_policy,
     chart_code,
     check_skills,
+    code_file_save,
     complex_turn,
     conversation_summary,
     coverage,
@@ -8561,6 +8562,12 @@ async def _answer_turn(
     new_artifact: str | None = None
     if stored_content and not failed and not skip_completion_work and published is None \
             and not paused_turn:
+        if (not ctx.pending_artifacts and not form_card and not canned_answer
+                and not any(saved.get("changed") for saved in (ctx.hwp, ctx.docx, ctx.pptx))
+                and (owed := code_file_save.file_owed(ctx.asked, content, ctx.code_runs))):
+            # a program or page the person asked for that the model wrote but never saved:
+            # kept as the artifact it should have been
+            ctx.pending_artifacts.append(owed.request())
         new_artifact = await _store_artifacts(
             user_id=user_id,
             session_id=session_id,
