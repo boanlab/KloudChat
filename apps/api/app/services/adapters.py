@@ -53,9 +53,13 @@ ADAPTER_MODELS: list[dict[str, Any]] = [
 
 # keyed on `model_name`, merged over `/model/info`
 MODEL_OVERRIDES: dict[str, dict[str, Any]] = {
-    # vision only for contained models: privacy guard can't inspect images
+    # both twins of a Qwen3.8 model take images (12 image tasks: flash 9.62, 27B 9.75 of 10).
+    # What is sent to a model is still decided by `workspace_context.reads_pictures`: the privacy
+    # guard cannot inspect images, so an attached picture goes only to a strict-local model.
     "strict-local/qwen3.8-27b": {"supports_vision": True},
     "strict-local/qwen3.8-flash": {"supports_vision": True},
+    "local/qwen3.8-27b": {"supports_vision": True},
+    "local/qwen3.8-flash": {"supports_vision": True},
     # ids whose dots became dashes, or whose vendor writes the name with a hyphen
     "bytedance-seed/seedream-5-0-flash": {"label": "Seedream 5.0 Flash"},
     "openai/gpt-5.4-image-2": {"label": "GPT-5.4 Image 2"},
