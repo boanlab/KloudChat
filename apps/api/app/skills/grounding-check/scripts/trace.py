@@ -90,6 +90,10 @@ FULL_DAY = re.compile(
 )
 #: 「20261014」 in a file's name.
 COMPACT_DAY = re.compile(r"(?<!\d)(?P<y>20\d{2})(?P<m>[01]\d)(?P<d>[0-3]\d)(?!\d)")
+#: 「2026-11-03~11-10」, 「2026-09-21 – 10-02」: a span whose end day drops the year
+DASH_SPAN_END = re.compile(
+    r"(?<![\d.])(?P<y>(?:19|20)\d{2})-(?P<m>\d{1,2})-(?P<d>\d{1,2})\s{0,2}[~∼〜–—-]\s{0,2}"
+    r"(?P<m2>\d{1,2})-(?P<d2>\d{1,2})(?![\d-])")
 MONTH_DAY = re.compile(
     rf"(?<![\d.])(?P<m>\d{{1,2}})\s{{0,2}}월\s{{0,2}}(?P<d>\d{{1,2}})\s{{0,2}}일(?:\s{{0,2}}\([{_WD}]\))?")
 #: 「10/9(금)」, 「10. 9.(금)」: a short day, read only with its weekday or 「까지」 after it.
@@ -431,6 +435,64 @@ def near(value: float, known: float, places: int, known_places: int | None = Non
     return abs(value - known) <= slack + 1e-9 * max(1.0, known)
 
 
+#: a written formula of plain numbers and its result: 「500,000 × 3.5% × (78/12) = 113,750원」
+_FORMULA = re.compile(
+    r"(?P<expr>(?:[(（]\s{0,2})*\d[\d,]*(?:\.\d+)?\s{0,2}%?"
+    r"(?:\s{0,2}[)）]*\s{0,2}[×x*÷/+\-−–]\s{0,2}[(（]*\s{0,2}\d[\d,]*(?:\.\d+)?\s{0,2}%?){1,8}\s{0,2}[)）]*)"
+    r"\s{0,2}=\s{0,2}(?:\*\*)?(?P<result>\d[\d,]*(?:\.\d+)?)(?![\d,.]*\s{0,2}[×x÷/+\-−–=])")
+_OPERAND_NUM = re.compile(r"\d[\d,]*(?:\.\d+)?")
+
+
+def _evaluate(expr: str) -> float | None:
+    """The value of a plain arithmetic expression (× ÷ − and 「3.5%」 read), or `None`."""
+    import ast
+    import operator
+    text = (expr.replace(",", "").replace("×", "*").replace("x", "*").replace("÷", "/")
+            .replace("−", "-").replace("–", "-").replace("（", "(").replace("）", ")"))
+    text = re.sub(r"(\d+(?:\.\d+)?)\s*%", r"(\1/100)", text)
+    ops = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul, ast.Div: operator.truediv}
+
+    def run(node: ast.AST) -> float:
+        if isinstance(node, ast.Expression):
+            return run(node.body)
+        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+            return float(node.value)
+        if isinstance(node, ast.BinOp) and type(node.op) in ops:
+            return ops[type(node.op)](run(node.left), run(node.right))
+        raise ValueError(expr)
+    try:
+        return run(ast.parse(text, mode="eval"))
+    except (SyntaxError, ValueError, ZeroDivisionError):
+        return None
+
+
+def confirmed_results(lines: list[str], grounded: set[float]) -> set[float]:
+    """Results of the formulas the text writes whose arithmetic holds on grounded operands: each
+    operand a grounded figure (also as a rate, 0.154 for 15.4%) or a small count (≤ 120: months,
+    terms, the 78 of 1+…+12). A worked result backs that figure wherever the text repeats it."""
+    def grounded_operand(v: float) -> bool:
+        return (v == int(v) and v <= 120) or any(
+            abs(v - g) <= 1e-9 * max(1.0, g) or abs(v * 100 - g) <= 1e-6 * max(1.0, g)
+            for g in grounded)
+    held = []
+    for line in lines:
+        for m in _FORMULA.finditer(line):
+            value = _evaluate(m.group("expr"))
+            result = float(m.group("result").replace(",", ""))
+            places = len(m.group("result").split(".", 1)[1]) if "." in m.group("result") else 0
+            if value is not None and near(result, value, places):
+                held.append((result, [float(x.replace(",", "")) for x in _OPERAND_NUM.findall(m.group("expr"))]))
+    out: set[float] = set()
+    grounded = set(grounded)
+    while True:
+        # a confirmed result is an operand the next formula may use (113,750 → 55,000 + 113,750)
+        new = {r for r, operands in held if r not in out and all(grounded_operand(v) for v in operands)}
+        if not new:
+            return out
+        out |= new
+        grounded |= new
+
+
 def arith(pool: list[tuple[float, str]], family: str) -> list[float]:
     """Plain arithmetic of nearby numbers giving a `family` value: sums, gaps, shares, price × count."""
     pool = sorted({(abs(v), f) for v, f in pool if v and abs(v) != 1})[:60]
@@ -602,6 +664,10 @@ class Sources:
                 self._day(int(m.group("y")), int(m.group("m")), int(m.group("d")))
         for m in MONTH_DAY.finditer(text):
             self._day(None, int(m.group("m")), int(m.group("d")))
+        for m in DASH_SPAN_END.finditer(text):
+            # 「2026-11-03~11-10」: the end of a span written short after a full start day
+            y, m1, m2 = int(m.group("y")), int(m.group("m")), int(m.group("m2"))
+            self._day(y + (m2 < m1), m2, int(m.group("d2")))
         for m in re.finditer(r"(?<![\d./])(\d{1,2})\s{0,1}[/.]\s{0,1}(\d{1,2})(?![\d/])", text):
             self._day(None, int(m.group(1)), int(m.group(2)))
         for m in YEAR_MONTH.finditer(text):
@@ -1111,11 +1177,17 @@ def check(text: str, material: str, computed: list[str] | str | None = None,
         big = sorted({(abs(a["value"]), _family(a["unit"])) for a in accepted if abs(a["value"]) >= 100})[:60]
         pools: dict[tuple, list[float]] = {}
         changed = False
+        confirmed = confirmed_results(lines, {abs(a["value"]) for a in accepted}
+                                      | {abs(v) for v, _, _ in sources.values})
         for n in numbers:
             if n["ok"]:
                 continue
             places = _decimals(n["match"].group("num"))
             family = _family(n["unit"])
+            if any(near(n["value"], c, places) for c in confirmed):
+                # the result of a formula the text writes and code confirms
+                n["ok"] = changed = True
+                continue
             if any((not wu or not family or wu == family) and near(n["value"], w, places, wp)
                    for w, wp, wu in written):
                 n["ok"] = changed = True

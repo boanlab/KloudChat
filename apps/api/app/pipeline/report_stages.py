@@ -355,6 +355,18 @@ class Assemble(Base):
             project_reference_lines.append(
                 f"- [{ordinal}] {title}" + (f" ({name})" if title != name else ""))
             project_selected += not attached
+        # an attached list of numbered works (abstracts, a bibliography): a source per work,
+        # cited by its own number
+        split = citations.split_numbered_works(findings.sources, list(req.untrusted))
+        if split is not findings.sources:
+            project_ids = {str(item.get("id") or "") for item in req.project_sources or []}
+            findings.sources[:] = split
+            project_reference_lines = [
+                f"- [{s['ordinal']}] {s['title']}"
+                + (f" ({s['fileName']})" if s.get("fileName") and s["fileName"] != s["title"] else "")
+                for s in split if s.get("attached")
+                or str(s.get("id") or "").split("#")[0] in project_ids
+                or str(s.get("id") or "").startswith("project-")]
         mat.sources = findings.sources
 
         # research log for the report artifact
@@ -1733,6 +1745,10 @@ class Figures(Base):
     async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
         report, req = _report(), bundle.request
         request, sections = req.text, bundle.document.sections
+        # a mark written inside a table row stands after the table (its row would break it)
+        for section in sections:
+            if isinstance(section.get("content"), str):
+                section["content"] = report.figure_marks_out_of_tables(section["content"])
         # planned on written sections; skipped for peer review, one-page 개조식, 회의록; approved pictures kept
         draws_nothing = report._genre_rule(request).startswith("Genre: 학회 피어리뷰") or (
             (bundle.spec.settings.draws == "when-asked" or report.form_document(request))
@@ -2330,7 +2346,8 @@ def mark_policy(sections: list[dict], still: list, doc: verify.Doc | None = None
         if not 0 <= index < len(out):
             continue
         content = str(out[index].get("content") or "")
-        out[index]["content"] = stated_policy.mark(content, sentence, said)
+        # a sentence an earlier check already marked reads one mark (「[1] (확인 필요)」)
+        out[index]["content"] = value_guard.tidy_marks(stated_policy.mark(content, sentence, said))
     return out
 
 

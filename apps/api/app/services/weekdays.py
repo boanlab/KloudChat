@@ -34,6 +34,8 @@ _DATE = re.compile(
 _YEAR = re.compile(r"(?<!\d)(20\d{2})\s{0,2}(?:년|학년도|[.\-/]\s{0,2}\d{1,2}\s{0,2}[.\-/])")
 #: year set for following text: 「2027학년도」, 「2027년」
 _ANCHOR = re.compile(r"(?<!\d)(20\d{2})\s{0,2}(학년도|년)")
+#: a 「NNNN년」 that begins a full date, not a heading: 「2027년 1월 2일」
+_INLINE_DAY = re.compile(r"(20\d{2})\s{0,2}년\s{0,2}(\d{1,2})\s{0,2}월\s{0,2}(\d{1,2})\s{0,2}일")
 #: weekday in a matched date, with surroundings
 _WRITTEN = re.compile(rf"(\(\s{{0,2}}|\s)[{WEEKDAYS}]((?:요일)?\s{{0,2}}\)|요일$)")
 _FENCE = re.compile(r"```[\s\S]*?```")
@@ -213,6 +215,7 @@ def fix_weekdays(text: str, *, context: str = "",
     last = 0
     year: int | None = None
     year_at = -1
+    setter: dt.date | None = None
     month: int | None = None
     for m in _DATE.finditer(text):
         if any(a <= m.start() < b for a, b in fences):
@@ -224,6 +227,7 @@ def fix_weekdays(text: str, *, context: str = "",
             if g["y"]:
                 year, month, year_at = int(g["y"]), int(g["m"]), m.start()
                 day = dt.date(year, month, int(g["d"]))
+                setter = day
                 wd = g["a_wd"] or g["a_wd2"]
             else:
                 if g["m2"]:
@@ -238,8 +242,27 @@ def fix_weekdays(text: str, *, context: str = "",
                 if anchored is not None and anchored[1] > year_at:
                     # heading/year after the last full date
                     day = dt.date(anchored[0], month, dom)
+                    inline = _INLINE_DAY.match(text, anchored[1])
+                    near = _nearest(month, dom, today)
+                    if inline and near is not None and near[1] and near[0].year != day.year:
+                        try:
+                            said = dt.date(int(inline.group(1)), int(inline.group(2)),
+                                           int(inline.group(3)))
+                        except ValueError:
+                            said = None
+                        if said is not None and abs((said - today).days) <= _SURE_DAYS:
+                            # the year of a full date near today (「2027년 1월 2일까지」), not a
+                            # heading: a later bare 「12월 21일(월)」 near today is the clock's
+                            day = near[0]
                 elif year is not None or given_year is not None:
                     day = dt.date(year or given_year, month, dom)
+                    near = _nearest(month, dom, today) if year is not None else None
+                    if (near is not None and near[1] and near[0].year != day.year
+                            and setter is not None and abs((setter - today).days) <= _SURE_DAYS):
+                        # a year carried from a full date near today (「2027년 1월 2일까지」)
+                        # does not move a later 「12월 21일(월)」 a year on: near today a bare
+                        # day is the clock's
+                        day = near[0]
                 else:
                     near = _nearest(month, dom, today)
                     if near is None:

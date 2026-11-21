@@ -486,13 +486,20 @@ _FRAME_TAIL = (
 )
 
 
+#: a clock time, or a span of two: 「09:30」, 「12:00~13:00」
+_CLOCK = r"(?<![\d:])\d{1,2}:\d{2}(?:\s?[~∼〜–-]\s?\d{1,2}:\d{2})?(?![\d:])"
+
+
 def _facts_line(request: str, material: list[str] | None = None) -> str:
     """Prompt line of numbers in the request and the attachments (see `report._facts_line`)."""
 
     def figures(text: str, seen: list[str]) -> list[str]:
         out: list[str] = []
         for match in re.finditer(
-            r"\d[\d,]*(?:\.\d+)?\s*(?:억|만|천|백)?\s*(?:원|%|퍼센트|시간|분|초|일|주|개월|년|회|건|명|대|장)?",
+            # a clock time or span whole (「09:30」, 「12:00~13:00」), never its hour and
+            # minutes apart
+            _CLOCK + r"|\d[\d,]*(?:\.\d+)?\s*(?:억|만|천|백)?\s*"
+            r"(?:원|%|퍼센트|시간|분|초|일|주|개월|년|회|건|명|대|장)?",
             text,
         ):
             token = re.sub(r"\s+", "", match.group(0))
@@ -1884,7 +1891,7 @@ def _parse_outline(text: str) -> tuple[str, str, list[dict[str, str]]]:
         # plain bullet/numbered lines
         for line in text.splitlines():
             if re.match(r"^\s*(?:[-*+]|\d+[.)])\s+\S", line):
-                heading = re.sub(r"^\s*(?:[-*+]|\d+[.)])\s*", "", line).strip(" #").strip()
+                heading = re.sub(r"^\s*(?:[-*+]|\d+[.)](?!\d))\s*", "", line).strip(" #").strip()
                 if heading:
                     plan.append({"title": heading, "layout": "bullets"})
 
@@ -2258,6 +2265,11 @@ _ASKS_QUIZ = re.compile(
     r"퀴즈|확인\s?문(?:제|항)|형성\s?평가|(?:연습|평가|객관식|주관식|O\s?/?\s?X)\s?문(?:제|항)"
     r"|(?<![\d,])\d{1,2}\s?(?:개\s?)?문(?:제|항)\s?(?:을|를)?\s?(?:넣|내|포함|추가|출제|만들|구성)")
 _ASKS_DECISION = re.compile(r"요청 사항|요청사항|승인|의사\s?결정|결정 요청")
+#: the request puts a quiz's answers in the speaker notes: 「정답과 해설은 발표자 노트에」
+_ANSWERS_IN_NOTES = re.compile(
+    r"(?:정답|해설|답)[^.\n]{0,20}(?:발표자\s?)?노트|answers?[^.\n]{0,30}(?:speaker\s)?notes", re.I)
+#: an answer the notes give: 「1번 정답: ②」, 「답은 O」, 「Answer: B」
+_ANSWER_SAID = re.compile(r"정답|답은|답\s?[:：]|answer\s?(?:is|[:：])", re.I)
 #: a lesson's length (not 「10분 발표」) and a lesson (not 「교육부」「교육비」)
 _ASKS_MINUTES = re.compile(r"(\d{2,3})\s?분(?!\s?(?:발표|브리핑|보고|회의|스피치|피치))")
 _ASKS_LESSON = re.compile(
@@ -2337,6 +2349,15 @@ def requested_contents(slides: list[dict], request: str) -> dict[int, str]:
                          f"Q1~Q{count}, each one line with O/X or options; keep the questions "
                          "already there, and put the answers and explanations in the speaker "
                          "notes.")
+        if (at is not None and at not in needs
+                and _ANSWERS_IN_NOTES.search(lead_instruction(request or ""))
+                and (have := quiz_questions(slides, at))
+                and len(_ANSWER_SAID.findall(str(slides[at].get("notes") or ""))) < have):
+            # 「퀴즈 정답과 해설은 발표자 노트에」 with notes that only lead into the quiz
+            needs[at] = (f"Keep the {have} quiz questions on the screen as they are. "
+                         "In the speaker "
+                         "notes give each question's answer and a one-line explanation, in order "
+                         "(「1번 정답: … — …」), from the material and the earlier slides.")
     if _ASKS_DECISION.search(asked):
         at = last_titled(re.compile(r"요청|승인|결정|제안"))
         if at is not None and not (
@@ -2374,7 +2395,9 @@ _DECK_IN_NOTES = re.compile(r"(?:^|\s)#{1,3}\s|```|\*{1,2}발표\s?노트\*{1,2}
 #: Next slides' JSON run on after a note.
 _JSON_RUN_ON = re.compile(
     r'\\?"\s*[}\]]{1,4}\s*,?\s*[\[{]\s*\\?"(?:title|bullets|layout|speaker_notes|notes|body|rows|chart|slides)'
-    r'\\?"\s*:|\\?"\s*,\s*\\?"(?:title|bullets|layout|speaker_notes|notes|body|rows|chart)\\?"\s*:')
+    r'\\?"\s*:|\\?"\s*[}\]]{0,4}\s*,\s*\\?"(?:title|bullets|layout|speaker_notes|notes|body|rows|chart)\\?"\s*:')
+#: a JSON list of strings run into a note: 「…발굴 방법", "3. 중간 점검", …」
+_NOTE_LIST_RUN_ON = re.compile(r'\\?"\s*,\s*\\?"')
 #: Latin words a Korean deck may keep: names, acronyms, units, links.
 _KEPT_LATIN = re.compile(r"https?://\S+|\b[A-Z0-9][A-Z0-9.&/+-]{0,9}\b|\b[A-Z][a-z]{1,20}(?:[A-Z][a-z]{1,20}){1,6}\b")
 
@@ -2412,6 +2435,13 @@ def strip_json_residue(slides: list[dict]) -> list[int]:
             clean = re.sub(r'\s*\\?"\s*\}\s*$', "", clean).replace('\\"', '"').strip()
             if run_on := _JSON_RUN_ON.search(clean):
                 clean = clean[:run_on.start()].rstrip()
+            if key == "notes" and (run_on := _NOTE_LIST_RUN_ON.search(clean)):
+                # the note up to its last whole sentence before the run-on list
+                head = clean[:run_on.start()]
+                ends = [m.end() for m in re.finditer(r"[.!?。](?=\s|$)", head)]
+                clean = head[:ends[-1]].strip() if ends else ""
+            if key == "notes" and clean.endswith('"') and clean.count('"') % 2:
+                clean = clean[:-1].rstrip()  # a stray closing quote: 「…잡아 줍니다."」
             if key == "notes" and (rest := _DECK_IN_NOTES.search(clean)):
                 # whole-deck Markdown pasted after the note
                 clean = clean[:rest.start()].rstrip(" -—")
@@ -2608,7 +2638,7 @@ def _clean_bullets(value: Any) -> list[str]:
             item = " – ".join(str(v).strip() for v in item.values() if str(v).strip())
         elif isinstance(item, list):
             item = " – ".join(str(v).strip() for v in item if str(v).strip())
-        text = re.sub(r"^\s*(?:[-*+]|\d+[.)])\s*", "", str(item)).strip()
+        text = re.sub(r"^\s*(?:[-*+]|\d+[.)](?!\d))\s*", "", str(item)).strip()
         text = re.sub(r"\*\*(.+?)\*\*", r"\1", text).replace("`", "").strip()
         text = text.splitlines()[0].strip() if text else ""
         # table row (2+ bars) is no line; card 「제목 | 설명」 has one
@@ -2797,7 +2827,8 @@ def suggest_patterns(
 
 #: 「정확도: 매칭 92%」: short head, separator, line.
 _HEAD_LINE = re.compile(
-    r"^(?P<head>[^:：|–—]{2,14}?)\s{0,2}(?:[:：|]|\s[–—-]\s)\s{0,2}(?P<body>.{4,200})$"
+    # a colon before a digit is a clock time (「12:00 점심」), not a label's end
+    r"^(?P<head>[^:：|–—]{2,14}?)\s{0,2}(?:[:：](?!\d)|\||\s[–—-]\s)\s{0,2}(?P<body>.{4,200})$"
 )
 
 
@@ -4078,11 +4109,17 @@ async def _write_slides(
             slide["body"] = UNWRITTEN
 
         if notes:
-            notes = notes_only_given(notes_without_echo(notes, slide), slide, request)
+            notes = notes_only_given(notes_without_echo(
+                notes_without_prompt(notes, ask_lines(request)), slide), slide, request)
         if slide.get("layout") not in _STRUCTURAL:
             # notes under two sentences: re-ask once (per-deck budget)
             if _sentence_count(notes) < _NOTE_SENTENCES and echo_reasks < 4:
                 echo_reasks += 1
+                # what a re-asked note must not read back: the prompt's own lines and the
+                # request's ask lines (not its data lines, whose facts a note may say)
+                asked_for = _NOTES_PROMPT.format(
+                    heading="", shown="", neighbours="", language="",
+                    request=ask_lines(request))
                 try:
                     said, more = await _complete(
                         model,
@@ -4117,7 +4154,7 @@ async def _write_slides(
                     usage["inputTokens"] += more["inputTokens"]
                     usage["outputTokens"] += more["outputTokens"]
                     usage_fields.add_cached(usage, more)
-                    plain = _plain_notes(said)
+                    plain = notes_without_prompt(_plain_notes(said), asked_for)
                     if deck_language(slides) != "en":
                         plain = _korean_sentences(plain)
                     added = notes_only_given(notes_without_echo(plain, slide), slide, request)
@@ -4214,6 +4251,14 @@ async def _write_slides(
     touched |= set(mend_scaled_numbers(slides, given_text))
     touched |= set(end_without_next(slides))
     touched |= set(unwrap_known_values(slides, given_text))
+    # a timeline asked for the whole schedule keeps every dated item listed (request or material)
+    from app.services.context import instruction_part as _instruction
+    for index, slide in enumerate(slides):
+        kept = keep_listed_dates(
+            slide, _instruction(request or ""), "\n".join(untrusted_context or []))
+        if kept is not slide:
+            slides[index] = kept
+            touched.add(index)
     # placeholders or name-only parts rewritten once
     needs = requested_contents(slides, request)
     for index, slide in enumerate(slides):
@@ -6793,27 +6838,64 @@ _DATED_ITEM = re.compile(
 )
 
 
-def keep_listed_dates(slide: dict, instruction: str) -> dict:
-    """Timeline keeps every dated item the instruction listed, in order."""
+#: a list item of the material that begins with its date: 「3. 12/18(금) 디자인 시안 3종 1차 제출」,
+#: 「- 2027-01-08(금) 소비자 선호도 조사 완료」
+_LISTED_MILESTONE = re.compile(
+    r"^\s{0,4}(?:\d{1,2}[.)]|[-*•·])\s{0,3}"
+    r"(?P<date>(?:(?:19|20)\d{2}[-./])?\d{1,2}[-./]\d{1,2}|\d{1,2}월\s*\d{1,2}일)\.?"
+    r"(?:\s{0,2}\([월화수목금토일]\))?\s{1,3}(?P<what>[^\n]{2,60}?)\s*$", re.M)
+#: a deck the request asks to show every milestone of: 「일정(마일스톤 전부)」, 「모든 일정」
+_ALL_MILESTONES = re.compile(
+    r"마일스톤|일정\s?(?:\(|전부|모두|전체)|(?:전부|모든|전체)\s?일정|all (?:the )?milestones",
+    re.I)
+
+
+#: a day in any of 「11/26」, 「11월 26일」, 「2026-11-26」, 「2026. 11. 26.」: its month and day
+_DATE_KEY = re.compile(
+    r"(?:(?:19|20)\d{2}\s?[-./년]\s?)?(?P<m>\d{1,2})\s?(?:[-./]|월)\s?(?P<d>\d{1,2})(?!\d)")
+
+
+def listed_milestones(instruction: str, material: str = "") -> list[tuple[str, str]]:
+    """Dated items to keep on a timeline: those the instruction lists, else — when it asks for
+    the schedule whole — the material's dated list items, in order."""
+    listed = [(d.strip(), what.strip()) for d, what in _DATED_ITEM.findall(instruction or "")]
+    if len(listed) >= 2 or not _ALL_MILESTONES.search(instruction or ""):
+        return listed
+    items = [(m.group("date"), m.group("what").strip())
+             for m in _LISTED_MILESTONE.finditer(material or "")]
+    return items if len(items) >= 2 else listed
+
+
+def keep_listed_dates(slide: dict, instruction: str, material: str = "") -> dict:
+    """Timeline keeps every dated item the instruction listed (or, asked for the whole schedule,
+    the material's dated list), in order."""
     if slide.get("layout") != "timeline" or not isinstance(slide.get("timeline"), list):
         return slide
-    listed = [(d.strip(), what.strip()) for d, what in _DATED_ITEM.findall(instruction or "")]
+    listed = listed_milestones(instruction, material)
     if len(listed) < 2:
         return slide
 
     def key(date: str) -> str:
-        digits = re.findall(r"\d+", date)
-        return "/".join(str(int(x)) for x in digits[:2])
+        m = _DATE_KEY.search(date or "")
+        return f"{int(m.group('m'))}/{int(m.group('d'))}" if m else ""
 
-    present = {key(str(pair[0])) for pair in slide["timeline"] if pair}
+    pairs = [list(pair) for pair in slide["timeline"] if isinstance(pair, list) and len(pair) > 1]
+    # the writer may put the date on either side (「킥오프 미팅 | 11/26(목)」)
+    date_right = sum(bool(key(str(p[1]))) and not key(str(p[0])) for p in pairs) > len(pairs) / 2
+    when = (lambda p: str(p[1])) if date_right else (lambda p: str(p[0]))
+    present = {key(when(pair)) for pair in pairs}
     missing = [(d, what) for d, what in listed if key(d) not in present]
     if not missing:
         return slide
     order = {key(d): i for i, (d, _) in enumerate(listed)}
-    merged = [list(pair) for pair in slide["timeline"] if pair] + [[d, w] for d, w in missing]
-    merged.sort(key=lambda pair: order.get(key(str(pair[0])), len(order)))
-    count = _PAIRED["timeline"][0]
-    return {**slide, "timeline": merged[:count]}
+    merged = pairs + [[w, d] if date_right else [d, w] for d, w in missing]
+    merged.sort(key=lambda pair: order.get(key(when(pair)), len(order)))
+    # every listed milestone has its place (eight still fit one timeline)
+    count = max(_PAIRED["timeline"][0], min(len(listed), 8))
+    _, left_max, right_max = _PAIRED["timeline"]
+    return {**slide, "timeline": [[_cut(" ".join(str(p[0]).split()), left_max),
+                                   _cut(" ".join(str(p[1]).split()), right_max)]
+                                  for p in merged[:count]]}
 
 
 def _notes_in_json(text: str) -> str | None:
@@ -6856,6 +6938,37 @@ def _korean_sentences(text: str) -> str:
         if hangul and hangul * 2 >= len(re.findall(r"[A-Za-z]", sentence)):
             kept.append(sentence)
     return " ".join(kept)
+
+
+#: a note sentence about the output, not to the audience: 「두 문장만 출력합니다」,
+#: 「Here are the notes」
+_OUTPUT_TALK = re.compile(
+    r"출력(?:합니다|하겠습니다|했습니다)|문장만\s?(?:씁|작성|출력)|덧붙인\s?조건|"
+    r"(?:^|\s)(?:Output only|Here (?:are|is) the|"
+    r"I will (?:now )?write)\b", re.I)
+
+
+def ask_lines(request: str) -> str:
+    """The request's ask lines (「… 만들어 줘.」, 「덧붙인 조건: …」), not its data lines
+    (「- 고객: …」)."""
+    return "\n".join(line for line in (request or "").split("\n")
+                     if line.strip() and not re.match(r"\s*(?:[-*•·]|\d{1,2}[.)])\s", line))
+
+
+def notes_without_prompt(text: str, prompt: str) -> str:
+    """A re-asked note without the sentences that copy its own prompt (an instruction line,
+    the request pasted under 「Original request」) or talk about the output (「두 문장만
+    출력합니다」): new model text never reads its prompt back to the audience."""
+    flat = re.sub(r"\s+", "", prompt or "")
+    kept = []
+    for sentence in [x for x in units.SENTENCE_BREAK.split((text or "").strip()) if x.strip()]:
+        squeezed = re.sub(r"\s+", "", sentence)
+        copied = len(squeezed) >= 20 and any(
+            squeezed[i:i + 20] in flat for i in range(0, len(squeezed) - 19, 5))
+        if copied or _OUTPUT_TALK.search(sentence):
+            continue
+        kept.append(sentence)
+    return " ".join(kept).strip()
 
 
 def _plain_notes(text: str) -> str:
