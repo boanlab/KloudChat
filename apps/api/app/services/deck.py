@@ -486,13 +486,18 @@ _FRAME_TAIL = (
 )
 
 
+#: a clock time, or a span of two: 「09:30」, 「12:00~13:00」
+_CLOCK = r"(?<![\d:])\d{1,2}:\d{2}(?:\s?[~∼〜–-]\s?\d{1,2}:\d{2})?(?![\d:])"
+
+
 def _facts_line(request: str, material: list[str] | None = None) -> str:
     """Prompt line of numbers in the request and the attachments (see `report._facts_line`)."""
 
     def figures(text: str, seen: list[str]) -> list[str]:
         out: list[str] = []
         for match in re.finditer(
-            r"\d[\d,]*(?:\.\d+)?\s*(?:억|만|천|백)?\s*(?:원|%|퍼센트|시간|분|초|일|주|개월|년|회|건|명|대|장)?",
+            # a clock time or span whole (「09:30」, 「12:00~13:00」), never its hour and minutes apart
+            _CLOCK + r"|\d[\d,]*(?:\.\d+)?\s*(?:억|만|천|백)?\s*(?:원|%|퍼센트|시간|분|초|일|주|개월|년|회|건|명|대|장)?",
             text,
         ):
             token = re.sub(r"\s+", "", match.group(0))
@@ -2818,7 +2823,8 @@ def suggest_patterns(
 
 #: 「정확도: 매칭 92%」: short head, separator, line.
 _HEAD_LINE = re.compile(
-    r"^(?P<head>[^:：|–—]{2,14}?)\s{0,2}(?:[:：|]|\s[–—-]\s)\s{0,2}(?P<body>.{4,200})$"
+    # a colon before a digit is a clock time (「12:00 점심」), not a label's end
+    r"^(?P<head>[^:：|–—]{2,14}?)\s{0,2}(?:[:：](?!\d)|\||\s[–—-]\s)\s{0,2}(?P<body>.{4,200})$"
 )
 
 

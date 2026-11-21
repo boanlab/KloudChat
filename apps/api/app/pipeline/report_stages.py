@@ -1745,6 +1745,10 @@ class Figures(Base):
     async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
         report, req = _report(), bundle.request
         request, sections = req.text, bundle.document.sections
+        # a mark written inside a table row stands after the table (its row would break it)
+        for section in sections:
+            if isinstance(section.get("content"), str):
+                section["content"] = report.figure_marks_out_of_tables(section["content"])
         # planned on written sections; skipped for peer review, one-page 개조식, 회의록; approved pictures kept
         draws_nothing = report._genre_rule(request).startswith("Genre: 학회 피어리뷰") or (
             (bundle.spec.settings.draws == "when-asked" or report.form_document(request))

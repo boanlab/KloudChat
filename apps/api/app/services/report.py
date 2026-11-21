@@ -1105,12 +1105,17 @@ def local_today() -> dt.date:
     return dt.datetime.now(zone).date()
 
 
+#: a figure for the closed list: a clock time or span whole (「09:30」, 「12:00~13:00」), else `_NUMBER`
+_FACT_NUMBER = re.compile(
+    r"(?<![\d:])\d{1,2}:\d{2}(?:\s?[~∼〜–-]\s?\d{1,2}:\d{2})?(?![\d:])|" + _NUMBER.pattern)
+
+
 def _facts_line(request: str, sources: list[dict[str, Any]], material: str = "") -> str:
     """Closed list of numbers the document may use: the request's, the attachments', the sources'."""
     found: list[str] = []
     # attachments too: figures only a meeting transcript holds are still allowed
     for text in [request, material, *[str(s.get("quote") or "") for s in sources]]:
-        for match in _NUMBER.finditer(text):
+        for match in _FACT_NUMBER.finditer(text):
             token = re.sub(r"\s+", "", match.group(0))
             if len(token) < 2 or token.isdigit() and len(token) > 4:
                 continue
@@ -2050,6 +2055,32 @@ def drop_table(body: str, table: str) -> str:
     out = re.sub(r"\n{3,}", "\n\n", f"{joined}\n\n{rest}" if rest else joined).strip("\n")
     # the figure stands in for the table: 「위 표에 따라」 → 「그림에 따라」
     return _TABLE_POINTER.sub("그림", out)
+
+
+#: a table row that only holds a figure mark: 「| [[그림: compare | … | …]] |  |」
+_FIGURE_ROW = re.compile(r"^[ \t]*\|[ \t]*(?P<mark>\[\[\s*그림\s*[:：].*?\]\])[ \t]*(?:\|[ \t]*)*$", re.M)
+
+
+def figure_marks_out_of_tables(body: str) -> str:
+    """A figure mark the writer put in a table row goes on its own line after the table, so the
+    table keeps its rows and taking the mark out later leaves no stray 「|」 lines."""
+    if "그림" not in (body or "") or "|" not in body:
+        return body
+    lines = body.split("\n")
+    out: list[str] = []
+    held: list[str] = []
+    for line in lines:
+        m = _FIGURE_ROW.match(line)
+        if m:
+            held.append(m.group("mark"))
+            continue
+        if held and not line.lstrip().startswith("|"):
+            out += ["", *held, ""] if line.strip() else ["", *held]
+            held = []
+        out.append(line)
+    if held:
+        out += ["", *held]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out))
 
 
 def figure_marks(body: str) -> list[dict[str, str]]:
@@ -3612,6 +3643,9 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
             text = _DANGLING_BRACKET.sub("", text) if lang == captions.EN else text
             text = re.sub(r"[ \t]{2,}", " ", _DANGLING_REF.sub(" ", text))
             text = re.sub(r" ([.,)])", r"\1", text)
+            # a paragraph that began with the reference begins with its next word
+            text = re.sub(r"(?m)^ (?=[^\s\-*+|>\d])", "", text)
+        text = figure_marks_out_of_tables(text)
         text = fix_number_particles(_FIGURE_OPEN.sub("", _FIGURE_MARK.sub("", text)))
         out.append({**sec, "content": text})
     return out
