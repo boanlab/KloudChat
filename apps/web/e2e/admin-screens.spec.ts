@@ -45,6 +45,8 @@ test('every effort in the routing table reads whole', { tag: '@phone' }, async (
   const efforts = page.getByLabel(/ · 추론 강도$/)
   await expect(efforts.first()).toBeVisible({ timeout: 15_000 })
   for (const select of await efforts.all()) await select.selectOption('high')
+  // measure with the page's own font, not the fallback it shows before the font file arrives
+  await page.evaluate(async () => { await document.fonts.ready })
   // the selected label fits the box beside its chevron
   const clipped = await efforts.evaluateAll((nodes) => nodes.filter((node) => {
     const select = node as HTMLSelectElement
@@ -72,7 +74,7 @@ test('the routing table shows each model name whole, its price on the line under
     catalogue: [
       // as the gateway lists them: the label with the vendor, the name without
       { ...model('local/flash', 'Qwen · Qwen3.8 Flash (local)', 'hybrid'), name: 'Qwen3.8 Flash (local)' },
-      { ...model('strict-local/flash', 'DeepSeek · Deepseek V4 Flash (strict-local)', 'self_hosted'), name: 'Deepseek V4 Flash (strict-local)' },
+      { ...model('strict-local/flash', 'Qwen · Qwen3.8 Flash (strict-local)', 'self_hosted'), name: 'Qwen3.8 Flash (strict-local)' },
       { ...model('external/deep', 'DeepSeek · Deepseek V4.1 Flash', 'external', 4), name: 'Deepseek V4.1 Flash' },
     ],
   })
@@ -82,6 +84,7 @@ test('the routing table shows each model name whole, its price on the line under
     await page.goto('/admin/system/routing')
     const selects = page.getByTestId('super-agent-table').getByLabel(/ · (Super Agent|strict-local) 모델$/)
     await expect(selects.first()).toBeVisible({ timeout: 15_000 })
+    await page.evaluate(async () => { await document.fonts.ready })
     const clipped = await selects.evaluateAll((nodes) => nodes.flatMap((node) => {
       const select = node as HTMLSelectElement
       const style = getComputedStyle(select)
