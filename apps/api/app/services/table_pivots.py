@@ -194,15 +194,19 @@ def aggregates(text: str) -> tuple[list[float], list[float]]:
         figures.add(float(n))
         for groups in groupings:
             figures.update(float(len(ix)) for ix in groups.values())
+        # each plain column's sums by group: two columns (「9월」 「10월」) compared group by group
+        column_sums: list[dict[tuple, float]] = []
         for m, row in enumerate(measures):
             worked: set[float] = set()
             total = sum(row)
             worked.update((total, total / n))
-            for groups in groupings:
+            mine: dict[tuple, float] = {("*",): total}
+            for g, groups in enumerate(groupings):
                 sums = []
                 for label, ix in groups.items():
                     s = sum(row[i] for i in ix)
                     sums.append(s)
+                    mine[(g, label)] = s
                     worked.update((s, s / len(ix), total - s))
                     if "~" in label:
                         # a run of months: its monthly mean
@@ -219,8 +223,17 @@ def aggregates(text: str) -> tuple[list[float], list[float]]:
             # a column's own sums stand at any size (「노트북 34대」); a worked mean, product or
             # gap only from 100 up, where it cannot stand in for any small count by chance
             figures.update(v for v in worked if m < plain and v == int(v) or abs(v) >= 100)
+            if m < plain:
+                column_sums.append(mine)
             if len(figures) > _MAX_VALUES:
                 break
+        for a, b in itertools.combinations(column_sums, 2):
+            # a group's sum from one column to another (방문자 31,500 → 33,195: 5.4% 증가)
+            for key, x in a.items():
+                y = b.get(key)
+                if x and y:
+                    shares.update((y / x * 100, x / y * 100, abs(y - x) / x * 100,
+                                   abs(y - x) / y * 100))
     return sorted(v for v in figures if v), sorted(shares)
 
 
