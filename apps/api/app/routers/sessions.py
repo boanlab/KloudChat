@@ -6222,6 +6222,7 @@ async def _send_message(
             [dict(q) for q in deck_purpose.questions] if deck_purpose is not None else [])) \
         if check_skills.of_stage(check_keys, "pre", specs) \
         else []
+    asking = gap_questions.in_language(asking, content)
     judge_model, judge_key = "", ""
     if gap_questions.needs_judge(asking):
         # judge reads material before routing: in-boundary model only, else nothing asked
