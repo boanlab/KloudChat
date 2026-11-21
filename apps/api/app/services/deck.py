@@ -7006,7 +7006,7 @@ _OUTPUT_TALK = re.compile(
     r"(?:^|\s)(?:Output only|Here (?:are|is) the|"
     r"I will (?:now )?write)\b"
     # a JSON object begun in place of speech: 「{ "document"」
-    r"|[{\[]\s{0,2}\"[A-Za-z_]{2,30}\"", re.I)
+    r"|[{\[]\s{0,2}\"[A-Za-z_]{2,30}\"|^\s{0,2}[{\[]\s{0,2}\"", re.I)
 
 
 def ask_lines(request: str) -> str:
