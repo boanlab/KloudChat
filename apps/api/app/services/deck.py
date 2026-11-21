@@ -2319,6 +2319,28 @@ def quiz_questions(slides: list[dict], at: int) -> int:
     return count
 
 
+#: a closing slide's own title: a farewell, summary or Q&A, not a part of the content
+_CLOSING_TITLE = re.compile(
+    r"마무리|감사|정리|요약|결론|맺음|질의|질문|Q\s?&\s?A|핵심|기억|다음\s?단계|끝|"
+    r"closing|thank|summary|takeaway|wrap|next steps|questions", re.I)
+
+
+def closing_with_content(slides: list[dict]) -> list[int]:
+    """The last slide written as a closing (「감사합니다」) whose title is a part of the content —
+    the quiz, the checklist the request asked for — set back to a content slide; returned."""
+    if not slides:
+        return []
+    index = len(slides) - 1
+    slide = slides[index]
+    title = str(slide.get("title") or "")
+    if slide.get("layout") != "closing" or not title.strip() or _CLOSING_TITLE.search(title):
+        return []
+    slide["layout"] = "bullets"
+    if re.fullmatch(r"\s*(?:감사합니다|thank you)[.!]?\s*", str(slide.get("body") or ""), re.I):
+        slide.pop("body", None)
+    return [index]
+
+
 def requested_contents(slides: list[dict], request: str) -> dict[int, str]:
     """Slides holding a requested part only in name or notes, with what to add."""
     from app.services.context import instruction_part, lead_instruction
@@ -4261,6 +4283,13 @@ async def _write_slides(
             touched.add(index)
     # placeholders or name-only parts rewritten once
     needs = requested_contents(slides, request)
+    for index in closing_with_content(slides):
+        touched.add(index)
+        if not slides[index].get("bullets"):
+            needs.setdefault(index, (
+                f"This slide (「{slides[index].get('title') or ''}」) is part of the content the "
+                "request asked for, not a farewell. Fill the screen with what its title names, "
+                "from the material and the earlier slides."))
     for index, slide in enumerate(slides):
         if len(blanks := template_blanks(slide)) >= TEMPLATE_BLANKS:
             # a comparison left as its template (「[장점]」 「[단점]」 cells)
