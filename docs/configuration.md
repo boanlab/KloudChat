@@ -640,7 +640,9 @@ available:
   strict-local by **internal material on strict-local** — reads the prompt,
   attachments, history and material as given, and its answer keeps the values
   the person gave. What still leaves such a turn (a web search query, an
-  external picture or OCR call) is masked on its way out.
+  external picture or OCR call) is masked on its way out. An answer whose turn went
+  out masked shows what was sent, as sent (**View what was sent out**), to the
+  conversation's owner.
 - **External data guard** protects chat. Administrators
   choose a set of models whose live catalogue metadata explicitly says
   `self_hosted` and `strictLocal`; stale or unknown model IDs are rejected.

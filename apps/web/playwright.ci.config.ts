@@ -100,6 +100,8 @@ const groups: Record<string, Group> = {
   'search-masking': { files: ['search-masking-origin.spec.ts'], projects: { default: {} } },
   // a strict-local turn's search card: allow, edit, material only, reload, phone; the badge
   'search-consent': { files: ['search-consent.spec.ts'], projects: { desktop, phone: touchPhone } },
+  // an answer's 「외부로 보낸 내용 보기」: what left for an outside model, masked
+  'egress-record': { files: ['egress-record.spec.ts'], projects: { desktop, phone: touchPhone } },
   // Google Drive and Slack per person: 설정 › 연결, the card a write waits on, Drive into a project
   integrations: { files: ['integrations.spec.ts'], projects: { desktop, phone: touchPhone } },
   'artifact-source': { files: ['artifact-source-download.spec.ts'], projects: { default: desktop } },

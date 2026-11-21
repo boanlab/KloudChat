@@ -3043,6 +3043,19 @@ Agent document's writer is the table's pick, so it is masked as before. The
 What still leaves a strict-local turn — web search queries (`search_consent.vet`),
 media calls outside the boundary — is masked on its way out.
 
+**An answer shows what left, masked.** When a chat, report or deck turn goes to an
+outside model with personal data masked (chat `mask_external`, or organisation-wide
+masking on a document that may leave), the answer's `routing.egress` keeps what was
+sent: `masked` (category, placeholder, count) and `parts` — the masked request, and the
+attachments, material, instructions and earlier conversation as sent, each cut to 20,000
+characters (60,000 in all); a part other than the request and attachments is kept only
+where the mask changed it. Only masked text is stored, never an original value, and only
+on the answer row (the question's routing drops it). It reaches the browser with the
+conversation's messages, which only their owner can read, and the answer shows
+「외부로 보낸 내용 보기 · 이메일 2 · 전화번호 1 가림」, opening the parts with each
+placeholder marked. A strict-local turn sent nothing out and has no record; a document
+whose writer turns out strict-local drops it.
+
 ### Prompt caching
 
 Every agent hop resends the system turn, the tool schemas and the conversation, and a

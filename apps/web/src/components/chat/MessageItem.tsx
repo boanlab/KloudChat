@@ -33,7 +33,7 @@ import {
   artifactsApi, downloadFile, errorMessage, filesApi, type OfficeKind,
 } from '@/lib/api'
 import { useIssues } from '@/lib/issues'
-import { FINDING_LABEL, maskingCategories, requestProtection, searchCardOf } from '@/lib/privacy'
+import { FINDING_LABEL, isStrictAction, maskingCategories, requestProtection, searchCardOf } from '@/lib/privacy'
 import { cn, fileSize, formatTokens, isMedia } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { CostRouting, LengthCheck, Message, ModelInfo, PrivacyRouting } from '@/types'
@@ -50,6 +50,7 @@ import { PinNoteButton } from '@/components/shelf/PinNoteButton'
 import { useT } from '@/lib/useT'
 import { tokenTotals } from '@/lib/usage'
 import { superRouteLabel } from '@/lib/superAgent'
+import { EgressDetails } from './EgressDetails'
 import { RunDetails } from './RunDetails'
 import { reasoningLine } from '@/lib/reasoning'
 
@@ -378,7 +379,8 @@ function MessageItemInner({
   const toolAnswer = message.routing && 'answerOrigin' in message.routing &&
     message.routing.answerOrigin === 'tool_result' ? message.routing : null
   // A document's routing may carry only the search record (`searchConsent`), no privacy action.
-  const routing = message.routing && ('action' in message.routing || 'searchConsent' in message.routing)
+  const routing = message.routing && ('action' in message.routing || 'searchConsent' in message.routing ||
+    'egress' in message.routing)
     ? message.routing as PrivacyRouting
     : null
   // The reasoning chip and the level the writer was sent (「깊게 · high」), on the usage line.
@@ -434,8 +436,9 @@ function MessageItemInner({
     // The starting point is stored on the turn.
     const failed = turnFailureNotice(message, madeHere, t)
     const startedFrom = message.startedFrom
-    // Stored copy masked on any finding; the bubble holds the typed original until reopen.
-    const redacted = (routing?.findingCounts ?? []).filter(
+    // Stored copy masked on any finding outside the boundary; the bubble holds the typed
+    // original until reopen. A strict-local turn keeps the words as typed.
+    const redacted = isStrictAction(routing?.action) ? [] : (routing?.findingCounts ?? []).filter(
       (finding) => finding.source === 'current_input',
     )
     return (
@@ -748,6 +751,9 @@ function MessageItemInner({
               </Badge>
               )}
           </div>
+        )}
+        {routing?.egress && routing.egress.parts?.length > 0 && (
+          <EgressDetails record={routing.egress} />
         )}
         {routing?.runInfo && (
           <RunDetails
