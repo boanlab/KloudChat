@@ -26,7 +26,7 @@ from app.services import settings_store
 
 log = logging.getLogger(__name__)
 
-ROUTER_VERSION = "super-agent-2026-11-20.v1"
+ROUTER_VERSION = "super-agent-2026-11-21.v1"
 
 SUPER = "super"
 SUPER_STRICT = "super_strict"
@@ -177,9 +177,11 @@ DEFAULT_RULES: dict[str, dict[str, str]] = {
     # model writes the rest. The strict column stays inside on flash with reasoning low (a
     # 500-token thinking budget): the strict writer's own model, so these stages run only
     # because they ask it to think (`stage_pick`); 5.92 vs 4.53 end to end (2026-11-20, see
-    # `document`)
+    # `document`). The outline runs on GLM-5.3 Flash (2026-11-21: 7.13/7.40 vs 7.30/7.40 for
+    # GLM-5.3, no failures either way, cheaper); it cannot switch reasoning off, so the row
+    # sends `low` explicitly (no reasoning field: up to 35k thinking tokens, 17-300 s)
     "document_plan": {
-        "model": "z-ai/glm-5.3",
+        "model": "z-ai/glm-5.3-flash",
         "strictModel": "strict-local/qwen3.8-flash",
         "effort": "low",
         "strictEffort": "low",

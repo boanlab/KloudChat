@@ -23,8 +23,10 @@ from app.services import deck, doc_stages, model_health, thinking
 from app.services import super_agent as sa
 
 GLM = _model("z-ai/glm-5.3", boundary="external", cost=2)
+GLM_FLASH = {**_model("z-ai/glm-5.3-flash", boundary="external", cost=1), "reasoning": {
+    "efforts": ["low", "high", "max"], "default": "max", "mandatory": True}}
 KIMI = _model("moonshotai/kimi-k3.1-pro", boundary="external", cost=8)
-CATALOGUE = [*BASE_CATALOGUE, GLM, KIMI]
+CATALOGUE = [*BASE_CATALOGUE, GLM, GLM_FLASH, KIMI]
 RULES = sa.normalise_rules(None)
 
 
@@ -51,20 +53,21 @@ def test_the_table_has_three_stage_rows_with_the_owners_defaults() -> None:
                              "repair": "document_repair"}
     for row in sa.STAGE_ROWS.values():
         assert row in sa.CLASSES and row in sa.OVERRIDE_ROWS
-        assert sa.DEFAULT_RULES[row]["model"] == "z-ai/glm-5.3"
+        assert sa.DEFAULT_RULES[row]["model"] == (
+            "z-ai/glm-5.3-flash" if row == "document_plan" else "z-ai/glm-5.3")
         # the strict column stays inside on flash, asked to think briefly (2026-11-20)
         assert sa.DEFAULT_RULES[row]["strictModel"] == "strict-local/qwen3.8-flash"
         assert sa.DEFAULT_RULES[row]["strictEffort"] == "low"
     assert sa.DEFAULT_RULES["document_hard"]["effort"] == "default"
     assert sa.DEFAULT_RULES["document"]["model"] == "local/qwen3.8-flash"
-    assert sa.ROUTER_VERSION.startswith("super-agent-2026-11-20")
+    assert sa.ROUTER_VERSION.startswith("super-agent-2026-11-")
 
 
 def test_an_admin_changes_one_row_without_touching_the_others() -> None:
     rules = sa.normalise_rules({"document_hard": {"model": "moonshotai/kimi-k3.1-pro"},
                                 "document": {"model": "local/qwen3.8-flash"}})
     assert rules["document_hard"]["model"] == KIMI["id"]
-    assert rules["document_plan"]["model"] == GLM["id"]
+    assert rules["document_plan"]["model"] == GLM_FLASH["id"]
     assert rules["document"]["model"] == "local/qwen3.8-flash"
     assert sa.stored_rules({"document_hard": {"model": KIMI["id"]}}) == {
         "document_hard": {"model": KIMI["id"]}}
@@ -74,12 +77,37 @@ def test_an_admin_changes_one_row_without_touching_the_others() -> None:
     assert "document_x" not in sa.normalise_rules({"document_x": {"model": "a"}})
 
 
+def test_the_outline_runs_on_glm_flash_with_explicit_low_effort_never_enabled_false() -> None:
+    row = sa.DEFAULT_RULES["document_plan"]
+    assert row["model"] == "z-ai/glm-5.3-flash" and row["effort"] == "low"
+    assert (row["strictModel"], row["strictEffort"]) == ("strict-local/qwen3.8-flash", "low")
+    picked = _pick("plan")
+    level = sa.stage_effort(RULES, "plan", sa.AUTO)
+    assert level == "low"
+    # sent from the first call, as a reasoning level: the model cannot switch reasoning off
+    assert sa.reasoning_fields(picked["id"], level, picked) == {"reasoning": {"effort": "low"}}
+    # the hard and repair rows keep GLM-5.3 and its own default effort
+    for stage in ("hard", "repair"):
+        assert sa.DEFAULT_RULES[sa.STAGE_ROWS[stage]]["model"] == "z-ai/glm-5.3"
+        assert sa.DEFAULT_RULES[sa.STAGE_ROWS[stage]]["effort"] == "default"
+    # the fast chip would ask for none: a model that cannot turn it off gets its lowest level
+    fast = sa.stage_effort(RULES, "plan", sa.FAST)
+    assert sa.reasoning_fields(picked["id"], fast, picked) == {"reasoning": {"effort": "low"}}
+
+
+def test_glm_flash_is_a_small_external_model_for_the_mechanisms() -> None:
+    from app.services import model_tier
+
+    assert model_tier.group("z-ai/glm-5.3-flash") == model_tier.SMALL_EXTERNAL
+    assert model_tier.group("z-ai/glm-5.3") == model_tier.STRONG_EXTERNAL
+
+
 # -- which model ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("stage", ["plan", "hard", "repair"])
 def test_super_goes_up_and_strict_stays_inside(stage) -> None:
-    assert _pick(stage)["id"] == GLM["id"]
+    assert _pick(stage)["id"] == (GLM_FLASH if stage == "plan" else GLM)["id"]
     strict = _pick(stage, strict=True, writer=STRICT_27B)
     assert strict["id"] == STRICT_FLASH["id"] and sa.strict_model(strict)
 
@@ -128,7 +156,8 @@ def test_the_chip_steers_the_stage_effort() -> None:
 async def test_the_document_route_names_the_stages_and_keeps_the_writer(kind) -> None:
     model, strict, route = await _route(None, kind=kind, catalogue=CATALOGUE)
     assert model["id"] == FLASH["id"] and not strict
-    assert route["stages"] == {s: GLM["id"] for s in doc_stages.STAGES}
+    assert route["stages"] == {s: (GLM_FLASH if s == "plan" else GLM)["id"]
+                              for s in doc_stages.STAGES}
 
 
 @pytest.mark.asyncio

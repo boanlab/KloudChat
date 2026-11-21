@@ -3157,7 +3157,7 @@ model in a cell). Effort `low`/`high` on Flash means a 500/2000-token thinking b
 | document | Qwen3.8 Flash | strict Flash | none | Flash's body judged 1.0–1.5 above the 27B's (blind Sonnet, 12 tasks × 3) at the same speed and cost; the strict column end to end (body Flash none, stages Flash low) 5.92 vs the 27B column's 4.53, no failures under the 300 s rule, no external call (2026-11-20) |
 | material (a row, not a class) | — (the class's own row) | — (the class's own row) | high | moves nothing by default: on the re-run strict DeepSeek scored 7.6 vs thinking Flash 7.7 over files (8.2 with passback) at ~50 s more to the first text |
 | complex_document (a row, not a class) | Qwen3.8 Flash | strict Flash | high / high | forms and attachments task set (2026-11-20): Flash high 6.28 vs self-hosted DeepSeek V4 Flash high 5.70 over its successes, 4.11 with failures as 0 (DeepSeek failed 28% under the 300 s rule, Flash never); see "Complex documents" below |
-| document_plan, document_hard, document_repair (rows, not classes) | GLM-5.3 (`z-ai/glm-5.3`) | strict Flash | low / default / default; strict low | the 27B alone wrote poor documents (3.8 of 10 for reports, 5.3 for decks on the 2026-11-17 benchmark; a stronger open-weight model 5.5–6.5), so one model never writes a whole document; strict stages on the strict writer's own model run because they ask it to think (see "Staged documents" below) |
+| document_plan, document_hard, document_repair (rows, not classes) | GLM-5.3 (`z-ai/glm-5.3`); the plan row GLM-5.3 Flash (`z-ai/glm-5.3-flash`) | strict Flash | low / default / default; strict low | the 27B alone wrote poor documents (3.8 of 10 for reports, 5.3 for decks on the 2026-11-17 benchmark; a stronger open-weight model 5.5–6.5), so one model never writes a whole document; strict stages on the strict writer's own model run because they ask it to think (see "Staged documents" below) |
 | escalation | DeepSeek V4.1 Flash | strict Flash | high / high | never empty; 9/10 where thinking Flash left nothing; strict: Flash high 6.89 vs strict DeepSeek V4 Flash high 6.11 over 18 dialogues × 3 (2026-11-20), with more garbled terms and mixed languages |
 
 The strict column first kept the self-hosted DeepSeek V4 Flash for `escalation` (owner decision
@@ -3268,8 +3268,14 @@ row's model stays the writer of the ordinary sections and slides; three override
 | `hard` (`document_hard`) | the sections or slides the objective signals below mark as hard, one call each, started together | `Draft` and `Sections` stages; `deck._write_slides` |
 | `repair` (`document_repair`) | only what an existing check sends back: an error text, tool call, cut-off or empty section, placeholder or table gaps, a language slip, a format amendment, the verify stage's findings, a retold, empty or unusable slide, a deck check's rewrite (a language slip, long lines, template blanks, a missing summary) | `report_stages` `_staged` and `_repair_complete`; `deck.rewrite_slide(stage="repair")` |
 
-Defaults: `super` column `z-ai/glm-5.3` for all three (effort `low` for the plan, the model's
-default for the others; GLM-5.3 reasons whatever it is told, so its lowest level is sent), the
+Defaults: `super` column `z-ai/glm-5.3` for `hard` and `repair` (the model's default effort) and
+`z-ai/glm-5.3-flash` for `plan` (owner decision 2026-11-21: outline quality tied, 7.13/7.40 vs
+7.30/7.40 over the same prompts, no failures either way, cheaper). Neither model can switch
+reasoning off on OpenRouter (400 "Reasoning is mandatory"), and GLM-5.3 Flash with no reasoning
+field spent up to 35k thinking tokens and 17-300 s on an outline, so the plan row sends `low`
+explicitly from the first call (`reasoning: {effort: "low"}`, never `enabled: false`; 110-170
+thinking tokens, no failures). The `-flash` suffix puts it in the small-external group of
+"Mechanisms by model group", the group the comparison ran in. The
 strict column `strict-local/qwen3.8-flash` with `strictEffort` `low` for all three (a
 500-token thinking budget; the strict writer is Flash too, so these stages run only because they
 ask it to think, as below). To compare another upper model change only a row, for example
