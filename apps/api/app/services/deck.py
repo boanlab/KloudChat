@@ -2367,9 +2367,12 @@ def closing_with_content(slides: list[dict]) -> list[int]:
     title = str(slide.get("title") or "")
     if slide.get("layout") != "closing" or not title.strip() or _CLOSING_TITLE.search(title):
         return []
+    # only a closing that says nothing but the farewell: a closing with its own message
+    # (a request, an invitation, a contact line) is a real closing whatever its title
+    if not re.fullmatch(r"\s*(?:감사합니다|thank you)[.!]?\s*", str(slide.get("body") or ""), re.I):
+        return []
     slide["layout"] = "bullets"
-    if re.fullmatch(r"\s*(?:감사합니다|thank you)[.!]?\s*", str(slide.get("body") or ""), re.I):
-        slide.pop("body", None)
+    slide.pop("body", None)
     return [index]
 
 
