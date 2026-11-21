@@ -52,6 +52,11 @@ export function searchCardOf(message: { routing?: unknown }): SearchConsent | un
 
 const STRICT_ACTIONS = new Set(['strict_local', 'route_strict_local', 'internal_strict_local'])
 
+/** The turn ran on strict-local models only: nothing was masked, nothing left. */
+export function isStrictAction(action: string | null | undefined): boolean {
+  return !!action && STRICT_ACTIONS.has(action)
+}
+
 /**
  * The request-protection badge, read from what the routing record says happened:
  * `base` names how the request was protected, `search` what a strict-local turn did about the

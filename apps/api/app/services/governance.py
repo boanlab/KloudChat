@@ -133,6 +133,15 @@ _LABELS = {
     "private_ip": "[IP주소]",
 }
 
+#: every placeholder a mask writes, e.g. 「[이메일]」
+PLACEHOLDERS = frozenset(_LABELS.values())
+
+
+def placeholder(category: str) -> str:
+    """The text a mask writes for `category` (「[이메일]」)."""
+    return _LABELS.get(category, "[민감정보]")
+
+
 #: personal identifiers, masked before external models
 PERSONAL = frozenset({"email", "phone", "government_id", "payment_card", "ip_address"})
 #: secrets: exposure anywhere is an incident

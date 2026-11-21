@@ -407,6 +407,16 @@ export interface SuperAgentRoute {
   classifierMs?: number
 }
 
+/** One turn's content as it left for an outside model: masked text only, never an original. */
+export interface EgressRecord {
+  masked: { category: string; label: string; count: number }[]
+  parts: {
+    source: 'prompt' | 'attachments' | 'material' | 'instructions' | 'conversation_history'
+    text: string
+    truncated?: boolean
+  }[]
+}
+
 export interface PrivacyRouting {
   requestedModels: string[]
   routedModels: string[]
@@ -431,6 +441,8 @@ export interface PrivacyRouting {
   superAgent?: SuperAgentRoute
   /** What this answer ran on: provider, quantization, fallback, call settings (`services/run_info`). */
   runInfo?: AnswerRunInfo
+  /** What an outside model was sent once personal data was masked (`_egress_record`). */
+  egress?: EgressRecord
   /** The asked model failed over and LiteLLM's fallback answered (`services/fallback_watch`). */
   fallback?: {
     requestedModel: string

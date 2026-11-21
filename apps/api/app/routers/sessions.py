@@ -1976,6 +1976,22 @@ _INTERNAL_SOURCES = (
 )
 
 
+def _document_stays_inside(
+    session: ChatSession, model: dict, policy, blocks, attachments: list[str] | None,
+    history: list[Message],
+) -> bool:
+    """A report or deck that runs on strict-local models only (`_document_route`): the model
+    the person picked, a Super Agent strict-local conversation, or internal material the admin
+    keeps inside. Nothing leaves, so nothing is masked. A Super Agent conversation's writer
+    is the table's pick, not the picked model: only its strict entry counts."""
+    return bool(
+        (session.routing_mode not in _SUPER_MODES and _strict_model(model))
+        or session.routing_mode == RoutingMode.super_strict
+        or (policy.internal_data_strict_local
+            and _internal_data_present(session, blocks, attachments, history))
+    )
+
+
 def _internal_data_present(
     session: ChatSession,
     blocks: tuple[ContextBlock, ...] | list[ContextBlock] | None,
@@ -2388,12 +2404,14 @@ async def _resolve_privacy(
         effective = moved
         all_strict = True
         action = "internal_strict_local"
+    elif rows and all_strict:
+        # nothing leaves the boundary: strict-local reads the person's words as given, under
+        # org-wide masking too (an outside search query is vetted on its own, `search_consent`)
+        action = "strict_local"
     elif rows and policy.pii_masking:
-        # org-wide masking always wins
+        # org-wide masking always wins outside the boundary
         action = "mask_external"
         mask_outbound = True
-    elif rows and all_strict:
-        action = "strict_local"
     elif rows and action == "internal_strict_local":
         pass
     elif rows and policy.external_data_guard:
@@ -2458,6 +2476,56 @@ async def _resolve_privacy(
         "findingCounts": [row.wire() for row in rows],
     }
     return _PrivacyResolution(effective, action, rows, routing, mask_outbound)
+
+
+#: what an egress record keeps of each part sent out, and of the whole turn
+_EGRESS_PART_CHARS = 20_000
+_EGRESS_TOTAL_CHARS = 60_000
+#: parts always shown when sent; the others only where the mask changed them
+_EGRESS_ALWAYS = frozenset({"prompt", "attachments"})
+
+
+def _egress_record(
+    findings: list[governance.Finding], parts: list[tuple[str, list[str]]],
+) -> dict[str, Any] | None:
+    """What an outside model was sent once masked, for its owner to read on the answer
+    (`routing.egress`): per-category counts and the masked text of each part, cut to
+    `_EGRESS_PART_CHARS` (and `_EGRESS_TOTAL_CHARS` in all). `parts` must already be masked:
+    the record never holds an original value. `None` when nothing was masked."""
+    counts: dict[str, int] = {}
+    for row in findings:
+        if row.source in ("tool_output", "assistant_output") or row.count <= 0:
+            continue
+        counts[row.category] = counts.get(row.category, 0) + row.count
+    if not counts:
+        return None
+    sent: list[dict[str, Any]] = []
+    budget = _EGRESS_TOTAL_CHARS
+    for source, texts in parts:
+        text = "\n\n".join(t for t in texts if isinstance(t, str) and t.strip())
+        if not text or (source not in _EGRESS_ALWAYS
+                        and not any(mark in text for mark in governance.PLACEHOLDERS)):
+            continue
+        cut = text[: min(_EGRESS_PART_CHARS, budget)]
+        if not cut:
+            break
+        sent.append({"source": source, "text": cut,
+                     **({"truncated": True} if len(cut) < len(text) else {})})
+        budget -= len(cut)
+    return {
+        "masked": [
+            {"category": category, "label": governance.placeholder(category), "count": count}
+            for category, count in sorted(counts.items())
+        ],
+        "parts": sent,
+    }
+
+
+def _without_egress(routing: dict[str, Any] | None) -> dict[str, Any] | None:
+    """`routing` without its egress record (`_egress_record`)."""
+    if not routing or "egress" not in routing:
+        return routing
+    return {key: value for key, value in routing.items() if key != "egress"}
 
 
 def _decision_audit_metadata(response: JSONResponse, session_id: str) -> dict[str, Any]:
@@ -6271,6 +6339,11 @@ async def _send_message(
         )
 
     protected_values: frozenset[str] = frozenset()
+    #: the turn stays on strict-local models: no masking of the person's words or material
+    inside_boundary = False
+    #: what an outside model is sent once masked (`_egress_record`), shown on the answer
+    egress: dict[str, Any] | None = None
+    egress_findings: list[governance.Finding] = []
     if kind is SessionKind.chat:
         privacy_sources = _privacy_sources(
             content, history, workspace.blocks,
@@ -6338,9 +6411,14 @@ async def _send_message(
             names = {t.name for t in integration_tools}
             tools = [t for t in tools if t.name not in names]
         masker = governance.mask_legacy if policy.pii_masking else governance.mask
-        # egress-masked user-side values; the stored answer masks exactly these (and secrets)
-        protected_values = _protected_values(privacy_sources, legacy=policy.pii_masking)
-        if resolved.findings:
+        inside_boundary = strict_local
+        # egress-masked user-side values; the stored answer masks exactly these (and secrets).
+        # A strict-local turn masked none of them: the answer keeps the values the person gave
+        protected_values = (
+            frozenset() if strict_local
+            else _protected_values(privacy_sources, legacy=policy.pii_masking)
+        )
+        if resolved.findings and not strict_local:
             # findings stored masked regardless of action
             stored_content = masker(content)[0]
             if attachment_meta:
@@ -6379,9 +6457,11 @@ async def _send_message(
             if turn_consent.offers:
                 tools = [*tools, turn_consent.tool()]
         tool_definitions = openai_snapshot(tools)
-    elif policy.pii_masking:
-        # decision flow chat-only; report/slides always mask
+    elif policy.pii_masking and not (inside_boundary := _document_stays_inside(
+            session, model, policy, workspace.blocks, payload.attachments, history)):
+        # decision flow chat-only; report/slides always mask once they may leave
         masker = governance.mask_legacy
+        egress_findings = governance.findings({"current_input": content}, legacy=True)
         content, masked = masker(content)
         stored_content = content
         if attachment_meta:
@@ -6427,11 +6507,23 @@ async def _send_message(
         trusted_context = _mask_list(trusted_context, legacy=policy.pii_masking)
         untrusted_context = _mask_list(untrusted_context, legacy=policy.pii_masking)
         turn_context = _mask_list(turn_context, legacy=policy.pii_masking)
-    elif policy.pii_masking:
+        egress = _egress_record(privacy_resolution.findings, [
+            ("prompt", [content]), ("attachments", turn_context),
+            ("material", untrusted_context), ("instructions", trusted_context),
+            ("conversation_history", list(outbound_history)),
+        ])
+    elif policy.pii_masking and not inside_boundary:
         # always-mask covers context blocks too
+        egress_findings = [*egress_findings, *governance.findings(
+            {"attachments": turn_context, "material": untrusted_context,
+             "instructions": trusted_context}, legacy=True)]
         trusted_context = _mask_text_tree(trusted_context, governance.mask_legacy)
         untrusted_context = _mask_text_tree(untrusted_context, governance.mask_legacy)
         turn_context = _mask_text_tree(turn_context, governance.mask_legacy)
+        egress = _egress_record(egress_findings, [
+            ("prompt", [content]), ("attachments", turn_context),
+            ("material", untrusted_context), ("instructions", trusted_context),
+        ])
     skills_event = workspace.skills_event()
     template_blocks, skills_event = await _template_skills(
         db, design_templates.get(session.render_template_id), kind, skills_event
@@ -6443,7 +6535,7 @@ async def _send_message(
         if guide := app_help.block(content, lang="en" if _english(content) else "ko"):
             trusted_context = [*trusted_context, guide]
     context_steps = _context_steps(workspace)
-    if policy.pii_masking:
+    if policy.pii_masking and not inside_boundary:
         # skill names are user-controlled
         if skills_event:
             skills_event = _mask_text_tree(skills_event, governance.mask_legacy)
@@ -6475,6 +6567,12 @@ async def _send_message(
         # the chip as sent: a retry or regeneration runs under it again
         **({"reasoning": payload.reasoning} if payload.reasoning and published is None else {}),
     }
+    if egress is not None:
+        # what left, as it left: read by the answer's owner (「외부로 보낸 내용 보기」)
+        if privacy_resolution is not None:
+            privacy_resolution.routing = {**privacy_resolution.routing, "egress": egress}
+        else:
+            document_routing = {**(document_routing or {}), "egress": egress}
     # stored for retry replay; defaults store nothing
     if any(turn_options.values()):
         if privacy_resolution is not None:
@@ -6501,6 +6599,9 @@ async def _send_message(
             return decided
         model, document_strict, note = decided
         strict_local = strict_local or document_strict
+        if document_strict:
+            # the writer turned out strict-local: nothing left after all
+            document_routing = _without_egress(document_routing)
         if note:
             document_routing = {**(document_routing or {}), **note}
     # missing verification qualifies the answer, doesn't block it
@@ -6784,7 +6885,9 @@ async def _send_message(
             # typed, not the merged request
             content=typed_content if pending else stored_content,
             attachments=attachment_meta,
-            routing=privacy_resolution.routing if privacy_resolution else document_routing,
+            # the egress record lives on the answer only
+            routing=_without_egress(
+                privacy_resolution.routing if privacy_resolution else document_routing),
         )
     if not await _claim_turn(db, session):
         # another tab or replica holds the turn; claim shares the question's transaction
@@ -7020,7 +7123,7 @@ async def _send_message(
         outbound = content
         if privacy_resolution is not None and privacy_resolution.mask_outbound:
             outbound = _mask_list([content], legacy=policy.pii_masking)[0]
-        elif policy.pii_masking:
+        elif policy.pii_masking and not inside_boundary:
             outbound = _mask_text_tree([content], governance.mask_legacy)[0]
         return await user_pipelines.turn_response(
             db, user, session, user_pipe, pending=pending, approved_plan=approved_plan,
@@ -7250,13 +7353,18 @@ async def _send_message(
                 api_key=api_key,
                 strict_local=strict_local,
                 disable_fallbacks=routed,
+                # a strict-local turn's summary reads and keeps the words as given; an
+                # outside turn later masks the cached summary as it goes out
                 masker=(
                     (governance.mask_legacy if policy.pii_masking else governance.mask)
-                    if policy.pii_masking or policy.external_data_guard
+                    if (policy.pii_masking or policy.external_data_guard)
+                    and not inside_boundary
                     else None
                 ),
                 mask_at_rest=bool(
-                    policy.pii_masking or (privacy_resolution and privacy_resolution.findings)
+                    not inside_boundary and (
+                        policy.pii_masking
+                        or (privacy_resolution and privacy_resolution.findings))
                 ),
                 redact_logging=policy.pii_masking or policy.external_data_guard,
                 language=conversation_language(wire_history),

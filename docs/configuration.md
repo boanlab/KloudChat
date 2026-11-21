@@ -632,9 +632,17 @@ available:
   into the document; a web fact-check of such a document is refused
   (`factcheck_needs_web`).
 
-- **PII masking** is the organisation-wide upper bound. When enabled,
-  matching content is always masked and raw external delivery cannot be
-  enabled.
+- **PII masking** is the organisation-wide upper bound for what leaves the
+  boundary. When enabled, matching content on its way to an external, hybrid or
+  unknown-boundary model is always masked and raw external delivery cannot be
+  enabled. A turn that stays on strict-local models — a strict-local model the
+  person picked, a Super Agent strict-local conversation, or a turn moved
+  strict-local by **internal material on strict-local** — reads the prompt,
+  attachments, history and material as given, and its answer keeps the values
+  the person gave. What still leaves such a turn (a web search query, an
+  external picture or OCR call) is masked on its way out. An answer whose turn went
+  out masked shows what was sent, as sent (**View what was sent out**), to the
+  conversation's owner.
 - **External data guard** protects chat. Administrators
   choose a set of models whose live catalogue metadata explicitly says
   `self_hosted` and `strictLocal`; stale or unknown model IDs are rejected.

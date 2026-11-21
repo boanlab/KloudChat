@@ -165,6 +165,18 @@ export const EN_UI: Record<string, string> = {
   '제공자: {name}': 'Provider: {name}',
   '{name} 실행 정보': '{name} run details',
   '이번 답 실행 정보': 'Run details of this answer',
+  // What an outside model was sent, masked (an answer's 「외부로 보낸 내용 보기」)
+  '외부로 보낸 내용 보기': 'View what was sent out',
+  '외부로 보낸 내용': 'What was sent out',
+  '{list} 가림': '{list} masked',
+  '외부 모델에는 아래 내용만 보냈습니다. 표시된 부분은 원래 값 대신 보낸 자리 표시입니다.':
+    'Only the text below went to the outside model. Each marked part is the placeholder sent instead of the original value.',
+  '보낸 요청': 'Request sent',
+  '보낸 첨부': 'Attachments sent',
+  '보낸 참고 자료': 'Material sent',
+  '보낸 지침': 'Instructions sent',
+  '보낸 이전 대화': 'Earlier conversation sent',
+  '앞부분만 보여 줍니다.': 'Only the beginning is shown.',
   '양자화 (가중치)': 'Quantization (weights)',
   '양자화 (고정 제공자)': 'Quantization (pinned provider)',
   'KV 캐시': 'KV cache',
