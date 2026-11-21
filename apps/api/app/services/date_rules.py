@@ -126,4 +126,29 @@ def today_block(request: str, today: dt.date | None = None,
     )
 
 
-__all__ = ["Settled", "block", "expected", "settled", "today_block"]
+#: at most this many of the request's own days are listed for a chat writer
+_STATED_MAX = 12
+
+
+def stated_block(request: str, today: dt.date | None = None) -> str:
+    """The calendar days the request writes (「12월 22일(화)」, 「2026. 12. 1.」) with their
+    weekdays, for a chat writer, or ''. A writer that works out a weekday itself gets it wrong
+    (「12/22는 월요일」) and then disputes the person's right one."""
+    today = today or dt.date.today()
+    try:
+        rows = [r for r in skill_scripts.dates().find(request or "", today)
+                if r.get("kind") in ("full_date", "month_day") and r.get("status") == "ok"]
+    except Exception:  # noqa: BLE001 — no block; the answer's weekdays are still checked
+        log.exception("stated days could not be read")
+        return ""
+    lines = list(dict.fromkeys(
+        f"- 「{r['text']}」: {_shown(dt.date.fromisoformat(r['date']))}" for r in rows))
+    if not lines:
+        return ""
+    return (
+        f"# 요청에 적힌 날짜의 요일(코드 계산, 오늘 {_shown(today)})\nThe code read each day "
+        "the person wrote, in the year it falls in, with its weekday. Use these weekdays as "
+        "they are; do not work a weekday out yourself.\n" + "\n".join(lines[:_STATED_MAX]))
+
+
+__all__ = ["Settled", "block", "expected", "settled", "stated_block", "today_block"]
