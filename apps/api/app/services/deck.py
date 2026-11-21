@@ -244,7 +244,8 @@ Rules:
 - **When a title promises subjects such as 「주요 기업별」 or 「국내외」, put real names
   (companies, products, documents) on that slide.** Do not fill it with category names only.
 - **A deck of more than six slides puts an "agenda" (목차) as its second slide.** Write no
-  content — it is filled from the structure. Title it "목차" or "발표 순서".
+  content — it is filled from the structure. Title it "목차" or "발표 순서" ("Agenda" in a deck
+  written in English).
 - **The last slide is "closing"** — two or three things to remember and one closing line.
   Only in decks of more than six slides.
 - For the other slides pick the layout that fits what will be said. A list of items is
@@ -7844,7 +7845,10 @@ def ensure_agenda(plan: list[dict]) -> list[dict]:
         if _AGENDA_TITLE.search(str(item.get("title") or "")):
             item["layout"] = "agenda"
             return plan
-    plan.insert(1, {"title": "발표 순서", "layout": "agenda"})
+    # an English deck's agenda reads 「Agenda」 (its titles say the deck's language)
+    english = output_language.reads_english(" ".join(str(item.get("title") or "")
+                                                      for item in plan))
+    plan.insert(1, {"title": "Agenda" if english else "발표 순서", "layout": "agenda"})
     return plan
 
 
