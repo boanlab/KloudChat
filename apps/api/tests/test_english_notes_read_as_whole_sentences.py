@@ -18,13 +18,12 @@ def test_a_question_title_is_not_spliced_into_a_sentence_with_a_stop_after_it():
                "bullets": ["Short drafts run local."]},
               {"layout": "closing", "title": "Thanks"}]
     assert deck.fill_missing_notes(slides, REQUEST, title=TITLE,
-                                   subtitle="Conference findings on cost") == [0, 1, 2]
+                                   subtitle="Conference findings on cost") == [0, 2]
     assert slides[0]["notes"] == (
         "Hello, everyone. Today's question: Can Small On-Premise Models Replace Cloud APIs? "
         "Conference findings on cost.")
-    assert slides[1]["notes"] == (
-        "On this slide, we look at Route by task? The key points are Short drafts run local.")
-    assert not any("?." in s["notes"] or ".." in s["notes"] for s in slides)
+    assert not slides[1].get("notes")
+    assert not any("?." in s.get("notes", "") or ".." in s.get("notes", "") for s in slides)
 
 
 def test_an_enumeration_keeps_its_first_point_when_it_reads_the_bullet():

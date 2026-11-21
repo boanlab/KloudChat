@@ -197,13 +197,23 @@ async def test_unresolved_size_stops_before_approval_after_one_retry(
 
 
 async def test_added_agenda_is_checked_against_explicit_total(monkeypatch):
-    # Eight body/cover rows become nine if the missing agenda is appended.
-    calls = _planner(monkeypatch, deck, [_outline(deck, 8), _outline(deck, 8, agenda=True)])
+    # Nine body/cover rows become ten if the missing agenda is appended.
+    calls = _planner(monkeypatch, deck, [_outline(deck, 9), _outline(deck, 9, agenda=True)])
+    events = await _plan(deck, "동아리 안내 발표자료 총 9장")
+    slides = next(event["plan"]["slides"] for event in events if event["type"] == "proposal")
+    assert len(slides) == 9
+    assert any(slide["layout"] == "agenda" for slide in slides)
+    assert len(calls) == 2
+
+
+async def test_an_eight_slide_deck_keeps_its_slides_for_content(monkeypatch):
+    # eight slides or fewer: no agenda is added, so no content slide makes room for it
+    calls = _planner(monkeypatch, deck, [_outline(deck, 8)])
     events = await _plan(deck, "동아리 안내 발표자료 총 8장")
     slides = next(event["plan"]["slides"] for event in events if event["type"] == "proposal")
     assert len(slides) == 8
-    assert any(slide["layout"] == "agenda" for slide in slides)
-    assert len(calls) == 2
+    assert not any(slide["layout"] == "agenda" for slide in slides)
+    assert len(calls) == 1
 
 
 @pytest.mark.parametrize(

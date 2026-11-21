@@ -37,10 +37,11 @@ def test_notes_are_filled_for_cover_agenda_closing_and_empty_slides():
         {"layout": "closing", "title": "감사합니다"},
     ]
     changed = deck.fill_missing_notes(slides, "발표 자료 6장, 발표자 노트 포함", subtitle="5분")
-    assert changed == [0, 1, 2, 4]
+    assert changed == [0, 1, 4]
     assert slides[0]["notes"].startswith("안녕하세요. 오늘은 「RC 필터 실험」")
     assert slides[1]["notes"] == "발표는 목적, 이론, 그리고 결과 순서로 진행하겠습니다."
-    assert slides[2]["notes"].startswith("이 장에서는 결과를 살펴보겠습니다.")
+    # a content slide's note is the writer's, never a template reading the slide back
+    assert not slides[2].get("notes")
     assert slides[3]["notes"] == "있는 노트."
     assert deck.fill_missing_notes([{"layout": "title", "title": "x"}], "발표 자료 6장") == []
 

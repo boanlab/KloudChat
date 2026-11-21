@@ -2319,6 +2319,28 @@ def quiz_questions(slides: list[dict], at: int) -> int:
     return count
 
 
+#: a closing slide's own title: a farewell, summary or Q&A, not a part of the content
+_CLOSING_TITLE = re.compile(
+    r"마무리|감사|정리|요약|결론|맺음|질의|질문|Q\s?&\s?A|핵심|기억|다음\s?단계|끝|"
+    r"closing|thank|summary|takeaway|wrap|next steps|questions", re.I)
+
+
+def closing_with_content(slides: list[dict]) -> list[int]:
+    """The last slide written as a closing (「감사합니다」) whose title is a part of the content —
+    the quiz, the checklist the request asked for — set back to a content slide; returned."""
+    if not slides:
+        return []
+    index = len(slides) - 1
+    slide = slides[index]
+    title = str(slide.get("title") or "")
+    if slide.get("layout") != "closing" or not title.strip() or _CLOSING_TITLE.search(title):
+        return []
+    slide["layout"] = "bullets"
+    if re.fullmatch(r"\s*(?:감사합니다|thank you)[.!]?\s*", str(slide.get("body") or ""), re.I):
+        slide.pop("body", None)
+    return [index]
+
+
 def requested_contents(slides: list[dict], request: str) -> dict[int, str]:
     """Slides holding a requested part only in name or notes, with what to add."""
     from app.services.context import instruction_part, lead_instruction
@@ -2865,8 +2887,9 @@ def fill_missing_notes(
         layout = str(slide.get("layout") or "")
         name = str(slide.get("title") or title or "").strip()
         if english:
-            slide["notes"] = _english_note(slide, index, name, subtitle)
-            changed.append(index)
+            if note := _english_note(slide, index, name, subtitle):
+                slide["notes"] = note
+                changed.append(index)
             continue
         if layout == "title" or index == 0:
             # the subtitle is a phrase (「경영진 보고용 … 개요」), not a sentence to say after it
@@ -2882,15 +2905,9 @@ def fill_missing_notes(
         elif layout == "section":
             note = f"다음은 {name}입니다."
         else:
-            lines = [str(b).strip() for b in (slide.get("bullets") or []) if str(b).strip()]
-            lines += [
-                str(i[0]).strip() for i in (slide.get("items") or []) if i and str(i[0]).strip()
-            ]
-            rows = slide.get("rows") or []
-            if not lines and rows and isinstance(rows[0], list):
-                lines = [str(c).strip() for c in rows[0][1:] if str(c).strip()]
-            point = f" 핵심은 {', '.join(lines[:3])}입니다." if lines else ""
-            note = f"이 장에서는 {name}{_object_particle(name)} 살펴보겠습니다.{point}"
+            # a content slide's note says what the slide does not (the writer's), never a
+            # template reading the slide back (「이 장에서는 … 핵심은 A, B입니다」): left empty
+            continue
         slide["notes"] = note
         changed.append(index)
     return changed
@@ -2913,14 +2930,8 @@ def _english_note(slide: dict[str, Any], index: int, name: str, subtitle: str) -
         return "That concludes my talk. I am happy to take your questions."
     if layout == "section":
         return f"Next, {_period(name)}"
-    lines = [str(b).strip() for b in (slide.get("bullets") or []) if str(b).strip()]
-    lines += [str(i[0]).strip() for i in (slide.get("items") or []) if i and str(i[0]).strip()]
-    rows = slide.get("rows") or []
-    if not lines and rows and isinstance(rows[0], list):
-        lines = [str(c).strip() for c in rows[0][1:] if str(c).strip()]
-    points = [line.rstrip(".;:") for line in lines[:3]]
-    point = f" The key points are {_period(', '.join(points))}" if points else ""
-    return f"On this slide, we look at {_period(name)}{point}"
+    # a content slide: no template reading the slide back (「On this slide, we look at …」)
+    return ""
 
 
 def _period(text: str) -> str:
@@ -4113,7 +4124,10 @@ async def _write_slides(
                 notes_without_prompt(notes, ask_lines(request)), slide), slide, request)
         if slide.get("layout") not in _STRUCTURAL:
             # notes under two sentences: re-ask once (per-deck budget)
-            if _sentence_count(notes) < _NOTE_SENTENCES and echo_reasks < 4:
+            # a deck asked for notes has each content slide's notes said by the writer (code
+            # never fills one with the slide's own words); otherwise four slides a deck at most
+            budget = 10 if _NOTES_ASK.search(request or "") else 4
+            if _sentence_count(notes) < _NOTE_SENTENCES and echo_reasks < budget:
                 echo_reasks += 1
                 # what a re-asked note must not read back: the prompt's own lines and the
                 # request's ask lines (not its data lines, whose facts a note may say)
@@ -4261,6 +4275,13 @@ async def _write_slides(
             touched.add(index)
     # placeholders or name-only parts rewritten once
     needs = requested_contents(slides, request)
+    for index in closing_with_content(slides):
+        touched.add(index)
+        if not slides[index].get("bullets"):
+            needs.setdefault(index, (
+                f"This slide (「{slides[index].get('title') or ''}」) is part of the content the "
+                "request asked for, not a farewell. Fill the screen with what its title names, "
+                "from the material and the earlier slides."))
     for index, slide in enumerate(slides):
         if len(blanks := template_blanks(slide)) >= TEMPLATE_BLANKS:
             # a comparison left as its template (「[장점]」 「[단점]」 cells)
@@ -7965,8 +7986,10 @@ def merge_to_count(plan: list[dict], wanted: int) -> list[dict]:
 
 
 def ensure_agenda(plan: list[dict]) -> list[dict]:
-    """Decks over six slides get an `agenda` after the cover (or an agenda-titled early slide)."""
-    if len(plan) <= 6 or any(item.get("layout") == "agenda" for item in plan):
+    """Decks over eight slides get an `agenda` after the cover (or an agenda-titled early slide):
+    a shorter one keeps its slides for content (an 8-slide talk lost a third of them to cover,
+    agenda and closing)."""
+    if len(plan) <= 8 or any(item.get("layout") == "agenda" for item in plan):
         return plan
     for item in plan[1:4]:
         if _AGENDA_TITLE.search(str(item.get("title") or "")):
