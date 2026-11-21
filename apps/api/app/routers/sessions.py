@@ -1976,6 +1976,22 @@ _INTERNAL_SOURCES = (
 )
 
 
+def _document_stays_inside(
+    session: ChatSession, model: dict, policy, blocks, attachments: list[str] | None,
+    history: list[Message],
+) -> bool:
+    """A report or deck that runs on strict-local models only (`_document_route`): the model
+    the person picked, a Super Agent strict-local conversation, or internal material the admin
+    keeps inside. Nothing leaves, so nothing is masked. A Super Agent conversation's writer
+    is the table's pick, not the picked model: only its strict entry counts."""
+    return bool(
+        (session.routing_mode not in _SUPER_MODES and _strict_model(model))
+        or session.routing_mode == RoutingMode.super_strict
+        or (policy.internal_data_strict_local
+            and _internal_data_present(session, blocks, attachments, history))
+    )
+
+
 def _internal_data_present(
     session: ChatSession,
     blocks: tuple[ContextBlock, ...] | list[ContextBlock] | None,
@@ -2388,12 +2404,14 @@ async def _resolve_privacy(
         effective = moved
         all_strict = True
         action = "internal_strict_local"
+    elif rows and all_strict:
+        # nothing leaves the boundary: strict-local reads the person's words as given, under
+        # org-wide masking too (an outside search query is vetted on its own, `search_consent`)
+        action = "strict_local"
     elif rows and policy.pii_masking:
-        # org-wide masking always wins
+        # org-wide masking always wins outside the boundary
         action = "mask_external"
         mask_outbound = True
-    elif rows and all_strict:
-        action = "strict_local"
     elif rows and action == "internal_strict_local":
         pass
     elif rows and policy.external_data_guard:
@@ -6270,6 +6288,8 @@ async def _send_message(
         )
 
     protected_values: frozenset[str] = frozenset()
+    #: the turn stays on strict-local models: no masking of the person's words or material
+    inside_boundary = False
     if kind is SessionKind.chat:
         privacy_sources = _privacy_sources(
             content, history, workspace.blocks,
@@ -6337,9 +6357,14 @@ async def _send_message(
             names = {t.name for t in integration_tools}
             tools = [t for t in tools if t.name not in names]
         masker = governance.mask_legacy if policy.pii_masking else governance.mask
-        # egress-masked user-side values; the stored answer masks exactly these (and secrets)
-        protected_values = _protected_values(privacy_sources, legacy=policy.pii_masking)
-        if resolved.findings:
+        inside_boundary = strict_local
+        # egress-masked user-side values; the stored answer masks exactly these (and secrets).
+        # A strict-local turn masked none of them: the answer keeps the values the person gave
+        protected_values = (
+            frozenset() if strict_local
+            else _protected_values(privacy_sources, legacy=policy.pii_masking)
+        )
+        if resolved.findings and not strict_local:
             # findings stored masked regardless of action
             stored_content = masker(content)[0]
             if attachment_meta:
@@ -6378,8 +6403,9 @@ async def _send_message(
             if turn_consent.offers:
                 tools = [*tools, turn_consent.tool()]
         tool_definitions = openai_snapshot(tools)
-    elif policy.pii_masking:
-        # decision flow chat-only; report/slides always mask
+    elif policy.pii_masking and not (inside_boundary := _document_stays_inside(
+            session, model, policy, workspace.blocks, payload.attachments, history)):
+        # decision flow chat-only; report/slides always mask once they may leave
         masker = governance.mask_legacy
         content, masked = masker(content)
         stored_content = content
@@ -6426,7 +6452,7 @@ async def _send_message(
         trusted_context = _mask_list(trusted_context, legacy=policy.pii_masking)
         untrusted_context = _mask_list(untrusted_context, legacy=policy.pii_masking)
         turn_context = _mask_list(turn_context, legacy=policy.pii_masking)
-    elif policy.pii_masking:
+    elif policy.pii_masking and not inside_boundary:
         # always-mask covers context blocks too
         trusted_context = _mask_text_tree(trusted_context, governance.mask_legacy)
         untrusted_context = _mask_text_tree(untrusted_context, governance.mask_legacy)
@@ -6442,7 +6468,7 @@ async def _send_message(
         if guide := app_help.block(content, lang="en" if _english(content) else "ko"):
             trusted_context = [*trusted_context, guide]
     context_steps = _context_steps(workspace)
-    if policy.pii_masking:
+    if policy.pii_masking and not inside_boundary:
         # skill names are user-controlled
         if skills_event:
             skills_event = _mask_text_tree(skills_event, governance.mask_legacy)
@@ -7016,7 +7042,7 @@ async def _send_message(
         outbound = content
         if privacy_resolution is not None and privacy_resolution.mask_outbound:
             outbound = _mask_list([content], legacy=policy.pii_masking)[0]
-        elif policy.pii_masking:
+        elif policy.pii_masking and not inside_boundary:
             outbound = _mask_text_tree([content], governance.mask_legacy)[0]
         return await user_pipelines.turn_response(
             db, user, session, user_pipe, pending=pending, approved_plan=approved_plan,
@@ -7246,13 +7272,18 @@ async def _send_message(
                 api_key=api_key,
                 strict_local=strict_local,
                 disable_fallbacks=routed,
+                # a strict-local turn's summary reads and keeps the words as given; an
+                # outside turn later masks the cached summary as it goes out
                 masker=(
                     (governance.mask_legacy if policy.pii_masking else governance.mask)
-                    if policy.pii_masking or policy.external_data_guard
+                    if (policy.pii_masking or policy.external_data_guard)
+                    and not inside_boundary
                     else None
                 ),
                 mask_at_rest=bool(
-                    policy.pii_masking or (privacy_resolution and privacy_resolution.findings)
+                    not inside_boundary and (
+                        policy.pii_masking
+                        or (privacy_resolution and privacy_resolution.findings))
                 ),
                 redact_logging=policy.pii_masking or policy.external_data_guard,
                 language=conversation_language(wire_history),

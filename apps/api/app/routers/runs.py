@@ -149,8 +149,10 @@ async def rerun(session_id: str, run_id: str, payload: RerunIn, user: CurrentUse
             hit := governance.blocked_by(said, policy.blocked_categories)):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                             detail=f"blocked_category:{hit}")
-    if said and policy.pii_masking:
-        # report/slides always mask, like card answers
+    if said and policy.pii_masking and not (
+            sessions._strict_model(model)
+            or session.routing_mode == sessions.RoutingMode.super_strict):
+        # report/slides mask once they may leave, like card answers; strict-local reads them
         answers = {k: governance.mask_legacy(v)[0] for k, v in answers.items()}
 
     await litellm_service.ensure_key(user)

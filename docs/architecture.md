@@ -3025,8 +3025,23 @@ never count as findings, so a page that names a switchboard does not trigger
 the privacy dialog.
 
 The selectable guard covers chat. Reports, slides, media
-generation and the `/llm` compatibility API always mask and present no
-decision flow.
+generation and the `/llm` compatibility API always mask what may leave and
+present no decision flow.
+
+**Nothing is masked inside the boundary.** Masking exists for what leaves, so a
+turn whose models are all strict-local reads the person's words, files, history
+and material as given, under organisation-wide masking too: `_resolve_privacy`
+settles a strict-local envelope as `strict_local` (or `internal_strict_local`)
+with no outbound mask, the stored question and summary stay as typed (the next
+turn's history reads them), and `protected_values` is empty, so the answer at rest
+masks secrets only and never turns an address the person gave into 「[이메일]」.
+Reports and decks count as inside when `_document_stays_inside` says so: a
+strict-local model the person picked outside Super Agent, a `super_strict`
+conversation, or internal material the admin keeps strict-local. A plain Super
+Agent document's writer is the table's pick, so it is masked as before. The
+`kloudchat/super-agent*` API masks only when its pick is not strict-local.
+What still leaves a strict-local turn — web search queries (`search_consent.vet`),
+media calls outside the boundary — is masked on its way out.
 
 ### Prompt caching
 

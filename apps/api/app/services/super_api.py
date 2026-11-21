@@ -330,8 +330,9 @@ async def resolve(
         raise ApiRouteError(
             503, "strict_local_unavailable", "No strict-local model can answer this request."
         )
-    mask = bool(personal) and (
-        policy.pii_masking or (policy.external_data_guard and not chosen_strict)
+    # a strict-local model reads the words as given; masking is for what leaves
+    mask = bool(personal) and not chosen_strict and (
+        policy.pii_masking or policy.external_data_guard
     )
     fields = super_agent.reasoning_fields(str(chosen["id"]), effort, chosen)
     route = {

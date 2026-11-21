@@ -290,6 +290,21 @@ def test_personal_data_without_an_internal_model_is_masked_on_the_way_out(world)
     assert "010-2345-6789" not in sent
 
 
+def test_the_strict_variant_reads_personal_data_unmasked_under_org_wide_masking(world) -> None:
+    world.policy = Governance(pii_masking=True, external_data_guard=True)
+    out = _ask(world, "고객 연락처 010-2345-6789 로 사과 문자 초안 하나", model=STRICT)
+    assert out.status_code == 200
+    assert "010-2345-6789" in world.calls[-1]["body"]["messages"][0]["content"]
+
+
+def test_org_wide_masking_still_masks_a_pick_that_may_leave(world) -> None:
+    world.models = [FLASH, DEEPSEEK]
+    world.policy = Governance(pii_masking=True, external_data_guard=True)
+    out = _ask(world, "고객 연락처 010-2345-6789 로 사과 문자 초안 하나")
+    assert out.status_code == 200
+    assert "010-2345-6789" not in world.calls[-1]["body"]["messages"][0]["content"]
+
+
 def test_a_model_that_failed_is_passed_over_once_then_remembered(world) -> None:
     world.fail = {FLASH["id"]}
     out = _ask(world, "안녕하세요!")
