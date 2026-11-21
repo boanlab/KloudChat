@@ -285,11 +285,24 @@ async def judged(questions: list[dict], *, request: str, material: str, complete
             and _flat(quoted[str(q["id"])]) in source for q in asked}
 
 
+def in_language(questions: list[dict], request: str) -> list[dict]:
+    """The questions as asked of `request`: a keyword or regex detector is written in Korean
+    words (「신입|대상|부서」), so for a request written in English it would never find its
+    answer (「all-hands」) and always ask; there the judge model reads the request instead."""
+    from app.services import output_language
+
+    if not output_language.reads_english(request or ""):
+        return questions
+    return [{**q, "detector": {"type": "judge"}}
+            if (q.get("detector") or {}).get("type") in ("keyword", "regex") else q
+            for q in questions]
+
+
 def needs_judge(questions: list[dict]) -> bool:
     return any((q.get("detector") or {}).get("type") == "judge" for q in questions)
 
 
 __all__ = ["DETECTOR_LABELS", "DETECTOR_TYPES", "MAX_QUESTIONS", "QuestionError",
            "builtin_names", "clean", "detector_catalogue",
-           "for_format", "judged", "needs_judge", "of_template", "readings", "regex_ok",
-           "resolve"]
+           "for_format", "in_language", "judged", "needs_judge", "of_template", "readings",
+           "regex_ok", "resolve"]

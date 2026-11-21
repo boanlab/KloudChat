@@ -244,7 +244,8 @@ Rules:
 - **When a title promises subjects such as 「주요 기업별」 or 「국내외」, put real names
   (companies, products, documents) on that slide.** Do not fill it with category names only.
 - **A deck of more than six slides puts an "agenda" (목차) as its second slide.** Write no
-  content — it is filled from the structure. Title it "목차" or "발표 순서".
+  content — it is filled from the structure. Title it "목차" or "발표 순서" ("Agenda" in a deck
+  written in English).
 - **The last slide is "closing"** — two or three things to remember and one closing line.
   Only in decks of more than six slides.
 - For the other slides pick the layout that fits what will be said. A list of items is
@@ -4117,6 +4118,8 @@ async def _write_slides(
                     usage["outputTokens"] += more["outputTokens"]
                     usage_fields.add_cached(usage, more)
                     plain = _plain_notes(said)
+                    if deck_language(slides) != "en":
+                        plain = _korean_sentences(plain)
                     added = notes_only_given(notes_without_echo(plain, slide), slide, request)
                     if not added and not notes and _ONLY_GIVEN.search(request or ""):
                         added = notes_only_given(plain, slide, request)
@@ -6843,6 +6846,18 @@ def _notes_in_json(text: str) -> str | None:
     return walk(data)
 
 
+def _korean_sentences(text: str) -> str:
+    """The sentences of a Korean deck's notes reply that are Korean: a reply that thinks aloud
+    in English first (「We need to respond to user's specific request: …」) keeps only what the
+    presenter says."""
+    kept = []
+    for sentence in re.split(r"(?<=[.!?。])\s+", text or ""):
+        hangul = len(re.findall(r"[가-힣]", sentence))
+        if hangul and hangul * 2 >= len(re.findall(r"[A-Za-z]", sentence)):
+            kept.append(sentence)
+    return " ".join(kept)
+
+
 def _plain_notes(text: str) -> str:
     # JSON reply → its notes, never braces
     if (inner := _notes_in_json(text)) is not None:
@@ -7844,7 +7859,10 @@ def ensure_agenda(plan: list[dict]) -> list[dict]:
         if _AGENDA_TITLE.search(str(item.get("title") or "")):
             item["layout"] = "agenda"
             return plan
-    plan.insert(1, {"title": "발표 순서", "layout": "agenda"})
+    # an English deck's agenda reads 「Agenda」 (its titles say the deck's language)
+    english = output_language.reads_english(" ".join(str(item.get("title") or "")
+                                                      for item in plan))
+    plan.insert(1, {"title": "Agenda" if english else "발표 순서", "layout": "agenda"})
     return plan
 
 

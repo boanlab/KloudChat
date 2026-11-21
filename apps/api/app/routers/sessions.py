@@ -6222,6 +6222,7 @@ async def _send_message(
             [dict(q) for q in deck_purpose.questions] if deck_purpose is not None else [])) \
         if check_skills.of_stage(check_keys, "pre", specs) \
         else []
+    asking = gap_questions.in_language(asking, content)
     judge_model, judge_key = "", ""
     if gap_questions.needs_judge(asking):
         # judge reads material before routing: in-boundary model only, else nothing asked
@@ -6532,6 +6533,9 @@ async def _send_message(
     if kind is SessionKind.chat and (
             dated := date_rules.today_block(content, _today(), asked_before)):
         trusted_context = [*trusted_context, dated]
+    # the weekdays of the days the person wrote, counted by code (「12월 22일」 → 화)
+    if kind is SessionKind.chat and (stated := date_rules.stated_block(content, _today())):
+        trusted_context = [*trusted_context, stated]
     calculation_required = (
         kind is SessionKind.chat and not tables and (
             calculation_policy.requires_calculation(content)

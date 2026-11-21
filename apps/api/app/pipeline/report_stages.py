@@ -1742,6 +1742,9 @@ class Figures(Base):
         asked = diagrams.asks_for_diagrams(instruction_part(request))
         # writer-placed (〔그림〕) first; planner only looks at sections with none
         drawn = 0
+        # labels and captions in the document's language (an English report: English ones)
+        language = "en" if output_language.reads_english(
+            "\n".join(str(s.get("content") or "") for s in sections)) else "ko"
         # drawn flowcharts: one figure per procedure; a numbered procedure shows every step
         flows: list[str] = []
         steps = diagrams.given_steps(instruction_part(request))
@@ -1765,7 +1768,7 @@ class Figures(Base):
                                          mark["caption"], context=content,
                                          document="\n\n".join(
                                              str(s.get("content") or "") for s in sections),
-                                         steps=steps),
+                                         steps=steps, language=language),
                         model=req.model, api_key=req.api_key, slide=False,
                     )
                 except Exception as exc:  # noqa: BLE001 — the text stands without its figure
@@ -1818,6 +1821,7 @@ class Figures(Base):
             # 2 for 5+ sections, else 1
             at_least=max(0, (2 if len(sections) >= 5 else 1) - drawn),
             wrap=lambda prompt: _messages(bundle, prompt),
+            language=language,
         )
         _count(bundle, spent)
         # one figure per procedure: the writer's own flow is not drawn again

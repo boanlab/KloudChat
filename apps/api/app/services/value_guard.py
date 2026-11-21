@@ -480,11 +480,27 @@ _FORMULA = re.compile(
 _OPERAND = re.compile(r"\d[\d,]*(?:\.\d+)?%?")
 
 
+#: a figure written with a scale word (「490만」, 「1억 2,000만」, 「18만 4,102」)
+_SCALED_TERM = re.compile(
+    rf"(?<![\d.])\d(?:,?\d)*(?:\.\d+)?\s?{_SCALE}(?:\s?\d(?:,?\d)*(?:\.\d+)?\s?{_SCALE})*"
+    rf"(?:\s?(?:\d{{1,3}},\d{{3}}|\d{{1,4}})(?![\d,.]|\s?{_SCALE}))?")
+
+
+def _plain_figure(m: re.Match) -> str:
+    try:
+        value = ko_number(m.group(0))
+    except ValueError:
+        return m.group(0)
+    return str(int(value)) if value == int(value) else repr(value)
+
+
 def _formulas(answer: str) -> list[tuple[str, list[str], float, bool]]:
     """`(python expression, operands, stated result, result in %)` of the answer's written
     formulas."""
     out = []
-    lines = [line for line in (answer or "").split("\n") if "=" in line]
+    # amounts in 만/억 read as figures: 「490만 원 - 75만 원 - 60만 원 = 355만 원」
+    lines = [_SCALED_TERM.sub(_plain_figure, line)
+             for line in (answer or "").split("\n") if "=" in line]
     # label words between terms go: 「확정 42,000,000원(부가세 포함) + 보증 연장 45,000원 × 30대」
     cleaned = [re.sub(r"[가-힣A-Za-z]{1,12}\s{0,2}[:：]", " ", re.sub(
         r"\([^()\n]*[가-힣][^()\n]*\)|(?<![\d])[가-힣]{1,12}(?![\d가-힣])", " ", line))
@@ -1382,6 +1398,8 @@ _NOT_MEASURES = frozenset({
 _MEASURE_WORD = re.compile(r"[ -]?([A-Za-z]{3,20})")
 #: a share said in English after its figure: 「64 percent」, 「3 percentage points」
 _EN_PERCENT = re.compile(r"\s?percent(?:age\s?points?)?(?![A-Za-z])", re.I)
+#: a change in points the material gives (「+4.2 points」, 「-0.3 pts」)
+_EN_POINTS = re.compile(r"\s?(?:points?|pts?)(?![A-Za-z])", re.I)
 
 
 @dataclass(slots=True)
@@ -1481,6 +1499,9 @@ def percent_basis(texts: Iterable[str]) -> Percents:
                 if not family and _EN_PERCENT.match(line, m.end()):
                     family = "%p" if "point" in _EN_PERCENT.match(line, m.end()).group(0).lower() \
                         else "%"
+                elif not family and _EN_POINTS.match(line, m.end()):
+                    # 「+4.2 points open rate」: a rate's change in points, given as 4.2%p
+                    family = "%p"
                 if family in ("%", "%p"):
                     given.add(value)
                     continue
@@ -1496,6 +1517,10 @@ def percent_basis(texts: Iterable[str]) -> Percents:
                 if table:
                     groups.setdefault(("column", block, line[:m.start()].count("|")),
                                       set()).add(value)
+    for text in texts:
+        # 「당일 출고율(%)」 heading a column of a pasted CSV/TSV or pipe table: its bare cells
+        # are given percentages (「94.1」 → 94.1%)
+        given.update(_percent_column_cells(text or ""))
     out = set(given)
     parts: set[float] = set()
     for group in groups.values():
@@ -1523,6 +1548,27 @@ def percent_basis(texts: Iterable[str]) -> Percents:
         if len(plain) <= 120 else set()
     return Percents(sorted(out), sorted(given), sorted(gaps),
                     sorted({*plain, *sums, *given}), plain)
+
+
+#: a header cell naming a percentage (「출고율(%)」, 「share %」), not percentage points
+_PERCENT_HEAD = re.compile(r"%(?!\s?p)|퍼센트|percent", re.I)
+_CELL_NUMBER = re.compile(r"\s*[-+]?\d[\d,]*(?:\.\d+)?\s*%?\s*")
+
+
+def _percent_column_cells(text: str) -> list[float]:
+    """Bare figures under a header cell that names a percentage, in the data tables of `text`
+    (an attached CSV read as tab-separated rows, a pasted or markdown table)."""
+    out: list[float] = []
+    for table in table_pivots.tables(text):
+        head = table[0]
+        for row in table[1:]:
+            for name, cell in zip(head, row, strict=False):
+                if _PERCENT_HEAD.search(name) and _CELL_NUMBER.fullmatch(cell):
+                    try:
+                        out.append(abs(float(cell.replace(",", "").replace("%", ""))))
+                    except ValueError:
+                        continue
+    return out
 
 
 def worked_percents(text: str, basis: Percents) -> list[float]:
