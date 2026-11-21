@@ -28,6 +28,8 @@ def test_a_note_that_reads_back_the_ask_or_the_prompt_is_dropped():
               "the one thing the audience should remember. Keep eye contact with each visitor.")
     assert deck.notes_without_prompt(leaked, prompt) == "Keep eye contact with each visitor."
     assert deck.notes_without_prompt("두 문장만 출력합니다.", prompt) == ""
+    # a JSON object begun in place of speech (r3d09 KC-SL, step 2: 「{ "document"」)
+    assert deck.notes_without_prompt('{ "document": "결산 일정', prompt) == ""
 
 
 def test_a_note_keeps_the_requests_facts():

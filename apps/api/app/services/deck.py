@@ -7012,7 +7012,9 @@ def _korean_sentences(text: str) -> str:
 _OUTPUT_TALK = re.compile(
     r"출력(?:합니다|하겠습니다|했습니다)|문장만\s?(?:씁|작성|출력)|덧붙인\s?조건|"
     r"(?:^|\s)(?:Output only|Here (?:are|is) the|"
-    r"I will (?:now )?write)\b", re.I)
+    r"I will (?:now )?write)\b"
+    # a JSON object begun in place of speech: 「{ "document"」
+    r"|[{\[]\s{0,2}\"[A-Za-z_]{2,30}\"", re.I)
 
 
 def ask_lines(request: str) -> str:
