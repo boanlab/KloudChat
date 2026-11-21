@@ -759,8 +759,11 @@ def gaejo_body(sections: list[dict], fmt: doc_formats.DocFormat | None) -> list[
     ]
 
 
+#: the whole amount, its larger units too: 「3만2070원」 (news style), 「5조 4,000억 원」, 「1억 2,000만 원」 —
+#: not just the 「2070원」 after the 만, which no source states
 _MONEY = re.compile(
-    r"(?<![\d,.])\d[\d,]{0,15}(?:\.\d{1,3})?\s{0,3}(?:억|만|천|백)?\s{0,3}원(?!인|리|칙|자)"
+    r"(?<![\d,.])(?=\d)(?:\d[\d,]{0,15}(?:\.\d{1,3})?\s{0,3}(?:조|억|만)\s{0,3}(?=\d|원))*"
+    r"(?:\d[\d,]{0,15}(?:\.\d{1,3})?\s{0,3}(?:억|만|천|백)?\s{0,3})?원(?!인|리|칙|자)"
 )
 
 
@@ -4419,14 +4422,15 @@ def fix_ledger_magnitudes(text: str, request: str) -> str:
     if not results:
         return text
     # an amount the request itself states is never a slip (「월 15만 원 × 10개월」 beside the
-    # ledger's 150만 is the operand, not 150만 a digit short)
-    stated = {v for m in _AMOUNT_WON.finditer(request or "")
+    # ledger's 150만 is the operand, not 150만 a digit short), 원 written or not (「월 4,500만
+    # 원(인건비 3,600만 + 클라우드 900만)」)
+    stated = {v for m in _AMOUNT_MAN.finditer(request or "")
               if (v := _to_man(m.group(1))) is not None}
 
     def fix(m: re.Match) -> str:
         value = _to_man(m.group(1))
         if value is None or any(abs(value - r) < 0.5 for r in results) or any(
-                abs(value - v) < 0.5 for v in stated):
+                abs(value - v) < 0.5 for v in stated) or _worked_beside(text, m, value):
             return m.group(0)
         for r in results:
             for factor in (10, 100, 0.1, 0.01):
@@ -4435,6 +4439,36 @@ def fix_ledger_magnitudes(text: str, request: str) -> str:
         return m.group(0)
 
     return _AMOUNT_WON.sub(fix, text)
+
+
+#: a 만/억 amount, 원 after it or not
+_AMOUNT_MAN = re.compile(
+    r"(?<![\d,.])((?:\d[\d,]{0,15}(?:\.\d{1,15})?\s{0,8}억\s{0,8})?(?:\d[\d,]{0,15}(?:\.\d{1,15})?\s{0,8}만)|\d[\d,]{0,15}(?:\.\d{1,15})?\s{0,8}억)(?!\d)"
+)
+#: one operand of a written product: 「300대」, 「12만 원」, 「1억」
+_OPERAND = r"(\d[\d,]{0,15}(?:\.\d{1,15})?)\s{0,4}(억|만)?\s{0,4}(?:원|대|명|개월|개|건|회|년|일|주|시간)?"
+_WRITTEN_PRODUCT = re.compile(_OPERAND + r"\s{0,4}[×x\*]\s{0,4}" + _OPERAND)
+
+
+def _worked_beside(text: str, m: re.Match, value: float) -> bool:
+    """Whether the amount's own product stands right beside it (「3,600만 원(300대 × 12만 원)」,
+    「300대 × 12만 원 = 3,600만 원」): a worked figure, not a slip of some ledger result."""
+    def man(number: str, unit: str | None) -> float:
+        n = float(number.replace(",", ""))
+        return n * 10000 if unit == "억" else n if unit == "만" else n / 10000
+
+    window = text[max(0, m.start() - 40):m.start()] + " " + text[m.end():m.end() + 40]
+    for p in _WRITTEN_PRODUCT.finditer(window):
+        a, ua, b, ub = p.groups()
+        if bool(ua) == bool(ub):
+            continue  # an amount times a count: exactly one side carries 만/억
+        try:
+            product = man(a, ua) * float(b.replace(",", "")) if ua else float(a.replace(",", "")) * man(b, ub)
+        except ValueError:
+            continue
+        if abs(product - value) < 0.5:
+            return True
+    return False
 
 
 def _to_man(text: str) -> float | None:
