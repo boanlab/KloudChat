@@ -139,6 +139,10 @@ def cite_order(sections: list[dict], sources: list[dict] | None
         return sections, sources
     if any(_REFERENCE_HEADING.search(str(s.get("heading") or "")) for s in sections):
         return sections, sources
+    if any(s.get("entry") for s in sources):
+        # an attached list of numbered works keeps its own numbers (「[3]」 is the file's [3]),
+        # never renumbered by first citation
+        return sections, sources
     alias = same_works(sources)
     by_number: dict[int, dict] = {}
     for index, source in enumerate(sources, 1):

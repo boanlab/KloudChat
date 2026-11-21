@@ -33,6 +33,14 @@ def test_each_numbered_work_is_a_source_with_the_files_own_number():
     assert "1.4℃" not in texts[1]
 
 
+def test_the_works_keep_their_numbers_whatever_is_cited_first():
+    split = citations.split_numbered_works(SOURCES, [FILE])
+    sections = [{"heading": "동향",
+                 "content": "보행자 체감온도는 1.4℃ 낮아졌다[2]. 옥상 녹화는 18℃[1]."}]
+    out, kept = citations.cite_order(sections, split)
+    assert out == sections and [s["ordinal"] for s in kept] == [1, 2, 3]
+
+
 def test_a_file_that_is_no_list_of_works_stays_one_source():
     memo = "# 첨부\n\n## memo.txt\n[1] 회의실 예약 규칙\n[2] 주차 등록 안내\n[3] 비품 신청 방법\n"
     one = [{**SOURCES[0], "fileName": "memo.txt"}]
