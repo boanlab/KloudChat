@@ -480,11 +480,27 @@ _FORMULA = re.compile(
 _OPERAND = re.compile(r"\d[\d,]*(?:\.\d+)?%?")
 
 
+#: a figure written with a scale word (「490만」, 「1억 2,000만」, 「18만 4,102」)
+_SCALED_TERM = re.compile(
+    rf"(?<![\d.])\d(?:,?\d)*(?:\.\d+)?\s?{_SCALE}(?:\s?\d(?:,?\d)*(?:\.\d+)?\s?{_SCALE})*"
+    rf"(?:\s?(?:\d{{1,3}},\d{{3}}|\d{{1,4}})(?![\d,.]|\s?{_SCALE}))?")
+
+
+def _plain_figure(m: re.Match) -> str:
+    try:
+        value = ko_number(m.group(0))
+    except ValueError:
+        return m.group(0)
+    return str(int(value)) if value == int(value) else repr(value)
+
+
 def _formulas(answer: str) -> list[tuple[str, list[str], float, bool]]:
     """`(python expression, operands, stated result, result in %)` of the answer's written
     formulas."""
     out = []
-    lines = [line for line in (answer or "").split("\n") if "=" in line]
+    # amounts in 만/억 read as figures: 「490만 원 - 75만 원 - 60만 원 = 355만 원」
+    lines = [_SCALED_TERM.sub(_plain_figure, line)
+             for line in (answer or "").split("\n") if "=" in line]
     # label words between terms go: 「확정 42,000,000원(부가세 포함) + 보증 연장 45,000원 × 30대」
     cleaned = [re.sub(r"[가-힣A-Za-z]{1,12}\s{0,2}[:：]", " ", re.sub(
         r"\([^()\n]*[가-힣][^()\n]*\)|(?<![\d])[가-힣]{1,12}(?![\d가-힣])", " ", line))
