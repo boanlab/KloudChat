@@ -32,7 +32,8 @@ def test_a_short_span_in_a_dated_memo_stays_as_the_answer_writes_it():
 
 
 def test_a_spans_first_day_is_no_deadline_to_put_back():
-    request = "- 원래 출고일 3월 26일\n- 서버 점검으로 3월 9~12일 출고 중단\n- 4월 2일까지 회신 요청"
+    request = ("- 원래 출고일 3월 26일\n- 서버 점검으로 3월 9~12일 출고 중단\n"
+               "- 4월 2일까지 회신 요청")
     answer = "3월 9일부터 12일까지 서버 점검으로 출고가 멈췄습니다. 3월 26일 출고는 그대로입니다."
     trace = skill_scripts.module("grounding-check", "trace")
     found = trace.check(answer, request, ["3월 9일(월)~3월 12일(목)"], {"person": request})
