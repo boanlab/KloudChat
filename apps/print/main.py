@@ -12,7 +12,9 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import os
 import shutil
+import signal
 import tempfile
 import zipfile
 from contextlib import asynccontextmanager
@@ -143,11 +145,37 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="KloudChat printer", lifespan=lifespan)
 
 
+#: Defunct processes this container may hold before /health fails. A healthy one holds a
+#: handful; the leak this guards against (no init to reap soffice's orphans) filled the
+#: pid limit at ~38,000 and soffice then exited 0 without writing anything.
+MAX_ZOMBIES = 200
+
+
+def zombie_count(proc: Path = Path("/proc")) -> int:
+    """Processes in state Z, read from /proc (this container's pid namespace only)."""
+    count = 0
+    for entry in proc.iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            stat = (entry / "stat").read_text()
+        except OSError:  # gone while scanning
+            continue
+        # "pid (comm) S ...": comm may hold spaces and parentheses, so split after the last ")"
+        if stat.rpartition(")")[2].split(maxsplit=1)[:1] == ["Z"]:
+            count += 1
+    return count
+
+
 @app.get("/health")
-async def health() -> dict[str, bool]:
-    """Whether a browser can be started, not merely whether the port is open."""
+async def health() -> dict[str, bool | int]:
+    """Whether a browser can be started, not merely whether the port is open, and whether
+    defunct processes are piling up (503 above `MAX_ZOMBIES`, so the healthcheck notices)."""
+    zombies = zombie_count()
+    if zombies > MAX_ZOMBIES:
+        raise HTTPException(status_code=503, detail=f"zombies:{zombies}")
     browser = await chromium.page_context()
-    return {"ok": browser.is_connected()}
+    return {"ok": browser.is_connected(), "zombies": zombies}
 
 
 @app.post("/pdf")
@@ -206,17 +234,47 @@ def _without_autospace(odp: Path) -> None:
     fixed.replace(odp)
 
 
+def _kill_group(process: asyncio.subprocess.Process) -> None:
+    """SIGKILL to the child's whole process group: soffice is a launcher (oosplash) that
+    starts soffice.bin, and a plain `process.kill()` leaves that grandchild running."""
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
 async def _run(*command: str, timeout: float) -> None:
+    # Its own session, so the group id is the child's pid and `_kill_group` reaches every
+    # descendant, however deep.
     process = await asyncio.create_subprocess_exec(
-        *command, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE
+        *command, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
+        start_new_session=True,
     )
     try:
         _, err = await asyncio.wait_for(process.communicate(), timeout)
     except asyncio.TimeoutError as exc:
-        process.kill()
         raise HTTPException(status_code=504, detail="render_timeout") from exc
+    finally:
+        # Also on timeout and on a dropped client (cancellation): kill leftovers, then reap
+        # the child, or it stays defunct until the process exits.
+        _kill_group(process)
+        await process.wait()
     if process.returncode:
         raise HTTPException(status_code=422, detail=f"render_failed: {err.decode()[-300:]}")
+
+
+async def _convert(work: Path, fmt: str, source: Path, output: Path) -> None:
+    """`soffice --convert-to fmt`; `output` must exist after. soffice exits 0 without writing
+    anything when it cannot start (pid limit, a profile left locked), so a missing file is
+    retried once with a fresh profile, then answered as 503."""
+    for attempt in range(2):
+        profile = work / ("profile" if attempt == 0 else "profile-retry")
+        await _run("soffice", f"-env:UserInstallation=file://{profile}", "--headless",
+                   "--norestore", "--convert-to", fmt, "--outdir", str(work), str(source),
+                   timeout=60)
+        if output.exists():
+            return
+    raise HTTPException(status_code=503, detail="render_unavailable")
 
 
 @app.post("/pptx/png")
@@ -232,21 +290,19 @@ async def pptx_png(job: SlideJob) -> Response:
     try:
         source = work / "figure.pptx"
         source.write_bytes(blob)
-        office = ("soffice", f"-env:UserInstallation=file://{work}/profile", "--headless",
-                  "--norestore")
         async with _office:
             # Through .odp: an imported paragraph gets Asian–Latin autospacing (a gap at
             # every 한글–Latin boundary), and no .pptx property turns it off.
-            await _run(*office, "--convert-to", "odp", "--outdir", str(work), str(source),
-                       timeout=60)
+            await _convert(work, "odp", source, work / "figure.odp")
             _without_autospace(work / "figure.odp")
-            await _run(*office, "--convert-to", "pdf", "--outdir", str(work),
-                       str(work / "figure.odp"), timeout=60)
+            await _convert(work, "pdf", work / "figure.odp", work / "figure.pdf")
         await _run(
             "pdftoppm", "-r", str(job.dpi), "-f", "1", "-l", "1", "-png", "-singlefile",
             str(work / "figure.pdf"), str(work / "figure"),
             timeout=30,
         )
+        if not (work / "figure.png").exists():
+            raise HTTPException(status_code=503, detail="render_unavailable")
         return Response(content=(work / "figure.png").read_bytes(), media_type="image/png")
     finally:
         shutil.rmtree(work, ignore_errors=True)
