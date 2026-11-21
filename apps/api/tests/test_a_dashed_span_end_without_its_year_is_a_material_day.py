@@ -21,7 +21,8 @@ def _ground(material: str, answer: str) -> check_skills.Outcome:
 
 
 def test_the_span_end_is_the_materials_day():
-    memo = "시설 점검 계획 메모 (2026-12-01 작성)\n3. 정밀 점검(2026-12-07~12-11, 3개 동), 결과 보고는 별도."
+    memo = ("시설 점검 계획 메모 (2026-12-01 작성)\n"
+            "3. 정밀 점검(2026-12-07~12-11, 3개 동), 결과 보고는 별도.")
     answer = "정밀 점검은 2026년 12월 7일부터 12월 11일까지 3개 동을 대상으로 진행합니다."
     assert _ground(memo, answer).text == answer
 

@@ -1,6 +1,7 @@
 """A sentence an earlier check marked, marked again for a stated rule, reads one mark.
 
-Round-3 r3r07 (11-21, KC-SA): 「보상 기준 및 절차를 내부 규정으로 문서화함 [1] (확인 필요) (확인 필요)」
+Round-3 r3r07 (11-21, KC-SA):
+「보상 기준 및 절차를 내부 규정으로 문서화함 [1] (확인 필요) (확인 필요)」
 — the policy mark went after the citation's earlier mark."""
 
 from __future__ import annotations

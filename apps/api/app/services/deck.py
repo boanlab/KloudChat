@@ -496,8 +496,10 @@ def _facts_line(request: str, material: list[str] | None = None) -> str:
     def figures(text: str, seen: list[str]) -> list[str]:
         out: list[str] = []
         for match in re.finditer(
-            # a clock time or span whole (「09:30」, 「12:00~13:00」), never its hour and minutes apart
-            _CLOCK + r"|\d[\d,]*(?:\.\d+)?\s*(?:억|만|천|백)?\s*(?:원|%|퍼센트|시간|분|초|일|주|개월|년|회|건|명|대|장)?",
+            # a clock time or span whole (「09:30」, 「12:00~13:00」), never its hour and
+            # minutes apart
+            _CLOCK + r"|\d[\d,]*(?:\.\d+)?\s*(?:억|만|천|백)?\s*"
+            r"(?:원|%|퍼센트|시간|분|초|일|주|개월|년|회|건|명|대|장)?",
             text,
         ):
             token = re.sub(r"\s+", "", match.group(0))
@@ -1889,7 +1891,7 @@ def _parse_outline(text: str) -> tuple[str, str, list[dict[str, str]]]:
         # plain bullet/numbered lines
         for line in text.splitlines():
             if re.match(r"^\s*(?:[-*+]|\d+[.)])\s+\S", line):
-                heading = re.sub(r"^\s*(?:[-*+]|\d+[.)])\s*", "", line).strip(" #").strip()
+                heading = re.sub(r"^\s*(?:[-*+]|\d+[.)](?!\d))\s*", "", line).strip(" #").strip()
                 if heading:
                     plan.append({"title": heading, "layout": "bullets"})
 
@@ -2347,11 +2349,13 @@ def requested_contents(slides: list[dict], request: str) -> dict[int, str]:
                          f"Q1~Q{count}, each one line with O/X or options; keep the questions "
                          "already there, and put the answers and explanations in the speaker "
                          "notes.")
-        if (at is not None and at not in needs and _ANSWERS_IN_NOTES.search(lead_instruction(request or ""))
+        if (at is not None and at not in needs
+                and _ANSWERS_IN_NOTES.search(lead_instruction(request or ""))
                 and (have := quiz_questions(slides, at))
                 and len(_ANSWER_SAID.findall(str(slides[at].get("notes") or ""))) < have):
             # 「퀴즈 정답과 해설은 발표자 노트에」 with notes that only lead into the quiz
-            needs[at] = (f"Keep the {have} quiz questions on the screen as they are. In the speaker "
+            needs[at] = (f"Keep the {have} quiz questions on the screen as they are. "
+                         "In the speaker "
                          "notes give each question's answer and a one-line explanation, in order "
                          "(「1번 정답: … — …」), from the material and the earlier slides.")
     if _ASKS_DECISION.search(asked):
@@ -2634,7 +2638,7 @@ def _clean_bullets(value: Any) -> list[str]:
             item = " – ".join(str(v).strip() for v in item.values() if str(v).strip())
         elif isinstance(item, list):
             item = " – ".join(str(v).strip() for v in item if str(v).strip())
-        text = re.sub(r"^\s*(?:[-*+]|\d+[.)])\s*", "", str(item)).strip()
+        text = re.sub(r"^\s*(?:[-*+]|\d+[.)](?!\d))\s*", "", str(item)).strip()
         text = re.sub(r"\*\*(.+?)\*\*", r"\1", text).replace("`", "").strip()
         text = text.splitlines()[0].strip() if text else ""
         # table row (2+ bars) is no line; card 「제목 | 설명」 has one
@@ -4250,7 +4254,8 @@ async def _write_slides(
     # a timeline asked for the whole schedule keeps every dated item listed (request or material)
     from app.services.context import instruction_part as _instruction
     for index, slide in enumerate(slides):
-        kept = keep_listed_dates(slide, _instruction(request or ""), "\n".join(untrusted_context or []))
+        kept = keep_listed_dates(
+            slide, _instruction(request or ""), "\n".join(untrusted_context or []))
         if kept is not slide:
             slides[index] = kept
             touched.add(index)
@@ -6840,7 +6845,9 @@ _LISTED_MILESTONE = re.compile(
     r"(?P<date>(?:(?:19|20)\d{2}[-./])?\d{1,2}[-./]\d{1,2}|\d{1,2}월\s*\d{1,2}일)\.?"
     r"(?:\s{0,2}\([월화수목금토일]\))?\s{1,3}(?P<what>[^\n]{2,60}?)\s*$", re.M)
 #: a deck the request asks to show every milestone of: 「일정(마일스톤 전부)」, 「모든 일정」
-_ALL_MILESTONES = re.compile(r"마일스톤|일정\s?(?:\(|전부|모두|전체)|(?:전부|모든|전체)\s?일정|all (?:the )?milestones", re.I)
+_ALL_MILESTONES = re.compile(
+    r"마일스톤|일정\s?(?:\(|전부|모두|전체)|(?:전부|모든|전체)\s?일정|all (?:the )?milestones",
+    re.I)
 
 
 #: a day in any of 「11/26」, 「11월 26일」, 「2026-11-26」, 「2026. 11. 26.」: its month and day
@@ -6854,7 +6861,8 @@ def listed_milestones(instruction: str, material: str = "") -> list[tuple[str, s
     listed = [(d.strip(), what.strip()) for d, what in _DATED_ITEM.findall(instruction or "")]
     if len(listed) >= 2 or not _ALL_MILESTONES.search(instruction or ""):
         return listed
-    items = [(m.group("date"), m.group("what").strip()) for m in _LISTED_MILESTONE.finditer(material or "")]
+    items = [(m.group("date"), m.group("what").strip())
+             for m in _LISTED_MILESTONE.finditer(material or "")]
     return items if len(items) >= 2 else listed
 
 
@@ -6932,14 +6940,17 @@ def _korean_sentences(text: str) -> str:
     return " ".join(kept)
 
 
-#: a note sentence about the output, not to the audience: 「두 문장만 출력합니다」, 「Here are the notes」
+#: a note sentence about the output, not to the audience: 「두 문장만 출력합니다」,
+#: 「Here are the notes」
 _OUTPUT_TALK = re.compile(
-    r"출력(?:합니다|하겠습니다|했습니다)|문장만\s?(?:씁|작성|출력)|덧붙인\s?조건|(?:^|\s)(?:Output only|Here (?:are|is) the|"
+    r"출력(?:합니다|하겠습니다|했습니다)|문장만\s?(?:씁|작성|출력)|덧붙인\s?조건|"
+    r"(?:^|\s)(?:Output only|Here (?:are|is) the|"
     r"I will (?:now )?write)\b", re.I)
 
 
 def ask_lines(request: str) -> str:
-    """The request's ask lines (「… 만들어 줘.」, 「덧붙인 조건: …」), not its data lines (「- 고객: …」)."""
+    """The request's ask lines (「… 만들어 줘.」, 「덧붙인 조건: …」), not its data lines
+    (「- 고객: …」)."""
     return "\n".join(line for line in (request or "").split("\n")
                      if line.strip() and not re.match(r"\s*(?:[-*•·]|\d{1,2}[.)])\s", line))
 

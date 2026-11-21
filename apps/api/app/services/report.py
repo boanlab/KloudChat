@@ -4035,7 +4035,7 @@ def _parse_outline(text: str, most: int = _MAX_SECTIONS) -> tuple[str, list[str]
         if _OUTLINE_LIST_HEADER.match(line):
             start = i + 1
     lines = [
-        re.sub(r"^\s*(?:[-*+]|\d+[.)])\s*", "", line).strip(" #").strip()
+        re.sub(r"^\s*(?:[-*+]|\d+[.)](?!\d))\s*", "", line).strip(" #").strip()
         for line in raw[start:]
         if re.match(r"^\s*(?:[-*+]|\d+[.)])\s+\S", line)
     ]

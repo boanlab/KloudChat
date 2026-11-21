@@ -246,7 +246,8 @@ def fix_weekdays(text: str, *, context: str = "",
                     near = _nearest(month, dom, today)
                     if inline and near is not None and near[1] and near[0].year != day.year:
                         try:
-                            said = dt.date(int(inline.group(1)), int(inline.group(2)), int(inline.group(3)))
+                            said = dt.date(int(inline.group(1)), int(inline.group(2)),
+                                           int(inline.group(3)))
                         except ValueError:
                             said = None
                         if said is not None and abs((said - today).days) <= _SURE_DAYS:

@@ -577,7 +577,8 @@ def _work_source(number: int, body: str, parent: dict) -> dict:
     author = re.split(r"\s?\(|,|\.\s", head, maxsplit=1)[0].strip()
     title = re.sub(r"\s+", " ", head)[:160].strip()
     return {
-        **{k: parent[k] for k in ("fileName", "publisher", "origin", "originLabel", "url") if k in parent},
+        **{k: parent[k]
+           for k in ("fileName", "publisher", "origin", "originLabel", "url") if k in parent},
         "id": f"{parent.get('id') or 'file'}#{number}",
         "title": title,
         **({"author": author[:80]} if 2 <= len(author) <= 80 else {}),
@@ -596,8 +597,9 @@ def split_numbered_works(sources: list[dict], attachments: list[str]) -> list[di
     joined = "\n".join(attachments or [])
     out: list[dict] = []
     for source in sources:
-        works = numbered_works(_file_block(joined, str(source.get("fileName") or source.get("title") or ""))) \
-            if source.get("attached") else []
+        works = numbered_works(
+            _file_block(joined, str(source.get("fileName") or source.get("title") or ""))
+        ) if source.get("attached") else []
         if works:
             out += [_work_source(n, body, source) for n, body in works]
         else:

@@ -16,7 +16,8 @@ TODAY = dt.date(2026, 11, 21)
 
 
 def test_bare_dates_after_a_near_next_year_deadline_are_this_years():
-    text = ("잔금은 2027년 1월 8일까지 치르면 됩니다. 12월 23일(수)에 이사하고, 짐은 12월 21일(화)에 쌉니다. "
+    text = ("잔금은 2027년 1월 8일까지 치르면 됩니다. 12월 23일(수)에 이사하고, "
+            "짐은 12월 21일(화)에 쌉니다. "
             "업체 확인은 11월 24일(수)에 하세요.")
     out, _ = weekdays.fix_weekdays(text, context="12월 23일에 이사해.", today=TODAY)
     assert "12월 23일(수)" in out

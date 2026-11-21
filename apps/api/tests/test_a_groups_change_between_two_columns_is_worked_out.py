@@ -16,7 +16,8 @@ CSV = ("센터,항목,1분기,2분기\n"
 
 
 def test_the_groups_change_stays_unmarked():
-    text = "세 센터 상담건수는 2,500건에서 2,700건으로 8.0% 늘었고, 교육인원은 600명에서 700명으로 16.7% 늘었습니다.\n"
+    text = ("세 센터 상담건수는 2,500건에서 2,700건으로 8.0% 늘었고, "
+            "교육인원은 600명에서 700명으로 16.7% 늘었습니다.\n")
     assert report._without_invented_percents(text, [CSV]) == text
 
 

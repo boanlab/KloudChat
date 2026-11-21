@@ -16,11 +16,13 @@ from app.services import check_skills
 TODAY = dt.date(2026, 11, 21)
 ASK = ("목돈 480만 원이 있어. 1년 뒤 세후 이자가 더 많은 쪽을 계산해 줘(이자소득세 15.4%).\n"
        "① 480만 원을 1년 정기예금(연 3.2%, 만기 일시 지급)\n"
-       "② 480만 원을 파킹통장(연 2.0%, 월 단위 단리)에 두고 매달 1일 40만 원씩 12개월 적금(연 3.5%, 단리)에 납입")
+       "② 480만 원을 파킹통장(연 2.0%, 월 단위 단리)에 두고 "
+       "매달 1일 40만 원씩 12개월 적금(연 3.5%, 단리)에 납입")
 
 
 def _ground(answer: str) -> str:
-    options = {**check_skills.options_for(TODAY, {}, surface="chat"), "person": ASK, "requirements": True}
+    options = {**check_skills.options_for(TODAY, {}, surface="chat"),
+               "person": ASK, "requirements": True}
     return check_skills.ground(("grounding-check",), answer, material=ASK, computed=[],
                                options=options, evidence=[ASK]).text
 
