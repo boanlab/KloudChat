@@ -1398,6 +1398,8 @@ _NOT_MEASURES = frozenset({
 _MEASURE_WORD = re.compile(r"[ -]?([A-Za-z]{3,20})")
 #: a share said in English after its figure: 「64 percent」, 「3 percentage points」
 _EN_PERCENT = re.compile(r"\s?percent(?:age\s?points?)?(?![A-Za-z])", re.I)
+#: a change in points the material gives (「+4.2 points」, 「-0.3 pts」)
+_EN_POINTS = re.compile(r"\s?(?:points?|pts?)(?![A-Za-z])", re.I)
 
 
 @dataclass(slots=True)
@@ -1497,6 +1499,9 @@ def percent_basis(texts: Iterable[str]) -> Percents:
                 if not family and _EN_PERCENT.match(line, m.end()):
                     family = "%p" if "point" in _EN_PERCENT.match(line, m.end()).group(0).lower() \
                         else "%"
+                elif not family and _EN_POINTS.match(line, m.end()):
+                    # 「+4.2 points open rate」: a rate's change in points, given as 4.2%p
+                    family = "%p"
                 if family in ("%", "%p"):
                     given.add(value)
                     continue
