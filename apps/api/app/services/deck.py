@@ -4118,6 +4118,8 @@ async def _write_slides(
                     usage["outputTokens"] += more["outputTokens"]
                     usage_fields.add_cached(usage, more)
                     plain = _plain_notes(said)
+                    if deck_language(slides) != "en":
+                        plain = _korean_sentences(plain)
                     added = notes_only_given(notes_without_echo(plain, slide), slide, request)
                     if not added and not notes and _ONLY_GIVEN.search(request or ""):
                         added = notes_only_given(plain, slide, request)
@@ -6842,6 +6844,18 @@ def _notes_in_json(text: str) -> str | None:
         return None
 
     return walk(data)
+
+
+def _korean_sentences(text: str) -> str:
+    """The sentences of a Korean deck's notes reply that are Korean: a reply that thinks aloud
+    in English first (「We need to respond to user's specific request: …」) keeps only what the
+    presenter says."""
+    kept = []
+    for sentence in re.split(r"(?<=[.!?。])\s+", text or ""):
+        hangul = len(re.findall(r"[가-힣]", sentence))
+        if hangul and hangul * 2 >= len(re.findall(r"[A-Za-z]", sentence)):
+            kept.append(sentence)
+    return " ".join(kept)
 
 
 def _plain_notes(text: str) -> str:
