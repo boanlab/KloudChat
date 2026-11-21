@@ -90,6 +90,10 @@ FULL_DAY = re.compile(
 )
 #: 「20261014」 in a file's name.
 COMPACT_DAY = re.compile(r"(?<!\d)(?P<y>20\d{2})(?P<m>[01]\d)(?P<d>[0-3]\d)(?!\d)")
+#: 「2026-11-03~11-10」, 「2026-09-21 – 10-02」: a span whose end day drops the year
+DASH_SPAN_END = re.compile(
+    r"(?<![\d.])(?P<y>(?:19|20)\d{2})-(?P<m>\d{1,2})-(?P<d>\d{1,2})\s{0,2}[~∼〜–—-]\s{0,2}"
+    r"(?P<m2>\d{1,2})-(?P<d2>\d{1,2})(?![\d-])")
 MONTH_DAY = re.compile(
     rf"(?<![\d.])(?P<m>\d{{1,2}})\s{{0,2}}월\s{{0,2}}(?P<d>\d{{1,2}})\s{{0,2}}일(?:\s{{0,2}}\([{_WD}]\))?")
 #: 「10/9(금)」, 「10. 9.(금)」: a short day, read only with its weekday or 「까지」 after it.
@@ -602,6 +606,10 @@ class Sources:
                 self._day(int(m.group("y")), int(m.group("m")), int(m.group("d")))
         for m in MONTH_DAY.finditer(text):
             self._day(None, int(m.group("m")), int(m.group("d")))
+        for m in DASH_SPAN_END.finditer(text):
+            # 「2026-11-03~11-10」: the end of a span written short after a full start day
+            y, m1, m2 = int(m.group("y")), int(m.group("m")), int(m.group("m2"))
+            self._day(y + (m2 < m1), m2, int(m.group("d2")))
         for m in re.finditer(r"(?<![\d./])(\d{1,2})\s{0,1}[/.]\s{0,1}(\d{1,2})(?![\d/])", text):
             self._day(None, int(m.group(1)), int(m.group(2)))
         for m in YEAR_MONTH.finditer(text):
