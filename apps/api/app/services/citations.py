@@ -535,6 +535,78 @@ def credit_attachments(sections: list[dict], sources: list[dict] | None,
 _SHELF_ENTRY = re.compile(r"^\[(\d{1,3})\] [^\n]*\n출처: ", re.M)
 
 
+#: a numbered work at a line start of an attached file: 「[3] 오세린 외 (2026). …」
+_WORK_ENTRY = re.compile(r"^\s{0,3}\[(\d{1,3})\]\s+(?=\S)", re.M)
+_YEAR_IN = re.compile(r"(?<!\d)((?:19|20)\d{2})(?!\d)")
+#: the fewest numbered works that make a file a list of works
+_MIN_WORKS = 3
+
+
+def _file_block(joined: str, name: str) -> str:
+    at = joined.find(f"## {name}\n") if name else -1
+    if at < 0:
+        return ""
+    end = joined.find("\n## ", at + 1)
+    return joined[at:end if end > 0 else len(joined)]
+
+
+def numbered_works(text: str) -> list[tuple[int, str]]:
+    """An attached file that is a numbered list of works (abstracts, a bibliography): each
+    entry as (its own number, its text), numbered 1, 2, 3 … in order, each with a year; [] for
+    any other file."""
+    starts = list(_WORK_ENTRY.finditer(text or ""))
+    if len(starts) < _MIN_WORKS:
+        return []
+    entries = []
+    for k, m in enumerate(starts):
+        end = starts[k + 1].start() if k + 1 < len(starts) else len(text)
+        entries.append((int(m.group(1)), text[m.end():end].strip()))
+    if [n for n, _ in entries] != list(range(1, len(entries) + 1)):
+        return []
+    if not all(_YEAR_IN.search(body[:300]) for _, body in entries):
+        return []
+    # the entries are the file: what stands before the first is no more than a heading
+    if len(text[:starts[0].start()].strip()) > 0.3 * len(text):
+        return []
+    return entries
+
+
+def _work_source(number: int, body: str, parent: dict) -> dict:
+    head = " ".join(body.split("\n")[:2])
+    year = _YEAR_IN.search(head[:300])
+    author = re.split(r"\s?\(|,|\.\s", head, maxsplit=1)[0].strip()
+    title = re.sub(r"\s+", " ", head)[:160].strip()
+    return {
+        **{k: parent[k] for k in ("fileName", "publisher", "origin", "originLabel", "url") if k in parent},
+        "id": f"{parent.get('id') or 'file'}#{number}",
+        "title": title,
+        **({"author": author[:80]} if 2 <= len(author) <= 80 else {}),
+        **({"year": year.group(1)} if year else {}),
+        "attached": True,
+        "entry": number,
+        "excerpt": body,
+        "quote": f"{parent.get('fileName') or parent.get('title') or '첨부 파일'} [{number}]",
+    }
+
+
+def split_numbered_works(sources: list[dict], attachments: list[str]) -> list[dict]:
+    """An attached file that lists numbered works becomes one source per work, so each work is
+    cited by its own number — the file's own 「[3]」 when the file is the first source — not
+    the whole file as one 「[1]」. The other sources keep their order, renumbered after."""
+    joined = "\n".join(attachments or [])
+    out: list[dict] = []
+    for source in sources:
+        works = numbered_works(_file_block(joined, str(source.get("fileName") or source.get("title") or ""))) \
+            if source.get("attached") else []
+        if works:
+            out += [_work_source(n, body, source) for n, body in works]
+        else:
+            out.append(source)
+    if len(out) == len(sources):
+        return sources
+    return [{**s, "ordinal": i} for i, s in enumerate(out, 1)]
+
+
 def source_texts(sources: list[dict] | None, research_context: str,
                  attachments: list[str]) -> dict[int, str]:
     """What each source number gave the writer: research pages by their 「[n]」, attached files
@@ -547,6 +619,10 @@ def source_texts(sources: list[dict] | None, research_context: str,
     joined = "\n".join(attachments)
     for i, source in enumerate(sources or [], 1):
         if not source.get("attached"):
+            continue
+        if source.get("excerpt"):
+            # one work of a file that lists numbered works: that entry
+            out[int(source.get("ordinal") or i)] = str(source["excerpt"])
             continue
         name = str(source.get("fileName") or source.get("title") or "")
         at = joined.find(f"## {name}\n") if name else -1

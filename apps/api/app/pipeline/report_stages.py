@@ -355,6 +355,18 @@ class Assemble(Base):
             project_reference_lines.append(
                 f"- [{ordinal}] {title}" + (f" ({name})" if title != name else ""))
             project_selected += not attached
+        # an attached list of numbered works (abstracts, a bibliography): a source per work,
+        # cited by its own number
+        split = citations.split_numbered_works(findings.sources, list(req.untrusted))
+        if split is not findings.sources:
+            project_ids = {str(item.get("id") or "") for item in req.project_sources or []}
+            findings.sources[:] = split
+            project_reference_lines = [
+                f"- [{s['ordinal']}] {s['title']}"
+                + (f" ({s['fileName']})" if s.get("fileName") and s["fileName"] != s["title"] else "")
+                for s in split if s.get("attached")
+                or str(s.get("id") or "").split("#")[0] in project_ids
+                or str(s.get("id") or "").startswith("project-")]
         mat.sources = findings.sources
 
         # research log for the report artifact
@@ -2330,7 +2342,8 @@ def mark_policy(sections: list[dict], still: list, doc: verify.Doc | None = None
         if not 0 <= index < len(out):
             continue
         content = str(out[index].get("content") or "")
-        out[index]["content"] = stated_policy.mark(content, sentence, said)
+        # a sentence an earlier check already marked reads one mark (「[1] (확인 필요)」)
+        out[index]["content"] = value_guard.tidy_marks(stated_policy.mark(content, sentence, said))
     return out
 
 
