@@ -2325,6 +2325,38 @@ _CLOSING_TITLE = re.compile(
     r"closing|thank|summary|takeaway|wrap|next steps|questions", re.I)
 
 
+def _items_of(slide: dict) -> list[str]:
+    out = [str(b) for b in slide.get("bullets") or []]
+    for key in ("items", *_PAIRED):
+        out += [" ".join(str(c) for c in row) for row in slide.get(key) or []
+                if isinstance(row, list)]
+    return [k for k in (re.sub(r"[\W_]+", "", x) for x in out) if len(k) >= 4]
+
+
+#: a recap slide's title: it repeats earlier slides on purpose
+_RECAP_TITLE = re.compile(
+    r"정리|요약|기억|마무리|결론|핵심\s?(?:정리|메시지|요약)|takeaway|summary|recap", re.I)
+
+
+def repeated_slides(slides: list[dict]) -> list[tuple[int, int]]:
+    """Content slides whose items an earlier slide already shows (two or more items, at least
+    80% of them the same): (later, earlier)."""
+    out: list[tuple[int, int]] = []
+    seen: list[tuple[int, set[str]]] = []
+    for index, slide in enumerate(slides):
+        if slide.get("layout") in ("title", "agenda", "closing", "section", "takeaways") or \
+                _RECAP_TITLE.search(str(slide.get("title") or "")):
+            continue  # a recap repeats on purpose
+        items = set(_items_of(slide))
+        if len(items) >= 2:
+            for earlier, other in seen:
+                if len(items & other) >= max(2, 0.8 * len(items)):
+                    out.append((index, earlier))
+                    break
+        seen.append((index, items))
+    return out
+
+
 def closing_with_content(slides: list[dict]) -> list[int]:
     """The last slide written as a closing (「감사합니다」) whose title is a part of the content —
     the quiz, the checklist the request asked for — set back to a content slide; returned."""
@@ -4283,6 +4315,12 @@ async def _write_slides(
             touched.add(index)
     # placeholders or name-only parts rewritten once
     needs = requested_contents(slides, request)
+    for index, earlier in repeated_slides(slides):
+        needs.setdefault(index, (
+            f"This slide repeats the items of slide {earlier + 1} "
+            f"(「{slides[earlier].get('title') or ''}」). Write what this slide's own title "
+            f"(「{slides[index].get('title') or ''}」) names instead, from the material, without "
+            "repeating that slide."))
     for index in closing_with_content(slides):
         touched.add(index)
         if not slides[index].get("bullets"):
