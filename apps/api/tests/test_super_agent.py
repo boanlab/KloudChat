@@ -427,7 +427,7 @@ def test_hard_classes_go_to_deepseek_with_reasoning_high() -> None:
         rule = sa.DEFAULT_RULES[name]
         assert (rule["model"], rule["strictModel"], rule["effort"]) == (
             "local/qwen3.8-flash", "strict-local/qwen3.8-flash", "none"), name
-    assert sa.ROUTER_VERSION == "super-agent-2026-11-20.v1"
+    assert sa.ROUTER_VERSION == "super-agent-2026-11-21.v1"
 
 
 @pytest.mark.asyncio
