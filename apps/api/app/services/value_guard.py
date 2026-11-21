@@ -1496,6 +1496,10 @@ def percent_basis(texts: Iterable[str]) -> Percents:
                 if table:
                     groups.setdefault(("column", block, line[:m.start()].count("|")),
                                       set()).add(value)
+    for text in texts:
+        # 「당일 출고율(%)」 heading a column of a pasted CSV/TSV or pipe table: its bare cells
+        # are given percentages (「94.1」 → 94.1%)
+        given.update(_percent_column_cells(text or ""))
     out = set(given)
     parts: set[float] = set()
     for group in groups.values():
@@ -1523,6 +1527,27 @@ def percent_basis(texts: Iterable[str]) -> Percents:
         if len(plain) <= 120 else set()
     return Percents(sorted(out), sorted(given), sorted(gaps),
                     sorted({*plain, *sums, *given}), plain)
+
+
+#: a header cell naming a percentage (「출고율(%)」, 「share %」), not percentage points
+_PERCENT_HEAD = re.compile(r"%(?!\s?p)|퍼센트|percent", re.I)
+_CELL_NUMBER = re.compile(r"\s*[-+]?\d[\d,]*(?:\.\d+)?\s*%?\s*")
+
+
+def _percent_column_cells(text: str) -> list[float]:
+    """Bare figures under a header cell that names a percentage, in the data tables of `text`
+    (an attached CSV read as tab-separated rows, a pasted or markdown table)."""
+    out: list[float] = []
+    for table in table_pivots.tables(text):
+        head = table[0]
+        for row in table[1:]:
+            for name, cell in zip(head, row, strict=False):
+                if _PERCENT_HEAD.search(name) and _CELL_NUMBER.fullmatch(cell):
+                    try:
+                        out.append(abs(float(cell.replace(",", "").replace("%", ""))))
+                    except ValueError:
+                        continue
+    return out
 
 
 def worked_percents(text: str, basis: Percents) -> list[float]:

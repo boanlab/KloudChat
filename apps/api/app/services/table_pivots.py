@@ -66,6 +66,10 @@ def tables(text: str) -> list[list[list[str]]]:
 
     for line in (text or "").split("\n"):
         stripped = line.strip()
+        if line.count("\t") >= 2:
+            # a TSV row keeps its empty last cells (「97.8\t」 under 「비고」): stripped, the
+            # row reads one cell short and the table breaks there
+            stripped = line.strip(" \r")
         if re.fullmatch(r"\|?[\s:\-|]+\|?", stripped) and "-" in stripped:
             continue  # a markdown rule line
         s = _sep(stripped) if stripped else ""
