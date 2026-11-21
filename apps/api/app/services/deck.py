@@ -2319,6 +2319,63 @@ def quiz_questions(slides: list[dict], at: int) -> int:
     return count
 
 
+#: a closing slide's own title: a farewell, summary or Q&A, not a part of the content
+_CLOSING_TITLE = re.compile(
+    r"마무리|감사|정리|요약|결론|맺음|질의|질문|Q\s?&\s?A|핵심|기억|다음\s?단계|끝|"
+    r"closing|thank|summary|takeaway|wrap|next steps|questions", re.I)
+
+
+def _items_of(slide: dict) -> list[str]:
+    out = [str(b) for b in slide.get("bullets") or []]
+    for key in ("items", *_PAIRED):
+        out += [" ".join(str(c) for c in row) for row in slide.get(key) or []
+                if isinstance(row, list)]
+    return [k for k in (re.sub(r"[\W_]+", "", x) for x in out) if len(k) >= 4]
+
+
+#: a recap slide's title: it repeats earlier slides on purpose
+_RECAP_TITLE = re.compile(
+    r"정리|요약|기억|마무리|결론|핵심\s?(?:정리|메시지|요약)|takeaway|summary|recap", re.I)
+
+
+def repeated_slides(slides: list[dict]) -> list[tuple[int, int]]:
+    """Content slides whose items an earlier slide already shows (two or more items, at least
+    80% of them the same): (later, earlier)."""
+    out: list[tuple[int, int]] = []
+    seen: list[tuple[int, set[str]]] = []
+    for index, slide in enumerate(slides):
+        if slide.get("layout") in ("title", "agenda", "closing", "section", "takeaways") or \
+                _RECAP_TITLE.search(str(slide.get("title") or "")):
+            continue  # a recap repeats on purpose
+        items = set(_items_of(slide))
+        if len(items) >= 2:
+            for earlier, other in seen:
+                if len(items & other) >= max(2, 0.8 * len(items)):
+                    out.append((index, earlier))
+                    break
+        seen.append((index, items))
+    return out
+
+
+def closing_with_content(slides: list[dict]) -> list[int]:
+    """The last slide written as a closing (「감사합니다」) whose title is a part of the content —
+    the quiz, the checklist the request asked for — set back to a content slide; returned."""
+    if not slides:
+        return []
+    index = len(slides) - 1
+    slide = slides[index]
+    title = str(slide.get("title") or "")
+    if slide.get("layout") != "closing" or not title.strip() or _CLOSING_TITLE.search(title):
+        return []
+    # only a closing that says nothing but the farewell: a closing with its own message
+    # (a request, an invitation, a contact line) is a real closing whatever its title
+    if not re.fullmatch(r"\s*(?:감사합니다|thank you)[.!]?\s*", str(slide.get("body") or ""), re.I):
+        return []
+    slide["layout"] = "bullets"
+    slide.pop("body", None)
+    return [index]
+
+
 def requested_contents(slides: list[dict], request: str) -> dict[int, str]:
     """Slides holding a requested part only in name or notes, with what to add."""
     from app.services.context import instruction_part, lead_instruction
@@ -4261,6 +4318,19 @@ async def _write_slides(
             touched.add(index)
     # placeholders or name-only parts rewritten once
     needs = requested_contents(slides, request)
+    for index, earlier in repeated_slides(slides):
+        needs.setdefault(index, (
+            f"This slide repeats the items of slide {earlier + 1} "
+            f"(「{slides[earlier].get('title') or ''}」). Write what this slide's own title "
+            f"(「{slides[index].get('title') or ''}」) names instead, from the material, without "
+            "repeating that slide."))
+    for index in closing_with_content(slides):
+        touched.add(index)
+        if not slides[index].get("bullets"):
+            needs.setdefault(index, (
+                f"This slide (「{slides[index].get('title') or ''}」) is part of the content the "
+                "request asked for, not a farewell. Fill the screen with what its title names, "
+                "from the material and the earlier slides."))
     for index, slide in enumerate(slides):
         if len(blanks := template_blanks(slide)) >= TEMPLATE_BLANKS:
             # a comparison left as its template (「[장점]」 「[단점]」 cells)
@@ -6945,7 +7015,9 @@ def _korean_sentences(text: str) -> str:
 _OUTPUT_TALK = re.compile(
     r"출력(?:합니다|하겠습니다|했습니다)|문장만\s?(?:씁|작성|출력)|덧붙인\s?조건|"
     r"(?:^|\s)(?:Output only|Here (?:are|is) the|"
-    r"I will (?:now )?write)\b", re.I)
+    r"I will (?:now )?write)\b"
+    # a JSON object begun in place of speech: 「{ "document"」
+    r"|[{\[]\s{0,2}\"[A-Za-z_]{2,30}\"|^\s{0,2}[{\[]\s{0,2}\"", re.I)
 
 
 def ask_lines(request: str) -> str:
