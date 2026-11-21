@@ -76,6 +76,7 @@ services:
   api:
     image: boanlab/kloudchat-api:latest
     restart: unless-stopped
+    init: true  # reaps orphans of tool, MCP and skill subprocesses, as for print
     # No container_name: Compose refuses one shared across replicas. Address the
     # service as `api` (`docker compose exec api`, `logs api`).
     deploy:
@@ -195,6 +196,9 @@ services:
     container_name: kloudchat-print
     image: boanlab/kloudchat-print:latest
     restart: unless-stopped
+    # A real PID 1 that reaps: soffice's orphaned children are reparented to PID 1, and
+    # uvicorn never waits for them (38,000 zombies exhausted the pid limit in five days).
+    init: true
     networks:
       - printer
     # Starts a browser page, so a wedged Chromium shows as unhealthy, not just an open port.
@@ -213,6 +217,7 @@ services:
     container_name: kloudchat-media
     image: boanlab/kloudchat-media:latest
     restart: unless-stopped
+    init: true  # reaps ffmpeg's orphans, as for print
     networks:
       - media
     volumes:

@@ -220,8 +220,8 @@ jobs:
           context: ${{ matrix.context }}
           push: false
           # the media worker is tested inside its own image (stock ffmpeg, generated clip)
-          load: ${{ matrix.name == 'media' }}
-          tags: ${{ matrix.name == 'media' && 'kloudchat-media:ci' || '' }}
+          load: ${{ matrix.name == 'media' || matrix.name == 'print' }}
+          tags: ${{ (matrix.name == 'media' || matrix.name == 'print') && format('kloudchat-{0}:ci', matrix.name) || '' }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,scope=${{ matrix.name }},mode=max
 
@@ -229,6 +229,12 @@ jobs:
         if: matrix.name == 'media'
         run: >-
           docker run --rm -v "$PWD/apps/media:/t:ro" -w /t kloudchat-media:ci
+          python -m unittest discover -s tests -v
+
+      - name: Test the printer's process handling
+        if: matrix.name == 'print'
+        run: >-
+          docker run --rm -v "$PWD/apps/print:/t:ro" -w /t kloudchat-print:ci
           python -m unittest discover -s tests -v
 
   compose:

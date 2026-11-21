@@ -360,7 +360,8 @@ backend is not — sign-in and history still work.
 `/api/health` answers `HEAD` too, for uptime probes that send it.
 
 `docker compose ps` shows each container's health: `api` probes `/api/health`,
-`web` its own `/version.json`, `print` `/health` (which starts a browser page).
+`web` its own `/version.json`, `print` `/health` (which starts a browser page and answers 503 once the container
+holds more than 200 defunct processes).
 Only `db` gates another service's start; the others are reported, not waited on.
 
 Every API answer carries an `X-Request-ID` (a proxy's own plain id is kept), and
@@ -410,3 +411,12 @@ The API scales horizontally: set `KCHAT_API_REPLICAS` and `docker compose up -d`
 Headroom is mostly about concurrent streaming turns: each holds an upstream
 HTTP connection for as long as the answer takes. The database is not the
 bottleneck at small-team scale.
+
+## Process reaping
+
+`api`, `print` and `media` run with `init: true`: Compose puts a minimal init process at
+PID 1 to reap orphaned children. Without it, the application server (uvicorn) is PID 1 and
+never waits for grandchildren such as the helpers LibreOffice starts, so defunct processes
+pile up until the container's pid limit is reached and new programs fail to start. The
+printer also starts each helper in its own process group and kills the whole group on
+timeout. If you run the images without Compose, pass `--init` to `docker run`.
