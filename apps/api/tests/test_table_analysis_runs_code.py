@@ -107,6 +107,9 @@ async def test_an_analysis_of_an_attached_csv_starts_with_run_code(monkeypatch):
     sent = _system(captured)
     assert "library.csv" in sent
     assert "방문자수" in sent, "열 이름이 전달되지 않았습니다"
+    # every asked figure in one run, with hops left for a retry of a failed first run
+    assert "한 번의 실행" in sent
+    assert captured["hop_bonus"] == sessions._TABLE_HOPS
 
 
 async def test_a_spreadsheet_counts_as_a_table(monkeypatch):
@@ -118,6 +121,7 @@ async def test_a_spreadsheet_counts_as_a_table(monkeypatch):
 async def test_no_attachment_is_not_forced(monkeypatch):
     captured = await _turn(monkeypatch, files=())
     assert captured["force_tool"] is None
+    assert not captured.get("hop_bonus")
 
 
 async def test_no_run_code_is_not_forced(monkeypatch):
@@ -149,3 +153,31 @@ async def test_describing_the_file_is_not_forced(monkeypatch, question):
 )
 def test_figures_out_of_the_table_are_an_analysis(question):
     assert calculation_policy.asks_table_analysis(question)
+
+
+_PASTED = "주문 데이터야. 지역별 매출 합계를 구해 줘.\n지역,제품,수량,단가\n" + "\n".join(
+    f"{region},키보드,{n},{89000 + n}" for n, region in enumerate(["서울", "부산", "대구"] * 4, 1)
+)
+
+
+async def test_a_table_pasted_into_the_message_is_read_by_code(monkeypatch):
+    stored = []
+
+    async def keep(user_id, session_id, name, data, **_kwargs):
+        stored.append((name, data))
+        return {"name": name}
+
+    monkeypatch.setattr(sessions.sandbox, "store_output", keep)
+    captured = await _turn(monkeypatch, files=(), question=_PASTED)
+
+    assert captured["force_tool"] == "run_code"
+    assert stored and stored[0][0] == sessions._PASTED_TABLE
+    assert stored[0][1].decode().splitlines()[0] == "지역,제품,수량,단가"
+    assert len(stored[0][1].decode().splitlines()) == 13
+    assert sessions._PASTED_TABLE in _system(captured)
+
+
+async def test_a_short_pasted_table_stays_with_the_writer(monkeypatch):
+    short = "표야. 합계 내 줘.\n지역,수량,단가\n서울,1,100\n부산,2,200\n대구,3,300\n"
+    captured = await _turn(monkeypatch, files=(), question=short)
+    assert captured["force_tool"] is None

@@ -15,6 +15,8 @@ total less the group. No model call; pure arithmetic of the given cells."""
 
 from __future__ import annotations
 
+import csv
+import io
 import itertools
 import re
 
@@ -81,6 +83,29 @@ def tables(text: str) -> list[list[list[str]]]:
         run, sep, width = ([cells], s, len(cells)) if s and len(cells) >= 3 else ([], "", 0)
     close()
     return out
+
+
+#: rows a pasted table needs before code reads it instead of the writer (a handful is read by eye)
+_PASTED_ROWS = 8
+
+
+def pasted_csv(text: str) -> bytes | None:
+    """The largest data table pasted into a message, as CSV for the sandbox; none when it is
+    short or has no column of figures."""
+    best: list[list[str]] = []
+    for table in tables(text):
+        rows = table[1:]
+        if len(rows) < _PASTED_ROWS or len(rows) <= len(best) - 1:
+            continue
+        figures = sum(1 for column in zip(*rows, strict=False)
+                      if sum(1 for cell in column if _number(cell) is not None) * 2 > len(rows))
+        if figures:
+            best = table
+    if not best:
+        return None
+    out = io.StringIO()
+    csv.writer(out, lineterminator="\n").writerows(best)
+    return out.getvalue().encode("utf-8")
 
 
 def _number(cell: str) -> float | None:

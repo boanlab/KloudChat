@@ -151,6 +151,7 @@ from app.services import (
     revise,
     richtext,
     run_info,
+    sandbox,
     search_consent,
     server_notes,
     settings_store,
@@ -162,6 +163,7 @@ from app.services import (
     starter,
     stop_signal,
     super_agent,
+    table_pivots,
     thinking,
     user_templates,
 )
@@ -616,6 +618,10 @@ def _canned_or(text: str, turn: AsyncIterator[dict[str, Any]]) -> AsyncIterator[
 
 #: tool hops a turn that fills a 한글 form may use beyond the usual cap
 _FORM_HOPS = 6
+#: extra hops for a table question: a retry of the code run after a failed first try
+_TABLE_HOPS = 4
+#: the file a table pasted into the message is kept as, for code to read
+_PASTED_TABLE = "pasted_table.csv"
 _OFFICE_RULE = (
     "The document 「{title}」 is open in the editor beside this chat. When the person asks to "
     "write, fill or change a document, do it in that file with {p}_write (a blank or new "
@@ -6614,13 +6620,20 @@ async def _send_message(
         ]
     # attached-table figures come from code on the file: first hop forced to run_code
     tables = (
-        _table_attachments(rows)
+        [(row.name, _blob_or_none(row.storage_key)) for row in _table_attachments(rows)]
         if kind is SessionKind.chat
         and forced_tool is None
         and any(tool.name == "run_code" for tool in tools)
         and calculation_policy.asks_table_analysis(content)
         else []
     )
+    # a table pasted into the message is read by code too: kept as a file of this chat
+    if (kind is SessionKind.chat and not tables and forced_tool is None
+            and any(tool.name == "run_code" for tool in tools)
+            and calculation_policy.asks_table_analysis(content)
+            and (pasted := table_pivots.pasted_csv(content)) is not None):
+        await sandbox.store_output(user.id, session.id, _PASTED_TABLE, pasted)
+        tables = [(_PASTED_TABLE, pasted)]
     if tables:
         forced_tool = "run_code"
         brief = _table_analysis_instruction(tables)
@@ -7584,7 +7597,7 @@ async def _send_message(
                 preset_call=preset_call,
                 source_tools=(frozenset({source_fetch[0]}) if source_fetch is not None
                               else frozenset()),
-                hop_bonus=_FORM_HOPS if form_turn else 0,
+                hop_bonus=_FORM_HOPS if form_turn else (_TABLE_HOPS if tables else 0),
                 form_card=office_target.id if form_turn and office_target is not None else None,
                 canned_answer=hwp_refusal,
                 bare_deck=(session.kind is SessionKind.slides and office_target is not None
@@ -8079,24 +8092,30 @@ def _table_attachments(rows: list[StoredFile]) -> list[StoredFile]:
     ]
 
 
-def _table_analysis_instruction(files: list[StoredFile]) -> str:
+def _blob_or_none(key: str) -> bytes | None:
+    try:
+        return file_service.read_blob(key)
+    except OSError:
+        return None
+
+
+def _table_analysis_instruction(files: list[tuple[str, bytes | None]]) -> str:
     """Forced run_code hop's brief: files to read and their columns."""
     lines = []
-    for row in files[:6]:
-        try:
-            schema = file_schema.describe(row.name, file_service.read_blob(row.storage_key))
-        except OSError:
-            schema = ""
+    for name, data in files[:6]:
+        schema = file_schema.describe(name, data) if data is not None else ""
         # names and headers only: model must not copy preview rows
         heads = [
             line.strip() for line in schema.splitlines()[1:]
             if line.lstrip().startswith(("열(", "- 시트", "시트 "))
         ][:6]
-        lines.append(f"- {row.name}" + (": " + " / ".join(heads) if heads else ""))
+        lines.append(f"- {name}" + (": " + " / ".join(heads) if heads else ""))
     return (
         "이 요청은 첨부한 표의 수치를 다룹니다. 첫 응답은 run_code 도구 호출이어야 합니다. 표의 "
         "값을 답에 옮겨 적어 손으로 계산하지 말고, task 에 어느 파일의 어느 열로 무엇을 계산해 "
-        "print 로 보여 줄지 적으세요(files 에 파일 이름). 결과를 받은 뒤 답의 수치는 실행 결과에 "
+        "print 로 보여 줄지 적으세요(files 에 파일 이름). 요청한 항목은 모두 한 번의 실행에 담아 "
+        "(task 에 번호대로 적고 전부 print) 한 번에 구하세요. 항목마다 한 번씩 나눠 부르면 호출 "
+        "한도에 닿아 나머지를 손으로 더하게 됩니다. 결과를 받은 뒤 답의 수치는 실행 결과에 "
         "나온 값만 쓰세요. 결과에 없는 수치가 필요하면 한 번 더 실행해 구하고, "
         "파일로 구할 수 없는 값은 지어내지 말고 그 값 없이도 맞는 문장으로 쓰세요.\n"
         "샌드박스 현재 디렉터리에 있는 파일:\n" + "\n".join(lines)
