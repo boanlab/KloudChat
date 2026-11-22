@@ -1,8 +1,4 @@
-/**
- * Conversations opened but not yet sent: they live in the browser until the first send (or the
- * first attached file) creates them on the server under the same id. Kept per tab so a reload
- * finds the agent and project it was opened with.
- */
+/** Conversations opened but unsent: held per tab in the browser until the first send or attachment creates them server-side under the same id. */
 import type { Session } from '@/types'
 
 const PREFIX = 'kchat.unsent.'

@@ -2,10 +2,8 @@ import { expect, test, type Page, type Route } from '@playwright/test'
 import { at, hubFixture, installedConnectors } from './customize-fixture'
 
 /**
- * Saves and deletes the server refuses, against fixture data: the screen goes back to what the
- * server has and says so, instead of showing a change that never happened. A project's file
- * waits out the undo window before it is deleted; a shared link that failed to load is told
- * apart from one that was revoked.
+ * Refused saves and deletes (fixture data): the screen reverts to the server's state and says so.
+ * A project file is deleted only after the undo window; a failed shared link differs from a revoked one.
  */
 
 const PROJECT = 'p1111111111111111111111111111111'

@@ -215,7 +215,7 @@ class Route(Base):
         move = (revise.part_move(typed, names) if swap is None and reorder is None and typed
                 else None)
         if move is not None:
-            # a part moved by hand: nothing rewritten, nothing else moves
+            # manual move: no rewrite, nothing else moves
             moving, after = move
             where = "맨 앞" if after < 0 else f"{names[after]} 뒤"
             parts = revise.moved(parts, moving, after)
@@ -231,7 +231,7 @@ class Route(Base):
             first, second = reorder
             parts[first], parts[second] = parts[second], parts[first]
             if not is_deck:
-                # conclusion moved to front: no re-listing what follows
+                # conclusion moved to front: no re-listing
                 parts = report.trim_leading_conclusion(parts)
             yield {"type": "step", "id": "route", "status": "done",
                    "label": f"순서 바꾸는 중: {names[first]} ↔ {names[second]}"}
@@ -622,8 +622,7 @@ class Rewrite(Base):
                         # into it by code
                         written = lined
                     if form and deck_service.unmet_asks(written, asked):
-                        # only another shape asked and it did not come: the slide stays as it
-                        # was, the reply says so
+                        # shape change asked but not produced: slide kept, reply says so
                         doc.dropped = [d for d in doc.dropped
                                        if not d.startswith(f"{index + 1}장 ")]
                         bundle.usage["inputTokens"] += spent["inputTokens"]
@@ -794,8 +793,7 @@ class Rewrite(Base):
                         body = revise.fit_count(body, want)
                     if (want and not faults and revise.count_met(before, want, most)
                             and not revise.count_met(body, want, most)):
-                        # the part already has the count asked and the rewrites missed it:
-                        # it stays as it was, the reply says so
+                        # part already has the requested count: kept, reply says so
                         doc.already.append((index + 1, want))
                         bundle.usage["inputTokens"] += spent["inputTokens"]
                         bundle.usage["outputTokens"] += spent["outputTokens"]
@@ -825,7 +823,7 @@ class Rewrite(Base):
                     body = _policy_marked(body, request, material, data)
                     # a percentage or sum the edit brought in that nothing gives: marked
                     body = _figures_marked(body, request, material, data, parts_before)
-                    # a part's own rename only; the document's title was set by route
+                    # part rename only; the document title is set by route
                     rename = revise.title_rename(instruction, names)
                     renamed = (rename[0] if rename is not None and index not in widened and (
                         rename[1] == index or rename[1] == -1 and len(plan.targets) == 1)
@@ -878,8 +876,7 @@ class Rewrite(Base):
         if is_deck and doc.touched:
             from app.pipeline.check_stages import edited_percents
 
-            # a percentage the edit brought in that nothing gives (「82% of frontier」 →
-            # cloud 「100%」): marked, as when the deck was made
+            # a percentage the edit introduced with no source: marked as at creation
             sources = [str(src.get("quote") or "") for src in data.get("sources") or []]
             for n in edited_percents(parts, doc.touched, request=request,
                                      material=[*material, *sources], before=deck_before,
@@ -1089,8 +1086,8 @@ def figure_note(asked: str) -> str:
 
 
 def standing_note(rules: object) -> str:
-    """The rules the person set for the whole conversation, as a rewrite note's last lines
-    (「앞으로 기관명은 익명으로」 holds for every later edit, not only the turn it was said in)."""
+    """Conversation-wide rules (e.g. 「앞으로 기관명은 익명으로」) as a rewrite note's last
+    lines."""
     lines = [" ".join(str(x).split()) for x in rules or [] if str(x).strip()] \
         if isinstance(rules, list) else []
     if not lines:

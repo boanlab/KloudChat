@@ -1,15 +1,13 @@
 """Turns whose answer rests on facts that change or must be exact.
 
-`search_reason` names why the first web search of a chat turn is forced (with search 「자동」
-or on): contact points and hotlines, laws, tax rules and benefits, prices, rates and limits,
-event schedules, availability, organizations, statistics, and legal, tax, financial or
-medical advice. `advice_domain` names the advice domains whose answers get the grounding
-check by default. Creative writing, translation and proofreading, code and spreadsheet
-formulas, role-play, drafting and pure concept explanations are left alone.
+`search_reason` names why a chat turn's first web search is forced (search 「자동」 or on):
+contact points, laws, tax rules and benefits, prices, rates, schedules, availability,
+organizations, statistics, and legal/tax/financial/medical advice. `advice_domain` names the
+advice domains whose answers get the grounding check by default. Creative writing, translation,
+proofreading, code, formulas, role-play, drafting and pure concept explanations are left alone.
 
-Earlier user turns of the conversation count for a short follow-up (「1년 안에 쓸 3천만
-원이야」 after an investment question); a role the conversation was set up as (a translator,
-a salesperson on a pretend call, a formula generator) keeps its turns out.
+Earlier user turns count for a short follow-up; a role the conversation was set up as (a
+translator, a pretend caller, a formula generator) keeps its turns out.
 """
 
 from __future__ import annotations
@@ -224,10 +222,8 @@ _SENTENCE = re.compile(r"(?<=[.!?。？])\s+|\n+")
 
 
 def own_work(request: str) -> bool:
-    """A draft, an edit, a translation or a code fix made from what the person gives, with
-    nothing to look up: no outside fact, no world value, no question besides the task. A web
-    search only brings unrelated pages to such a turn (an agenda citing an outsourcing
-    checklist)."""
+    """A draft, edit, translation or code fix made from what the person gives, with nothing to
+    look up; a web search would only bring unrelated pages."""
     text = _clean(request)
     code = bool(_FENCED_CODE.search(text))
     text = _FENCED_CODE.sub(" ", text)
@@ -282,8 +278,7 @@ def advice_domain(request: str, earlier: Sequence[str] = ()) -> str | None:
 def search_reason(request: str, earlier: Sequence[str] = ()) -> str | None:
     """Why this turn's first web search is forced, or None.
 
-    The latest turn decides first; earlier turns count only when the latest names no reason
-    of its own (a follow-up giving the person's details).
+    The latest turn decides; earlier turns count only when it names no reason of its own.
     """
     texts = _texts(request, earlier)
     if not texts:

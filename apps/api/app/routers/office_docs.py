@@ -1,7 +1,6 @@
-"""Office document artifacts (HWP, Word, PowerPoint) over HTTP: create one (blank, or from an
-uploaded file), fetch a version's file for the editor, save the editor's file as a new
-version, and give a document with no conversation one to be edited beside. `hwp.py`,
-`docx.py` and `pptx.py` each mount one set."""
+"""Office document artifacts (HWP, Word, PowerPoint) over HTTP: create, fetch a version's file,
+save the editor's file as a new version, attach a conversation. `hwp.py`, `docx.py` and
+`pptx.py` each mount one set."""
 
 from __future__ import annotations
 

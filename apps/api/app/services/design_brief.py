@@ -1,11 +1,8 @@
-"""디자인 지침: the look of a project's or agent's documents in words, in place of a theme.
+"""디자인 지침: a project's or agent's document look given in words.
 
-The writers still read a design the way they read a theme (`design.prompt_block`, `tokens_of`,
-`image_clause`): `BriefDesign` is that design made from the 디자인 지침 text. Its tokens come
-from what the text says (`style_spec.parse`): a colour, a face, a look; the whole text reaches
-the writer as guidance. An agent's 지침 comes before its project's.
-
-`render` writes a theme (the old `design_systems` row) as such a text, for the move from themes.
+`BriefDesign` exposes it through the design interface (`design.prompt_block`, `tokens_of`,
+`image_clause`); tokens come from `style_spec.parse`, the whole text reaches the writer.
+An agent's 지침 precedes its project's. `render` writes a theme as such a text.
 """
 
 from __future__ import annotations

@@ -44,11 +44,7 @@ function Highlighted({ text }: { text: string }) {
   )
 }
 
-/**
- * 「외부로 보낸 내용 보기」 under an answer whose turn left for an outside model with personal
- * data masked: the masked request and material exactly as they were sent, each placeholder
- * marked, and how many of each kind were masked. The record holds masked text only.
- */
+/** 「외부로 보낸 내용 보기」: the masked request and material as sent to an outside model, placeholders marked and counted per kind. */
 export function EgressDetails({ record }: { record: EgressRecord }) {
   const t = useT()
   const [open, setOpen] = useState(false)

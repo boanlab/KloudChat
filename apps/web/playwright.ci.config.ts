@@ -5,21 +5,16 @@ import { liveSpecs } from './e2e/live-specs'
 import shardWeights from './e2e/shard-weights.json' with { type: 'json' }
 
 /**
- * The fixture suite CI runs: every spec here answers the API with `page.route`
- * fixtures (`e2e/*-fixture.ts`, `e2e/shell-mocks.ts`, `e2e/fixtures/`), so it needs no
- * stack and no account. One production build, served once by `vite preview`, for
- * every spec; `API_BASE_URL` points at an unused port so an unmocked call fails fast.
+ * Fixture suite for CI: every spec answers the API with `page.route` fixtures, so it needs no stack
+ * or account. One production build served by `vite preview`; `API_BASE_URL` points at an unused
+ * port so an unmocked call fails fast.
  *
- * Each group below is one surface: its spec files and the viewports it is checked at. A
- * `phone`/`mobile` project runs only tests tagged `@phone`.
- * A project is `<group>/<viewport>`, e.g. `npx playwright test -c playwright.ci.config.ts
- * --project='customize/*'`. CI splits the projects over its e2e jobs with `E2E_SHARD=k/n`
- * (`shardOf` below), by measured time rather than by count.
+ * A group is one surface: its spec files and viewports. A project is `<group>/<viewport>`, e.g.
+ * `--project='customize/*'`; `phone`/`mobile` projects run only tests tagged `@phone`. CI splits
+ * projects over jobs with `E2E_SHARD=k/n` (`shardOf`).
  *
- * The live-stack suite (a running app at 5173 and a seeded account) stays in
- * `playwright.config.ts`; its specs are listed in `e2e/live-specs.ts`. Every other spec must be
- * in exactly one group below: the config refuses to load otherwise (`homeless` below), so a new
- * fixture spec cannot be left out of CI by accident.
+ * Live-stack specs (`e2e/live-specs.ts`) stay in `playwright.config.ts`. Every other spec must be in
+ * exactly one group or the config refuses to load (`homeless`).
  */
 
 const port = Number(process.env.E2E_PORT ?? 5390)
@@ -116,8 +111,7 @@ const groups: Record<string, Group> = {
     projects: { desktop, phone: pixelNative },
   },
   chain: { files: ['chain-canvas.spec.ts'], projects: { desktop, phone: pixelNative } },
-  // a turn's end on screen: a failed or cut answer and its reason, 다시 시도, an unanswered
-  // question reopened, the timeline of what the turn was given, rating, 원본 작업 열기
+  // turn end states: failed or cut answer, retry, reopened question, timeline, rating
   turns: {
     files: [
       'error-display.spec.ts',
@@ -195,8 +189,7 @@ const groups: Record<string, Group> = {
   'screen-states': { files: ['screen-states.spec.ts'], projects: { desktop, phone: touchPhone } },
   // 지식 서가: sources panel, source viewer, studio, quiz player, notes
   'knowledge-shelf': { files: ['knowledge-shelf.spec.ts'], projects: { desktop, phone: touchPhone } },
-  // HWP panel against a stand-in editor; the real studio (built by rhwp/build-studio.sh into
-  // dist/rhwp) only where it was built, else that spec skips.
+  // HWP panel against a stand-in editor; the real studio (dist/rhwp) only where built, else that spec skips
   'hwp-panel': { files: ['hwp-panel.spec.ts'], projects: { desktop, phone: touchPhone } },
   'hwp-studio': { files: ['hwp-studio.spec.ts'], projects: { desktop } },
   // the real Word editor (open-docx-editor), a chunk of the bundle, against a mocked API
@@ -211,16 +204,11 @@ const groups: Record<string, Group> = {
   'file-box-working': { files: ['file-box-working.spec.ts'], projects: { desktop, phone: touchPhone } },
   // unsaved office edits never dropped unasked; phone read only, retries, share, reopen, artifacts page
   'office-safety': { files: ['office-edit-safety.spec.ts'], projects: { desktop, phone: touchPhone } },
-  // every toolbar, rail, notes and menu action against the saved file; a manual check
-  // (PPTX_ACTIONS=1), as it was when the editor was chosen
+  // every toolbar, rail, notes and menu action against the saved file; manual (PPTX_ACTIONS=1)
   'pptx-actions': { files: ['pptx-actions.spec.ts'], projects: { desktop } },
 }
 
-/**
- * What is wrong with where the specs are: a spec in no group and not live, in two groups, in a
- * group and the live list, or a listed file that does not exist. Empty when every spec on
- * disk runs in CI exactly once (in each of its group's viewports) or is live.
- */
+/** Misplaced specs: in no group, in two groups, in a group and the live list, or listed but missing. Empty when fine. */
 function homeless(): string[] {
   const onDisk = readdirSync(new URL('./e2e', import.meta.url)).filter((name) => name.endsWith('.spec.ts'))
   const grouped = Object.entries(groups).flatMap(([group, { files }]) => files.map((file) => ({ group, file })))
@@ -259,11 +247,8 @@ const UNMEASURED_SEC = 20
 const weights: Record<string, number> = shardWeights
 
 /**
- * The projects of shard `k` of `n` (`E2E_SHARD=k/n`): the longest project first, each to the
- * shard with the least time so far, so the shards finish close together (Playwright's own
- * `--shard` splits by test count, and one project here takes 20 times another). The split
- * depends only on the project list and the weights, so every job computes the same one and
- * each project runs in exactly one shard.
+ * Projects of shard `k` of `n`: longest first, each to the least-loaded shard (Playwright's `--shard`
+ * splits by test count, which is skewed here). Deterministic, so each project lands in exactly one shard.
  */
 function shardOf(all: PlaywrightTestProject[], spec: string | undefined): PlaywrightTestProject[] {
   if (!spec) return all

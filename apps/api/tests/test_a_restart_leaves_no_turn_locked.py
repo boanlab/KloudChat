@@ -1,7 +1,5 @@
-"""A restart or a crash never leaves a conversation locked: at shutdown running turns get
-a bounded time to finish, the rest are stopped and stored as interrupted, and every claim
-this process held is freed; at startup a replica frees what an earlier boot of itself held
-(a crash), without touching other replicas' claims."""
+"""A restart or crash leaves no conversation locked: shutdown stops running turns and frees this
+process's claims; startup frees an earlier boot's claims only."""
 
 from __future__ import annotations
 
@@ -145,9 +143,8 @@ async def test_the_drain_counts_from_the_stop_signal(local, monkeypatch):
     # the signal came 100 s ago (uvicorn waited on open connections): 20 s of 120 are left
     since = sessions_router.time.monotonic() - 119.8
     monkeypatch.setitem(sessions_router._SHUTDOWN, "since", since)
-    # what the drain waits for, read from its own waits, not from a wall clock a busy runner
-    # stretches: what is left of 120 s after the signal (0.2 s, or nothing when it is gone),
-    # then the 0.1 s settle and the 5 s for cancelled turns; never 120 s from now, never unbounded
+    # drain waits are read from its own waits, not a wall clock: what remains of 120 s,
+    # then the 0.1 s settle and 5 s for cancelled turns
     waits: list[float | None] = []
     real_wait = sessions_router.asyncio.wait
 

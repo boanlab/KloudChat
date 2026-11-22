@@ -154,7 +154,7 @@ class Message(SQLModel, table=True):
     #: ids only (artifacts versioned/deleted separately)
     artifact_ids: list | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
 
-    #: retired 시작점; read only
+    #: Read-only; no longer written.
     started_from: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
 
     model: str | None = Field(default=None)
@@ -162,7 +162,7 @@ class Message(SQLModel, table=True):
     #: plain string, not a DB enum
     rating: MessageRating | None = Field(default=None, sa_column=Column(String, nullable=True))
 
-    #: assistant row: partial kept; user row: nothing written. Null: normal or legacy.
+    #: Assistant row: partial text kept; user row: nothing written. Null: normal turn.
     failure: TurnFailure | None = Field(default=None, sa_column=Column(String, nullable=True))
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
 

@@ -1,9 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { composerFixture } from './composer-fixture'
 
-/** Rating and 원래 대화로 do what they look like they do. Stubbed: each is a claim about a
- *  request that was or was not made. (Web search per conversation: composer-handoff.spec.ts;
- *  a store agent's install: customize-forms.spec.ts.) */
+/** Rating and 원래 대화로 do what they look like they do, asserted by whether a request was made. */
 
 const NOW = '2026-08-20T00:00:00Z'
 
@@ -162,7 +160,7 @@ test('원래 대화로는 눌린 아티팩트를 연다, 그 대화의 최신 �
   await page.goto('/artifacts')
   const links = page.getByRole('button', { name: /원래 대화로$/ })
   await expect(links).toHaveCount(2)
-  // The older document's row; its session has moved on since.
+  // The older document's row, whose session has moved on.
   await links.first().click()
 
   // The session's own `artifactId` is `artifact-latest`; that is not what was clicked.

@@ -29,10 +29,7 @@ export function offersReasoning(kind: SessionKind): boolean {
   return kind === 'chat' || kind === 'report' || kind === 'slides'
 }
 
-/**
- * Whether the chip can change anything for this turn: Super Agent always can (it picks the
- * model); a model picked by hand only when its reasoning can be steered.
- */
+/** Whether the chip can change anything: always for Super Agent, for a hand-picked model only if its reasoning is steerable. */
 export function reasoningSteerable(mode: RoutingMode | undefined, model: ModelInfo | undefined): boolean {
   if (isSuperMode(mode)) return true
   return model?.reasoningControl === true

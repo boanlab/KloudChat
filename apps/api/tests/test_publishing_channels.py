@@ -456,7 +456,6 @@ async def test_a_paused_or_revoked_bot_answers_no_channel(world):
     assert (await _complete(world, key, pub["slug"])).status_code == 401
 
 
-# ── the administrator's reading, as the owner sees it ──────────────────
 
 
 async def test_the_owner_sees_when_and_why_an_administrator_read_conversations(world):

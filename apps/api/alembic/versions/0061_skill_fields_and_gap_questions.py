@@ -1,20 +1,14 @@
-"""Skills carry what the server runs for them; skills with scripts wait for review to be
-shared; agents carry the questions they ask before writing.
+"""Server-run skill fields, skill review before sharing, and agent gap questions.
 
-- `skills.server_fields`: `stage`, `entry`, `post_check`, `post_judge`, `copy_check`,
-  `copy_kinds`, `tables`, `own_stage`, `uses` (`services/skill_specs.py`), each naming
-  shipped scripts only, so a person's skill opts in the way a shipped SKILL.md does. Null
-  for every existing row: a shipped copy that stores none reads its package, and the
-  seeder fills the catalogue's own rows.
+- `skills.server_fields`: `stage`, `entry`, `post_check`, `post_judge`, `copy_check`, `copy_kinds`,
+  `tables`, `own_stage`, `uses` (`services/skill_specs.py`), each naming shipped scripts only.
+  Null for existing rows.
 - `skills.script_files`: a person's own scripts, run only in the code sandbox.
-- `skills.review`, `review_note`, `reviewed_by`, `reviewed_at`: sharing a skill with
-  scripts waits for an administrator.
-- `agents.gap_questions`: 빠진 정보 질문, what an agent asks before writing
-  (`services/gap_questions.py`). Null for every existing row: an agent with none stored asks
-  what its 서식 and the official agent it runs as ask (read from their files), and the seeder
-  fills the catalogue's own rows.
+- `skills.review`, `review_note`, `reviewed_by`, `reviewed_at`: sharing a skill with scripts waits
+  for an administrator.
+- `agents.gap_questions`: questions asked before writing (`services/gap_questions.py`); null for existing rows.
 
-Schema only: no row is changed. Downgrade drops the columns.
+Schema only. Downgrade drops the columns.
 
 Revision ID: 0061
 Revises: 0060

@@ -1,5 +1,4 @@
-"""User pipelines: pipelines people compose from agents, skills and checks, shared through
-approval; agents and conversations bound to one.
+"""User pipelines composed from agents, skills and checks, shared through approval; agents and conversations bound to one.
 
 Revision ID: 0054
 Revises: 0053

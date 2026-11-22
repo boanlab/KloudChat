@@ -1,19 +1,12 @@
-"""Structural patterns: what a document of a kind is made of, chosen from the request, never
-picked from a gallery.
+"""Structural patterns: what a document of a kind is made of, chosen from the request.
 
-A report's pattern is its purpose format (`doc_formats`, 22 of them): the format's head and
-numbering, its genre rule, its pre-writing questions (빠진 정보 질문), its process settings and
-its check skills (확인하는 것) all come with the format detected from the request, whether or
-not a template was picked. The shipped format templates still hold those settings
-(`design_templates.for_format`); this module is where the writers ask for them by format.
+A report's pattern is its purpose format (`doc_formats`): head, numbering, genre rule,
+pre-writing questions, process settings and check skills (`design_templates.for_format`).
 
-A deck's pattern is its purpose (`app/patterns/deck/*.toml`, 13 of them: 회의·브리핑,
-실적·성과 보고, 연구·논문 발표, 심사 발표, 교육·온보딩, 강의, 수업 과제 발표, 제품·서비스 소개,
-투자 IR, 제안 발표, 프로젝트 결과 보고, 정책·제도 안내, 케이스 발표). Its rules and usual flow
-reach the deck planner as trusted context; its questions are asked before writing; its checks
-are what the deck is reviewed against. When two purposes match, the narrower one (lower
-`order`) is taken and the deck records both. The 55 slide shapes (`slide_patterns`,
-`deck._LAYOUTS`) stay the planner's own choice per slide.
+A deck's pattern is its purpose (`app/patterns/deck/*.toml`): rules and usual flow reach the
+planner as trusted context, questions are asked before writing, checks review the deck. When
+two purposes match, the lower `order` wins and the deck records both. Slide shapes
+(`slide_patterns`, `deck._LAYOUTS`) stay the planner's per-slide choice.
 """
 
 from __future__ import annotations

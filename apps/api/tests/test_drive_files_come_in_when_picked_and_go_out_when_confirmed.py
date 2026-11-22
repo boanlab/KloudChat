@@ -1,8 +1,5 @@
-"""Google Drive with `drive.file`: a picked file comes in as project material or an attachment
-(Docs exported to .docx, others downloaded, the upload limit kept), syncs again only when it
-changed, the agent reads it, and a document goes to Drive only once the person confirms the
-card — every write audited. A turn about Drive is internal material: strict-local where the
-administrator keeps internal material there."""
+"""Google Drive with `drive.file`: picked files come in, sync on change, and documents go out
+only after card confirmation, every write audited."""
 
 from __future__ import annotations
 
@@ -240,7 +237,6 @@ async def test_a_card_sends_once_even_when_pressed_twice_at_once_and_not_after_t
     export = {t.name: t for t in drive.tools({"drive_export"})}[drive.EXPORT]
     first = (await export.run({"artifact_id": artifact.id}, ctx)).trace["confirm"]["actionId"]
     world.provider.on("POST www.googleapis.com/upload/drive/v3/files", {"id": "f"})
-    # another tab read the card while it was still waiting, then this one confirmed it
     async with world.maker() as other:
         stale = await actions.owned(other, world.member, first)
         assert stale.status == "pending"

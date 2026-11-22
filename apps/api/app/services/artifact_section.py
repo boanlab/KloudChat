@@ -4,9 +4,7 @@
   standalone code files (`code`), charts (`chart`) and diagrams (`diagram`).
 - 파일함 › 작업 문서: every report and slide deck (`document`).
 - 파일함 › 만든 파일: generated pictures, sound and video (`media`), listed by their files.
-- `snippet`: an answer's inline code block that the old extractor stored as an artifact. It
-  stays (its conversation's panel still opens it) but is listed nowhere. Only the migration
-  that introduced sections marks it; nothing new is stored from an inline block.
+- `snippet`: a stored inline code block; its conversation panel opens it but it is listed nowhere.
 """
 
 from __future__ import annotations

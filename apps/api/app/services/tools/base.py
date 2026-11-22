@@ -27,10 +27,10 @@ class Tool:
     wants_context: bool = False
     #: Own ceiling for a slow tool (a deep research mode); None = `tool_timeout_sec`.
     timeout_sec: float | None = None
-    #: A write whose long arguments are worth saving even when the model cannot get them
-    #: right: given the parsed arguments (whole, or read back from a cut-off call by
-    #: `json_repair`), the arguments of a draft the server may save in the model's place when
-    #: the turn runs out of calls (`agent.run_turn`), or None when nothing is worth saving.
+    #: For a write with long arguments: given the parsed arguments (whole, or read back from a
+    #: cut-off call by `json_repair`), the arguments of a draft the server may save in the model's
+    #: place when the turn runs out of calls (`agent.run_turn`), or None when nothing is worth
+    #: saving.
     draft: Callable[[dict[str, Any]], dict[str, Any] | None] | None = None
 
 

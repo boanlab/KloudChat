@@ -1,10 +1,6 @@
-"""A compound Korean amount a source states (「3만2070원」, 「5조4000억원」,
-「1억 2,000만 원」) is read whole, so it is not marked 「(확인 필요)」.
-
-Round-3 r3r02 (11-21, KC-SA and KC-SL, web market report): the money check read only the
-part after the last large unit — 「2070원」 of 「3만2070원」, 「4000억원」 of 「5조4000억원」 —
-which no page states, so premiums and market sizes copied verbatim from a news page came out as
-「현대해상 3만3580원(확인 필요)」 and 「5조4000억원(확인 필요)」."""
+"""A compound Korean amount a source states (「3만2070원」, 「5조4000억원」) is read whole, so it is
+not
+marked 「(확인 필요)」."""
 
 from __future__ import annotations
 

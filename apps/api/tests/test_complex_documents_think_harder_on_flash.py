@@ -1,10 +1,7 @@
-"""Complex document turns (a form followed, many source files, a tool-heavy deck, a long source)
-move to the `complex_document` row: Qwen3.8 Flash thinking at effort high (2026-11-20; it beat
-the self-hosted DeepSeek V4 Flash the row named before, which failed 28% of the forms and
-attachments tasks under the 300 s rule). Simple documents stay on the `document` row, the same
-model without thinking. The chip steers the effort, never the model. An admin who points the row
-at another model gets the `document` row's model behind it for a failed or silent turn, and may
-cap how many such turns run at once on a slow self-hosted server."""
+"""Complex document turns move to the `complex_document` row (Qwen3.8 Flash thinking at high);
+simple ones stay on `document`; the chip steers effort, never the model.
+
+An admin-chosen model gets the `document` row's model behind it and may cap concurrent turns."""
 
 from __future__ import annotations
 
@@ -212,7 +209,7 @@ async def test_a_revision_keeps_the_first_versions_writer_and_row() -> None:
     first = Message(session_id="s-cx", role=sessions.Role.assistant, content="v1", routing={
         "superAgent": {"selectedModel": SLOW["id"], "row": "complex_document",
                        "complexSignals": ["form"], "taskClass": "document"}})
-    # the revision's own signals are empty, the first version was complex
+    # The revision's own signals are empty; the first version was complex.
     model, _, route = await _route(sa.DocSignals(), history=[first])
     assert model["id"] == SLOW["id"] and route["row"] == "complex_document"
     assert route["pick"] == "sticky" and route["complexSignals"] == ["form"]
@@ -382,9 +379,7 @@ async def test_no_cap_means_no_wait(monkeypatch) -> None:
 
 
 def test_the_default_cap_is_off() -> None:
-    """The cap of 2 was for one 8-sequence DeepSeek server; the built-in row is flash, which
-    serves these turns like any other document, and with no fallback behind it a capped turn
-    would only wait in line."""
+    """The built-in row is flash with no fallback, so a cap would only queue turns."""
     from app.core.config import Settings
 
     assert Settings.model_fields["complex_document_slots"].default == 0

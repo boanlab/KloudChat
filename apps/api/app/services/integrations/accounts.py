@@ -1,9 +1,9 @@
-"""Connecting an account: OAuth 2.0 authorization (Google with PKCE, offline access; Slack
-v2 user tokens on the workspace the administrator installed), sealed tokens, refresh, and
-revoke on disconnect or account deletion.
+"""Connecting an account: OAuth 2.0 authorization (Google with PKCE and offline access; Slack v2
+user tokens on the workspace the administrator installed), sealed tokens, refresh, and revoke on
+disconnect or account deletion.
 
-Tokens are sealed with the settings key (`settings_store.encrypt_secret`) and opened only to
-call the provider; nothing here logs or returns one."""
+Tokens are sealed with the settings key (`settings_store.encrypt_secret`) and opened only to call
+the provider; nothing here logs or returns one."""
 
 from __future__ import annotations
 

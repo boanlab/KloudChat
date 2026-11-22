@@ -1,12 +1,10 @@
 """A report's last shape before it becomes an HWP or Word file handed to its reader.
 
-On screen a report keeps its 「[n]」 citations (the source panel opens them) and its
-「(확인 필요)」 marks (the panel lists them). A file goes to a 팀장 or a 결재권자, who has
-neither: in a work document the numbers are noise and the reader wants the files it was
-built from; and a mark meant for the requester reads, in the file, as an unfinished draft.
-So a work document's file names its sources in a short 「근거 자료」 list, and every marked
-value becomes a named blank the requester fills (「[처리량]」), never a value left standing as
-if checked. Academic writing keeps its numbered citations and reference list.
+On screen a report keeps its 「[n]」 citations and 「(확인 필요)」 marks (panels open and list
+them).
+A file's reader has neither panel, so a work document's file names its sources in a short 「근거
+자료」 list, and every marked value becomes a named blank the requester fills (「[처리량]」), never
+a value left standing as if checked. Academic writing keeps its numbered citations and references.
 """
 
 from __future__ import annotations

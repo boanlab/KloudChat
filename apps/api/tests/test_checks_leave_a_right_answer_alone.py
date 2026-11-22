@@ -141,8 +141,6 @@ def _costs(reading: dict) -> dict:
 
 
 def test_a_quantity_discount_the_order_meets_is_in_the_total_not_a_scenario():
-    # 「30대 이상 구매 시」 went to a scenario, the scenario was dropped and
-    # 49,005,000원 put 누리컴 over the 4,800만원 budget (right: 46,563,000원)
     costs = _costs(_reading())
     assert costs["options"]["누리컴"]["total"] == 46_563_000
     assert costs["applied"] == ["30대 이상 구매 시 (누리컴)"]

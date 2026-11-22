@@ -1,15 +1,11 @@
 """A published agent answering @mentions in Slack, in a thread.
 
-The publisher links a channel they are in, in a workspace where the app is installed. An
-@mention there runs a published-bot turn exactly as the web page or the API would: the
-publisher's account and credits, the version's strict-local model, the bot's limits and
-nothing of the publisher's own accounts. Publication rules hold: a channel inside the
-organisation is the internal audience; a channel shared with another organisation (Slack
-Connect) is an outside one, answered only when an administrator approved the bot for outside
-audiences.
+A mention runs a published-bot turn like the web page or API (publisher's account and credits,
+strict-local model, the bot's limits). A channel shared with another organisation (Slack
+Connect) is an outside audience, answered only when an administrator approved it.
 
-Slack's events are verified by signature (`verify`) and answered within its 3 seconds; the
-turn runs after (`answer`)."""
+Events are verified by signature (`verify`) and acknowledged within 3 seconds; the turn runs
+after (`answer`)."""
 
 from __future__ import annotations
 
@@ -89,7 +85,7 @@ def allowed(pub: Publication, shared: bool) -> str | None:
     if pub.status != PublicationStatus.approved.value:
         return "bot_paused"
     if shared and not publishing.opens_outside(pub):
-        # an outside audience: only a bot an administrator approved for outside audiences
+        # outside audience requires administrator approval
         return "outside_not_approved"
     return None
 

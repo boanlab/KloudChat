@@ -27,7 +27,6 @@ _SKILLS: list[dict] = list(skill_packages.catalog_specs())
 
 #: earlier shipped bodies by (key, version); untouched ones upgraded in place
 _LEGACY_CATALOG_BODIES = {
-    # formerly calculation-unit-check
     ("calc-check", "1.0.0"): """수치를 설명하기 전에 `execute_code` 로 실제 계산을 재현한다.
 
 1. 입력값마다 출처·단위·기준 시점을 적는다. 주어진 값과 가정한 값을 구분한다.
@@ -200,7 +199,7 @@ _LEGACY_CATALOG_KEYS = {_slug(spec["name"]): spec["key"] for spec in _SKILLS}
 
 
 async def seed_designs(db: AsyncSession, user_id: str) -> int:
-    """Themes are retired (2026-11-15: 디자인 지침 instead): a new account gets none."""
+    """Themes are retired (디자인 지침 instead): a new account gets none."""
     del db, user_id
     return 0
 
@@ -405,7 +404,7 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
             agent.system_prompt = spec["system_prompt"]
             agent.kinds = spec["kinds"]
             agent.surface = spec.get("surface")
-            # templates retired (2026-11-15): the format carries the pattern
+            # no render template: the format carries the pattern
             agent.render_template_id = None
             agent.doc_format = spec.get("doc_format")
             agent.guide = spec.get("guide", "")

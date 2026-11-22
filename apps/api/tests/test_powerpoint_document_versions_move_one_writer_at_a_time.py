@@ -1,7 +1,5 @@
-"""A PowerPoint document's versions: the editor saves from the version it loaded, the agent's
-tools read before they edit, and whichever lands second is told to reload. The tools join a
-turn only when the chat has a PowerPoint document or the request names one; a plain 「발표
-자료」 or 「PPT 만들어 줘」 stays with the slides surface."""
+"""PowerPoint document versions: saves start from the loaded version, tools read before editing,
+and the later writer is told to reload."""
 
 from __future__ import annotations
 
@@ -138,7 +136,6 @@ async def test_the_agent_writes_reads_then_edits_and_a_hand_save_makes_it_read_a
                  {"op": "add_slide", "after": "s3", "title": "다음 단계",
                   "body": "[담당자] 지정"}]}, ctx)
     assert not on_top.failed, on_top.content
-    # a slide op moved the numbers: the deck as it is now comes back
     assert "번호가 바뀌었습니다" in on_top.content and "s4.1 (제목): 다음 단계" in on_top.content
     text = pptx_edit.plain_text((await client.get(f"/artifacts/{artifact_id}/pptx")).content)
     assert "추진 배경 (손 편집)" in text and "1,200" in text and "1~3월" in text

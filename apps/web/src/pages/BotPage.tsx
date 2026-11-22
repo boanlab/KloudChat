@@ -67,7 +67,7 @@ function useNoIndex(on: boolean) {
   }, [on])
 }
 
-/** A published bot: notice first, then questions to its fixed version; `embedded`: framed on an approved site, no account. */
+/** A published bot: notice, then questions to its fixed version; `embedded` frames it on an approved site without an account. */
 export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void; embedded?: boolean }) {
   const t = useT()
   const { slug = '' } = useParams()
@@ -88,8 +88,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
   const [offerShare, setOfferShare] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const seq = useRef(0)
-  // The conversation on screen: its id, or a key for a new one not started yet. A reply that
-  // comes back after the visitor moved on is kept for its own conversation, never shown here.
+  // id of the conversation on screen (or a key for an unstarted one); late replies go to their own conversation
   const shown = useRef('new-0')
   const running = useRef(new Map<string, Reply>())
   // How many rows 「더 보기」 opened, kept when the list reloads.
@@ -143,7 +142,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
 
   useNoIndex(bot?.visibility !== 'external')
 
-  // Focus the box once it is enabled: the clicked button is gone and the box was disabled.
+  // focus the box once enabled
   const consented = bot?.consented ?? false
   useEffect(() => {
     if (consented && focusOnConsent.current) {

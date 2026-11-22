@@ -88,7 +88,7 @@ async def test_a_deck_stops_at_its_outline_and_writes_nothing(gateway):
     # Nothing is written on an unapproved pass.
     assert "deck" not in kinds
     assert "slide" not in kinds
-    # Only the planning call was made.
+    # only the planning call
     assert len(posts) == 1
 
 
@@ -106,7 +106,7 @@ async def test_the_approved_outline_is_what_gets_written(gateway):
 
     slides = next(e["slides"] for e in written if e["type"] == "deck")
     assert [s["title"] for s in slides] == [item["title"] for item in plan["slides"]]
-    # Planned once; the approved plan is not re-planned.
+    # planned once; the approved plan is not re-planned
     assert sum(1 for p in posts if "slide structure of a presentation" in str(p)) == 1
 
 

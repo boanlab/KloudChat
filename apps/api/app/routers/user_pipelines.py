@@ -289,7 +289,7 @@ def _invalid(verdict: compose.Verdict) -> HTTPException:
 
 @router.get("/user-pipelines")
 async def list_mine(user: CurrentUser, db: DbSession):
-    """Legacy unbound pipelines (직접 구성 starting points)."""
+    """Unbound pipelines (직접 구성 starting points)."""
     bound_ids = set((await db.exec(select(Agent.pipeline_id).where(
         Agent.owner_id == user.id, col(Agent.pipeline_id).is_not(None)))).all())
     rows = [r for r in (await db.exec(select(UserPipeline).where(
@@ -350,9 +350,8 @@ def _clip(text: Any, limit: int = 200) -> str:
 
 
 def run_out(run: PipelineRun, number: int = 0) -> dict[str, Any]:
-    """A user-pipeline run per step: status, what it got and handed on, branch taken. Built
-    from the stored records only (labels and summaries, never the text the steps read); the
-    request's opening words and `number` (its place among the owner's runs) tell runs apart."""
+    """Per-step run view: status, input/output labels, branch taken. Built from stored records
+    only (never step text); `number` is the run's place among the owner's runs."""
     request = (run.params or {}).get("request") or {}
     turn = pipeline_runs.decode((request.get("f") or {}).get("turn")) or {}
     asked = pipeline_runs.decode((request.get("f") or {}).get("text"))

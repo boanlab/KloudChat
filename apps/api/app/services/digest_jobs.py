@@ -1,10 +1,7 @@
 """Background digests of project files (`file_digest`), per replica, claimed like OCR jobs.
 
-A file is queued when its text arrives (upload, page snapshot, finished OCR), when a turn finds
-it without a current digest (lazy backfill), or by the administrator's backfill. A worker claims
-the oldest queued file, asks the strict-local digest model, stores the digest and bills the call
-as a side call: priced models are charged in full (no cache discount), self-hosted ones leave a
-zero-credit usage row with the tokens.
+A worker claims the oldest queued file, asks the strict-local digest model, stores the digest
+and bills the call as a side call (zero-credit usage row for self-hosted models).
 """
 
 from __future__ import annotations
@@ -280,7 +277,7 @@ async def watch() -> None:
 
 
 async def requeue_on_new_text(db, file_id: str) -> None:
-    """A file's text was replaced (OCR): its digest is made again. Commits."""
+    """Queue a new digest after the file's text was replaced. Commits."""
     await db.exec(
         update(StoredFile)
         .where(StoredFile.id == file_id, col(StoredFile.project_id).is_not(None))

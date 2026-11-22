@@ -108,7 +108,6 @@ async def test_a_section_written_as_a_tool_call_is_written_again(monkeypatch):
     assert "체크리스트" in todo["content"]
     shipped = "\n".join(str(s["content"]) for s in sections)
     assert "action_type" not in shipped and "run_skill_script" not in shipped
-    # the writer was never told to call the script
     assert any(workspace_context.NO_TOOLS_NOTE in p for p in prompts)
     assert not any("run_skill_script" in p for p in prompts)
 

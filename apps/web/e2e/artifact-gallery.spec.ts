@@ -46,7 +46,6 @@ test('아티팩트 목록은 한 페이지씩 오고, 개수와 검색은 전체
     [AS_USER, PAGE] as const,
   )
 
-  // Measured on a reload: signing in already requests this page.
   await page.goto('/artifacts')
   const firstPage = page.waitForResponse(
     (r) => r.url().includes('/api/artifacts/gallery?') && r.request().method() === 'GET' && r.ok(),
@@ -120,7 +119,7 @@ test('카드에 없던 본문은 문서를 열 때 채워진다', async ({ page 
   await expect(card).toBeVisible({ timeout: 20_000 })
   await card.click()
 
-  // The listing row carried no markup; the source tab proves the document was fetched.
+  // The listing row has no markup; the source tab proves the document was fetched.
   const dialog = page.getByRole('dialog')
   await dialog.getByRole('button', { name: '소스' }).click()
   // DOCTYPE case varies between model output and 서식 seeds.

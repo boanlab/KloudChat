@@ -50,7 +50,7 @@ def test_previews_actually_differ() -> None:
 def test_a_template_without_a_sample_is_a_404_not_a_blank_card() -> None:
     with _client() as client:
         assert client.get("/design-templates/no-such/preview").status_code == 404
-        # A retired 서식 has no card either; its documents still render (`rendering`).
+        # a retired 서식 has no card
         assert client.get("/design-templates/doc-report/preview").status_code == 404
 
 

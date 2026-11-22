@@ -301,7 +301,7 @@ def test_every_deck_template_converts(template_id):
     assert deck_export.to_pdf("t", slides, tokens=_TOKENS)[:4] == b"%PDF"
 
 
-# `doc-report` is retired: a document still naming it exports in the shared seed.
+# a document naming the retired `doc-report` exports in the shared seed
 @pytest.mark.parametrize(
     "template_id",
     [dt.GENERIC_ID, "doc-report", "doc-comparison", "doc-internal-draft", "doc-minutes"],

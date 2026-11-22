@@ -1,11 +1,9 @@
-"""What a meeting memo says of the meeting itself, read by code, and minutes held to it.
+"""Meeting facts read from the memo by code (date, time, place, attendance, next meeting), and
+minutes held to them.
 
-A memo opens with the meeting (「10/14 교육혁신팀 주간회의. 참석 …」) and may close with the
-next one (「다음 회의 10/21 화 10시 3층 회의실.」). Minutes that call a day, clock, place or
-attendance missing (「시간은 자료에 없음」, 「장소 | 미정」, 「나와 있는 내용은 날짜뿐」) while the
-memo gives it get the memo's value or lose the claim; a head field left empty takes the memo's
-value or a bracket to fill; and a decision the memo changed (「… 50만원으로 줄이자고 했고
-합의」) keeps its new value.
+Minutes that call such a fact missing while the memo gives it take the memo's value or lose the
+claim; an empty head field takes the memo's value or a bracket; a decision the memo changed
+keeps its new value.
 """
 
 from __future__ import annotations
@@ -670,10 +668,11 @@ def _covered(piece: str, memo: str) -> float:
 
 
 def copied(piece: str, memo: str) -> bool:
-    """A prose sentence that is the memo's own line in its shorthand (「안건2 예산: … 합의.」,
-    「점심 메뉴 얘기 … 있었음.」): most of it the memo's words in a row, its end no finished
-    sentence or a 「vs」, an arrow or a noun-form end inside it; quotes aside. A sentence with a
-    shorthand end inside (「…하기로 함 회의록상…」) is one too, the memo's or not."""
+    """Whether a prose sentence is the memo's own shorthand line (「안건2 예산: … 합의.」).
+
+    Most of it is the memo's words in a row and its end is no finished sentence, or it holds a
+    「vs」, an arrow or a noun-form end; a shorthand end inside (「…하기로 함 회의록상…」) counts
+    too."""
     body = (piece or "").strip()
     if not body or not memo or len(body) > 400 or body.startswith(("|", "#")) \
             or _LIST_MARK.match(body):
@@ -784,10 +783,11 @@ def _in_caption(piece: str, content: str) -> bool:
 
 
 def settle_copies(sections: list[dict], memo: str, *, strong: bool) -> tuple[list[dict], int]:
-    """What the writer left pasted after its one repair: a sentence said again word for word
-    goes; for a writer not strong, a memo line copied or a sentence repeating a phrase said
-    over and over goes when the rest of the document holds its numbers, people and words (the
-    first saying stays), and a cell repeating an open item's phrase reads 「미정」."""
+    """Drop what the writer left pasted after its one repair.
+
+    A sentence repeated word for word goes; for a non-strong writer, a copied memo line or a
+    repeated phrase goes when the rest of the document holds its facts, and a cell repeating an
+    open item's phrase reads 「미정」."""
     from app.services import report_checks, stated_policy
 
     out = [dict(s) for s in sections]

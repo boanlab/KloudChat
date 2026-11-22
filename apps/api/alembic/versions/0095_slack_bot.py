@@ -1,12 +1,11 @@
 """Published agents answering in Slack.
 
-- `slack_bot_channels`: a Slack channel whose @mentions a published agent answers in a
-  thread; `shared` marks a channel shared with another organisation (an outside audience).
+- `slack_bot_channels`: a channel whose @mentions a published agent answers in a thread; `shared`
+  marks a channel shared with another organisation (an outside audience).
 - `slack_threads`: the bot conversation each Slack thread continues.
-- `slack_workspaces.internal`: the administrator marked the workspace the organisation's own;
-  a published agent treats any other workspace as an outside audience.
+- `slack_workspaces.internal`: marked the organisation's own; any other workspace is an outside audience.
 
-No existing rows change. Downgrade drops both tables.
+Downgrade drops both tables.
 
 Revision ID: 0095
 Revises: 0094

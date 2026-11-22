@@ -11,15 +11,9 @@ export function isSuperEntry(pick: string | null | undefined): pick is 'super' |
 }
 
 /**
- * The mode a new conversation starts in (the server's `start_mode.starting_mode`): on chat,
- * report and slides, the person's own pick for the surface (`homePick`: a model starts on that
- * model, a Super Agent entry on that entry), else the admin's start for the surface
- * (`defaultRouting`, Super Agent unless a model was fixed there); a conversation whose agent has
- * its own model stays on it. A `super` start whose
- * entry has nothing this person may use falls to Super Agent (strict-local), then to the
- * surface's model; a `super_strict` start never widens to `super`. Before the catalogue answers
- * (`pending`) the start is taken as usable. Existing conversations keep their own mode; the
- * server moves a project conversation that must stay strict-local to `super_strict`.
+ * Mode a new conversation starts in (mirrors the server's `start_mode.starting_mode`): the person's pick, else the admin's
+ * start for the surface; an agent's own model wins. An unusable `super` start falls to strict-local Super Agent, then the model;
+ * `super_strict` never widens. While the catalogue is `pending` the start is taken as usable.
  */
 export function startingMode({
   kind,
@@ -57,11 +51,7 @@ type StartInputs = Parameters<typeof startingMode>[0]
 /** Why a new conversation starts in Super Agent (strict-local), when it does. */
 export type StrictStartReason = 'project' | 'personal' | 'admin' | 'unavailable'
 
-/**
- * The reason `startingMode` lands on `super_strict` (null when it does not): the project's
- * policy moved a `super` start, the person's saved default is strict-local, the admin's start
- * for the surface is, or the external entry has nothing this person may use.
- */
+/** Why `startingMode` lands on `super_strict` (null otherwise): project policy, saved or admin strict-local default, or no usable external entry. */
 export function strictStartReason(inputs: StartInputs): StrictStartReason | null {
   if (startingMode(inputs) !== 'super_strict') return null
   const { kind, homePick, defaultRouting, projectId, superAgent } = inputs
@@ -126,10 +116,7 @@ const COMPLEX_REASON_LABEL: Record<NonNullable<SuperAgentRoute['complexReason']>
   long_source: '긴 자료',
 }
 
-/**
- * 「이번 답: Qwen3.8 Flash · 간단한 질문」 and the why behind it (title text).
- * `label` names the model that answered (privacy routing may have moved it).
- */
+/** 「이번 답: Qwen3.8 Flash · 간단한 질문」 and its reason; `label` is the model that answered (privacy routing may move it). */
 export function superRouteLabel(
   route: SuperAgentRoute,
   modelLabel: (id: string) => string,

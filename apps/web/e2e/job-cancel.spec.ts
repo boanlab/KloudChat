@@ -49,7 +49,6 @@ async function startStubbedJob(page: Page): Promise<boolean> {
   await page.route('**/api/sessions/*/jobs', async (route) => {
     const parts = new URL(route.request().url()).pathname.split('/')
     const row = jobRow(parts[parts.length - 2])
-    // The poll is answered with the same row.
     await route.fulfill({ json: route.request().method() === 'POST' ? row : [row] })
   })
 

@@ -16,11 +16,7 @@ const cellsOf = (row: Hast | undefined) => (row?.children ?? []).filter((c) => c
 type Sorting = { sort: SortState; onSort: (col: number) => void; columnOf: (node: unknown) => number | undefined }
 const SortContext = createContext<Sorting | null>(null)
 
-/**
- * A table in an answer: its headings sort the body rows (a figure by value, "2.2 GB" above
- * "499 MB"; text naturally; asc → desc → as written). The written order is the default, and
- * a table of one row stays plain.
- */
+/** Answer table whose headings sort the body rows (numeric by value, else text; asc, desc, as written). */
 export function MarkdownTable({ node, children }: { node?: Hast; children?: ReactNode }) {
   const [sort, setSort] = useState<SortState>(null)
   const heads = useMemo(() => {

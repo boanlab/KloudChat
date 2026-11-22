@@ -4,12 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 export const A4_HEIGHT_PX = 1123
 export const A4_WIDTH_PX = 794
 
-/**
- * The edit view's sheet: how tall its content is and how much of an A4 page the
- * margins leave (`--page-h`, `--sheet-h` for the template seeds). It does not guess
- * where pages break: the edit view is a Markdown document; exact pages are the page
- * view's (Paged.js) and the exports'. Only the person's own page breaks show there.
- */
+/** Edit-view sheet height and A4 margin room (`--page-h`, `--sheet-h`); does not predict page breaks (Paged.js and exports do). */
 export function useSheet(
   /** Null before the portal renders. */
   root: HTMLElement | null,

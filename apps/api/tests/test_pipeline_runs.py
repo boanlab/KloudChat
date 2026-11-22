@@ -117,7 +117,7 @@ async def test_a_rerun_runs_the_stage_and_those_after_it_only():
     runner = Runner([a, b, c], recorder=second)
     runner.attempts = {"t-a": 1, "t-b": 2, "t-c": 2}
     await _drain(runner, again, start="t-b")
-    # The stage before is not run again; its body stands as it was.
+    # the stage before is not run again
     assert (a.runs, b.runs, c.runs) == (1, 2, 2)
     assert again.document.sections[0]["content"] == "A1 B2 C2"
     assert [r.attempt for r in again.steps if r.status == "done"] == [2, 2]
@@ -323,7 +323,7 @@ def wired(monkeypatch, engine):
 
 
 class _Answers(Base):
-    """Writes the answers it was given into the body, so a rerun's answers show."""
+    """Writes the answers it was given into the body."""
 
     name = "t-answers"
     reads = ("material.parts",)

@@ -2,11 +2,7 @@ import { expect, test } from '@playwright/test'
 import { composerFixture } from './composer-fixture'
 import { setWebSearch } from './composer-tools'
 
-/**
- * Home and composer at reach: surfaces an admin switches on appear without a reload, the
- * composer shows where the keyboard is, a chip's × is a finger-sized target, and a short
- * screen (200% zoom, a phone on its side) keeps the examples above the docked composer.
- */
+/** Home and composer reach: live surface changes, keyboard-aware composer, chip target size, short screens. */
 
 test.use({ serviceWorkers: 'block' })
 

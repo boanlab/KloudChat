@@ -400,17 +400,11 @@ interface State {
   /** Sessions with a turn in flight, each holding the abort for its own stream. */
   running: Record<string, () => void>
   modelByKind: Record<SessionKind, string>
-  /**
-   * Saves a model as the surface's personal default on the account. A pick in one chat, report or
-   * slides conversation goes to that conversation (`setSessionModel`, `newSession({ model })`).
-   */
+  /** Saves the account-wide default model for a surface; per-conversation picks use `setSessionModel`. */
   setModel: (kind: SessionKind, id: string) => void
   /** Forgets the home-screen pick for a surface: its new conversations start on the admin default. */
   clearModelPick: (kind: SessionKind) => void
-  /**
-   * Saves a Super Agent entry as the surface's own start (chat, report, slides) on the account:
-   * only from the personal default (설정 › 환경설정) or the picker's 「기본값으로 저장」.
-   */
+  /** Saves a Super Agent entry as the surface's account-wide start. */
   pickSuperEntry: (kind: SessionKind, entry: 'super' | 'super_strict') => void
   /** One remembered model per av mode; `modelByKind.av` mirrors the current mode's. */
   avModelByMode: Record<AvMode, string>
@@ -464,10 +458,7 @@ interface State {
     text: string,
     opts?: SendOptions,
   ) => Promise<string>
-  /**
-   * Answers a strict-local turn's search card: its question is asked again with the decision,
-   * from the stored transcript (another tab may have answered first).
-   */
+  /** Answers a strict-local turn's search card by re-asking its question from the stored transcript with the decision. */
   answerSearchConsent: (
     sessionId: string,
     messageId: string,
@@ -563,7 +554,7 @@ interface State {
   /** The composer `pendingAttachment` is for (`composerKey`); null: whichever is mounted. */
   pendingAttachmentTo: string | null
   setPendingAttachment: (file: FileRow | null, to?: string | null) => void
-  /** A refused turn's draft, addressed to the session it was sent to; the sending composer may already be unmounted. */
+  /** Refused turn's draft, keyed by session (the sending composer may be unmounted). */
   composerRestore: {
     sessionId: string | null
     value: string
@@ -767,11 +758,7 @@ function sameFilter(filter: ArtifactFilter): ArtifactFilter {
   return { ...(kind ? { kind } : {}), ...(q ? { q } : {}) }
 }
 
-/**
- * The model picks of the signed-in account: one source of truth on every device. The server copy
- * (`preferences.modelByKind`) is what the settings page, the composer's start chip and the
- * server's start rule all read; this browser keeps none of its own.
- */
+/** Model picks of the signed-in account, from the server copy (`preferences.modelByKind`); nothing is kept in this browser. */
 function accountPicks(
   account: Partial<Record<SessionKind, string>> | undefined,
 ): Partial<Record<SessionKind, string>> {
@@ -806,9 +793,8 @@ const initialAvModelByMode: Record<AvMode, string> = {
 }
 
 /**
- * Per av mode: the remembered pick if still served, else the instance default. No default set:
- * none (the admin picks one; never the cheapest). A default this account may not use gives way to
- * the first one it may. Storage is never rewritten here.
+ * Per av mode: the remembered pick if still served, else the instance default (none if unset;
+ * never the cheapest). A default outside the account's allowlist gives way to the first allowed one.
  */
 function reconcileAvModels(
   available: ModelInfo[],
@@ -909,10 +895,7 @@ let idleTeardown: (() => void) | null = null
 /** Counts as activity for the idle sign-out: set while the watch is armed. */
 let idleRestart: (() => void) | null = null
 
-/**
- * Activity the window's own listeners cannot see, as typing inside a framed editor (the HWP
- * editor's iframe): it keeps the idle sign-out away as a key or click in the page does.
- */
+/** Reports activity the window listeners cannot see (e.g. typing in the HWP editor iframe) to the idle timer. */
 export function noteActivity() {
   idleRestart?.()
 }
@@ -953,10 +936,7 @@ function armIdleWatch(minutes: number, onIdle: () => void) {
   }
 }
 
-/**
- * Signed out for idleness: nobody is there to answer about an office document's unsaved
- * edits, so they are saved as a version first (bounded: a hung save does not keep the session).
- */
+/** Idle sign-out; unsaved office-document edits are saved as a version first, with a timeout so a hung save cannot hold the session. */
 async function idleSignOut(get: () => State) {
   await Promise.race([saveOpenOffice(), new Promise((resolve) => setTimeout(resolve, 15_000))])
   await get().logout('idle')
@@ -978,10 +958,9 @@ function handToTheComposer(set: Set, text: string) {
 const CHAT_SURFACES: SessionKind[] = ['chat', 'report', 'slides']
 
 /**
- * Remembered pick if still served on the surface, else the surface's default, else (chat, report,
- * slides) the chat default; never by price. Past those a chat surface takes the first model listed
- * (a strict-local one last), a picture or av surface only when its default is outside this
- * account's allowlist. Storage untouched.
+ * Remembered pick if still served, else the surface default, else (chat, report, slides) the chat
+ * default; never by price. Then a chat surface takes the first listed model (strict-local last);
+ * a picture or av surface only when its default is outside the account's allowlist.
  */
 function reconcileDefaults(
   current: Record<SessionKind, string>,
@@ -1016,11 +995,7 @@ function reconcileDefaults(
   return next
 }
 
-/** The model a turn will run on: session, then agent, then surface default (turn overrides excluded). */
-/**
- * Which composer a hand-off is for: the conversation's id, or `new:<kind>` before it exists.
- * Navigation renders as a transition, so the composer being left still sees the store first.
- */
+/** Composer hand-off key: the conversation id, or `new:<kind>` before it exists. */
 export function composerKey(sessionId: string | null, kind: SessionKind): string {
   return sessionId ?? `new:${kind}`
 }
@@ -1232,9 +1207,7 @@ export const useStore = create<State>((set, get) => ({
         void get().loadSessions()
         void get().loadWorkspace()
       } catch (err) {
-        // Signed out only when the server said so. A refresh cut off by a reload, the
-        // network or a 5xx says nothing about the cookie: a signed-in tab keeps its session,
-        // and either way the refresh is tried again.
+        // Sign out only on an explicit refusal; a network error or 5xx says nothing about the cookie.
         if (refusedRefresh(err)) {
           endSession(set, get().authenticated)
         } else if (get().authenticated) {
@@ -1969,9 +1942,7 @@ export const useStore = create<State>((set, get) => ({
     const owner = get().user?.id
     const epoch = get().accountEpoch
     const ownsAccount = () => owner === get().user?.id && epoch === get().accountEpoch
-    // A retry resends the original turn's options, not just its sentence. The file it was asked
-    // as is not taken from here: the server keeps it on the turn (`turnOptions.outputFormat`)
-    // and reuses it when the retry names none, so it survives a reload.
+    // Retry resends the original options; the output file format is kept server-side (`turnOptions.outputFormat`).
     const again = opts.retryOf ? sentWith.get(opts.retryOf) : undefined
     if (again) {
       const { outputFormat: _kept, ...rest } = again
@@ -2218,7 +2189,7 @@ export const useStore = create<State>((set, get) => ({
   },
 
   stopStreaming: (sessionId) => {
-    // A closed response is not a server stop: wait for the stop acknowledgement; the timeout keeps a broken request from trapping the UI.
+    // A closed response is not a server stop: wait for the acknowledgement, with a timeout.
     const abort = get().running[sessionId]
     if (!abort) return
     const fallback = window.setTimeout(abort, 2_000)
@@ -3161,7 +3132,6 @@ export const useStore = create<State>((set, get) => ({
         ? s.agents.map((x) => (x.id === copy.id ? copy : x))
         : [copy, ...s.agents],
     }))
-    // The original's install count and `installed` flag moved.
     await get().loadWorkspace()
   },
   upsertAgent: async (a, process) => {
@@ -3235,7 +3205,6 @@ export const useStore = create<State>((set, get) => ({
   removeUser: async (id, purgeFiles = true) => {
     await adminApi.removeUser(id, purgeFiles)
     set((s) => ({ users: s.users.filter((u) => u.id !== id) }))
-    // Counts and the page's window moved.
     void get().loadUsers()
   },
   setUserCredits: (id, monthlyCredits) =>
@@ -3254,10 +3223,7 @@ useStore.subscribe((s, prev) => {
   if (next !== s.modelByKind) useStore.setState({ modelByKind: next })
 })
 
-/**
- * Admin mutations return the updated row; a self-edit also updates `user`. A change that can
- * move the row (status, name, credits) reloads the page: tab counts and order follow it.
- */
+/** Applies an admin mutation's returned row (a self-edit also updates `user`); `reorders` reloads the page for tab counts and order. */
 async function applyUserChange(set: Set, get: Get, pending: Promise<User>, reorders = false) {
   const updated = await pending
   set((s) => ({
@@ -3272,10 +3238,7 @@ async function applyUserChange(set: Set, get: Get, pending: Promise<User>, reord
 type Set = (u: Partial<State> | ((s: State) => Partial<State>)) => void
 type Get = () => State
 
-/**
- * A change to a conversation not yet created: applied on screen and kept for its creation.
- * True when it was one (the caller sends nothing).
- */
+/** Applies a change to a not-yet-created conversation and keeps it for creation; true if it was one (nothing to send). */
 function holdUnsent(set: Set, get: Get, id: string, change: Partial<Session>, patch?: UnsentPatch): boolean {
   const row = get().sessions.find((c) => c.id === id)
   if (!row?.unsent) return false
@@ -3355,7 +3318,7 @@ function settleRun(m: Message): Message {
   return m.run && m.run.status === 'running' ? { ...m, run: { ...m.run, status: 'done' } } : m
 }
 
-/** Every turn ends with `usage` or `error`; a stream that ends with neither was cut off. */
+/** Shown when a stream ends with neither `usage` nor `error`. */
 const CUT_OFF = '연결이 끊겨 답변이 중간에 멈췄습니다. 다시 시도해 주세요.'
 /** A report or deck whose response dropped while the server still writes it. */
 const STILL_WRITING = '연결이 끊겼지만 서버에서 계속 쓰고 있습니다. 다 쓰면 여기에 엽니다.'
@@ -3624,7 +3587,6 @@ function toMessage(raw: MessageRow): Message {
     id: raw.id,
     persisted: true,
     role: raw.role,
-    // A turn from the retired model comparison keeps the answer it chose; failing that, its first.
     content: raw.content || raw.variants?.find((v) => v.content)?.content || '',
     createdAt: raw.createdAt,
     model: raw.model,
@@ -3646,11 +3608,7 @@ function toMessage(raw: MessageRow): Message {
   }
 }
 
-/**
- * A listed row over the one held: the list carries no transcript (held messages are kept), and
- * it names no document a chat's own fetch found (a Word or HWP file made in the chat, which the
- * server finds for the conversation itself): that document stays the chat's.
- */
+/** Merges a listed row over the held one: the list has no transcript or chat document, so those stay. */
 function listedSession(raw: SessionRow, held: Session | undefined): Session {
   const fresh = toSession(raw, held?.messages)
   return fresh.artifactId === null && held?.artifactId ? { ...fresh, artifactId: held.artifactId } : fresh
@@ -3928,11 +3886,7 @@ function toConnector(c: ConnectorRow): Connector {
   }
 }
 
-/** One chat turn: an empty assistant message is filled in place as events arrive. */
-/**
- * The document open in the panel, as a turn carries it (`openArtifact`): the server's chat edits
- * and office tools work on it, never on "the newest of its kind". A local draft is not sent.
- */
+/** The panel's open document as a turn carries it (`openArtifact`), so server edits target it; local drafts are not sent. */
 function openTarget(get: Get): OpenArtifact | undefined {
   const id = get().openArtifactId
   if (!id) return undefined
@@ -4078,7 +4032,7 @@ async function streamTurn(
         case 'tool_result_answer': {
           const { type: _type, ...origin } = event
           patch((m) => {
-            // Keep privacy decisions, but a previously selected model did not author this answer.
+            // Keep privacy decisions, not the previously selected model.
             const previous = m.routing && 'action' in m.routing ? m.routing : undefined
             const { costRouting: _costRouting, ...privacy } = previous ?? {}
             return { ...m, model: null, routing: { ...privacy, ...origin } }
@@ -5015,7 +4969,7 @@ function failMediaTurn(
   }))
 }
 
-/** Takes an optimistic turn back off, for a request that was never accepted. */
+/** Removes optimistic turns for a rejected request. */
 function dropMediaTurn(set: Set, sessionId: string, ...ids: string[]) {
   set((s) => ({
     sessions: s.sessions.map((c) =>

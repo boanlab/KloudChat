@@ -1,7 +1,8 @@
-"""Background work of 지식 서가: a guide or studio output is written after the request
-returns (a strict-local writer can take minutes), on a DB session of its own, and its row
-says `running` until it is done. A row left `running` by a replica that stopped counts as
-failed once it is older than `STALE`, so the person can ask again."""
+"""Background work of 지식 서가: a guide or studio output is written after the request returns, on
+its
+own DB session; the row is `running` until done.
+
+A `running` row older than `STALE` (replica stopped) counts as failed so the user can retry."""
 
 from __future__ import annotations
 

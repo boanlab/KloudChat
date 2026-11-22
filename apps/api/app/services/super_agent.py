@@ -1,12 +1,10 @@
 """Super Agent: the model, reasoning effort and tool budget of one turn, from its task class.
 
-Two picker entries share this router. `super` may use any model the account is allowed
-(self-hosted or external, under the usual privacy rules); `super_strict` only strict-local
-self-hosted models, so the turn and every call around it (titles, summaries, checks) stay
-inside. The class comes from cheap rules first; only an ambiguous request is sent to a small
-self-hosted classifier with a short payload (the request, not the whole envelope). The admin
-table maps each class to a model per variant and an effort (`DEFAULT_RULES`, governance
-`super_agent_rules`). See docs/architecture.md, "Super Agent".
+`super` may use any allowed model; `super_strict` only strict-local self-hosted ones, so the
+turn and every call around it stay inside. The class comes from cheap rules first; only an
+ambiguous request goes to a small self-hosted classifier. The admin table maps class → model
+per variant plus effort (`DEFAULT_RULES`, governance `super_agent_rules`). See
+docs/architecture.md, "Super Agent".
 """
 
 from __future__ import annotations
@@ -45,10 +43,7 @@ CLASSES: tuple[str, ...] = (
     "long",
     "reasoning",
     "document",
-    #: not a request's class: the three stages of a report or deck turn that go to a stronger
-    #: model while the `document` row's model writes the ordinary parts (`doc_stages`): the
-    #: outline or storyline, the sections or slides the objective signals mark as hard, and
-    #: the ones whose checks fail
+    #: not a request class: stages of a report/deck turn sent to a stronger model (`doc_stages`)
     "document_plan",
     "document_hard",
     "document_repair",
@@ -64,10 +59,9 @@ CLASSES: tuple[str, ...] = (
 )
 EFFORTS: tuple[str, ...] = ("default", "none", "low", "high")
 
-#: The composer's reasoning chip (`SendMessage.reasoning`), per conversation. `auto` leaves
-#: the table as it is; `fast` keeps the turn off reasoning routes (no reasoning, the lowest level
-#: where it cannot be turned off); `deep` sends it to the escalation row at effort high (Super
-#: Agent) or to the model's highest level (a model picked by hand).
+#: The composer's reasoning chip (`SendMessage.reasoning`), per conversation: `auto` leaves the
+#: table; `fast` avoids reasoning routes (lowest level where it cannot be off); `deep` uses the
+#: escalation row at effort high (Super Agent) or the model's highest level (manual pick).
 AUTO = "auto"
 FAST = "fast"
 DEEP = "deep"
@@ -75,13 +69,10 @@ REASONING_MODES: tuple[str, ...] = (AUTO, FAST, DEEP)
 #: Not an admin effort: the highest level the model takes (`deep` on a hand-picked model).
 HIGHEST = "highest"
 
-#: Built-in table, from the 2026-11-13 evaluation (docs/architecture.md, "Super Agent"), with
-#: every row it could moved onto the self-hosted Qwen3.8 Flash on 2026-11-20.
-#: `model`: the `super` entry's pick; `strictModel`: the `super_strict` entry's pick (must be
-#: strict-local); `effort`: reasoning effort for the writer call ("default" leaves the
-#: deployment's own setting); `strictEffort` (optional): the effort of the strict column,
-#: falling back to `effort`. A pick that is not served or not allowed falls back along
-#: `_FALLBACKS`, then to the surface default.
+#: Built-in table. `model`: the `super` entry's pick; `strictModel`: the `super_strict` pick (must
+#: be strict-local); `effort`: writer reasoning effort ("default" keeps the deployment's);
+#: `strictEffort` (optional): the strict column's effort, else `effort`. An unserved or
+#: disallowed pick falls back along `_FALLBACKS`, then to the surface default.
 DEFAULT_RULES: dict[str, dict[str, str]] = {
     # flash answers short and everyday turns as well as the larger models (8.4 of 10)
     "simple": {
@@ -99,27 +90,20 @@ DEFAULT_RULES: dict[str, dict[str, str]] = {
         "strictModel": "strict-local/qwen3.8-flash",
         "effort": "none",
     },
-    # hard turns go to DeepSeek V4.1 Flash with reasoning high (owner decision 2026-11-14):
-    # thinking flash matched it on the evaluation (8.3-8.5 of 10) but left answers empty 3
-    # times in 14, and DeepSeek searches and cites best (8.7 vs flash 6.3)
+    # hard turns: DeepSeek V4.1 Flash with reasoning high (searches and cites best)
     "calc": {
         "model": "deepseek/deepseek-v4.1-flash",
         "strictModel": "strict-local/qwen3.8-flash",
         "effort": "high",
     },
-    # code and artifacts on self-hosted flash without reasoning (2026-11-20; 46 artifact
-    # prompts x3 runs, Playwright checks and blind judges, flash vs external DeepSeek V4.1
-    # Flash high): calculators 7.30 vs 7.70, shop and landing pages 7.41 vs 6.85, games 7.27
-    # vs 7.53, Python 6.44 vs 5.81 (the external model lost artifacts), forms 6.33 vs 7.00.
-    # Dashboards were clearly worse on flash (6.81 vs 7.96): they have the `visual` row.
+    # code and artifacts: self-hosted flash without reasoning (data-drawing ones: `visual` row)
     "code": {
         "model": "local/qwen3.8-flash",
         "strictModel": "strict-local/qwen3.8-flash",
         "effort": "none",
     },
-    # code or artifacts that draw data (dashboards, charts, graphs): the one artifact kind
-    # flash clearly lost on, 6.81 vs DeepSeek V4.1 Flash high's 7.96 (2026-11-20, the run of
-    # the `code` row); the strict column stays on flash without reasoning, as `code`'s does
+    # code or artifacts that draw data (dashboards, charts, graphs): the kind flash handles
+    # worst; the strict column stays on flash without reasoning, as `code`
     "visual": {
         "model": "deepseek/deepseek-v4.1-flash",
         "strictModel": "strict-local/qwen3.8-flash",
@@ -141,45 +125,32 @@ DEFAULT_RULES: dict[str, dict[str, str]] = {
         "strictModel": "strict-local/qwen3.8-flash",
         "effort": "high",
     },
-    # the body of a report or deck on flash without reasoning (2026-11-20): flash's body
-    # judged 1.0-1.5 above the 27B's (blind Sonnet, 12 tasks x3) at the same speed and cost;
-    # the strict column end to end (body flash none, stages flash low with a 500-token
-    # thinking budget) scored 5.92 against the 27B column's 4.53, with no failures under the
-    # 300 s rule and no external call
+    # body of a report or deck: flash without reasoning (strict column: stages flash low with a
+    # 500-token thinking budget)
     "document": {
         "model": "local/qwen3.8-flash",
         "strictModel": "strict-local/qwen3.8-flash",
         "effort": "none",
     },
     # turns over attached, project or agent files: both columns empty, so they keep their
-    # class's row (owner decision 2026-11-15: thinking flash and the self-hosted DeepSeek
-    # judged 7.7 vs 7.6 on the re-run, DeepSeek ~50 s slower). An admin may fill the row.
+    # class's row; an admin may fill the row
     "material": {
         "model": "",
         "strictModel": "",
         "effort": "high",
     },
-    # complex document work (a form followed, many source files, tool-heavy decks, a long
-    # source) on flash with reasoning high, a 2000-token thinking budget (2026-11-20; forms
-    # and attachments task set): flash high 6.28 vs the self-hosted DeepSeek V4 Flash high's
-    # 5.70 over its successes and 4.11 with its failures as 0 (DeepSeek failed 28% under the
-    # 300 s rule, flash never). The 27B followed HWPX, Word and PowerPoint forms unreliably,
-    # which is why these turns have a row of their own (owner decision 2026-11-15).
+    # complex document work (form followed, many sources, tool-heavy decks, long source):
+    # flash with reasoning high and a 2000-token thinking budget; the 27B follows forms unreliably
     "complex_document": {
         "model": "local/qwen3.8-flash",
         "strictModel": "strict-local/qwen3.8-flash",
         "effort": "high",
         "strictEffort": "high",
     },
-    # staged routing of a report or deck (owner decision 2026-11-18): one model never writes
-    # the whole document. The outline or storyline, the sections the objective signals mark
-    # as hard and the ones whose checks fail go to the upper model; the `document` row's
-    # model writes the rest. The strict column stays inside on flash with reasoning low (a
-    # 500-token thinking budget): the strict writer's own model, so these stages run only
-    # because they ask it to think (`stage_pick`); 5.92 vs 4.53 end to end (2026-11-20, see
-    # `document`). The outline runs on GLM-5.3 Flash (2026-11-21: 7.13/7.40 vs 7.30/7.40 for
-    # GLM-5.3, no failures either way, cheaper); it cannot switch reasoning off, so the row
-    # sends `low` explicitly (no reasoning field: up to 35k thinking tokens, 17-300 s)
+    # Staged routing: the upper model takes the outline/storyline, hard sections and failed
+    # checks; the `document` row writes the rest. The strict column stays on flash with reasoning
+    # low (500-token thinking budget, `stage_pick`). The outline model cannot switch reasoning
+    # off, so the row sends `low` explicitly (no field: up to 35k thinking tokens).
     "document_plan": {
         "model": "z-ai/glm-5.3-flash",
         "strictModel": "strict-local/qwen3.8-flash",
@@ -198,11 +169,7 @@ DEFAULT_RULES: dict[str, dict[str, str]] = {
         "effort": "default",
         "strictEffort": "low",
     },
-    # a thinking flash answer came back empty 3 times in 14; DeepSeek with reasoning on
-    # never did (9 of 10 on those prompts; owner decision 2026-11-14). Strict: flash with
-    # reasoning high, a 2000-token thinking budget, 6.89 vs the strict-local DeepSeek V4
-    # Flash high's 6.11 over 18 dialogues x3 (2026-11-20), though with more garbled terms and
-    # mixed languages
+    # reasoning-on model; strict column: flash with reasoning high, 2000-token thinking budget
     "escalation": {
         "model": "deepseek/deepseek-v4.1-flash",
         "strictModel": "strict-local/qwen3.8-flash",
@@ -218,9 +185,8 @@ STAGE_ROWS: dict[str, str] = {
     "repair": "document_repair",
 }
 
-#: Rows that move a turn rather than name a class's own model: an empty column leaves the
-#: turn on its class's row. A stage row left empty keeps that stage on the `document` row's
-#: model.
+#: Rows that move a turn rather than name a class's own model: an empty column leaves the turn
+#: on its class's row (a stage row: on the `document` row's model).
 OVERRIDE_ROWS = frozenset({"material", "complex_document", *STAGE_ROWS.values()})
 
 #: Next picks when a rule's model is not served here (other installations, allowlists).
@@ -256,10 +222,9 @@ LONG_CONTEXT_BYTES = 60_000
 #: Pasted material from which a request counts as long.
 LONG_MATERIAL_CHARS = 6_000
 
-# --- complex document turns -----------------------------------------------------------------
-# Every threshold of `complexity` lives here. A document turn (report or deck, including the
-# Word, HWP and PowerPoint files it is written as) is complex when ANY of these holds; a simple
-# one stays on the `document` row.
+# --- complex document turns ---
+# Thresholds of `complexity`: a report/deck turn is complex when ANY holds; else it stays on
+# `document`.
 #: A form (양식) is being followed: PowerPoint, Word or HWPX. The writer must keep the form's
 #: labels, cells and layout, which the 27B did unreliably.
 COMPLEX_FORM_KINDS = frozenset({"pptx", "docx", "hwpx"})
@@ -380,12 +345,9 @@ _REASONING = re.compile(
     r"derive|strategy|root cause|why does|probability)",
     re.IGNORECASE,
 )
-#: Building something that runs (an app, a page, a game, an HTML file, a program in a named
-#: language, a chart): an artifact request, which `_CODE`'s code words alone miss
-#: (「계산기 웹앱 만들어줘」, 「파이썬 정렬 알고리즘 짜줘」, 「Make a todo app in React」).
-#: A plan, a list or a document about the thing, standing between it and the verb, is not
-#: building it (「앱 기획서 작성해 줘」, 「파이썬 공부 계획 짜줘」); 「할 일 목록 앱 만들어줘」
-#: still is.
+#: Building something that runs (app, page, game, HTML file, program, chart): an artifact
+#: request that `_CODE` alone misses. A plan, list or document standing between it and the
+#: verb is not building (「앱 기획서 작성해 줘」); 「할 일 목록 앱 만들어줘」 still is.
 _BUILD_VERB = r"(?:만들|짜\s*(?:줘|주|서|봐|고)|구현|작성|개발|코딩)"
 _NOT_BUILD_KO = (r"기획|계획|보고서|제안서|문서|명세|요구\s*사항|아이디어|이름|목록|추천|"
                  r"전략|후기|리뷰")
@@ -548,8 +510,8 @@ def classify(turn: Turn) -> Decision:
     if _CODE.search(ask) or "```" in text or builds(ask):
         signals.append("code")
     if draws_data(ask):
-        # code that draws data goes to the `visual` row (and so does the classifier's `code`
-        # for such a request, `visual_class`); a question about a chart stays where it was
+        # code that draws data goes to the `visual` row (also the classifier's `code` result,
+        # `visual_class`)
         signals.append("visual")
     # a question about pasted material is answered from it, unless search was switched on
     if turn.web_search is True or (not material and freshness.current_fact_required(ask)):
@@ -783,10 +745,8 @@ def strict_fallback(
     needs_tools: bool = False,
     skip: frozenset[str] = frozenset(),
 ) -> dict[str, Any] | None:
-    """The strict-local model that carries a turn on when `writer` fails mid-turn: the first
-    usable `_STRICT_FALLBACKS` model ahead of the writer in that list (Qwen3.8 Flash for any
-    other strict-local writer an admin put in the table); None when the writer is that model
-    already."""
+    """Strict-local model to continue a turn when `writer` fails mid-turn: the first usable
+    `_STRICT_FALLBACKS` model ahead of the writer; None when the writer is already it."""
     by_id = {str(m.get("id")): m for m in catalogue}
     for model_id in _STRICT_FALLBACKS:
         if model_id == writer.get("id"):
@@ -809,10 +769,9 @@ def complex_fallback(
     needs_tools: bool = False,
     skip: frozenset[str] = frozenset(),
 ) -> dict[str, Any] | None:
-    """The model that carries a complex document turn on, in the same turn, when its writer
-    fails, stays silent or waits too long for a slot: the `document` row's pick in the turn's
-    column; None when that is the writer itself (the built-in table writes both rows on
-    Qwen3.8 Flash, so its complex turns have none) or nothing serves."""
+    """Same-turn fallback for a complex document turn whose writer fails, stalls or waits too
+    long for a slot: the `document` row's pick in the column; None when that is the writer or
+    nothing serves."""
     wanted = rules["document"]["strictModel" if strict else "model"]
     model = next((m for m in catalogue if m.get("id") == wanted), None)
     if (model is None or model.get("id") == writer.get("id") or model.get("id") in skip
@@ -838,18 +797,14 @@ def effort_for(rules: dict[str, dict[str, str]], decision: Decision, strict: boo
 def steer(rules: dict[str, dict[str, str]], decision: Decision, mode: str, *,
           material: bool = False, strict: bool = False,
           complex_doc: bool = False) -> tuple[str, str]:
-    """`(row, effort)` the chip makes of the decided class: the table row whose model answers
-    and the writer's effort. A turn over internal material (`material`) moves to the
-    `material` row where that row names a model in the turn's column (`strict`), except a
-    thanks, a document or a retry. `fast` moves a row that reasons to the everyday `chat` row
-    (the turn's other needs, tools, vision, a long window, still narrow the pick); `deep` moves
-    every chat class to the escalation row at effort high, and keeps a document's own writer
-    at its highest effort.
+    """`(row, effort)` for the decided class under the reasoning chip.
 
-    A complex document turn (`complex_doc`) moves to the `complex_document` row where that row
-    names a model in the turn's column. The chip steers its effort only, never its model:
-    `fast` writes without thinking (the form still goes to the model that can follow it, not to
-    the `document` row's), `deep` at the highest level."""
+    `material` turns move to the `material` row when it names a model in the column (`strict`),
+    except thanks, documents and retries. `fast` moves a reasoning row to the `chat` row (needs
+    like tools, vision, window still narrow the pick); `deep` moves chat classes to the
+    escalation row at effort high and keeps a document writer at its highest effort. A complex
+    document turn (`complex_doc`) moves to the `complex_document` row; the chip steers only its
+    effort (`fast` no thinking, `deep` highest), never its model."""
     if complex_doc and rules.get(COMPLEX_CLASS, {}).get("strictModel" if strict else "model"):
         if mode == FAST:
             return COMPLEX_CLASS, "none"
@@ -879,12 +834,10 @@ _CITED_WORK = re.compile(r"arxiv[:.\s]*\d{4}\.\d{4,5}|\bdoi[:\s]*10\.\d{4,9}/|\b
 
 
 def personal_for_routing(found: list[Any], texts: dict[str, list[str]]) -> list[Any]:
-    """`found` (privacy findings, `governance.findings`) as the router reads them: an email
-    address found only in text that is a cited work (an arXiv id or DOI stands in it, as in a
-    pasted paper's front matter) is the paper's authors' contact line, not the person's data,
-    and does not send the turn to the strict column. Every other category, and an email that
-    does not follow a cited work's marker closely (the person's own address, a contact in a
-    memo), still does. `texts` maps a finding's `source` to its texts."""
+    """`found` (`governance.findings`) as the router reads them: an email only in text that is
+    a cited work (arXiv id or DOI nearby) is the authors' contact, not personal data, and
+    does not force the strict column; every other finding counts. `texts` maps a finding's
+    `source` to its texts."""
     kept = []
     for finding in found:
         if finding.category == "email" and all(
@@ -932,11 +885,10 @@ def stage_pick(
     writer: dict[str, Any],
     skip: frozenset[str] = frozenset(),
 ) -> dict[str, Any] | None:
-    """The model a report or deck `stage` (`plan`, `hard`, `repair`) runs on, or None when the
-    stage stays with `writer` (the `document` row's pick): the row names none in this column,
-    names the writer itself, or names a model that is not served, not allowed, failed lately
-    or, in a strict turn, not strict-local. A document turn never fails for a missing upper
-    model; it is written as before."""
+    """Model for a report/deck `stage` (`plan`, `hard`, `repair`), or None to stay with `writer`:
+    the row names none, names the writer, or names a model unserved, disallowed, recently
+    failed or (strict turn) not strict-local. A document turn never fails for a missing upper
+    model."""
     row = rules[STAGE_ROWS[stage]]
     wanted = row["strictModel" if strict else "model"]
     # the writer's own model stays the writer's call unless the stage asks it to think

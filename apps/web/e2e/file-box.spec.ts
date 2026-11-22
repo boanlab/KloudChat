@@ -4,9 +4,8 @@ import { openTool } from './composer-tools'
 import { openSidebar } from './helpers'
 
 /**
- * 파일함: the account's files, those the person gave apart from those made in conversations;
- * 「파일함에서 고르기」 attaches one again by id; deleting a conversation asks whether its
- * files go too (they stay in the file box unless ticked).
+ * 파일함: the account's own files apart from conversation outputs; 「파일함에서 고르기」 attaches
+ * one by id; deleting a conversation asks whether its files go too.
  */
 
 const at = '2026-10-16T03:00:00.000Z'
@@ -134,7 +133,7 @@ test('파일함 on a phone keeps the name readable and every control a 24px targ
   await page.goto('/files')
   const name = page.getByRole('button', { name: long.name, exact: true })
   await expect(name).toBeVisible()
-  // The controls sit under the name, so it has most of the row (it was ~5 characters).
+  // The controls sit under the name, so it gets most of the row.
   const width = (await name.boundingBox())!.width
   expect(width).toBeGreaterThan(200)
   const small = await page.locator('main').evaluate((main) =>

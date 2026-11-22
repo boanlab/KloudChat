@@ -13,11 +13,7 @@ export interface OfficeEditor {
   export: () => Promise<Uint8Array>
   /** Told after a save, so the editor's own unsaved flag clears. */
   saved: () => Promise<unknown>
-  /**
-   * The editor's own count of changes, where it keeps one (HWP); else the panel counts the
-   * edits it is told of (`noteEdit`). A save clears the unsaved mark only when the count did
-   * not move while it ran: what was typed meanwhile is not in the saved file.
-   */
+  /** Editor's own change count (HWP); else the panel counts `noteEdit` calls. A save clears the unsaved mark only if the count did not move meanwhile. */
   revision?: () => Promise<number>
   /** Asks the editor whether it holds unsaved edits, where its state is otherwise polled. */
   isDirty?: () => Promise<boolean>
@@ -32,11 +28,7 @@ export interface Doc {
 
 type Ask = { resolve: (go: boolean) => void; reason: AskReason }
 
-/**
- * An office document beside the chat, whatever the editor: the editor loads the saved
- * version; the person's 저장 adds a version from the one loaded, and the agent's tools add
- * theirs on the server, which the editor then loads, unless that would drop hand edits.
- */
+/** Office document state beside the chat; server-side agent versions are loaded unless that would drop hand edits. */
 export function useOfficeDocument(
   kind: OfficeKind,
   doc: Doc,
@@ -55,7 +47,7 @@ export function useOfficeDocument(
   const busy = useRef(false)
   /** A load is running: what the editor reports meanwhile is the new file, not an edit. */
   const loadingRef = useRef(false)
-  /** Edits the panel was told of (`noteEdit`); a save compares it before and after. */
+  /** Edits reported via `noteEdit`; compared before and after a save */
   const edits = useRef(0)
   const [error, setError] = useState('')
   /** `conflict`: a save lost to a newer version; `behind`: a newer version came in under edits. */
@@ -217,10 +209,7 @@ export function useOfficeDocument(
 
 export type OfficeDocument = ReturnType<typeof useOfficeDocument>
 
-/**
- * Phone width reads only, unless edits made at a wider width are still unsaved: then the
- * editor and 저장 stay until they are saved or dropped.
- */
+/** Phone width is read-only, unless edits made at a wider width are still unsaved. */
 export function readOnlyAt(phone: boolean, dirty: boolean) {
   return phone && !dirty
 }

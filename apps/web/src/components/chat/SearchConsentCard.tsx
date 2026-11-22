@@ -9,11 +9,7 @@ import type { SearchConsent, SearchConsentQuery } from '@/types'
 const MAX_QUERIES = 5
 const MAX_CHARS = 100
 
-/**
- * A strict-local turn that stopped before searching the web (`services/search_consent`): the
- * queries that would leave — masked, with the ones withheld and why — and the person's choice.
- * The card lives on the stored answer, so a reload shows it until it is answered.
- */
+/** Strict-local turn that stopped before web search: masked queries, withheld ones and why, and the choice. */
 export function SearchConsentCard({
   sessionId,
   messageId,

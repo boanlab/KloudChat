@@ -171,10 +171,7 @@ export function ModelPicker({
   onEnableAuto?: (mode: RoutingMode) => void | Promise<void>
   /** Reports an in-flight selection so a turn does not race it. */
   onBusyChange?: (busy: boolean) => void
-  /**
-   * The home screen's composer (its session, if any, is unsent). On a picture or av surface a
-   * pick is the person's start too; on chat, report and slides it stays with the conversation.
-   */
+  /** Home-screen composer: on picture/av surfaces a pick also sets the person's start; on chat, report and slides it stays with the conversation. */
   homePick?: boolean
   /** Starts the conversation on a picked model (chat, report, slides before one exists). */
   onStartWithModel?: (modelId: string) => void | Promise<void>
@@ -356,8 +353,7 @@ export function ModelPicker({
           // Keyed off `sessionId`, not the session row: the list can lag behind the URL.
           return persistSelection(() => {
             if (field) return setModel(kind, id)
-            // A chat, report or slides pick belongs to its conversation: the saved default stays
-            // as it was (settings, or 「기본값으로 저장」, change it).
+            // Chat/report/slides picks belong to the conversation; the saved default is unchanged
             if (routedSurface) {
               if (sessionId) return setSessionModel(sessionId, id)
               if (onStartWithModel) return onStartWithModel(id)
@@ -469,7 +465,7 @@ function ModelMenu({
         : qualityReason,
     },
   ]
-  // Super Agent replaces the two Auto lanes; an Auto lane stays visible only while in use.
+  // Super Agent replaces the Auto lanes; one shows only while selected
   const offeredLanes = showAuto
     ? [
         ...superLanes.filter((lane) =>

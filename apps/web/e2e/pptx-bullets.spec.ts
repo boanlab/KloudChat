@@ -4,14 +4,9 @@ import { expect, test, type Page } from '@playwright/test'
 import { officeFixture } from './office-fixture'
 
 /**
- * A bulleted line in a deck KloudChat wrote (`pptx_write`), typed into in the real editor and
- * left: the bullet stays the paragraph's own (`a:buChar` in the accent, the text hanging after
- * it), nothing typed takes the bullet's colour, an item written over two lines stays one
- * paragraph with a line break, and the saved file says so. The second deck was written the old
- * way, its bullet a 「• 」 run of its own (typing at the start of the line went into that
- * accent run, and a wrapped line started under the bullet) and its line break a raw line feed
- * in the run (read by the editor as a paragraph end), then healed by the API
- * (`pptx_edit.healed`).
+ * Typing into a bulleted line of a `pptx_write` deck in the real editor: the bullet stays the paragraph's
+ * own (`a:buChar`), typed text keeps its own colour, a two-line item stays one paragraph. A deck with a
+ * 「• 」 run bullet and raw line feeds is healed by the API (`pptx_edit.healed`).
  */
 
 test.use({ serviceWorkers: 'block' })

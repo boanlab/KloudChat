@@ -2,10 +2,8 @@ import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { chatId, composerFixture } from './composer-fixture'
 
 /**
- * 파일함 「작업 문서」: the HWP, Word and PowerPoint files and web reports and web slides the person
- * works on, one row per document, newest edit first; filtered by format, searched by title,
- * sorted, paged; each opens in the editor it has in chat, downloads in its own format, and is
- * renamed or deleted in place.
+ * 파일함 「작업 문서」: one row per working document (HWP, Word, PowerPoint, web report, web slides),
+ * newest edit first; filter, search, sort, paging, open in its editor, download, rename, delete.
  */
 
 const id = (n: number) => `d${String(n).padStart(31, '0')}`

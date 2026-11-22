@@ -449,7 +449,6 @@ async def test_a_long_question_is_refused_before_it_runs(world):
     assert refused.status_code == 422 and world.calls == []
 
 
-# ── the owner blocks a visitor ─────────────────────────────────────────
 
 
 async def test_the_owner_blocks_a_visitor_from_a_conversation_they_sent(world):

@@ -50,7 +50,7 @@ export function ResultCard({ artifact, version }: { artifact: Artifact; version?
   // A panel saves in place; the version it saved is noted beside the artifact.
   const saved = useStore((s) => s.artifactVersions[artifact.id])
   const current = Math.max(artifact.version, saved ?? 0)
-  // `version` is what this turn wrote; the artifact may have moved on since.
+  // `version` is what this turn wrote; the artifact may have newer versions
   const older = version !== undefined && version < current
   const meta = [
     t(artifactLabel[artifact.kind]),

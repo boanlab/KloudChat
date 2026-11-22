@@ -1,10 +1,6 @@
-"""A value the person gave, or one worked from what they gave, gets no 「(확인 필요)」.
-
-Shapes from the 11-25 benchmark: a fact restated from the prompt (「11월 17~20일」 written as
-「11월 17일부터 20일까지 나흘」), a day the memo writes alone (「복귀가 24일이니까」), sums of
-an attached CSV, a percentage worked from a pipe table without outer bars (「1,987」 is a
-count, not a year), a formula's result used again, a value in another unit, and a slide title
-(「마케팅 예산 15억 배분」). A value nobody gave or worked out is still marked."""
+"""A value the person gave, or one worked from what they gave, gets no 「(확인 필요)」; a value
+nobody
+gave or worked out is still marked."""
 
 from __future__ import annotations
 

@@ -1,16 +1,9 @@
-"""A report written on a Word form (양식): the form's styles, numbering, header and footer, page
-and cover kept, its chapter headings kept as the report's chapters, and its guidance gone.
+"""A report written on a Word form (양식): the form's styles, numbering, header/footer, page
+and cover are kept, and each chapter heading's body is replaced by the report's chapter of
+the same name (`report_export.to_docx(form_mode=True)` writes the body). Chapters the form
+lacks are appended; a form without chapter headings gets the report after its content.
 
-How: the form's body is set aside and the report's body is written into the emptied form by the
-house writer in its form mode (`report_export.to_docx(form_mode=True)`): every paragraph takes
-the form's own styles (a style the house writer names and the form lacks is added on the form's
-look). The form's body comes back, and under each of its chapter headings (heading 1) the body
-of the report's chapter of the same name replaces what the form had there (작성요령, sample
-lines, empty paragraphs). A chapter the form lacks is added at the end in the form's heading
-style. The cover before the first chapter is kept, its label cells filled where the report's
-head gives a value. A form with no chapter headings gets the report after its own content.
-
-`write` returns the file and what was followed, for the answer's 「양식을 따름」 line.
+`write` returns the file and what was followed, for the 「양식을 따름」 line.
 """
 
 from __future__ import annotations
@@ -303,9 +296,8 @@ def _split(elements: list, heads: set[str],
 
 def _merge_chapter(form_content: list, report_content: list, twos: set[str],
                    followed: Followed) -> list:
-    """What goes under a chapter heading the report wrote: the report's content, with the
-    form's blank tables filled in place (the form's table standing where the report's was) and
-    the form's own sub-headings (1.1, 1.2) kept, each over the report's content of that name."""
+    """Content under a chapter heading: the report's, with the form's blank tables filled in
+    place and its sub-headings (1.1, 1.2) kept over the report's content of that name."""
     form_tables = [e for e in form_content if e.tag == _q("tbl") and blank_table(e)]
     merged = list(report_content)
     for at, element in enumerate(merged):

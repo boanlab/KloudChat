@@ -259,9 +259,8 @@ def fix_weekdays(text: str, *, context: str = "",
                     near = _nearest(month, dom, today) if year is not None else None
                     if (near is not None and near[1] and near[0].year != day.year
                             and setter is not None and abs((setter - today).days) <= _SURE_DAYS):
-                        # a year carried from a full date near today (「2027년 1월 2일까지」)
-                        # does not move a later 「12월 21일(월)」 a year on: near today a bare
-                        # day is the clock's
+                        # a year carried from a full date near today does not move a later
+                        # bare 「12월 21일(월)」 a year on: near today a bare day is the clock's
                         day = near[0]
                 else:
                     near = _nearest(month, dom, today)
@@ -300,9 +299,8 @@ def fix_weekdays(text: str, *, context: str = "",
         if wd in stated.get((day.year if explicit else None, day.month, day.day), set()) or (
                 not explicit and wd in stated.get((day.year, day.month, day.day), set())):
             continue
-        # right in a year the person names
-        # (a date within the sure window of today is the clock's year: a far-off year named
-        # elsewhere in the material — a 2028 plan — never makes a wrong weekday right)
+        # right in a year the person names (within the sure window of today the clock's year
+        # holds: a far-off year named elsewhere never makes a wrong weekday right)
         if not explicit and abs((day - today).days) > _SURE_DAYS and any(
                 _weekday_in(y, day.month, day.day) == wd for y in named):
             continue
@@ -498,9 +496,8 @@ _PIECE_END = re.compile(r"(?<=[.!?])(?=\s)")
 
 
 def flag_once(sections: list[dict]) -> tuple[list[dict], int]:
-    """A date's weekday flag said once, at its first mention over the document: later
-    mentions read the bare date (「2026-10-21」), and a sentence or cell holding the flag drops
-    the other 「확인 필요」 stacked beside it (「… 열립니다 (확인 필요).」)."""
+    """Weekday flag said once per date, at its first mention; later mentions read the bare date,
+    and a sentence or cell holding the flag drops other stacked 「확인 필요」."""
     seen: set[tuple[int, int]] = set()
     out = [dict(s) for s in sections]
     changed = 0

@@ -2,9 +2,9 @@ import type { Page } from '@playwright/test'
 import { shellRead } from './shell-mocks'
 
 /**
- * A chat with an office document (HWP, Word, PowerPoint) beside it, the API mocked: the document's file
- * per version, saves that move one version at a time (409 otherwise), and an agent turn whose
- * tools save a version of their own (`agentFile`) on the server.
+ * A chat beside an office document (HWP, Word, PowerPoint), API mocked: per-version files,
+ * saves that advance one version at a time (409 otherwise), and agent tools saving
+ * versions (`agentFile`).
  */
 
 export const sessionId = '77777777777777777777777777777777'

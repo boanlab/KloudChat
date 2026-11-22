@@ -6,11 +6,9 @@ import { viewport } from './project'
 import { deckId, deckSession, panel, resultsFixture } from './results-fixture'
 
 /**
- * The web slides work and look like the PowerPoint editor: the document header every panel
- * has, one toolbar row in the PowerPoint editor's order, numbered thumbnails with the slide
- * menu and drag to reorder, the speaker notes under the slide, the same keys. Hand edits stay in
- * the browser until 저장, across slides; undo covers the whole deck; a layout change keeps what
- * it cannot show; a phone reads only, as the PowerPoint editor does.
+ * Web slide editor parity with the PowerPoint editor: header, toolbar order, thumbnails with
+ * menu and drag reorder, speaker notes, keys; edits stay local until 저장; undo covers the deck;
+ * a layout change keeps what it cannot show; a phone is read-only.
  */
 
 test.use({ serviceWorkers: 'block' })

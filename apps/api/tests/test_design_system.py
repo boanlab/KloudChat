@@ -183,7 +183,7 @@ async def test_the_design_systems_accent_replaces_the_models_choice(monkeypatch)
 
     deck = next(event for event in events if event["type"] == "deck")
     assert {slide["accent"] for slide in deck["slides"]} == {"#7a1f3d"}
-    # The model still answered "청록"; it was not consulted.
+    # the model answered "청록" but was not consulted
     outline_prompt = posts[0]["messages"][-1]["content"]
     assert "theme is one colour name that suits the topic" not in outline_prompt
     assert "청록" not in outline_prompt

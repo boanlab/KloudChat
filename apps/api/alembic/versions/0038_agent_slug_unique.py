@@ -1,6 +1,6 @@
 """Unique @handle per owner.
 
-Existing duplicates get `-2`, `-3`, … appended; empty slugs are derived from the name first.
+Duplicates get `-2`, `-3`, ... appended; empty slugs are derived from the name first.
 
 Revision ID: 0038
 Revises: 0037

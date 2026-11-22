@@ -763,8 +763,7 @@ function useSplit(enabled: boolean) {
     if (!enabled) return
     const onMove = (e: PointerEvent) => {
       if (!dragging.current) return
-      // Measured from the right edge.
-      const next = Math.round(window.innerWidth - e.clientX)
+        const next = Math.round(window.innerWidth - e.clientX)
       const min = 320
       const max = Math.max(min, window.innerWidth - CHAT_EDGE_MIN)
       setWidth(Math.min(max, Math.max(min, next)))

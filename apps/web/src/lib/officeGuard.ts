@@ -1,9 +1,4 @@
-/**
- * Hand edits in an open office editor (HWP, Word, PowerPoint) that are not saved yet. The
- * agent edits the saved file, so before a turn is sent the person saves or drops them (the
- * panel asks); leaving the document (closing the panel, opening another one, another page,
- * a reload, a sign-out for idleness) asks the same, or saves first where nobody is there to ask.
- */
+/** Unsaved hand edits in open office editors; the agent edits the saved file, so they are saved or dropped before a turn or on leaving. */
 
 /** Why the panel asks: before an agent turn, or before the document goes away. */
 export type AskReason = 'send' | 'leave' | 'reload'
@@ -55,10 +50,7 @@ export function officeDirty(): boolean {
   return false
 }
 
-/**
- * Before the open documents go away: each with unsaved edits asks to save or drop them.
- * True to go on; false when the person stays (cancelled, or the save failed).
- */
+/** Asks to save or drop unsaved edits of open documents; false when the person stays (cancelled or save failed). */
 export async function leaveOffice(reason: Exclude<AskReason, 'send'> = 'leave'): Promise<boolean> {
   for (const guard of [...open.values()]) {
     await guard.refresh?.().catch(() => undefined)

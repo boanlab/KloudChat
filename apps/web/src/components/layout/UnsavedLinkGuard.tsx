@@ -8,10 +8,8 @@ import { useT } from '@/lib/useT'
 const trim = (path: string) => path.replace(/\/+$/, '') || '/'
 
 /**
- * Leaving a screen (a link, the router, or browser Back) while something is unsaved: an open
- * office document asks 저장 / 버리기 / 취소 in its own panel first, then any other unsaved
- * form asks 머물기 / 버리고 옮기기. One blocker for both, so a navigation asks each once.
- * Tab close and reload are `beforeunload` (`useMarkUnsaved`).
+ * Single blocker for in-app navigation while something is unsaved: an open office document asks 저장 / 버리기 / 취소,
+ * any other unsaved form asks 머물기 / 버리고 옮기기. Tab close and reload use `beforeunload` (`useMarkUnsaved`).
  */
 export function UnsavedLinkGuard() {
   const t = useT()

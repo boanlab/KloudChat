@@ -19,11 +19,8 @@ _NOT_A_VALUE = {"", "—", "-", "derived", "the private ranges plus loopback"}
 
 
 def _documented() -> list[tuple[str, str]]:
-    """`(NAME, default)` for every settings row in the file.
-
-    Tables are `name | container | default` or `name | default`; a row naming
-    several settings with `/` gives their defaults in the same order.
-    """
+    """`(NAME, default)` for every settings row in the file (`name | container | default` or
+    `name | default`; a `/`-joined row lists defaults in order)."""
     pairs: list[tuple[str, str]] = []
     for line in _DOCS.read_text(encoding="utf-8").splitlines():
         if not line.startswith("|"):

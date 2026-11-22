@@ -1,10 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { agentDraft, hubFixture } from './customize-fixture'
 
-/**
- * 「에이전트로 저장」: a conversation opens the agent form prefilled — its name, what it settled,
- * its base and 묶음, its files — and nothing is saved until 저장. Fixture data only.
- */
+/** 「에이전트로 저장」 opens the agent form prefilled; nothing is saved until 저장. */
 
 test.use({ serviceWorkers: 'block' })
 
@@ -96,7 +93,7 @@ test('a failed distillation says so and 다시 시도 fills the 지시', async (
   await expect(notice).toContainText('이 대화에서 정한 것을 채워 두었습니다')
   // What was typed meanwhile stays; the distilled section is added below it.
   await expect(form.getByRole('textbox', { name: '지시' })).toHaveValue(`표로 정리한다.\n\n${agentDraft.systemPrompt}`)
-  // Only the distillation was asked again (dev StrictMode may double the first requests).
+  // Only the distillation is requested again.
   expect(state.reads.filter((p) => p.endsWith('/agent-draft')).length).toBe(drafts)
   expect(state.reads.filter((p) => p.endsWith('/agent-draft/decided')).length).toBe(asked + 1)
   expect(state.problems).toEqual([])

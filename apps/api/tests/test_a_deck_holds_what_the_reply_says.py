@@ -1,7 +1,5 @@
-"""A PowerPoint written for a request holds what was asked and what the reply says it holds:
-a native chart built from the given numbers (a missing value a gap, not 0), the slide count
-asked for, tables that fit the slide, a paper's own figures cut from its PDF, and a reply
-held to what the saved file contains."""
+"""A deck holds what was asked and what the reply says: native chart, slide count, fitting
+tables, paper figures, a reply held to the saved file."""
 
 from __future__ import annotations
 

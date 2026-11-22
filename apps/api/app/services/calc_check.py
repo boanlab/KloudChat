@@ -468,9 +468,7 @@ def _check_rows(rows: list[list[Any]], names: _Names, stated: list[Stated],
         if len(shared) == 1:
             own = shared[0]
         elif shared:
-            # 「| Priority | 2.0 |」: read as the reading most of its values agree with (the
-            # first on a tie); a value it doesn't hold is set to it and the row says which
-            # reading it is
+            # 「| Priority | 2.0 |」: take the reading most values agree with (first on a tie)
             columns = [(j, number) for j in range(1, min(len(cells), len(header)))
                        if (number := _first_number(cells[j], 0, len(cells[j]))) is not None]
 
@@ -659,8 +657,7 @@ def _pairs(line: str, section: str) -> list[Stated] | None:
 
 
 def printed_values(outputs: list[str]) -> list[Stated]:
-    """Single-number values code printed, by row and label; a later run's value for the same
-    quantity replaces an earlier one (the run that corrected it)."""
+    """Single-number values code printed, by row and label; a later run overrides an earlier one."""
     found: dict[tuple[str, str], Stated] = {}
     for output in outputs:
         section = ""
@@ -719,14 +716,12 @@ def _tabled_apart(s: Stated, printed: tuple[str, ...]) -> bool:
 def check_markdown(text: str, stated: list[Stated],
                    printed: list[str] | None = None, *, mark: bool = False,
                    keep_row_values: bool = False) -> tuple[str, list[str]]:
-    """A markdown answer's numbers that name a printed value set to it: sentences read with
-    the nearest heading as their title, tables cell by cell. `(text, corrections)`. A gap
-    (「0.79 낮다」) or a value `printed` beside a group the sentence names stays.
+    """A markdown answer's numbers set to the printed value they name; returns `(text,
+    corrections)`.
 
-    `keep_row_values`: a value the code printed for the same row under another label is left
-    alone — the binding, not the value, is then the doubt (a textbook schedule leaves it off:
-    a turnaround time written as the waiting time is a slip). `mark`: a clash is marked
-    「(확인 필요)」 where it stands, never rewritten."""
+    Sentences are read under the nearest heading, tables cell by cell. A gap (「0.79 낮다」) stays.
+    `keep_row_values`: a value printed for the same row under another label is left alone.
+    `mark`: a clash is marked 「(확인 필요)」 in place, never rewritten."""
     lines_printed = tuple(line for out in printed or () for line in str(out).splitlines()
                           if line.strip())
     # a value printed with no row (「합계: 152760」) is too loose to pin a line of prose to;

@@ -8,8 +8,7 @@ import propsJs from '../../../node_modules/open-docx-editor/src/ooxml/props.js?r
 import writerJs from '../../../node_modules/open-docx-editor/src/ooxml/writer.js?raw'
 import i18nJs from '../../../node_modules/open-docx-editor/src/editor/i18n.js?raw'
 
-// Korean in the Word editor: open-docx-editor with our patch (patches/open-docx-editor+0.7.6.patch), read and written
-// as XML. The patch must be applied: `npm ci` runs patch-package (postinstall); these fail loudly when it wasn't.
+// Requires the open-docx-editor patch (applied by patch-package on `npm ci`); fails loudly otherwise.
 
 const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
 const THEME = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>

@@ -754,8 +754,8 @@ async def text_of(name: str, mime: str, data: bytes) -> str:
 def storable(text: str) -> str:
     """Text Postgres can store: surrogate pairs joined, lone surrogates and NULs dropped.
 
-    Some HWP/PDF parsers hand back UTF-16 surrogates (and the odd NUL); asyncpg then refuses
-    the whole row and the upload fails with a 500."""
+    HWP/PDF parsers can return UTF-16 surrogates or NULs, which asyncpg rejects for the whole
+    row."""
     if not text:
         return text
     try:

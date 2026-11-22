@@ -1,7 +1,5 @@
-"""Joining one slide's items (「2장 항목을 하나로 합쳐줘」, "Merge the items on slide 4 into one")
-is that slide's edit done by code, not a new deck; 「Shrink to 3 slides」 is read like 「3장으로
-줄여줘」; a question or a named edit typed while a question card is open is not its answer; the
-figures a drawn diagram shows count as shown."""
+"""Merge and count asks on a finished deck are done as that slide's edit by code, not as a new
+deck."""
 
 from __future__ import annotations
 

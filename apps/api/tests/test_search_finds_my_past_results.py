@@ -327,7 +327,7 @@ async def test_storing_a_document_renames_the_conversation_until_the_person_does
     assert renamed.status_code == 200, renamed.text
     assert (await client.get(f"/sessions/{session.id}")).json()["title"] == "보안 점검 최종"
 
-    # The person names it; the document no longer does.
+    # the person names it; the document does not
     assert (await client.patch(f"/sessions/{session.id}", json={"title": "내 점검"})).status_code \
         == 200
     await client.patch(f"/artifacts/{artifact_id}", json={"title": "다른 제목"})
@@ -407,9 +407,9 @@ def test_the_migration_fills_the_text_and_renames_only_untouched_document_titles
         ):
             conn.execute(sa.text(statement))
         sessions = [
-            # Still the prompt prefix, with a titled report: renamed.
+            # still the prompt prefix, with a titled report: renamed
             ("s1", "u", "report", auto, "a1"),
-            # Renamed by hand (differs from the prefix): kept.
+            # renamed by hand (differs from the prefix): kept
             ("s2", "u", "report", "내가 지은 이름", "a2"),
             # A chat: kept.
             ("s3", "u", "chat", auto, "a3"),

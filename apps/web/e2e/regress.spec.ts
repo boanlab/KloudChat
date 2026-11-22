@@ -261,7 +261,6 @@ test('보고서를 만들면 섹션이 채워지고 내보낼 수 있다', async
   await page.getByLabel('프롬프트 입력').press('Enter')
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
 
-  // Nothing is written until the plan is approved.
   await approvePlan(page, 480_000)
 
   // The outline lands first, so 목차 (header ⋯ menu) has a denominator; then the count completes.

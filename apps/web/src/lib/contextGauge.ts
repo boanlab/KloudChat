@@ -1,8 +1,4 @@
-/**
- * The composer's context gauge: how much of the model's window the next turn takes.
- * The server counts the conversation (`POST /sessions/context-usage`, `routers/context_usage.py`);
- * the unsent draft is counted here as it is typed, with the server's estimator.
- */
+/** Composer context gauge: the server counts the conversation (`POST /sessions/context-usage`); the unsent draft is counted here with the server's estimator. */
 
 /** Breakdown parts, in the order the popover lists them. */
 export const CONTEXT_PARTS = ['system', 'instructions', 'memory', 'files', 'history', 'draft', 'tools'] as const

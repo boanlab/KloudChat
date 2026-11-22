@@ -1,7 +1,4 @@
-"""A chat writer gets the weekday of each day the person wrote, counted by code.
-
-Left to work weekdays out itself the writer wrote 「12/22는 월요일, 1/2는 금요일」 for 2026 (both
-wrong) and told the person their right 「12월 22일(화)」 did not match the calendar."""
+"""A chat writer gets the weekday of each day the person wrote, counted by code."""
 
 from __future__ import annotations
 

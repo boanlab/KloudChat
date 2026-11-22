@@ -1,9 +1,8 @@
 """Minutes tell the meeting that was held in the past tense.
 
-「영업1팀 주간회의가 열립니다」, 「결론에 이르지 못합니다」, 「참석자 전원이 합의합니다」 read as a
-meeting still to come. A sentence ending in one of the meeting's own acts (held, discussed,
-agreed, decided, attended) is put in the past by code; the next meeting, follow-ups, tables,
-quotes and any sentence looking ahead (「다음 회의에서 결정합니다」) stay as written.
+Present-tense sentences (「참석자 전원이 합의합니다」) read as a meeting still to come. A sentence
+ending in one of the meeting's own acts (held, discussed, agreed, decided, attended) is put in the
+past; the next meeting, follow-ups, tables, quotes and forward-looking sentences stay as written.
 """
 
 from __future__ import annotations

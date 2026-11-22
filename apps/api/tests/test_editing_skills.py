@@ -49,7 +49,7 @@ def scan():
 
 def test_both_ship_with_their_source():
     packages = skill_packages.packages()
-    # copy-editing published and listed; the cliché sweep a hidden draft check
+    # copy-editing is published and listed; the cliché sweep is a hidden draft check
     assert not packages["copy-editing"].draft and packages["copy-editing"].listed
     assert packages["generic-language-killer"].draft
     for key in KEYS:

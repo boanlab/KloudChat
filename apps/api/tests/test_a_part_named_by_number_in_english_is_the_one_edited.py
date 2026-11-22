@@ -1,7 +1,5 @@
-"""A slide or section the person names by number, in English too (「slide 4」, 「slides 2-3」,
-「the 4th slide」), is the one edited whatever the planner picked; a list item's heading is
-cut at a word, with Latin text given more room; a sentence pointing at a removed table by
-place (「아래 표와 같습니다」) goes with it."""
+"""A slide or section named by number in English is the one edited; a list heading is cut at a
+word; a sentence pointing at a removed table goes with it."""
 
 from __future__ import annotations
 

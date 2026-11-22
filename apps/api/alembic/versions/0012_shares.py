@@ -1,8 +1,7 @@
 """Read-only share links.
 
-`scope` is `workspace` (signed in, any member) or `link` (public to whoever
-holds the URL). The token is the capability: unguessable, revocable, and the
-only thing the public route accepts.
+`scope` is `workspace` (signed-in members) or `link` (anyone with the URL). The token is the
+capability: unguessable, revocable, the only thing the public route accepts.
 
 Revision ID: 0012
 Revises: 0011

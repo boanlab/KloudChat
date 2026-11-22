@@ -22,11 +22,8 @@ export function useListPageSize(): number {
 }
 
 /**
- * The one way a long list pages. It remembers the first row on screen, not a page number, so a
- * change of page size (a window resized, a phone turned) keeps that row in view. The page is kept
- * inside 1..pages (deleting the last row of the last page lands on the page before) and goes
- * back to the start when `resetKeys` change (a search, a filter, a sort). `size` fixes the page
- * size of a dense table; left out, it follows the screen width.
+ * Paging for long lists: remembers the first visible row (so page-size changes keep it in view), clamps the page to 1..pages,
+ * and resets when `resetKeys` change. `size` fixes the page size; otherwise it follows screen width.
  */
 export function usePaging(total: number, resetKeys: unknown[] = [], size?: number) {
   const responsive = useListPageSize()

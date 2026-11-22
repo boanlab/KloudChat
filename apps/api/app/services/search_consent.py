@@ -1,21 +1,20 @@
 """Asking before a strict-local turn searches the web.
 
 A strict-local turn (internal material present, or a strict-local model chosen) sends nothing
-outside the data boundary. Some questions still need the outside world (other papers, recent
-facts). Instead of dropping the search silently, the turn shows what would leave — short search
-queries only, never the material — and asks:
+outside the data boundary, yet some questions need the outside world. The turn shows what would
+leave (short search queries only, never the material) and asks:
 
-- chat: the model calls `request_web_search(queries)`, a local tool. In 「매번 묻기」 the turn stops
-  there and the answer row carries a pending card (`routing.searchConsent`); the person's answer
-  reruns the question (`retry_of`) with the decision, and that turn runs the approved queries
-  through the ordinary web search, read by the same local model. In 「항상 허용(검색어만)」, or
-  once the person allowed it for the conversation, the tool runs the queries at once.
-- report/slides: research runs before the outline, so the queries are planned up front by the
-  local planner and asked about before the pipeline starts (`plan_document_queries`).
+- chat: the model calls the local tool `request_web_search(queries)`. In 「매번 묻기」 the turn
+  stops there with a pending card (`routing.searchConsent`); the person's answer reruns the
+  question (`retry_of`) with the decision and the approved queries go through the ordinary web
+  search, read by the same local model. In 「항상 허용(검색어만)」, or once allowed for the
+  conversation, the tool runs the queries at once.
+- report/slides: research runs before the outline, so the local planner plans the queries and
+  they are asked about before the pipeline starts (`plan_document_queries`).
 
-Every query is vetted before it is shown or sent (`vet`): personal identifiers are masked,
-secrets and passages copied from the material are withheld with the reason. What was sent, by
-whose decision and when, is kept on the answer's routing and in the audit log.
+Every query is vetted before it is shown or sent (`vet`): personal identifiers are masked, secrets
+and passages copied from the material are withheld with the reason. What was sent, by whose
+decision and when, is kept on the answer's routing and in the audit log.
 """
 
 from __future__ import annotations

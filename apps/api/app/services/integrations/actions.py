@@ -1,8 +1,6 @@
-"""Writes wait for the person: a write tool stores what it would send and shows a card; the
-provider is called only when the person presses 확인 on that card (`confirm`).
-
-The model is told the write is waiting, never that it happened. Every confirmed write, and
-every one that failed, is in the audit log."""
+"""Write tools wait for the person: a write stores what it would send and shows a card; the
+provider is called only on 확인 (`confirm`). The model is told the write is waiting, never that
+it happened. Every confirmed or failed write is in the audit log."""
 
 from __future__ import annotations
 

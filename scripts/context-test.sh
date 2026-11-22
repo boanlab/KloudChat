@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Context assembly check (docs/architecture.md §7): does a workspace setting
-# reach the answer? Every check makes a real model call — slow, needs a backend.
+# Context assembly check: does a workspace setting reach the answer? Real model calls; needs a backend.
 #
 #   ADMIN_EMAIL=you@example.com ADMIN_PASS=… bash scripts/context-test.sh
 #

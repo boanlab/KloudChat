@@ -1,10 +1,9 @@
 """Recent failures of slow self-hosted writers, so a turn does not wait on a doomed attempt.
 
-A writer that failed a turn (the gateway refused it, the server was unreachable, the stream
-broke, or it showed nothing within its patience) is left out of Super Agent picks for a while:
-briefly when the gateway only said it was busy (`strict_local_unavailable`: vLLM has requests
-waiting), longer when it looked down (a model served across several nodes goes when any of
-them does). Per process; a restart forgets, and the next turn finds out again.
+A writer that failed a turn (gateway refusal, unreachable, broken stream, no output within its
+patience) is left out of Super Agent picks: briefly when the gateway only said busy
+(`strict_local_unavailable`), longer when it looked down (a multi-node model goes when any node
+does). Per process; a restart forgets.
 """
 
 from __future__ import annotations

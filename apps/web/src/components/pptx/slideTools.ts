@@ -1,9 +1,4 @@
-/**
- * What the PowerPoint editor's chrome (`SlidesEditor`) works out on its own: where a newly
- * inserted element goes so it does not sit exactly on the last one, the header row of a new
- * table, the editor's own Korean words, and plain-text offsets of a selection inside its
- * inline text editor.
- */
+/** Helpers for `SlidesEditor`: insert placement, new-table header row, Korean labels, plain-text selection offsets. */
 
 /** How far each newly inserted element moves off one already at its spot, px. */
 export const STAGGER = 24
@@ -16,10 +11,7 @@ interface Box {
   height: number
 }
 
-/**
- * Where `added` goes so that no other element starts at the same spot: one step down and right
- * per element already there, wrapping back near the start where it would leave the slide.
- */
+/** Position for `added` offset one step down-right per existing element, wrapping near the start at the slide edge. */
 export function staggered(
   added: Box,
   others: readonly Box[],

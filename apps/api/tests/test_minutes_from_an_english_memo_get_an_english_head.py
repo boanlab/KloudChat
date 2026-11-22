@@ -208,7 +208,7 @@ def test_english_memo_patterns_stay_linear_on_long_spaces(linear_scan):
 
 
 def test_a_due_day_an_english_memo_gives_stays_in_the_table():
-    # audit-x2 H2/A: 「2026-10-28」 for 「by Oct 28」 was blanked to 「[기한]」
+    # 「2026-10-28」 for 「by Oct 28」 is not blanked to 「[기한]」
     from app.services import report
 
     memo = ("Arjun will finish the event tracking spec by Oct 28. "
@@ -223,7 +223,7 @@ def test_a_due_day_an_english_memo_gives_stays_in_the_table():
 
 
 def test_a_due_written_in_english_words_is_read_as_its_day():
-    # audit-x2 H2/C: 「October 28th」 in the cell was blanked
+    # 「October 28th」 in the cell is not blanked
     from app.services import report
 
     memo = "Arjun will finish the spec by Oct 28. Lena delivers icons by 30 Oct."

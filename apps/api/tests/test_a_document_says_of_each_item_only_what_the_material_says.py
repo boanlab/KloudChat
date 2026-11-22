@@ -1,10 +1,5 @@
-"""A report says of each option only what the material says of it, and names who owns a task.
-
-The 11-25 benchmark's 사내 메신저 report gave option C (하이웍스) 「국내 데이터센터」 in its
-comparison table: the material says that of A (없음) and B, never of C. Code sees it — the
-cell's words are words the material says only of other items — and the verify stage sends
-the row back; a cell still standing says 「자료 없음」. The same reports left 「[담당자]」 in
-their owner cells; that blank now goes back to be named by department."""
+"""A report says of each option only what the material says of it; the verify stage sends a row
+back, and an owner cell is named by department."""
 
 from __future__ import annotations
 

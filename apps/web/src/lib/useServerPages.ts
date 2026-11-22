@@ -5,9 +5,8 @@ import { usePaging } from '@/lib/usePaging'
 export type PageAnswer<T, C> = { items: T[]; total: number; counts?: C }
 
 /**
- * A long list read from the server one numbered page at a time (`offset` + `limit`), so every
- * filter reaches every row. `keys` name the filter, search and sort: changing them goes back to
- * page 1 and shows loading, never the old rows. Only the latest request's answer is kept.
+ * Server-paged list (`offset` + `limit`). Changing `keys` (filter, search, sort) resets to page 1
+ * and shows loading, never old rows. Only the latest request's answer is kept.
  */
 export function useServerPages<T extends { id: string }, C = undefined>({
   enabled = true,

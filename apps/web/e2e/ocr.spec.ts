@@ -2,11 +2,7 @@ import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { at, chatId, composerFixture } from './composer-fixture'
 import { shellRead } from './shell-mocks'
 
-/**
- * Text from scans against fixture data: an attached scanned PDF shows its pages being read and
- * then how it was read (with the pages to check), and the administrator chooses how pages are
- * read and which strict-local vision model may see them.
- */
+/** Scan OCR on fixture data: per-page progress and result, plus admin settings for read mode and the strict-local vision model. */
 
 const fileId = 'f0000000000000000000000000000ocr'
 

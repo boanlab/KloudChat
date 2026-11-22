@@ -825,7 +825,7 @@ async def get_governance(admin: AdminUser, db: DbSession):
     policy = await db.get(Governance, "default")
     policy = policy or Governance()
     catalogue = await model_service.list_models()
-    # the admin's priority order; models no longer strict-local in the catalogue drop out
+    # admin's priority order; models no longer strict-local drop out
     strict_ids = {
         model["id"]
         for model in catalogue["models"]

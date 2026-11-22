@@ -4,8 +4,8 @@ import { openTool, setWebSearch, toolNames } from './composer-tools'
 import { viewport } from './project'
 
 /**
- * The composer keeps 「+」, dictation, the model and send outside; every other tool is a row of
- * 「+」 (a bottom sheet on a phone), and what is switched on shows as a removable chip.
+ * 「+」, dictation, the model and send stay outside; every other tool is a row of 「+」
+ * (a bottom sheet on a phone), and an enabled tool shows as a removable chip.
  */
 
 const phoneProject = () => viewport(test.info()) === 'phone'

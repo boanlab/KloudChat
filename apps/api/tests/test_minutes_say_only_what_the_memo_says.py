@@ -1,7 +1,5 @@
-"""Minutes say only what the memo says: no meeting length, transition month or open question
-it never gives, no owner-less action row it never asks for, no empty column it never names;
-quoted tables print as tables, Chinese slips read as Korean words, a blank never sits beside
-its own value."""
+"""Minutes say only what the memo says: no invented length, month, question, owner-less row or
+empty column; quoted tables print as tables."""
 
 from __future__ import annotations
 

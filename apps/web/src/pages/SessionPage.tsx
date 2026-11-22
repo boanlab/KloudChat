@@ -380,7 +380,7 @@ export function SessionPage() {
     setActiveSession(session?.id ?? null)
   }, [session?.id, setActiveSession])
 
-  // Left empty (never sent, or its first send refused): dropped on leave unless it holds a draft; deferred a tick for StrictMode remounts and same-id returns.
+  // Empty session dropped on leave unless it holds a draft; deferred a tick for StrictMode remounts
   const pendingCleanup = useRef<{ id: string; timer: number } | null>(null)
   useEffect(() => {
     const id = sessionId

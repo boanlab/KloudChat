@@ -1,7 +1,5 @@
-"""Minutes keep apart from the writer's handling of the text: a sentence saying what the writer
-kept out of the document goes, and an agreement told of an
-item by pointing back (「이는 … 동의한 최종 합의 사항입니다」) is judged by the sentence it
-points to. Shapes from the round 16 re-verify (tc, tc2)."""
+"""Minutes drop sentences about the writer's handling of the text, and judge an agreement told by
+pointing back by the sentence it points to."""
 
 from __future__ import annotations
 
@@ -33,7 +31,7 @@ def test_what_the_writer_kept_out_of_the_text_goes():
     year = ("회의 날짜는 연도가 기재되지 않아 대화 발생 시점과 가장 가까운 연도인 2026년을 "
             "기준으로 확정했습니다.")
     assert stated_meeting.self_note(left, TUTOR)
-    # the year it took is no longer asked of it: the code's date block states no basis to repeat
+    # the year is not asked of it: the code's date block states no basis to repeat
     assert not stated_meeting.self_note(year, TUTOR)
     assert stated_meeting.self_note("해당 비교표의 내용은 이번 회의록에는 포함되어 있지 "
                                     "않습니다.", TUTOR)

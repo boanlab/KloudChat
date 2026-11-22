@@ -1,10 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { deckToolbar, deckToolbarMenu, openNewestDocument, signInAs } from './helpers'
 
-/**
- * The report and deck panels use the same vocabulary. The report edits through its ribbon; the
- * web slides through one PowerPoint-editor toolbar row, whose buttons share one shape.
- */
+/** Report and deck panels share one vocabulary: ribbon for reports, one toolbar row of same-shaped buttons for web slides. */
 
 const ADMIN = { email: 'admin@kloud.zone', password: 'KloudChat-Admin-2026' }
 

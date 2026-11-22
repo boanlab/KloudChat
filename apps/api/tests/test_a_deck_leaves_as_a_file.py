@@ -161,11 +161,8 @@ def test_the_export_is_built_on_the_template_it_was_written_in() -> None:
 
 
 def test_a_slide_can_be_set_larger_or_smaller_and_the_file_follows() -> None:
-    """글자 크기 on one slide is honoured by the `.pptx`, scaled once in `paint`.
-
-    The body follows the scale; the title keeps its size, so the deck's headings match
-    from slide to slide.
-    """
+    """글자 크기 on one slide is honoured by the `.pptx`: the body scales once in `paint`, the title
+    keeps its size."""
     from pptx import Presentation
 
     from app.services import deck_export

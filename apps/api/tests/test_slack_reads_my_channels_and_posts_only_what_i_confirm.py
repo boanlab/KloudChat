@@ -1,7 +1,5 @@
-"""Slack with each person's own user token: only channels they are in, a message sent only
-from the card (where they may change the channel), notices to themselves when they asked,
-and a published agent answering @mentions in a thread under the publication rules — with
-Slack's signature checked. Slack is mocked; nothing reaches it."""
+"""Slack with each person's own user token: own channels only, sends only from the card, a
+published agent answers @mentions; signature checked, Slack mocked."""
 
 from __future__ import annotations
 

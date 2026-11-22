@@ -54,9 +54,8 @@ const REFUSALS: Record<string, string> = {
 }
 
 /**
- * A send our API refused before writing the turn: any 4xx, and the privacy checker's outage
- * (503 `governance_unavailable`, refused before any egress). The draft goes back to the box;
- * a bare 502–504 from a gateway is not this (the turn may be running).
+ * Send refused before the turn was written: any 4xx, or 503 `governance_unavailable`.
+ * A bare 502-504 from a gateway is not this (the turn may be running).
  */
 export function refusedBeforeWrite(error: unknown): error is ApiError {
   if (!(error instanceof ApiError)) return false

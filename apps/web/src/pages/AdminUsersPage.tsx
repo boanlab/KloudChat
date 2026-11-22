@@ -220,7 +220,6 @@ export function AdminUsersPage() {
   }, [answered, usersPage, page, pages])
 
   const [exporting, setExporting] = useState(false)
-  // Rows ticked on this page; a pending sign-up queue is approved or rejected in one go.
   const [ticked, setTicked] = useState<Set<string>>(new Set())
   const [bulk, setBulk] = useState<'approve' | 'reject' | null>(null)
   const [bulkDone, setBulkDone] = useState<string | null>(null)

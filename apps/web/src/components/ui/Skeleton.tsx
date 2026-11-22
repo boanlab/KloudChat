@@ -1,10 +1,7 @@
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 
-/**
- * The shape of a list while it loads: grey rows (or cards) where the content will be, so the
- * page does not jump when it arrives. Says 「불러오는 중…」 to assistive tech, as LoadingState does.
- */
+/** Placeholder rows or cards while a list loads; announces 「불러오는 중…」 to assistive tech. */
 export function ListSkeleton({
   rows = 6,
   variant = 'rows',

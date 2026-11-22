@@ -54,7 +54,7 @@ test('모두 고치기는 절마다 한 번씩만 다시 쓴다', async ({ page 
     expect(numbered === 0 || numbered > 1, `번호가 하나뿐인 목록: ${rewrite.note}`).toBe(true)
   }
 
-  // Notes name no more problems than the checker found (fewer is fine: unowned findings go to the conversation).
+  // Notes name at most the problems found; unowned findings go to the conversation.
   const named = rewrites.reduce(
     (total, rewrite) => total + Math.max(1, rewrite.note.match(/^\d+\. /gm)?.length ?? 0),
     0,

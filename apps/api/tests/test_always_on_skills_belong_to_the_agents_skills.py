@@ -105,7 +105,7 @@ async def test_always_on_skills_past_the_budget_are_refused_and_trimmed_at_run_t
     made = await ws.create_agent(AgentIn(name="맞춤", active_skill_ids=[big.id, small.id]),
                                  user, db)
 
-    # a skill edited longer later: the run keeps the order and skips what no longer fits
+    # A skill edited longer later: the run keeps the order and skips what no longer fits.
     agent = await db.get(Agent, made.id)
     agent.active_skill_ids = [big.id, bigger.id, small.id]
     db.add(agent)

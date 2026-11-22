@@ -1,5 +1,5 @@
-"""A file-box file opened in an office editor becomes a copy (the file stays as it was); the
-copy remembers its file through every version, so the file box can offer to reopen it."""
+"""A file-box file opened in an office editor becomes a copy that remembers its file through
+every version, so the file box can reopen it."""
 
 from __future__ import annotations
 
@@ -89,7 +89,6 @@ async def test_the_copy_keeps_its_file_through_saves_and_restores(stack):
 
     found = (await client.get(f"/files/{file_id}/documents")).json()
     assert [row["id"] for row in found] == [copy["id"]]
-    # the file itself was never written
     async with local() as db:
         row = await db.get(StoredFile, file_id)
         assert file_service.read_blob(row.storage_key) == original

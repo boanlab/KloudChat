@@ -19,7 +19,7 @@ from app.services.adapters import (
 
 log = logging.getLogger(__name__)
 
-#: output tokens per image (measured on gemini-2.5-flash-image, gpt-5-image-mini; rest by family)
+#: output tokens per image, by model family
 _IMAGE_TOKENS_DEFAULT = 5450
 _IMAGE_TOKENS = {
     "google/gemini-2.5-flash-image": 1290,
@@ -170,9 +170,7 @@ def _short(value: Any) -> str | None:
 def _run_info(info: dict[str, Any]) -> dict[str, Any] | None:
     """How the model runs, as the gateway declares it (`kchat_*` in model_info), or None.
 
-    Self-hosted: weights quantization, KV-cache dtype, serving engine. External: the pinned
-    provider, its quantization (`unknown` = not disclosed), ZDR and the policy that applies.
-    Declared metadata only; nothing is guessed.
+    Declared metadata only; nothing is guessed (`unknown` quantization = not disclosed).
     """
     zdr = info.get("kchat_zdr")
     out = {
@@ -464,10 +462,7 @@ _MODALITY_ORDER = {"chat": 0, "image": 1, "audio": 2, "video": 3}
 
 
 def fallback_order(model: dict[str, Any]) -> int:
-    """Sort key when no configured default serves: non-strict-local first, catalogue order kept.
-
-    Never price: a free self-hosted model is not a default for being free.
-    """
+    """Sort key when no configured default serves: non-strict-local first, catalogue order kept."""
     return 1 if model.get("strictLocal") else 0
 
 
@@ -494,9 +489,8 @@ def pick_default(
 ) -> dict[str, Any] | None:
     """The model a call runs on when nobody picked one: the admin's default for `kind`.
 
-    `usable`: the account's allowed models for `kind`. A default outside the allowlist gives way
-    to the first allowed model (`fallback_order`); so does a chat surface whose defaults are not
-    served. Image and av without a served default have none: the admin must pick one.
+    `usable`: the account's allowed models. A default outside it, or an unserved chat default,
+    gives way to the first allowed model (`fallback_order`); image and av then have none.
     """
     defaults = configured_defaults(catalogue, kind)
     for wanted in defaults:

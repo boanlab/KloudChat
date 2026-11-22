@@ -1,21 +1,19 @@
-"""Published agents (공개 챗봇), phase 1: members of this instance.
+"""Published agents (공개 챗봇): members of this instance.
 
-A bot is its owner's: conversations on it are `sessions` rows the publisher owns, marked with
-the publication, so the ordinary turn applies the publisher's policy, credits and audit. What
-a visitor reaches is fixed per version: a hidden copy of the agent and the text of its
-knowledge.
+Conversations on a bot are `sessions` rows owned by the publisher, so the ordinary turn applies the
+publisher's policy, credits and audit. What a visitor reaches is fixed per version: a hidden copy of
+the agent and the text of its knowledge.
 
 - `publications`, `publication_versions`, `publication_visitors`, `publication_counters`
-  (per-window counts, upserted), `publication_slots` (turns running, for the concurrency
-  limits across replicas), `publication_questions` (questions it could not answer, masked).
-- `sessions.publication_id`, `visitor_id`, `publication_version_id`, `shared_at` (sent to the
-  maker by the visitor), `viewable` (started under 「대화 열람」 with consent).
-- `credit_ledger.publication_id`: a bot's spend, billed to its owner and shown apart.
-- `agents.snapshot_of`: a version's hidden copy; `agents.contact`: 담당 부서·연락처, said
-  verbatim when the material does not answer.
-- `governance.published_concurrency_max`: turns on published bots at once, instance-wide.
+  (per-window counts, upserted), `publication_slots` (running turns, for cross-replica concurrency
+  limits), `publication_questions` (unanswered questions, masked).
+- `sessions.publication_id`, `visitor_id`, `publication_version_id`, `shared_at`, `viewable`.
+- `credit_ledger.publication_id`: a bot's spend, billed to its owner.
+- `agents.snapshot_of`: a version's hidden copy; `agents.contact`: said verbatim when the material
+  does not answer.
+- `governance.published_concurrency_max`: instance-wide concurrent turns on published bots.
 
-No existing row changes; downgrade drops what this adds.
+Downgrade drops what this adds.
 
 Revision ID: 0064
 Revises: 0063

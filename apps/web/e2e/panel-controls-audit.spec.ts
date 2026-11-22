@@ -44,7 +44,7 @@ async function titles(page: Page, kind: string, least = 1): Promise<string[]> {
   )
 }
 
-/** Opens one finished report or deck in the modal over 파일함 › 작업 문서 (the 아티팩트 page no longer lists them). */
+/** Opens one finished report or deck in the modal over 파일함 › 작업 문서. */
 async function open(page: Page, kind: string, least = 1): Promise<boolean> {
   await signIn(page)
   await page.goto('/files?tab=working')

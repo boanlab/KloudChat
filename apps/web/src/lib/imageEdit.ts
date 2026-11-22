@@ -52,13 +52,7 @@ export function imageModelId(
   return modelByKind.image ?? ''
 }
 
-/**
- * The server's rules (`_edit_image`), read ahead so the action can say why it is off: a
- * strict-local conversation (a Super Agent strict one too), a picture a strict-local model drew
- * and internal material (under the internal-material rule) keep the picture inside, where the
- * server picks a strict-local model that edits and refuses when there is none; otherwise the
- * picked model has to edit.
- */
+/** Mirrors the server's `_edit_image` rules: strict-local or internal-material pictures need a strict-local editing model, otherwise the picked model must edit. */
 export function editBlock({
   session,
   modelId,

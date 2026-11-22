@@ -1,14 +1,12 @@
 """Per-file digests of project material.
 
-- `files.digest`: a short digest of the file's text (label, title, summary, outline, key terms,
-  and the text length it was made from), written by a strict-local model in the background.
-- `files.digest_model`, `files.digested_at`: who wrote it and when.
+- `files.digest`: short digest of the file's text (label, title, summary, outline, key terms, source
+  text length), written by a strict-local model in the background.
+- `files.digest_model`, `files.digested_at`: author and time.
 - `files.digest_state`, `files.digest_attempts`, `files.digest_claimed_at`: the background job
   (`services/digest_jobs.py`), claimed the way OCR jobs are.
 
-No existing rows change: every file starts without a digest, and one is asked for the first
-time a turn uses the file's project (or by the administrator's backfill). Downgrade drops the
-columns (digests are made again after an upgrade).
+Existing files start without a digest. Downgrade drops the columns.
 
 Revision ID: 0084
 Revises: 0083

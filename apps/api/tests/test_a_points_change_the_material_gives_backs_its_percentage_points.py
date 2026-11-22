@@ -1,8 +1,5 @@
 """A change the material gives in points (「+4.2 points open rate」) backs 「4.2 percentage
-points」.
-
-An English report wrote 「outperformed … by 4.2 percentage points(needs checking)」 although the
-brief said 「question-style subject +4.2 points open rate」."""
+points」."""
 
 from __future__ import annotations
 

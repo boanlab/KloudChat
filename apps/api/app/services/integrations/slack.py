@@ -1,8 +1,8 @@
-"""Slack with a person's own user token: the channels they are in, a channel's recent
-messages (to summarise), and a message they confirm on the card (`actions`).
+"""Slack with the person's own user token: their channels, recent messages, and a confirmed post
+(`actions`).
 
-Calls go through `http.request` (backoff, `Retry-After`); lists follow `next_cursor` up to a
-cap. A token Slack refuses marks the connection for reconnecting."""
+Calls go through `http.request`; lists follow `next_cursor` up to a cap. A refused token marks
+the connection for reconnecting."""
 
 from __future__ import annotations
 
@@ -202,7 +202,7 @@ async def _propose(arguments: dict[str, Any], ctx: ToolContext) -> ToolResult:
 async def _run_post(db: AsyncSession, _user: User, row: IntegrationAccount,
                     payload: dict[str, Any]) -> dict[str, Any]:
     slack = Slack(db, row)
-    # still a channel the person is in, whatever the card was sent
+    # re-checked: the person must still be in the channel
     channel = await slack.resolve(str(payload.get("channel") or ""))
     sent = await slack.post(str(channel["id"]), str(payload.get("text") or "")[:POST_CHARS])
     link = ""

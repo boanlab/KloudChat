@@ -1,11 +1,5 @@
-"""A report asked for 「A4 3~5쪽」 is written to that length, not to a third of it.
-
-The 11-25 benchmark's reports came to 4.4k–6.8k characters for three-to-five-page asks: the
-page rule named only the document's range and warned against running past it, so every
-section call wrote 500–900 characters. Each section is now told its share of the pages, its
-token budget makes room for it, and a document still short of the pages has its shortest
-sections added to once, by the writer, from the material. The computed-table swap no longer
-throws away the writer's month columns (r11b's table 1 lost 7·8·9월 to 「3분기 합계」)."""
+"""A report asked for 「A4 3~5쪽」 is written to that length: each section gets its share of the
+pages and a short document is topped up once."""
 
 from __future__ import annotations
 

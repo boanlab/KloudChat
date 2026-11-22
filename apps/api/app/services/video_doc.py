@@ -1,19 +1,15 @@
-"""The time-coded document of a video: what was said and what was shown, by time.
+"""The time-coded document of a video: what was said and shown, by time.
 
-Pure functions (no I/O), used by `video_jobs`:
+Pure functions (no I/O) used by `video_jobs`: `audio_pieces` (audio cut into slightly overlapping
+Whisper-sized pieces), `merge_said` (one timeline, overlap kept once), `sections` (scenes holding
+their speech, long talks split), `render` (one section per timestamp):
 
-- `audio_pieces`: the audio cut into Whisper-sized pieces that overlap a little;
-- `merge_said`: the pieces' segments on one timeline, the overlap kept once;
-- `sections`: scenes (from frame times) holding the speech that falls in them, long talks
-  split so every passage still sits close to a timestamp;
-- `render`: the file's text, one section per timestamp:
+    [00:12:30]
+    (화면) 슬라이드 — 중독의 뇌 회로 | 글자: Reward · Motivation · Memory
+    (말) 보상 회로가 바뀌면 …
 
-      [00:12:30]
-      (화면) 슬라이드 — 중독의 뇌 회로 | 글자: Reward · Motivation · Memory
-      (말) 보상 회로가 바뀌면 …
-
-Timestamps are always `HH:MM:SS` (hours too, zero-padded): `knowledge` and the web read them
-back to cite and jump to the moment.
+Timestamps are always zero-padded `HH:MM:SS`: `knowledge` and the web read them back to cite and
+jump.
 """
 
 from __future__ import annotations
@@ -83,11 +79,11 @@ class Said:
 
 
 def merge_said(pieces: list[tuple[float, list[dict]]], overlap: float = OVERLAP_SEC) -> list[Said]:
-    """Segments of every piece on one timeline. Piece k owns from the middle of its overlap
-    with piece k-1 to the middle of its overlap with piece k+1, so the seam's words appear once.
+    """Segments of every piece on one timeline; piece k owns from the middle of its overlap with
+    k-1 to the middle of its overlap with k+1, so seam words appear once.
 
-    `pieces`: `(piece_start, segments)` in order, segments as Whisper gives them
-    (`start`/`end` relative to the piece, `text`)."""
+    `pieces`: `(piece_start, segments)` in order, Whisper segments (`start`/`end` relative to the
+    piece, `text`)."""
     starts = [start for start, _ in pieces]
     out: list[Said] = []
     for k, (start, segments) in enumerate(pieces):
@@ -141,11 +137,10 @@ class Section:
 
 def sections(duration: float, shown: list[Shown], said: list[Said],
              split_sec: float = SPLIT_SEC, split_chars: int = SPLIT_CHARS) -> list[Section]:
-    """Scenes in time order holding their speech; the first scene starts at 0.
+    """Scenes in time order holding their speech; the first starts at 0.
 
-    A scene's speech runs from its frame to the next frame. A long one is split at speech
-    segment boundaries (`split_sec`, `split_chars`); the parts after the first carry no
-    picture of their own (the screen did not change)."""
+    A scene's speech runs from its frame to the next; long ones split at segment boundaries
+    (`split_sec`, `split_chars`), later parts carrying no picture (the screen did not change)."""
     duration = max(duration, max((s.end for s in said), default=0.0))
     frames = sorted(shown, key=lambda s: s.t)
     cuts = [0.0, *(f.t for f in frames if f.t > 0)]

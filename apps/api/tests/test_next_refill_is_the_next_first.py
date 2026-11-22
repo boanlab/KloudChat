@@ -17,7 +17,7 @@ def _kst_first(year: int, month: int) -> datetime:
 @pytest.mark.parametrize(
     ("now", "expected"),
     [
-        # mid-month: the walk's 11-14 reads 12월 1일, not 11월 1일
+        # mid-month: the next first is 12월 1일
         (datetime(2026, 11, 14, 8, 0, tzinfo=UTC), _kst_first(2026, 12)),
         # the last UTC evening of November is already 12-01 in Korea: January next
         (datetime(2026, 11, 30, 15, 30, tzinfo=UTC), _kst_first(2027, 1)),

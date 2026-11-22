@@ -1,10 +1,7 @@
 """Text layer of a PDF, page by page, with the word spacing the page shows.
 
-pypdf rebuilds spaces from glyph gaps and, for Korean set in many CID fonts, drops most of
-them (「온프레미스에서는서버를사기위한초기투자」); every later step (search, citations, the
-studio's spelling check) then copies that run-together text. PDFium (pypdfium2, Apache-2.0 /
-BSD-3-Clause) reads the same pages with the spacing a viewer shows, so it is tried first and
-pypdf stays as the fallback for files PDFium refuses."""
+pypdf drops most spaces of Korean text in many CID fonts (「온프레미스에서는서버를사기위한…」), so
+PDFium (pypdfium2) is tried first and pypdf is the fallback for files PDFium refuses."""
 
 from __future__ import annotations
 

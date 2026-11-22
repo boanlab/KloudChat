@@ -32,7 +32,7 @@ _BLOCKS = [
 
 
 def _page(template_id: str) -> Artifact:
-    """An HTML document as it was stored when its 서식 was still in the catalogue."""
+    """An HTML document as stored with a retired 서식."""
     seed = dt.rendering(template_id)
     content = dt.render(seed, title="상반기 점검", tokens={}, body=dt.assemble(seed, _BLOCKS))
     return Artifact(

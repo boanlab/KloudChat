@@ -579,7 +579,7 @@ def _words(row: dict[str, Any]) -> set[str]:
     }
 
 
-#: Retelling threshold (measured: retellings 0.56–0.67, distinct 0.36–0.46).
+#: Share of words above which a slide counts as a retelling of an earlier one.
 _RETOLD_SHARE = 0.55
 _RETOLD_WORDS = 15
 
@@ -1056,12 +1056,10 @@ def gantt_room(request: str, slides: list[dict]) -> int | None:
 
 def place_gantt_charts(slides: list[dict], request: str, *, may_add: bool = True,
                        room: int | None = None) -> int:
-    """Each scheduling algorithm the request asks a Gantt chart for shows one, as a table
-    run by code. Taken by the algorithm's result slide (「FCFS 평균 대기시간」, a metrics or
-    table slide), else its slide whose points already list the intervals, else added after
-    its slide while `room` lasts (None: no limit; `may_add=False`: none), else its slide's
-    points move to the notes. A slide setting up the example keeps its table. Returns how
-    many slides changed or were added."""
+    """Each scheduling algorithm the request asks a Gantt chart for gets a code-run table: on the
+    algorithm's result slide, else the slide whose points list the intervals, else a slide added
+    after it while `room` lasts (None: no limit; `may_add=False`: none), else its points move to
+    the notes. A slide setting up the example keeps its table. Returns slides changed or added."""
     if not may_add:
         room = 0
     if not _ASKS_GANTT.search(request or ""):
@@ -1136,7 +1134,7 @@ def place_gantt_charts(slides: list[dict], request: str, *, may_add: bool = True
 
 def _gantt_slide(todo: list, rows: list[list[str]], beside: dict) -> dict:
     """A slide holding `todo`'s Gantt table, with notes saying the order and the average."""
-    # 「라운드 로빈(q=2)」 over 「RR(q=2)」; both priority readings: the algorithm
+    # 「라운드 로빈(q=2)」 over 「RR(q=2)」; both priority readings
     name = todo[0].alg.rows[-1] if len(todo) == 1 else "우선순위 스케줄링"
     finished = {run[0]: run[2] for run in todo[0].runs}
     order = " → ".join(sorted(finished, key=finished.get))
@@ -1184,9 +1182,8 @@ def _renumbered(line: str, slides: list[dict], before: list[dict]) -> str:
 
 
 def refresh_agenda(slides: list[dict], before: list[dict]) -> None:
-    """After slides were dropped or added, the agenda lists the deck as it now is: lines it
-    drew from the slide titles redrawn, a dropped slide's line taken off a written one, the
-    slide numbers a written line cites moved to the slides' new places."""
+    """After slides were dropped or added, the agenda lists the deck as it now is: lines drawn
+    from slide titles redrawn, dropped slides' lines removed, cited slide numbers moved."""
     now = {unnumbered(str(s.get("title") or "")) for s in slides}
     was = {unnumbered(str(s.get("title") or "")) for s in before}
     gone = was - now
@@ -3303,13 +3300,13 @@ def _combinations(items: list[int], size: int) -> list[tuple[int, ...]]:
 
 
 def code_chart(title: str, material: list[str]) -> dict[str, Any] | None:
-    """The chart a table in the material gives for a slide titled `title`, read by code: its
-    categories are the first column's, its series the columns that carry the slide's measure
-    (a column whose header shares a stem with the title), else the parts that make up the
-    table's total column (the products of a revenue total), else every numeric column with the
-    table's unit; never a total, and never a column in another unit (「신규 계약(개사)」).
-    A column's gap (a figure still being counted) ends its series there. `None` when no table
-    fits; the model writes the slide's title and takeaway, never the figures."""
+    """The chart a table in the material gives for a slide titled `title`, read by code: categories
+    are the first column's; series are the columns carrying the slide's measure (header sharing a
+    stem with the title), else the parts of the table's total column, else every numeric column in
+    the table's unit; never a total, never a column in another unit (「신규 계약(개사)」). A
+    column's
+    gap (a figure still being counted) ends its series there. `None` when no table fits; the model
+    writes only the slide's title and takeaway, never the figures."""
     words = re.findall(r"[가-힣A-Za-z]{2,}", title or "")
     best: tuple[int, dict[str, Any]] | None = None
     for table in material_tables(material):
@@ -3364,9 +3361,8 @@ def code_chart(title: str, material: list[str]) -> dict[str, Any] | None:
 def place_code_charts(slides: list[dict[str, Any]], request: str,
                       material: list[str]) -> list[int]:
     """The charts of a deck, from the material's tables: a chart slide's figures are replaced by
-    the table's (the model's are never trusted over the table), and a request for a chart with
-    none drawn turns the slide whose title shares the most stems with that table into one.
-    Indices of slides changed."""
+    the table's, and a requested chart with none drawn turns the slide whose title shares the most
+    stems with that table into one. Indices of slides changed."""
     changed: list[int] = []
     for index, slide in enumerate(slides):
         if slide.get("layout") != "chart":
@@ -3602,10 +3598,9 @@ async def batched_slides(
     trusted_context: list[str] | None, untrusted_context: list[str] | None,
     research_rule: str, titles: list[str], usage: dict[str, Any],
 ) -> tuple[list[str | None], dict]:
-    """The answers of several slides' prompts in ONE call of `stage` (the upper model when the
-    turn has one; its passages of the material are the ones about these slides): `(texts,
-    spent)`, a text per prompt (a JSON object) or None for a slide the answer left out, and the
-    writer's own tokens when the writer answered (the upper model's go to the stage)."""
+    """Answers of several slides' prompts in ONE call of `stage` (the upper model when the turn
+    has one): `(texts, spent)`, a text per prompt (a JSON object) or None for a slide the answer
+    left out, and the writer's own tokens when the writer answered."""
     n = len(prompts)
     if not n:
         return [], {"inputTokens": 0, "outputTokens": 0}
@@ -5758,10 +5753,9 @@ _LIST_LAYOUTS = frozenset(
 
 def reshaped(slide: dict, layout: str, *, unnamed: bool = False) -> dict | None:
     """`slide` in `layout` from its own content by code (a change of form, nothing rewritten):
-    bullets whose fields line up, a chart, metrics or items as a table; a chart's points, a
-    table's rows or bullets as a numbered list. Title and figures kept; None when the content
-    does not go into that shape whole. A table whose value columns no line names is made
-    only when `unnamed` (the writer was asked first)."""
+    aligned bullets, a chart, metrics or items as a table; a chart's points, a table's rows or
+    bullets as a numbered list. Title and figures kept; None when the content does not fit that
+    shape whole. A table whose value columns no line names is made only when `unnamed`."""
     english = not re.search(r"[가-힣]", " ".join(_strings(
         {k: v for k, v in slide.items() if k not in _NOT_SHOWN})))
     out = {k: v for k, v in slide.items()
@@ -6019,10 +6013,10 @@ def lost_figures(old: dict, new: dict, asked: str = "") -> list[str]:
 
 def lost_across(old: list[dict], new: list[dict], skip: frozenset[str] | set[str] = frozenset()
                 ) -> list[str]:
-    """Figures the deck `old` showed anywhere that the deck `new` shows nowhere (a deck cut to
-    fewer slides), read as `lost_figures` reads one slide; in an English deck a lone count
-    with what it counts too (「3 reviewers」), and each with what it counts (「40 tasks」, 「신규
-    거래처 3곳」); figures written as in `skip` (said with a chart) left out."""
+    """Figures the deck `old` showed anywhere that `new` shows nowhere (a deck cut to fewer
+    slides), read as `lost_figures` reads one slide, including a lone count with what it counts in
+    an English deck (「3 reviewers」) and 「40 tasks」, 「신규 거래처 3곳」; figures written as in
+    `skip` (said with a chart) left out."""
     from app.services import revise
 
     shown = [f for slide in new for f in _shown_figures(slide)]
@@ -6542,7 +6536,7 @@ async def rewrite_slide(
         material=material, typed=typed, notes_only=notes_only)
 
 
-#: A line of text this like a line of the note it was written under is the note, not the slide.
+#: Similarity ratio at or above which a slide line counts as repeating a note line.
 _ECHO_RATIO = 0.8
 _ECHO_MIN_CHARS = 8
 
@@ -6552,10 +6546,9 @@ def _plain(text: str) -> str:
 
 
 def strip_note_echo(slide: dict[str, Any], note: str) -> dict[str, Any]:
-    """The slide without the lines that repeat a line of `note` (the instruction it was
-    rewritten under): a writer sometimes puts 「7장은 필수 요소로 확인」 on the slide it was told
-    that about. A line counts as the note's when its letters equal a note line's, or one holds
-    the other and they are of about the same length, or they are 80% alike."""
+    """The slide without lines that repeat a line of `note` (the instruction it was rewritten
+    under), e.g. 「7장은 필수 요소로 확인」. A line repeats when its letters equal a note line's,
+    one contains the other at about the same length, or they are 80% alike."""
     from difflib import SequenceMatcher
 
     lines = [p for p in (_plain(x) for x in re.split(r"[.\n。;]+|(?<=[」』])\s", note or ""))

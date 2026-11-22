@@ -59,12 +59,9 @@ export interface DeckToolbarProps {
 }
 
 /**
- * The web slides' one toolbar row, in the PowerPoint editor's order and with its icons:
- * 실행 취소 · 다시 실행 · 확대/축소 | 레이아웃 · 이미지 · 표 · 차트 | 글꼴 · 크기 | 굵게 · 기울임꼴 ·
- * 밑줄 · 텍스트 색상 · 서식 지우기 | 모양, then 검토 and 발표 at the end. A web slide places its
- * content by layout, so the layout, the table and the chart stand where the PowerPoint editor
- * inserts a text box, a shape or a table; its paragraphs follow the layout, so no paragraph
- * group. Narrow, the type controls fold into ⋮ as the PowerPoint editor folds its own.
+ * One toolbar row in the PowerPoint editor's order and icons. Layout, table and chart stand where
+ * the PowerPoint editor puts text box/shape/table (web slides place content by layout, so no paragraph group).
+ * When narrow, the type controls fold into ⋮.
  */
 export function DeckToolbar(p: DeckToolbarProps) {
   const t = useT()

@@ -150,9 +150,8 @@ def _marks(writer: str) -> bool:
 def test_a_correct_value_is_never_rewritten_to_another_label_s(writer):
     text, found = agent.code_checked(COLLEGE_ANSWER, COLLEGE_PRINTED, mark=_marks(writer))
     assert text == COLLEGE_ANSWER and found == []
-    # the slip: a sentence read as naming the row's sample size. Without the row
-    # guard (the textbook schedule's check) it became 「24」; the code-values check leaves the
-    # row's own printed 4.17 as written, in either group
+    # A sentence read as naming the row's sample size must leave the row's own printed 4.17 as
+    # written.
     bound = "사회과학대학 표본은 4.17점으로 가장 높습니다."
     old, fixes = calc_check.check_markdown(bound, _stated(), COLLEGE_PRINTED)
     assert "24" in old and fixes
@@ -222,7 +221,7 @@ def test_a_citation_on_an_unrelated_page_is_taken_out():
     assert cited == [3]
     assert linked.count("[[3]](https://naver.worksmobile.com/pricing/)") == 2
     assert "강하고, 요금은" in linked
-    # without what was read, numbers are linked as before
+    # Without what was read, numbers are linked as before.
     plain, plain_cited = agent._link_citations(PRICING_ANSWER, sources)
     assert sources[0] in plain and sources[1] in plain and plain_cited == [1, 2, 3]
 

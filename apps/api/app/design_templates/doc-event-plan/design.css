@@ -1,8 +1,4 @@
-/* 추진 계획(안) — 가운데 제목, 표 셋(개요·예산·일정), 개조식 본문.
- *
- * 결재권자는 이 문서에서 세 가지를 찾는다: 언제 어디서 누구와, 얼마가 드는지,
- * 누가 언제 무엇을 하는지. 그 셋이 표로 서 있고 나머지는 개조식 계단이다.
- * 금액 열은 오른쪽으로 맞춰 자릿수끼리 읽히게 한다. */
+/* 추진 계획(안) — 가운데 제목, 표 셋(개요·예산·일정), 개조식 본문. 금액 열은 오른쪽 정렬. */
 
 .page { font-family: 'Malgun Gothic', 'Nanum Gothic', 'NanumGothic', 'Pretendard', sans-serif; }
 .cover { min-height: 0; padding: 0.6rem 0 0; margin: 0 0 1.6rem; text-align: center; align-items: center; }

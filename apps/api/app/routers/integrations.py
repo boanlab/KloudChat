@@ -105,8 +105,7 @@ def _back(path: str, **query: str) -> RedirectResponse:
 @router.get("/{provider}/callback")
 async def callback(provider: str, request: Request, db: DbSession, code: str = "",
                    state: str = "", error: str = ""):
-    """The provider sends the browser back here; no bearer token arrives, the `state` names
-    the person (it was stored hashed when they pressed 연결)."""
+    """OAuth redirect target; no bearer token, `state` (stored hashed) identifies the person."""
     provider = _provider(provider)
     settings_path = "/settings/connections"
     if error:
@@ -342,9 +341,8 @@ class SlackBotLink(Wire):
 @router.post("/slack/bots/{publication_id}/channels", status_code=status.HTTP_201_CREATED)
 async def slack_bot_link(publication_id: str, payload: SlackBotLink, request: Request,
                          user: CurrentUser, db: DbSession) -> dict[str, Any]:
-    """The published agent answers @mentions in this channel (one the publisher is in, in a
-    workspace where the app is installed). A channel shared with another organisation is an
-    outside audience: answered only once an administrator approved the bot for outside."""
+    """Bind the published agent to a Slack channel (publisher is a member, app installed).
+    A channel shared with another organisation is answered only once an admin approved the bot."""
     pub = await _own_publication(db, user, publication_id)
     cfg, row = await _slack_account(db, user, "post", "read")
     if not cfg.allows("bot"):
@@ -552,8 +550,7 @@ class WorkspaceMark(Wire):
 @admin_router.put("/slack/workspaces/{team_id}")
 async def admin_slack_workspace(team_id: str, payload: WorkspaceMark, request: Request,
                                 admin: AdminUser, db: DbSession) -> dict[str, Any]:
-    """Marks a workspace the organisation's own: published agents answer there as for
-    members; in any other workspace only bots approved for outside audiences answer."""
+    """Mark a workspace as internal; elsewhere only bots approved for outside audiences answer."""
     row = await db.get(SlackWorkspace, team_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_installed")

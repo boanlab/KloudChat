@@ -4,9 +4,7 @@ import { pathToFileURL } from 'node:url'
 import { expect, test as base, type FrameLocator, type Page } from '@playwright/test'
 import { E2E_ADMIN, signIn } from './helpers'
 
-// Deliberately fixed HTML: these tests exercise storage, browser execution and export,
-// not a model's ability to write a calculator. The sandbox denies form submission,
-// so the calculator uses button events. No generation endpoint is called.
+// Fixed HTML, no generation call. The sandbox denies form submission, so the calculator uses button events.
 const CALCULATOR = `<!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>계산기</title><style>

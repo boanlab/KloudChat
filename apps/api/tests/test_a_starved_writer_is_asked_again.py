@@ -66,7 +66,7 @@ def test_a_model_that_must_think_gets_room_for_its_answer(monkeypatch):
     assert thinking.room(model, 1200) == 1200
     assert thinking.refused(model, Refusal())
     assert thinking.mandatory(model) and thinking.room(model, 1200) >= 1200 + 4000
-    # a starved re-ask carries the answer's whole budget on top of what was thought
+    # a starved re-ask carries the answer's whole budget on top of the thinking
     assert thinking.starved(payload(finish="length", content="", reasoning=1200), 1200) >= 3600
 
 

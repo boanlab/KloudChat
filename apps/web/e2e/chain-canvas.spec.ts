@@ -4,14 +4,9 @@ import { viewport } from './project'
 import { shellRead } from './shell-mocks'
 
 /**
- * Answers come from `fixtures/chain-canvas.json`, which the API test
- * `test_the_chain_canvas_fixture_is_the_apis.py` keeps equal to what the API sends (catalogue,
- * problem sentences, runs read per step).
- *
- * The pipeline canvas of an agent's 직접 구성 against fixture data: steps placed from the palette
- * (click and drag), lines drawn from the side panel, problems on the node and in the banner, an
- * agent's skills 항상 적용 / 필요할 때, a condition step with a rule and branches, the same steps in
- * 목록으로 보기, and 실행 기록 with each step's status, input and output.
+ * The pipeline canvas of an agent's 직접 구성: placing steps, drawing lines, problems, skills,
+ * condition branches, 목록으로 보기 and 실행 기록. Answers come from `fixtures/chain-canvas.json`,
+ * which `test_the_chain_canvas_fixture_is_the_apis.py` keeps equal to the API.
  */
 
 test.use({ serviceWorkers: 'block' })

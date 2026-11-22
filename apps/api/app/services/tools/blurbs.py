@@ -1,8 +1,7 @@
-"""What a shipped connector's tools do, said for the person (tool panels and pickers).
+"""What a shipped connector's tools do, worded for the person (tool panels, pickers).
 
-A server's own tool description is written for the model (the YouTube one is an English
-docstring with trigger phrases); people read these instead. Other connectors' tools show the
-first line of their description.
+A server's own tool description is written for the model; other connectors' tools show the
+first line of theirs.
 """
 
 from __future__ import annotations

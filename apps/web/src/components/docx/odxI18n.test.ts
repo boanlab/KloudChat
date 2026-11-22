@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-// The editor's words (open-docx-editor, our patch: patches/open-docx-editor+0.7.6.patch). The package's exports don't
-// reach into src/, so the module is imported by its path.
+// Imported by path: the package's exports do not reach into src/.
 import { setLabels, setLocale, t } from '../../../node_modules/open-docx-editor/src/editor/i18n.js'
 
 afterEach(() => setLocale(null))

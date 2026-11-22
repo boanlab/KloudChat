@@ -1,9 +1,8 @@
-"""Deck body size measured from 18 pt: stored `textScale` rewritten so every slide keeps its size.
+"""Deck body size measured from 18 pt: stored `textScale` is rewritten so every slide keeps its size.
 
-`textScale` was a multiple of a 22 pt body; it is now a multiple of 18 pt (1.0 = 18 pt, 22 pt is
-1.2222). A body slide with no scale was drawn at 22 pt and gets 1.2222; a scale `s` becomes
-`s × 22 / 18`. Cover, divider and closing slides carry no body scale and are left alone.
-Downgrade divides back.
+`textScale` was a multiple of a 22 pt body and is now a multiple of 18 pt. A body slide with no scale
+gets 1.2222 (22/18); a scale `s` becomes `s * 22 / 18`. Cover, divider and closing slides are left
+alone. Downgrade divides back.
 
 Revision ID: 0076
 Revises: 0075

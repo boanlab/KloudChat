@@ -1,7 +1,5 @@
-"""A layout asked in English or Korean (「as a numbered list」, 「목록으로」) is read as that
-layout, and a slide still drawn otherwise is said as not done; figures a slide showed and its
-rewrite left out are asked for once more, then said; an ask typed in English gets its reply in
-English."""
+"""A layout asked in English or Korean is read as that layout (or said as not done); figures a
+rewrite dropped are asked back once, then said; an English ask gets an English reply."""
 
 from __future__ import annotations
 

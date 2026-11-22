@@ -1,11 +1,10 @@
-"""Channels for published agents open outside: framed on the owner's sites, an
-OpenAI-compatible API and an MCP server, each opened by an administrator.
+"""Channels for published agents open outside: embed, OpenAI-compatible API and MCP server, each opened by an administrator.
 
-- `publications.channels`: the channels in force (`{"embed": {"origins": [...]}, "api": {},
-  "mcp": {}}`); `requested_channels`: the set asked for while a review is pending.
-- `publication_keys`: keys an owner issued for one bot's API and MCP channels, kept as hashes.
+- `publications.channels`: channels in force (`{"embed": {"origins": [...]}, "api": {}, "mcp": {}}`);
+  `requested_channels`: the set asked for while a review is pending.
+- `publication_keys`: keys issued per bot for the API and MCP channels, stored as hashes.
 
-No existing row changes: no bot has a channel. Downgrade drops what this adds.
+Downgrade drops what this adds.
 
 Revision ID: 0066
 Revises: 0065

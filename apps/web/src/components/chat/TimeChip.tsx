@@ -6,10 +6,7 @@ import type { MediaInfo } from '@/lib/api'
 import { clock, frameAt, frameSrc, mediaInfo } from '@/lib/media'
 import { useT } from '@/lib/useT'
 
-/**
- * A moment of a video an answer points to (「[12:30]」, or a cited passage 「[3]」): the time
- * with that moment's picture; a click plays the video from there in a dialog.
- */
+/** A video moment an answer points to (「[12:30]」 or 「[3]」): time plus picture; click plays from there in a dialog. */
 export function TimeChip({ fileId, seconds, number }: { fileId: string; seconds: number; number?: string }) {
   const t = useT()
   const [info, setInfo] = useState<MediaInfo | null>(null)

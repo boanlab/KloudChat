@@ -181,9 +181,8 @@ def unlisted_said(unlisted: list[tuple[int, int, str]], *, english: bool = False
 
 
 def revision_reply(document: Any, plan: Any, *, is_deck: bool, english: bool = False) -> str:
-    """What an edit did, ask by ask: what went (and where), the summary put in, the parts
-    rewritten by number, what was asked but not found or not shown, and figures a slide's
-    rewrite left out; in English for an ask typed in English."""
+    """Per-ask edit report: changes, rewritten parts, asks not found or not shown, dropped
+    figures."""
     from app.services import revise
 
     unit = "장" if is_deck else "절"
@@ -340,7 +339,7 @@ class ReportSave(Base):
                     if kept is not None and kept.title:
                         title = kept.title
                 if written:
-                    # same design `approved-plan` announced
+                    # same design as announced by `approved-plan`
                     artifact_design = report_design(
                         request, approved_plan, design_tokens, req.template_id
                     )
@@ -488,9 +487,9 @@ class ReviseLoad(Base):
             ).all()
             asked = [m for m in turns if m.role is Role.user and (m.content or "").strip()]
             loaded["request"] = str(asked[0].content if asked else session.title or "")
-            # rules the person set for the whole conversation (「앞으로 기관명은 익명으로」)
-            # and the running memory's pinned items: every revision keeps to them
-            # the conversation's latest turns, for a question about it (`answer_about`)
+            # conversation-wide rules and the running memory's pinned items (every revision keeps to
+            # them);
+            # latest turns for questions about the conversation (`answer_about`)
             loaded["history"] = [
                 {"role": m.role.value, "content": str(m.content or "")[:1500]}
                 for m in turns[-12:] if (m.content or "").strip()
@@ -517,8 +516,8 @@ class ReviseLoad(Base):
                     )
                 ).all()
                 budget = host.file_budget(turn["model"])
-                # newest first: a corrected file sent later wins the budget over the one it
-                # corrects, and a file sent again under the same name replaces the older one
+                # newest first: a later correction wins the budget; same-name files replace older
+                # ones
                 taken: dict[str, str] = {}
                 for stored in sorted(files, key=lambda f: file_ids.index(f.id), reverse=True):
                     if not stored.text or budget <= 0 or stored.name in taken:
@@ -658,10 +657,8 @@ def _figures(part: dict) -> set[str]:
 
 
 def keep_untouched(bundle: Bundle, parts: list[dict]) -> tuple[list[dict], list[str]]:
-    """Parts the edit was not asked to touch (not a target, not widened to), put back as they
-    were when a rewrite dropped figures they stated, unless the figures it wrote instead are
-    the ones the person typed (a changed fact carried through the document). The names of the
-    parts kept."""
+    """Restore untouched parts whose figures a rewrite dropped, unless the new figures are the
+    user's own; returns the restored part names."""
     req, doc = bundle.request, bundle.document
     before = {str(p.get("id")): p for p in req.turn.get("before_parts") or []
               if isinstance(p, dict) and p.get("id")}
@@ -690,8 +687,8 @@ def keep_untouched(bundle: Bundle, parts: list[dict]) -> tuple[list[dict], list[
 
 @dataclass
 class Stored:
-    """Where a revision went: `artifact_id`, its body (`data`, merged when it was put onto a
-    newer version), and the reply's sentence about a race it met (`said`)."""
+    """Outcome of a revision save: `artifact_id`, body `data` (merged if put onto a newer
+    version), and `said` (reply sentence about a save race)."""
 
     artifact_id: str
     data: dict
@@ -702,12 +699,14 @@ class Stored:
 async def store_revision(db: Any, session: Any, base: dict, *, kind: Any, title: str,
                          data: dict, summary: str, parts: str, derive: Any,
                          user_id: str) -> Stored:
-    """The revision saved onto the version it read (`base`: `artifactId`, `version`), never
-    over a save made meanwhile: when the person (or another writer) saved in between, the
-    parts the revision changed are put onto their version if nobody touched them there
-    (`artifact_versions.merge`); otherwise the revision is kept apart as a draft beside the
-    document and the person is told. With no pinned version (an old run) it is stored as
-    before (`_store_document`)."""
+    """Save a revision onto the version it read (`base`: `artifactId`, `version`), never over a
+    concurrent save.
+
+    Changed parts are merged onto the newer version when untouched there
+    (`artifact_versions.merge`);
+    otherwise the revision is kept as a draft beside the document. Without a pinned version it goes
+    through `_store_document`.
+    """
     from app.models.user import utcnow
     from app.models.workspace import Artifact
     from app.services import artifact_versions
@@ -776,9 +775,8 @@ _TITLE_KIND = re.compile(
 
 
 def _genre_word(found: Any, title: str) -> str:
-    """The word naming what was made: the format's label when the title agrees with it (or
-    names no kind), else the kind the title ends in — a 「주간 업무 보고서」 is never called a
-    회의록 because a minutes word slipped into the format."""
+    """Word naming the document: the format's label if the title agrees (or names no kind), else
+    the kind the title ends in."""
     label = found.label if found else ""
     kind = _TITLE_KIND.search(" ".join((title or "").split()))
     if not kind:

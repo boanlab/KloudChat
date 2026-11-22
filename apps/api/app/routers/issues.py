@@ -61,7 +61,7 @@ class IssueIn(Wire):
     confirm_internal: bool = False
     message_id: str | None = Field(default=None, max_length=64)
     artifact_id: str | None = Field(default=None, max_length=64)
-    #: `POST /files` upload, moved into the report
+    #: id of a `POST /files` upload
     screenshot_file_id: str | None = Field(default=None, max_length=64)
     client: dict[str, Any] | None = None
 

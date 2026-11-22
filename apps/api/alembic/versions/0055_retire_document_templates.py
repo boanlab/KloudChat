@@ -1,8 +1,7 @@
-"""Retired document 서식: no agent, starting point or project default chooses them any more.
+"""Retired document 서식: clears the choices that name them.
 
-Documents and conversations that name one keep the id; `design_templates.rendering` draws
-those in the shared seed. Only the choices are cleared, so saving an agent, a starting point
-or a project does not fail on an id the catalogue no longer has.
+Only agent, starting-point and project choices are cleared, so saving one does not fail on an id the
+catalogue no longer has. Documents and conversations keep the id.
 
 Revision ID: 0055
 Revises: 0054
@@ -21,7 +20,7 @@ down_revision: str | None = "0054"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-#: Kept in step with `design_templates.RETIRED`; a migration does not import the app.
+#: Mirrors `design_templates.RETIRED` (a migration does not import the app).
 RETIRED = (
     "doc-brief",
     "doc-case",
@@ -76,5 +75,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # The cleared choices are not restored; the 서식 they named are gone.
+    # Cleared choices are not restored.
     pass

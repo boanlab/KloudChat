@@ -1,10 +1,9 @@
 """Read and edit an `.hwpx` in place: a numbered outline for the model, and edit ops that keep
 each paragraph's own shapes (`paraPrIDRef`, `charPrIDRef`).
 
-Ids are positions in the current version: top-level paragraphs `p1…` and tables `t1…`, in
-reading order across `Contents/section*.xml`. An insert or delete renumbers what follows, so
-one `apply` call resolves every op against the version it was given, and the next call reads
-again.
+Ids are positions in the current version (paragraphs `p1…`, tables `t1…`, in reading order across
+`Contents/section*.xml`). An insert or delete renumbers what follows, so one `apply` call resolves
+every op against the version it was given.
 """
 
 from __future__ import annotations
@@ -341,11 +340,10 @@ def _splice(pieces: list[_Piece], start: int, end: int, value: str) -> bool:
 
 
 def _rewrite(paragraph: etree._Element, text: str) -> None:
-    """The paragraph's text made `text`, touching only what changed: the text both share at
-    the start and at the end stays in its own runs (a bold 「수신」 label stays bold, a red
-    word stays red), and the changed middle takes the shape of the run it begins in. A change
-    with nowhere to sit (no shared start or end, or one across a line break) rewrites the
-    paragraph in its first run (`_set_text`)."""
+    """The paragraph's text made `text`, touching only what changed: shared start and end stay in
+    their own runs (a bold 「수신」 label stays bold) and the changed middle takes the shape of the
+    run it begins in. A change with nowhere to sit (no shared start or end, or across a line break)
+    rewrites the paragraph in its first run (`_set_text`)."""
     pieces = _pieces(paragraph)
     old = "".join(t for _, _, t in pieces)
     if old == text:
@@ -482,12 +480,10 @@ def _holds_more(paragraph: etree._Element) -> bool:
 
 
 def _set_cell(cell: etree._Element, text: str, *, whole: bool = False) -> None:
-    """The cell's text made `text`, one line per text paragraph in order: a line that stays
-    keeps its runs, a changed one keeps the shapes around its change (`_rewrite`); lines past
-    the cell's paragraphs become new paragraphs like its last, and text paragraphs past the
-    lines go. A paragraph holding a nested table or a picture is never one of them and
-    stays. `whole`: the cell emptied to one paragraph with `text` (nested tables too),
-    asked for in so many words."""
+    """The cell's text made `text`, one line per text paragraph: an unchanged line keeps its runs,
+    a changed one keeps the shapes around its change (`_rewrite`); extra lines become paragraphs
+    like the last, surplus text paragraphs go. A paragraph holding a nested table or a picture
+    stays. `whole`: empty the cell to one paragraph with `text` (nested tables too)."""
     sub = cell.find(_SUBLIST)
     paragraphs = list(sub.iterchildren(_P)) if sub is not None else []
     if not paragraphs:
@@ -709,9 +705,8 @@ def apply(data: bytes, ops: list[dict],
     return Result(_write(archive, doc), changes, guard.notes if guard is not None else [])
 
 
-#: the shapes a new table is drawn in, by `report_export`'s house ids: bordered cells, the
-#: thick-ruled head row and the table's own frame; body and bold body text; the body and the
-#: left-aligned cell paragraph
+#: Shapes a new table is drawn in, by `report_export`'s house ids: bordered cells, thick-ruled head
+#: row, table frame; body and bold body text; body and left-aligned cell paragraph.
 _HOUSE = {"borderFill": ("1", "2", "3"), "charPr": ("0", "1"), "paraPr": ("3", "7")}
 #: where each kind's definitions sit in `header.xml`
 _LISTS = {"borderFill": "borderFills", "charPr": "charProperties", "paraPr": "paraProperties"}
@@ -784,10 +779,9 @@ def _define(head: etree._Element, kind: str, made: etree._Element) -> str:
 
 def _import_shapes(head: etree._Element, wanted: dict[str, tuple[str, ...]] | None = None
                    ) -> dict[str, dict[str, str]]:
-    """House shapes (`wanted`, the new table's by default) put into a file's own header under
-    ids of its own: an equal definition already there is reused, any other is added with a
-    fresh id, so a file made in 한글 (whose `charPr` 1 may be a red 20 pt title) never lends
-    its own meaning to what is added. House id -> file id, per kind."""
+    """House shapes (`wanted`, the new table's by default) put into a file's own header under ids
+    of its own: an equal definition is reused, any other added with a fresh id, so a file made in
+    한글 never lends its own meaning to what is added. House id -> file id, per kind."""
     wanted = wanted or _HOUSE
     house = _house_header()
     house_faces = {

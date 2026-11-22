@@ -740,9 +740,7 @@ _TITLE_MARK = re.compile(r"\s?\(\s?(?:확인\s?필요|needs checking)\s?\)"
 
 
 def titles_unmarked(slides: list[dict]) -> list[dict]:
-    """Slides whose title and column titles carry no 「(확인 필요)」: a mark inside a heading
-    breaks it (「마케팅 예산 15억 배(확인 필요)분」), so the value it was on is named in the
-    slide's notes instead, where the presenter sees it."""
+    """Slides with no 「(확인 필요)」 mark in titles; the marked value goes to the notes."""
     out = []
     english = deck_rules.deck_language(slides) == "en"
     for slide in slides:
@@ -822,9 +820,8 @@ def mark_unbacked_percents(slides: list[dict], texts: list[str], *,
 
 def edited_percents(slides: list[dict], edited: list[int], *, request: str,
                     material: list[str], before: str, strong: bool = False) -> list[int]:
-    """The edited slides with percentages marked that neither the deck before the edit nor the
-    person's material gives or works out, in place; the slides changed. A deck made from no
-    figures of the person's is not checked, as when it was made."""
+    """Mark in place percentages in edited slides that neither the earlier deck nor the material
+    supports; returns the changed slides. Skipped when the person gave no figures."""
     if _given_figures(request) < _GIVEN_DATA and not any(t.strip() for t in material):
         return []
     texts = [request, *material, before]

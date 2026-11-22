@@ -112,10 +112,8 @@ def test_the_report_pdf_carries_the_picture():
 
 
 def test_hwpx_carries_the_picture_too():
-    """An OWPML picture is `BinData/` bytes, an `opf:item` in content.hpf and a `binaryItemIDRef`.
-
-    `<hh:binDataList>` belongs to the older HML format and must not appear in header.xml.
-    """
+    """An OWPML picture is `BinData/` bytes, an `opf:item` in content.hpf and a
+    `binaryItemIDRef`; no `<hh:binDataList>` in header.xml."""
     sections = page_export.to_sections(document(dt.GENERIC_ID, "section"))
     archive = zipfile.ZipFile(io.BytesIO(report_export.to_hwpx("t", sections, tokens=TOKENS)))
 

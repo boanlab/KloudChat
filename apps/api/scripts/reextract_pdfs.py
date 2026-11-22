@@ -1,9 +1,7 @@
 """Re-read the text of stored PDFs whose Korean came out without word spacing.
 
-Uploads made before the PDF reader moved to PDFium (`services/pdf_text.py`) can hold text like
-「온프레미스에서는서버를사기위한초기투자」. This reads each such PDF again from its blob, keeps the
-new text when it has the spacing, queues a fresh digest and re-indexes the file. Files whose
-text is fine, scans read by OCR, and files of other kinds are left alone.
+Reads each such PDF again from its blob (`services/pdf_text.py`), keeps the new text when it has
+spacing, queues a fresh digest and re-indexes. Files with fine text, OCR scans and other kinds are skipped.
 
     python scripts/reextract_pdfs.py            # report only
     python scripts/reextract_pdfs.py --apply    # rewrite the text

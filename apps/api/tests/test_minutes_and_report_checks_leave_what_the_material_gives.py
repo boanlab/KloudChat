@@ -1,9 +1,5 @@
-"""Checks narrowed to what the material leaves out: an English memo's approval is no Korean
-rule the check can trace, a day the memo item gives stands though its words sit in another clause
-or the heading names another week, no request sentence or 「11월 말」 is read as a meeting's name,
-a sentence keeping a thing said nowhere else stays, a decision told with an agreement verb keeps
-its facts, and an action row whose task a memo person was given stays. Shapes from the round 16
-audit (H1, H2, H3, T1, tc, tc2 and the clean answers)."""
+"""Checks leave what the material gives: English approvals, days given in another clause, request
+sentences, repeated facts and agreement-verb decisions stay."""
 
 from __future__ import annotations
 

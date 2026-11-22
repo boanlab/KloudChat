@@ -2,11 +2,7 @@ import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import style from './fixtures/report-table-style.json' with { type: 'json' }
 import { shellRead } from './shell-mocks'
 
-/**
- * The web report is one Markdown document: one editor over every section, a
- * 「Markdown 원문」 view of the same text, and saves that split it back into the stored
- * sections by their `##` headings, ids kept. No backend: every call is answered here.
- */
+/** The web report as one Markdown document: single editor, 「Markdown 원문」 view, saves split by `##` headings keeping ids. No backend. */
 
 test.use({ serviceWorkers: 'block' })
 
@@ -157,7 +153,6 @@ test('one editor holds every section; deleting across a section boundary merges 
   expect(saved.map((row) => row.id)).toEqual(['s1', 's3'])
   expect(saved[0].content).toBe('첫 절 본문 [1].\n\n## 소제목\n\n- 항목 가\n- 항목 다분석\n\n| 기준 | 값 |\n| --- | --- |\n| 비용 | 3억 |')
   expect(saved.every((row) => row.format === 'markdown')).toBe(true)
-  // The untouched section is stored exactly as it was.
   expect(saved[1].content).toBe(sections[2].content)
   expect(state.unexpected).toEqual([])
 })

@@ -1,9 +1,8 @@
 """Which project sources a conversation's turns may use (지식 서가's per-source switches).
 
-Stored as the switched-off file ids (`SourceSelection.off`), so all sources are on until the
-person turns one off and a source added later starts on. Context assembly
+Stored as switched-off file ids (`SourceSelection.off`), so new sources start on. Context assembly
 (`workspace_context._project_knowledge`) and the `search_knowledge` shelf
-(`sessions._knowledge_shelf`) both drop the switched-off files through `keep`.
+(`sessions._knowledge_shelf`) drop switched-off files through `keep`.
 """
 
 from __future__ import annotations

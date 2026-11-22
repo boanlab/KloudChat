@@ -1,9 +1,5 @@
-"""A written step in 만/억 (「490만 원 - 75만 원 - 60만 원 = 355만 원」) is a formula the guard
-checks.
-
-The formula reader took only bare digits, so a business plan's chain of steps in 만 원 never
-read as worked: its results were marked 「(확인 필요)」 although each operand traced to the
-material or an earlier step and the arithmetic held."""
+"""A written step in 만/억 (「490만 원 - 75만 원 = 415만 원」) is read as a formula the guard
+checks."""
 
 from __future__ import annotations
 

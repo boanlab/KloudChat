@@ -349,8 +349,7 @@ Complete = Callable[[str, list[dict[str, str]], str, int], Awaitable[tuple[str, 
 
 async def fix(text: str, *, model: str, complete: Complete, api_key: str, given: str = ""
               ) -> tuple[str, dict]:
-    """(text, usage): `text` with its odd words fixed by one `model` call; the text as it was on
-    any failure."""
+    """(text, usage): `text` with odd words fixed by one `model` call; unchanged on failure."""
     usage = {"inputTokens": 0, "outputTokens": 0}
     try:
         answer, usage = await complete(

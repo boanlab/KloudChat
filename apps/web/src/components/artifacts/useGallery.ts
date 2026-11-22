@@ -5,11 +5,7 @@ import type { Artifact } from '@/types'
 
 type Counts = Partial<Record<GallerySection, number>>
 
-/**
- * The 아티팩트 page's rows, a numbered page at a time: HTML pages, code files, charts and diagrams,
- * filtered by section, searched by title and sorted on the server, so every filter reaches
- * every artifact.
- */
+/** Paged artifact rows; section filter, title search and sort run on the server. */
 export function useGallery(section: GallerySection | null, query: string, sort: GallerySort, dir: SortDir) {
   const q = query.trim()
   const list = useServerPages<Artifact, Counts>({

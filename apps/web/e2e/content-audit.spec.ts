@@ -2,8 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { expect, test, type Page } from '@playwright/test'
 import { gotoWorkspace, signIn } from './helpers'
 
-/** Content sweep: hostile pasted text, double submits, expired sessions, stale replies, Back.
- *  Writes `audit/content-audit.json`; never fails. */
+/** Content sweep (hostile text, double submits, expired sessions, stale replies, Back); writes `audit/content-audit.json`, never fails. */
 
 interface Defect {
   rule: string
@@ -158,7 +157,7 @@ test('내용 감사 — 붙여넣은 것, 두 번 누른 것, 만료된 것', as
     const id = (row as { id?: string } | null)?.id
     if (id) seeded.push([resource, id])
     else {
-      // Nothing planted, so this screen was not checked.
+      // Nothing planted: screen unchecked.
       note('seed-rejected', resource, `/${resource}`, '감사가 확인하지 못한 화면이 있다')
     }
   }

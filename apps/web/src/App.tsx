@@ -131,7 +131,7 @@ function useHomeAfterApproval(status: string | undefined) {
  *  session on load is not a sign-in: an admin address typed by a member shows 접근 제한. */
 function useLandingAfterSignIn(authenticated: boolean, authLoading: boolean, role: string | undefined) {
   const navigate = useNavigate()
-  // The login screen was on show: signed out and not still restoring.
+  // Login screen was showing
   const was = useRef(!authenticated && !authLoading)
   useEffect(() => {
     const signedIn = was.current && authenticated
@@ -223,7 +223,6 @@ function Authenticated() {
           <Route path="files" element={<FilesPage />} />
           <Route path="customize" element={<CustomizePage />} />
           <Route path="customize/agents/new" element={<AgentCreatePage />} />
-          {/* templates retired (2026-11-15): a person's old ones are turned into agents there */}
           <Route path="customize/templates/*" element={<Navigate to="/customize?tab=agents" replace />} />
           <Route path="customize/agents/:agentId" element={<AgentDetailPage />} />
           <Route path="customize/agents/:agentId/chain" element={<ChainPage />} />

@@ -1,9 +1,5 @@
-"""A percentage stands only when the material gives it or works it out from its figures (a share
-of two figures of one measure, a gap of two given percentages); one worked from unrelated
-numbers (「82% of frontier」 → a cloud 「100%」, 20 pages against 40 tasks) is marked, in a deck
-made or edited and in a report, and one the deck or report already showed stays. A weekday a
-next-week plan never had is found though this week's memo line names the same customer, and a
-limit the memo only asks about is not written as one the team reviewed."""
+"""A percentage stands only when the material gives it or works it out from its figures; one
+worked from unrelated numbers is marked."""
 
 from __future__ import annotations
 

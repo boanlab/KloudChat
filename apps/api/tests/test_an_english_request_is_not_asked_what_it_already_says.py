@@ -1,8 +1,5 @@
-"""A pre-writing question with a Korean-word detector goes to the judge for an English request.
-
-The training deck pattern asks 「누가 듣는 교육인가요?」 unless the request has one of
-「신입|대상|부서 …」. An English all-hands deck request never has those words, so it was
-always asked."""
+"""A pre-writing question gated by a Korean-word detector goes to the judge for an English
+request."""
 
 from __future__ import annotations
 

@@ -53,11 +53,7 @@ function startEditor(host: HTMLElement, ms: number, late: string): Promise<RhwpE
   })
 }
 
-/**
- * The document's pages as the editor draws them, to read on a phone: the editor itself stays
- * mounted (loads, downloads and the agent's versions go through it) but takes no input. Every
- * page is there, each drawn as the reader scrolls to it (`lazyPages`).
- */
+/** Read-only pages for a phone; the editor stays mounted (loads, downloads, agent versions go through it). Pages draw lazily (`lazyPages`). */
 function HwpPages({ editor, version }: { editor: RhwpEditor; version: number }) {
   const t = useT()
   const pages = useRef<HTMLDivElement>(null)
@@ -93,10 +89,7 @@ function HwpPages({ editor, version }: { editor: RhwpEditor; version: number }) 
 /** The seconds after which the note says a first start can take a while. */
 const SLOW_START_S = 10
 
-/**
- * Under the panel's 「문서를 여는 중…」 while the editor starts: what it waits on and for how long,
- * since a first start downloads the editor (tens of MB) and can take most of a minute.
- */
+/** Wait note under 「문서를 여는 중…」: a first start downloads the editor (tens of MB) and can take most of a minute. */
 function StartingNote({ attempt }: { attempt: number }) {
   const t = useT()
   const [waited, setWaited] = useState({ attempt, s: 0 })
@@ -125,10 +118,8 @@ function StartingNote({ attempt }: { attempt: number }) {
 }
 
 /**
- * An HWP document in the rhwp editor (menus, toolbar and all), beside the chat; versions,
- * saves and the agent's turns as every office document has them (`OfficePanel`). The iframe
- * is mounted once per document: moving it in the DOM would reload it and lose its state.
- * Ctrl+S in the editor is the header's 저장. On a phone it is read only: its pages, drawn.
+ * HWP document in the rhwp editor beside the chat. The iframe is mounted once per document:
+ * moving it in the DOM would reload it and lose state. Read only on a phone.
  */
 export function HwpPanel({
   doc,
@@ -167,11 +158,7 @@ export function HwpPanel({
     let unlisten = () => {}
     setFailed('')
 
-    /**
-     * The editor's frame is this site's own page: what happens in it is seen here. A key or
-     * click there is activity (the idle sign-out watches only this window), asks the editor
-     * soon after whether it holds unsaved edits, and Ctrl+S is the header's 저장.
-     */
+    /** Frame is same-origin: key/click counts as activity (idle sign-out), triggers an unsaved-edits check; Ctrl+S saves. */
     const listenInside = (frame: HTMLIFrameElement) => {
       let soon = 0
       let inner: Window | null = null

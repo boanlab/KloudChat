@@ -1,8 +1,5 @@
-"""An edit reaches the count and form it asks: 「Shrink to 3 slides」 states the count however
-the planner put it, an English deck is not judged Korean by the code's own conditions, a
-sentence count leaves out what only points at the table and dates nothing anew, a part that
-already has the count stays, 「두 개로 나눠줘」 makes two items, a numbered edit leaves an
-open outline card, and figures and tables are read as shown (「Cost/1k」, a table twice)."""
+"""An edit reaches the count and form it asks: slide count, English deck language, sentence
+count, splits, outline cards, figures and tables read as shown."""
 
 from __future__ import annotations
 
@@ -258,7 +255,7 @@ def test_the_new_patterns_take_linear_time_on_long_blank_input(linear_scan):
     linear_scan(run, 12_500)
 
 
-#: the request a deck was first made from, with its own count (reverify-t kd1, kd2)
+#: the request a deck was first made from, with its own count
 KO_REQUEST = ("사업부장이 임원회의에 보고할 슬라이드 8장 안팎으로 만들어줘. 주제: 2026년 3분기 "
               "사업 실적과 4분기 계획. 수치: 매출 128억(전년 동기 114억, +12%), 지역별 매출 수도권 "
               "71억·영남 33억·호남 14억·기타 10억. 요청 사항: 영남 물류 안정화 예산 1.5억 승인.")

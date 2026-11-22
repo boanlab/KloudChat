@@ -89,8 +89,9 @@ _RULE = re.compile(r"^\s{0,3}(?:-{3,}|\*{3,}|_{3,})\s*$")
 
 
 def draft_shape(content: str, request: str) -> str:
-    """A document drafted in chat (보도자료, 공문, …) as its reader gets it: the genre's name
-    above the title rather than a heading under it, and no list of how it was written."""
+    """Chat-drafted document (보도자료, 공문, …) as delivered: genre name above the title, no
+    writing
+    notes."""
     from app.services import doc_formats
 
     fmt = doc_formats.detect(request or "")

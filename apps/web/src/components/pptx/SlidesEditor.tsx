@@ -458,12 +458,8 @@ function Editor({
     }
   })
 
-  // ── the editor's typed-then-formatted text shows twice ("수정됨 수정됨") ──
-  // Its inline editor re-renders its children from the model after a format change while the
-  // browser-typed text nodes are still there, so text typed and then formatted shows (and is
-  // committed) twice. When the editor's text differs from the model's, the canvas is mounted
-  // anew in the same render as the change and the selection put back. While a Korean syllable
-  // is being composed, the change waits for the composition to end.
+  // Remount the canvas when its inline editor text differs from the model after a format change (it shows typed text twice);
+  // deferred while a Korean syllable is being composed
   const [canvasKey, setCanvasKey] = useState(0)
   const restore = useRef<CharRange | null>(null)
   const composing = useRef(false)
@@ -733,11 +729,7 @@ function Editor({
   )
 }
 
-/**
- * A `.pptx` in pptx-react-viewer's slide canvas and thumbnails under this app's own chrome, in
- * the manner of Google Slides: one toolbar row, a thumbnail rail, the speaker notes. Each new
- * `content` is a new editor (its undo history belongs to the version it opened).
- */
+/** A `.pptx` in pptx-react-viewer's canvas under Google-Slides-like chrome; each new `content` is a new editor (undo history per version). */
 export function SlidesEditor({
   content, version, initialSlide = 0, canEdit, label, apiRef, onDirty, onEdit, onReady, onError,
   onSlide,
@@ -745,7 +737,7 @@ export function SlidesEditor({
   content: Uint8Array
   /** Changes with each file loaded. */
   version: number
-  /** The slide shown first: a new version opens where the person was. */
+  /** Slide shown first. */
   initialSlide?: number
   canEdit: boolean
   label: string

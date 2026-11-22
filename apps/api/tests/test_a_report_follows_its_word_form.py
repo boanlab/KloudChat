@@ -1,6 +1,5 @@
-"""A Word report written on a Word form (양식): the form's cover, header, footer and styles kept,
-its chapters the report's 목차, each chapter written under the form's heading of that name, the
-guidance gone, and the file marked with what was followed."""
+"""A Word report written on a Word form keeps the form's cover, header, footer and styles, writes
+each chapter under the form's heading, and is marked with what was followed."""
 
 from __future__ import annotations
 

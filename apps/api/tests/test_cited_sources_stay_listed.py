@@ -131,7 +131,7 @@ def test_an_opportunity_resting_on_an_unknown_is_labelled_a_guess():
 def test_the_whole_ask_as_one_query_does_not_count_as_searching_each_name():
     from app.services import query_terms
 
-    # the first query was the request itself
+    # the first query is the request itself
     whole = COMPETITORS[:60]
     assert query_terms.unsearched(COMPETITORS, [whole, "잔디 요금제", "플로우 요금제"]) == [
         "네이버웍스"]

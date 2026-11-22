@@ -167,7 +167,7 @@ export function VersionHistory({
 
   return (
     <>
-      {/* aria-label carries both names: replaces the visible text. */}
+      {/* aria-label replaces the visible text */}
       {!bare && <Button
         size="sm"
         aria-label={`${t('버전 기록')} · ${t('저장 시점')} v${artifact.version}`}

@@ -421,9 +421,9 @@ def test_a_rewrite_does_not_borrow_another_sections_table() -> None:
     assert _without_borrowed_tables(body, "", [f"비교.\n\n{table}"], "근거를 보강") == (
         "현황입니다.\n\n그래서 셋을 견줍니다."
     )
-    # Removed when there was no table and none was asked for.
+    # removed when no table was asked for
     assert "|" not in _without_borrowed_tables(body, "현황 줄글", [], "근거를 보강")
-    # Kept when a table was asked for.
+    # kept when a table was asked for
     assert table in _without_borrowed_tables(body, "현황 줄글", [], "표로 정리해 줘")
 
 

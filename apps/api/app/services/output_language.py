@@ -130,10 +130,10 @@ def _language_of(text: str) -> str:
 
 
 def asked(typed: str) -> str:
-    """The language the person asked in (``en``, ``ko``, or ``""``), from what they typed: its
-    first and last sentence that is no memo item, and when these differ the shorter one, the
-    ask put before or after pasted material. 「아래 메모로 회의록을 만들어줘.」 over an English
-    memo is Korean; an English memo sent alone is English."""
+    """The language the person asked in (``en``, ``ko``, or ``""``), from what they typed.
+
+    Reads the first and last non-memo sentence (the shorter if they differ), so 「아래 메모로
+    회의록을 만들어줘.」 over an English memo is Korean; an English memo alone is English."""
     text = (typed or "").split("\n\n덧붙인 조건:", 1)[0]
     pieces = [p.strip() for p in _SENTENCE_END.split(text) if p.strip()]
     if not pieces:

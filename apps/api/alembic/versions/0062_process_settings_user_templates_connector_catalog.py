@@ -1,18 +1,11 @@
-"""What a document does besides writing becomes settings; people make templates; the
-connector catalogue moves into the database.
+"""Process settings, user templates and the connector catalogue in the database.
 
-- `agents.process_settings`: an agent's own 진행 과정 설정 (`services/process_settings.py`):
-  pre-pass calculations, 서식 보정 stages, checks, 검토 규칙, structure rules and options, over
-  its 서식's. Null for every existing row: an agent follows its 서식's settings, which the
-  shipped 서식 now declare in their `template.toml` exactly as their per-format pipeline files
-  did.
+- `agents.process_settings`: an agent's own 진행 과정 설정 (`services/process_settings.py`); null follows its 서식.
 - `user_templates`: a person's document templates (`services/user_templates.py`).
-- `connector_catalog`: the installable MCP servers administrators keep in 관리 › 커넥터
-  카탈로그, seeded with the three entries the code listed (time, youtube, deep-research) with
-  the same commands, addresses, placeholders and gateway-key binding. Installed connectors
-  keep matching their entry by slug.
+- `connector_catalog`: installable MCP servers administrators manage, seeded with `time`, `youtube`
+  and `deep-research`; installed connectors match their entry by slug.
 
-Data change: the three catalogue rows only. Downgrade drops the tables and the column.
+Downgrade drops the tables and the column.
 
 Revision ID: 0062
 Revises: 0061

@@ -322,7 +322,7 @@ export function AgentForm({
   const surface: SessionKind = draft.surface ?? offered[0] ?? 'chat'
   // What an unpinned agent runs on here: the surface's model (the person's pick, else the admin's).
   const surfaceDefault = models.find((m) => m.id === modelByKind[surface])
-  // Retired format stays where set; not newly pickable.
+  // Retired formats stay selectable only where already set.
   const formats = DOC_FORMATS.filter((f) => !RETIRED_FORMATS.includes(f.id) || f.id === initial.docFormat)
   // Typed since the last save (a suggested 진행 과정 alone is not): links and tab close ask first.
   const [touched, setTouched] = useState(false)

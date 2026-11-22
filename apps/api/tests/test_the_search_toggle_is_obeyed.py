@@ -197,7 +197,7 @@ def test_the_rule_asks_per_claim_not_per_turn() -> None:
     # Not one search per turn.
     assert "최소 한 번" not in prompt and "at least once" not in prompt
     assert "for each axis" in prompt
-    # Prefer what was read; mark what could not be checked.
+    # prefer what was read; mark what could not be checked
     assert "follow the search results" in prompt
     assert "say you could not verify them" in prompt
 

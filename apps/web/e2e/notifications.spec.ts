@@ -4,14 +4,11 @@ import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { chatId, composerFixture } from './composer-fixture'
 
 /**
- * Notifications and the installable app: the one-time in-app question when a job runs long
- * (never on load), a tab notice when a long run ends while the tab is hidden and its click
- * opening the conversation, 설정 › 알림 (this device, events, devices) and 설정 › 앱, and the
- * service worker: registered for the whole site, it never serves a stale index.html, caches
- * only the offline page, and shows a push message as a notification.
+ * Notifications and the installable app: the long-run question, the hidden-tab notice, 설정 › 알림
+ * and 설정 › 앱, and the service worker (whole-site scope, never a stale index.html, offline page
+ * only, push shown as a notification).
  *
- * Push itself runs against a fake browser side (`fakePush`): headless Chromium has no push
- * service. The server's encryption is checked against RFC 8291 in the API tests.
+ * Push runs against a fake browser side (`fakePush`): headless Chromium has no push service.
  */
 
 /** Screenshots for review: `PWA_SHOTS=dir`; otherwise into the test's own output. */

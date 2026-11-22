@@ -101,8 +101,7 @@ export async function showTabNotice(notice: TabNotice, event: PushEvent): Promis
     data: { url: notice.url },
   }
   try {
-    // through the worker where there is one: the same tag replaces a push notice of the same job,
-    // and Android Chrome allows no page-made notifications
+    // via the worker: same tag replaces a push notice of the same job; Android Chrome disallows page-made notifications
     const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : undefined
     if (reg) {
       await reg.showNotification(notice.title, options)
@@ -120,7 +119,7 @@ export async function showTabNotice(notice: TabNotice, event: PushEvent): Promis
   }
 }
 
-// ── what a finished run was ───────────────────────────────────────────────
+// Finished-run notices
 
 const DONE: Record<string, [string, string]> = {
   report: ['보고서가 완성됐습니다', '보고서를 만들지 못했습니다'],

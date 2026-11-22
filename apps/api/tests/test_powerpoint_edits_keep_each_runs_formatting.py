@@ -1,8 +1,5 @@
-"""PowerPoint edit ops change text and keep each paragraph's level and bullets, each run's
-character format and each cell's fill; the visible title and the hidden outline title of
-KloudChat's own decks move together; slide ops copy, add, move and delete slides; a bad op
-changes nothing. Two real decks: one from the export path, and a company deck on its layouts
-with a bold label run, a table, a chart and notes."""
+"""PowerPoint edit ops change text and keep paragraph level, bullets, run format and cell fill;
+slide ops copy, add, move and delete; a bad op changes nothing."""
 
 from __future__ import annotations
 

@@ -8,10 +8,8 @@
 #   3. KCHAT_ADMIN_EMAIL / KCHAT_ADMIN_PASSWORD in .env — the bootstrap admin
 #   4. the calling script's own default
 #
-# Parsed, not sourced: .env holds non-shell values (KCHAT_CORS_ORIGINS is a
-# JSON array). Only the keys listed below are read.
-#
-# KCHAT_ENV_FILE selects another file; /dev/null skips this entirely.
+# Parsed, not sourced: .env holds non-shell values (KCHAT_CORS_ORIGINS is a JSON array).
+# KCHAT_ENV_FILE selects another file; /dev/null skips this.
 
 # Repository root from this file's location, not the caller's $0.
 KCHAT_ENV_FILE=${KCHAT_ENV_FILE:-"$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/.env"}

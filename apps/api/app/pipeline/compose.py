@@ -1372,7 +1372,7 @@ class GapsStep(Step):
         judged: dict[str, bool] = {}
         if gap_questions.needs_judge(self.questions):
             if resuming:
-                # judge-type question counts only when the card asked and it was answered
+                # a judge-type question counts only when asked and answered
                 judged = {str(q["id"]): f"{check_skills.GAP_PREFIX}{q['id']}" not in bundle.answers
                           for q in self.questions
                           if (q.get("detector") or {}).get("type") == "judge"}

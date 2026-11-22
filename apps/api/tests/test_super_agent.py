@@ -414,8 +414,7 @@ async def test_the_writer_call_carries_the_routed_effort(monkeypatch) -> None:
 
 
 def test_hard_classes_go_to_deepseek_with_reasoning_high() -> None:
-    # owner decision 2026-11-14: hard turns on DeepSeek V4.1 Flash @high; the strict column
-    # keeps flash for them (2026-11-20: the escalation row's strict pick too, thinking high)
+    # Hard turns: DeepSeek V4.1 Flash at high; the strict column keeps flash, thinking high.
     for name in ("calc", "visual", "current", "long", "reasoning", "escalation"):
         rule = sa.DEFAULT_RULES[name]
         assert (rule["model"], rule["effort"]) == ("deepseek/deepseek-v4.1-flash", "high"), name

@@ -1,4 +1,4 @@
-"""Cover-letter (자기소개서) post-processing: blocks measured by text-fit, rewritten to limits, unsupported words flagged."""
+"""Cover-letter (자기소개서) post-processing: length measured, rewritten to limits, unsupported words flagged."""
 
 from __future__ import annotations
 
@@ -60,7 +60,7 @@ class Limit:
     limit: int
     unit: str
     newline: int | None = None
-    #: note when no counting rule was stated (strictest used)
+    #: note when no counting rule was stated (strictest applied)
     assumed: str = ""
 
 

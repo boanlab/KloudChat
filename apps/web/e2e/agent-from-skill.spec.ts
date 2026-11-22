@@ -1,11 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { hubFixture, mySkills, storeSkills } from './customize-fixture'
 
-/**
- * 「이 스킬로 에이전트 만들기」 drafts an agent that applies the skill on every turn (the person only
- * checks the name and saves; a store skill is installed on save, once), and each of an agent's
- * skills is 「항상 적용」 or 「필요할 때」.
- */
+/** 「이 스킬로 에이전트 만들기」 drafts an agent that applies the skill each turn; each agent skill is 「항상 적용」 or 「필요할 때」. */
 
 test.use({ serviceWorkers: 'block' })
 

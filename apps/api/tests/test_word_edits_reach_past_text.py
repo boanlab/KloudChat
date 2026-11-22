@@ -1,6 +1,5 @@
-"""Word chat edits past text: a style and a heading level, a span's format, alignment, moving
-a chapter, table columns and merges, pictures and page setup; each keeps what it was not asked
-to change, and the result opens in python-docx again."""
+"""Word chat edits beyond text (styles, headings, formats, chapters, tables, pictures, page
+setup) keep what was not asked to change and reopen in python-docx."""
 
 from __future__ import annotations
 

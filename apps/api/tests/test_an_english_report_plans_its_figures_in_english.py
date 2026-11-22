@@ -1,7 +1,4 @@
-"""An English report plans and draws its figures in English: caption and box labels.
-
-The report figures stage asked the planner without the document's language, so an English
-report got 「Figure 1. 10월 21일 실수로 …」 captions and Korean edge labels (「의도」, 「발송」)."""
+"""An English report plans and draws its figures in English: caption and box labels."""
 
 from __future__ import annotations
 

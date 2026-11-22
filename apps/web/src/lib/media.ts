@@ -99,19 +99,11 @@ export interface VideoRef {
   seconds?: number
 }
 
-// 「[12:30]」, 「[00:12:30]」, 「[1:02:03]」 written as text (not already a link or a citation),
-// or a bare 「00:12:30」 — the video document's own hh:mm:ss form, which models also write
-// unbracketed in a table's time column or a range (「00:00:10 ~ 00:02:35」). A bare mm:ss is left
-// alone (a clock time reads the same), as is a time inside a date-time or a longer number.
+// 「[12:30]」, 「[00:12:30]」 or bare 「00:12:30」 (also in ranges). Bare mm:ss, date-times and longer numbers are left alone.
 const STAMP =
   /(?<!\[)\[((?:\d{1,2}:)?\d{1,2}:[0-5]\d)\](?![(\]])|(?<![\d:.\[\-/]|\d[-./]\d{1,2}[ T]|\d{4}[ T])(\d{1,2}:[0-5]\d:[0-5]\d)(?![\d:]|\]\()/g
 
-/**
- * Time marks the model wrote as text, turned into links to the video they belong to: the one
- * named just before the mark, else the one the answer already links to, else the only video
- * the conversation has. Code and links are left alone; a mark with no clear video, or past
- * the end of a video whose length is known, stays text.
- */
+/** Links text time marks to their video: the one named before the mark, else the one already linked, else the only one. Code, links, and marks past a known video length stay text. */
 export function linkTimestamps(text: string, given: VideoRef[]): string {
   if (!/\d:[0-5]\d/.test(text)) return text
   // The same file uploaded again (attached in several of the project's chats) is one video:

@@ -86,9 +86,8 @@ class Normalize(Base):
         # is marked, never rewritten
         normalized = units.fix_written_sums(units.fix_written_arithmetic(normalized),
                                             printed=req.tool_outputs)
-        # what code finds off but cannot settle is marked where it stands, every writer: a
-        # formula a unit off, a figure ten times a worked result, a profit its own figures
-        # do not leave
+        # code-detected contradictions (unit slips, scaled restatements, profit) are marked in
+        # place, every writer
         normalized = units.mark_profit_contradictions(units.mark_scaled_restatements(
             units.mark_slipped_formulas(normalized)))
         # 「수정: 합계는 N원」 beside the wrong total: the total corrected, the line gone
@@ -267,11 +266,9 @@ def _copy_turn(req: Request) -> bool:
 
 
 class CopyMarks(Base):
-    """Copy written with a copy skill keeps no 「(확인 필요)」 inside it: the marks, from any
-    check before, are listed once below as 「보내기 전 확인」. A small external writer's answer
-    gets the same end box, 「확인 필요: …」, in place of inline marks (inline marks make its
-    answers unusable); self-hosted and strong external writers keep marks where they stand
-    (docs/architecture.md, "Mechanisms by model group")."""
+    """Copy-skill output carries no inline 「(확인 필요)」; marks are listed once under 「보내기 전
+    확인」.
+    Small external writers get a 「확인 필요: …」 end box instead of inline marks."""
 
     name = "copy-marks"
     reads = ("request", "document.answer")

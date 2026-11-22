@@ -1,9 +1,8 @@
-"""Figures with a fixed shape (steps, cycle, house, compare, options, axes, messages, stages,
-lanes): slots the model fills, drawn to a set layout with native .pptx shapes.
+"""Fixed-shape figures (steps, cycle, house, compare, options, axes, messages, stages, lanes):
+slots the model fills, drawn to a set layout with native .pptx shapes.
 
-A figure's stored source stays a mermaid flowchart, so the browser view, the fact check and
-editing read it as before; its last line carries the slots as a mermaid comment, and the
-renderer and the deck export draw from those instead of laying the flowchart out.
+The stored source stays a mermaid flowchart for the browser view, fact check and editing; its
+last line carries the slots as a mermaid comment, which the renderer and deck export draw from.
 """
 
 from __future__ import annotations
@@ -244,10 +243,9 @@ def _stages_said(s: dict[str, Any], source: str) -> dict[str, Any]:
 
 
 def grounded(s: dict[str, Any], material: str, described: str = "") -> dict[str, Any]:
-    """Slots kept to what the figure's description and its text say. Step and stage notes keep
-    only counts the material gives that part: a count the material says only of the whole
-    (「공사는 3주 동안 철거·설치·시범 운영」) or never says is cut from a note, and a note left
-    saying nothing is dropped. Stage tasks and feedback follow `_stages_said`."""
+    """Slots kept to what the description and text say. Step/stage notes keep only counts the
+    material gives that part (a count said only of the whole, or never, is cut; an empty note is
+    dropped). Stage tasks and feedback follow `_stages_said`."""
     if s.get("kind") == "stages" and (described.strip() or material.strip()):
         s = _stages_said(s, described + "\n" + material)
     key = {"steps": "steps", "cycle": "stages"}.get(s.get("kind", ""))

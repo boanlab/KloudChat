@@ -7,10 +7,7 @@ import type { UserTemplate } from '@/types'
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 
-/**
- * A person's own templates, retired on 2026-11-15: each can become an agent of theirs, with its
- * format, questions, checks and process carried over. Shown only while there are any.
- */
+/** A person's own templates, each convertible to an agent; shown only while any exist. */
 export function OldTemplates() {
   const t = useT()
   const navigate = useNavigate()

@@ -105,7 +105,6 @@ async def test_an_entry_indexed_again_since_is_left_and_an_old_refusal_given_up(
                              created_at=utcnow() - index_cleanup.GIVE_UP - timedelta(days=1)))
         await db.commit()
         assert await index_cleanup.retry(db) == 1
-    # the live entry was not deleted; the stale one was tried, then dropped
     assert index.calls == [(KEY, "e" * 32)]
     assert await _pending(index) == []
 

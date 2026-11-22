@@ -232,9 +232,8 @@ def _with_prompt(agent: Agent, prompt: str) -> Agent:
 async def _load_design_system(
     db: AsyncSession, user: User, project: Project | None, agent: Agent | None = None
 ):
-    """The design the writers read: the 디자인 지침 of the agent and the project
-    (`design_brief.BriefDesign`, the agent's first); None when neither has one. Themes are no
-    longer read (2026-11-15: their text moved into 디자인 지침, migration 0091)."""
+    """The design the writers read: 디자인 지침 of the agent and the project
+    (`design_brief.BriefDesign`, the agent's first); None when neither has one."""
     from app.services import design_brief
 
     project_brief = project.design_brief if project is not None and project.user_id == user.id \
@@ -473,11 +472,10 @@ async def _project_knowledge(
     vector: bool = False,
     off: set[str] | None = None,
 ) -> tuple[str, list[ContextFile]]:
-    """Untrusted project knowledge within `budget`, with fates. A project that fits goes
-    whole; a larger one gets its 「자료 목록」 (every file with its digest) and then passages:
-    the best few for a focused turn (words and, when `vector`, the index), or the best one of
-    every file for a turn that asks about each item (`coverage.asks_each`). `off`: the sources
-    the conversation switched off (`source_selection`), left out entirely."""
+    """Untrusted project knowledge within `budget`, with fates. A project that fits goes whole;
+    a larger one gets its 「자료 목록」 then passages: the best few for a focused turn (words and,
+    when `vector`, the index) or the best one per file for a turn asking about each item
+    (`coverage.asks_each`). `off`: sources the conversation switched off (`source_selection`)."""
     if project is None:
         return "", []
 
@@ -566,11 +564,9 @@ _LEAD_LEAST = 2_000
 
 
 def _fill_from_lead(readable: list[StoredFile], picked: dict[str, list], room: int) -> int:
-    """A focused turn about one file (「vLLM 논문 발표 자료」: most of the best passages are
-    its) gets the knowledge budget the passages left unused, filled from that file: more of
-    its passages, spread evenly over its length so its method and its results both come in,
-    in reading order. Without this a long project shows the model eight short passages of
-    the very paper it is asked to present, and the rest is guessed. Returns the room left."""
+    """A focused turn about one file gets the knowledge budget left unused, filled from that file:
+    more passages spread evenly over its length (method and results both), in reading order.
+    Returns the room left."""
     if room < _LEAD_LEAST or not picked:
         return room
     scores = {fid: sum(max(p.score, 0.0) for p in chosen) for fid, chosen in picked.items()}
@@ -880,11 +876,10 @@ def skill_tokens(skill: Skill) -> int:
 
 async def agent_skill_rows(db: AsyncSession, user_id: str, agent: Agent | None,
                            kind: str | None = None) -> list[Skill]:
-    """The agent's always-on skills (`Agent.active_skill_ids`) this person may run: the
-    agent owner's, the person's own, or shared ones; disabled or other-surface ones skipped.
-    On a document surface (`kind` not chat) the agent's 「필요할 때」 skills made for that surface
-    alone join them: a document writer has no tool to pick a skill with, and such a skill is
-    never offered in chat."""
+    """The agent's always-on skills (`Agent.active_skill_ids`) this person may run (owner's,
+    own or shared; disabled or other-surface skipped). On a document surface (`kind` not chat)
+    the agent's 「필요할 때」 skills made for that surface join them: a document writer has no tool
+    to pick a skill, and such a skill is never offered in chat."""
     ids = [str(x) for x in (agent.active_skill_ids or [])] if agent is not None else []
     loose = [str(x) for x in (agent.skill_ids or []) if str(x) not in ids] \
         if agent is not None and kind and kind != "chat" else []

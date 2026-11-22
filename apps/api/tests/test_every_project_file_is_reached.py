@@ -1,7 +1,5 @@
-"""A project too large to send whole still shows the turn every file: per-file digests made by a
-strict-local model, a 「자료 목록」 of all of them, a passage from each file when the request asks
-about each one, a note naming any file the answer left out, a cover title that is not the
-request, and the 강의계획서 format for a course plan."""
+"""A project too large to send whole still shows the turn every file: digests, a 「자료 목록」,
+per-file passages and a note naming omitted files."""
 
 from __future__ import annotations
 

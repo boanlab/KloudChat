@@ -1,7 +1,6 @@
-"""`pdf_figures`: a paper's own figures and tables, cut from its PDF (`pdf_figures`) and kept
-as pictures of this conversation, so a deck about the paper shows them (`pptx_write` slide
-`image.file`) with their captions instead of a redrawn guess. In-process, no network:
-strict-local safe."""
+"""`pdf_figures`: a paper's own figures and tables cut from its PDF and kept as pictures of this
+conversation, so a deck shows them (`pptx_write` slide `image.file`) with captions. In-process,
+no network: strict-local safe."""
 
 from __future__ import annotations
 

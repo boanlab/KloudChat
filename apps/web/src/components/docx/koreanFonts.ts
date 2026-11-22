@@ -1,16 +1,11 @@
 import { EA_RANGE, eaFamily, setFontProvider } from 'open-docx-editor'
 
 /**
- * Korean font names a Word document asks for, drawn in a font the computer has or, failing that, in the Nanum fonts the
- * app ships: serif names (바탕, 궁서, 함초롬바탕…) in Nanum Myeongjo, sans names (맑은 고딕, 굴림, 돋움…) in Nanum Gothic
- * (`@fontsource/*`, OFL). CSS cannot alias one family to another, so each name gets its own copies of the stand-in's
- * `@font-face` rules, same files and unicode ranges, with the installed font first (`local()`): on a computer with
- * 바탕 or 맑은 고딕 the real font is used, so lines break as in Word. A face is fetched only when text needs it.
- *
- * The editor draws a run's East Asian font (w:eastAsia) under `odx-ea:<name>`, limited to Hangul, kana and Han
- * (`EA_RANGE`), so Latin text keeps the run's own font; each name gets that alias too, and `odx-ea-sans` /
- * `odx-ea-serif` stand in for a Korean font not listed here. A name's faces are added as the editor first draws it
- * (`setFontProvider`): a document asks for a few of these names, and each has some 180 faces.
+ * Korean font names a Word document asks for, drawn in the installed font (`local()`) or else in the bundled Nanum
+ * stand-ins (serif names in Nanum Myeongjo, sans names in Nanum Gothic). CSS cannot alias families, so each name gets
+ * its own copy of the stand-in's `@font-face` rules; a name's faces are added when the editor first draws it.
+ * East Asian runs use `odx-ea:<name>`, limited to Hangul, kana and Han (`EA_RANGE`) so Latin keeps the run's font;
+ * `odx-ea-sans` / `odx-ea-serif` cover unlisted names.
  */
 export const KOREAN_SERIF = [
   '바탕', '바탕체', 'Batang', 'BatangChe', '궁서', '궁서체', 'Gungsuh', 'GungsuhChe',

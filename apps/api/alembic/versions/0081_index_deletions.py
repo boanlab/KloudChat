@@ -1,10 +1,9 @@
 """Index deletes that failed, kept for retry.
 
-- `index_deletions`: one row per search-index entry (a document in a collection, or a whole
-  collection when `doc_id` is null) whose delete the index did not take. A background loop
-  retries each until the index answers; the file or conversation row it came from is gone.
+`index_deletions`: one row per search-index entry (a document, or a whole collection when `doc_id` is
+null) whose delete the index did not take; a background loop retries until the index answers.
 
-No existing rows change. Downgrade drops the table (pending retries are forgotten).
+Downgrade drops the table.
 
 Revision ID: 0081
 Revises: 0080

@@ -1,15 +1,12 @@
-"""Video understanding: background media jobs, their resumable steps, and pieced uploads.
+"""Video understanding: background media jobs, resumable steps, and pieced uploads.
 
 - `files.media_state`, `media_stage`, `media_done`, `media_total`, `media_attempts`,
-  `media_claimed_at`, `media_claim`: the media job of an audio/video file (`video_jobs`),
-  claimed the way OCR jobs are.
-- `files.media`: probe facts, kept frames, timings and the time-coded segments.
-- `media_parts`: each finished step (a transcribed audio piece, a read frame), so a job taken
-  over after a restart resumes instead of starting again.
+  `media_claimed_at`, `media_claim`: the media job of an audio/video file (`video_jobs`), claimed the way OCR jobs are.
+- `files.media`: probe facts, kept frames, timings and time-coded segments.
+- `media_parts`: each finished step, so a job taken over after a restart resumes.
 - `file_uploads`: uploads sent in pieces (videos up to MAX_VIDEO_UPLOAD_MB).
 
-No existing rows change: files uploaded before keep their text and no media job. Downgrade
-drops the tables and columns (time-coded documents already written stay as file text).
+Downgrade drops the tables and columns.
 
 Revision ID: 0087
 Revises: 0086

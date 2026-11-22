@@ -41,7 +41,7 @@ def template_switch_on(model: str) -> dict:
 
 
 #: Reasoning fields by model for this turn's writer and rescue writer
-#: (`super_agent.reasoning_fields`: the Super Agent table or the composer's reasoning chip);
+#: (`super_agent.reasoning_fields`);
 #: calls of those models use them instead of the deployment setting.
 TURN_REASONING: ContextVar[dict[str, dict[str, Any]] | None] = ContextVar(
     "turn_reasoning", default=None

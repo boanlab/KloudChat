@@ -1,9 +1,4 @@
-/**
- * Reads the signed-in app shell makes on every page, answered empty, for specs that
- * mock the API themselves and count any other request as unexpected: the 「문의·신고」
- * reply badge (`useIssueBadge`) and the bot badges (`useBotAttentionBadge`) in AppShell, and
- * the chat composer's context gauge (`ContextGauge`).
- */
+/** Empty answers for the shell's per-page reads (`useIssueBadge`, `useBotAttentionBadge`, `ContextGauge`), for specs that count other requests as unexpected. */
 export function shellRead(method: string, path: string): { json: unknown } | null {
   if (method === 'GET' && path === '/issues/unread') return { json: { count: 0 } }
   if (method === 'GET' && path === '/publications/attention') return { json: { bots: 0, reviews: 0 } }

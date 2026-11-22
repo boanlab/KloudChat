@@ -1,7 +1,5 @@
-"""Slide and section edits as reverify-y found them: a caveat written in another form is still
-the caveat, a label is not cut inside its brackets, a join on a slide with nothing to join is
-said and changes nothing, steps are regrouped rather than rewritten, and a lost count names
-what it counts."""
+"""Slide and section edits say only what they changed and keep every item: caveats, bracketed
+labels, no-op joins, regrouped steps and lost counts."""
 
 from __future__ import annotations
 

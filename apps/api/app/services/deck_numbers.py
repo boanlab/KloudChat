@@ -1,8 +1,7 @@
-"""Numbers on a written deck held to the material it was made from: a figure with a unit
-(a percent, a multiplier, GB, ms, tokens) that no source text has, and a range the source
-gives whole (20.4–38.2%) that the slide narrows to one end (「최대 20.4%」). Regex only: no
-model, no network; the sources are the texts the person's files hold and what the turn's
-tools returned."""
+"""Deck numbers checked against the sources: a unit figure no source has, or a source range narrowed
+to one end (「최대 20.4%」).
+
+Regex only; sources are the person's file texts and the turn's tool results."""
 
 from __future__ import annotations
 

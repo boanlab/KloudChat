@@ -1,9 +1,9 @@
 """Which attached or saved file this turn's document follows as its form (양식).
 
-Order (`design.md` §2.0): a form attached to this turn, the agent's 기본 양식 파일 for the
-output kind, the project's. An attachment's role is the person's choice on its chip when made,
-else the request's words and the file's own profile (`form_profile`). A `.hwp` is never a form:
-the person is told how to save it as HWPX, and the file is read as material.
+Order (`design.md` §2.0): a form attached to this turn, the agent's 기본 양식 파일 for the output
+kind, the project's. An attachment's role is the person's chip choice, else the request's words and
+the file's profile (`form_profile`). A `.hwp` is never a form: the person is told to save it as
+HWPX, and the file is read as material.
 """
 
 from __future__ import annotations

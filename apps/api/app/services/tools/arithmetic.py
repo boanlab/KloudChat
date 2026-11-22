@@ -23,9 +23,8 @@ _CHARACTERS = frozenset("0123456789.+-*/()eE \t\r\n")
 _NUMBER = re.compile(r"(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]{1,2})?\Z")
 #: Max exponent of scientific notation in a literal (8.0e-6).
 _MAX_EXPONENT = 30
-#: Past the exact budget (a long compounding period, a fractional base raised high): the
-#: expression is evaluated again in decimal with this many significant digits, flagged
-#: approximate. Its own bounds refuse pathological sizes.
+#: Past the exact budget: re-evaluated in decimal with this many significant digits, flagged
+#: approximate; its own bounds refuse pathological sizes.
 _APPROX_DIGITS = 50
 _MAX_APPROX_EXPONENT = 10_000
 #: A result (or step) further from 1 than 10**this is refused, not approximated.

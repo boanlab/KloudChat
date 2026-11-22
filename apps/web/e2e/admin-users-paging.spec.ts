@@ -2,9 +2,8 @@ import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { shellRead } from './shell-mocks'
 
 /**
- * 관리자 › 사용자 against fixture data: 120 accounts, read 50 at a time. The server searches,
- * filters by tab, sorts and pages (`GET /admin/users/page`); the screen sorts by a column
- * heading, pages below the table, and keeps tab, search, sort and page in the address.
+ * 관리자 › 사용자 against 120 fixture accounts: server-side search, tab filter, sort and paging,
+ * with tab, search, sort and page kept in the address.
  */
 
 type Row = {

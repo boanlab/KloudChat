@@ -6,11 +6,7 @@ import { SHELF_NAMES } from '@/lib/shelfNames'
 import { useT } from '@/lib/useT'
 import { SourceViewer, type SourceTarget } from './SourceViewer'
 
-/**
- * Around a project conversation's transcript: a citation of project material (「[2]」 under
- * which the answer's source list names a project file) opens the source viewer at the passage.
- * Outside a project the children render as they are.
- */
+/** Wraps a project transcript so a citation of project material opens the source viewer; passthrough outside a project. */
 export function CitationLayer({ projectId, children }: { projectId: string | null | undefined; children: ReactNode }) {
   const [target, setTarget] = useState<SourceTarget | null>(null)
   const open = useCallback(

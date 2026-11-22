@@ -1,8 +1,5 @@
-"""Code and artifacts on self-hosted flash, except those that draw data (2026-11-20): over 46
-artifact prompts flash matched or beat DeepSeek V4.1 Flash high on calculators, shop pages,
-games, Python and forms, but clearly lost on dashboards (6.81 vs 7.96). A request to build
-something (`code`) that draws data goes to the `visual` row; a question about a chart that asks
-for nothing to be built stays where it was."""
+"""A code request that draws data (dashboards, charts) goes to the `visual` row; a question about
+a chart that asks for nothing built stays."""
 
 from __future__ import annotations
 

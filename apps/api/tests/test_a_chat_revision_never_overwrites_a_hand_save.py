@@ -157,7 +157,6 @@ def test_merge_puts_only_untouched_parts_on_top():
     clash = {"slides": [{"id": "a", "t": 9}, {"id": "b", "t": 1}]}
     assert artifact_versions.merge(base, ours, clash, parts="slides",
                                    title=("T", "T", "T")) is None
-    # both renamed the document differently: a clash too
     assert artifact_versions.merge(base, ours, theirs, parts="slides",
                                    title=("T", "A", "B")) is None
 

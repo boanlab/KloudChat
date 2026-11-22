@@ -8,7 +8,7 @@ import pytest
 
 from app.services import design_templates
 
-#: The shared seed drawn as a 서식 of its own (retired 서식 render in it); it has no face.
+#: The shared seed, drawn as a 서식 of its own; it has no face.
 GENERIC = design_templates.rendering(design_templates.GENERIC_ID)
 
 PAPER = [t for t in design_templates.all_templates() if t.kind in ("document", "deck")] + [GENERIC]

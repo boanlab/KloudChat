@@ -1,9 +1,8 @@
 """Member-held API key calls (설정 › API 키), read from the proxy's spend log into the ledger.
 
-Those calls go to the proxy directly, never through a turn here, so nothing else charges or
-counts them. Each successful request becomes one ledger row: the key holder, the model, its
-tokens as `units`, and credits at this instance's rates, with the request id as `external_ref`
-(unique). The proxy's own user ceiling still applies alongside.
+These calls bypass turns here, so nothing else charges them. Each successful request becomes one
+ledger row (key holder, model, tokens as `units`, credits at this instance's rates, request id as
+unique `external_ref`).
 """
 
 from __future__ import annotations

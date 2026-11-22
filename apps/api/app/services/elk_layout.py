@@ -1,14 +1,9 @@
-"""Structures (an architecture's tiers, a cluster's nodes, a short figure that forks and joins)
-laid out by ELK's layered algorithm, which the printer runs (`/layout`); drawn here with
-python-pptx (`diagram_shapes.draw_pptx`).
+"""Structures (tiers, cluster nodes, short fork/join figures) laid out by ELK's layered
+algorithm via the printer's `/layout`, drawn with python-pptx (`diagram_shapes.draw_pptx`).
 
-ELK keeps each group's members inside its frame, spreads the links over a box's sides and routes
-them square round the boxes. The layout is fetched ahead (`prepare`, async) and kept; drawing is
-sync and, without a layout at hand (the printer down), falls back to the built-in layouts.
-
-Boxes are sized to their labels at TEXT_PT and the whole figure is scaled to its box, so the
-text size is the scale; each flow and group direction is laid out and the one whose text comes
-out largest is kept.
+The layout is fetched ahead (`prepare`, async) and kept; drawing is sync and falls back to the
+built-in layouts when none is at hand. Boxes are sized to labels at TEXT_PT and the figure is
+scaled to its box; each flow/group direction is laid out and the one with the largest text wins.
 """
 
 from __future__ import annotations
@@ -32,7 +27,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-#: label sizes the boxes are measured at, before the figure is scaled to its box (pt)
+#: label sizes (pt) the boxes are measured at, before scaling to the figure box
 TEXT_PT, EDGE_PT, TITLE_PT = 12.0, 9.0, 10.0
 #: a label's widest line before it wraps, a box's least size, and its padding around the text
 LINE_W = 132.0
@@ -43,7 +38,7 @@ COMPACT = (60.0, 0.5)
 PAD_X, PAD_Y = 10.0, 7.0
 #: a group's frame: sides, and the title strip on top
 FRAME_PAD, TITLE = 12.0, 20.0
-#: the most a figure is enlarged past its measured size
+#: maximum enlargement past the measured size
 GROW = 1.15
 #: a figure without groups is laid out here only when it is this short (layers along the flow)
 #: and comes out with text at least LEGIBLE pt; longer ones fold into rows (`flow_layout`)
@@ -74,10 +69,9 @@ _CACHE_SIZE = 256
 
 def _forward(nodes: list[str], edges: list[tuple[str, str]],
              weak: set[tuple[str, str]] = frozenset()) -> list[tuple[str, str]]:
-    """`edges` without the ones that close a cycle. The solid links are walked first, from the
-    nodes nothing points to, in source order, and each link back to a node still on its path is
-    cut; a `weak` (dashed) link is then kept only if it does not run back against what is kept
-    (a feedback arrow, 「역전파」, is the one cut)."""
+    """`edges` without the ones that close a cycle: solid links are walked first from source nodes
+    in source order and each link back onto the current path is cut; a `weak` (dashed) link is
+    kept only if it does not run against kept links (a feedback arrow)."""
     known = set(nodes)
     solid = [(a, b) for a, b in edges if (a, b) not in weak and a in known and b in known
              and a != b]
@@ -247,10 +241,9 @@ def _label(text: str, size: float, bold: bool = False) -> dict:
 
 
 def _requests(graph: Graph) -> list[dict]:
-    """ELK graphs for `graph`, one per flow direction, each roomy and compact (a group's own
-    `direction` is not sent: ELK lays the groups out with the figure's flow); links
-    back against the flow are sent reversed, so the cycle is cut where the writer meant
-    (`feedback`)."""
+    """ELK graphs for `graph`, one per flow direction, roomy and compact (group `direction` is
+    not sent); links against the flow are sent reversed so the cycle is cut where
+    `feedback` says."""
     against = feedback(graph)
     owner = _owners(graph)
 
@@ -396,8 +389,8 @@ def _chosen(graph: Graph, box: tuple[float, float]) -> tuple[dict, float] | None
 
 
 def place(graph: Graph, width: float, height: float) -> Laid | None:
-    """`graph` laid out by ELK and fitted to `width` × `height`, centred; None when it is not
-    drawn this way, or its layout was not fetched (`prepare`)."""
+    """`graph` laid out by ELK and fitted to `width` x `height`, centred; None when not drawn this
+    way or its layout was not fetched (`prepare`)."""
     chosen = _chosen(graph, (width, height))
     if chosen is None:
         return None

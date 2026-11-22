@@ -1,8 +1,8 @@
-"""Reasoning effort as `/llm` callers see it: the levels a model takes, and an ask for no
-reasoning made answerable where the model cannot go without.
+"""Reasoning effort as `/llm` callers see it: per-model levels, and no-reasoning asks made
+answerable.
 
-The levels come from LiteLLM `model_info` (`kchat_reasoning_*`, written from the
-OpenRouter catalogue by kloudchat-llm's config generator).
+Levels come from LiteLLM `model_info` (`kchat_reasoning_*`, written from the OpenRouter catalogue
+by kloudchat-llm's config generator).
 """
 
 from __future__ import annotations
@@ -46,11 +46,11 @@ def least(reasoning: dict[str, Any]) -> str:
 
 
 def settle(body: dict[str, Any], reasoning: dict[str, Any] | None) -> bool:
-    """Turns an ask for no reasoning into the least reasoning when the model's reasoning
-    cannot be turned off (OpenRouter answers 400 otherwise). True when `body` changed.
+    """Turn a no-reasoning ask into the least reasoning when the model cannot disable it (OpenRouter
+    returns 400 otherwise).
 
-    Covers chat completions (`reasoning_effort`, OpenRouter `reasoning`), the Responses API
-    (`reasoning.effort`) and Anthropic messages (`thinking.type: disabled`)."""
+    True when `body` changed. Covers chat completions (`reasoning_effort`, OpenRouter `reasoning`),
+    the Responses API (`reasoning.effort`) and Anthropic messages (`thinking.type: disabled`)."""
     if not reasoning or not reasoning["mandatory"]:
         return False
     low = least(reasoning)

@@ -1,24 +1,14 @@
 """A catalogue entry can be kept but not offered: `connector_catalog.listed`.
 
-The catalogue keeps what others already do as well as parts, not as things to pick
-(2026-10). Shipped skills, 서식 and themes say so in their own files (`listed: false`);
-connector entries are rows, so they carry the flag here.
+An unlisted entry stays installable by slug and installed copies keep working; administrators see it marked.
 
-- `connector_catalog.listed`: shown in the members' catalogue. An unlisted entry stays
-  installable by slug, and what was installed from it keeps working; administrators see it
-  marked.
-
-Data change, the shipped catalogue rows only (matched by slug; installed connectors, which
-are rows of their own, are not touched):
+Data change, shipped rows only (matched by slug):
 
 - `youtube`: unlisted.
-- `deep-research`: disabled (it sends queries out to the web for minutes at a time); its
-  installed copies keep their row.
-- `time`: its description, while it is still the seeded one, no longer says what the model
-  will not do; it says what the connector does.
+- `deep-research`: disabled (it sends queries to the web for minutes at a time).
+- `time`: seeded description replaced with one saying what the connector does.
 
-Downgrade puts the three rows back as 0062 left them (`deep-research` enabled, the time
-description while it is still this one) and drops the column.
+Downgrade restores the three rows and drops the column.
 
 Revision ID: 0063
 Revises: 0062

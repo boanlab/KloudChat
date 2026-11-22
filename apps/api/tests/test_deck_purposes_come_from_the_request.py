@@ -134,5 +134,5 @@ async def test_each_purposes_flow_is_a_plan_the_deck_planner_keeps(monkeypatch, 
     plan = next(e["plan"] for e in events if e["type"] == "proposal")
     assert len(plan["slides"]) == len(slides)
     assert all(s["layout"] in deck._LAYOUTS for s in plan["slides"])
-    # the planner was told the pattern and its flow
+    # the planner is told the pattern and its flow
     assert f"[패턴: {found.name}]" in json.dumps(seen[0], ensure_ascii=False)

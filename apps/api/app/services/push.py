@@ -62,8 +62,8 @@ _keys: dict[str, str] = {}
 async def vapid_keys(db: AsyncSession | None = None) -> tuple[str, str]:
     """(private, public) base64url. Env pins a pair; else the stored one, made on first need.
 
-    Only the private key is stored; the public half is derived, so two replicas racing on a
-    fresh install cannot end up with halves of different pairs.
+    Only the private key is stored and the public half derived, so replicas racing on a fresh
+    install cannot end up with halves of different pairs.
     """
     if settings.vapid_private_key:
         public = settings.vapid_public_key or wc.public_from_private(settings.vapid_private_key)
@@ -79,8 +79,8 @@ async def vapid_keys(db: AsyncSession | None = None) -> tuple[str, str]:
         row = await db.get(SystemSetting, settings_store.PUSH_VAPID_PRIVATE)
         if row is None:
             row = SystemSetting(key=settings_store.PUSH_VAPID_PRIVATE, updated_by="system")
-        # a row that no longer opens (secret key changed) is replaced; browsers then
-        # re-subscribe under the new key (`lib/push.ts`)
+        # a row that no longer opens (secret key changed) is replaced; browsers re-subscribe
+        # (`lib/push.ts`)
         row.value = settings_store.encrypt_secret(private)
         row.secret = True
         row.updated_at = utcnow()
@@ -344,8 +344,7 @@ async def notify_job(
 ) -> None:
     """Long job finished or failed in a conversation (not a published bot's visitor turn).
 
-    With `artifact_id`, the artifact's own kind words the notice (a report written as HWP is
-    「문서」).
+    With `artifact_id`, the artifact's own kind words the notice (HWP report: 「문서」).
     """
     if session is None or getattr(session, "publication_id", None):
         return
@@ -401,7 +400,7 @@ async def notify_admins(db: AsyncSession, notice: Notice, *, but: str | None = N
 
 
 def notify_file_read(stored: Any, *, ok: bool) -> None:
-    """An uploaded video or audio file was read (or not). Uploads are internal material."""
+    """An uploaded video or audio file was read (or not)."""
     if stored.session_id:
         url = f"/s/{stored.session_id}"
     elif stored.project_id:

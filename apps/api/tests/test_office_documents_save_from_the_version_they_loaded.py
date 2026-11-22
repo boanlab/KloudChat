@@ -1,7 +1,5 @@
-"""HWP, Word and PowerPoint documents share one set of routes (`office_docs.router_for`): the
-editor saves from the version it loaded, a save from an older one is refused, a file that is
-not the format is refused, and the first version stays to load and restore. Each format's own
-behaviour (uploads, the agent's tools) is in its own `*_document_versions_*` file."""
+"""HWP, Word and PowerPoint share one set of routes (`office_docs.router_for`): saves go from the
+loaded version, stale or wrong-format files are refused, the first version stays restorable."""
 
 from __future__ import annotations
 

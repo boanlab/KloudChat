@@ -127,11 +127,12 @@ def normalize_answer_notice(
     content: str, request: str, model: dict[str, Any], actual_model: str | None,
     *, grounded: bool = False, form_fixed: bool = False,
 ) -> str:
-    """No blanket footer; dedupe a model-generated notice only. The notice goes when the
-    answer stands on this turn's search or the person's material (`grounded`), when the
-    person fixed the answer's form, or when the answer already says what it could not check
-    (「…학습 기준 연월을 확인할 수 없어…」 under a cited answer, after
-    「이번 검색에서 현재 금리 수치를 확인하지 못했으므로」)."""
+    """No blanket footer; dedupe a model-generated notice only.
+
+    The notice is dropped when the answer rests on this turn's search or the user's material
+    (`grounded`), when the user fixed the answer's form, or when it already says what it could not
+    check.
+    """
     # the turn's cited sources close the answer: the notice stands above them
     listed = _SOURCE_APPENDIX.search(content or "")
     head, sources = (content[:listed.start()], content[listed.start():]) if listed else (

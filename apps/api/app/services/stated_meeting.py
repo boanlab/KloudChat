@@ -1,22 +1,12 @@
 """What minutes say about the meeting that the memo never says.
 
-A memo of who agreed to what holds no length of the meeting, no transition period and no
-open questions beyond its own: 「회의는 약 20분 만에 … 끝났습니다」, 「기존 양식 사용은 10월
-말까지 병행」, 「카드 결제 후 현금 정산할지 … 논의되지 않았습니다」 read as minutes of things
-that were said.
-A meeting's length or end time stands only when the memo gives that number, a month's part
-(「10월 말」) only when the memo names it, and an open question only when most of its words are
-the memo's. Nor does a memo hold the writer's guesses (「보고될 가능성이 높습니다」), an
-agenda for the next meeting it never sets (「진행 상황을 공유할 것입니다」), notes that a detail
-it had no reason to give is missing (「선정 기준이 회의 자료에 제시되지 않았습니다」), a promise
-to tell more later (「확정되는 대로 안내합니다」), a part of the day (「오전 시간대에」) or a
-mail's 「제목:/본문:」 lines. Something left open (「집행 담당자가 지정되지 않았습니다」) stands
-only when the memo leaves it open or a 미정 cell of the minutes' own tables holds it, and no
-sentence calls every owner and deadline set while a cell says 미정. Nor does a memo give the
-writer's advice (「… 작성하는 것이 좋습니다」), what follows if a task is not done (「미제출 시 …
-지연되어」), an 오전·오후 it never puts before its own 「10시」, or the next meeting's agenda in a
-table or in any sentence that speaks of the next meeting. Nor does it hold the writer's note on
-what it kept out of the minutes (「… 본문에 반영하지 않았습니다」).
+A memo holds no meeting length, transition period or extra open questions, and no writer
+guesses, next-meeting agenda, missing-detail notes, later-promises, parts of the day, mail
+「제목:/본문:」 lines, advice, consequences of an undone task, unprefixed 오전·오후 or notes on what
+was left out. A length or end time stands only when the memo gives it, a month part (「10월 말」)
+only when named, an open question only when most of its words are the memo's, something left open
+only when the memo or a 미정 cell holds it, and no sentence calls every owner and deadline set
+while a cell says 미정.
 """
 
 from __future__ import annotations
@@ -154,10 +144,9 @@ _POINTER = re.compile(r"(?:다음|아래)과\s?같")
 
 
 def unset_agenda(piece: str, material: str, *, listed: bool = False) -> bool:
-    """A sentence or table row of the next-meeting part, or a sentence elsewhere naming the next
-    meeting, about what it will take up (「진행 상황을 공유할 것입니다」; any row of a table
-    headed 안건·검토, `listed`) sharing no word but a date with the memo's own lines on the next
-    meeting."""
+    """A next-meeting sentence or row (or any sentence naming the next meeting; any row of a
+    table headed 안건·검토, `listed`) about what it will take up, sharing no word but a date with
+    the memo's own lines on the next meeting."""
     if stated_policy.MARK in piece or not (listed or _AGENDA.search(piece)) \
             or _POINTER.search(piece):
         return False
@@ -177,16 +166,16 @@ def advised(piece: str, material: str) -> bool:
 
 
 def if_not(piece: str, material: str) -> bool:
-    """What follows a task left undone (「미제출 시 승인 절차가 지연되어」) in minutes of a
-    memo that says no such thing."""
+    """What follows a task left undone (「미제출 시 승인 절차가 지연되어」) that the memo never
+    says."""
     if piece.lstrip().startswith("|") or stated_policy.MARK in piece:
         return False
     return bool(_IF_NOT.search(piece)) and not _IF_NOT.search(material or "")
 
 
 def gap_note(piece: str, material: str) -> bool:
-    """A note that the memo gives no detail it had no reason to give: not an owner, a deadline,
-    a date or a place of the minutes."""
+    """A note that the memo gives no detail it had no reason to give (not an owner, deadline,
+    date or place)."""
     if piece.lstrip().startswith("|") or stated_policy.MARK in piece:
         return False
     return bool(_GAP.search(piece)) and not _FIELD.search(piece) and not _GAP.search(material or "")
@@ -299,8 +288,8 @@ _NEUTRAL = {"한": "정한", "하신": "정한", "된": "정해진"}
 
 
 def consent_cut(piece: str, phrase: str) -> str:
-    """`piece` without the agreement `phrase` (a clause, a cell's part), its sentence ended
-    again when the clause was the last; "" when it cannot be."""
+    """`piece` without the agreement `phrase` (clause or cell part), its sentence re-ended when
+    the clause was last; "" when impossible."""
     if piece.lstrip().startswith("|"):
         cells = []
         for cell in piece.strip().strip("|").split("|"):
@@ -497,10 +486,11 @@ def open_rows(sections: list[dict]) -> list[tuple[str, set[str]]] | None:
 
 
 def unraised(piece: str, material: str, rows: list[tuple[str, set[str]]] | None) -> bool:
-    """Something called left open (「집행 담당자가 회의에서 지정되지 않았습니다」) that no memo
-    stretch leaving things open and no open table row shares a word with: an open question the
-    memo never raised. A part of the head (연도, 장소) the memo lacks is no question, and with no
-    table (`rows` None) nothing is judged."""
+    """Something called left open (「집행 담당자가 회의에서 지정되지 않았습니다」) sharing no word
+    with any
+    memo stretch leaving things open or open table row: an open question the memo never raised.
+    A missing head part (연도, 장소) is no question; with no table (`rows` None) nothing is
+    judged."""
     if rows is None or piece.lstrip().startswith("|") or stated_policy.MARK in piece \
             or _HEAD_FIELD.search(piece):
         return False
@@ -549,8 +539,7 @@ def values(piece: str, material: str) -> list[str]:
 
 
 def _memo_words(piece: str, flat: str) -> tuple[bool, bool]:
-    """(names or Latin words, numbers) of `piece` that are the memo's own: a name, a tool
-    (「구글폼」, 「Slack」) or a figure ties a sentence to what was said."""
+    """(names or Latin words, numbers) of `piece` that are the memo's own."""
     named = any(
         len(w := _PARTICLE.sub("", t)) >= 3 and w.lower() in flat
         for t in re.findall(r"[가-힣]{3,12}", piece)) or any(
@@ -562,8 +551,8 @@ def _memo_words(piece: str, flat: str) -> tuple[bool, bool]:
 
 
 def _said_elsewhere(piece: str, material: str, elsewhere: str) -> bool:
-    """Every name, Latin word and figure of the memo's in `piece` also stands in `elsewhere`
-    (the rest of the document): taking `piece` out loses nothing that was said."""
+    """Every memo name, Latin word and figure in `piece` also stands in `elsewhere`: removing
+    `piece` loses nothing said."""
     flat, rest = _flat(material), _flat(elsewhere)
     if not rest:
         return False
@@ -612,12 +601,10 @@ def _squeezed(text: str) -> str:
 
 def untraced(piece: str, material: str, *, next_part: bool = False,
              rows: list[tuple[str, set[str]]] | None = None, before: str = "") -> list[str]:
-    """Phrases of a sentence or table row stating a meeting length, an end time, a month's
-    part, a part of the day, or (the sentence whole) an open question, a guess, a missing-detail
-    note, a promise, something left open the memo and `rows` (the tables' open rows) never
-    leave open, every deadline called set beside such a row, or a mail line the memo never
-    gives, the writer's advice or what follows an undone task; in the next-meeting part (or a
-    sentence naming the next meeting) also an agenda it never sets."""
+    """Phrases of a sentence or row stating a meeting length, end time, month part or part of
+    the day, or (whole sentence) an open question, guess, missing-detail note, promise, unbacked
+    left-open item (vs memo and `rows`, the tables' open rows), all-set claim beside such a row,
+    mail line, advice or undone-task consequence; in a next-meeting part also an unset agenda."""
     if not piece or not (material or "").strip():
         return []
     if (plain := _squeezed(piece)) != piece:
@@ -668,12 +655,10 @@ def settle(content: str, piece: str, phrases: list[str], *, strong: bool,
            material: str = "", elsewhere: str = "", next_part: bool = False,
            rows: list[tuple[str, set[str]]] | None = None) -> str:
     """`content` with what stands of `piece` after the writer's repair: a strong writer's is
-    marked 「(확인 필요)」 (each value where it stands, a question at its end); anyone else's
-    question goes, and so does a sentence about the meeting's own length, unless it holds a
-    name, tool or figure of the memo (then marked: what was said never goes); a guess, an
-    agenda, a missing-detail note or a mail line also goes when those names stand `elsewhere`
-    in the document (a mail line whoever wrote it, with a code mark left around nothing); a
-    value elsewhere is marked."""
+    marked 「(확인 필요)」 (values in place, a question at its end); else a question goes, and so
+    does a meeting-length sentence unless it holds a memo name, tool or figure (then marked). A
+    guess, agenda, missing-detail note or mail line also goes when its names stand `elsewhere`;
+    a value elsewhere is marked."""
     if piece not in content:
         return content
     # the memo's bare clock back, by code: 「오전 10시」 → 「10시」
@@ -691,9 +676,8 @@ def settle(content: str, piece: str, phrases: list[str], *, strong: bool,
     agreed = [p for p in phrases if _CONSENT.search(p) and (
         p not in whole or (not row and not _consent_only(p)))]
     if agreed and not strong:
-        # an agreement the memo never states, by code from anyone's but a strong writer's: a
-        # decision told with an agreement verb takes a plain one, a clause of agreement alone
-        # goes
+        # agreement the memo never states, from anyone but a strong writer: a decision told with an
+        # agreement verb takes a plain one, an agreement-only clause goes
         plain = piece
         for p in agreed:
             if not row and not _consent_only(p) and not _CONSENT.search(said := _plain(p)):

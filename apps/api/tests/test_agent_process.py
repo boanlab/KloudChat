@@ -94,7 +94,6 @@ def test_the_bases_are_the_offered_agents_with_their_steps_and_bundles():
         assert 1 <= len(base.steps) <= 5
     minutes = bases.get("minutes")
     assert minutes.steps[1] == ("question", "회의 날짜처럼 빠진 정보가 있으면 먼저 물어봅니다")
-    # templates retired (2026-11-15): the format carries its pattern
     assert (minutes.surface, minutes.doc_format, minutes.template) == ("report", "minutes", None)
     # 회의록 = 준비 + 검토 (its 형식 검사 checks owners and deadlines) + 마무리 without export.
     assert [b["bundle"] for b in minutes.bundles] == ["prepare", "review", "finish"]
@@ -417,7 +416,7 @@ async def test_installing_clones_a_preset_and_deleting_drops_it(wired):
         assert theirs.owner_id == other.id and theirs.agent_id == copy.id
         assert theirs.origin_id == out["pipelineId"]
 
-        # A custom order not yet approved stays with its author: the copy runs the base.
+        # a custom order not yet approved stays with its author: the copy runs the base
         custom = await ws.create_agent(_agent(name="검토까지", kinds=["report"],
                                               visibility=Visibility.org), me, db)
         await up.put_process(custom.id, up.ProcessIn(mode="custom", base="minutes", stages=[
@@ -548,7 +547,7 @@ async def test_a_persons_bundle_is_ticked_like_a_shipped_one(wired):
         assert open_one["visibility"] == "org" and open_one["review"] == ""
         listed = await up.list_bundles(other, db)
         assert {b["name"] for b in listed["shared"]} == {"꼼꼼히", "두 형식으로"}
-        # Editing an approved bundle sends it back.
+        # editing an approved bundle sends it back
         edited = await up.update_bundle(files["id"], up.BundleIn(name="두 형식으로", stages=[
             {"kind": "agent", "ref": "@self"},
             {"kind": "export", "settings": {"formats": ["pdf"]}}]), me, db)

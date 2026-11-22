@@ -38,11 +38,7 @@ function mediaOf(type: string): 'image' | 'pdf' | 'audio' | 'video' | null {
   return null
 }
 
-/**
- * A file's preview: pictures, PDFs and media as themselves; HWP, Word and PowerPoint files
- * as their editor draws them (read only), with 「편집」, which opens a copy in that editor
- * beside a new chat (the file itself is never written); every other file as its text.
- */
+/** File preview; HWP, Word and PowerPoint open read only in their editor, with 「편집」 opening a copy beside a new chat. */
 export function FilePreview({ row, onClose, start }: { row: FileRow | null; onClose: () => void; start?: number }) {
   const t = useT()
   const navigate = useNavigate()
@@ -74,7 +70,7 @@ export function FilePreview({ row, onClose, start }: { row: FileRow | null; onCl
         return
       }
       if (row.mime.startsWith('video/') || row.mime.startsWith('audio/')) {
-        // streamed with seeking, with what was read from it: never fetched whole
+        // streamed with seeking, never fetched whole
         if (alive) setShown({ kind: 'player' })
         return
       }

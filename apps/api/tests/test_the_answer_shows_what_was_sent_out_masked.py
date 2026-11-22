@@ -1,6 +1,5 @@
-"""An answer whose turn went to an outside model with personal data masked keeps what was
-sent, as it was sent (`routing.egress`): the masked prompt and material, and a count of
-what was masked. Never an original value; nothing for a strict-local turn; owner only."""
+"""An answer from an outside-model turn keeps what was sent, masked (`routing.egress`); never an
+original value; nothing for strict-local; owner only."""
 from __future__ import annotations
 
 import json

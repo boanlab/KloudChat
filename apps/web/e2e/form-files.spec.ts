@@ -3,12 +3,7 @@ import { at, chatId, composerFixture } from './composer-fixture'
 import { openTool } from './composer-tools'
 import { viewport } from './project'
 
-/**
- * 양식 (form files): a PowerPoint attached as a form is followed (its chip says 양식, the deck
- * becomes a PowerPoint file), a project's saved form shows beside the 형식 chip and can be left
- * off, the project keeps one saved form per kind, and an answer's file says which form it
- * followed. Screenshots of each go to `FORM_FILES_SHOT_DIR` when set.
- */
+/** 양식 (form files): attached and project-saved forms are followed (one per kind) and the answer's file names its form; screenshots go to `FORM_FILES_SHOT_DIR`. */
 
 const projectId = 'p0000000000000000000000000000001'
 const savedId = 'f9'.padEnd(32, '9')

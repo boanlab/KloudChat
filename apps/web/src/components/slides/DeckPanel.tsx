@@ -423,10 +423,7 @@ export function SlideView({
           className: 'outline-none focus:bg-accent-soft/40',
         } as const)
       : {}
-  // One bullet per editable line: Enter splits it into a new bullet after this one (the
-  // caret's tail moves there), Backspace at the start of an empty one removes it. Without
-  // this, Enter put a line break inside the bullet that the saved text then lost, so the
-  // typed line ran into the bullet above it.
+  // One bullet per line: Enter splits into a new bullet, Backspace on an empty one removes it
   const bulletKeys = (i: number) =>
     editable
       ? ({
@@ -444,9 +441,7 @@ export function SlideView({
               range.setEnd(sel.anchorNode!, sel.anchorOffset)
               return range.toString().length
             })()
-            // Focus moves before the next key is handled: the bullets are rendered at once
-            // (`flushSync` around the edit), so a fast typist's next letters land in the new
-            // bullet, not in the one just split. A parent that renders later is waited for.
+            // Retries until the new bullet exists so fast typing lands in it
             const focusBullet = (at: number, toEnd: boolean, tries = 10) => {
               const next = canvas.current?.querySelector<HTMLElement>(`[data-bullet="${at}"]`)
               if (!next) {
@@ -543,7 +538,7 @@ export function SlideView({
           ? 'cards'
           : 'content'
   const pending = !hasContent(slide)
-  // Deck-drawn figure is a band across the body, compact words under it; beside it the figure becomes unreadable.
+  // Deck-drawn figure spans the body as a band; beside text it is unreadable
   const figured = Boolean(slide.diagram?.source)
   const figureAlone = figured && !hasWords(slide)
   // A picture without words takes the whole content area, as in the exporters.
@@ -566,7 +561,7 @@ export function SlideView({
   const twoColumn = slide.layout === 'two-column' && (slide.bullets?.length ?? 0) >= 5
   // Table type size from the row count, so it stays on the slide; `deck_export` scales the same way.
   const dense = { size: tableSize(rows.length), pad: tablePad(rows.length), shares: columnShares(rows) }
-  // Band and timeline rows divide the body height; matches `deck_export` (`min(72, room/n)`, `min(56, room/n)` of 540 units).
+  // Row heights must match `deck_export` (`min(72, room/n)`, `min(56, room/n)` of 540 units)
   const stack = (() => {
     const body = BODY_BOTTOM - BODY_TOP - 4
     const count = Math.max(pairs.length, 1)
@@ -800,7 +795,7 @@ export function SlideView({
             <div
               className={cn(
                 'flex min-w-0 flex-1 flex-col',
-                // Paired shapes cannot overflow (see `stack`), so they centre; bullets can, and centred overflow clips both ends.
+                // Paired shapes cannot overflow so they centre; centring overflowing bullets would clip both ends
                 (PAIRED.includes(slide.layout as (typeof PAIRED)[number]) || pattern) && 'justify-center',
                 figured && 'hidden',
               )}
@@ -1888,7 +1883,7 @@ function PresentMode({
   )
 }
 
-/** Widest 16:9 box that fits the measured element's width and height. */
+/** Largest 16:9 box fitting the measured element. */
 function useFitWidth() {
   const ref = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState<number | null>(null)
@@ -1940,11 +1935,7 @@ function SlideThumbnail({ deck, slide, index, writing }: { deck: DeckArtifact; s
   )
 }
 
-/**
- * What the unsaved-edits question says for the web slides' own reasons: a server step on the
- * saved deck, and a download (made from the saved version). The shared reasons (an agent turn,
- * leaving, a reload) are `DocumentAsk`'s.
- */
+/** Unsaved-edits prompt text for deck-specific reasons (server step, download); shared reasons live in `DocumentAsk`. */
 const DECK_ASK: Record<'op' | 'export', { description: string; discard: string; save: string }> = {
   op: {
     description: '이 작업은 저장된 덱을 고칩니다. 지금 편집을 저장할까요, 버릴까요?',
@@ -1995,11 +1986,8 @@ function useWidth<T extends HTMLElement>() {
 }
 
 /**
- * The web slides beside the chat, worked the way the PowerPoint editor is (`PptxPanel`): the
- * same header as every document panel (title, version, 저장 안 됨, 저장, 내려받기, 공유, 더보기),
- * then the slides chrome the two share (`components/pptx/chrome`): one toolbar row, numbered
- * thumbnails with the slide menu and drag to reorder, the slide, its speaker notes. Hand edits
- * stay in the browser until 저장 (`useDeckDocument`); on a phone it reads only.
+ * Web slides panel beside the chat, sharing the document header and `components/pptx/chrome`
+ * with `PptxPanel`. Hand edits stay in the browser until 저장 (`useDeckDocument`); read-only on a phone.
  */
 export function DeckPanel({
   deck,
@@ -2284,7 +2272,6 @@ export function DeckPanel({
       if (!src.startsWith('data:image/')) return
       editSlide((current) => ({
         ...current,
-        // A picture a person chose replaces the figure the deck drew for itself.
         diagram: undefined,
         image: {
           src,
@@ -2856,7 +2843,7 @@ export function DeckPanel({
             if ((event.target as HTMLElement).isContentEditable) doc.markTyping(true)
           }}
           onBlur={(event) => {
-            // a box on the slide was left: its onBlur has committed the text
+            // Leaving a slide box: its onBlur already committed the text
             if ((event.target as HTMLElement).isContentEditable) doc.markTyping(false)
           }}
         >

@@ -2,7 +2,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#   # <2: 2.0 removed `mcp.server.fastmcp`.
+#   # <2: 2.0 drops `mcp.server.fastmcp`.
 #   "mcp>=1.2.0,<2",
 #   "httpx>=0.27.0",
 #   "youtube-transcript-api>=0.6.2",
@@ -11,17 +11,13 @@
 # ///
 """YouTube transcript MCP server: captions first, Whisper fallback.
 
-One tool, `transcript(url, language=None)`: official captions via
-youtube-transcript-api; otherwise audio via yt-dlp, transcribed at WHISPER_URL.
-The transcript comes under a header naming the video (title, channel, length,
-upload date, link) from yt-dlp, or YouTube's oEmbed when yt-dlp fails.
+One tool, `transcript(url, language=None)`: captions via youtube-transcript-api, else audio via
+yt-dlp transcribed at WHISPER_URL, under a header naming the video (from yt-dlp, or oEmbed when it fails).
 
 Environment:
-  WHISPER_URL  OpenAI-compatible `/v1/audio/transcriptions` base. Filled in by
-               the connector runtime from the admin screen's speech-to-text
-               address. Unset: only videos with captions work.
-  TOOLS_GATEWAY_KEY  Sent as `X-Tools-Key` to WHISPER_URL. Set by the connector
-               runtime only when WHISPER_URL is a configured tool address.
+  WHISPER_URL  OpenAI-compatible `/v1/audio/transcriptions` base, set by the connector runtime.
+               Unset: only videos with captions work.
+  TOOLS_GATEWAY_KEY  Sent as `X-Tools-Key` to WHISPER_URL; set only when WHISPER_URL is a configured tool address.
 """
 from __future__ import annotations
 
@@ -224,17 +220,14 @@ async def transcript(url: str, language: str | None = None) -> str:
     """Returns a YouTube video's title, channel, length, upload date and link, then its full
     transcript text.
 
-    This docstring is the tool description the model reads; the Korean trigger
-    phrases are functional.
+    This docstring is the tool description the model reads; the Korean trigger phrases are functional.
 
     한국어 트리거: "유튜브 자막", "유튜브 스크립트", "영상 내용 알려줘",
     "유튜브 요약해줘"(먼저 transcript 수신 → 그 본문을 모델이 요약), "영상 텍스트",
     "YouTube 내용", "이 영상 무슨 내용", URL/링크가 youtube.com / youtu.be 인 경우.
 
-    Captions are returned as they are when they exist; otherwise the audio is
-    downloaded and transcribed with Whisper on a local GPU. Without Whisper,
-    only videos that have captions work. Short videos take seconds, long ones
-    minutes.
+    Captions are returned as they are when they exist; otherwise the audio is transcribed with
+    Whisper (without it, only captioned videos work). Short videos take seconds, long ones minutes.
 
     Args:
         url: A YouTube video URL, or an 11-character video ID.

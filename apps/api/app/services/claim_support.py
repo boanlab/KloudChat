@@ -1,10 +1,9 @@
-"""Whether a cited sentence is backed by the source it cites: its numbers are written there
-and most of its content words are. Lexical, so it errs towards keeping a paraphrase; what it
-catches is a citation pinned to a source that does not talk about the claim at all, or a
-claim whose figures the source does not hold.
+"""Whether a cited sentence is backed by its source: its numbers and most content words appear
+there.
 
-Korean words carry particles and endings (「시계로는」), so a word counts as found when a
-prefix of it, at most two letters short, is in the source; Latin words are matched whole.
+Lexical, so it errs towards keeping paraphrases. Korean words carry particles and endings
+(「시계로는」), so a word counts as found when a prefix at most two letters short is in the
+source; Latin words match whole.
 """
 
 from __future__ import annotations

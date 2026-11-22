@@ -1,8 +1,8 @@
 """Chinese words slipped into a Korean answer (「공휴일顺延 규정」, 「增值시키는지」).
 
-A Han run is a slip when it sits outside a gloss (「협의(協議)」), code, a quote of the
-person's own words, and is not something the person wrote. Its sentence goes back to the
-writer once to be said in Korean; a sentence still holding one gets the Hangul reading.
+A Han run is a slip when outside a gloss (「협의(協議)」), code or a quote of the person's own
+words, and not written by the person. Its sentence goes back to the writer once; one still
+holding it gets the Hangul reading.
 """
 
 from __future__ import annotations

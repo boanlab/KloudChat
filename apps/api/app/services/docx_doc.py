@@ -1,5 +1,5 @@
-"""Word document artifacts: one `.docx` blob per version, saved by the editor or by the agent
-(the versions themselves: `office_doc`). A legacy `.doc` is not opened."""
+"""Word document artifacts: one `.docx` blob per version (versions: `office_doc`); legacy `.doc`
+is not opened."""
 
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ def describe(data: bytes, fmt: str) -> dict[str, Any]:
         text = ""
     out = {"format": fmt, "size": len(data), "text": text}
     if (form := form_marks.read(data)) is not None:
-        # the form this version was written on (`docx_form`), for the 「양식을 따름」 line
+        # form followed, for the 「양식을 따름」 line
         out["form"] = form
     return out
 

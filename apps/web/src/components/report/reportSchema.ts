@@ -121,11 +121,7 @@ const RawInline = Node.create({
 
 const sectionKey = new PluginKey('sectionIds')
 
-/**
- * Section ids on `##` headings. Every `##` has one, and only one heading has a given
- * id: a split or pasted heading gets a new id, a `###` keeps one only as the level-2
- * section it was read as. Stored on the node so a moved or edited section keeps it.
- */
+/** Section ids on `##` headings: unique per heading, new on split or paste, stored on the node so moves and edits keep them. */
 const SectionIds = Extension.create({
   name: 'sectionIds',
   addGlobalAttributes: () => [{
@@ -267,11 +263,7 @@ function syncSelection(view: EditorView) {
   ;(view as unknown as { domObserver?: { flush?: () => void } }).domObserver?.flush?.()
 }
 
-/**
- * Typing over a selection that spans blocks (a section boundary, say) is done here,
- * not by the browser: a native edit merges the blocks with inline styles (the
- * heading's weight comes back as bold). An IME composition clears the range first.
- */
+/** Typing over a cross-block selection is handled here: a native edit merges blocks with inline styles. An IME composition clears the range first. */
 const CrossBlockInput = Extension.create({
   name: 'crossBlockInput',
   // Before the keymaps: they act on the selection this reads.

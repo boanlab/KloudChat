@@ -136,14 +136,12 @@ async def test_a_long_turn_keeps_its_claim_and_a_dead_one_lets_it_go(claims):
     local, session, clock = claims
     assert await _claim(local, session)
     keeper = asyncio.create_task(sessions._keep_claim(session.id, sessions._CLAIMS[session.id]))
-    # Past the TTL with the owner alive: renewed, so still held.
     clock.skip_past_ttl()
     await _renewed(local, session, clock)
     assert not await _claim(local, session)
     keeper.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await keeper
-    # The owner died (no renewal): after the TTL the claim is free.
     clock.skip_past_ttl()
     assert await _claim(local, session)
 

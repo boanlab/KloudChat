@@ -1,9 +1,8 @@
-"""A long job's notice in Slack, for people who turned it on (설정 › 연결 › Slack).
+"""A long job's notice in Slack for people who enabled it (설정 › 연결 › Slack).
 
-The same notice the web push sends (`push.Notice`: a title, at most the conversation's title,
-a link back), never what was written; for internal material the title is left out as the
-push notice leaves it out. Sent to the person's own direct messages with the app's bot where
-the app is installed, else as themselves to their chosen channel."""
+Same content as the web push (`push.Notice`: title, link; never the written text; title omitted
+for internal material). Sent as a DM from the app's bot, else as the person to their chosen
+channel."""
 
 from __future__ import annotations
 

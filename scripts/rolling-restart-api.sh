@@ -4,17 +4,12 @@
 #   docker compose pull api            # or build: the new image under the same tag
 #   bash scripts/rolling-restart-api.sh
 #
-# For each running replica: start one new replica beside it (the current image), wait until
-# it is healthy, then stop the old one with the full grace period — it stops accepting,
-# lets its open answers finish for up to 120 s, stores the rest as interrupted and frees
-# their conversations (docs/architecture.md, "Restarts and turn claims"). nginx in `web`
-# re-resolves `api` every 10 s and moves on to a live replica when one refuses.
+# Per replica: start a new one beside it, wait until healthy, then stop the old one with the full
+# grace period (open answers finish for up to 120 s, the rest are stored as interrupted). nginx in
+# `web` re-resolves `api` every 10 s.
 #
-# Migrations run first (`migrate`), while the old replicas still serve: use this only when
-# the release's migrations are additive. Otherwise stop everything and `docker compose up
-# -d` (docs/deployment.md, "Upgrades"). SKIP_MIGRATE=1 skips the step.
-#
-# Run from anywhere; it works on the compose project at the repository root.
+# Migrations run first while old replicas still serve, so use this only for additive migrations;
+# otherwise stop everything and `docker compose up -d`. SKIP_MIGRATE=1 skips the step.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 

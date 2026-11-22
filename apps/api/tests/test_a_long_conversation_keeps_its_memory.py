@@ -693,7 +693,7 @@ async def _one_turn(monkeypatch, model: dict, rows: list[Message], *, guard: boo
     [
         # self-hosted: its own stated window
         (_model("local/qwen", window=126_976, boundary="self_hosted"), 126_976),
-        # external, window not in the metadata: the default window, no longer everything
+        # external, window not in the metadata: the default window
         (_model("vendor/flash", window=None, boundary="external"), None),
     ],
 )
@@ -715,7 +715,7 @@ async def test_a_long_conversation_is_cut_summarised_and_keeps_its_rules_per_mod
     assert any("항상 표로 답해 줘" in m["content"] for m in messages[-3:-1])
     assert session.summary["pinned"][0] == {"label": "이름", "value": "데이터플랫폼팀 한서윤"}
 
-    # the next turn, two exchanges later, keeps the cut where it was: no new summary
+    # the next turn keeps the cut where it was: no new summary
     more = rows + _history(1)[2:]
     _captured, summarised_again, _ = await _one_turn(monkeypatch, model, more, session=session)
     assert summarised_again == []

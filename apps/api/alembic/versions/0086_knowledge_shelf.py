@@ -1,14 +1,12 @@
 """지식 서가: source selection, source guides, notes and studio outputs.
 
 - `source_selections`: per conversation, the project sources it leaves out (none = all on).
-- `source_guides`: a source's (or the project's) summary, key topics and suggested questions,
-  made by a strict-local model on first look.
-- `project_notes`: the project's 메모함 (hand-written, or pinned from an answer or a selection).
-- `studio_items`: studio outputs (study guide, FAQ, briefing, timeline, glossary, mind map,
-  quiz, flashcards) with the sources they were grounded in.
+- `source_guides`: a source's (or project's) summary, key topics and suggested questions.
+- `project_notes`: the project's 메모함.
+- `studio_items`: studio outputs (study guide, FAQ, briefing, timeline, glossary, mind map, quiz,
+  flashcards) with their source grounding.
 
-New tables only; no existing row changes and no enum type is created (kinds and states are
-short strings). Downgrade drops the four tables.
+New tables only; kinds and states are short strings, no enum. Downgrade drops the four tables.
 
 Revision ID: 0086
 Revises: 0085

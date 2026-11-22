@@ -1,8 +1,5 @@
-"""Minutes keep the memo through card answers and repairs: the 「덧붙인 조건」 block the card
-adds is not the meeting, a repair is asked for the sentence alone, a note on what the writer
-left out goes though another check marked its sentence, an agreement the
-memo never states is cut or marked, a deadline the memo gives as 「다음 회의에서」 is not called
-missing, and a row written twice goes. Shapes from the round 16 re-verify (tc, tc2)."""
+"""Minutes keep the memo through card answers and repairs: card conditions are not the meeting,
+unstated agreements are cut, duplicate rows go."""
 
 from __future__ import annotations
 

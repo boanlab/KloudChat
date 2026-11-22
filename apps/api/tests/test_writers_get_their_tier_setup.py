@@ -417,7 +417,7 @@ def test_a_bare_double_bracket_citation_is_linked() -> None:
 
 @pytest.mark.asyncio
 async def test_the_search_step_records_its_query(monkeypatch) -> None:
-    """0-result searches recorded with what was searched."""
+    """A search with no results is recorded with what was searched."""
     seen: list = []
     _scripted(monkeypatch, [_call(1), {"text": "모르겠습니다."}], seen)
     events = await _turn(SMALL, "x를 찾아 줘", _search([_nothing()]))

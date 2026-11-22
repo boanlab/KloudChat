@@ -605,7 +605,7 @@ export function Composer({
   // A hand-off addressed to another composer (the one a navigation is opening) waits for it.
   const draft = useStore((s) => (s.draftTo === null || s.draftTo === draftKey ? s.draft : ''))
   const setDraft = useStore((s) => s.setDraft)
-  // Gallery sentence appended, never overwriting, and selected for one-keystroke removal; selection applied after commit.
+  // Appended gallery sentence is selected for one-keystroke removal; applied after commit.
   const pendingSelection = useRef<[number, number] | null>(null)
   useEffect(() => {
     // Taken once: StrictMode replays a mount's effects with the render's (already consumed) value.
@@ -1370,7 +1370,7 @@ export function Composer({
       }
       setReusableSessionId((current) => current ?? attemptedSessionId)
       if (editScope) throw error
-      // Gateway timeout is not a refusal: the turn may be running. Draft not handed back (a resend would ask twice); reload shows it.
+      // Gateway timeout is not a refusal (the turn may be running): draft kept, no resend.
       if (error instanceof ApiError && [502, 503, 504].includes(error.status) && !refusedBeforeWrite(error) && attemptedSessionId) {
         setComposerRestore({
           sessionId: attemptedSessionId,
@@ -1739,10 +1739,8 @@ export function Composer({
       }).finally(startSettled)
       return
     }
-    // Document request in chat starts a report/slides conversation; an agent chat moves only to a surface it names; a pipeline conversation answers here.
-    // A chat with an HWP, Word or PowerPoint document open, or one asked for, writes in the
-    // editor beside it; a long report asked for as an HWP or Word file goes to the report
-    // surface, which writes it as that file (`officeReportRequest`).
+    // Document requests in chat start a report/slides conversation; an open or requested office document is written in its editor;
+    // a long report asked as an HWP/Word file goes to the report surface (`officeReportRequest`).
     const documentOpen = useStore.getState().artifacts.some((a) =>
       (a.kind === 'hwp' || a.kind === 'docx' || a.kind === 'pptx') && !!sessionId &&
       a.sessionId === sessionId)
@@ -2339,9 +2337,7 @@ export function Composer({
       )}
     </button>
   )
-  // Nothing sent yet and the conversation starts strict-local on its own (the project's policy,
-  // the saved default, the admin's start): the line under the box says why, so a strict start is
-  // never a silent leftover. A strict-local entry picked in this conversation needs no reason.
+  // Why a strict-local start is strict (project policy, saved default, admin start); not shown for a pick made here.
   const unsentStart = !session ||
     (session.messages.length === 0 && !session.messageCount && session.routingMode === 'super_strict')
   const startReason = fresh && unsentStart

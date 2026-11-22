@@ -1,11 +1,5 @@
-"""Speaker notes hold what the presenter says: never the prompt's own lines, the request's ask
-pasted back, talk about the output, a JSON list run into the note, or a stray closing quote.
-
-Round 3 (11-21) base decks: 「(발표자 노트) 두 문장만 출력합니다.」 (r3d05 SA); a note that
-was the request itself,
-「공공기관 설계 공모 … 만들어 줘. 덧붙인 조건: 있는 자료로 진행해 주세요.」 (r3d01 SA);
-「Do not repeat the screen's sentences; choose among why it matters …」 (r3d10 SL); 「… 발굴
-방법", "3. 중간 점검 및 멘토링", … ], "notes": "…」 (r3d08 SL); 「… 잡아줍니다."」 (r3d08 SA)."""
+"""Speaker notes hold what the presenter says: never prompt lines, the pasted request, output
+talk, a JSON list, or a stray closing quote."""
 
 from __future__ import annotations
 

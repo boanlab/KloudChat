@@ -1,10 +1,6 @@
-"""Retired image, audio and video 서식: nothing chooses them any more.
+"""Retired image, audio and video 서식: clears the choices that name them.
 
-No agent, starting point, project default or conversation names one after this. None of
-them ever shaped a stored document: an image 서식 only shaped the prompt of the turn that
-picked it, an audio or video one only set the composer's chips. So unlike 0055 a
-conversation's choice is cleared too; pictures, clips and voices already made keep nothing
-of the 서식 and open as before.
+Unlike 0055, a conversation's choice is cleared too: these 서식 never shaped a stored document.
 
 Revision ID: 0058
 Revises: 0057

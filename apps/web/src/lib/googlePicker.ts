@@ -1,8 +1,4 @@
-/**
- * Google Picker (「드라이브에서 가져오기」): the person picks files in Google's own dialog; with
- * the `drive.file` scope only picked files become ones the app may open. The loader script
- * comes from apis.google.com and the dialog is a docs.google.com frame (security-headers.conf).
- */
+/** Google Picker (「드라이브에서 가져오기」): with `drive.file` scope only picked files become openable. Loader from apis.google.com, dialog frame from docs.google.com (security-headers.conf). */
 import { ApiError, errorCode, integrationsApi, type FileRow } from '@/lib/api'
 import { currentLang } from '@/lib/i18n'
 

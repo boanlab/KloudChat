@@ -1,17 +1,12 @@
 """Health red flags in the person's own turns: the answer opens with the emergency action.
 
-A person who describes stroke signs, chest pain with breathlessness, a severe allergic
-reaction, suicidal intent, a swallowed poison or overdose, or a fever in a young infant gets
-「지금 바로 119…」 (109 for a suicide crisis) as the answer's first line — before any
-diagnosis, list or clinic advice, and even when they restricted the form (「진단만, 설명
-쓰지 마」). `detect` reads the turn; `instruction` tells the writer; `lead` prepends one
-line when the written answer's opening lacks the action. Code only: strict-local turns
-and agents keep it, and no model call is made.
+Stroke signs, chest pain with breathlessness, severe allergic reaction, suicidal intent,
+poison/overdose or fever in a young infant get 「지금 바로 119…」 (109 for suicide crisis) as the
+first line, even when the form was restricted. `detect` reads the turn, `instruction` tells the
+writer, `lead` prepends the line when missing. Code only, no model call.
 
-The table is small on purpose: each kind needs a combination of signs, or one sign that is
-an emergency by itself. A general question about the signs (「뇌졸중 전조 증상이 뭐야?」), a
-piece about them to read or write (an article, a story, a translation) and a turn that
-says the emergency care already happened are left alone.
+Each kind needs a combination of signs or a sign that is an emergency alone; general questions,
+pieces to read or write about the signs, and turns saying care already happened are left alone.
 """
 
 from __future__ import annotations
@@ -286,10 +281,9 @@ def _about(text: str) -> bool:
 
 
 def detect(request: str, earlier: Sequence[str] = ()) -> Flag | None:
-    """The red flag the person's latest turn raises, with its earlier turns, or None.
+    """Red flag raised by the latest turn (earlier turns may complete the combination), or None.
 
-    The latest turn must carry a sign of its own; earlier turns may complete the
-    combination. A conversation opened as a story or a translation stays out.
+    A conversation opened as a story or a translation stays out.
     """
     latest = _clean(request)
     if not latest.strip() or _about(latest) or _CARED.search(latest):
@@ -347,9 +341,8 @@ _ACTIONS = _p(
 _CRISIS = _p(
     r"(?<!\d)(?:109|1393|988)(?!\d)|119|\b(?:crisis\s+line|hotline)\b"
 )
-#: How much of the answer counts as its opening: what a reader sees before the details —
-#: the first two paragraphs past bare headings, at most this many characters. An action the
-#: writer put there (「치료 계획: 지금 바로 119에…」 under a short diagnosis) is not repeated.
+#: Characters of the answer that count as its opening (first two paragraphs past bare headings);
+#: an action already there is not repeated.
 _OPENING = 600
 _OPENING_BLOCKS = 2
 _BARE_LINE = re.compile(r"\s*(?:#{1,6}\s+.*|\*\*[^*\n]{1,40}\*\*:?|[^\n]{1,20}:)\s*")

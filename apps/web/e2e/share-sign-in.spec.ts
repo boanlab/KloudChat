@@ -1,9 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-/**
- * A share link made for 「계정이 있는 사람」, opened signed out: the page offers 로그인 in place
- * and, once signed in, opens the shared conversation on the same address.
- */
+/** A share link for 「계정이 있는 사람」 opened signed out offers 로그인, then opens the conversation. */
 
 const at = '2026-10-09T07:00:00.000Z'
 const user = {

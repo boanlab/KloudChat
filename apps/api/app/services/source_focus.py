@@ -1,9 +1,8 @@
 """The project file a request names as what it reads: 「11월 10일 회의록」, 「회의록_1110.docx」.
 
-A project hands the writer every file at once; the head of a minutes document, its meeting day
-and the days its action items count from belong to the one meeting the request names, never to
-the first dated meeting line among twelve files. Pure functions over the material text, whose
-files arrive as 「## <file name>」 parts (`workspace_context._knowledge_block`).
+A minutes head, meeting day and action-item base days belong to the one meeting the request
+names, not the first dated line among many files. Pure functions over material text whose files
+arrive as 「## <file name>」 parts (`workspace_context._knowledge_block`).
 """
 
 from __future__ import annotations

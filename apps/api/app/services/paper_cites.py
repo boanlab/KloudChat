@@ -1,12 +1,9 @@
 """Project papers a request asks to cite, and which of them a document never cites.
 
-「프로젝트 논문 중 해당되는 것들을 인용하고 참고문헌도 달아 줘」 asks for every project paper that
-belongs to the topic, not for the two the writer happened to read first. The planner and the
-writer are told to give each relevant paper its place (`rule`); this module is the code check
-after them: which papers the request names, the document discusses or the topic evidently
-reaches (`required`), and which of those no `[n]` cites (`uncited`). Relevance is read from the
-papers' own text (titles, abstracts) against the request and the document, never from a list
-of subjects.
+Code check after the planner and writer are told to cite each relevant paper (`rule`): which
+papers the request names, the document discusses or the topic reaches (`required`), and which
+of those no `[n]` cites (`uncited`). Relevance is read from the papers' own text (titles,
+abstracts), never from a subject list.
 """
 
 from __future__ import annotations

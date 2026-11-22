@@ -1,7 +1,5 @@
-"""Word edit ops change text and keep each paragraph's style and numbering, each run's
-character format and each cell's properties; text Word split across runs is still found; a
-bad op changes nothing. Two real documents: a report from the export path, and a 공문 typed
-in Word's way, with merged cells, a header, a footer and page-number fields."""
+"""Word edit ops change text and keep paragraph style, run format and cell properties; text split
+across runs is found; a bad op changes nothing."""
 
 from __future__ import annotations
 

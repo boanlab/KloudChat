@@ -137,7 +137,7 @@ def part(
 
 
 def mix(colour, toward, amount: float):
-    """colour moved amount toward toward."""
+    """`colour` moved `amount` (0-1) of the way toward `toward`."""
     from pptx.dml.color import RGBColor
 
     return RGBColor(*(round(a + (b - a) * amount) for a, b in zip(colour, toward, strict=True)))

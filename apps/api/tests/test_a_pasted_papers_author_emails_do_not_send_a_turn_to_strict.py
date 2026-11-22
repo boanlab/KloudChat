@@ -1,6 +1,5 @@
-"""The contact emails in a pasted paper's front matter are the paper's, not the person's data:
-they no longer move a Super Agent document turn to the strict column (the 2026-11-17 benchmark
-sent the paper tasks there on `personal_data`). Genuine personal data still does."""
+"""Contact emails in a pasted paper's front matter do not move a Super Agent document turn to
+strict; genuine personal data still does."""
 
 from __future__ import annotations
 

@@ -1,8 +1,7 @@
 """Form files (양식) saved as a project's or agent's 기본 양식 파일, and the 디자인 지침 reader.
 
-A saved form is a `role=form` copy of the person's file: kept out of the file box and never read
-as material, so a project's knowledge file can be its form without its sample text becoming a
-source. Slots are set with the project's or agent's `formFiles`.
+A saved form is a `role=form` copy of the file, kept out of the file box and never read as source
+material. Slots are set with the project's or agent's `formFiles`.
 """
 
 from __future__ import annotations

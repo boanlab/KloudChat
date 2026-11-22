@@ -166,8 +166,7 @@ def parse(source: str) -> Graph | None:
         if match.group("cls") == "hot":
             hot.add(nid)
         if stack and nid not in graph.groups:
-            # a node is in the group that defines it: a later group naming it in a link does
-            # not take it, unless it was only named there before
+            # a node belongs to the group that defines it, not to one that only links it later
             group, bare = stack[-1], not label
             held = owner.get(nid)
             if held is None or (held[0] != group and held[1] and not bare):

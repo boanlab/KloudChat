@@ -12,13 +12,7 @@ import { useT } from '@/lib/useT'
 import type { PptxArtifact } from '@/types'
 import { SlidesEditor, type SlidesApi } from './SlidesEditor'
 
-/**
- * A PowerPoint deck beside the chat: pptx-react-viewer's slide canvas under this app's own
- * Google-Slides-like chrome (`SlidesEditor`); versions, saves and the agent's turns as every
- * office document has them (`OfficePanel`). Its own chunk: the editor loads only when a deck
- * opens. Ctrl+S is the header's 저장. On a phone it is read only (unless edits made at a wider
- * width are still unsaved: they stay editable until saved or dropped).
- */
+/** A PowerPoint deck beside the chat in `SlidesEditor`; read only on a phone unless unsaved edits exist. Own chunk. */
 export function PptxPanel({
   doc,
   onClose,
@@ -68,7 +62,7 @@ export function PptxPanel({
         await done
         if (focused instanceof HTMLElement && focused.isConnected &&
           !host.current?.contains(focused)) {
-          // the agent's version came in while the person was in the chat: keep their focus there
+          // keep the focus in the chat when the agent's version arrives
           focused.focus()
         }
         return false

@@ -14,10 +14,7 @@ const FAILED: Record<string, string> = {
   rate_limited: '요청이 많아 거절되었습니다. 잠시 뒤 다시 시도하세요.',
 }
 
-/**
- * A write the agent proposed (`services/integrations/actions`): nothing reaches Google or
- * Slack until the person presses the button here. A reload shows it again from the stored step.
- */
+/** Agent-proposed write; nothing reaches Google or Slack until the button is pressed. */
 export function ActionCard({ actionId }: { actionId: string }) {
   const t = useT()
   const [action, setAction] = useState<IntegrationAction | null>(null)

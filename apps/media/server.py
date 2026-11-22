@@ -1,8 +1,7 @@
 """The media worker: stock ffmpeg/ffprobe behind a small HTTP API, for video understanding.
 
-ffmpeg runs only as an unmodified separate program in this container (its own licence, see
-NOTICE); nothing here links it. The API process asks for one step at a time and does the rest
-(transcription, reading frames, the time-coded document) itself:
+ffmpeg runs only as an unmodified separate program (its own licence, see NOTICE); nothing here links
+it. The API asks for one step at a time:
 
     GET  /health
     POST /probe   {key}                                  -> {duration, width, height, ...}
@@ -11,9 +10,8 @@ NOTICE); nothing here links it. The API process asks for one step at a time and 
                                                           -> {frames: [{t, score}], seconds}
     POST /frame   {key, t, width}                        -> image/jpeg
 
-`key` is a storage key under MEDIA_ROOT (the API's file storage, mounted read-only). The
-container joins only an internal network, holds no secrets and writes nothing to disk.
-Standard library only.
+`key` is a storage key under MEDIA_ROOT (the API's file storage, read-only). Internal network only,
+no secrets, nothing written to disk. Standard library only.
 """
 
 from __future__ import annotations
@@ -142,10 +140,9 @@ def probe(path: str) -> dict:
 
 
 def audio(path: str, body: dict) -> bytes:
-    """A 16 kHz mono FLAC piece: what Whisper reads, small enough for its upload limit.
+    """A 16 kHz mono FLAC piece, small enough for Whisper's upload limit.
 
-    Written to a file, not a pipe: a piped FLAC states no length in its header, and Whisper
-    (vLLM) then reads it as endless and refuses it."""
+    Written to a file, not a pipe: a piped FLAC states no length in its header and Whisper (vLLM) refuses it."""
     start = _number(body, "start", 0, 0, MAX_SECONDS)
     length = _number(body, "duration", 600, 1, MAX_PIECE)
     with tempfile.TemporaryDirectory(dir=TMP) as folder:
@@ -158,10 +155,8 @@ def audio(path: str, body: dict) -> bytes:
             return handle.read()
 
 
-#: changes are measured on edge maps (ffmpeg's edgedetect at 320×180, averaged down to
-#: 80×45): text and slide shapes are crisp edges, a speaker moving is mostly soft ones.
-#: Measured on three lectures and a talking head: a slide change moves ≥ 5 % of the cells
-#: past PIXEL_STEP, a speaker's motion over five seconds 2–3 % (p50–p90).
+#: Changes are measured on edge maps (edgedetect at 320x180, averaged to 80x45): slide text and shapes
+#: are crisp edges, a moving speaker mostly soft ones.
 SMALL_W, SMALL_H = 80, 45
 SMALL = SMALL_W * SMALL_H
 EDGES = (f"scale=320:180,format=gray,edgedetect=low=0.08:high=0.25,"
@@ -216,11 +211,10 @@ def _small_segment(path: str, start: float, length: float, fps: float) -> list[b
 
 
 def sample(path: str, info: dict, fps: float) -> tuple[list[tuple[float, bytes]], str]:
-    """Small grey frames over the whole video and how they were read.
+    """Small grey frames over the whole video, and how they were read.
 
-    Tall pictures with frequent keyframes (a 1080p recording) are read at their keyframes —
-    one seek each, side by side, about a fifth of a full decode; otherwise the video is
-    decoded at `fps` in SCAN_PARALLEL segments side by side."""
+    Tall pictures with frequent keyframes are read at keyframes (one seek each, much cheaper than a
+    full decode); otherwise the video is decoded at `fps` in SCAN_PARALLEL segments."""
     duration = float(info["duration"])
     pool = ThreadPoolExecutor(max_workers=SCAN_PARALLEL)
     try:
@@ -252,11 +246,9 @@ def sample(path: str, info: dict, fps: float) -> tuple[list[tuple[float, bytes]]
 def scenes(path: str, body: dict) -> dict:
     """Times where the picture changes.
 
-    A frame is a change when more than `threshold` of its pixels differ from the last kept
-    frame; the frame kept for it is the first one after the change settles (a transition, a
-    slide building up). A stretch longer than `max_gap` without a change gets a frame anyway
-    (a talking head, a slow scroll); past `max_frames` the kept times are thinned, changes
-    first. The first frame is kept."""
+    A change is more than `threshold` of pixels differing from the last kept frame; the frame kept is
+    the first after it settles. A stretch over `max_gap` without a change gets a frame anyway; past
+    `max_frames` times are thinned, changes first. The first frame is kept."""
     info = probe(path)
     duration = float(info["duration"])
     if not info["hasVideo"]:

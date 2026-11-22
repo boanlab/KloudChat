@@ -57,11 +57,7 @@ function count(node: MindNode): number {
 /** Labels a mind map picture holds at reading size on a page; past this its deepest level is left out. */
 const PICTURE_NODES = 40
 
-/**
- * The source to draw as a picture (the export's figure, the page view): a large mind map
- * keeps two levels below its root, as a hundred labels in one fitted picture are too small to
- * read; the web view shows the whole tree. Any other source is returned unchanged.
- */
+/** Source to draw as a picture: a large mind map is cut to two levels below the root; others are unchanged. */
 export function pictureSource(source: string): string {
   const root = parseMindmap(source)
   if (!root || count(root) <= PICTURE_NODES) return source

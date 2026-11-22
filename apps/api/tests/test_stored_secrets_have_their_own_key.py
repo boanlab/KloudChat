@@ -78,7 +78,6 @@ def test_resealing_moves_only_what_is_not_yet_under_the_own_key(keys):
     assert moved is not None and own.decrypt(moved.encode()) == b"sk-old"
     assert settings_store.resealed(own.encrypt(b"sk-new").decode()) is None
     assert settings_store.resealed("") is None
-    # Clear text is sealed only where clear text was ever legitimate (connector rows).
     assert settings_store.resealed("ghp_plain") is None
     plain = settings_store.resealed("ghp_plain", plain=True)
     assert plain is not None and own.decrypt(plain.encode()) == b"ghp_plain"

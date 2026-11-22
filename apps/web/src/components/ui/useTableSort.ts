@@ -30,11 +30,7 @@ function writeStored(id: string, value: string) {
   }
 }
 
-/**
- * One table's sort. `param` keeps it in the address (a reload, 뒤로 and a shared link keep
- * it); otherwise it is remembered per table in this browser. A heading cycles first
- * direction → the other → unsorted (the table's own order, `initial` if given).
- */
+/** One table's sort; `param` keeps it in the address, else it is remembered per table. Headings cycle first direction, other, unsorted (`initial` or table order). */
 export function useTableSort(
   id: string,
   {

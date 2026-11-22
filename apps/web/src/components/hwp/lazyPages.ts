@@ -1,8 +1,6 @@
 /**
- * Every page of an HWP document, drawn as the reader reaches it: a sheet per page is laid out
- * at once (so the scroll bar is the document's length), and a page's SVG is asked of the editor
- * only when its sheet comes near the view, one page at a time, so a 300-page file opens as fast
- * as a 3-page one and never stops at a page count.
+ * HWP pages drawn lazily: every sheet is laid out up front (scroll length = document length),
+ * but a page's SVG is requested from the editor only when its sheet nears the view.
  */
 
 /** How far ahead of the view a page is drawn. */
@@ -20,9 +18,8 @@ export interface LazyPages {
 }
 
 /**
- * Lays out `count` sheets in `container` and draws each when it nears `scroller`'s view.
- * `draw(page)` hands back the page's SVG (cleaned, `safePage`) or null; `label(n)` names a page
- * for a screen reader; `onFirst` runs once the first page is drawn, `onFail` when it is not.
+ * Lays out `count` sheets in `container`, drawing each when it nears `scroller`'s view.
+ * `draw(page)` returns the cleaned SVG or null; `label(n)` is the screen-reader name; `onFirst`/`onFail` fire on first-page success/failure.
  */
 export function lazyPages(
   container: HTMLElement,

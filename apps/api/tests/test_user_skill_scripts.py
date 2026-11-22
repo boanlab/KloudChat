@@ -109,7 +109,7 @@ def test_a_person_s_skill_with_a_shipped_skill_s_fields_is_checked_the_same():
     ours = asyncio.run(post_checks.run(answer, keys=[mine.key], specs=specs, **kwargs))
     assert (ours.text, ours.fixed, ours.sent, ours.flags) == (
         theirs.text, theirs.fixed, theirs.sent, theirs.flags)
-    # The judge was asked with the same focus.
+    # the judge is asked with the same focus
     assert [p["prompt"].count(FOCUS) for p in seen] == [
         p["prompt"].count(FOCUS) for p in shipped_prompts]
 

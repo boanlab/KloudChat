@@ -1,7 +1,5 @@
-"""`kloudchat/super-agent` and `kloudchat/super-agent-strict-local` on the /llm proxy: the key's
-owner, the listing, the switch, routing of one chat turn, and the answer's route note.
-
-The gateway is a mock transport: the proxy's own routing, privacy and relay are the app's."""
+"""`kloudchat/super-agent` and `-strict-local` on the /llm proxy: key owner, listing, switch,
+one-turn routing and route note (mock gateway)."""
 
 from __future__ import annotations
 

@@ -1,8 +1,6 @@
 /**
- * Fetches the HWP editor's files (rhwp-studio's page, its script and its ~27 MB WebAssembly)
- * into the browser's cache ahead of the editor, so the first 한글 document opens without
- * waiting on the download after the conversation and the document are made. Once per page;
- * nothing is run, and a failure only means the editor fetches them itself, as before.
+ * Prefetches the HWP editor's files (page, script, ~27 MB WebAssembly) into the browser cache.
+ * Once per page; nothing is run, and a failure only means the editor fetches them itself.
  */
 
 /** The studio's path, as `STUDIO_URL` in HwpPanel (not imported: that module carries the SDK). */

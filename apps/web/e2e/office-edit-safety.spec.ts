@@ -2,14 +2,7 @@ import { readFileSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
 import { artifactId, officeFixture, sessionId, type OfficeOptions } from './office-fixture'
 
-/**
- * Unsaved hand edits in an office editor are never dropped without a word: closing the panel,
- * another page, a reload or a deploy's reload asks to save or drop them; what is typed while a
- * save runs stays unsaved; HWP reads only on a phone, as Word and PowerPoint do, and a window
- * narrowed over unsaved edits keeps 저장; a failed start or load offers a retry; HWP saves on
- * Ctrl+S. Office documents share, open read only on the shared page and the artifacts page,
- * and an attachment reopens the copy it made rather than making another.
- */
+/** Unsaved hand edits in an office editor are never dropped silently; also retry, sharing and attachment reopen. */
 
 test.use({ serviceWorkers: 'block' })
 

@@ -1,8 +1,5 @@
-"""A shortened section stays the same section: the writer sees its current text, a line to the
-person (「다음은 요청하신 대로 …」) is taken out, a version that reads as another section or
-points at a table it lacks is sent back and then kept out; figures and boxes it drops are
-named. English figures are read whole (「1K」 = 「1,000」, no 「3.8」 out of 「Qwen3.8」), a
-question while a card is open leaves the card, and a table's rows are not joined."""
+"""A shortened section stays the same section: the writer sees its current text, off-topic
+versions are sent back, and dropped figures and boxes are named."""
 
 from __future__ import annotations
 

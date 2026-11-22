@@ -1,6 +1,5 @@
-"""Web push: devices subscribe and leave, notices go out encrypted with VAPID, gone devices are
-removed, retries back off, the per-user rate limit and event switches hold, and a notice never
-carries what was written (internal material shows only generic text unless allowed)."""
+"""Web push: subscribe and leave, VAPID-encrypted notices, gone-device removal, backoff, rate
+limits and switches, and notices that never carry written content."""
 
 from __future__ import annotations
 
@@ -198,7 +197,7 @@ async def test_the_vapid_pair_is_made_once_and_sealed(stack, monkeypatch):
     assert settings_store.decrypt_secret(row.value) == private
     push._keys.clear()
     assert await push.vapid_keys() == (private, public)
-    # sealed under a key this process no longer holds: replaced, not a crash
+    # Sealed under a key this process does not hold: replaced, not a crash.
     async with local() as db:
         row = await db.get(SystemSetting, settings_store.PUSH_VAPID_PRIVATE)
         row.value = "gAAAAAnot-openable"

@@ -450,8 +450,8 @@ _PRESS_BRIEF_REQUEST = (
 ])
 async def test_an_answer_whose_searches_all_came_back_empty_says_so(
         monkeypatch, request_text: str, material: bool, footer: bool) -> None:
-    """When every search comes back empty, the answer notes that nothing was verified,
-    unless it is made of the person's own material and no lookup was asked for."""
+    """When every search is empty, the answer notes nothing was verified, unless it is made of
+    the person's own material and no lookup was asked."""
     seen: list[dict] = []
 
     class _Searching(_Client):

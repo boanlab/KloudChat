@@ -1,9 +1,5 @@
-"""A figure mark the writer put in a table row stands after the table, so the table keeps its
-rows and no stray 「|」 lines or leading space are left when the mark goes.
-
-Round-3 r3r02 (11-21, KC-SA, three tables):
-「| 면제 확대 | … |\n| [[그림: compare | … ]] |  |」 came out as
-「|\n\n| |\n 제도 변화는 …」 after the figure stage took the mark out."""
+"""A figure mark in a table row stands after the table, leaving the table's rows whole with no
+stray 「|」 lines."""
 
 from __future__ import annotations
 

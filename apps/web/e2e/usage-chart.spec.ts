@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { signIn } from './helpers'
 
-/** The daily chart's bars have measured height. */
+/** The daily chart's bars have nonzero height. */
 test('일별 차트에 막대가 실제 높이로 그려진다', async ({ page }) => {
   test.setTimeout(90_000)
   await signIn(page)

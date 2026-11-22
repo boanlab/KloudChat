@@ -2,10 +2,9 @@ import { expect, test } from '@playwright/test'
 import { at, composerFixture } from './composer-fixture'
 
 /**
- * Long lists page the same way everywhere: 15 rows a page (10 on a narrow screen, where each row
- * is taller), 「first–last / 전체 N건」 with 이전 · numbers · 다음, hidden while one page holds the
- * list, back to the start on a new search. The project list stands for the lists held in
- * memory; the file box for the server-paged ones.
+ * Long lists page uniformly: 15 rows a page (10 on a narrow screen), 「first–last / 전체 N건」,
+ * 이전 · numbers · 다음, hidden for one page, reset on a new search. Covers an in-memory list
+ * (projects) and a server-paged one (file box).
  */
 
 const project = (n: number) => ({

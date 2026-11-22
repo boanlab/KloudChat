@@ -6,12 +6,7 @@ import { cn } from '@/lib/utils'
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 
-/**
- * 「이미지 고치기」 on a picture: puts it in the composer of `sessionId` with the instruction to
- * come. Off, with its reason as the tooltip (and said on a tap, for a phone), when the picked
- * image model only draws, or the picture has to stay inside where no model edits; a model that
- * edits is offered beside it (in the notice, where a row has no room).
- */
+/** 「이미지 고치기」: puts the picture in the composer of `sessionId`; disabled with a reason when no model can edit it. */
 export function ImageEditAction({
   sessionId,
   source,

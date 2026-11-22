@@ -1,9 +1,7 @@
-"""A document's cover title is a name, never the request sentence.
+"""Cover title as a name, never the request sentence.
 
-The planner is told not to copy the request; a small model still answers with it, or with no
-title, and the document then goes out titled 「각 강에 대한 한줄 요약을 담은 강의계획서
-만들어줘」. `echoes_request` catches that; `from_request` is the code's last resort (the document
-noun the request names, 「강의계획서」).
+`echoes_request` detects a small model returning the request (「…강의계획서 만들어줘」) or no title;
+`from_request` is the last resort (the document noun, 「강의계획서」).
 """
 
 from __future__ import annotations

@@ -1,9 +1,5 @@
-"""An attached CSV reaches the checks as tab-separated rows; its figures are the person's.
-
-Two readings broke on it: a data row whose last cells are empty (「97.8\\t」 under 「비고」)
-lost them to `strip()`, so the table ended at that row and its column totals (「출고 박스
-35,190개」) read as invented; and a column headed 「당일 출고율(%)」 holds bare figures
-(「94.1」), so 「94.1%」 in the document was marked 「(확인 필요)」."""
+"""An attached CSV reaches the checks as tab-separated rows (empty trailing cells kept,
+bare-figure columns read as percentages); its figures are the person's."""
 
 from __future__ import annotations
 

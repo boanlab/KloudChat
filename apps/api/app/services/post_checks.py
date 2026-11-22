@@ -368,8 +368,7 @@ _IDENT = re.compile(r"(?<![A-Za-z0-9_/])(?:/[A-Za-z][A-Za-z0-9_./-]*|[A-Za-z][A-
 
 
 def names_the_material(statement: str, material: str) -> bool:
-    """Whether every name, version and path the statement writes is the material's own
-    (「… v2의 /messages로 전환해 주세요」 from 「(v2 /messages 사용)」 was taken out)."""
+    """Whether every name, version and path in the statement appears in the material."""
     names = {m.group(0).rstrip(".") for m in _IDENT.finditer(statement or "")}
     names = {n for n in names if len(n) >= 2}
     low = (material or "").lower()
@@ -413,9 +412,8 @@ def drop(text: str, quote: str) -> str:
 _KEY_NUMBER = re.compile(r"(?<![\d.])\d[\d,]{0,15}(?:\.\d{1,6})?")
 _KEY_LATIN = re.compile(r"(?<![A-Za-z0-9])[A-Za-z][A-Za-z0-9+-]{1,30}")
 _KEY_QUOTED = re.compile(r"「([^」\n]{2,40})」|“([^”\n]{2,40})”")
-#: a counted figure is looked up with its counter: in a long search page a bare 「9」 or
-#: 「306」 turns up by chance (「306명」, 「9개 투자 라운드」); so are 억·조 (「89억」 not
-#: matched on a bare 89). Dates and 만 stay bare (「2026. 4.」, 「1.2만」 against 「12,000」).
+#: a counted figure is looked up with its counter (「306명」), since a bare number turns up by
+#: chance in a long page; 억·조 too. Dates and 만 stay bare (「1.2만」 against 「12,000」).
 _COUNTED = re.compile(
     r"(?<![\d.])(\d[\d,]{0,15}(?:\.\d{1,6})?)\s?(%|개사|라운드|[명개곳건회원배위대종차석억조])")
 
@@ -459,10 +457,8 @@ def code_reading(quote: str, evidence: str) -> str:
 _CITE_RUN = re.compile(r"[\s.,。]{0,3}((?:\[\[\d{1,3}\]\]\(https?://[^)\s]{1,500}\)[\s,]*)+)")
 _CITED_URL = re.compile(r"\[\[\d{1,3}\]\]\((https?://[^)\s]{1,500})\)")
 def cited_pages(quote: str, text: str, computed: list[str]) -> str | None:
-    """What the pages a statement cites say: the search entries and fetched pages under the
-    addresses of the `[[n]](url)` run after it, or None when it cites none or one of them
-    was not read this turn (a name found on some other page does not back a statement its own
-    source does not make)."""
+    """Text of the pages a statement cites (`[[n]](url)` run after it), or None when it cites none
+    or one was not read this turn."""
     phrase = (quote or "").strip().rstrip(".!?。 ")
     at = text.find(phrase) if len(phrase) >= 4 else -1
     if at < 0:
@@ -508,10 +504,9 @@ async def run(answer: str, *, keys: list[str], request: str, material: str, atta
               strong: bool = False) -> Outcome:
     """Check, code-fix, rewrite once, recheck and code-fix.
 
-    `strong`: the writer is a strong model. It judges its own answer (no weaker judge reads
-    it), gets the findings as evidence for one revision of its own, and nothing it kept is
-    taken out afterwards; the findings it kept are shown in the step only. For any writer a
-    judged statement is rewritten or taken out only on code's reading (`code_reading`)."""
+    `strong`: the writer judges its own answer and revises once from the findings; nothing it
+    kept is taken out afterwards. For any writer a judged statement is rewritten or removed
+    only on code's reading (`code_reading`)."""
     outcome = Outcome(answer, skills=list(keys))
     scripts = list(dict.fromkeys(e for key in keys for e in entries(key, specs)))
     on = [p for k in keys if (p := skill_specs.resolve(k, specs)) is not None]
@@ -556,12 +551,9 @@ async def run(answer: str, *, keys: list[str], request: str, material: str, atta
                               api_key=api_key, usage=usage, focus=focus, today=today)
         judged = await _confirm(judged, reference, complete=complete, judge=reader,
                                 api_key=api_key, usage=usage)
-    # Marking apart from deleting (docs/architecture.md, "Mechanisms by model group"): code
-    # reads each finding against all the evidence, the search pages whole. One whose figures
-    # and names are all there is dropped as a finding (every group). One code cannot check (no
-    # figure, no name) is marked where it stands, never rewritten or cut, for a small writer;
-    # a strong writer gets it as a note to weigh. Only one with a figure or name in none of the
-    # evidence (or a script's own finding) goes to a small writer's rewrite and may come out.
+    # Each finding is read against all the evidence. All figures and names present: dropped.
+    # Uncheckable (no figure or name): marked in place for a small writer, a note for a strong
+    # one. A figure or name in no evidence (or a script's finding): rewrite candidate, may come out.
     everything = "\n".join([request, material, attached, *computed, shipped])
     scripted = [_flat(str(r.get("text") or "")) for r in rewrite]
     held, marked, absent = [], [], []
@@ -657,9 +649,7 @@ def _split_list(text: str) -> tuple[str, str, dict[int, str], str]:
 def cited_sources_listed(before: str, text: str) -> str:
     """`text` with each linked 「[[n]](url)」 of its body listed under it.
 
-    A rewrite can take list lines out with the sentences it fixed, or a guard can give a cell
-    back after its line had gone: a line the list had before comes back; a citation no list
-    ever had comes out."""
+    A list line `before` had comes back; a citation no list ever had is removed."""
     body, heading, listed, tail = _split_list(text)
     _, old_heading, was, _ = _split_list(before)
     if not was:

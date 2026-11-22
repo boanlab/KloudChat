@@ -1,8 +1,4 @@
-"""An amount the request states is the operand, never a power-of-ten slip of a ledger result.
-
-Round-1 r1r05 (11-20, both arms): the request gave 「월 15만 원 × 최대 10개월」; the ledger
-result 150만 is ten times 15만, so the slip fix turned every 「월 15만 원」 into 「월 150만 원」
-(and 20만 → 200만, 10만 → 100만), and the report said the city pays 150만 원 a month."""
+"""An amount the request states is the operand, never a power-of-ten slip of a ledger result."""
 
 from __future__ import annotations
 

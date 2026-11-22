@@ -1,11 +1,9 @@
-"""Office document artifacts (HWP, Word): one file blob per version, saved by the editor
-beside the chat or by the agent's tools.
+"""Office document artifacts (HWP, Word): one file blob per version, saved by the editor or the
+agent's tools.
 
-`Artifact.data` holds `{"format", "size", "text"}`, and `sourceFileId` when it was opened
-from a file-box file; the file is `storage_key`. A version
-moves only from the version its writer read (`expected`), in one conditional UPDATE, so a
-hand save and an agent edit cannot both land on the same version. `hwp_doc` and `docx_doc`
-say what their files are; everything else is here.
+`Artifact.data` holds `{"format", "size", "text"}` and `sourceFileId` when opened from a
+file-box file; the file is `storage_key`. A version moves only from the version its writer read
+(`expected`), in one conditional UPDATE, so a hand save and an agent edit cannot both land.
 """
 
 from __future__ import annotations
@@ -125,10 +123,9 @@ async def target(
     db: AsyncSession, kind: Kind, *, user_id: str, session_id: str,
     worked_on: str = "", opened: str = "", named: str = "",
 ) -> Target:
-    """Which document of this kind a chat edit works on, never "the newest of its kind":
-    the one this turn already read or wrote (`worked_on`), else the one open in the panel
-    (`opened`), else the one the model named after asking (`named`, an id or a title), else
-    the conversation's only one. Several and none of these: `choices`, to ask about."""
+    """Which document of this kind a chat edit works on, never "the newest of its kind": the one
+    already read or written this turn (`worked_on`), else the open one (`opened`), else the one
+    named after asking (`named`), else the only one. Otherwise `choices`, to ask about."""
     for artifact_id in (worked_on, opened):
         if found := await owned(db, artifact_id, user_id=user_id, session_id=session_id,
                                 kind=kind):

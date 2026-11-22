@@ -1,7 +1,8 @@
-"""User templates: stored as plain text only (no HTML/CSS); owner-only edits.
+"""User templates, plain text only (no HTML/CSS), owner-only.
 
-Retired on 2026-11-15 (forms and 디자인 지침 instead): templates are read, deleted and turned
-into agents (`POST /user-templates/{id}/to-agent`), no longer made or changed (410)."""
+Read-only: they can be listed, deleted and turned into agents (`POST
+/user-templates/{id}/to-agent`);
+create and update return 410."""
 
 from __future__ import annotations
 
@@ -99,7 +100,7 @@ def _retired() -> HTTPException:
 
 @router.post("/user-templates", status_code=status.HTTP_201_CREATED)
 async def create_template(payload: TemplateIn, user: CurrentUser):
-    """Retired: a new template is a new agent."""
+    """Retired (410)."""
     del payload, user
     raise _retired()
 
@@ -114,7 +115,7 @@ async def get_template(template_id: str, user: CurrentUser, db: DbSession):
 
 @router.put("/user-templates/{template_id}")
 async def update_template(template_id: str, payload: TemplateIn, user: CurrentUser):
-    """Retired: turn the template into an agent and change that."""
+    """Retired (410)."""
     del template_id, payload, user
     raise _retired()
 
@@ -136,7 +137,7 @@ async def delete_template(template_id: str, user: CurrentUser, db: DbSession,
 
 @router.post("/user-templates/{template_id}/form")
 async def upload_form(template_id: str, user: CurrentUser, file: UploadFile = File(...)):
-    """Retired: a form file is attached in a conversation or saved on a project or agent."""
+    """Retired (410)."""
     del template_id, user, file
     raise _retired()
 

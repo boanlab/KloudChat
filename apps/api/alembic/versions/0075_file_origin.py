@@ -1,10 +1,7 @@
-"""Where a file came from: uploaded by the person or made in a conversation.
+"""Where a file came from: `files.origin` is `upload` (attachment, project or agent file, added page) or
+`generated` (code output, image, chart, figure, audio, video, export, handoff transcript).
 
-- `files.origin`: 「upload」 (the person gave it: a chat attachment, a project or agent file, a
-  page added by address) or 「generated」 (a code run's output, an image, a chart, a figure,
-  audio, video, an export, a handoff's transcript). The account file box lists them apart.
-
-Existing rows get 「upload」: nothing recorded how they came. Downgrade drops the column.
+Existing rows get `upload`. Downgrade drops the column.
 
 Revision ID: 0075
 Revises: 0074

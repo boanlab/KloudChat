@@ -82,9 +82,8 @@ _FENCE_OPEN = r"```(?:python|py)?[ \t]{0,8}\n"
 
 
 def unfenced(text: str) -> str:
-    """The code of a model's answer: the first fenced block; a block whose closing fence never
-    came (the answer was cut or the model stopped) is taken to the end, less a closing fence
-    that is only partly there; an answer with no fence is the code as it stands."""
+    """The code of a model's answer: the first fenced block; one whose closing fence never came is
+    taken to the end, less a partial closing fence; an answer with no fence is the code as it is."""
     text = text.strip()
     closed = re.search(_FENCE_OPEN + r"(.*?)```", text, re.S)
     if closed:

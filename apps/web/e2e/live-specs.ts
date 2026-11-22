@@ -1,11 +1,7 @@
 /**
- * Specs that run only against a running stack (`playwright.config.ts`: the app at 5173 and the
- * seeded account from `scripts/e2e-seed.sh`), never in CI. They sign in for real, and some
- * spend credits on real models. Every other `*.spec.ts` is a fixture spec and belongs to
- * exactly one group in `playwright.ci.config.ts`, which refuses to load otherwise.
- *
- * A spec moves out of this list when it answers the API with fixtures (`composer-fixture.ts`
- * and the other `*-fixture.ts`); then it goes into a CI group.
+ * Specs that run only against a live stack (app at 5173, account from `scripts/e2e-seed.sh`), never in CI.
+ * They sign in for real and some spend credits. Every other `*.spec.ts` is a fixture spec in exactly one
+ * group of `playwright.ci.config.ts`.
  */
 export const liveSpecs = [
   'access-log.spec.ts',

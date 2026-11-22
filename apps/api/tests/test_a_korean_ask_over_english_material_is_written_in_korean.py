@@ -1,6 +1,4 @@
-"""A Korean ask with an English paper pasted under it is a Korean request: the document is not
-written in English because the material is (the deck came out English on the 2026-11-17
-benchmark)."""
+"""A Korean ask with English material pasted under it yields a Korean document."""
 
 from __future__ import annotations
 

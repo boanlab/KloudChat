@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # kchat API smoke test — auth, approval, rotation and suspension over real HTTP.
 #
-# **Non-destructive.** Every run creates accounts under a unique address and
-# deletes them again; existing users and conversations are never touched.
+# **Non-destructive.** Creates accounts under a unique address and deletes them again.
 #
 #   ADMIN_EMAIL=you@example.com ADMIN_PASS=… bash scripts/smoke-test.sh
 #

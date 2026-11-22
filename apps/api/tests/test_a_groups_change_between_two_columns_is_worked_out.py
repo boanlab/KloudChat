@@ -1,9 +1,5 @@
-"""A group's sum from one month column to the next (rows per site and measure, 「9월」 「10월」
-columns) is a percentage the table works out, so it is not marked 「(확인 필요)」.
-
-Round-3 r3r01 (11-21, KC-SL): a library CSV gave 도서관·지표·9월·10월 rows; the report's
-「방문자 31,500명 → 33,195명, 5.4% 증가」 (the 지표 group's sums of the two columns) came out as
-「5.4%(확인 필요)」 while each branch's own change stood unmarked."""
+"""A group's change from one month column to the next is a percentage the table works out, so it
+is not marked 「(확인 필요)」."""
 
 from __future__ import annotations
 

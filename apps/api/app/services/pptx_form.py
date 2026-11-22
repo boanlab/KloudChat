@@ -1,16 +1,12 @@
-"""A deck written on a PowerPoint form (양식): the form's slide master, layouts, theme fonts and
-colours, its own placeholders filled, and KloudChat's drawn content (tables, charts, patterns,
-figures) set inside each layout's body area.
+"""A deck written on a PowerPoint form (양식): the form's master, layouts, theme and
+placeholders are kept, and KloudChat's drawn content is set inside each layout's body area.
 
-How: the house renderer (`deck_export`) draws the deck into the form's own package in its bare
-mode (no ornaments, no foot, theme colours as tokens), each slide on a scratch slide. Every
-slide then gets a new slide on the form layout its kind maps to (`layout_class`): the title,
-subtitle and plain bullets go into the layout's placeholders, where the form's type and bullets
-apply; anything else drawn is moved, scaled into the layout's body area, its colours written as
-theme colours and its typefaces left to the theme. The scratch slides and the form's own sample
-slides are removed, and the form's slide size is kept.
+The house renderer (`deck_export`) draws the deck in bare mode onto scratch slides; each slide
+then becomes a new slide on its mapped layout (`layout_class`): title, subtitle and bullets go
+into placeholders, other drawing is moved and scaled into the body area with theme colours and
+fonts. Scratch and sample slides are removed; the form's slide size is kept.
 
-`write` returns the file and what was followed, for the answer's 「양식을 따름」 line.
+`write` returns the file and what was followed, for the 「양식을 따름」 line.
 """
 
 from __future__ import annotations
@@ -53,7 +49,7 @@ _R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 _REL_ATTRS = (f"{{{_R_NS}}}embed", f"{{{_R_NS}}}link", f"{{{_R_NS}}}id",
               f"{{{_R_NS}}}pict")
 _TITLES = {"title", "ctrTitle"}
-#: smallest type a moved shape is scaled to, in hundredths of a point
+#: Smallest type size after scaling, in hundredths of a point.
 _FLOOR_SZ = 1000
 
 
@@ -197,7 +193,7 @@ def _hidden(element: etree._Element) -> bool:
 
 
 def _moved(element: etree._Element, scale: float, dx: int, dy: int, ox: int, oy: int) -> None:
-    """`element` moved from origin (ox, oy) to (dx, dy), scaled by `scale`, type included."""
+    """Move `element` from origin (ox, oy) to (dx, dy), scaled by `scale`, type included."""
     xfrm = _xfrm(element)
     if xfrm is not None:
         off, ext = xfrm.find(f"{{{_A_NS}}}off"), xfrm.find(f"{{{_A_NS}}}ext")
@@ -240,7 +236,7 @@ def _themed(element: etree._Element, accent: str, ink: str) -> None:
 
 
 def _relink(element: etree._Element, source, target) -> None:
-    """Relationship ids in a moved element re-made on the slide it moves to."""
+    """Re-make relationship ids of a moved element on the target slide."""
     for node in element.iter():
         for attr in _REL_ATTRS:
             rid = node.get(attr)
@@ -316,8 +312,8 @@ def _body_area(layout: dict, size: tuple[int, int]) -> tuple[int, int, int, int]
 
 def _move_drawn(rendered, slide, area: tuple[int, int, int, int], *, keep_title: bool,
                 accent: str, ink: str) -> int:
-    """Shapes drawn on `rendered` (the title aside unless `keep_title`) moved into `area` of
-    `slide`; returns how many."""
+    """Move shapes drawn on `rendered` (title aside unless `keep_title`) into `area` of `slide`;
+    returns the count."""
     elements = []
     for element in list(rendered.shapes._spTree):
         if etree.QName(element).localname not in ("sp", "pic", "grpSp", "graphicFrame",
@@ -362,8 +358,7 @@ def _remove_slides(prs, keep: set[int]) -> None:
 
 
 def clamp(slide: Any, size: tuple[int, int]) -> None:
-    """Every shape and table of a slide kept inside the slide: one that runs past an edge is
-    moved in, then scaled down (a table's columns and rows with it)."""
+    """Keep every shape and table inside the slide: move in, then scale down."""
     width, height = size
     margin = int(min(width, height) * 0.02)
     for shape in slide.shapes:

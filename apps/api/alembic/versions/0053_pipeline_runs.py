@@ -1,5 +1,4 @@
-"""Pipeline runs: each turn's stage records and per-stage bundle snapshots, so a run can be
-resumed or run again from a stage in a later request.
+"""Pipeline runs: per-turn stage records and per-stage bundle snapshots, for resuming a run.
 
 Revision ID: 0053
 Revises: 0052

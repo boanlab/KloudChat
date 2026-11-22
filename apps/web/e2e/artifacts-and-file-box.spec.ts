@@ -2,10 +2,9 @@ import { expect, test, type Page } from '@playwright/test'
 import { chatId, composerFixture } from './composer-fixture'
 
 /**
- * 아티팩트 holds what a conversation made to view or run — HTML pages, code files, charts and
- * diagrams — and 파일함 the rest: reports and decks in 작업 문서, generated pictures, sound and
- * video in 만든 파일, uploads in 올린 파일. An old link to a document or a picture on the
- * 아티팩트 page goes where it lives now. Desktop, then a 390px and a 360px phone.
+ * 아티팩트 holds HTML pages, code files, charts and diagrams; 파일함 holds reports, decks,
+ * pictures, sound, video and uploads. Old document and picture links redirect to the 파일함.
+ * Desktop, then 390px and 360px phones.
  */
 
 const at = '2026-11-15T03:00:00.000Z'
@@ -28,7 +27,7 @@ const gallery = [
   row('a4', 'image', 'diagram', '수집·분석 흐름도', { kind: 'image', style: 'figure', source: 'graph TD; A-->B',
     src: `/api/files/${id('f9')}/content` }, { updatedAt: '2026-11-13T03:00:00.000Z' }),
 ]
-// no longer on the 아티팩트 page: a web report and a generated picture
+// not on the 아티팩트 page: a web report and a generated picture
 const report = row('d1', 'report', 'document', '주간 업무 보고', { kind: 'report', sections: [] })
 const photo = row('m1', 'image', 'media', '고양이 사진', { kind: 'image', style: 'photo', src: `/api/files/${picture}/content` })
 
@@ -42,7 +41,7 @@ const files = [
   file('f2', '회의 요약 낭독.mp3', 'generated', { mime: 'audio/mpeg' }),
 ]
 
-/** The 아티팩트 page's and 작업 문서's own reads, as the server answers them; what was asked. */
+/** The 아티팩트 page's and 작업 문서's own reads, as the server answers them. */
 async function pages(page: Page) {
   const asked: URLSearchParams[] = []
   await page.route('**/api/artifacts/gallery*', (route) => {

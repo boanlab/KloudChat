@@ -1,14 +1,9 @@
-"""Large audio/video uploads in pieces, and what a video job made of them.
+"""Chunked large audio/video uploads, and media-job state with signed player URLs.
 
-Uploads (`/uploads`): a video up to MAX_VIDEO_UPLOAD_MB arrives as pieces of UPLOAD_PIECE_MB,
-each appended to a partial file under the storage root, so neither the API (two replicas) nor
-nginx (body limit stays at MAX_UPLOAD_MB) ever holds the whole video; a dropped connection
-resumes from `received`. `finish` moves the partial file into place and queues the media job
-(`video_jobs`); the tab can close from then on.
-
-Media (`/files/{id}/media`): the job's state and the time-coded segments, with signed URLs
-for the player — the original with HTTP Range (seeking), and the keyframe thumbnails — that a
-`<video>`/`<img>` can load without an Authorization header.
+`/uploads`: pieces of UPLOAD_PIECE_MB are appended to a partial file, so no process holds the
+whole video; a dropped connection resumes from `received`; `finish` queues the media job.
+`/files/{id}/media`: job state and time-coded segments; signed URLs (original with Range,
+thumbnails) let `<video>`/`<img>` load without an Authorization header.
 """
 
 from __future__ import annotations

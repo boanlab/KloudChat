@@ -2,9 +2,8 @@ import type { Page, TestInfo } from '@playwright/test'
 import { shellRead } from './shell-mocks'
 
 /**
- * The composer against fixture data only: chat, report and slides surfaces, two chat models
- * (one strict-local), three skills, two agents, one connected connector and a 양식 per document
- * surface. Every send body is recorded; anything unmocked lands in `unexpected`.
+ * The composer against fixture data only; every send body is recorded and anything
+ * unmocked lands in `unexpected`.
  */
 
 export const at = '2026-10-09T07:00:00.000Z'
@@ -95,10 +94,8 @@ function sessionRow(id: string, kind: string, messages: Record<string, unknown>[
 type SentTurn = { path: string; body: Record<string, unknown> }
 
 /**
- * A turn's answer as a spec writes it: the stream's events, or a refusal before the turn
- * is written (`status` + `json`). The fixture stores what the server would (the question,
- * the partial or whole answer, the failure), so the transcript read back after the stream
- * agrees with the screen.
+ * A turn's answer: stream events, or a refusal before the turn is written (`status` + `json`).
+ * The fixture stores what the server would, so the transcript read after the stream matches.
  */
 export type TurnReply = { events: Record<string, unknown>[] } | { status: number; json: unknown }
 

@@ -81,7 +81,6 @@ async def test_the_model_answers_with_the_material_already_in_hand(monkeypatch, 
                               preset_empty_answer=publishing.not_covered_answer(_CONTACT))
     (first,) = seen
     tool_turns = [m for m in first[0] if m["role"] == "tool"]
-    # Searched before the model was asked: the whole small FAQ, numbered for citing.
     assert tool_turns and tool_turns[0]["content"].startswith("[1] 자료: faq.md")
     assert "연체료는 없고" in tool_turns[0]["content"]
     steps = [e for e in events if e["type"] == "step" and e["status"] == "done"]

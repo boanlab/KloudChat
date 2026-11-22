@@ -1,9 +1,6 @@
 /** The service time zone and calendar-day arithmetic in it. No imports: `api.ts` takes it. */
 
-/**
- * Service time zone (API `TIMEZONE`, sent with `/auth/config`): every date on screen and every
- * day boundary is in it, whatever the browser's zone, as refills and usage days are.
- */
+/** Service time zone (API `TIMEZONE`, from `/auth/config`): all dates and day boundaries use it regardless of the browser zone. */
 let serviceZone = 'Asia/Seoul'
 
 export function serviceTimeZone(): string {

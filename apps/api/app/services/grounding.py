@@ -133,7 +133,7 @@ ASK_RULE = """- If only a subject is given, do not ask back; build it yourself a
   At most 3 questions. Ask only what the user can answer in one go. Write the questions
   and options in Korean, like the example."""
 
-#: replaces `ASK_RULE` after "있는 자료로 진행"
+#: used instead of `ASK_RULE` after "있는 자료로 진행"
 PROCEED_RULE = """- Do not ask back. The user already chose "있는 자료로 진행". Build from the
   material there is. Do not make up figures, dates, names or organizations not in the
   material; leave a bracket blank such as 「[담당자]」. Make the parts the material does not
@@ -143,8 +143,7 @@ PROCEED_RULE = """- Do not ask back. The user already chose "있는 자료로 �
 #: a document's head field the sender fills in (「공문의 시행(발송)일이 언제입니까?」)
 _HEAD_FIELD_ASK = re.compile(
     r"(?:시행|발송|발신|접수)\s?\(?[^)\n]{0,6}\)?\s?(?:일|일자|날짜|번호)|문서\s?번호")
-#: whether to do what was asked, offering a blank instead (「계산해 넣을지, 자리만
-#: 틀어둘까요」 with 「[수치]로 빈칸 두고」)
+#: an offer of a blank instead of doing what was asked (「자리만 틀어둘까요」)
 _BLANK_OPTION = re.compile(r"\[[^\]\n]{1,12}\]|빈칸|자리만|비워\s?두")
 
 
@@ -249,8 +248,7 @@ def subject_missing(text: str, request: str, material: str = "") -> bool:
     # attachment counts as request words
     compact = re.sub(r"\s+", "", request + material)
     if _STATED_SUBJECT.search(request + "\n" + material) or len(compact) >= _SUBSTANTIAL_CHARS:
-        # a titled request, or one that brings its material: the planner just left it blank
-        # (「제목: … 초록: … 실험 결과 …」 was asked 「무엇에 대한 발표입니까?」)
+        # a titled request or one with its material: the planner just left it blank
         return False
     subject = str(data.get("subject") or "").strip()
     if not subject:

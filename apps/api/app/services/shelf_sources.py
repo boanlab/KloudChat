@@ -1,10 +1,10 @@
-"""지식 서가 sources: what each project file is, the numbered source text a studio or guide
-call reads, and the passage a citation points at.
+"""지식 서가 sources: what each project file is, the numbered source text a studio or guide call
+reads, and the passage a citation points at.
 
-A project source is a `StoredFile` with a `project_id`: an upload, a web page snapshot, pasted
-text, a note made into a source, or a video/recording (its transcript, time-coded
-「[HH:MM:SS]」 by the video pipeline). Calls read sources as 「[n] name」 blocks so their
-citations (「[n]」) name the file; `locate` finds the passage a cited sentence came from.
+A project source is a `StoredFile` with a `project_id`: an upload, web page snapshot, pasted text,
+a note made into a source, or a video/recording (transcript time-coded 「[HH:MM:SS]」). Calls read
+sources as 「[n] name」 blocks so citations (「[n]」) name the file; `locate` finds the passage a
+cited sentence came from.
 """
 
 from __future__ import annotations

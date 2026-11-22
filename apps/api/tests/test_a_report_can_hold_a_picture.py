@@ -78,8 +78,8 @@ def test_the_route_is_mounted_and_only_takes_a_report() -> None:
 
     source = inspect.getsource(router.add_section_image)
     assert "ArtifactKind.report" in source and "not_a_report" in source
-    # Snapshotted like a rewrite.
-    # superseded body kept, version moved in one conditional UPDATE
+    # Snapshotted like a rewrite: the superseded body kept, the version moved in one conditional
+    # UPDATE.
     assert "_next_version(" in source
     # An older HTML body is stored as Markdown before the picture joins it.
     assert "markdown_section(" in source

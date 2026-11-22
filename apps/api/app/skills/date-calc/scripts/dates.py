@@ -10,7 +10,7 @@ import sys
 
 WEEKDAYS = "월화수목금토일"
 
-#: 관공서의 공휴일에 관한 규정(2026-04 개정, 노동절·제헌절 추가)과 우주항공청 2026·2027년 월력요항.
+#: 관공서의 공휴일에 관한 규정(노동절·제헌절 포함)과 우주항공청 2026·2027년 월력요항.
 HOLIDAYS: dict[str, str] = {
     "2026-01-01": "신정",
     "2026-02-16": "설날 연휴", "2026-02-17": "설날", "2026-02-18": "설날 연휴",
@@ -789,7 +789,7 @@ def run(options: dict) -> dict:
     if op == "add_business_days":
         return {"ok": True, "op": op, **_dated(add_business_days(parse_day(options["date"]), int(options["days"])))}
     if op == "weekday":
-        # what day of the week given dates fall on (「2026-11-04는 수요일」)
+        # weekday of the given dates (「2026-11-04는 수요일」)
         given = options.get("dates") or ([options["date"]] if options.get("date") else [])
         if not given:
             raise KeyError("dates")

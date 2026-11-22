@@ -56,8 +56,8 @@ async def test_a_recorded_turn_replays_to_the_same_events(replay, name):
     got = json.loads(json.dumps(got, ensure_ascii=False))
     assert not gateway.misses, f"prompts with no recorded reply: {gateway.misses[:2]}"
     assert got == golden, _first_difference(got, golden)
-    # Every recorded call was made, by the stage that made it when recorded: a stage that
-    # stopped calling the model, or a call that moved to another stage, is a change too.
+    # Every recorded call was made by the stage that recorded it; a moved or dropped call is a
+    # change.
     made = sorted((c["key"], c.get("stage", "")) for c in gateway.made)
     assert made == sorted((c["key"], c.get("stage", "")) for c in calls)
 

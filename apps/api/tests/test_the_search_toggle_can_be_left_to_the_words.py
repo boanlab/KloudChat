@@ -163,7 +163,7 @@ async def test_the_weather_tool_reads_a_korean_place_name(monkeypatch) -> None:
     assert lines[1].startswith("https://open-meteo.com/en/docs#latitude=37.4")
     assert "현재: 18.3°C(체감 19.3°C), 흐림, 습도 71%" in result.content
     assert "내일(2026-09-08): 약한 비, 최고 23.0°C / 최저 16.2°C, 강수 확률 80%" in result.content
-    # The forecast was asked for the geocoded point, in local time.
+    # the forecast is asked for the geocoded point, in local time
     _, params = _Client.calls[1]
     assert params["latitude"] == pytest.approx(37.3777369)
     assert params["timezone"] == "auto"
@@ -304,7 +304,7 @@ async def test_a_preset_call_runs_before_the_model_is_asked(monkeypatch) -> None
     roles = [m["role"] for m in seen[0]["messages"]]
     assert roles[-2:] == ["assistant", "tool"]
     assert seen[0]["messages"][-1]["content"].startswith("[1] 결과")
-    # And it was shown as a step, then the answer came.
+    # shown as a step, then the answer comes
     steps = [e for e in events if e["type"] == "step"]
     assert steps[0]["label"] == "웹 검색 중" and steps[-1]["status"] == "done"
     assert "".join(e["text"] for e in events if e["type"] == "delta").startswith("답")

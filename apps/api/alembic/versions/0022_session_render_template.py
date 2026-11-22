@@ -1,7 +1,6 @@
 """The rendering template a session writes into.
 
-Not a foreign key: the catalogue ships in the image, and an unknown id must degrade to
-"no template".
+Not a foreign key: the catalogue ships in the image; an unknown id degrades to "no template".
 
 Revision ID: 0022
 Revises: 0021

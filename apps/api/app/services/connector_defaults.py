@@ -1,9 +1,8 @@
 """기본 제공 connectors: catalogue entries installed for every active person.
 
-A person's copy is an ordinary installed connector: they can switch it or its tools off, not
-remove it. Tools come from a connected copy synced since the entry last changed, else from
-the server, asked once per process; a server that does not answer leaves the copy in error
-with 「다시 연결」, as an install would.
+A person's copy is an ordinary installed connector (switchable, not removable). Tools come from a
+connected copy synced since the entry last changed, else from the server, asked once per process;
+a server that does not answer leaves the copy in error with 「다시 연결」.
 """
 
 from __future__ import annotations
@@ -181,8 +180,7 @@ async def provide_at_startup(session_factory) -> int:
 
 
 async def claim(db: AsyncSession, owner_id: str) -> None:
-    """Entries no one has saved (shipped ones), attributed to the catalogue owner; caller
-    commits."""
+    """Entries no one has saved (shipped ones) attributed to the catalogue owner; caller commits."""
     await db.exec(update(ConnectorCatalogEntry)
                   .where(col(ConnectorCatalogEntry.updated_by).is_(None))
                   .values(updated_by=owner_id))

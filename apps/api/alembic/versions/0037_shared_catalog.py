@@ -1,7 +1,5 @@
 """Shared catalogue for starter agents and skills: `visibility`, `installs`, `origin_id`.
 
-Copies seeded earlier are left as they are.
-
 Revision ID: 0037
 Revises: 0036
 Create Date: 2026-08-25

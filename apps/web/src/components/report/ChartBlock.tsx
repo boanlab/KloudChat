@@ -4,13 +4,7 @@ import { artifactsApi } from '@/lib/api'
 import { diagramKey } from '@/lib/diagramKey'
 import { rasterise } from '@/lib/mermaid'
 
-/** `chart` fence, drawn with the deck's chart component:
- *     ```chart
- *     bar | 건
- *     분기 | 처리 건수 | 반려 건수
- *     1분기 | 120 | 8
- *     ```
- */
+/** `chart` fence (type | unit, header row, data rows), drawn with the deck chart component. */
 export function ChartBlock({
   source,
   owner,

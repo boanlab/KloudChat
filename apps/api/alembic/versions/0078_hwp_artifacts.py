@@ -1,12 +1,11 @@
 """HWP documents as artifacts: `artifactkind` gains `hwp`.
 
-An `hwp` artifact keeps its file (HWPX) in `storage_key`, one blob per version; `data`
-holds only the format, size and body text for search.
+An `hwp` artifact keeps its HWPX file in `storage_key`, one blob per version; `data` holds only
+format, size and body text for search.
 
-Postgres only: elsewhere the kind is a plain string column. `ADD VALUE` runs outside the
-migration's transaction (a new enum value cannot be used in the transaction that adds it),
-and `IF NOT EXISTS` makes a rerun harmless. Downgrade leaves the value: Postgres cannot drop
-one, and no row needs it gone.
+Postgres only; elsewhere the kind is a plain string. `ADD VALUE` runs outside the migration
+transaction (a new enum value cannot be used in the transaction that adds it); `IF NOT EXISTS`
+makes a rerun harmless. Downgrade leaves the value (Postgres cannot drop one).
 
 Revision ID: 0078
 Revises: 0077

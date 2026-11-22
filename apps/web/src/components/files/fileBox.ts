@@ -8,10 +8,7 @@ export type FileBoxCounts = Record<FileOrigin, number> & { working?: number }
 
 /** Rows per file-box page. */
 
-/**
- * The account's files of one origin, a numbered page at a time, uploaded and made in conversations
- * alike; agents' knowledge left out. The name search runs on the server, so it reaches every file.
- */
+/** Paged files of one origin (uploaded and conversation-made; agent knowledge excluded); name search runs server-side. */
 export function useFileBox(
   enabled = true,
   origin: FileOrigin = 'upload',
@@ -56,7 +53,6 @@ export function useFileBox(
     setTotal((n) => n + 1)
   }
 
-  /** A fresher copy of a row (its scan or video was read meanwhile). */
   const updateRow = (row: FileRow) => setRows((held) => held.map((h) => (h.id === row.id ? row : h)))
 
   return {
@@ -81,8 +77,7 @@ export function fileSize(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
-/** The office editor a file opens in, by its name: HWP (`.hwp`, `.hwpx`), Word, PowerPoint.
- *  Legacy `.doc`/`.ppt` have none. */
+/** Office editor a file opens in, by name; legacy `.doc`/`.ppt` have none. */
 export function officeKindOf(name: string): OfficeKind | null {
   if (/\.hwpx?$/i.test(name)) return 'hwp'
   if (/\.docx$/i.test(name)) return 'docx'

@@ -207,8 +207,8 @@ def test_a_figured_slide_keeps_short_words_under_the_figure_and_spills_the_rest(
 
 @pytest.mark.asyncio
 async def test_a_deck_plans_figures_from_its_draft_and_puts_them_beside_the_words(monkeypatch):
-    """`_write_slides` end to end with a fake model: the planner runs once after the draft, a
-    chosen slide gets `diagram`, a slide with an approved picture keeps the picture."""
+    """`_write_slides` with a fake model: the planner runs once after the draft; a chosen slide
+    gets `diagram`, an approved picture stays."""
     prompts: list[str] = []
 
     async def complete(model, messages, api_key, max_tokens):
@@ -313,7 +313,6 @@ async def test_a_deck_plans_figures_from_its_draft_and_puts_them_beside_the_word
     assert final[1]["cards"][2][1].endswith("…")
     assert final[1]["notes"].startswith("스타일 조정기: 독자에 맞춰")
     assert deck.has_content(final[1])
-    # The picture slide was never offered to the planner and keeps its picture.
     assert final[2]["image"]["src"].startswith("data:image/png")
     assert "diagram" not in final[2]
     planner = next(p for p in prompts if "도식의 종류" in p)

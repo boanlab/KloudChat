@@ -185,10 +185,8 @@ _NOT_THE_OBJECT = re.compile(
     r")", re.I)
 
 
-#: after a document noun: it is what the writer reads, not what to make —
-#: 「회의록이랑 매출 실적표 보고 주간 보고서를 만들어」, 「회의록 읽고」,
-#: 「보고서와 회의록을 참고해서」. A noun joined to others by 이랑·과·하고·및 shares the
-#: reading verb that closes the list.
+#: Verb after a document noun marking it as source material (「회의록 읽고」), shared across
+#: a list joined by 이랑·과·하고·및.
 _READ_VERB = (r"읽고|읽어\s{0,2}보고|살펴보고|훑어보고|확인하고|참고해서|참고하여|참고해|참고하고"
               r"|참조해서|참조하여|참조해|보면서|토대로|바탕으로|기반으로|근거로")
 _READ_FROM = re.compile(
@@ -211,7 +209,7 @@ def asked(pattern: re.Pattern[str], instruction: str) -> bool:
 
 
 BY_ID: dict[str, DocFormat] = {f.id: f for f in FORMATS}
-#: Retired formats: kept by existing agents, never newly chosen.
+#: Retired formats: still honored for existing agents, never newly chosen.
 RETIRED = frozenset({"client_proposal", "career_history"})
 _COMPILED = [(f, re.compile(f.match, re.I)) for f in FORMATS]
 #: Last-resort matches for bare 「계획서」 / 「제안서」; 「사업계획서」 stays a plain report.

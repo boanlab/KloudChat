@@ -1,7 +1,6 @@
 """The composer's reasoning chip, kept per conversation.
 
-- `sessions.reasoning_mode`: `fast` or `deep` as picked on the composer; NULL is `auto` (the
-  behaviour before the chip). A plain string column (no enum to cast).
+`sessions.reasoning_mode`: `fast` or `deep`; NULL is `auto`. A plain string column (no enum to cast).
 
 Revision ID: 0088
 Revises: 0087

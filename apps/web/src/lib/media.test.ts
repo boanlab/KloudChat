@@ -42,7 +42,7 @@ describe('time marks in an answer', () => {
   })
 
   it('takes copies of one file for one video', () => {
-    // walk 11-14: four copies of lecture10.webm in the project left every mark unlinked
+    // duplicate copies of one video must not leave marks unlinked
     const copies = [lecture, { ...lecture, id: 'v3' }, { ...lecture, id: 'v4' }]
     expect(linkTimestamps('개요 [00:00:10], 결론 [00:09:30].', copies)).toBe(
       '개요 [00:00:10](/files?open=v1&t=10), 결론 [00:09:30](/files?open=v1&t=570).',

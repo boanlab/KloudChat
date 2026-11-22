@@ -1,7 +1,6 @@
-"""A report handed over as an HWP or Word file: a work document carries no 「[n]」 in its text
-and names the files it was built from in a 「근거 자료」 list; academic writing keeps its numbers
-and reference list; no 「(확인 필요)」 is left in the file — a marked value is a blank named by
-its field, a marked claim without a value goes."""
+"""A report as HWP or Word lists its sources in 「근거 자료」, carries no 「[n]」 (academic writing
+keeps
+them), and leaves no 「(확인 필요)」."""
 
 from app.services import office_finish, report_office
 

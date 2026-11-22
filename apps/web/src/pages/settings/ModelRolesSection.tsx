@@ -10,11 +10,7 @@ type Roles = NonNullable<SystemSettings['modelRoles']>
 type Choice = Roles['choices']['chat'][number]
 type ModelKey = 'chat' | 'report' | 'slides' | 'image' | 'audio' | 'video' | 'title' | 'code' | 'codeFallback'
 
-/**
- * Label, source list, and what empty means (none: required; `none`: required only while one is
- * served). `superAgent`: the two Super Agent entries come first (chat, report and slides only;
- * Super Agent does not route pictures, audio or video).
- */
+/** Per surface: label, source list, and what empty means (none: required; `none`: required only while one is served); `superAgent` puts the two Super Agent entries first (chat, report, slides only). */
 const SURFACES: {
   key: ModelKey
   label: string

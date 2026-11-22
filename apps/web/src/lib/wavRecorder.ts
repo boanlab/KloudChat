@@ -11,10 +11,10 @@ export async function startWavRecording(): Promise<WavRecorder> {
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
   })
-  // A browser that cannot open 16 kHz reports its own rate; the header says whichever it was.
+  // A browser that cannot open 16 kHz reports its own rate, used in the header.
   const context = new AudioContext({ sampleRate: SAMPLE_RATE })
   const source = context.createMediaStreamSource(stream)
-  // Deprecated in favour of AudioWorklet, but needs no separate module file.
+  // ScriptProcessor needs no separate worklet module file.
   const processor = context.createScriptProcessor(4096, 1, 1)
   const chunks: Float32Array[] = []
   processor.onaudioprocess = (event) => {

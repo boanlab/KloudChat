@@ -7,7 +7,7 @@ import { useStore } from '@/store/useStore'
 import type { Project } from '@/types'
 import type { Translator } from '@/lib/useT'
 
-/** The mark migration 0091 leaves on a 지침 written from a theme. */
+/** Mark on a 지침 that was written from a theme. */
 const FROM_THEME = '(테마에서 옮김)'
 
 const FACES: Record<string, string> = { serif: '명조', gothic: '고딕' }

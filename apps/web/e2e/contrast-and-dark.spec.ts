@@ -1,8 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { signInAs } from './helpers'
 
-/** WCAG AA contrast (4.5:1 body, 3:1 large) and no invisible text, in both themes, on every route.
- *  Measured against the first opaque background behind each element. */
+/** WCAG AA contrast (4.5:1 body, 3:1 large), no invisible text, both themes, every route; against the first opaque background. */
 
 const USER = { email: 'test@kloud.zone', password: 'KloudChat-Test-2026' }
 const ADMIN = { email: 'admin@kloud.zone', password: 'KloudChat-Admin-2026' }

@@ -1,20 +1,16 @@
 """A catalogue entry can be provided to everyone: `connector_catalog.by_default` (기본 제공).
 
-A default entry is installed for every active person: everyone at once when an administrator
-turns it on, a new person when the account becomes active, and anyone still missing it when
-the API starts (`services/connector_defaults.py`). People can switch it off but not remove it.
+A default entry is installed for every active person (on enabling, on account activation, and at API
+start by `services/connector_defaults.py`); people can switch it off but not remove it.
 
-Data change, the shipped catalogue rows only (matched by slug; installed connectors, which are
-rows of their own, are not touched here — the API installs them at start):
+Data change, shipped rows only (matched by slug):
 
-- `time`, `youtube`, `deep-research`: provided by default. Enabled and listed as well, unless
-  the audit log shows an administrator saved that entry (their choice stands; a disabled
-  entry is not installed for anyone).
-- Rows no one has saved yet are attributed to the catalogue owner (the oldest administrator)
-  as `updated_by`, like an entry an administrator made. A fresh install has no administrator
-  yet; the first one takes them on signing up, or the API at start (bootstrap administrator).
+- `time`, `youtube`, `deep-research`: provided by default, enabled and listed unless the audit log
+  shows an administrator saved that entry.
+- Unsaved rows are attributed to the catalogue owner (oldest administrator) as `updated_by`; on a
+  fresh install the first administrator takes them over.
 
-Downgrade drops the column; the enabled, listed and attribution changes stay.
+Downgrade drops the column.
 
 Revision ID: 0069
 Revises: 0068

@@ -1,8 +1,6 @@
-/* The web's document-format rules, verbatim, for pages the server renders (the gallery
-   preview): `apps/web/src/components/report/docFormats.ts` TITLE_BLOCK_CSS (with
-   `placeholders.ts` PLACEHOLDER_CSS where it interpolates it), GAEJO_CSS and CORE_CSS,
-   and PLACEHOLDER_CSS itself. `services/format_css.py` reads the parts between the
-   markers; a test keeps each equal to its TypeScript source. */
+/* Mirror of the web's document-format CSS (`docFormats.ts`, `placeholders.ts`) for
+   server-rendered previews; `services/format_css.py` reads the marked parts and a test
+   keeps each equal to its TypeScript source. */
 /* @begin TITLE_BLOCK_CSS */
 .tb { margin: 0 0 10mm; }
 .tb .tb-title { margin: 0; font-size: var(--doc-title, 20pt); font-weight: 700; line-height: 1.3; }

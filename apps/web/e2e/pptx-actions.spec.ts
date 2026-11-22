@@ -4,13 +4,8 @@ import JSZip from 'jszip'
 import { expect, test, type Page } from '@playwright/test'
 import { artifactId, officeFixture, sessionId } from './office-fixture'
 
-/**
- * Every action of the PowerPoint editor's chrome, each checked in the file it saves: Korean
- * typed and then made bold (the editor's own 「수정됨 수정됨」 duplicate), Korean composed by an
- * IME and bold pressed mid-syllable, the element's format from the toolbar, inserts, undo and
- * redo, slides added, copied, moved and deleted, the notes, zoom, and the saved deck opening
- * again. A manual check of the editor, as it was run when the editor was chosen:
- * `PPTX_ACTIONS=1 npx playwright test -c playwright.ci.config.ts --project 'pptx-actions/*'`.
+/** Every PowerPoint editor action (Korean/IME typing, bold, toolbar format, inserts, undo/redo, slide ops, notes, zoom), each checked in the saved file.
+ *  Opt-in: `PPTX_ACTIONS=1 npx playwright test -c playwright.ci.config.ts --project 'pptx-actions/*'`.
  */
 
 test.use({ serviceWorkers: 'block' })
@@ -169,9 +164,7 @@ test('every action of the chrome lands in the saved file', async ({ page }) => {
   await wait(page, 300)
   await leave(page)
 
-  // the element's format from the toolbar: size, colour, italic, underline, font, alignment
-  // (other than the 32 pt and centring the subtitle takes from its layout, which are not
-  // written again)
+  // toolbar format: size, colour, italic, underline, font, alignment (excluding the subtitle's layout-inherited 32 pt and centring)
   box = (await element(page, '경영기획본부').boundingBox())!
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
   await wait(page)
@@ -299,7 +292,6 @@ test('every action of the chrome lands in the saved file', async ({ page }) => {
   expect(third).toMatch(/<p:pic>/)
   expect(third).toMatch(/항목 1/)
 
-  // the saved deck opens again as it was saved
   await page.goto(`/s/${sessionId}?artifact=${artifactId}`)
   await expect(thumbs(page)).toHaveCount(5, { timeout: 30_000 })
   await expect(canvas(page).getByText(/끝한글/).first()).toBeVisible()

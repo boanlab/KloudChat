@@ -459,8 +459,7 @@ test('늦은 409는 새 초안에서 고른 스킬을 덮어쓰지 않고, 먼�
   await expect(modal).toBeVisible()
   await modal.getByRole('button', { name: '편집으로 돌아가기' }).click()
 
-  // Skills stay on for the conversation: the one picked before the send and the one
-  // picked while the request was out are both there after 편집으로 돌아가기.
+  // Skills picked before and during the request both stay on after 편집으로 돌아가기.
   await expect(page.getByRole('button', { name: '의사결정 메모 제거' })).toBeVisible()
   await expect(page.getByRole('button', { name: '초안 구조화 제거' })).toBeVisible()
 })

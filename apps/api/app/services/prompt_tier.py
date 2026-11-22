@@ -1,10 +1,8 @@
 """Writer prompts by model tier (`model_tier.strong`).
 
-A strong writer gets only what it cannot know: the date, the tools and their results, the
-structure the renderer reads, the person's settings and emergency guidance (writing rules make
-a strong model follow them to the letter and write worse). Document prompts keep one template
-for both tiers; `for_writer` drops the rule bullets below for a strong writer, so a rule is
-written once and its light form is a list of openings here."""
+A strong writer gets only what it cannot know (date, tools, renderer structure, settings,
+emergency guidance); writing rules make it follow them too literally. `for_writer` drops the
+rule bullets listed here for a strong writer."""
 
 from __future__ import annotations
 
@@ -23,9 +21,8 @@ ANTI_FABRICATION = (
 SETUP_LABEL = "가벼운 설정"
 SETUP_DETAIL = "light setup"
 
-#: Openings of document-prompt rule bullets ("- " at the start of a line) a strong writer does
-#: not get: how to write, not what the renderer or the pipeline needs. Matched after an
-#: optional "**", so a person's own text is never matched by accident.
+#: Openings of rule bullets a strong writer does not get (how to write, not what the renderer
+#: needs); matched after an optional "**" so a person's own text is not hit.
 _LIGHT_DROPS: tuple[str, ...] = (
     # report section and one-pass draft (`report._SECTION_PROMPT`, `report._DRAFT_PROMPT`)
     "Prose is the default: usually",

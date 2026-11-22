@@ -1,7 +1,6 @@
 /**
- * A single `$` that opens no inline math escaped, so prices stay prices (「$4 vs $38」 is not
- * the formula `4 vs `). Math opens on a `$` with no space after it and closes on a later `$`
- * with no space before it and no digit after it; `$$` blocks and escaped dollars are left alone.
+ * Escapes a `$` that opens no inline math, so 「$4 vs $38」 stays a price. Math opens on `$` with no
+ * space after and closes on a later `$` with no space before and no digit after; `$$` and `\$` are untouched.
  */
 export function escapeCurrency(text: string): string {
   const out: string[] = []

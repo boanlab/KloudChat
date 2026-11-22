@@ -1,7 +1,5 @@
-"""A multiplier on a slide traces to the material like any figure (a ratio of two given figures
-of one measure is worked out); a shrink keeps a finding's page count, puts one old item's parts
-back together in every column, and names no lost figure the old deck only showed unchecked; an
-edit's caveat loss names only what the hedge qualified."""
+"""A shrink keeps whole facts and traces multipliers to the material; an edit's caveat loss names
+only what the hedge qualified."""
 
 from __future__ import annotations
 

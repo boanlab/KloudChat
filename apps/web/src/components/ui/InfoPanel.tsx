@@ -4,12 +4,9 @@ import { cn } from '@/lib/utils'
 import type { RunRow } from '@/lib/runInfo'
 
 /**
- * A small details panel opened by pressing ⓘ (click, tap, Enter or Space — never hover, so a
- * desktop and a phone behave alike). Closes on a click outside or Escape; Escape is taken here
- * first, so inside a menu it closes the panel and leaves the menu open.
- *
- * The panel is rendered in flow beside the button (`panel`), not floated: inside a scrolling menu
- * a floating panel would be clipped.
+ * ⓘ details panel opened by click, tap, Enter or Space (never hover). Closes on outside click or
+ * Escape, which is consumed here so a surrounding menu stays open. Rendered in flow, not floated,
+ * so a scrolling menu does not clip it.
  */
 export function useInfoPanel() {
   const [open, setOpen] = useState(false)

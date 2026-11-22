@@ -49,8 +49,7 @@ def test_no_budget_where_thinking_is_off_default_or_not_flash() -> None:
 
 def test_the_built_in_strict_efforts_and_strict_follows_effort_elsewhere() -> None:
     rules = sa.normalise_rules(None)
-    # 2026-11-20: the strict column's own efforts where it runs on flash for a row whose
-    # `super` model is another one
+    # The strict column's own efforts, where it runs on flash for a row whose `super` model differs.
     assert {name: rule["strictEffort"] for name, rule in rules.items()
             if "strictEffort" in rule} == {
         "visual": "none", "complex_document": "high", "escalation": "high",

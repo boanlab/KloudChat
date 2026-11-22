@@ -1,17 +1,11 @@
-"""A document written on a 한글 (HWPX) form (양식): the form itself becomes the conversation's HWP
-document, and the writer fills it in place with the HWP tools (`hwpx_edit`: `set_cell` for a
-value cell, `fill_fields` for several labelled values at once, `replace_text`/`insert_paragraph`
-under a heading, `fill_blank` for a 「[ ]」), so the form's tables, cells, shapes and page stay
-exactly as they are.
+"""A document written on a 한글 (HWPX) form (양식): the form becomes the conversation's HWP
+document and the writer fills it in place with the HWP tools (`hwpx_edit`).
 
-What the form says itself (a label, a heading, 「고려대학교 총장 귀하」) is fixed: the form's own
-lines are kept in its mark (`start`), and `Guard` holds every edit to them, by code and not by
-the writer's care. A write into a cell keeps the cell's fixed lines and adds the value after
-them; a write that would replace a fixed paragraph, delete it, or fill a hairline spacer row
-is left out and said (`Guard.notes`); after the edits every fixed line is checked again and
-a cell that lost one is put back. The form's value cells, read when it was uploaded
-(`form_profile`), are what the writer is told to fill (`rule`); after each save the document
-says how many of them it filled (`progress`, read by `hwp_doc.describe`).
+The form's own lines (labels, headings, 「고려대학교 총장 귀하」) are fixed: they are kept in its
+mark (`start`) and `Guard` enforces them in code. Writes keep a cell's fixed lines and add the
+value after them; writes that replace/delete a fixed paragraph or fill a spacer row are left
+out (`Guard.notes`); a cell that lost a fixed line is restored. Value cells (`form_profile`)
+are what the writer fills (`rule`); `progress` counts them (`hwp_doc.describe`).
 """
 
 from __future__ import annotations
@@ -206,7 +200,7 @@ class Guard:
         self.cells: dict[str, list[str]] = fixed.get("cells") or {}
         self.paras = {_compact(t): t for t in fixed.get("paras") or []}
         self.fields = mark.get("fields") or []
-        #: what was left out or changed, one sentence each
+        #: edits left out or changed, one sentence each
         self.notes: list[str] = []
 
     # ── where ──────────────────────────────────────────────────────────────
@@ -303,9 +297,8 @@ class Guard:
         mine = text.split("\n")
         have = [_compact(ln) for ln in mine]
         want = [_compact(ln) for ln in fixed]
-        # every fixed line in order: the writer wrote the cell whole. A fixed line as it was,
-        # or with a value put into its blank (「대학(Name) :」 → 「대학(Name) : 정보대학」); any
-        # other line is content
+        # every fixed line in order (as is, or with a value in its blank, 「대학(Name) :」
+        # → 「대학(Name) : 정보대학」); any other line is content
         at, kept = 0, []
         for compact, line in zip(have, mine, strict=False):
             if at < len(want) and compact == want[at]:
@@ -383,9 +376,7 @@ def guard_for(data: bytes, doc: Any) -> Guard | None:
 
 
 def progress(data: bytes, mark: dict[str, Any]) -> dict[str, Any]:
-    """How many of the form's slots hold a value now, counted from the file: a value cell next
-    to its label that is no longer empty, and a cell with a fixed line and room that holds
-    something besides its fixed lines. The labels still empty are listed."""
+    """Count of the form's slots now filled, from the file; lists labels still empty."""
     fields = mark.get("fields") or []
     fixed = mark.get("fixed") or {}
     rooms = [k for k in fixed.get("rooms") or [] if k in (fixed.get("cells") or {})]
@@ -467,9 +458,8 @@ _MANUAL = re.compile(r"직접\s{0,2}(?:입력|작성|채워|기입)|편집기에
 
 
 def nothing_saved(reply: str, refused: str) -> str:
-    """What a form turn that saved nothing says, in place of a reply telling the person to type
-    the values in: the form is as it was, why, and what would help. Empty when the reply is no
-    such failure (a question about the form answered, say)."""
+    """Reply for a form turn that saved nothing: form unchanged, why, what would help; empty when
+    the reply is no such failure."""
     if not refused and not _MANUAL.search(reply or ""):
         return ""
     why = f" 이유: {refused.strip().splitlines()[0][:200]}" if refused.strip() else ""

@@ -1,7 +1,7 @@
-"""Office document tools, one set per kind (`hwp.py`, `docx.py`, `pptx.py`): read the conversation's
-document, edit it in place, or write a new one. They run on the server against the saved
-file; the editor beside the chat reloads each version they save. No network: strict-local
-safe.
+"""Office document tools, one set per kind (`hwp.py`, `docx.py`, `pptx.py`): read, edit in place, or
+write a new document.
+
+They run server-side on the saved file, with no network (strict-local safe).
 """
 
 from __future__ import annotations
@@ -57,10 +57,8 @@ class Toolset:
     read_note: str = ""
     #: said when the stored file is not yet in the editable format
     unconverted: str = ""
-    #: A kind whose file is not paragraphs and tables (PowerPoint) says its own: the ops,
-    #: their one-line help, the three tools' descriptions and parameters, the ops after
-    #: which the ids moved, and how `*_write` makes its file from the arguments (a
-    #: `ValueError` goes back to the model). None: the paragraph kinds' own.
+    #: Overrides for a kind that is not paragraphs and tables (PowerPoint): ops, help, tool
+    #: descriptions, id-moving ops, `*_write` builder (`ValueError` goes to the model).
     ops: tuple[str, ...] = OPS
     op_help: str = ""
     read_text: str = ""
@@ -77,9 +75,8 @@ class Toolset:
     #: a kind whose look is resolved its own way (PowerPoint's slides template): awaited with
     #: (db, ctx) before `build`, its result given to `build` as the look
     look_for: Callable[[Any, Any], Any] | None = None
-    #: a kind that checks or completes `*_write`'s arguments against the turn first (the
-    #: slide count asked for, the pictures named): awaited with (args, ctx), returns the
-    #: arguments to build from; a `ValueError` goes back to the model
+    #: checks or completes `*_write`'s arguments against the turn first: awaited with
+    #: (args, ctx), returns the arguments to build from; `ValueError` goes to the model
     prepare: Callable[[dict[str, Any], Any], Any] | None = None
     #: what a written file holds, counted from it (`pptx_edit.contents`): told to the model
     #: and kept for holding the reply to it (`office_claims`)
@@ -285,7 +282,7 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool, Tool]:
             if (artifact.data or {}).get("format") != editable:
                 return unconverted(artifact.id)
             if seen.get("id") != artifact.id or seen.get("version") != artifact.version:
-                # a hand save moved the ids
+                # a manual save moved the ids
                 return ToolResult(
                     content=(
                         f"문서가 v{artifact.version}입니다. 고치기 전에 {p}_read로 지금 내용을 "
@@ -320,7 +317,7 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool, Tool]:
                     failed=True,
                 )
         state(ctx).update(id=saved.id, version=saved.version, changed=True)
-        # what was saved, for holding the reply to it (`office_claims`)
+        # saved result, for checking the reply (`office_claims`)
         record: dict[str, Any] = {"version": saved.version, "changes": list(result.changes)}
         if kit.contents is not None:
             try:

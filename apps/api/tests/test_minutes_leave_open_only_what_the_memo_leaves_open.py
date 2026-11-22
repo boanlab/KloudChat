@@ -1,7 +1,5 @@
-"""Minutes leave open only what the memo leaves open: no question about an owner the memo
-never asked for, no claim that every deadline is set beside a 미정 row, no hedge, promise or
-part of the day the memo never gives, and no 「제목:/본문:」 lines however the skill's own text
-speaks of mails and next meetings."""
+"""Minutes leave open only what the memo leaves open: no invented owner question, hedge, promise
+or part of the day, and no 「제목:/본문:」 lines."""
 
 from __future__ import annotations
 

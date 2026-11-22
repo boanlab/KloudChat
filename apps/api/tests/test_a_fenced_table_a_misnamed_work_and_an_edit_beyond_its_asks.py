@@ -1,7 +1,5 @@
-"""Round 11 re-check: a table the writer fenced with a broken picture prints as a table once the
-picture goes (T3); a sentence naming a work cites that work and numbers follow the body (T3,
-DOCS-05); an edit rewrites only the parts its asks name, and an asked summary is that many lines
-without the title block again (T1)."""
+"""A table fenced with a broken picture prints as a table; a sentence naming a work cites it; an
+edit rewrites only the parts its asks name."""
 
 from __future__ import annotations
 

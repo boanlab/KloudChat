@@ -7,8 +7,7 @@
 #   bash scripts/load-test.sh                  # concurrency 20, 200 requests
 #   CONCURRENCY=50 REQUESTS=500 bash scripts/load-test.sh
 #
-# Two verdicts: any 5xx fails; any of one account's session ids in the other's
-# responses fails. Latency figures are for this machine only.
+# Fails on any 5xx or any of one account's session ids in the other's responses.
 set -u
 
 # shellcheck source=scripts/lib/env.sh

@@ -457,7 +457,6 @@ async def test_the_limits_refuse_with_429_and_say_when_to_come_back(world, monke
     long = await world.client.post(f"/b/{slug}/conversations/{sid}/messages",
                                    json={"content": "가" * 21})
     assert long.status_code == 422 and long.json()["detail"]["code"] == "too_long"
-    # The owner may lower a limit, never raise it.
     assert publishing.clean_limits({"perBotPerMinute": 10_000}) == {"perBotPerMinute": 60}
 
 
@@ -531,7 +530,6 @@ async def test_an_owner_out_of_credits_pauses_the_bot_until_the_credits_come_bac
         assert (await db.get(Publication, pub["id"])).status == "approved"
 
 
-# ── what the owner and an administrator may read ───────────────────────
 
 
 async def test_the_owner_reads_a_conversation_only_when_the_visitor_sends_it(world):

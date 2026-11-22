@@ -165,11 +165,10 @@ def _build(args: dict[str, Any], look: Any = None) -> tuple[str, bytes]:
 
 
 def draft_args(args: dict[str, Any]) -> dict[str, Any] | None:
-    """The arguments of a draft made from a `pptx_write` call the model could not get right
-    (`Tool.draft`): every slide that has a title kept, a chart that cannot be drawn or a
-    table that does not fit written as lines of text, a missing title filled with the slide's
-    number. Nothing is invented: a slide the arguments do not have stays missing. None when
-    the call holds no slide at all."""
+    """Arguments of a draft made from a `pptx_write` call the model could not get right
+    (`Tool.draft`): slides with a title kept, an undrawable chart or ill-fitting table written
+    as text lines, a missing title filled with the slide number; nothing invented. None when
+    the call holds no slide."""
     slides = _slides_of(args)
     if not slides:
         return None
@@ -306,10 +305,9 @@ def _promote_numbers(slides: list[dict[str, Any]]) -> tuple[list[dict[str, Any]]
 
 
 async def _prepare(args: dict[str, Any], ctx: Any) -> dict[str, Any]:
-    """The arguments checked against the turn and completed: the slide count the person
-    asked, and each slide's `image.file` (a picture the person attached, or a figure
-    `pdf_figures` cut from a project paper) read into the slide. A draft the server saves
-    (`__draft__`) is only completed, never sent back."""
+    """Arguments checked against the turn and completed: the requested slide count and each
+    slide's `image.file` (an attached picture or a `pdf_figures` cut) read into the slide.
+    A server-saved draft (`__draft__`) is only completed, never sent back."""
     draft = args.get("__draft__") is True
     slides = _slides_of(args)
     args = {**args, "slides": [
@@ -320,8 +318,7 @@ async def _prepare(args: dict[str, Any], ctx: Any) -> dict[str, Any]:
         log.info("pptx_write slides unreadable: %s of %d chars; arguments %s", type(raw).__name__,
                  len(str(raw or "")), {key: (type(value).__name__, len(str(value)))
                                        for key, value in args.items()})
-        # an empty list is what a tool-call parser hands over when the model's array was not
-        # valid JSON (an unquoted 「집계 중」 among numbers, a trailing comma)
+        # a tool-call parser hands over an empty list when the model's array was invalid JSON
         raise ValueError("slides가 빈 배열로 왔습니다. 보낸 배열이 올바른 JSON이 아니면 이렇게 "
                          "됩니다: 글자는 모두 큰따옴표로 감싸고, 차트의 없는 값은 null로(「집계 "
                          "중」 같은 글자를 수 자리에 쓰지 말고), 끝에 쉼표를 남기지 말고 "
@@ -566,9 +563,8 @@ TOOLS = tools_for(Toolset(
                                         "type": "object",
                                         "properties": {
                                             "name": {"type": "string"},
-                                            # no item type: a forced call is decoded
-                                            # against this schema, and a type list there
-                                            # left some models writing `slides: []`
+                                            # no item type: a forced call is decoded against this
+                                            # schema, and a type list here makes `slides: []`
                                             "values": {
                                                 "type": "array",
                                                 "description": "수, 자료에 아직 없는 값은 null",
