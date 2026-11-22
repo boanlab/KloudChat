@@ -9,7 +9,8 @@ from app.pipeline.stage import Context
 from app.services import check_skills
 
 SEASONS = (
-    "봄은 3월 초에 시작해 5월까지 이어집니다. 여름은 6월 말부터 덥고 습도가 90퍼센트까지 오릅니다.\n"
+    "봄은 3월 초에 시작해 5월까지 이어집니다. "
+    "여름은 6월 말부터 덥고 습도가 90퍼센트까지 오릅니다.\n"
     "가을은 9월에 접어들며 맑습니다. 겨울은 12월부터 춥습니다."
 )
 

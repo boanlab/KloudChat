@@ -272,7 +272,7 @@ test('정지 asks first and says the person\'s bots stop too', async ({ page }, 
   await row.getByRole('button', { name: '김민지 관리 메뉴' }).click()
   await page.getByRole('menuitem', { name: '김민지 정지', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '김민지님의 접속을 막을까요?' })
-  await expect(dialog).toContainText('공개한 챗봇도 함께 멈춥니다')
+  await expect(dialog).toContainText('공유한 챗봇도 함께 멈춥니다')
   await dialog.getByRole('button', { name: '취소' }).click()
   expect(state.suspended).toEqual([])
   await row.getByRole('button', { name: '김민지 관리 메뉴' }).click()

@@ -84,7 +84,7 @@ for (const kind of ['hwp', 'docx', 'pptx'] as const) {
     await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
     expect(state.created).toEqual([{ sessionId: expect.any(String), fileId: boxId }])
     // the chat is named after the file, not 「새 작업」
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText(KINDS[kind].name)
+    await expect(page.getByRole('heading', { level: 1, name: KINDS[kind].name })).toBeVisible()
     // the copy is titled from the file
     await expect(panelOf(page, kind).locator('header')).toContainText(KINDS[kind].name.replace(/\.[^.]+$/, ''))
     expect(state.fileWrites).toEqual([])
