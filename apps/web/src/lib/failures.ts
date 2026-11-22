@@ -1,7 +1,8 @@
 import { ApiError, errorCode, errorMessage, type StreamEvent } from '@/lib/api'
+import { tooLargeMessage } from '@/lib/uploadLimit'
 import type { Translator } from '@/lib/useT'
 
-/** Sentences for API refusal codes and stream `error` events; unknown codes shown in brackets. */
+/** Sentences for API refusal codes and stream `error` events; an unknown code never reaches the screen. */
 type T = Translator
 
 const SKILLS = '선택한 스킬을 이 요청에 적용할 수 없습니다. 스킬 선택을 바꿔 다시 시도하세요.'
@@ -49,6 +50,20 @@ const REFUSALS: Record<string, string> = {
   insufficient_credits: '이번 달 크레딧이 부족합니다.',
   no_credits: '이번 달 크레딧을 모두 썼습니다.',
   surface_not_implemented: '이 화면은 아직 지원되지 않습니다.',
+  agent_retired:
+    '이 에이전트는 더는 쓸 수 없어 새 대화를 시작할 수 없습니다. 이전 대화는 그대로 볼 수 있습니다. 다른 에이전트를 고르세요.',
+  retry_not_latest: '가장 최근 질문만 다시 시도할 수 있습니다. 대화 맨 아래의 질문에서 다시 시도하세요.',
+  retry_target_not_found: '다시 시도할 질문을 찾을 수 없습니다. 화면을 새로고침한 뒤 질문을 다시 보내세요.',
+  search_consent_stale: '이 검색 확인은 이미 처리되었습니다. 화면을 새로고침해 결과를 확인하세요.',
+  session_id_taken: '대화를 시작하지 못했습니다. 화면을 새로고침한 뒤 새 대화를 시작하세요.',
+  no_audio_models: '지금 쓸 수 있는 오디오 모델이 없습니다. 관리자에게 문의하세요.',
+  diagram_failed: '도식을 그리지 못했습니다. 잠시 뒤 다시 시도하세요.',
+  fork_chat_only: '대화에서만 이 지점부터 새 대화를 만들 수 있습니다.',
+  fork_target_not_found: '나눌 메시지를 찾을 수 없습니다. 화면을 새로고침한 뒤 다시 시도하세요.',
+  fork_user_message_required: '내가 보낸 메시지에서만 새 대화를 만들 수 있습니다. 내 질문을 골라 주세요.',
+  handoff_from_chat_only: '대화에서만 보고서나 슬라이드로 넘길 수 있습니다.',
+  auto_is_not_a_model_id: '「자동」은 모델 이름이 아닙니다. 모델을 직접 고르거나 자동 모드를 다시 고르세요.',
+  auto_routing_chat_only: '자동으로 모델을 고르는 기능은 대화에서만 쓸 수 있습니다. 모델을 직접 고르세요.',
   governance_unavailable:
     '개인정보 검사기를 사용할 수 없어 요청을 보내지 못했습니다. 잠시 후 다시 시도하세요.',
 }
@@ -64,7 +79,8 @@ export function refusedBeforeWrite(error: unknown): error is ApiError {
 
 /** A refused picture, figure or document edit: our sentence for a known code, else `fallback`. */
 export function mediaFailure(err: unknown, fallback: string, t: T): string {
-  const code = err instanceof ApiError && err.status < 500 ? errorCode(err) : ''
+  // A named code is ours to explain at any status (`diagram_failed` is a 502).
+  const code = err instanceof ApiError ? errorCode(err) : ''
   return code && REFUSALS[code] ? t(REFUSALS[code]) : errorMessage(err, fallback)
 }
 
@@ -86,7 +102,8 @@ export function refusalSentence(code: string, t: T): string | undefined {
       code.slice('blocked_category:'.length),
     )
   }
-  return t('요청이 거부되었습니다 ({code}).').replace('{code}', code)
+  // A code nobody wrote a sentence for is no help to the reader; the plain sentence says what to do.
+  return t('요청을 처리하지 못했습니다. 다시 해도 같으면 관리자에게 문의하세요.')
 }
 
 /** Sentence for a stream that ended in an `error` event; the upstream `reason` is quoted after it. */
@@ -133,4 +150,37 @@ export function withRetryWait(sentence: string, err: unknown, t: T): string {
 /** A conversation that could not be started from a card or a menu. */
 export function startFailure(err: unknown, t: T): string {
   return refusalSentence(errorCode(err), t) ?? errorMessage(err, t('대화를 시작하지 못했습니다. 잠시 뒤 다시 시도하세요.'))
+}
+
+/**
+ * A file that did not go up, by why. Retry advice only where retrying can help:
+ * a file that is too large or of a kind we cannot read fails the same way next time.
+ */
+export function uploadFailure(err: unknown, t: T): string {
+  if (!(err instanceof ApiError)) {
+    return t('연결이 끊겨 올리지 못했습니다. 인터넷 연결을 확인한 뒤 다시 올리세요.')
+  }
+  if (err.status === 401) return t('로그인이 만료되었습니다. 다시 로그인한 뒤 올리세요.')
+  if (err.status === 408 || err.status === 0) {
+    return t('연결이 끊겨 올리지 못했습니다. 인터넷 연결을 확인한 뒤 다시 올리세요.')
+  }
+  const code = errorCode(err)
+  const tooLong = /^video_too_long_(\d+)min$/.exec(code)?.[1]
+  if (tooLong) return t('영상이 너무 깁니다. {n}분 이하로 나눠 올려 주세요.').replace('{n}', tooLong)
+  const limit = /^file_too_large_(\d+)mb$/.exec(code)?.[1]
+  if (limit) return tooLargeMessage(Number(limit))
+  if (err.status === 413) {
+    // The API and our own check already name the limit in a sentence; a bare proxy 413 gets the configured one.
+    return errorMessage(err, tooLargeMessage())
+  }
+  if (err.status === 415 || code === 'not_media') {
+    return t('지원하지 않는 형식의 파일입니다. 다른 형식으로 바꿔 올리세요.')
+  }
+  if (err.status === 422) {
+    return t('파일을 읽을 수 없습니다. 파일이 비어 있거나 손상되지 않았는지 확인하세요.')
+  }
+  if (err.status >= 500) {
+    return t('서버 문제로 올리지 못했습니다. 잠시 뒤 다시 시도하세요.')
+  }
+  return refusalSentence(code, t) ?? errorMessage(err, t('올리지 못했습니다. 파일을 확인한 뒤 다시 올리세요.'))
 }

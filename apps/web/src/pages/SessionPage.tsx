@@ -535,6 +535,8 @@ export function SessionPage() {
   }, [])
   const lastMessageId = session?.messages.at(-1)?.id
   const lastRole = session?.messages.at(-1)?.role
+  // A failure box appears without any new text; it must still be scrolled fully into view above the composer.
+  const lastFailure = session?.messages.at(-1)?.error ?? session?.messages.at(-1)?.failure ?? ''
   useLayoutEffect(() => {
     // A just-sent question brings the bottom into view.
     if (lastRole === 'user') following.current = true
@@ -542,7 +544,13 @@ export function SessionPage() {
   useLayoutEffect(() => {
     if (!following.current) return
     scrollToBottom(streaming ? 'auto' : 'smooth')
-  }, [timeline.length, lastLength, runningProgress, streaming, scrollToBottom])
+  }, [timeline.length, lastLength, lastFailure, runningProgress, streaming, scrollToBottom])
+  // A failure always ends the follow pause: the reader must see what happened and the retry button.
+  useLayoutEffect(() => {
+    if (!lastFailure) return
+    following.current = true
+    scrollToBottom('smooth')
+  }, [lastFailure, scrollToBottom])
   // New conversation opens at the bottom.
   useEffect(() => {
     following.current = true

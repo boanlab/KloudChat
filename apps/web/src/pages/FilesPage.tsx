@@ -13,6 +13,7 @@ import { Button, Card, ConfirmDialog, EmptyState, PageHeader, ReloadNotice } fro
 import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
 import { ListPager } from '@/components/ui/ListPager'
 import { downloadFile, errorMessage, filesApi, type FileRow } from '@/lib/api'
+import { uploadFailure } from '@/lib/failures'
 import { ATTACH_ACCEPT, attachRefusal } from '@/lib/attachable'
 import { mediaPreflight } from '@/lib/media'
 import { useOcrProgress } from '@/lib/ocr'
@@ -120,7 +121,7 @@ export function FilesPage() {
         if (tab !== 'upload') setTab('upload')
         box.addRow(row)
       } catch (err) {
-        problems.push(`${file.name} — ${errorMessage(err, t('올리지 못했습니다. 잠시 뒤 다시 시도하세요.'))}`)
+        problems.push(`${file.name} — ${uploadFailure(err, t)}`)
       }
     }
     setUploading(null)

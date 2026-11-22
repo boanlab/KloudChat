@@ -2,6 +2,7 @@ import { CircleAlert, FileText, Globe, Loader2, Paperclip, RefreshCw, Trash2, Tr
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, Field, Input } from '@/components/ui'
 import { agentsApi, downloadFile, errorMessage, type FileRow } from '@/lib/api'
+import { uploadFailure } from '@/lib/failures'
 import { useFileDrop } from '@/lib/useFileDrop'
 import { isReading, ocrNote, useOcrProgress } from '@/lib/ocr'
 import { useT } from '@/lib/useT'
@@ -85,7 +86,7 @@ export function AgentKnowledge({
             setSavedNote(true)
           }
         } catch (err) {
-          setError(errorMessage(err, t('파일을 올리지 못했습니다. 잠시 뒤 다시 시도하세요.')))
+          setError(uploadFailure(err, t))
         } finally {
           setBusy(null)
           if (fileInput.current) fileInput.current.value = ''
@@ -130,7 +131,7 @@ export function AgentKnowledge({
       const row = await agentsApi.knowledge.upload(agentId, picked)
       replaceRows([row, ...rowsRef.current])
     } catch (err) {
-      setError(errorMessage(err, t('파일을 올리지 못했습니다. 잠시 뒤 다시 시도하세요.')))
+      setError(uploadFailure(err, t))
     } finally {
       setBusy(null)
       if (fileInput.current) fileInput.current.value = ''

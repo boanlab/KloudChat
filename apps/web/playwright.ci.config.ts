@@ -114,6 +114,7 @@ const groups: Record<string, Group> = {
     files: [
       'error-display.spec.ts',
       'retry-in-place.spec.ts',
+      'send-failure-flow.spec.ts',
       'prompt-copy.spec.ts',
       'unanswered-turn.spec.ts',
       'tool-recovery-status.spec.ts',
