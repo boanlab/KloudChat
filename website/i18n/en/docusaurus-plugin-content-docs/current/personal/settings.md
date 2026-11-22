@@ -4,7 +4,7 @@ title: Settings
 
 # Settings
 
-**Settings**, in the account menu, has nine tabs: Profile, Preferences, Personalization, Memory, Connections, API keys, Security, Notifications and App.
+**Settings**, in the account menu, has eight tabs: Profile, Preferences, Personalization, Memory, API keys, Security, Notifications and App.
 
 ## Profile
 
@@ -48,16 +48,6 @@ See and edit what is remembered across conversations. See [Memory](memory.md) fo
 ## Document look
 
 Settings has no tab for the look of documents. Set the colours, fonts and table style of reports and slides in words in the **design brief** of a [project](projects.md#design-brief) or an agent, or attach a company form file. The look of a single document is changed with **Look** in the report or slides panel.
-
-## Connections
-
-Connect your own Google Drive and Slack accounts. Only services the administrator turned on appear, and a connection is used for your account only (a personal gmail.com account works too).
-
-- **Google Drive**: the app opens only the files you pick in Google's file picker, from **+ › Import from Drive** in the composer or **Knowledge › Drive** in a project. It never sees the rest of your Drive. The refresh button on an imported file brings in what changed in Drive.
-- Anything written outside, such as **Save to Drive**, is sent only after you press **Confirm** on the card under the answer.
-- Drive content is internal material: where the administrator keeps internal material strict-local, only internal models read it.
-- **Slack**: the app reads only channels you are in, and sends a message only after you check the channel and text on the card. Turn on **Notify me in Slack when a long job finishes** to get a message to yourself or in a channel you pick. If you can't install the app in your workspace, ask your Slack admin.
-- **Disconnect** revokes the grant and deletes the stored tokens. Imported files stay.
 
 ## API keys
 

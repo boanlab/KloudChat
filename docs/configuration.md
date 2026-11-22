@@ -552,13 +552,6 @@ reads files stays on the 27B; thinking stays off because it costs minutes a call
 seconds; and prose, the bulk of the tokens, runs on the 27B's node while Flash's node takes the
 many short readings.
 
-### Integrations
-
-Google Drive and Slack, connected by each person with their own account. The administrator
-creates one OAuth client per provider and enters it here; see
-[Google Drive and Slack integrations](integrations.md) for the console steps, scopes and
-redirect URIs.
-
 ### Connector catalogue
 
 The MCP connectors users can install from **Customize › Connectors**: name,

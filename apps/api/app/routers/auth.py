@@ -62,7 +62,6 @@ from app.services import governance as governance_service
 from app.services import mail as mail_service
 from app.services import transcribe as transcribe_service
 from app.services.credits import grant_initial_allowance
-from app.services.integrations import config as integration_config
 from app.services.litellm import provision_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -744,8 +743,6 @@ async def auth_config(db: DbSession):
         },
         # every date the web prints, and every day it groups by, is in this zone
         "timeZone": settings.timezone,
-        # which connections the composer and project screens may offer (`integrations`)
-        "integrations": await integration_config.offered(),
     }
 
 

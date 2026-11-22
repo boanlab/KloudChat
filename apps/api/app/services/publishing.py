@@ -593,7 +593,7 @@ async def make_version(db: AsyncSession, owner: User, pub: Publication, agent: A
 
 
 #: Turn origin channels for stats.
-CHANNEL_NAMES = ("web", "embed", "api", "mcp", "slack")
+CHANNEL_NAMES = ("web", "embed", "api", "mcp")
 #: Admin-opened channels; `embed` needs `external`, `api`/`mcp` need external opening.
 CHANNELS = ("embed", "api", "mcp")
 EMBED_ORIGINS_MAX = 10

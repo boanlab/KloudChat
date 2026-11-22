@@ -51,10 +51,6 @@ A chatbot open to people without an account can also be reached through these ch
 - The **API** tab and **Statistics** show questions by channel (bot page, other sites, API, MCP).
 - When an administrator closes the outside audience, or the audience is narrowed, the channels it can no longer carry close with it.
 
-## Answering in Slack
-
-When the administrator has turned on the Slack bot, pick a channel you are in on the **Slack** card of the publication screen. Invite the app to that channel; mention it (@) and it answers in the thread. Answers run on the publisher's account and credits, and the first answer says so. A channel shared with another organisation counts as an outside audience and is answered only after an administrator approves outside publication.
-
 ## What the publisher sees
 
 The management page (**Chatbot** → **Manage** on your agent's page) shows:

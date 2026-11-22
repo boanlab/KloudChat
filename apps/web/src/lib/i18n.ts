@@ -1,5 +1,4 @@
 /** Dictionary keyed on the Korean source string; missing entries render the Korean. */
-import { EN_INTEGRATIONS } from './i18nIntegrations'
 import { EN_UI } from './i18nUi'
 import { EN_CATALOG } from './i18nCatalog'
 
@@ -33,7 +32,16 @@ const EN: Record<string, string> = {
   '이 모델은 이미지를 고칠 수 없습니다. 다른 모델을 고르세요.': 'This model cannot edit images. Pick another model.',
   '고칠 이미지를 찾을 수 없습니다.': 'The image to edit is gone.',
   '고칠 이미지를 읽지 못했습니다.': 'Could not read the image to edit.',
-  ...EN_INTEGRATIONS,
+  // audit log: connection events of earlier records
+  '외부 계정 연결': 'External account connected',
+  '외부 계정 연결 해제': 'External account disconnected',
+  '외부 연동 설정 변경': 'Integration settings changed',
+  'Slack 워크스페이스 설치': 'Slack workspace installed',
+  'Slack 워크스페이스 설치 해제': 'Slack workspace uninstalled',
+  '외부 계정에 쓰기': 'Wrote to an external account',
+  '외부 계정 쓰기 실패': 'External write failed',
+  '드라이브에서 가져오기': 'Import from Drive',
+  'Slack 봇 채널 변경': 'Slack bot channel changed',
   // 양식 (form files)
   '구조: {name} 패턴': 'Structure: {name}',
   '함께 맞은 패턴: {list}': 'also matched: {list}',

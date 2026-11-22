@@ -202,9 +202,6 @@ Migrations live under `alembic/versions/`. The principal tables:
 - `publications` · `publication_versions` · `publication_visitors` ·
   `publication_counters` · `publication_slots` · `publication_questions` ·
   `publication_keys` — published agents (§6 Publishing agents)
-- `integration_accounts` · `integration_actions` · `integration_imports` ·
-  `slack_workspaces` · `slack_bot_channels` · `slack_threads` — external
-  account integrations and the Slack bot
 - `source_selections` · `source_guides` · `project_notes` · `studio_items` — a
   project's knowledge shelf
 - `push_subscriptions` · `push_sent` — web push

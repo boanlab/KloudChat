@@ -76,8 +76,8 @@ when the backend serves an embedding model. Everything shipped is built with
 the same features a user has, so a user can build the same thing.
 
 **Projects are a knowledge shelf.** A project holds instructions, memories and
-sources — uploads, web pages, pasted text, notes, video and audio transcripts,
-files picked from Google Drive. Each conversation chooses which sources are on,
+sources — uploads, web pages, pasted text, notes, video and audio transcripts.
+Each conversation chooses which sources are on,
 answers cite them by number and open the passage in the original, and the
 Studio makes study guides, FAQs, briefings, timelines, glossaries, mind maps,
 quizzes and flashcards from the chosen sources. Uploaded audio and video are
@@ -234,7 +234,6 @@ The account menu's **Manage** (관리) section:
 | Mail | SMTP for password reset and email verification |
 | Signup | Signup mode, allowed mail domains, email verification, a new account's monthly credits |
 | Connector catalogue | The MCP connectors users can install |
-| Integrations | The Google Drive and Slack OAuth clients people connect their own accounts through ([docs/integrations.md](docs/integrations.md)) |
 
 Chat is always on. Reports and slides are on by default. Images and
 audio/video cost credits per generation, so they default to off; a disabled surface disappears from the UI *and* the server
@@ -279,7 +278,7 @@ without a translation fall back to Korean. The user guide is published at
 | `/history` | Conversation history — selective and bulk deletion |
 | `/usage` | Your own usage, by day, model and surface |
 | `/issues` | Questions and reports you sent, with the answers |
-| `/settings` · `/settings/{preferences,personalization,memory,connections,keys,access,notifications,app}` | Profile and password / defaults / about-me and response style / memories / Google Drive and Slack / API keys / sign-ins / notifications and push / install as an app |
+| `/settings` · `/settings/{preferences,personalization,memory,keys,access,notifications,app}` | Profile and password / defaults / about-me and response style / memories / API keys / sign-ins / notifications and push / install as an app |
 | `/agent-setup` · `/api-setup` | Coding-agent and API connection guides (**Agent setup**, **API access**) |
 | `/share/:token` | A read-only shared link |
 | `/admin/…` | See [What an administrator controls](#what-an-administrator-controls) |
@@ -328,7 +327,7 @@ KloudChat/
 │   ├── api/                          FastAPI — see apps/api/README.md
 │   ├── print/                        Headless Chromium + LibreOffice: HTML to PDF, slide to PNG, ELK layout
 │   └── media/                        ffmpeg worker for uploaded audio and video
-├── docs/                             Architecture, configuration, deployment, development, integrations
+├── docs/                             Architecture, configuration, deployment, development
 ├── website/                          User guide (Docusaurus, Korean and English)
 ├── scripts/                          Integration checks against a running stack, rolling API restart
 ├── mcp/                              MCP stdio server scripts (YouTube transcripts)
@@ -347,7 +346,6 @@ KloudChat/
 | [docs/configuration.md](docs/configuration.md) | Every environment variable and runtime setting |
 | [docs/deployment.md](docs/deployment.md) | Production deployment, TLS, backups, upgrades |
 | [docs/development.md](docs/development.md) | Local setup, tests, migrations |
-| [docs/integrations.md](docs/integrations.md) | Google Drive and Slack: OAuth clients, scopes, what people get |
 | [apps/web/README.md](apps/web/README.md) | Frontend development and end-to-end tests |
 | [apps/api/README.md](apps/api/README.md) | API layout, endpoints and tests |
 | [apps/print/README.md](apps/print/README.md) · [apps/media/README.md](apps/media/README.md) | The print and media workers |

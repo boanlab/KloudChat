@@ -42,7 +42,6 @@ import { RetryActions } from './RetryActions'
 import { OutputFiles, StepTimeline } from './StepTimeline'
 import { ProposalCard } from './ProposalCard'
 import { SearchConsentCard } from './SearchConsentCard'
-import { ActionCard } from './ActionCard'
 import { doingPhrase, waitingCardMessageId } from '@/lib/stages'
 import { TurnProgress } from './TurnProgress'
 import { copyText } from '@/lib/clipboard'
@@ -872,13 +871,6 @@ function MessageItemInner({
             )}
           </div>
         )}
-
-        {(message.steps ?? [])
-          .filter((step) => step.confirm?.actionId)
-          .map((step) => (
-            // A write waiting for the person: only this card sends it.
-            <ActionCard key={step.confirm!.actionId} actionId={step.confirm!.actionId} />
-          ))}
 
         {!streaming && madeFiles.length > 0 && (
           // The files code wrote, where the answer that talks about them is read.

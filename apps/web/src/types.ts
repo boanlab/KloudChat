@@ -732,8 +732,6 @@ export interface Step {
   summarisedTurns?: number
   /** Whether a summary was actually written for them. */
   summarised?: boolean
-  /** A write to Google Drive or Slack waiting for the person's confirmation card. */
-  confirm?: { actionId: string; kind: string; provider: 'google' | 'slack' }
   /** Place in line of a complex document turn waiting for a slot on the in-house server. */
   queuePosition?: number
 }

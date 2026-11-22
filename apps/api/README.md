@@ -79,7 +79,6 @@ All under `/api` except `/llm`. The complete list is the OpenAPI document at
 | `/user-pipelines…` · `/bundles…` | Composed processes and bundles; sharing ones that export or review goes through administrator approval |
 | `GET /design-templates` · `usage` · `{id}/preview` · `{id}/style` · `{id}/form` · `/user-templates…` | Templates: the shipped catalogue (preview is unauthenticated) and users' own |
 | `GET /connectors` · `/connectors/catalog` · `POST /connectors/install/{slug}` | MCP connectors |
-| `/integrations/{google,slack}…` · `/admin/integrations…` | A person's own Google Drive and Slack connections; the administrator's OAuth clients; confirm cards for actions the agent proposes ([docs/integrations.md](../../docs/integrations.md)) |
 | `/push/{config,subscriptions,unsubscribe,test}` | Web Push devices (needs the VAPID keys) |
 | `POST /client-errors` | Errors the browser reports about itself |
 | `POST /shares` · `GET /shared/{token}` · `GET /shares/{id}/views` | Read-only sharing. Reading a `link`-scoped share needs no authentication |
@@ -167,7 +166,7 @@ app/
 │                           security.py (argon2id, JWT, refresh hashing), deps.py (current_identity
 │                           allows pending / current_viewer also takes ?t= / current_user /
 │                           require_admin), request_id.py, logs.py (sanitising outside text)
-├── models/                 SQLAlchemy tables: user, chat, workspace, shelf, publishing, integrations,
+├── models/                 SQLAlchemy tables: user, chat, workspace, shelf, publishing,
 │                           push, issues, metrics, governance, settings
 ├── schemas/                camelCase wire format (1:1 with apps/web/src/types.ts)
 ├── routers/                One module per area of the endpoint table; hwp, docx and pptx are
@@ -202,7 +201,7 @@ app/
     │                       scanned pages, speech-to-text
     ├── publishing.py · bundles.py · skill_*.py · check_skills.py · post_checks.py   Published bots,
     │                       bundles, skills and the checks they attach
-    ├── integrations/ · push.py · mail.py · mcp.py            Google Drive and Slack, Web Push, account
+    ├── push.py · mail.py · mcp.py                            Web Push, account
     │                       mail, MCP client (stdio and streamable-http)
     ├── perf/ · geoip.py                                      Admin performance figures, offline region lookup
     ├── tools/              Built-in tools, MCP tools, connector catalogue

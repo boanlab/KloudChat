@@ -43,7 +43,7 @@ src/
 │   ├── projects/ · shelf/   Project design brief and form files; knowledge shelf (sources, Studio, notes, citations)
 │   ├── agents/ · chain/     An agent's knowledge, process (How it works) and gap questions; the step canvas
 │   ├── customize/      Customize hub: agent and skill forms, sharing, Use now
-│   ├── publishing/     Publish dialog, channels (link, embed, API, MCP, Slack), scope
+│   ├── publishing/     Publish dialog, channels (link, embed, API, MCP), scope
 │   ├── issues/         Feedback & issues dialog, thread, read-only session copy
 │   ├── share/          Read-only link creation and revocation
 │   ├── memory/ · admin/ · auth/ · document/   Memory editor, user detail, role routes, shared document chrome

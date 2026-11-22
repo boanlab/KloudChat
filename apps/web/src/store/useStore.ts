@@ -27,7 +27,6 @@ import {
   designTemplatesApi,
   keysApi,
   filesApi,
-  integrationsApi,
   memoryApi,
   modelsApi,
   projectsApi,
@@ -318,10 +317,6 @@ interface State {
   idleTimeoutMinutes: number
   /** Whether a speech-to-text backend is configured. */
   dictationEnabled: boolean
-  /** The administrator turned on Google Drive with Picker: 「드라이브에서 가져오기」 is offered. */
-  drivePicker: boolean
-  /** Published agents may answer in Slack channels. */
-  slackBot: boolean
   /** The admin's web search in strict-local turns: ask first, queries only, or never. */
   strictLocalWebSearch: SearchConsentMode
   /** The admin keeps internal material (attachments, uploaded pictures) on strict-local models. */
@@ -649,9 +644,6 @@ interface State {
   reindexProject: (projectId: string) => Promise<{ attempted: number; indexed: number }>
   addProjectUrl: (projectId: string, url: string) => Promise<FileRow>
   /** Files picked in Google Picker brought in as this project's material. */
-  addProjectDriveFiles: (projectId: string, rows: FileRow[]) => void
-  /** A Drive file read again from Drive; true when it had changed there. */
-  syncDriveFile: (projectId: string, fileId: string) => Promise<boolean>
   deleteFile: (id: string) => Promise<void>
   /** Fetches the template list only if it is not already held. */
   ensureDesignTemplates: () => Promise<void>
@@ -1158,8 +1150,6 @@ export const useStore = create<State>((set, get) => ({
   signedOutReason: null,
   idleTimeoutMinutes: 0,
   dictationEnabled: false,
-  drivePicker: false,
-  slackBot: false,
 
   bootstrap: async () => {
     if (inFlight) return inFlight
@@ -1189,8 +1179,6 @@ export const useStore = create<State>((set, get) => ({
               apiSuperAgent: Boolean(c.apiSuperAgentEnabled),
               idleTimeoutMinutes: c.idleTimeoutMinutes ?? 0,
               dictationEnabled: Boolean(c.dictationEnabled),
-              drivePicker: Boolean(c.integrations?.drivePicker),
-              slackBot: Boolean(c.integrations?.slackBot),
               passwordMinLength: c.password?.minLength ?? DEFAULT_PASSWORD_MIN,
             })
             armIdleWatch(c.idleTimeoutMinutes ?? 0, () => void idleSignOut(get))
@@ -2557,8 +2545,6 @@ export const useStore = create<State>((set, get) => ({
       apiSuperAgent: Boolean(c.apiSuperAgentEnabled),
       idleTimeoutMinutes: c.idleTimeoutMinutes ?? 0,
       dictationEnabled: Boolean(c.dictationEnabled),
-      drivePicker: Boolean(c.integrations?.drivePicker),
-      slackBot: Boolean(c.integrations?.slackBot),
       passwordMinLength: c.password?.minLength ?? DEFAULT_PASSWORD_MIN,
       strictLocalWebSearch: c.privacy?.strictLocalWebSearch ?? 'ask',
       internalDataStrictLocal: Boolean(c.privacy?.internalDataStrictLocal),
@@ -2799,25 +2785,6 @@ export const useStore = create<State>((set, get) => ({
     const row = await projectsApi.get(projectId)
     set((s) => ({ projects: s.projects.map((p) => (p.id === projectId ? toProject(row) : p)) }))
     return counts
-  },
-  addProjectDriveFiles: (projectId, rows) => {
-    touchWorkspace()
-    set((s) => ({
-      projects: s.projects.map((p) =>
-        p.id === projectId
-          ? { ...p, files: [...rows.map(toProjectFile), ...p.files.filter((f) => !rows.some((r) => r.id === f.id))] }
-          : p,
-      ),
-    }))
-  },
-  syncDriveFile: async (projectId, fileId) => {
-    const out = await integrationsApi.driveSync(fileId)
-    set((s) => ({
-      projects: s.projects.map((p) =>
-        p.id === projectId ? { ...p, files: p.files.map((f) => (f.id === fileId ? toProjectFile(out.file) : f)) } : p,
-      ),
-    }))
-    return out.changed
   },
   addProjectUrl: async (projectId, url) => {
     touchWorkspace()
@@ -3440,10 +3407,6 @@ function toStep(raw: Record<string, unknown>): Step {
     estimatedTokens: raw.estimatedTokens as number | undefined,
     summarisedTurns: raw.summarisedTurns as number | undefined,
     summarised: raw.summarised as boolean | undefined,
-    confirm:
-      raw.confirm && typeof raw.confirm === 'object' && typeof (raw.confirm as { actionId?: unknown }).actionId === 'string'
-        ? (raw.confirm as Step['confirm'])
-        : undefined,
     queuePosition: typeof raw.queuePosition === 'number' ? raw.queuePosition : undefined,
   }
   // Stored labels are Korean; rebuilt here in the current language from the structured fields.
