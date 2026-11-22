@@ -12,7 +12,7 @@ This page describes the limits the service allows and what to do for each error 
 |---|---|
 | A single file | 200MB (an administrator can change it) |
 | Images | PNG, JPG, GIF, WebP, up to 4MB, on a strict-local model that supports image recognition |
-| Audio and video files | 25MB, when speech transcription is connected |
+| Audio and video files | 25MB (when speech transcription is connected); 500MB and 240 minutes where a media server is connected (an administrator can change this) |
 | Number of slides | Up to 50 slides (5 to 12 if you do not specify a number) |
 | Number of report sections | 3 to 12 sections |
 | Skills | 3 per request |

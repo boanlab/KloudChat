@@ -37,6 +37,10 @@ picture, a clip — is an **artifact**, kept in its own gallery and exportable:
 | Deck — made as web slides or a PowerPoint file | PDF, PPTX, Markdown |
 | Chart | PNG, SVG, CSV |
 
+Web reports and web slides are edited in the right-hand panel; HWP, Word and
+PowerPoint files open in their own editors there. Pictures can be edited
+(a new version, the original kept) by models that accept an image.
+
 **Your form, or a structure from the request.** Attach a company PowerPoint or
 Word form (양식) and the deck or report is written on it — its layouts, styles, header,
 cover and numbering kept. Without one, the request picks the structure (minutes,
@@ -62,13 +66,22 @@ on in a conversation. A skill brings its own checks,
 missing-information questions and process settings, and a person can make one
 just like it. An agent fixes its instructions, model, knowledge files, the
 skills it keeps on, its document format, form files, 디자인 지침 and **How it works** process, plus the bundles of
-extra steps around the writing (prepare · review · finish). Other skills are
+extra steps around the writing (prepare · review · finish); the order of an
+agent's steps can be arranged on a canvas, with conditional branches. Other skills are
 scripts and checks that change the result (calculation check, date and quote
 calculation, spreadsheet clean-up, PDF tables, source check, PII masking…). An
 agent's knowledge is searched
 through a tool when it needs it — lexically by default, adding vector search
 when the backend serves an embedding model. Everything shipped is built with
 the same features a user has, so a user can build the same thing.
+
+**Projects are a knowledge shelf.** A project holds instructions, memories and
+sources — uploads, web pages, pasted text, notes, video and audio transcripts,
+files picked from Google Drive. Each conversation chooses which sources are on,
+answers cite them by number and open the passage in the original, and the
+Studio makes study guides, FAQs, briefings, timelines, glossaries, mind maps,
+quizzes and flashcards from the chosen sources. Uploaded audio and video are
+read through a small ffmpeg worker (transcript plus frames).
 
 **Agents can be published.** An agent opens as a chatbot to every member of
 the instance at once; opening it to people without an account — by link or on
@@ -95,11 +108,13 @@ key never leaves the API container. Credits are an administrator-assigned
 monthly allowance that refills — no top-up, no rollover, and failed jobs are
 not charged. KloudChat enforces the limit before every turn; the LiteLLM-side
 budget is a backstop 20% above it, attached to the account rather than to a
-key. An administrator can also offer **Auto** routing, which a person selects
-per conversation: a strict-local classifier sends clearly simple turns to a
-cheaper model (**Auto · Save credits**) or clearly hard ones to a stronger
-model (**Auto · Favour quality**); the requested and executed models stay
-visible on the answer.
+key. **Super Agent** is the default on chat, report and slides: for every turn it
+chooses a model, a reasoning effort and a tool budget from a table the
+administrator keeps (**System › Routing**). **Super Agent (strict-local)** does
+the same using strict-local models only; a project that keeps internal
+material inside starts on it. A person can still pick a model by hand, and
+both entries are also served on the `/llm` proxy as `kloudchat/super-agent`
+and `kloudchat/super-agent-strict-local`.
 
 ### The self-hosted models
 
@@ -123,13 +138,17 @@ and **System › Routing**, 시스템 › 모델 / 라우팅 on a Korean screen)
 │   └▶ api × N     (internal :8100)  │──URL──▶│   /litellm  /tools/{search,fetch,   │
 │  kloudchat-db    :5433             │        │    exec,research,stt,index,ocr}     │
 │  kloudchat-print (internal :8200)  │        │                                     │
+│  kloudchat-media (internal :8300)  │        │                                     │
 └────────────────────────────────────┘        └─────────────────────────────────────┘
 ```
 
 The web container is the only entry point: it serves the bundle and proxies
 `/api` and `/llm` to the `api` service, which runs as `KCHAT_API_REPLICAS`
 replicas (default 1) and publishes no host port. A one-shot `migrate`
-container applies database migrations before any replica starts.
+container applies database migrations before any replica starts. `print`
+(headless Chromium and LibreOffice: PDF and slide pictures) and `media`
+(ffmpeg) sit on internal networks with no route out; see
+[apps/print](apps/print/README.md) and [apps/media](apps/media/README.md).
 
 The boundary is **one address, one master key and one tools key**. If the backend goes down,
 sign-in, history, workspace and settings keep working; only model calls and
@@ -137,7 +156,7 @@ tools fail, and they fail honestly with "not connected".
 
 ## Quick start
 
-Requirements: Docker with Compose v2, and about 2 GB of free disk for images.
+Requirements: Docker with Compose v2.
 
 ```bash
 git clone https://github.com/boanlab/KloudChat.git
@@ -169,11 +188,12 @@ accounts at all, so changing them later never resets an existing password.
 
 ### Connecting the backend
 
-In the account menu, open **System › Features** and paste the backend gateway
-address into **Integrations › Server address**, then save. The LiteLLM address and the
+In the account menu, open **Manage › System › Features** and paste the backend
+gateway address into **Integrations › Server address**, then save. The LiteLLM address and the
 seven tool endpoints (web search, document fetch, code execution, deep
 research, speech-to-text, retrieval index, OCR) are derived from it by
-appending their paths. Print the address from the backend:
+appending their paths. (`BACKEND_BASE_URL` in `.env` seeds the same address.)
+Print the address from the backend:
 
 ```bash
 ./scripts/setup.sh urls    # run this in KloudChat-LLM
@@ -183,7 +203,7 @@ If you host one feature elsewhere, override that single field. Each field has a
 connection test, and a feature with an empty address drops quietly out of the
 tool list — conversation, files, projects, memory and agents are unaffected.
 
-The LiteLLM master key is entered under **System › Proxy**, which also holds
+The LiteLLM master key is entered under **Manage › System › Proxy**, which also holds
 an explicit LiteLLM address when it is not behind the gateway. The tool
 endpoints are authenticated by a shared key set in `.env`
 (`KCHAT_TOOLS_GATEWAY_KEY`), never in the screen.
@@ -208,15 +228,16 @@ The account menu's **Manage** (관리) section:
 | --- | --- |
 | Proxy | LiteLLM address and master key, connection test, model list refresh, models hidden for an unknown price |
 | Model | The default model of each surface, the models for side work (titles and memories, `run_code` programs), whether models think before answering |
-| Routing | Auto routing — the classifier, economy and upgrade models — and the outline model that plans documents |
+| Routing | Super Agent — its classifier and the class-to-model table — and the outline model that plans documents |
 | Features | Enabled surfaces; feature integrations (server address, per-feature endpoints); OCR mode, vision model and page limit |
 | Branding | Name and logo for the sidebar and the sign-in screen |
 | Mail | SMTP for password reset and email verification |
 | Signup | Signup mode, allowed mail domains, email verification, a new account's monthly credits |
 | Connector catalogue | The MCP connectors users can install |
+| Integrations | The Google Drive and Slack OAuth clients people connect their own accounts through ([docs/integrations.md](docs/integrations.md)) |
 
-Chat is always on. Images and audio/video cost credits per generation, so they
-default to off; a disabled surface disappears from the UI *and* the server
+Chat is always on. Reports and slides are on by default. Images and
+audio/video cost credits per generation, so they default to off; a disabled surface disappears from the UI *and* the server
 refuses to create sessions of that kind.
 
 ## Connecting coding agents
@@ -250,16 +271,16 @@ without a translation fall back to Korean. The user guide is published at
 | --- | --- |
 | `/` · `/new/:kind` | Home and a new conversation on a surface (`chat`, `report`, `slides`, `image`, `av`) |
 | `/s/:id` | A conversation, with its artifacts in the right-hand panel |
-| `/projects` · `/projects/:id` | Project instructions, knowledge files, conversations and memories |
+| `/projects` · `/projects/:id` | Project instructions, design brief and form files, the knowledge shelf (sources, Studio, notes), conversations and memories |
 | `/artifacts` | Every artifact, filtered by kind, with a way back to its conversation |
 | `/files` | The file box: uploads and generated files, listed apart |
-| `/bots` | Redirects to **Customize** → **Agents** → **Explore** (shared agents), where members' published bots show as agents. `/b/:slug` is a bot's own page, `/b` the public list, `/embed/b/:slug` the embeddable frame |
-| `/customize` | **Customize** — agents, skills and connectors (`?tab=agents\|skills\|connectors`), including what others shared; bundles at `/customize/bundles` |
+| `/bots` | Redirects to **Customize** → **Agents** (shared agents), where members' published bots show as agents. `/b/:slug` is a bot's own page, `/b` the public list, `/embed/b/:slug` the embeddable frame |
+| `/customize` | **Customize** — agents, skills and connectors (`?tab=agents\|skills\|connectors`), including what others shared; an agent's step canvas at `/customize/agents/:id/chain`; bundles at `/customize/bundles` |
 | `/history` | Conversation history — selective and bulk deletion |
 | `/usage` | Your own usage, by day, model and surface |
 | `/issues` | Questions and reports you sent, with the answers |
-| `/settings` · `/settings/{preferences,personalization,memory,keys,access}` | Profile and password / defaults / about-me and response style / memories / API keys / sign-ins |
-| `/agent-setup` · `/api-setup` | Coding-agent and API connection guides |
+| `/settings` · `/settings/{preferences,personalization,memory,connections,keys,access,notifications,app}` | Profile and password / defaults / about-me and response style / memories / Google Drive and Slack / API keys / sign-ins / notifications and push / install as an app |
+| `/agent-setup` · `/api-setup` | Coding-agent and API connection guides (**Agent setup**, **API access**) |
 | `/share/:token` | A read-only shared link |
 | `/admin/…` | See [What an administrator controls](#what-an-administrator-controls) |
 
@@ -275,7 +296,7 @@ without a translation fall back to Korean. The user guide is published at
   Thumbnail grid, speaker notes, per-slide editing; preview and exports share
   one 16:9 geometry, so what you saw is what the file contains.
 - **Image** — one picture per request, with options in the composer: aspect
-  ratio, labels, and a style from one of two groups. **Picture** styles (auto,
+  ratio, text language, and a style from one of two groups. **Picture** styles (auto,
   photo, illustration, infographic, watercolour) are drawn by the picture model;
   **Exact figure** styles (structure, flow and concept diagrams, chart) are
   drawn as shapes or a chart, so their text is exact. **Prompt as written**
@@ -305,42 +326,18 @@ KloudChat/
 ├── apps/
 │   ├── web/                          React 19 + Vite + Tailwind v4 — see apps/web/README.md
 │   ├── api/                          FastAPI — see apps/api/README.md
-│   └── print/                        Headless-browser HTML-to-PDF renderer
-├── docs/                             Architecture and operator guides
+│   ├── print/                        Headless Chromium + LibreOffice: HTML to PDF, slide to PNG, ELK layout
+│   └── media/                        ffmpeg worker for uploaded audio and video
+├── docs/                             Architecture, configuration, deployment, development, integrations
 ├── website/                          User guide (Docusaurus, Korean and English)
-├── scripts/                          Integration checks against a running stack
-├── mcp/                              MCP stdio server scripts
+├── scripts/                          Integration checks against a running stack, rolling API restart
+├── mcp/                              MCP stdio server scripts (YouTube transcripts)
 ├── docker-compose.yml                Runs the published images
 ├── docker-compose.build.yml          Builds the images from this checkout
 ├── docker-compose.dev.yml            Serves the web app from Vite
+├── Makefile                          The commands CI runs (`make help`)
 └── .env.example
 ```
-
-```
-apps/web/src/
-├── components/
-│   ├── artifacts/                    Right-hand artifact panel, ribbon, versions, checks
-│   ├── chat/                         Composer, MessageItem, StepTimeline, ModelPicker
-│   ├── report/                       Document editor, paged preview, figures
-│   ├── slides/                       Deck renderer, slide patterns, type scale
-│   ├── chart/ChartPanel.tsx          Chart, underlying data, PNG/SVG/CSV
-│   ├── media/                        Generation job card and media results
-│   ├── customize/                    Agent and skill forms, the Customize hub
-│   ├── publishing/                   Publish dialog, audience, bot channels
-│   ├── layout/                       AppShell, Sidebar, AccountMenu, shortcuts
-│   └── ui/                           Button, Modal, Dropdown, Badge, …
-├── lib/
-│   ├── api.ts                        The single backend seam
-│   ├── kinds.ts                      The five surfaces
-│   ├── i18n.ts                       Dictionary keyed on the Korean source string
-│   └── useT.ts                       Hook translating into the current language
-├── pages/                            One per route
-├── store/useStore.ts                 Single zustand store
-└── types.ts                          Domain types
-```
-
-React 19 · TypeScript · Vite · Tailwind v4 · zustand · react-router ·
-lucide-react · react-markdown.
 
 ## Documentation
 
@@ -350,8 +347,10 @@ lucide-react · react-markdown.
 | [docs/configuration.md](docs/configuration.md) | Every environment variable and runtime setting |
 | [docs/deployment.md](docs/deployment.md) | Production deployment, TLS, backups, upgrades |
 | [docs/development.md](docs/development.md) | Local setup, tests, migrations |
+| [docs/integrations.md](docs/integrations.md) | Google Drive and Slack: OAuth clients, scopes, what people get |
 | [apps/web/README.md](apps/web/README.md) | Frontend development and end-to-end tests |
 | [apps/api/README.md](apps/api/README.md) | API layout, endpoints and tests |
+| [apps/print/README.md](apps/print/README.md) · [apps/media/README.md](apps/media/README.md) | The print and media workers |
 | [User guide](https://boanlab.github.io/KloudChat) | How to use the product (source in `website/`) |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |
 | [SECURITY.md](SECURITY.md) | Reporting vulnerabilities, and what is in scope |

@@ -16,7 +16,7 @@ obvious from the code.
 
 ## Getting a stack running
 
-KloudChat runs web, API, print-renderer and database services, plus two
+KloudChat runs web, API, print-renderer, media (ffmpeg) and database services, plus two
 one-shot containers: `init` (data directory ownership) and `migrate` (Alembic).
 Models and tools are **not** part of this repository — they live in
 [`KloudChat-LLM`][backend], and KloudChat reaches them through a single gateway
@@ -89,8 +89,8 @@ pytest -q
 Most unit tests exercise pure functions and the document pipelines against
 fake model replies; the ones that need a database run on an in-memory SQLite
 through `aiosqlite` (part of `.[dev]`). Postgres-specific behaviour is covered
-by the integration scripts in [`scripts/`](scripts) or by Playwright. A model
-column added to a table also needs adding to any hand-written test DDL under
+by the integration scripts in [`scripts/`](scripts) or by Playwright. A column
+added to a table also needs adding to any hand-written test DDL under
 `apps/api/tests/`.
 
 Migrations are applied by the one-shot `migrate` container before any `api`
@@ -153,9 +153,9 @@ Two things about Playwright here:
 in as the same seeded account and several of them pick "the most recent X";
 running in parallel produces failures that have nothing to do with the app.
 
-**Some specs spend real money** — roughly 4,400 credits for an image, 1,000 for
-audio, 12,000 for a video. Each creates exactly one artifact, and the number is
-there to check that the quote and the charge agree. Exclude them with
+**Some specs spend real credits** — roughly 4,400 for an image and 1,000 for
+audio; the video spec only checks its quote (12,000). Each creates at most one
+artifact, to check that the quote and the charge agree. Exclude them with
 `--grep-invert` if you are iterating.
 
 One rule that matters more than the layer: **watch the test fail before you fix
@@ -200,7 +200,7 @@ entry, and untranslated strings fall back to the Korean original.
 line prints it, and the browser has no path to LiteLLM. Per-user virtual keys
 are what upstream calls are made with.
 
-**Adding a sixth output kind** starts at `SessionKind` in
+**A new output kind** starts at `SessionKind` in
 `apps/web/src/types.ts` and the metadata table in `apps/web/src/lib/kinds.ts`.
 
 ## Commits and pull requests

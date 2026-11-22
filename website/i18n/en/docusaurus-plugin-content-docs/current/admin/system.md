@@ -4,7 +4,7 @@ title: System settings
 
 # System settings
 
-The **System** screen in the Manage menu is made up of eight tabs. Saved changes apply at once, without a restart.
+The **System** screen in the Manage menu is made up of nine tabs. Saved changes apply at once, without a restart.
 
 ## Proxy
 
@@ -18,7 +18,7 @@ Decides which model does which job when the user has not chosen one. The values 
 - **Side-work models**: the model for titles, memories and summaries, the code-writing model and its fallback. These read the conversation, so only models this instance runs itself (self-hosted) can be chosen. In a strict-local conversation the strict-local version of the chosen model does the work.
 - **Thinking**: whether self-hosted and external models reason before answering. On makes judgements more exact but adds tens of seconds to minutes to each call. Both are off by default.
 
-The **planning model** for reports and slides and Auto's **classifier model** are on the **Routing** tab.
+The **planning model** for reports and slides is on the **Routing** tab.
 
 ### Self-hosted models of the default install
 
@@ -27,7 +27,7 @@ The defaults use two models the organization runs itself. Each is registered in 
 | Model | Jobs |
 |---|---|
 | `qwen3.8-27b` | Writing reports and slides (the "Reports and slides" row of the Super Agent table), code model |
-| `qwen3.8-flash` | Everyday chat questions (Super Agent table), planning model (outline and judgments for reports and slides), titles, memory and summaries, Auto classifier and cost-saving model, vision model for text reading, code fallback model |
+| `qwen3.8-flash` | Everyday chat questions (Super Agent table), planning model (outline and judgments for reports and slides), titles, memory and summaries, vision model for text reading, code fallback model |
 
 All of them can be changed on this tab and on the **Routing** and **Features** tabs.
 

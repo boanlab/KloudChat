@@ -54,7 +54,7 @@ The items currently in effect appear as chips above the composer: the project, t
 
 ## Buttons at the top right
 
-There are **Share** (on the conversation screen), **Install app** (installs a shortcut app in browsers that support it), **EN** (language switch) and a light/dark button, which cycles through system, light and dark.
+There are **Share** (on the conversation screen), **Install app** (installs a shortcut app in browsers that support it), **EN** (language switch) and a light/dark button. The button switches to the opposite of what is on screen (light ↔ dark); before the first click the screen follows the system setting.
 
 ## Mobile screen
 

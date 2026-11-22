@@ -4,7 +4,7 @@ title: Settings
 
 # Settings
 
-**Settings**, in the account menu, has seven tabs: Profile, Preferences, Personalization, Memory, Connections, API keys and Security.
+**Settings**, in the account menu, has nine tabs: Profile, Preferences, Personalization, Memory, Connections, API keys, Security, Notifications and App.
 
 ## Profile
 

@@ -12,7 +12,7 @@ Open a Word editor beside the conversation and write or edit a Word document (`.
 - The font list on **Home** starts with Korean fonts: Malgun Gothic (맑은 고딕), Nanum Gothic, Nanum Myeongjo, Batang, Dotum, Gulim, Gungsuh, HCR Batang, HCR Dotum and Pretendard. Choosing a Korean font saves it as the text's Korean font, as Word does, so Word and Hancom Office show it too; choosing a Latin font applies to Latin text and keeps the Korean font.
 - A `.docx` file attached in the conversation opens in the editor with **Open in Word editor**.
 - Asking in chat for something "in Word", "as a Word document" or "as a docx file" writes it in this conversation's Word document instead of moving to the report screen.
-- Legacy `.doc` files cannot be opened. Save them as `.docx` in Word and attach that.
+- `.doc` files (Word 97–2003 format) cannot be opened. Save them as `.docx` in Word and attach that.
 
 ## Writing and editing by chat
 
@@ -29,7 +29,7 @@ Open a Word editor beside the conversation and write or edit a Word document (`.
 - The form's styles, numbering, header and footer, page setup and cover stay. Its chapter headings (Heading 1) become the report's outline, and each chapter is written under the form's chapter of the same name. Guidance under a chapter, such as "※ 작성요령", is removed.
 - Cover cells such as "사업명", "기관명" and "작성일" take the report head's values; an unknown value stays blank.
 - A chapter the form has no place for is added at the end in the form's chapter heading style, and the **Followed the form** line says so. A form with no chapter heading style gets the report after its own content.
-- Put a Word form in the project's **Default form files** and every report written as a Word file in that project follows it.
+- Put a Word form in a project's or agent's **Default form files** and every report written as a Word file there follows it. A **Project form** chip (**Agent form** for an agent) appears beside the format chip; ✕ leaves it off for that conversation only.
 
 ## Editing by hand and saving
 

@@ -5,12 +5,12 @@ Google account (gmail.com) works as well as a Google Workspace one. Nobody conne
 organisation-wide account, and nobody else can use a person's connection. A published agent
 never gets these tools: a visitor must not reach the publisher's own files or messages.
 
-One installation still needs **one OAuth client per provider**, created and configured by the
+One installation needs **one OAuth client per provider**, created and configured by the
 KloudChat administrator. That is how OAuth works: the client identifies this installation to
 Google or Slack, and every person grants that client access to their own account.
 
-Google Calendar is not offered (owner decision 2026-11-15: its scopes are *sensitive* and
-need Google's verification). Gmail is not offered (a *restricted* scope).
+Google Calendar and Gmail are not offered: their scopes are sensitive or restricted and
+require Google's verification.
 
 ## What people get
 
@@ -24,7 +24,6 @@ Outside the agent:
 - **Composer › + › 드라이브에서 가져오기** opens Google Picker; picked files are attached.
 - **Project › 지식 › 드라이브** brings picked files in as project material, with their Drive
   link. The refresh button on such a file syncs it again when Drive says it changed.
-
 - **Settings › Connections › Slack** can send a long job's notice to the person's own
   direct messages (by the app's bot where the app is installed, else as themselves) or to a
   channel they are in. The notice carries the job's title and a link, never what was
@@ -53,11 +52,11 @@ Drive files and Slack messages are internal material:
   and an outside model never receives the tools.
 - Tool results go through the same personal-data detection as every other tool result:
   masked before an outside model reads them, kept as is for a strict-local one.
-- The external web-search consent rules are unchanged.
+- External web search keeps its own consent rules.
 
 ### Limits
 
-- Downloads and exports stop at the upload limit (`MAX_UPLOAD_MB`). Google itself exports at
+- Downloads and exports stop at the upload limit (`KCHAT_MAX_UPLOAD_MB`). Google itself exports at
   most 10 MB of a Docs/Sheets/Slides file.
 - Rate limits and server errors are retried with backoff (`Retry-After` honoured); lists
   follow page tokens up to a cap (50 files per Drive search).
@@ -151,7 +150,7 @@ organisation count as an outside audience (a bot approved for outside audiences 
 | `integrations.slack.signing_secret` | Slack signing secret (sealed, never returned) |
 
 All are edited on **System › 연동**; the redirect URIs are built from the service address
-(`app.base_url`, Mail tab, or `APP_BASE_URL`).
+(`app.base_url`, Mail tab, or `KCHAT_APP_BASE_URL`).
 
 ## Tests
 

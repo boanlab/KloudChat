@@ -4,7 +4,7 @@ title: Images and audio/video
 
 # Images and audio/video
 
-The **Image** and **Audio/Video** tabs appear on the home screen only when the administrator has enabled them. Most of these features use external generation services, so they consume credits, and the estimated credits are shown before you send. Attaching files is not supported.
+The **Image** and **Audio/Video** tabs appear on the home screen only when the administrator has enabled them. Most of these features use external generation services, so they consume credits, and the estimated credits are shown before you send. There is no attach menu; a picture is attached only through **Edit image**, described below.
 
 ## Images
 
@@ -34,8 +34,8 @@ Images, audio and video have no forms. The **Format** chip above the prompt box 
 
 ## Audio
 
-Generates narration (with a voice choice) or music at 15, 30, 60, or 120 seconds. The result comes with a player and a download, and narration also shows the script. Audio is charged per generation.
+Choose the **Type**, narration (with a choice of six **voices**) or music, and generate it at 15, 30, 60, or 120 seconds. The result comes with a player and a download, and narration also shows the script. Audio is charged per generation.
 
 ## Video
 
-Set the ratio, the resolution (720p or 1080p), whether there is sound, and the length (4 to 10 seconds). Video generation takes a long time, so the card shows the progress. You can still see the finished result after refreshing the screen or connecting from another device. You can cancel a generation. Credits are deducted only when it completes. If you choose a combination that the model does not price, a message saying "This model does not produce this combination" appears and sending is blocked. The design brief does not apply to audio and video.
+Set the ratio (16:9, 9:16, 1:1), the resolution (720p or 1080p), whether there is sound, and the length (4, 6, 8 or 10 seconds). Video generation takes a long time, so the card shows the progress. You can still see the finished result after refreshing the screen or connecting from another device. You can cancel a generation. Credits are deducted only when it completes. If you choose a combination that the model does not price, a message saying "This model does not produce this combination" appears and sending is blocked. The design brief does not apply to audio and video.

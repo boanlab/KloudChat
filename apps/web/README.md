@@ -12,6 +12,7 @@ lucide-react · react-markdown.
 npm ci
 npm run dev        # Vite on :5173, proxying /api to API_BASE_URL
 npm run lint       # oxlint
+npm run test:unit  # vitest, beside the sources
 npm run test:config  # the Vite config; every e2e spec in one CI surface or live
 npm run build      # tsc -b && vite build
 ```
@@ -31,19 +32,22 @@ container, with the proxy already pointed at the `api` service.
 ```
 src/
 ├── components/
-│   ├── artifacts/      ArtifactPanel (branching by kind), ribbon, lint and fact-check results, version history
-│   ├── chat/           Composer, MessageItem, StepTimeline, Markdown
+│   ├── artifacts/      ArtifactPanel (branching by kind), ribbon, lint and fact-check results, version history, gallery
+│   ├── chat/           Composer, MessageItem, StepTimeline, ModelPicker, Markdown
 │   ├── report/         ReportPanel (TOC, section streaming, sources, export), DocumentEditor, block renderers
 │   ├── slides/         DeckPanel (renderer, thumbnail grid, per-slide editing), slide patterns, type scale
+│   ├── hwp/ · docx/ · pptx/ · office/   HWP, Word and PowerPoint editors, and the shared office-document state
 │   ├── chart/          Chart, underlying-data tab, PNG/SVG/CSV
-│   ├── media/          Asynchronous generation card (progress → result)
+│   ├── media/          Generation card (progress → result), image versions and edit
 │   ├── files/          File box: list, picker, preview, delete choice
-│   ├── agents/         An agent's knowledge, process (How it works) and gap questions
-│   ├── customize/      Customize hub: agent, skill and template forms, sharing, Use now
-│   ├── publishing/     Publish dialog, channels (link, embed, API, MCP), scope
+│   ├── projects/ · shelf/   Project design brief and form files; knowledge shelf (sources, Studio, notes, citations)
+│   ├── agents/ · chain/     An agent's knowledge, process (How it works) and gap questions; the step canvas
+│   ├── customize/      Customize hub: agent and skill forms, sharing, Use now
+│   ├── publishing/     Publish dialog, channels (link, embed, API, MCP, Slack), scope
 │   ├── issues/         Feedback & issues dialog, thread, read-only session copy
 │   ├── share/          Read-only link creation and revocation
-│   ├── layout/         AppShell, Sidebar, TopBar, Brand
+│   ├── memory/ · admin/ · auth/ · document/   Memory editor, user detail, role routes, shared document chrome
+│   ├── layout/         AppShell, Sidebar, TopBar, AccountMenu, SearchDialog
 │   └── ui/index.tsx    Button, Modal, Dropdown, Badge, …
 ├── lib/
 │   ├── api.ts          the single backend seam
@@ -52,7 +56,7 @@ src/
 │   ├── useT.ts         hook translating into the current language
 │   ├── shortcuts.ts    keyboard shortcuts and their help list
 │   └── …               small helpers (clipboard, brand, paging, Markdown round-trip, …)
-├── pages/              one per route, plus customize/ and settings/ sections
+├── pages/              one per route, plus customize/, settings/ and perf/ sections
 ├── store/useStore.ts   single zustand store
 └── types.ts            domain types (discriminated unions)
 ```
@@ -78,8 +82,9 @@ starts there and at `SessionKind` in `types.ts`.
 
 **Media elements fetch with `?t=<token>`.** `<img>`, `<audio>` and `<video>`
 cannot attach an `Authorization` header, and the access token lives in memory
-rather than in a cookie. The exception is deliberate and confined to
-`GET /api/files/{id}/content`.
+rather than in a cookie. The exception is deliberate and confined to a few
+read routes (`GET /api/files/{id}/content` and `…/text`, an issue's
+screenshot); audio and video playback use signed URLs.
 
 ## Tests
 
@@ -126,7 +131,7 @@ npx playwright test --project=desktop e2e/chat.spec.ts
 
 It pins `workers: 1`; do not override it. Every spec signs in as the same account
 and several pick "the most recent X". Some specs spend real credits (roughly
-4,400 for an image, 1,000 for audio, 12,000 for a video); exclude them with
+4,400 for an image, 1,000 for audio; a video spec stops at the quote, since a clip costs about 12,000); exclude them with
 `--grep-invert` while iterating.
 
 `tests/vite-config.test.mjs` (`npm run test:config`) checks that the Vite config

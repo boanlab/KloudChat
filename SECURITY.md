@@ -83,13 +83,12 @@ Several protections are the operator's, not the application's:
 
 Two behaviours look like bugs and are not:
 
-**`GET /api/files/{id}/content` accepts the access token as a `?t=` query
-parameter.** `<img>`, `<audio>` and `<video>` cannot send an `Authorization`
-header, and the token lives in memory rather than in a cookie. Without this,
-no image, clip or video this instance generates could be displayed inside it.
-The token appears in access logs as a result, so the exception is attached to
-that one route (`core/deps.py:current_viewer`) rather than to the default
-dependency.
+**The routes that serve media accept the access token as a `?t=` query
+parameter** (for example `GET /api/files/{id}/content`). `<img>`, `<audio>` and
+`<video>` cannot send an `Authorization` header, and the token lives in memory
+rather than in a cookie. The token appears in access logs as a result, so the
+exception is attached to those routes (`core/deps.py:current_viewer`) rather
+than to the default dependency.
 
 **A revoked share token and a token that never existed both return 404.**
 Distinguishing them would confirm to a stranger that a link was once valid,

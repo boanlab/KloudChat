@@ -4,7 +4,7 @@ title: Choosing a model
 
 # Choosing a model
 
-Select the model name to the right of the composer to open the list. When eight or more models are registered, a **Find a model** search box appears with it.
+Select the model name to the right of the composer to open the list. When more than eight models are registered, a **Find a model** search box appears with it.
 
 ![The model picker list](/img/guide/model-picker.png)
 

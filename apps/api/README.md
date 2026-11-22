@@ -49,7 +49,7 @@ All under `/api` except `/llm`. The complete list is the OpenAPI document at
 
 | | |
 | --- | --- |
-| `POST /auth/signup` · `login` · `logout` · `password` | Self-hosted authentication and password change |
+| `POST /auth/signup` · `login` · `refresh` · `logout` · `password` | Self-hosted authentication and password change; `refresh` rotates the cookie token |
 | `GET /auth/config` | Public configuration the sign-in screen reads — branding, enabled surfaces, whether password reset exists |
 | `POST /auth/password/forgot` · `reset` · `POST /auth/verify-email` · `verify-email/resend` | Active only when SMTP is configured |
 | `GET/PATCH /auth/me` · `GET /auth/me/access` · `GET /auth/me/sessions` · `DELETE /auth/me/sessions/{family}` · `POST /auth/me/sessions/revoke-others` | Profile and preferences, own sign-in history, own refresh-token families and their revocation |
@@ -59,20 +59,29 @@ All under `/api` except `/llm`. The complete list is the OpenAPI document at
 | `POST /sessions/{id}/messages/{mid}/fork` · `PATCH /messages/{id}/rating` | Branch a conversation before a message; rate an answer |
 | `GET /sessions/{id}/runs` · `…/runs/{run}` · `…/rerun` | The stages a document turn ran through, and rerunning one |
 | `POST /sessions/{id}/figure-suggestion` · `diagrams` | Figure proposals and flowcharts for a document |
-| `POST /sessions/{id}/images` · `audio` | Image and audio, generated inside the request |
+| `GET /sessions/{id}/agent-draft` · `…/agent-draft/decided` | The conversation as an unsaved draft agent (「에이전트로 저장」), and its instructions alone |
+| `POST /sessions/{id}/images` · `audio` | Image (also an edit of a stored picture) and audio, generated inside the request |
+| `POST /sessions/context-usage` | How much of the model's context a conversation would use |
 | `POST /sessions/{id}/jobs` · `POST /jobs/{id}/cancel` | Video — the only asynchronous work |
 | `GET /search` | Search across conversations and artifacts |
-| `GET /artifacts` · `counts` · `GET/PATCH/DELETE {id}` · `GET {id}/export` · `GET {id}/versions` · `POST {id}/restore` | Artifacts as a page of cards, version history and restore, export |
+| `GET /artifacts` · `gallery` · `counts` · `working` · `GET/PATCH/DELETE {id}` · `GET {id}/export` · `GET {id}/versions` · `POST {id}/restore` | Artifacts (`gallery` is the page of cards, `working` the documents in progress), version history and restore, export |
+| `POST /artifacts/{hwp,docx,pptx}` · `GET/PUT /artifacts/{id}/{hwp,docx,pptx}` · `POST …/session` | HWP, Word and PowerPoint documents: create or import, read and save the file (a stale save answers 409), attach a conversation |
 | `POST /artifacts/{id}/sections/…` · `slides/…` · `blocks/…` · `critique` · `GET {id}/marks` | Rewrite, fact-check, picture and figure on a finished document; review; check marks |
 | `GET /projects` · `files` · `skills` · `memory` · `agents` · `designs` | Workspace (`designs` are themes) |
+| `GET /projects/{id}/shelf` · `POST …/shelf/text` · `…/shelf/guide/{subject}` · `…/shelf/locate` · `GET/PUT /sessions/{id}/sources` · `…/studio` · `/studio/{id}` · `…/notes` · `/notes/{id}` | The knowledge shelf: sources, guides, per-conversation source selection, Studio items (guides, FAQs, quizzes…) and notes |
 | `GET /files/page` · `/issues/page` · `/publications/{id}/conversations/page` · `/admin/publications/{id}/conversations/page` | Long lists by keyset: `cursor` (opaque, from the last page's `next`; malformed → 422), `limit` (default 50, at most 200); `{items, total, next}`, `next` null on the last page. Files add `box`, `origin`, `q`, `projectId`/`sessionId` filters and per-origin `counts`; issues add `unread`; the admin list needs `reason` (audited per page) and takes `date_from`/`date_to` (inclusive UTC days, on last activity) |
-| `POST /files/{id}/open-as-document` (410) · `POST /designs/extract` | Gone: open an `.hwpx` with `POST /artifacts/hwp` and `fileId`; draft a theme from a file or URL |
+| `GET /files/{id}/content` · `text` · `POST /files/{id}/open-as-document` · `POST /designs/extract` | File bytes and extracted text (these accept `?t=<token>` for media elements); `open-as-document` answers 410 — open an `.hwpx` with `POST /artifacts/hwp` and `fileId`; draft a theme from a file or URL |
+| `POST /uploads` · `PUT/GET/DELETE /uploads/{id}` · `POST …/finish` · `GET /files/{id}/media` · `stream` · `frames/{n}` · `poster` · `GET /media/estimate` | Large audio and video uploaded in pieces, then read through the media worker (transcript with frames); playback by signed URL, with Range |
+| `POST /forms` · `/forms/from-file` · `/design-brief/read` | Form files (양식) and a design brief read from a file |
 | `POST /projects/{id}/knowledge/url` · `…/reindex` · `POST /agents/{id}/knowledge` · `…/url` · `…/from-files` · `…/reindex` | Project and agent knowledge, and backfilling the vector index |
 | `GET /skills/store` · `POST /skills/{id}/install` · `POST /agents/{id}/install` · `POST /skills/import` · `GET /skills/{id}/export` | What others shared, copying from it, skill packages |
 | `GET /pipelines` · `GET /agents/{id}/pipeline` · `GET /agent-bases` · `PUT /agents/{id}/process` | Built-in processes and an agent's process (How it works) |
 | `/user-pipelines…` · `/bundles…` | Composed processes and bundles; sharing ones that export or review goes through administrator approval |
 | `GET /design-templates` · `usage` · `{id}/preview` · `{id}/style` · `{id}/form` · `/user-templates…` | Templates: the shipped catalogue (preview is unauthenticated) and users' own |
 | `GET /connectors` · `/connectors/catalog` · `POST /connectors/install/{slug}` | MCP connectors |
+| `/integrations/{google,slack}…` · `/admin/integrations…` | A person's own Google Drive and Slack connections; the administrator's OAuth clients; confirm cards for actions the agent proposes ([docs/integrations.md](../../docs/integrations.md)) |
+| `/push/{config,subscriptions,unsubscribe,test}` | Web Push devices (needs the VAPID keys) |
+| `POST /client-errors` | Errors the browser reports about itself |
 | `POST /shares` · `GET /shared/{token}` · `GET /shares/{id}/views` | Read-only sharing. Reading a `link`-scoped share needs no authentication |
 | `/publications…` · `/bots` · `/bots/{slug}/copy` · `/public/bots` · `/b/{slug}…` | Published chatbots: the owner's screens, members' list and copy (shown as shared agents), and the visitors' |
 | `/bots/v1/models` · `/bots/v1/chat/completions` · `/bots/mcp/{slug}` · `/embed/frame-policy` | A bot's API (OpenAI-compatible), MCP and embed channels |
@@ -141,8 +150,8 @@ available, `checks.judge_figures` and `fact_check.web_facts` /
 those, a rewrite is kept only when its check no longer fires, and the code
 checks run again. `key_figures` settles the figures a document set fixes
 (price, costs, targets) once and holds sections and slides to them;
-`quality_gate` reads the finished report or deck for form defects. What is
-still found is reported in the turn's quality check step (`quality`).
+`quality_gate` looks for form defects in the finished report or deck. What is
+still found is listed with the answer.
 
 **Sign-in survives LiteLLM being down.** A provisioning failure is logged and
 stepped over, and the catalogue returns adapter models with
@@ -154,82 +163,51 @@ list" from "the proxy is broken".
 ```
 app/
 ├── main.py                 App assembly, CORS, /health
-├── core/
-│   ├── config.py           Settings — the only place the master key lives
-│   ├── db.py               Async engine and session dependency
-│   ├── security.py         argon2id, JWT, refresh token hashing
-│   ├── deps.py             current_identity (allows pending) / current_viewer (also ?t=)
-│   │                       / current_user / require_admin
-│   └── logs.py             Sanitising outside text for log lines
-├── models/
-│   ├── user.py             users, refresh_tokens, credit_ledger, audit_events
-│   ├── chat.py             sessions, messages, jobs
-│   ├── workspace.py        projects, files, artifacts, skills, memories, agents, connectors
-│   ├── publishing.py       Published chatbots, versions, visitors, keys
-│   ├── issues.py           Questions and reports from the app
-│   ├── metrics.py          Performance samples
-│   ├── governance.py       Instance-wide policy, one row
-│   └── settings.py         Runtime settings an administrator edits
-├── schemas/                camelCase wire format (1:1 with src/types.ts)
-├── routers/                auth, admin, models, sessions, runs, search, jobs, workspace,
-│                           pipelines, user_pipelines, user_templates, skill_files,
-│                           connectors, keys, shares, publications, bot_api, issues,
-│                           usage, perf, branding, transcriptions, llm
-├── agents/ · skills/ · bundles/ · pipelines/   Shipped agents, skills, bundles and processes (data)
-├── design_templates/       Template catalogue: template.toml, seed.html, sample.html per entry
+├── core/                   config.py (settings — the only place the master key lives), db.py,
+│                           security.py (argon2id, JWT, refresh hashing), deps.py (current_identity
+│                           allows pending / current_viewer also takes ?t= / current_user /
+│                           require_admin), request_id.py, logs.py (sanitising outside text)
+├── models/                 SQLAlchemy tables: user, chat, workspace, shelf, publishing, integrations,
+│                           push, issues, metrics, governance, settings
+├── schemas/                camelCase wire format (1:1 with apps/web/src/types.ts)
+├── routers/                One module per area of the endpoint table; hwp, docx and pptx are
+│                           instances of office_docs.py
+├── pipeline/ · pipelines/  Stage runner and the stages (chat, report, deck, page; check, export,
+│                           revise, save) and the TOML process each surface runs
+├── agents/ · skills/ · bundles/ · patterns/ · design_templates/
+│                           Shipped data: agents, skill packages (apps/api/app/skills/README.md),
+│                           bundles, deck patterns, the template catalogue
 ├── help/docs.json          The user guide, as the in-app help reads it (scripts/build_help.py)
-└── services/
-    ├── credits.py          Allowance, monthly refill (1st, KST), pre-flight check, settlement
-    ├── litellm.py          Master-key client — the only point of contact with LiteLLM
-    ├── models.py           Catalogue merge and USD→credit conversion
-    ├── adapters.py         Model facts LiteLLM does not know (adapters and overrides)
-    ├── chat.py             chat/completions stream → SSE events, title generation
-    ├── agent.py            Tool-calling loop (model ↔ tool round trips)
-    ├── calculation_policy.py   Required-arithmetic detection
-    ├── context.py          System prompt assembly — surface defaults and tool rules
-    ├── freshness.py · current_evidence.py   Grounded-answer guidance and the no-evidence display contract
-    ├── workspace_context.py  Projects, skills, memories and design → system prompt blocks
-    ├── governance.py       Prohibited categories, PII masking, privacy guard, retention
-    ├── netguard.py         Where a fetch on someone's behalf may go — the public internet, nothing behind it
-    ├── ratelimit.py        Backoff from a model gateway's 429
-    ├── adaptive_routing.py Auto cost routing for sessions that opted in
-    ├── outline.py          Plan rules shared by the report, deck and HTML tracks
-    ├── report.py · deck.py · page.py   Report, deck and HTML-template producers
-    ├── research.py         Web research before a document is written
-    ├── grounding.py · revise.py · lint.py · critique.py   Request check, targeted rewrite, linter, review
-    ├── verify.py · checks.py · fact_check.py   Report verify-and-repair stage and its checks
-    ├── key_figures.py · quality_gate.py · calc.py · units.py   Settled figures, final-form gate, code-computed values, unit labels
-    ├── credibility.py      Source trust tiers for citations
-    ├── answer_plan.py · conversation_summary.py · stop_signal.py   Chat answer plan, long-conversation summary, cross-replica stop
-    ├── slide_patterns.py · doc_formats.py   Slide pattern table; per-purpose document heads and numbering
-    ├── design.py · design_templates.py · design_extract.py   Themes, the template catalogue, theme extraction
-    ├── doc_type.py · deck_type.py   Type scale shared by every renderer of a report or a deck
-    ├── report_export.py · deck_export.py · page_export.py   DOCX/PDF/HWPX, PPTX/PDF, HTML read-back
-    ├── printing.py         PDF via the print service; None when it is absent
-    ├── pictures.py · figures.py · diagrams.py · diagram.py · flow_layout.py · diagram_shapes.py · diagram_render.py   Pictures and document figures: a planned flowchart is laid out by code and drawn with python-pptx (native shapes in a deck, a rendered picture in a report)
-    ├── charts.py · chart_code.py   Charts
-    ├── richtext.py · hwpx_import.py · hangul.py · arithmetic.py   Editing and text fixes
-    ├── imagegen.py · audiogen.py   Synchronous media producers
-    ├── videogen.py         Video: submit, poll, fetch — the one job kind
-    ├── factcheck.py        Claim verification — no evidence downgrades the verdict
-    ├── artifact_extract.py Hoisting substantial code out of a transcript — after the turn
-    ├── auto_memory.py      Durable facts written from a finished conversation
-    ├── thinking.py         Reasoning-model answer starvation
-    ├── transcribe.py       Composer microphone → internal Whisper only
-    ├── files.py · storage.py   Upload storage, text extraction, reclaim of deleted accounts' files
-    ├── ocr.py · ocr_jobs.py   Scanned pages: OCR engine, then a strict-local vision model; background queue
-    ├── korean_papers.py    Korean scholarly papers (KCI, DBpia, RISS) through the ordinary search backend
-    ├── publishing.py       A published bot's turn: approved version, strict-local model, owner's credits
-    ├── bundles.py · process_settings.py   Bundles and an agent's process
-    ├── knowledge.py · index_client.py   Agent shelves: lexical retrieval and the vector index
-    ├── fonts.py            The Korean face every reportlab PDF embeds
-    ├── mcp.py              MCP client (stdio and streamable-http)
-    ├── mail.py             Account mail — one message, no queue, no retry
-    ├── geoip.py            Offline region lookup from a MaxMind file
-    ├── starter.py          Shipped agents, skills and themes; seeded at approval
-    ├── bootstrap.py        First administrator, created when there are no users
+└── services/               Logic; the main groups:
+    ├── litellm.py · models.py · adapters.py · credits.py     LiteLLM client (the only contact),
+    │                       catalogue merge and USD-to-credit conversion, model facts LiteLLM lacks,
+    │                       allowance, monthly refill, pre-flight check, settlement
+    ├── chat.py · agent.py · context.py · workspace_context.py   Streamed turn, tool-calling loop,
+    │                       system prompt assembly
+    ├── super_agent.py · super_api.py · start_mode.py · adaptive_routing.py   Super Agent routing
+    ├── governance.py · netguard.py · ratelimit.py            Policy, PII masking, privacy guard,
+    │                       where an outside fetch may go, 429 backoff
+    ├── report.py · deck.py · page.py · outline.py · research.py   Document producers and planning
+    ├── verify.py · checks.py · fact_check.py · key_figures.py · quality_gate.py   Verify-and-repair
+    ├── report_export.py · deck_export.py · page_export.py · printing.py   DOCX/PDF/HWPX, PPTX/PDF,
+    │                       PDF through the print service (None when absent)
+    ├── hwp_doc.py · docx_doc.py · pptx_doc.py · office_*.py    Office documents and their editing
+    ├── diagrams.py · flow_layout.py · diagram_shapes.py · diagram_render.py   Figures: a planned
+    │                       flowchart is laid out by code and drawn with python-pptx
+    ├── imagegen.py · audiogen.py · videogen.py · video_*.py · media_client.py   Media producers
+    │                       (video is the one job kind) and the media worker client
+    ├── shelf_*.py · studio.py · source_*.py · knowledge.py · index_client.py   Knowledge shelf,
+    │                       Studio, lexical retrieval and the vector index
+    ├── files.py · storage.py · ocr.py · ocr_jobs.py · transcribe.py   Uploads, text extraction,
+    │                       scanned pages, speech-to-text
+    ├── publishing.py · bundles.py · skill_*.py · check_skills.py · post_checks.py   Published bots,
+    │                       bundles, skills and the checks they attach
+    ├── integrations/ · push.py · mail.py · mcp.py            Google Drive and Slack, Web Push, account
+    │                       mail, MCP client (stdio and streamable-http)
+    ├── perf/ · geoip.py                                      Admin performance figures, offline region lookup
+    ├── tools/              Built-in tools, MCP tools, connector catalogue
     ├── settings_store.py   Database-first settings — swap the proxy without a restart
-    └── tools/              Built-in tools, MCP tools, connector catalogue
+    └── starter.py · bootstrap.py   Shipped items seeded at approval, first administrator
 ```
 
 See [docs/architecture.md](../../docs/architecture.md) for how these fit

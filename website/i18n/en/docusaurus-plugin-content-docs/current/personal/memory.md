@@ -12,16 +12,17 @@ Memory holds information to be used across conversations, not just one. It store
 
 - **Automatic saving**: Turn on **Save memory automatically** under Settings → Preferences. Each time an answer ends, the system selects and saves content that stays valid. The default is off, and content already saved is not saved twice. When something is saved, "n memories saved" appears at the bottom of the answer.
 - **Adding directly**: Enter it in **Settings** → **Memory** → New memory.
-- **Project memory**: Manage it in the Memory tab of the project detail screen. Conclusions that an agent leaves through Share note are also saved there.
+- **Project memory**: Manage it in the Memory tab of the project detail screen. Conclusions that an agent leaves through shared notes are also saved there.
 
 ## Fields
 
 | Field | Description |
 |---|---|
-| Name | Use lowercase English letters and hyphens. Other memories can reference it in the form `[[name]]`. |
+| Name | A short name that is easy to find later. |
 | Type | Choose from user, feedback, project, and reference. |
 | Description | Describe in one line when it should be referenced. |
 | Scope | Set it to global (all conversations) or to a single project. |
+| Body | What to remember: one thing at a time, short and clear. |
 | Pinned | A pinned memory is delivered first to every conversation. |
 
 ## How memory is delivered

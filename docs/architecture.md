@@ -31,29 +31,26 @@ waiting.
 
 **Image edits are the same call with the picture attached.** `POST /sessions/{id}/images` with
 `sourceArtifactId` (an image artifact) or `sourceFileId` (an attachment or file-box picture)
-sends the stored picture, scaled to 2048 px at most, as an `image_url` content part beside the
+sends the stored picture, scaled to at most 2048 px, as an `image_url` content part beside the
 instruction (`imagegen.generate(source=…)`), without `image_config` so the picture keeps its
-shape. Only catalogue models with `editsImages` draw an edit: the gateway's
-`model_info.kchat_edits_images` when declared, else `imagegen.EDITING_MODELS`, the models checked
-with one real edit call each (Gemini 3 Pro Image, GPT-5.4 Image 2, Seedream 5.0 Flash, Grok
-Imagine Image 2.0, and the self-hosted Qwen-Image-Edit 2511; Recraft V4.1 takes a picture but
-did not follow the instruction, and the self-hosted Z-Image and Qwen-Image draw from text only).
-A model that only edits (`drawsImages` false: the gateway's `model_info.kchat_draws_images`
-when declared, else `imagegen.EDIT_ONLY_MODELS`) is on no surface — its catalogue `kinds` drop
-`image` — so no picker, default or strict-local pick asks it for a new picture; Qwen-Image-Edit
-2511's shim refuses a request without a picture. Its shim takes the picture from the last user
-message's `image_url` part, which must be a data URL, and calls vLLM-Omni `/v1/images/edits`.
-The source picture is egress like an attachment: a strict-local conversation (a Super Agent
-`super_strict` one too, whatever model the conversation last held), a picture a strict-local
-model drew, or an uploaded picture (or one made from it) under `internal_data_strict_local`
-keeps it inside. Kept inside, the edit runs on a strict-local model that edits (`_media_model`
-with the `image_edit` pseudo-kind, which lists models by `editsImages`), whatever picture
-model the person picked, so the picture never reaches an external model; with none the call
-is refused with `image_edit_strict_local`. Outside, a picked model that only draws gets
-`image_model_cannot_edit`. The result is a new image artifact whose `data.editOf` names the
-source (kept as it was), `data.lineage` the line's first picture and `data.editVersion` its
-number; the charge is a picture's, in the ledger as `image.edit`. No model behind the gateway's
-chat endpoint takes a mask, so there is no region edit.
+shape.
+
+- **Which models edit.** Only catalogue models with `editsImages` draw an edit: the gateway's
+  `model_info.kchat_edits_images` when declared, else `imagegen.EDITING_MODELS`. A model that only
+  edits (`drawsImages` false: `kchat_draws_images`, else `imagegen.EDIT_ONLY_MODELS`) has no
+  `image` in its catalogue `kinds`, so no picker or default asks it for a new picture. The
+  self-hosted Qwen-Image-Edit shim takes the picture from the last user message's `image_url`
+  part (a data URL), refuses a request without one, and calls vLLM-Omni `/v1/images/edits`.
+- **Egress.** The source picture counts as egress like an attachment. In a strict-local
+  conversation (a Super Agent `super_strict` one too), for a picture a strict-local model drew,
+  or for an uploaded picture (or one made from it) under `internal_data_strict_local`, the edit
+  runs on a strict-local model that edits (`_media_model` with the `image_edit` pseudo-kind),
+  whatever model the person picked; with none the call is refused with `image_edit_strict_local`.
+  Outside strict-local, a picked model that only draws gets `image_model_cannot_edit`.
+- **Result.** A new image artifact whose `data.editOf` names the source (left untouched),
+  `data.lineage` the line's first picture and `data.editVersion` its number. It is charged as a
+  picture, in the ledger as `image.edit`. No model behind the gateway's chat endpoint takes a
+  mask, so there is no region edit.
 
 ---
 
@@ -73,7 +70,7 @@ browser ──── KloudChat API ──┬── backend gateway ───┬�
    │           ├── file store (local disk)
    │           ├── media worker (stock ffmpeg, internal network only)
    │           └── MCP connectors (stdio · http)
-   └── /api/files/…?t=… ← media is fetched by the element itself (§6)
+   └── /api/files/…?t=… ← media is fetched by the element itself (§3)
 ```
 
 **The browser does not know the backend exists.** The master key is held only
@@ -86,18 +83,18 @@ serves the bundle and proxies `/api` and `/llm` to the `api` service (one or
 more replicas, no published port). The backend address is stored through the
 admin screen (System › Features › Integrations). One address derives the LiteLLM
 address and the seven tool endpoints by appending paths; hosting one feature
-elsewhere means overriding that one field. A feature left blank drops out of the tool list and everything
-else keeps working.
+elsewhere means overriding that one field. A feature left blank drops out of the tool
+list and everything else keeps working.
 
 ---
 
 ## 3. Authentication
 
 argon2id, a short-lived access token (JWT, held in memory) and a rotating
-refresh cookie (httpOnly). Signup enters the `pending` state and is activated
-by an administrator, and **the LiteLLM user is created at that moment** —
-creating it at signup would accumulate proxy users for accounts that are never
-approved.
+refresh cookie (httpOnly). Signup enters the `pending` state (or becomes active
+directly under an open signup policy; the first account is the administrator) and
+**the LiteLLM user is created when the account is activated** — creating it at
+signup would accumulate proxy users for accounts that are never approved.
 
 Password reset stores only a hash, is single-use, and expires after 30 minutes.
 The request always returns 204, so it cannot be used to confirm that an account
@@ -121,13 +118,14 @@ attached to this one route rather than to the default dependency
 issue, each with the client's address and browser. Two screens read it: an
 account's own **Access log** (`GET /auth/me/access`, the account's rows only) and
 the administrator's audit trail (`GET /admin/audit`, everything, a page at a time
-with action, account, period and text filters, sorted on the server by time, action,
-target or address). `GET /admin/audit/export.csv` and `GET /admin/users/export.csv`
-stream the same filtered, ordered rows as CSV (`services/csv_export.py`: UTF-8 BOM,
-service-zone times, formula-looking cells kept as text, at most 50,000 rows); each export
-is itself recorded (`audit.export`, `user.export`) with the filters it used. A change event keeps
-`metadata.changes = {field: [old, new]}` from `services/audit.py:diff`, secrets masked
-and long values clipped; `audit.ACTIONS` lists every code, and the screen labels each one.
+with action, account, period and text filters, sorted on the server).
+`GET /admin/audit/export.csv` and `GET /admin/users/export.csv` stream the same
+filtered, ordered rows as CSV (`services/csv_export.py`: UTF-8 BOM, service-zone
+times, formula-looking cells kept as text, at most 50,000 rows); each export is
+itself recorded (`audit.export`, `user.export`) with the filters it used. A change
+event keeps `metadata.changes = {field: [old, new]}` from
+`services/audit.py:diff`, secrets masked and long values clipped; `audit.ACTIONS`
+lists every code, and the screen labels each one.
 
 The address is only as good as the proxy in front. `core/deps.py:client_ip`
 reads the first hop of `X-Forwarded-For`, and the web container resolves that
@@ -148,10 +146,10 @@ and private ranges read **Private network** (`내부망`) rather than a guess.
 (`CreditLedger`) is the truth**; `messages.usage.credits` is for display.
 Free work that still has a quota goes on the same ledger at zero credits with
 a `units` figure: seconds transcribed, chunks embedded, tokens of an API key
-call (§ Coding agents), and web searches
-(`search.web`, one row per turn with the number of queries the turn sent to
-SearXNG, counted from `ToolContext.tool_calls` in chat and from the research
-step on the document surfaces). The usage screens read searches from there.
+call, and web searches (`search.web`, one row per turn with the number of
+queries the turn sent to SearXNG, counted from `ToolContext.tool_calls` in chat
+and from the research step on the document surfaces). The usage screens read
+searches from there.
 
 Each modality sells in a different unit, and the wrong unit makes a displayed
 price a fraction of the real one.
@@ -170,13 +168,11 @@ catalogue re-exports them verbatim, so a quote and a charge cannot diverge.
 prompt they served from their prefix cache under different names
 (`prompt_tokens_details.cached_tokens`, DeepSeek's `prompt_cache_hit_tokens`,
 `cache_read_input_tokens`); `services/usage_fields` reads all of them, and every model call
-that counts tokens (agent hops, titles, summaries, document writers, revisions, checks)
-carries the figure as `cachedInputTokens` beside `inputTokens`, of which it is a part. A
-turn's total lands on `messages.usage.cachedInputTokens` (absent when the provider
-reported none), and the agent logs each hop's prompt and cached tokens. Credits still
-charge every input token at `inputCreditCost`: the gateway's model entries carry no
-cache-read price, and through OpenRouter the discount depends on which upstream provider
-served the call.
+that counts tokens carries the figure as `cachedInputTokens` beside `inputTokens`, of which
+it is a part. A turn's total lands on `messages.usage.cachedInputTokens` (absent when the
+provider reported none). Credits still charge every input token at `inputCreditCost`: the
+gateway's model entries carry no cache-read price, and through OpenRouter the discount
+depends on which upstream provider served the call.
 
 **A model whose price is unknown is dropped from the list.** Upstream returning
 0 means "price unknown", not "free"; taken at face value it bills real money
@@ -190,28 +186,31 @@ reason.
 Migrations live under `alembic/versions/`. The principal tables:
 
 - `users` · `refresh_tokens` (family-based rotation) · `password_resets` ·
-  `api_keys` · `audit_events`
+  `email_verifications` · `api_keys` · `audit_events`
 - `sessions` · `messages` — conversation. `messages.usage` is JSONB
 - `credit_ledger` — the ledger
 - `projects` · `files` · `file_pages` (OCR text per page) · `media_parts` (a video's
   transcribed pieces and read frames) · `file_uploads` (uploads arriving in pieces) ·
-  `artifacts` ·
-  `artifact_versions` · `skills` · `memories` · `agents` · `connectors` ·
-  `connector_tools` · `connector_credentials` · `connector_catalog`
+  `index_deletions` · `artifacts` · `artifact_versions` · `skills` · `memories` · `agents` ·
+  `connectors` · `connector_tools` · `connector_credentials` · `connector_catalog`
 - `design_systems` — themes: the look a project's or agent's output wears.
-  `projects.design_system_id` is nullable and null by default, and
-  `ON DELETE SET NULL`: removing a theme costs the projects their look, not the
-  projects
+  `projects.design_system_id` is nullable and `ON DELETE SET NULL`: removing a theme
+  costs the projects their look, not the projects
 - `user_templates` — templates people make in the editor (§6 Templates)
 - `user_pipelines` · `pipeline_runs` — composed step lists and bundles, and the
   recorded runs of every writing pass (§6 Pipelines)
 - `publications` · `publication_versions` · `publication_visitors` ·
   `publication_counters` · `publication_slots` · `publication_questions` ·
   `publication_keys` — published agents (§6 Publishing agents)
+- `integration_accounts` · `integration_actions` · `integration_imports` ·
+  `slack_workspaces` · `slack_bot_channels` · `slack_threads` — external
+  account integrations and the Slack bot
+- `source_selections` · `source_guides` · `project_notes` · `studio_items` — a
+  project's knowledge shelf
+- `push_subscriptions` · `push_sent` — web push
 - `issue_reports` · `issue_replies` — Feedback & issues reports and the administrators' replies
 - `metric_samples` — the performance monitor's series
-- `templates` — not read or written by the application; the table and its rows
-  remain in the schema
+- `templates` — present in the schema but not read or written by the application
 - `sessions.render_template_id` — the template a session writes into.
   A plain string, not a foreign key: the catalogue ships inside the API image,
   and an id it does not know degrades to "no template"
@@ -231,23 +230,23 @@ Migrations live under `alembic/versions/`. The principal tables:
   goes. A chat turn that writes a file records it here too
 - `messages.superseded` — answers a rerun of the same question replaced, oldest
   first (`{id, content, model, usage, steps, artifactIds, routing, rating,
-  createdAt}`); the conversation continues from the row that carries them.
+  createdAt}`); the conversation continues from the row that carries them
 - `sessions.summary` — `{through, text, turns, pinned}`: the running memory standing
   in for the turns too old to send once a conversation outgrows the model's window
   (§7) — a summary, the pinned facts and rules (`[{label, value}]`, oldest first), and
   the last message it covers, which is also where the kept part of the conversation
-  starts.
-- `sessions.skill_ids` — the skills switched on for the conversation (§6 Chat).
+  starts
+- `sessions.skill_ids` — the skills switched on for the conversation (§6 Chat)
 - `messages.failure` — how a turn ended when it did not end in an answer.
   `no_answer` sits on the question, `interrupted` on a partial reply, and
-  `stopped` on either when **Stop** was pressed — same shape, the reader's choice
+  `stopped` on either when **Stop** was pressed
 - `jobs` — video only. Without `provider_job_id`, a restart orphans a
   half-generated clip
 - `system_settings` — LiteLLM address and master key, backend and tool
   addresses, model roles, enabled surfaces, OCR, branding, SMTP, signup policy.
   Database values override environment variables
 - `governance` — the one instance-wide policy row: privacy guard and masking,
-  internal-material routing, Super Agent and the earlier Auto lanes, outline model, intent filter,
+  internal-material routing, Super Agent, outline model, intent filter,
   idle sign-out, retention
 
 `files` carries the scope it belongs to: `project_id` for project knowledge,
@@ -260,30 +259,30 @@ singly or in bulk, deletes the artifacts it produced with their versions and
 shares (`sessions._delete_artifacts_of`).
 
 **Where an artifact is listed** (`artifacts.section`, `services/artifact_section.py`, kept by
-the model's insert and update listeners): the 아티팩트 page (`GET /artifacts/gallery`:
-`section`, a title search `q`, `sort` `updated`/`title`/`section`/`version` with `dir`, a
-keyset `cursor`, per-section `counts`) holds what is viewed or run directly — `html` pages,
-`code` files, `chart`s (a chart artifact, or a code-drawn chart picture) and `diagram`s (a
-drawn figure with its source). Reports and decks of every format are `document`s, listed in
-파일함 › 작업 문서; generated pictures, sound and video are `media`, listed in 파일함 › 만든
-파일 by their files. An answer's inline code block is part of the answer: only a file the
-model makes with `create_artifact` becomes a code artifact — except that a
-program or page the person asked to be made is saved for the model when it
-wrote one and never called the tool (`services/code_file_save.py`, after the
-turn). The turn must have made no artifact of its own, the request must ask
-to make something and carry no code of the person's own, and the text must be
-file-shaped: a full HTML document, or code in a programming language with an
-entry point, tests or several top-level definitions (10 lines), or 12 lines
-when the request itself says code, script, program, file, class or app. The
-source is the answer's largest such block, else the largest such program a
-successful `execute_code` run used this turn (a model that ran its script and
-then answered in prose leaves the code nowhere else). A snippet shown to
-explain something stays in the chat, and the answer text is never rewritten. The inline blocks an older
-extractor stored are `snippet`s (migration 0092: a code or HTML body without the `kind` key
-every `create_artifact` file and designed page has); they stay for their conversation's panel
-and are listed nowhere — not in `GET /artifacts`, its counts, the gallery or search. An old
-`/artifacts?open={id}` link to a document opens its editor (or 작업 문서), to a picture, sound
-or video its file in 만든 파일.
+the model's insert and update listeners):
+
+- The 아티팩트 page (`GET /artifacts/gallery`: `section`, a title search `q`, `sort`
+  `updated`/`title`/`section`/`version` with `dir`, a keyset `cursor`, per-section `counts`)
+  holds what is viewed or run directly: `html` pages, `code` files, `chart`s (a chart artifact,
+  or a code-drawn chart picture) and `diagram`s (a drawn figure with its source).
+- Reports and decks of every format are `document`s, listed in 파일함 › 작업 문서.
+- Generated pictures, sound and video are `media`, listed in 파일함 › 만든 파일 by their files.
+- `snippet` artifacts (a code or HTML body without the `kind` key that every `create_artifact`
+  file and designed page has) stay visible in their conversation's panel and are listed
+  nowhere else — not in `GET /artifacts`, its counts, the gallery or search.
+- `/artifacts?open={id}` on a document opens its editor (or 작업 문서), on a picture, sound or
+  video its file in 만든 파일.
+
+An answer's inline code block is part of the answer: only a file the model makes with
+`create_artifact` becomes a code artifact. The exception is a program or page the person asked
+to be made that the model wrote without calling the tool; it is saved for the model after the
+turn (`services/code_file_save.py`) when the turn made no artifact of its own, the request asks
+to make something and carries no code of the person's own, and the text is file-shaped (a full
+HTML document, or code with an entry point, tests or several top-level definitions, at least 10
+lines, or 12 when the request itself says code, script, program, file, class or app). The source
+is the answer's largest such block, else the largest such program a successful `execute_code`
+run used this turn. A snippet shown to explain something stays in the chat, and the answer text
+is never rewritten.
 
 ---
 
@@ -296,8 +295,12 @@ or video its file in 만든 파일.
 process is still writing one (and nobody pressed **Stop**) is refused with 409
 `session_busy`; with several replicas the shared transcript stands in for the
 other processes' signals (a fresh question with no reply and no failure mark).
+Two sends that both pass that check meet at the turn's registration, where a fresh send
+(not a regenerate, not a message after **Stop**) that finds a live turn bows out with
+`session_busy` and removes its own question row.
+
 `retry_of` on the latest question reruns it; when that question already had an
-answer the old answer is kept on the new row as `messages.superseded` (the
+answer, the old answer is kept on the new row as `messages.superseded` (the
 screen pages ‹ k/n › through them) and its row is deleted only in the
 transaction that stores the new answer, so a rerun that dies leaves the answer
 it was going to replace.
@@ -317,31 +320,29 @@ the words themselves name the present (Korean cues such as 「지금」 "now",
 **Skills stay on for the conversation.** The skills picked for a turn are
 remembered on `sessions.skill_ids` and applied to every later turn until the
 person changes the set (the picker, or `PATCH /sessions/{id}` with `skillIds`);
-`[]` switches them off. A pick for one turn therefore shapes the whole
-conversation, as a skill one reaches for should. A standing skill that has since
-been deleted, disabled or barred by the agent drops out quietly and the stored
-set is pruned (`_standing_skill_ids`); only a skill picked for this turn is
-checked strictly.
+`[]` switches them off. A standing skill that has since been deleted, disabled
+or barred by the agent drops out quietly and the stored set is pruned
+(`_standing_skill_ids`); only a skill picked for this turn is checked strictly.
 
 **The model can reach for a skill itself.** The installed, enabled chat skills
 that are not switched on are offered as one tool, `use_skill`, whose description
 lists each by its `when_to_use`. When a request matches one, the model calls the
 tool once and receives the skill's instructions as the tool result — the one
 tool result the rules say to follow, since the person installed it — and
-answers under them. The step shows as "applying a skill" (스킬 적용). Up to twelve skills are
-offered per turn so the description stays a paragraph, and an agent's skill
-allowlist bounds the shelf as it bounds a hand pick.
+answers under them. The step shows as 「스킬 적용」 ("applying a skill"). Up to
+twelve skills are offered per turn, and an agent's skill allowlist bounds the
+shelf as it bounds a hand pick.
 
 Tools are attached only when the model supports function calling — giving them
 to a model that does not yields either a 400 from upstream or an invented call.
-Built-in tools (`services/tools/builtin.py`): `web_search` (SearXNG),
-`fetch_url` (Crawl4AI), `weather` (Nominatim geocoding plus the Open-Meteo
-forecast, keyless), `execute_code` (sandboxed; files it names are mounted), `run_skill_script`, `run_code`, `calculate` (bounded exact
-arithmetic, no code execution; `tools/arithmetic.py`), `create_artifact`,
-`create_chart`, `share_note`,
+Built-in tools (`services/tools/`): `web_search` (SearXNG), `fetch_url`
+(Crawl4AI), `weather` (Nominatim geocoding plus the Open-Meteo forecast, keyless),
+`execute_code` (sandboxed; files it names are mounted), `run_skill_script`,
+`run_code`, `calculate` (bounded exact arithmetic, no code execution;
+`tools/arithmetic.py`), `create_artifact`, `create_chart`, `share_note`,
 `use_skill`, and `search_knowledge` over an agent's own documents and the files
-uploaded into the conversation (§8). Tools from
-installed MCP connectors are added to these.
+uploaded into the conversation (§8). Tools from installed MCP connectors are
+added to these.
 
 **Script skills.** A skill may ship as a package, `app/skills/<key>/SKILL.md` (YAML
 front matter for the catalogue fields, markdown body for the instructions) plus fixed
@@ -354,7 +355,10 @@ code-computed schema of each file (`services/file_schema.py`) to the code model
 (`CODE_MODEL`, default `local/qwen3.8-27b`), runs the result, sends the error back once,
 then gives `CODE_FALLBACK_MODEL` one try. What a run writes under `outputs/` is stored
 as the user's files in the chat and listed on the step as `outputs` (download chips).
-One sandbox session serves a turn, kept on `ToolContext.sandbox`.
+One sandbox session serves a turn, kept on `ToolContext.sandbox`. The sandbox sits in
+the self-hosted stack with networking off, so with `SANDBOX_IN_BOUNDARY` (on) both tools
+are offered to strict-local turns, and `run_code` then writes on the `strict-local/`
+twin of the code model.
 
 **A person's skill opts in the same way.** What the server runs for a skill —
 `stage`/`entry`, `post_check`, `post_judge`, `copy_check`/`copy_kinds`, `tables`,
@@ -367,85 +371,84 @@ read-only under `skills/own-<id>/`; the server never imports them. Sharing a ski
 scripts waits for an administrator (`/admin/skills`, **Skill review**). A person's check skill
 (`stage`) is attached through the **My check skills** bundle as `skill:<id>`.
 
-**Missing-information questions** are data (`services/gap_questions.py`): a template lists the questions its
-format needs (`[[questions]]` in `template.toml`), an agent adds its own
+**Missing-information questions** are data (`services/gap_questions.py`): a template lists the
+questions its format needs (`[[questions]]` in `template.toml`), an agent adds its own
 (`agents.gap_questions`, the agent form; a shipped agent's come from its file). Each names
 a detector — a built-in one from `gap-check/scripts/gaps.py`, keywords, a bounded pattern,
 or the judge model, which must quote the answer from the material. Detectors read the
 request, the material and the instructions set once (account, agent, project:
 `WorkspaceContext.standing`), so an agent whose instructions say 「시설과장님께 올리는
-주간보고」 is not asked whom it reports to; the report writer also takes the head fields
-(「작성자는 「…」로 적는다」) and a section order (「금주 실적, 이슈, 차주 계획 순서」,
-`report.instructed_sections`) from those instructions. A template's document format
-(`doc_format`) and genre rule (`genre.md`) are carried by the template too. The sandbox sits in
-the self-hosted stack with networking off, so with `SANDBOX_IN_BOUNDARY` (on) both tools
-are offered to strict-local turns, and `run_code` then writes on the `strict-local/`
-twin of the code model.
+주간보고」 ("weekly report to the facilities manager") is not asked whom it reports to; the
+report writer also takes the head fields (「작성자는 「…」로 적는다」, "the author is written as …")
+and a section order (「금주 실적, 이슈, 차주 계획 순서」, `report.instructed_sections`) from
+those instructions. A template's document format (`doc_format`) and genre rule (`genre.md`)
+are carried by the template too.
 
 **The web-search toggle has three positions.** `context.search_plan` turns the
 toggle and the user's words into two facts: whether the web tools (`web_search`,
-`weather`) are offered this turn, and which tool the first hop must call. **On**
-offers them and forces a search every turn; **Off** offers nothing unless the
-words explicitly ask for research; **Auto**, the default, offers them and forces
-the first hop only when the words ask for research, for something that changes
-with time (news, prices, versions, schedules, a year), or for the weather —
-otherwise the model decides under a lighter rule (`_WEB_SEARCH_AUTO`) that says
-what to look up and what to answer outright. On a chat turn the route also forces the
-first search, for every model, when `services/exact_facts.search_reason` finds a fact
-that must be exact (a phone number or hotline, a law, tax rule, threshold or benefit, a
-price, rate or limit, an event date, availability, an organization, a statistic) or
-legal, tax, financial or medical advice; a short follow-up is read with the earlier user
-turns, and the model then writes the query from the conversation. Writing, translation,
-code and formulas, role-play, drafting, concept explanations and turns on the person's
-own material are left alone (`exact_facts.not_a_lookup`), and an explicit opt-out or Off
-stands. On Auto, a draft, edit, translation or code fix made from the person's own facts
-(`exact_facts.own_work`: no lookup word, no world value such as a rate, a price or the
-weather, no question besides the task) is not offered `web_search` at all, so the model
-cannot wander into unrelated pages; On still searches it. A model-written query keeps the request's named things
-(`query_terms.keep_entities`).
+`weather`) are offered this turn, and which tool the first hop must call.
+
+- **On** offers them and forces a search every turn.
+- **Off** offers nothing unless the words explicitly ask for research.
+- **Auto**, the default, offers them and forces the first hop only when the words ask for
+  research, for something that changes with time (news, prices, versions, schedules, a
+  year), or for the weather; otherwise the model decides under a lighter rule
+  (`_WEB_SEARCH_AUTO`).
+
+On a chat turn the route also forces the first search, for every model, when
+`services/exact_facts.search_reason` finds a fact that must be exact (a phone number or
+hotline, a law, tax rule, threshold or benefit, a price, rate or limit, an event date,
+availability, an organization, a statistic) or legal, tax, financial or medical advice; a
+short follow-up is read with the earlier user turns, and the model then writes the query
+from the conversation. Writing, translation, code and formulas, role-play, drafting,
+concept explanations and turns on the person's own material are left alone
+(`exact_facts.not_a_lookup`), and an explicit opt-out or Off stands. On Auto, a draft,
+edit, translation or code fix made from the person's own facts (`exact_facts.own_work`) is
+not offered `web_search` at all, so the model cannot wander into unrelated pages; On still
+searches. A model-written query keeps the request's named things
+(`query_terms.keep_entities`). Weather questions force the `weather` tool rather than a
+search, since a search engine returns encyclopaedia pages for 「분당 날씨」 ("Bundang
+weather").
 
 **Advice answers are traced by default.** `exact_facts.advice_domain` puts the
 `grounding-check` skill on a legal, tax, financial or medical chat turn, as an agent that
 turned it on would, and the writer gets `freshness.ADVICE_INSTRUCTION`. With
 `"advice": true` the trace checks money and rates, phone numbers, doses and legal
 consequences against the turn's search results and the person's words (not earlier
-answers), marks each unsupported one 「(확인 필요)」 where it stands rather than blanking
-it, and leaves agency names and the guidance's durations alone; more than three marks
-are listed once under the answer. The step reads 「근거 확인(법률): …」. A strict-local route offers none of
-this, whatever the toggle says. Weather questions force the `weather` tool
-rather than a search, since a search engine returns encyclopaedia pages for
-「분당 날씨」 ("Bundang weather").
+answers), marks each unsupported one 「(확인 필요)」 ("needs checking") where it stands rather
+than blanking it, and leaves agency names and the guidance's durations alone; more than
+three marks are listed once under the answer. The step reads 「근거 확인(법률): …」. A
+strict-local route offers none of this, whatever the toggle says.
 
-**A search runs two lanes and reads dates.** `web_search` asks SearXNG's
-general lane and, when the query carries a time-sensitive word (a year, 최신 "latest",
-가격 "price", a named release), the news lane too, with the news hits first; the
-general lane answers 「최신 모델」 ("latest model") with home pages and encyclopaedias. Front
-pages and a host's third hit are benched (used only to pad a thin list), and a
-hit's `publishedDate` reaches the model as 「게시일」 ("published on") so the newest wins. A turn
-makes at most three searches and six page reads (six searches when a turned-on skill
-sets `process: {deep_search: true}`, as 기업 조사 and 경쟁사 분석 do, plus one for each
-thing the request lists or hands over to check); past either cap the model is told to answer
-from what it has. On a deep-search turn an answer written before every name the request
-lists (「잔디, 플로우, 네이버웍스를」) appears in some query, or before every memo line it
-hands over (「- 공공 클라우드 사업도 한다고 함」) has two of its words in one query, is held
-once and the model is asked to search the rest (`query_terms.unsearched`). A listed source
-with no 게시일 carries the day it was read (「· 확인 2026-10-15」). The skills' last check
-(`source-check/post`) also takes out a citation of a page about another company: a company
-directory's profile of another firm in a 「○○ 한눈에」 one-pager, or, in a comparison
-table, sources that name another column's company and not the cell's own, or a page off the
-column's own sites about another product of the same name (「GitHub Copilot」 in a 365
-Copilot column).
+**A search runs two lanes and reads dates.** `web_search` asks SearXNG's general lane
+and, when the query carries a time-sensitive word (a year, 최신 "latest", 가격 "price", a
+named release), the news lane too, with the news hits first. Front pages and a host's third
+hit are benched (used only to pad a thin list), and a hit's `publishedDate` reaches the
+model as 「게시일」 ("published on") so the newest wins; a listed source with no 게시일
+carries the day it was read (「· 확인 2026-10-15」, "checked …").
+
+A turn makes at most `MAX_WEB_SEARCHES` (3) searches that found something, `MAX_SEARCH_CALLS`
+(6) calls in all, and `MAX_FETCHES` (6) page reads (`services/agent.py`); past a cap the model is
+told to answer from what it has. A turned-on skill that sets `process: {deep_search: true}`
+(기업 조사, 경쟁사 분석) doubles the search caps and adds one search for each thing the
+request lists or hands over to check. On such a turn an answer written before every
+listed name (「잔디, 플로우, 네이버웍스를」) appears in some query, or before every memo
+line handed over has two of its words in one query, is held once and the model is asked
+to search the rest (`query_terms.unsearched`). The skills' last check (`source-check/post`)
+also takes out a citation of a page about another company: a company directory's profile of
+another firm, or, in a comparison table, sources that name another column's company or
+another product of the same name.
 
 **Sources are cited by number, never typed.** `run_turn` renumbers the `[n]`
 entries of every search result so the numbers run across the whole turn and
 gives a fetched page a number of its own; the prompt asks the model to cite
 `[3]` at the end of a sentence and not to copy URLs. After the answer,
 `_link_citations` turns each `[n]` into a link to that source and a numbered
-「출처」 ("Sources") list is appended; numbers no result carries stay as text. A model that
-types a URL anyway is checked against the tool results. A stream
-that repeats one letter or digit forty times in a row (a decoder stuck on a
-long article id) is closed there: the run is retracted, and a URL it broke is
-completed when exactly one tool result starts the same way, dropped otherwise.
+「출처」 ("Sources") list is appended; numbers no result carries stay as text. A model
+that types a URL anyway is checked against the tool results. A stream that repeats
+one letter or digit forty times in a row (a decoder stuck on a long article id) is
+closed there: the run is retracted, and a URL it broke is completed when exactly one
+tool result starts the same way, dropped otherwise.
 
 **A fetch reaches the public internet only.** Every page read on a reader's
 behalf — the `fetch_url` tool, search-result bodies, research picks, project
@@ -467,21 +470,22 @@ model call, and a failure in either would roll the answer back.
 
 **The turn outlives the connection.** The work runs in its own task and the SSE
 response only relays what it emits, so closing the tab cancels the relay and
-not the turn — the answer is still stored, charged and titled. Which makes
-stopping a separate act rather than a dropped socket: `POST
-/sessions/{id}/stop` sets a flag the token loop checks, and the turn settles
-where it is with the partial answer kept and the row marked `stopped` (a
-dropped connection marks it `interrupted`). The proxy reports usage on its
-final chunk, which a stopped stream never reaches, so a stopped turn's usage
-is estimated from what went up and what came down and stored with
-`estimated: true` — the tokens were spent either way.
+not the turn — the answer is still stored, charged and titled. Stopping is therefore a
+separate act rather than a dropped socket: `POST /sessions/{id}/stop` sets a flag the
+token loop checks, and the turn settles where it is with the partial answer kept and the
+row marked `stopped` (a dropped connection marks it `interrupted`). The proxy reports
+usage on its final chunk, which a stopped stream never reaches, so a stopped turn's usage
+is estimated from what went up and what came down and stored with `estimated: true`.
 
 ### Report and slides
 
 Both are two-pass: one outline call returns the title and the table of
 contents, then one call per section or slide, each carrying what the previous
 ones wrote. Six listed sections means six are coming, which is what makes the
-progress indicator honest.
+progress indicator honest. A failed section is marked and the rest continues.
+Both receive the workspace blocks the chat surface gets — project
+instructions, memories, skills, and any file attached to the turn — so a
+request naming an uploaded form is written against that form.
 
 **The plan is approved before anything is written.** The outline turn ends
 with a `proposal` event: the plan (title, parts, visual style, proposed
@@ -490,19 +494,23 @@ when the person approves it, possibly edited. When the material is too thin to
 write from, the turn asks instead (`needs`, `services/grounding.py`) and writes
 nothing.
 
-A failed section is marked and the rest continues.
+**The plan is checked first.** `services/outline.py` holds the rule both tracks use — no
+run of three identical layouts, and at least three of the offered layouts (or as many as
+exist). A plan that fails it is asked for once more, naming the layouts it skipped; the
+second answer is kept only if it is less flat. Nothing is coerced: a layout assigned to a
+heading it does not suit would be a worse slide than a repeated one. `deck.sane_outline`
+also refuses an outline that is really the planner's notes to itself (「Slides: 5 to 12.
+(6 is fine)」, repeated section names, an English plan for a Korean request), and the
+outline is asked for once more.
 
-**The plan is checked before anything is written.** `services/outline.py`
-holds the rule both tracks use — no run of three identical layouts, and at
-least three of the offered layouts (or as many as exist). A plan that fails it
-is asked for once more, naming the layouts it skipped; the second answer is
-kept only if it is less flat, so the worst case is one extra outline call.
-Nothing is coerced: a layout assigned to a heading it does not suit would be a
-worse slide than a repeated one.
-
-Both receive the workspace blocks the chat surface gets — project
-instructions, memories, skills, and any file attached to the turn — so a
-request naming an uploaded form is written against that form.
+**The outline can run on a different model.** `governance.outline_model_id` names one;
+empty (the default) plans with the surface's own model. It applies to all three writing
+tracks and only to the planning call, which is one call per document however many blocks
+follow. Its tokens are billed at its own price, and the turn reports planning and writing
+apart. The id is checked when saved and again per turn against the account's allowlist,
+the surface, and the boundary the turn was decided on. A turn privacy routed to a
+strict-local model gets no planner at all, and a planner may never be less contained than
+the writer; anything that fails falls back to the writing model rather than failing the turn.
 
 Reports search the web before writing and cite what they found; with no search
 backend the shelf is empty and the citation rule drops out of the prompts. A
@@ -511,738 +519,537 @@ through the same search backend (`services/korean_papers.py`; there is no
 separate KCI API or key) and reads each landing page's bibliographic meta tags,
 so a reference carries its authors, year, venue and DOI.
 
-Slide layouts are listed in `services/deck.py` (`title`, `agenda`, `section`,
-`bullets`, `quote`, `two-column`, `table`, `metrics`, `chart`, …), each
-implemented in all three renderers (preview, `.pptx`, `.pdf`). A table body row whose
-value columns (two or more) all hold the same text of at least `deck_type.SHARED_MIN`
-characters is drawn as one cell across them (`deck_type.shared_value` / `typeScale.sharedValue`;
-a merged cell in `.pptx`); the data keeps every cell, and short shared marks (✓, Yes, N/A)
-keep their own cells so check-mark tables look the same. The outline
-also picks the deck's accent from a fixed palette — unless the project wears a
-theme, in which case the palette rule is dropped from the prompt
-entirely and the accent arrives from the project. A slide count stated in the
-request is honoured up to 50 (Korean 「N장」 or English 「a 6-slide deck」, 「8 slides」); a
-number over 50 counts only when said of the deck itself (「슬라이드 60장」, 「총 60장」), so a
-quantity in the material (「컬러 월 300장」) is never a size. A stated range is a floor and a
-ceiling: an outline outside it is asked back once, and one still over the top loses its
-dividers and agenda first, never content.
+**Slide layouts** are listed in `services/deck.py` (`title`, `agenda`, `section`,
+`bullets`, `quote`, `two-column`, `table`, `metrics`, `chart`, …), each implemented in
+all three renderers (preview, `.pptx`, `.pdf`). A table body row whose value columns (two
+or more) all hold the same text of at least `deck_type.SHARED_MIN` characters is drawn as
+one cell across them (`deck_type.shared_value` / `typeScale.sharedValue`; a merged cell in
+`.pptx`); the data keeps every cell. The outline also picks the deck's accent from a fixed
+palette — unless the project wears a theme, in which case the palette rule is dropped from
+the prompt and the accent arrives from the project. A slide count stated in the request is
+honoured up to 50 (「N장」, "a 6-slide deck"); a larger number counts only when said of the
+deck itself (「슬라이드 60장」, 「총 60장」), so a quantity in the material (「컬러 월 300장」) is
+never a size. A stated range is a floor and a ceiling: an outline outside it is asked
+back once, and one still over the top loses its dividers and agenda first
+(`deck.fit_count`), never content slides; a plan still over or under goes to the honest error.
 
-**The outline can run on a different model.** `governance.outline_model_id`
-names one; empty — the default everywhere — plans with the surface's own model.
-It applies to all three writing tracks and only to the planning call, which is
-one call per document however many blocks follow it.
+### Revising a finished report or deck
 
-Its tokens are billed at its own price: the turn reports planning and writing
-apart, so the ledger says where the money went.
+A revision is planned by a model, then carried out by the narrowest edit that does what
+was asked. The rules below are code in `services/revise.py` and `services/deck.py`, so a
+model's retyping cannot move what the person did not name.
 
-The outline carries the same request and the same context the body does, so it
-is subject to everything the body is: the id is checked when it is saved, and
-again per turn against this account's allowlist, this surface, and the boundary
-the turn was decided on. A turn privacy routed to a strict-local model gets no
-planner at all — that route exists so the text does not leave — and a planner
-may never be less contained than the writer, or a field on the admin screen
-would quietly widen the egress of every document. Anything that fails falls
-back to the writing model rather than failing the turn.
+**Which part is the target.**
 
-**Revising one slide the way the person said.** A slide rewrite reads the
-layout the words ask for — 「연표로」 (as a timeline), 「단계로」 (as steps), 「차트로」 (as a chart),
-「큰 숫자로」 (as big numbers), 「표로」 (as a table) (`deck.requested_layout`;
-「연표」 "timeline" is not a 「표」 "table") — and writes with that layout's
-prompt; a chart or metrics answer replaces the slide's chart or metrics, not
-just its notes. An ask for another shape and nothing else (「4장을 번호 목록으로 바꿔줘」,
-"Can you make slide 3 a table?", `deck.form_only`) is done by code from the slide's own
-content (`deck.reshaped`: a chart's points, a table's rows or bullets as list items; a chart,
-metrics, items or bullets whose fields line up as table rows), so no item is rewritten or
-invented and the title stays; a table written back as lines (「Local 27B – $4 – 9s」) is put
-into rows the same way, and a shape that still does not come leaves the slide as it was and
-is said. Figures a rewrite lost are read the same way on both sides (`deck.figures_in`: a
-Korean word after a number is read whole, 「3분기」 not 「3분」; chart values count).
-A section shortened to a sentence count (「2절을 두 문장으로 줄여줘」) is checked for that count
-and for the section's figures and names (`revise.shortening_faults`), sent back to the writer
-once with the reason, and what still misses is said in the reply; facts are read over the
-whole section (tables, lists, captions), a sentence restating the ask is dropped before
-counting (`revise.without_ask_echo`), and a figure or date neither the section nor the
-material states counts as a fault (`revise.added_facts`), as does a date the section did not
-state; a date put beside a weekday the section names is taken out by code
-(`revise.without_added_dates`) and weekdays beside dates are set to the calendar. A sentence
-that only points at the section's table is folded into the one before it as its 「(표 1)」
-(`revise.fold_table_pointers`), and a section that already had the count stays when the
-rewrites miss it, which the reply says. A slide cut to fewer items
-(「항목을 하나로」, `deck.items_asked`) that came back with none gets its old items joined
-(`deck.merged_points`), figures such a cut drops are said, and a deck cut to fewer slides says,
-at save after grounding, the figures (notes not counted; in an English deck lone counts too and
-each value with the shortest phrase it counts, 「40 tasks」, 「3 reviewers」; in a Korean deck a
-count with the words before it, 「신규 거래처 3곳」) and the charts and
-tables it shows nowhere any more (`deck.lost_across`, `deck.lost_blocks`), in English for an
-English deck (a bare table cell counts with the unit its row or column header states, 「출고
-지연(일)」 「4」 is 4일; a gone chart some of whose values the new deck still shows has the rest
-named by category, 「기타 10억」); a shortened section's lost facts include days named without a date (「다음 주
-수요일」, `revise.lost_facts`) and things it said were done or settled (「처리를 완료했습니다」 →
-「처리 완료」, `revise._lost_done`; not 「확정되는 대로」 nor 「마무리할 예정」) and the caveat
-it put on a figure or name (「확정된 사실이 아닙니다」, 「추정」, 「(확인 필요)」, 「것으로 파악됩니다」,
-unconfirmed; in the clause or a following clause that points back, 「다만 해당 단가는 …」,
-`revise._with_caveats`; any form of it keeps it, 「확정되지 않은」, 「확정 전」, 「미확정」, 「미정」,
-「확인해야」, and a clause after 「…으나,」 is its own): a figure still stated without it is named
-with its mark (「A사 4%의 「확정 아님」 표시」, said in its own clause of the reply), a name gone
-with it carries the mark (「A사(확정 아님)」), both sent to the
-writer once like any lost fact (a bare figure is not re-marked by code: it may be another
-figure with the same number); a figure written another way still counts as shown (「1,000」 as
-「1000」 or 「1k」, `deck.figure_kept`); after a cut to
-fewer slides the deck's ask (승인, 결재, 요청, approval) is put back when no slide asks any more,
-as the title of the slide holding its figures or as a point (`revise.keep_ask`), a summary slide
-placed after slides whose figures the old deck showed later moves up before them unless an order
-was asked (`revise.keep_order`), a figure the old deck showed only marked (「95% (needs
-checking)」) keeps the mark (`revise.carry_marks`; the restructure's grounding reads the old deck
-as material and cannot mark it again), a short point restating two values one old point gave in
-mostly other words takes that point back, not over a strong writer and not when the point is a cut
-of the old one's own words (`revise.keep_phrasing`), and a unit dangling from a mixed one
-(「128억원/%」) is cut, here and on a rewritten slide, while a guard blank (「이익률 실적: [수치]」)
-stays in sight (`deck.settle_blanks`); a figure the
-request states that the deck left out goes beside the metric or item it belongs to
-(「영업이익 (이익률 7.5%)」), else onto the slide sharing its words; a figure the request gives
-in parentheses is restated with the term it qualifies (「revenue $9.8M (93% of target)」, never
-「93% of target」 alone; `deck.restate_missing_facts`); a timeline put back takes no slide whose
-chart or figures it would drop (`revise.keep_timeline_layout`). A sentence count still off after the retry is met by code at
-clause joints (「…필요하며,」 ↔ 「…필요합니다.」, `revise.fit_count`), the retry that misses a count
-the first version met does not replace it (`revise.better_shortening`), no sentence is cut as a
-table echo below the count asked, and the part's inline
-pictures, which the writer is not shown, are put back (`revise.keep_pictures`). Only prose sentences are counted (tables,
-captions and list rows are not; a part written as a list only counts its top-level rows), a figure is a number with its unit or counter (「3곳」, not
-「표 1의」), money is compared as won (「38.5억」 = 「38억 5천만」 = 「3,850,000,000원」,
-`deck.amounts_in`), and a drawn diagram's labels count as shown. Joining one named slide's
-items, named or counted in things rather than slides (「2장 항목을 하나로 합쳐줘」, 「4장 항목을
-하나로」 with no verb, 「6장 단계를 두 개로 나눠줘」, "Merge the items on slide 4 into one") is that slide's edit, never the deck made anew,
-done by code (`deck.joined_items`, which also splits joined items into the count asked,
-「두 개로 나눠줘」; steps, cards and other paired entries are regrouped in order into that many,
-the layout kept when the groups fit it; a chart is not one of the items, so the points beside it
-are joined and the chart stays; a slide with no list of items, a chart alone, or with the count
-already is kept and the reply says so, with no new version; steps drawn only as a flow are said
-as such, 「6장은 항목 목록 없이 흐름도만 있어 …」), not a restructure; a label put
-into a numbered list is never cut inside its brackets (「영업이익」 / 「9.6억 (이익률 7.5%, …)」); "Shrink to 3 slides" is read like 「3장으로 줄여줘」: the
-count is put in the outline note even when the planner already chose a new outline
-(`revise.count_change`), English counts in the original request ("an 8-slide talk") are taken
-out, and an English deck is not judged Korean by the conditions the code adds. A table slide
-that repeats an earlier slide's rows is written as points (`deck.repeats_table`). A question or a numbered edit typed while a question card is open is not
-the card's answer (`sessions._sets_card_aside`; on a question card a numbered part put into a
-shape or an item count with no verb, 「3장을 번호 목록으로」, counts too), nor is a numbered edit
-that keeps the structure on a proposed outline; a question leaves any open card as it was.
-The sentence count is read after internal block names are scrubbed, a part number or sentence
-count in the ask (「2절을 두 문장으로」) is not a changed fact that sends the edit through the
-consistency repair, and a repair that undoes the count asked is said in the reply.
-A section rewrite is shown the section's own current text, so a shortened section stays
-itself; a line to the person about the rewrite is dropped (`revise.without_preamble`), and a
-shortened section that reads as another section or points at a table or figure it lacks is
-sent back once, then kept as it was (`revise.drift_faults`); figures and boxes a shortening
-drops are named (`revise.removed_blocks`). A table's rows are not joined or split as items: that
-ask is said as the action asked (「항목 합치기」, 「항목 나누기」, `revise.splits_items`) and the
-slide kept. English figures are read whole (「Qwen3.8」 holds no figure,
-「1K」 = 「1,000」). A title the person asked to change (「제목을 …로 바꿔 줘」, "change the title to …") is
-taken, quoted text verbatim. 「위험 장을 하나 추가해 줘」 ("add a risk slide") is an `insert`: the
-revision planner names the new part and its place, the router slots a blank
-part in and rewrites only it, so the other slides stay byte for byte. A restructure (「6장으로 줄여」, "cut it to six slides") is told to hit the count
-exactly, merge only what was named, and keep every other part's title and
-content.
+- When the words name exactly one existing part (「다음 단계 장을 연표로」, "next-steps slide as
+  a timeline"), that part is the target whatever the planner guessed (`revise.named_target`).
+  A shorter name inside a longer part's name counts as a mention of the longer one; a name
+  whose every word sits in one part's name is that part; a part the deck truly lacks is made
+  before the closing slide. Structural asks (add, remove, merge, reorder, a new count) are left
+  to the planner.
+- A stated count against a different current count (「전체를 6장으로 줄여 줘」) is a restructure
+  whatever the planner read it as (`revise.count_change`). The original request's counts are
+  stripped (`revise.without_counts`) and the planner's note loses totals it states
+  (`revise.note_without_totals`) so the note's count is the only one.
+- When every ask of a report edit names its part (by number, name, or wording only some parts
+  state), only those parts are rewritten, each told its own asks (`revise.section_asks`).
+- 「위험 장을 하나 추가해 줘」 ("add a risk slide") is an `insert`: a blank part is slotted in and
+  only it is written (`place_insert` for 「요청 사항 장 앞에」 "before the requests slide";
+  `into_existing_part` when the ask is aimed into an existing part). Other parts stay byte for byte.
+- A question or numbered edit typed while a question card is open is not the card's answer
+  (`sessions._sets_card_aside`).
 
-**A restructure keeps what it did not change.** When the skeleton is re-planned
-(「6장으로 줄여」), the source artifact's id rides in the pending proposal
-(`carryFrom`) and, after the rewrite, every new part whose name
-survived and which the instruction never named gets its words back from the
-old part (`revise.carry_parts`): same position, new id and accent, old content.
-A new part that shows a value its namesake did not and a part gone from the new plan did
-(the 「$1.2M」 ask of a merged-away slide) took that part in and keeps its new words.
-The outline of a restructure, of a deck or a report, asks no questions and is written as
-re-planned without an outline card (the open document is its material), and an
-outline still over the count after its size retry is fitted by code: dividers and agenda go,
-then adjacent content slides are merged into one 「A · B」 slide (`deck.merge_to_count`).
-A part the instruction names — 「지표와 진척은 한 장으로」 ("metrics and progress on one slide") — is written fresh;
-"named" is judged against the restructure instruction (`carryNote`), never
-against the merged request, which names every part of the original. A quoted
-rename (「위험 절 제목을 「위험과 대응」으로」, "retitle the risk section
-'Risks and responses'") sets the section's heading as well as
-its words (`revise.requested_title`). An insert aimed *into* an existing part
-(「비용 절에 표를 넣어 줘」, "put a table in the cost section") is that part's edit (`into_existing_part`), and one
-that names its neighbour (「요청 사항 장 앞에」, "before the requests slide") lands exactly there
-(`place_insert`). The deck writer is told that every figure the person wrote
-must appear once.
+**Done by code, not by the model.**
 
-**Each ask goes to its part.** When every ask of a report edit names its part — by number
-(「2절의 표 2는 빼고」), by name, as a summary at the start (「맨 앞에 3줄 요약」) or by wording
-only some parts state (「…4%라는 표현은 … 고쳐줘」) — only those parts are rewritten, each
-told its own asks, and a wording fix spreads to no other part (`revise.section_asks`). An
-asked summary is written by code as the first part's 「핵심」 callout: the model gives the
-lines, and a line restating the title block (title, author, period) is left out
-(`revise.summary_block`); fewer lines than asked is said in the reply.
+- A term swap (「문서 전체에서 「A」를 「B」로 통일해 줘」) is an exact string replacement across
+  every text field (`revise.term_swap`, `replace_term`).
+- An ask for another shape and nothing else (「4장을 번호 목록으로 바꿔줘」, "make slide 3 a
+  table", `deck.form_only`) is done from the slide's own content (`deck.reshaped`), so no item
+  is rewritten or invented; a shape that does not come leaves the slide as it was and says so.
+  Other layout asks (`deck.requested_layout`: 연표 timeline, 단계 steps, 차트 chart, 큰 숫자
+  big numbers, 표 table) are written with that layout's prompt.
+- Joining or splitting one slide's items (「2장 항목을 하나로 합쳐줘」, 「6장 단계를 두 개로
+  나눠줘」) is that slide's edit (`deck.joined_items`), never a new deck; a slide with nothing
+  to join keeps its version and the reply says so.
+- A requested summary is written as the first part's 「핵심」 callout (`revise.summary_block`);
+  a quoted rename sets the heading as well as the words (`revise.requested_title`); a speaker-
+  notes ask for every slide is a whole-deck pass (`revise.notes_everywhere`) and a notes-only
+  rewrite changes nothing but notes (`revise.notes_only`).
+- A product the model wrote (「470만 원 × 36개월 = 169,200만 원」) is recomputed and a wrong
+  result replaced wherever repeated (`report.fix_products`; plain products with the same scale
+  on both sides only).
+- A section that came back as a one-key JSON object is unwrapped (`report.unwrap_json_prose`);
+  one whose table is a frame of 「(미정)」 ("TBD") cells while the material carries numbers is
+  asked again with the data (`placeholder_heavy`, `_FILL_PROMPT`); a cell the data cannot
+  fill is 「—」, never an invented value.
 
-**A term swap is done by hand.** 「문서 전체에서 「A」를 「B」로 통일해 줘」 ("use B for A throughout") is a string
-replacement across every text field (`revise.term_swap`, `replace_term`): exact,
-instant, and nothing else moves, rather than a model retyping and possibly
-rewording every section.
+**A restructure keeps what it did not change.** When the skeleton is re-planned (「6장으로
+줄여」), the source artifact's id rides in the pending proposal (`carryFrom`) and, after the
+rewrite, every new part whose name survived and which the instruction never named gets its
+words back from the old part (`revise.carry_parts`): same position, new id and accent, old
+content. "Named" is judged against the restructure instruction (`carryNote`), not the merged
+request. A restructure asks no questions and shows no outline card (the open document is the
+material). An outline still over the count after its size retry is fitted by code: dividers
+and agenda go, then adjacent content slides merge into one 「A · B」 slide
+(`deck.merge_to_count`). A table slide that repeats an earlier slide's rows is written as
+points (`deck.repeats_table`).
 
-**The words name the part.** When a revision instruction names exactly one
-existing part (「다음 단계 장을 연표로」, "next-steps slide as a timeline"), that part is the target whatever the
-planner guessed — another part, or a restructure of the whole deck
-(`revise.named_target`); a
-shorter name inside a longer part's name counts as the longer part's mention,
-and an instruction that asks for a structural change (add, remove, merge,
-reorder, a new count) is left to the planner. When the request itself asked for a
-structure diagram or flow diagram (구조도, 흐름도) and the figure planner proposed nothing, it is asked once more
-with that fact in front of it (`diagrams.asks_for_diagrams`); an empty plan on
-a request that never mentioned diagrams stands as the planner's judgement.
+**A shortened part is checked against what it had.** A section cut to a sentence count
+(「2절을 두 문장으로 줄여줘」) is checked for that count and for the section's figures and
+names (`revise.shortening_faults`), sent back to the writer once with the reason, and
+what still misses is said in the reply. Related rules:
 
-**An outline has to be a deck.** A salvaged outline can be the planner's notes
-to itself — 「Slides: 5 to 12. (6 is fine)」, repeated section names, an English
-plan for a Korean request. `deck.sane_outline` refuses it so the outline is
-asked for once more. A restructure strips the original request's part counts
-(`revise.without_counts`) so the note's count is the only one the planner
-reads; the planner's own note loses the totals it states (「전체 8개 장」, 「총 10개 슬라이드」)
-and keeps slides it names by number as numbers that are not counts (「1-2장」 → 「1~2번 장」,
-`revise.note_without_totals`), and a note that still reads as another count is left out. A section rewrite that drops the section's mermaid
-figure, or redraws it as ASCII boxes, gets the figure back (`revise.keep_figure`)
-unless the person asked for it to go.
+- The writer sees the section's own current text; a line to the person about the rewrite is
+  dropped (`revise.without_preamble`); a result that reads as another section or points at a
+  table or figure it lacks is sent back once, then kept as it was (`revise.drift_faults`).
+- Only prose sentences are counted (not tables, captions or list rows), and a sentence
+  restating the ask is dropped first (`revise.without_ask_echo`). A count still off after the
+  retry is met by code at clause joints (`revise.fit_count`); a retry that misses a count the
+  first version met does not replace it (`revise.better_shortening`).
+- Figures are compared as numbers with their unit or counter (`deck.figures_in`: 「3분기」 not
+  「3분」; money as won via `deck.amounts_in`, 「38.5억」 = 「3,850,000,000원」; a number written
+  another way still counts as shown, `deck.figure_kept`). A figure or date neither the section
+  nor the material states is a fault (`revise.added_facts`, `revise.without_added_dates`).
+- Facts a cut dropped are named and sent back once: figures, names, days named without a date,
+  things said to be done (`revise.lost_facts`), and the caveat on a figure or name
+  (「확정 아님」, 「추정」, 「(확인 필요)」, `revise._with_caveats`), which is restored where the
+  figure survives without it. After a cut to fewer slides, the figures, charts and tables shown
+  nowhere any more are said (`deck.lost_across`, `deck.lost_blocks`), the deck's ask
+  (승인, 결재, approval) is kept (`revise.keep_ask`), summary order is kept
+  (`revise.keep_order`), marks on figures carry over (`revise.carry_marks`), and inline pictures
+  and a mermaid figure the writer was not shown are put back (`revise.keep_pictures`,
+  `revise.keep_figure`, unless the person asked for it to go).
+- A figure the request states that the deck left out goes beside the metric or item it belongs
+  to, and one given in parentheses is restated with the term it qualifies
+  (`deck.restate_missing_facts`).
 
-**A stated count is a restructure.** 「전체를 6장으로 줄여 줘」 ("cut the whole thing
-to six slides") against a nine-slide
-deck is re-planned whatever the revision planner read it as — a partial edit, or
-a request for a new document (`revise.count_change`). A count equal to the current one, or no count,
-leaves the planner's reading alone.
-
-**One or two over the count.** Asked twice for exactly N slides and still over,
-the plan loses what carries no argument before the turn fails: section dividers
-first, then the agenda — a six-slide deck needs no table of contents
-(`deck.fit_count`). Content slides are never dropped there; a plan still over,
-or under, goes to the honest error.
-
-**A send never supersedes a live turn.** The pre-flight 409 and the turn's
-registration are far apart; two sends that both passed the check meet at the
-registration, where a fresh send (not a regenerate, not a message after **Stop**)
-finding a live turn bows out with `session_busy` and removes its own question
-row, so the transcript stays question, answer.
-
-**A written product is checked.** A rewrite that says 「470만 원 × 36개월 =
-169,200만 원」 ("4.7M won × 36 months = 1,692M won") has written its own proof of error; `report.fix_products`
-recomputes every 「A × B = C」 and replaces a wrong C, with its scale and unit,
-wherever the section repeats it — the sentence and the table cell alike. Only
-plain products with the same scale on both sides are touched.
-
-**The part the words mean.** 「오버헤드 결과 장을」 ("the overhead results slide") for a slide called
-「오버헤드 측정 결과」 ("overhead measurement results") is that slide: every word of the phrase sits in the one name. A part
-the deck truly lacks (no name shares a word) is made, before the closing slide,
-rather than guessed from another slide (`revise.named_target`).
-
-**A section is prose, with the data in it.** A drafted section that came back as
-a one-key JSON object (`{"결과의 섹션 본문": "…"}`, "section body of the results") is unwrapped to its text
-(`report.unwrap_json_prose`). One whose table is a frame of 「(미정)」 ("TBD") cells while
-the attached material carries numbers is asked for once more with the data in
-front of it (`placeholder_heavy`, `_FILL_PROMPT`); a cell the data cannot fill
-is 「—」, never an invented value.
-
-**Notes are notes.** 「모든 장에 발표자 노트를 두 문장씩 넣어 줘」 ("two sentences of speaker
-notes on every slide") is a whole-deck
-pass whatever the planner picked (`revise.notes_everywhere`), and a notes-only
-rewrite (`revise.notes_only`) changes nothing on the slide but its notes.
-
+**A figure plan on request.** When the request itself asked for a structure or flow diagram
+(구조도, 흐름도) and the figure planner proposed nothing, it is asked once more
+(`diagrams.asks_for_diagrams`); an empty plan on a request that never mentioned diagrams
+stands.
 ### Editing a web report: one Markdown document
 
 The web report is Markdown only. Precise formatting (fonts, colours, sizes, line
-spacing, alignment, merged cells) is what a report written as an HWP or Word file
-is for (`services/report_office.py`, edited in those editors); the web report keeps
-one Markdown document that both the person and the agent's chat edits change, so an
-edit by one never loses formatting the other cannot see.
+spacing, merged cells) belongs to reports written as HWP or Word files
+(`services/report_office.py`, edited in those editors). The web report is one
+Markdown document that both the person and the agent's chat edit, so an edit by
+one never loses formatting the other cannot see.
 
-Storage stays `sections[]`, every one `format: "markdown"`. The editor
+Storage is `sections[]`, every one `format: "markdown"`. The editor
 (`components/report/DocumentEditor.tsx`, schema `reportSchema.ts`) is one
 Tiptap/ProseMirror document over the whole report: each section is a `##` heading
 (a level-2 section a `###`) that carries the section id as a node attribute, then
 its body, whose own headings sit one level below (`lib/reportDoc.ts` shifts them on
-the way in and out). Only what Markdown can write back exists in the schema:
-headings, bold, italic, strikethrough, inline code, links, bullet/numbered/task
-lists, quotes, GFM tables (a header row, no merges), pictures, code blocks, the
-drawn fences (mermaid, chart, kpi, steps, cards, callout; shown drawn, edited as
-text), rules, page breaks (`<!-- pagebreak -->`), and `[n]` citations and `[빈칸]`
-blanks as plain text. Selecting, deleting and merging across a section boundary
-works because it is one document; typing a new `##` heading starts a section.
-The edit view does not guess where pages break: the only page marks there are the
-person's own breaks, drawn as a labelled 「쪽 나누기」 line. Exact pages and page
-counts are the page view's (Paged.js) and the exported files'.
+the way in and out). The schema holds only what Markdown can write back: headings,
+bold, italic, strikethrough, inline code, links, bullet/numbered/task lists, quotes,
+GFM tables (a header row, no merges), pictures, code blocks, the drawn fences
+(mermaid, chart, kpi, steps, cards, callout; shown drawn, edited as text), rules,
+page breaks (`<!-- pagebreak -->`), and `[n]` citations and `[빈칸]` blanks as plain
+text. Typing a new `##` heading starts a section; selecting, deleting and merging
+across a section boundary works because it is one document. The edit view does not
+guess where pages break: its only page marks are the person's own breaks, drawn as
+a labelled 「쪽 나누기」 line. Exact pages belong to the page view (Paged.js) and the
+exported files.
 
 On save the document is serialised (`blocksToMarkdown`, minimal escaping so `[1]`
 and `[담당자]` stay as typed) and split at its section headings (`docToSections`).
-A section keeps its id, and with it its diagrams and other fields, wherever it moved;
-a heading split or pasted twice gets a new id (`SectionIds` keeps them unique); a
-deleted heading's body joins the section above. A section whose text the editor did
-not change keeps its stored Markdown byte for byte; one whose text changed loses its
-fact-check (its verdicts point at sentences that are gone; 검토 runs it again). The
-server drops it too when a PATCH changes a section's text. 「Markdown 원문」 shows the
-same document as Markdown text (`# 제목` first); reading it back matches sections by
-heading, then by place, so inserting or moving a section shifts no other id. One
-undo history covers the whole document; find and replace runs in document order
-from the caret, across marks, through headings and the title, and a replace-all is
-one undo step.
+A section keeps its id, and with it its diagrams and other fields, wherever it
+moves; a heading split or pasted twice gets a new id (`SectionIds` keeps them
+unique); a deleted heading's body joins the section above. A section whose text the
+editor did not change keeps its stored Markdown byte for byte; one whose text
+changed loses its fact-check (its verdicts point at sentences that are gone; 검토
+runs it again), and the server drops it too when a PATCH changes a section's text.
+「Markdown 원문」 shows the same document as Markdown text (`# 제목` first); reading it
+back matches sections by heading, then by place. One undo history covers the whole
+document; find and replace runs in document order and a replace-all is one undo step.
 
-The server stores nothing else: `PATCH`, create and restore convert an HTML section
-(an older client, an HTML-era version, a template's block, an imported `.hwpx`)
-through `design_templates.sanitise` and `richtext.to_markdown` (`markdown_section`),
-dropping its styling and the rows a merge covered. Migration `0082` did the same to
-every stored report with an HTML section, keeping the data before it as a version
-(「Markdown 전환 전」). The exporters read Markdown only (bold, italic and
-strikethrough as runs; quotes, rules and task boxes as text).
+The server accepts Markdown sections only: `PATCH`, create and restore convert an
+HTML section (an imported `.hwpx`, a template's block) through
+`design_templates.sanitise` and `richtext.to_markdown` (`markdown_section`),
+dropping its styling and the rows a merge covered. The exporters read Markdown
+(bold, italic and strikethrough as runs; quotes, rules and task boxes as text).
 
-The panel follows the shared document-panel chrome (`components/document/DocumentChrome.tsx`,
+The panel uses the shared document-panel chrome (`components/document/DocumentChrome.tsx`,
 also the office panels'): title · vN · 「저장 안 됨」 · 저장 (Ctrl+S) · 내려받기 · 공유 ·
-더보기 · expand · close; hand edits stay in the browser until 저장, which is
-conditional on the version the editor started from (a lost race shows 「내 편집
-내려받기」 / 「최신 판 불러오기」); the report registers with `lib/officeGuard.ts`, so a
-chat turn, closing, another artifact or a reload asks 저장 / 버리기 / 취소 first;
-the editor is locked while the agent works and reloads on its version (a version
-that arrives under unsaved edits waits behind the notice). A phone reads only. The
-report's ribbon is the Word editor's: 홈 · 삽입 · 레이아웃 · 검토 · 보기 with group
-captions and tall labelled buttons (`ArtifactRibbon look="word"`; the deck keeps its
-compact ribbon).
+더보기 · expand · close. Hand edits stay in the browser until 저장, which is
+conditional on the version the editor started from (a lost race offers 「내 편집
+내려받기」 / 「최신 판 불러오기」). The report registers with `lib/officeGuard.ts`, so a
+chat turn, closing, another artifact or a reload asks 저장 / 버리기 / 취소 first. The
+editor is locked while the agent works and reloads on its version (a version that
+arrives under unsaved edits waits behind a notice). A phone reads only. The ribbon is
+the Word editor's: 홈 · 삽입 · 레이아웃 · 검토 · 보기 (`ArtifactRibbon look="word"`).
 
 ### Templates
 
-> **Retired 2026-11-15.** No new conversation, agent or project takes a template: structure comes from the request (§ Structural patterns) and the look from a form file or 디자인 지침 (§ Form files, § Design briefs). The catalogue below stays for older conversations and artifacts, which still render and export in the template they hold; a person's own templates are read, deleted and turned into agents (`POST /user-templates/{id}/to-agent`), and their writes answer 410.
+A template is a document or deck structure the model writes into; a theme (below) is
+its look. New conversations, agents and projects take no template: structure comes
+from the request (§ Structural patterns) and the look from a form file or design
+brief (§ Form files, § Design briefs). Templates remain for artifacts and conversations that
+already hold one, which keep rendering and exporting in it. A person's own templates
+can be read, deleted and turned into agents (`POST /user-templates/{id}/to-agent`);
+creating or changing one answers 410 (`templates_retired`).
 
+Shipped templates live in the API image under `app/design_templates/<id>/`: a
+`template.toml`, a `seed.html` and a `sample.html`, plus the `instructions.md` and
+`checklist.md` a writing turn reads, and for most a `design.css`. The catalogue is a
+short list of `deck-*` and `doc-*` entries, written for this product's constraints:
+no script and no parent-relative assets, because artifacts render in a `sandbox=""`
+iframe. Templates apply to the report and slides surfaces only. A person's own
+template (`user_templates`, named `ut-<id>` in sessions and agents) holds the same
+fields as a shipped one and is drawn in the shared document seed (`_document`) with
+the theme's tokens, with no HTML or CSS of its own.
 
-A template is a document or deck structure the model writes into; a theme
-(below) is its look. Shipped templates live inside the API image under
-`app/design_templates/<id>/`: a `template.toml`, a `seed.html` and a
-`sample.html` always, plus the `instructions.md` and `checklist.md` a writing
-turn reads. The catalogue is a short list of `deck-*` and `doc-*` entries,
-written against this product's constraints: no script and no parent-relative
-assets, because artifacts render in a `sandbox=""` iframe. Templates apply to
-the report and slides surfaces only; the image and audio/video surfaces take a
-plain prompt.
+A session with `render_template_id` set produces an `html` artifact through
+`services/page.py` instead of a JSON deck or Markdown sections. The choice is stored
+on the session, so a follow-up turn keeps the shape. The pass structure matches the
+other tracks: one outline call, then one call per block. An outline that will not
+parse is salvaged with a regex before the turn is abandoned; what cannot be salvaged
+is logged with what the model said.
 
-A person's own template (`user_templates`, `/user-templates`, the editor at
-`/customize/templates`) holds every field a shipped one sets — what to bring,
-instructions and checklist, genre rule, document format, missing-information questions and
-process settings — and is drawn in the shared document seed (`_document`) with
-the theme's tokens: no HTML or CSS of its own. A form file it was made from is
-kept as reference text only. Sessions and agents name it `ut-<id>`.
-
-Picking one **replaces the surface's built-in track**. A slides session with
-`render_template_id` set produces an `html` artifact through `services/page.py`
-instead of a JSON deck, and a report session produces one instead of markdown
-sections. The choice is stored on the session, so a follow-up turn keeps the
-shape without resending it.
-
-The pass structure is the same as the other two tracks — one outline call, then
-one call per block. An outline that will not parse is salvaged with a regex
-before the turn is abandoned: a small model drops a quote often enough that the
-difference is a whole paid-for call, and a plan legible to somebody reading the
-log should be legible to the code reading it. What cannot be salvaged is
-logged with what the model actually said, because a refusal and a malformed
-answer are otherwise the same silence.
-
-**The model never writes layout.** It is given the
-block's layout name and returns the *inside* of that block; `design_templates.
-assemble` puts it inside the markup the seed styles, and `sanitise` reduces it
-to a fixed tag vocabulary first. It parses the block the way a browser does
-(nh3, an HTML5 parser) and writes it back from the tree, so only listed tags
-and, per tag, listed attributes survive; a regex pass would have to know every
-attribute that can carry a URL or a handler, and an unclosed quote could carry
-markup past it. Script elements, event handlers, remote `src`/`href`, and
-`h1`/`h2` are removed with their contents: the first three because the file is
-downloaded and opened outside the sandbox, the last because the wrapper already
-wrote that heading and a second one prints the title twice.
+**The model never writes layout.** It is given the block's layout name and returns
+the inside of that block; `design_templates.assemble` puts it inside the markup the
+seed styles, and `sanitise` first reduces it to a fixed tag vocabulary. It parses the
+block as a browser does (nh3, an HTML5 parser) and writes it back from the tree, so
+only listed tags and, per tag, listed attributes survive. Script elements, event
+handlers, remote `src`/`href` and `h1`/`h2` are removed (the first three because the
+file is downloaded and opened outside the sandbox, the last because the wrapper
+already wrote that heading).
 
 **Figures a document draws for itself.** After the draft, one planning call
-(`services/diagrams.py`) names up to three parts where a structure, flow,
-comparison or concept figure (구조도·흐름도·비교도·개념도 in Korean requests) says more than the
-words; a report writer can also place one inline with a `[[그림: …]]` mark (그림, "figure").
-`services/diagram.py` writes each as a mermaid flowchart source in the house
-style and `diagram.draw_native` draws it: code lays the flowchart out
-(`flow_layout`), `diagram_shapes` draws it as native python-pptx shapes on a
-one-slide deck (`diagram_render`), and the print sidecar renders that slide to
-PNG through LibreOffice (`POST /pptx/png`). A figure with a fixed shape skips the flowchart
-layout: a short first call picks the shape, and for a line of steps, a cycle, a house (goal,
-pillars, base) or a two-sided comparison a second call fills that kind's slots as JSON
-(`figure_kinds`), drawn to a set layout with labels measured in Pretendard (`figure_text`).
-Any other shape (messages between parties, three or more options, two axes, a structure) is
-written as mermaid as before, and slots that don't make their kind fall back to it. The
-stored source stays a flowchart of the same figure with the slots on a last
-`%% kloudchat-figure:` comment line, so the browser view, the fact check and editing read a
-flowchart while the renderer and the deck export draw the slots. The slide goes through `.odp` on the way, with
-Asian–Latin autospacing switched off, so a label keeps its own spacing (「AI 보안」, 「수집:」);
-`apps/print/fonts.conf` maps the faces an export names (맑은 고딕, 바탕, Segoe UI, Georgia) to
-installed ones (Pretendard, 나눔명조, Selawik, Gelasio). The panel, the PDF and the report
-show that picture, and the deck's `.pptx` carries the same shapes, editable. A source the shapes cannot read (not a flowchart, more than
+(`services/diagrams.py`) names up to three parts where a structure, flow, comparison
+or concept figure says more than the words; a report writer can also place one with
+a `[[그림: …]]` mark. `services/diagram.py` writes each as a mermaid flowchart in the
+house style and `diagram.draw_native` draws it: `flow_layout` lays the flowchart out,
+`diagram_shapes` draws native python-pptx shapes on a one-slide deck
+(`diagram_render`), and the print sidecar renders that slide to PNG through
+LibreOffice (`POST /pptx/png`). A figure with a fixed shape skips the flowchart
+layout: a short first call picks the shape, and for a line of steps, a cycle, a house
+(goal, pillars, base) or a two-sided comparison a second call fills that kind's slots
+as JSON (`figure_kinds`), drawn to a set layout with labels measured in Pretendard
+(`figure_text`). Any other shape (messages between parties, three or more options,
+two axes, a structure) is written as mermaid, and slots that do not make their kind
+fall back to it. The stored source stays a flowchart of the same figure, with the
+slots on a last `%% kloudchat-figure:` comment line, so the browser view, the fact
+check and editing read a flowchart while the renderer and deck export draw the slots.
+The slide goes through `.odp` with Asian–Latin autospacing off, and
+`apps/print/fonts.conf` maps the faces an export names (맑은 고딕, 바탕, Segoe UI,
+Georgia) to installed ones (Pretendard, 나눔명조, Selawik, Gelasio). The panel, the
+PDF and the report show that picture, and the deck's `.pptx` carries the same shapes,
+editable.
+
+A source the shapes cannot read (not a flowchart, more than
 `diagram_shapes.MAX_NODES` nodes) goes back to the writer once, told why; still
-unreadable, or with no sidecar answering (logged as a warning), the figure is
-left out — a report drops the mark and the 〔그림〕 ("figure") reference pointing at it, a deck slide
-keeps its words. Documents get no browser-drawn figure in its place; only chat
-answers draw mermaid in the browser, and a document that already carries a
-mermaid fence still opens and exports. The same path serves a figure made by hand: the picture picker in a
-report or deck and the image surface's **Structure diagram** · **Flow diagram** · **Concept diagram** chips call
-`POST /sessions/{id}/diagrams`, which stores the PNG as an image artifact with
-its source, or answers 422 (`diagram_not_drawable` / `diagram_unrendered`). Placed
-on a slide, such a figure keeps its source as `slide.diagram` and is drawn again
-in the slide's accent. No image model and no card: the only cost is the writer's
-tokens. A picture from the image model placed on that slide replaces the figure. Pictures from the
-image model are proposed on the outline card only for illustration or real
-objects, never for structure or numbers, and a deck's structure slide is moved
-off layouts the figure planner cannot draw on (`deck.structure_as_drawable`). When an image
-model served inside the data boundary is open to the account (`dataBoundary: self_hosted`, such
-as `strict-local/z-image-turbo`), the outline card proposes no pictures: when the request asks for
-pictures (「삽화를 곁들여」, 「사진도 넣어」; `illustrations.wanted`), after its diagrams the document
-plans pictures on its written parts the way it plans diagrams (`services/illustrations.py`, at most
-two, none is a fine answer) and draws them with that model, a deck on bullet slides with no figure,
-a report appended to the part as an approved picture is. A request that does not ask, or declines
-pictures (「그림 없이」), gets none. `illustrations.draw` refuses any model outside the boundary.
-Statement and quote slides never carry a picture in the exports: their words span the slide.
+unreadable, or with no sidecar answering, the figure is left out (a report drops the
+mark and its 〔그림〕 reference, a deck slide keeps its words). Documents get no
+browser-drawn figure in its place; only chat answers draw mermaid in the browser, and
+a document that already carries a mermaid fence still opens and exports. The same
+path serves a figure made by hand: the picture picker in a report or deck and the
+image surface's **Structure diagram** · **Flow diagram** · **Concept diagram** chips
+call `POST /sessions/{id}/diagrams`, which stores the PNG as an image artifact with
+its source, or answers 422 (`diagram_not_drawable` / `diagram_unrendered`). On a
+slide, such a figure keeps its source as `slide.diagram` and is redrawn in the
+slide's accent; a picture from the image model placed there replaces it. The only
+cost is the writer's tokens.
 
-**Pictures come from the other direction.** The writing model cannot make one
-and cannot reference one — `sanitise` drops every `src` that is not already
-inside the file. A Markdown section is held to the same rule: a `data:` picture
-the writer typed out that does not open as an image is dropped with its 「(그림 N)」
-mention (`pictures.drop_broken`), and the web view shows a cut-off one as its
-caption in italics, never as base64 text. What a person can do is put a picture this workspace made on
-the image surface into a block: `POST /artifacts/{id}/blocks/image` reads the
-stored blob, inlines it as a `data:` URI and re-renders the document. Raster
-only (`image/svg+xml` is a document that can carry script), capped at 3 MB
-before encoding, and snapshotted like a rewrite. The artifact stays one file
-that prints, downloads and shares with the picture in it, and a reader opening
-it fetches nothing.
+Image-model pictures are proposed on the outline card only for illustration or real
+objects, never for structure or numbers, and a deck's structure slide is moved off
+layouts the figure planner cannot draw on (`deck.structure_as_drawable`). When an
+image model inside the data boundary is open to the account (`dataBoundary:
+self_hosted`, such as `strict-local/z-image-turbo`), the outline card proposes no
+pictures. Instead, when the request asks for pictures (「삽화를 곁들여」, 「사진도 넣어」;
+`illustrations.wanted`), the document plans up to two on its written parts after its
+diagrams (`services/illustrations.py`; none is a fine answer) and draws them with
+that model: a deck on bullet slides with no figure, a report appended to the part. A
+request that does not ask, or declines (「그림 없이」), gets none, and
+`illustrations.draw` refuses any model outside the boundary. Statement and quote
+slides never carry a picture in the exports.
 
-**And it leaves in the exports.** `page_export` reads the `<figure>` back out
-of the markup — bytes and caption — and hands it to each renderer: a slide
-takes the right half and the words narrow to fit, or the picture takes the
-middle when there is nothing else on the slide; a document places it after the
-section's prose, at 120 mm wide and never taller than the page, with the
-caption kept on the same page as the picture. Sized from the bytes with
-Pillow, because nothing in the artifact says how big a picture is and a figure
-drawn to a guessed box is a squashed one.
+**Pictures.** The writing model cannot make or reference one: `sanitise` drops every
+`src` not already inside the file. A Markdown section follows the same rule: a `data:`
+picture the writer typed that does not open as an image is dropped with its 「(그림 N)」
+mention (`pictures.drop_broken`), and the web view shows a cut-off one as its caption.
+A person can put a picture made on the image surface into a block:
+`POST /artifacts/{id}/blocks/image` inlines the stored blob as a `data:` URI and
+re-renders the document. Raster only (SVG can carry script), at most 3 MB before
+encoding, snapshotted like a rewrite, so the artifact stays one file that prints,
+downloads and shares with the picture in it. The JSON deck track has the same path
+(`POST /artifacts/{id}/slides/image`), storing the `data:` URI in the slide row.
+`services/pictures.py` owns the one rule underneath: raster only, embedded only,
+never fetched.
 
-**Every format carries it, `.hwpx` included.** A picture in OWPML is three
-things that have to agree — the bytes in `BinData/imageN.png` (stored, not
-deflated), an `<opf:item id="imageN" … isEmbeded="1"/>` in
-`Contents/content.hpf` (one `d`: OWPML's own spelling, and Hancom drops the
-picture without it), and `<hc:img binaryItemIDRef="imageN">` inside an
-`<hp:pic>` in the section. Nothing is declared in `header.xml`:
-`<hh:binDataList>` belongs to the older HML format. Every document also carries
-an `<hp:secPr>` with A4 and its margins in the first paragraph's run: without
-page geometry, an object sized in absolute units is read and never drawn. The
-structure follows genuine Hancom output (hwpxlib's test corpus); no
-independent OWPML reader is installable to check it against.
+**Exports.** `page_export` reads the `<figure>` back out of the markup (bytes and
+caption) and hands it to each renderer. A slide takes the right half with the words
+narrowed to fit, or the middle when nothing else is on the slide; a document places
+it after the section's prose, 120 mm wide at most and never taller than the page,
+with its caption on the same page. Sizes come from the bytes (Pillow). A picture that
+cannot be read (truncated bytes, an unsupported format) costs only its own
+illustration: every renderer logs it and finishes the file.
 
-A picture that has stopped being one — truncated bytes, a format a library
-refuses — costs its own illustration and nothing else: every renderer catches
-it, logs it and finishes the file.
+In `.hwpx`, a picture is three things that must agree: the bytes in
+`BinData/imageN.png` (stored, not deflated), an `<opf:item id="imageN" …
+isEmbeded="1"/>` in `Contents/content.hpf` (OWPML spells it with one `d`; Hancom
+drops the picture without it), and `<hc:img binaryItemIDRef="imageN">` inside an
+`<hp:pic>` in the section. Nothing is declared in `header.xml`. Every document also
+carries an `<hp:secPr>` with A4 and its margins in the first paragraph's run:
+without page geometry, an object sized in absolute units is never drawn. The
+structure follows genuine Hancom output (hwpxlib's test corpus).
 
-**The JSON deck track has the same path.** `POST /artifacts/{id}/slides/image`
-puts one on a slide by id. Its slides are rows in a JSONB column rather than
-markup, so the picture is stored as the `data:` URI itself and the renderers
-accept either shape — decoded bytes from the HTML reader, or the address from
-a deck. The preview draws it where the exporters do, so what the panel shows
-is what the room sees. `services/pictures.py` owns the one rule underneath all
-of it: raster only, embedded only, never fetched.
+**Typesetting.** A template's look is two files. `seed.html` (shared, named by
+`seed_from`) is correctness: the tokens, the whole closed vocabulary `assemble` can
+emit, the `@page` rule, the print rules, the shadow-root `:host`. `design.css` is
+identity (the minutes template `doc-minutes` packs a compact grey head, the
+high-contrast deck `deck-signal` presents white on black) and is spliced in as a
+second `<style>` last in `<head>`, overriding by order. `stylesheet()` concatenates
+every style block, which carries it into the document editor's shadow root.
+`_document/seed.html` is the plain document's own design and `_deck/seed.html` is
+editorial's. `test_a_template_has_a_face.py` checks that every `var(--x)` a seed uses
+is declared, since an undeclared custom property fails silently.
 
-A template's typesetting is two files. `seed.html` — shared, named by `seed_from` —
-is correctness: the tokens, the whole closed vocabulary `assemble` can emit, the
-`@page` rule, the print rules, the shadow-root `:host`. `design.css` is
-identity: the minutes template (`doc-minutes`) packs a compact grey head, the
-high-contrast deck (`deck-signal`) presents white on black. It is spliced in as a second `<style>`
-last in `<head>`, so it overrides by order rather than by specificity, and
-`stylesheet()` — which concatenates every style block — carries it into the
-document editor's shadow root by the same route. Two of them have no `design.css`
-at all: `_document/seed.html` is the plain document's own design and `_deck/seed.html` is
-editorial's, which is what makes the shared file somebody's rather than nobody's.
-
-Stored documents and conversations may name an id the catalogue does not
-offer. `design_templates.RETIRED` lists document ids drawn in `_document` alone,
-with its `template.docx` (`design_templates.rendering`), so they keep opening,
-taking pictures and exporting; `RETIRED_KEPT` lists ids still drawn in their
-own design but chosen by nothing new; `RETIRED_MEDIA` lists image, audio and
-video ids, read as naming no template. The page view of a report with no
-template asks for the shared seed by the id `_document`.
-
-`test_a_template_has_a_face.py` checks that every `var(--x)` a seed uses is
-declared: an undeclared custom property is not an error anywhere, and
-`background: var(--tint)` simply comes out white.
+Stored documents and conversations may name an id the catalogue no longer offers.
+`design_templates.RETIRED` lists document ids drawn in `_document` alone with its
+`template.docx` (`design_templates.rendering`), so they keep opening, taking pictures
+and exporting; `RETIRED_KEPT` lists ids drawn in their own design but not choosable;
+`RETIRED_MEDIA` lists image, audio and video ids, read as naming no template. The
+page view of a report with no template asks for the shared seed by the id `_document`.
 
 Two constraints shape every seed:
 
-**No script.** Artifacts render in a `sandbox=""` iframe, so a deck navigates
-by CSS scroll-snap rather than a keyboard runtime, and charts are drawn as
-inline SVG. What a seed gives up is interaction, not design.
+- **No script.** Artifacts render in a `sandbox=""` iframe, so a deck navigates by
+  CSS scroll-snap and charts are inline SVG.
+- **Print is the export.** Every seed carries `@media print` and `@page` rules that
+  put one slide or section on one page. `apps/print` is a headless Chromium in its
+  own container that takes the finished HTML and returns a PDF (`services/printing.py`),
+  so the `.pdf` is the `.html` printed. With no printer configured (`PRINT_BASE_URL`,
+  `settings.print_base_url`, empty), the structural renderer below still produces a
+  file. The container has no database, no secrets, no published port and a compose
+  network with `internal: true`, and inside the browser every request is aborted, so
+  an `<img src="http://…">` in model-authored markup is never fetched: one wall is a
+  line of code, the other a fact about the network.
 
-**Print is the export.** Every seed carries `@media print` rules and an
-`@page` rule that put one slide or section on one page. `apps/print` reads
-them: a headless Chromium in a container of its own that takes the finished
-HTML and returns a PDF, so the `.pdf` is the `.html` printed rather than a
-second drawing of it. See `services/printing.py`; where no printer is
-configured (`PRINT_BASE_URL` empty), the structural renderer below still
-produces a file.
+The `.html` file is the faithful copy and is deliberately not opened in a tab from
+the app, because a `blob:` URL inherits this origin.
 
-That container is deliberately poor. What it opens is markup a model wrote —
-sanitised and script-free, and still the least trusted input here — so it has
-no database, no secrets, no published port, and a compose network with
-`internal: true`, which means no route out at all. Inside the browser every
-request is aborted as well, so an `<img src="http://…">` in model-authored
-markup is not a request made from inside the deployment. Two walls: one a line
-of code, the other a fact about the network.
+The other formats come from `services/page_export.py`, which reads the markup back
+with the standard library's `HTMLParser`. That works because `assemble` wrote it from
+a closed vocabulary: each `<section>` becomes a slide or a section, keeping its
+heading, lines, which column each line was in, and table rows. A deck goes through
+`deck_export` to `.pptx` and `.pdf`; a document through `report_export` to `.docx`,
+`.pdf` and `.hwpx`. The conversion buys editability, not fidelity: the `.pdf` carries
+the design because a browser draws it, and the `.docx`/`.pptx` carry structure
+because Word and PowerPoint have no CSS to draw into. The deck opens in PowerPoint as
+real slides in order, with the theme's accent and face, laid out by the product's own
+deck renderer rather than the template's stylesheet. `deck_export` has a `table`
+layout and an explicit `columns` field; a JSON deck, which has neither, halves its
+own list. A template marked `dark` presents on a dark ground and its `.pptx` swaps
+the two neutrals to stay readable; its `.pdf` stays light.
 
-The `.html` file is still the faithful copy, and is deliberately not opened in
-a tab from the app: a `blob:` URL inherits this origin.
+`POST /artifacts/{id}/blocks/rewrite` rewrites one block: the artifact keeps its
+blocks whole, markup included, with `content` as what they render to, and the rewrite
+assembles the document again from the same seed instead of splicing markup into a
+finished file. It is charged and snapshotted like a section rewrite. The block is
+chosen from a list, since the preview frame is opaque to the app, and an artifact
+whose blocks carry no markup is refused.
 
-The other formats come from `services/page_export.py`, which reads the markup
-back with the standard library's `HTMLParser`. That is possible because
-`assemble` wrote it out of a closed vocabulary, so the structure is known
-rather than guessed: each `<section>` becomes a slide or a section, keeping its
-heading, its lines, which column each line was in, and its table rows. A deck
-then goes through `deck_export` to `.pptx` and `.pdf`, a document through
-`report_export` to `.docx`, `.pdf` and `.hwpx`.
-
-What that conversion buys is **editability, not fidelity**, and that is the
-division of labour: the `.pdf` carries the design because a browser draws it,
-and the `.docx`/`.pptx` carry the structure because Word and PowerPoint have no
-CSS to draw into. A design that survived the trip as a picture would open as a
-document nobody can edit, which is not what somebody who brought their
-organisation's template came for. The deck opens in PowerPoint as real slides in the
-right order with the theme's accent and face, laid out by this
-product's own deck renderer — not by the template's stylesheet. `deck_export`
-carries a `table` layout, because flattening a table into bullets leaves the
-reader to reassemble it, and an explicit `columns` field, because an HTML deck
-knows which column each line was in. A JSON deck, which has neither, halves
-its own list.
-
-A template marked `dark` presents on a dark ground, and its `.pptx` follows —
-the theme's ink is a colour chosen for paper and would be unreadable
-there, so the two neutrals swap. The `.pdf` stays light, which is the same
-decision that seed's own print rules already make: a projector and a printer
-want opposite things.
-
-One block can be rewritten after the fact — `POST /artifacts/{id}/blocks/rewrite`
-— and that is why the artifact keeps its blocks whole, markup included, with
-`content` as what they render to. The rewrite replaces one block and assembles
-the document again from the same seed, rather than splicing markup into a
-finished file where the seams are wherever the model last put them. It is
-charged and snapshotted like the report's section rewrite, so a worse rewrite
-is one click from undone.
-
-The part is chosen from a list rather than by clicking into the preview: the
-frame is `sandbox=""` and opaque to the app, which is the same property that
-makes it safe. An artifact whose blocks carry no markup is refused rather than
-rebuilt out of whichever pieces happened to be stored.
-
-`GET /design-templates` lists the catalogue with both a Korean and an English
-half — names, descriptions and example prompts — and the client picks by language. `GET /design-templates/{id}/preview`
-renders the seed around its own sample and is **unauthenticated**, like the
-branding logo: the body is a constant that ships in this image, an iframe `src`
-cannot carry an Authorization header, and `current_viewer`'s `?t=` escape hatch
-would put a live access token in the proxy log for a static asset.
-
-That preview takes the four tokens as query parameters — `accent`, `ink`,
-`muted`, `font` — because a card is only worth looking at if it is in the look
-the file will come out in: a picker opened inside a project asks for that
-project's theme, and the theme editor asks for whatever the form
-currently holds, which is what makes three hex fields into something you can
-see. The values go through `design.normalise_tokens` on the way in, the same
-call the renderers make, so a bad one falls back per field and nothing but a
-validated colour and one of two known faces reaches the document. The look
-travels as itself rather than as an id, which is what keeps the route free of
-anybody's rows and therefore still safe to leave open.
+`GET /design-templates` lists the catalogue with Korean and English names,
+descriptions and example prompts. `GET /design-templates/{id}/preview` renders the
+seed around its own sample and is **unauthenticated**, like the branding logo: the
+body is a constant shipped in the image and an iframe `src` cannot carry an
+Authorization header. It takes the four tokens as query parameters (`accent`, `ink`,
+`muted`, `font`), so a picker inside a project shows that project's theme and the
+theme editor shows its current form. The values go through `design.normalise_tokens`,
+the call the renderers make, so a bad one falls back per field and only a validated
+colour and one of two known faces reaches the document.
 
 ### Checking what was written
 
-Three surfaces carry the same rules in their prompts — do not invent figures,
-do not pad, keep emoji out of headings — stated in `craft`, in the per-surface
-system prompts, and in the starter skills. Two stages read the answer back.
+Three surfaces carry the same rules in their prompts (do not invent figures, do not
+pad, keep emoji out of headings): `craft`, the per-surface system prompts and the
+starter skills. Two stages read the answer back.
 
 **Verify and repair (reports).** After the sections are written,
-`verify.verify_and_repair` runs a list of checks (`services/checks.py`). Each
-check only finds: the sentence, why it is wrong, and how to tell whether a
-rewrite still is. Code checks cost nothing — numeric issues, one metric stated
-with two values, references to a source's chapters the reader does not have
-(「해당 자료」, "the material in question"), sentences that give a settled figure another value (an item the material gives a new value, 「80만원 요청 → 50만원으로 줄이자고 합의」 or 「월 420만원 → 355만원」, holds a settled figure under its full name only, not its bare aliases, and its old and new value are no conflict the writer is told to explain: `key_figures.changes`), and scaled
-metric slips. Model checks run once, before the repair: a judge on the
-figure sentences (only when a separate outline model exists, so the writer
-does not judge itself), claims checked against the web when search is on, and
-assessment items worked through by the judge (`services/fact_check.py`). One
-`repair` call rewrites the found sentences; a rewrite is kept only when the
-check that raised it no longer fires. Then the code checks run again. What
-remains, plus model findings no rule can confirm, is listed in the turn's
-quality check step (`quality`) for the reader to check — never passed off as done.
+`verify.verify_and_repair` runs a list of checks (`services/checks.py`). Each check
+only finds: the sentence, why it is wrong, and how to tell whether a rewrite still
+is. Code checks cost nothing: numeric issues, one metric stated with two values,
+references to a source's chapters the reader does not have (「해당 자료」), sentences
+that give a settled figure another value (`key_figures.changes` lets a stated change
+such as 「80만원 요청 → 50만원으로 줄이자고 합의」 stand), and scaled-metric slips.
+Model checks run once, before the repair: a judge on the figure sentences (only when
+a separate outline model exists, so the writer does not judge itself), claims
+checked against the web when search is on, and assessment items worked through by the
+judge (`services/fact_check.py`). One `repair` call rewrites the found sentences; a
+rewrite is kept only when the check that raised it no longer fires. Then the code
+checks run again. What remains, plus model findings no rule can confirm, is listed in
+the turn's quality check step (`quality`) for the reader, never passed off as done.
 
 Around it: `key_figures` settles the figures a document set fixes (sale price,
-variable cost, break-even, targets, budget …) once from the material, tells the writer, and
-mends table rows and slides that drift from them; `calc` has the code sandbox
-compute derived values before the prose is written (only when the request's data holds
-figures — the document's own size and setting, 「12장」 「3주차」 「퀴즈 3문항」, are not
-data — and in plain notation: padding zeros come off, a line in exponent notation is not
-handed over); a power-of-ten slip fix (`report.fix_ledger_magnitudes`) never touches an
-amount the request itself writes; `units` corrects a money
-table's unit label against the amounts the person gave; and
-`quality_gate.report_findings` / `deck_findings` read the finished report or
-deck for form defects — a broken block, a table with no caption, a figure
-nobody mentions, a number stated two ways. Decks get the code-side checks
-(settled figures, scaled numbers, missing sequence members) but not the
-model verify stage.
+variable cost, break-even, targets, budget) once from the material, tells the writer,
+and mends table rows and slides that drift from them. `calc` has the code sandbox
+compute derived values before the prose is written, only when the request's data
+holds figures (the document's own size and setting, such as 「12장」, are not data).
+`report.fix_ledger_magnitudes` repairs a power-of-ten slip but never touches an amount
+the request itself writes. `units` corrects a money table's unit label.
+`quality_gate.report_findings` / `deck_findings` read the finished document for form
+defects (a broken block, a table with no caption, a figure nobody mentions, a number
+stated two ways). Decks get the code-side checks (settled figures, scaled numbers,
+missing sequence members) but not the model verify stage.
 
-**Lint.** `services/lint.py` runs on every report, deck and HTML artifact, and
-it costs no model call: the check is free, and acting on it stays explicit. Findings are stored on the artifact, so a document that was fine when
-it was made does not start reporting problems because the rules were tightened
-afterwards.
+**Lint.** `services/lint.py` runs on every report, deck and HTML artifact with no
+model call. Findings are stored on the artifact, so a document that was fine when
+made does not start reporting problems because the rules tightened. `P0` means the
+document is wrong: a placeholder nobody replaced, a block never written, an
+unsourceable figure, the writer's plan or instructions written in place of the text.
+`P1` means it reads badly: filler adjectives, an emoji leading a line, a repeated
+line, a slide too crowded to read from the back of a room. The numbers rule is narrow
+on purpose (only round marketing figures and the multiplier-with-a-verb form), since a
+check that fires on ordinary writing is one people learn to ignore. Nothing is
+corrected automatically: the panel shows a count and a list, and **Rewrite just this
+section** (or the HTML artifact's per-block rewrite) acts on it.
 
-**Visual rules are not checked**, because the model cannot break them: the
-seed owns every colour and face, and `sanitise` drops `style`, every remote
-address and every tag outside a fixed vocabulary before anything is stored.
-`class` survives — a block needs `lead` and `cols` to reach what its own seed
-styles — so an invented `card` or `columns-2` renders as nothing rather than
-fighting the template. What is checked is what the model does choose — the
-words.
+Visual rules are not checked, because the model cannot break them: the seed owns every
+colour and face, and `sanitise` drops `style`, remote addresses and tags outside the
+vocabulary. `class` survives (a block needs `lead` and `cols`), so an invented class
+renders as nothing. What is checked is what the model chooses: the words.
 
-**A template can tighten the shape rules.** The general bounds — seven items a
-slide, forty-five characters a line — are what a screen can carry. A template
-whose own instructions promise less says so in a `[limits]` table, and the
-checker reads those instead: the lecture deck asks for four items of
-twenty-five characters, and without this its own rule would be the one rule
-nothing enforces.
-
-`P0` means the document is wrong: a placeholder nobody replaced, a block that
-never got written, a figure nobody could have sourced, the writer's plan or
-instructions written in place of the text (「…을 한 문장씩 압축합니다」, 「지시된
-대로 표와 그림은 배제하고」). `P1` means it reads
-badly: filler adjectives, an emoji leading a line, a line repeated from another
-section, a slide too crowded or too long to read from the back of a room. The
-numbers rule is narrow on purpose — an ordinary "12% 증가" ("12% increase") is what a report is
-*for*, so only round marketing figures and the multiplier-with-a-verb form are
-flagged. A check that fires on ordinary writing is one people learn to ignore.
-
-Nothing is corrected automatically. The panel shows a count and a list; the
-report surface already has **Rewrite just this section** for acting on it, and an HTML
-artifact has the same per-block rewrite.
+A template can tighten the shape rules. The general bounds (seven items a slide,
+forty-five characters a line) are what a screen can carry; a template whose own
+instructions promise less says so in a `[limits]` table (the lecture deck asks for
+four items of twenty-five characters) and the checker reads those instead.
 
 **A follow-up edit does not commit a new P0.** A report section rewritten by a chat
 follow-up first loses the writer's plan by code (`internal_words.strip_plan_preface`,
-then the plan sentences); a P0 the rewrite still brings in — one the section did not
-have and the person's own words do not set off (`revise.new_faults`) — is sent back to
+then the plan sentences). A P0 the rewrite still brings in, one the section did not
+have and the person's own words do not set off (`revise.new_faults`), is sent back to
 the writer once with the finding as the reason. If the second version fails too, the
-section stays as it was and the reply says which part was kept (all of them kept: no new
-version is stored). Markdown bold labels are not counted there: a markdown section renders
-them.
+section stays as it was and the reply says which part was kept (when all are kept, no
+new version is stored). Markdown bold labels are not counted there.
 
 ### Mechanisms by model group
 
-The checks and devices after writing help a weak writer and can harm a strong one: a check
-that overrides the writer pays only when the writer is weaker than the check. So each
-mechanism decides its behaviour by the **model group** of the model that actually wrote
-(`model_tier.group`, `Request.group`):
+The checks and devices after writing help a weak writer and can harm a strong one: a
+check that overrides the writer pays only when the writer is weaker than the check.
+Each mechanism therefore decides its behaviour by the **model group** of the model
+that actually wrote (`model_tier.group`, `Request.group`):
 
-- **self-hosted** — `local/…` and `strict-local/…` (27B, flash). The light-setup evaluation
-  switch (`KCHAT_LIGHT_WRITERS`) changes their prompt, not their group.
-- **strong external** — `model_tier.STRONG_MODELS` (`model_tier.strong`), which also picks the
-  light prompt (`prompt_tier`).
-- **small external** — every other external model (a `-flash`, `-mini`, `-lite` variant of a
-  strong family included).
+- **self-hosted**: `local/…` and `strict-local/…` (27B, flash). The evaluation switch
+  `KCHAT_LIGHT_WRITERS` (comma-separated model names treated as strong) changes their
+  prompt, not their group.
+- **strong external**: `model_tier.STRONG_MODELS` (`model_tier.strong`), which also
+  picks the light prompt (`prompt_tier`). Names with a small suffix (`-flash`,
+  `-nano`, `-mini`, `-lite`, `:free`) never count as strong.
+- **small external**: every other external model.
 
-Two rules hold for every group. **Marking is apart from deleting**: no judge model deletes
-or rewrites a sentence unless code has confirmed that one of its figures or names is in
-none of the evidence (`post_checks.code_reading`); a statement that cites pages read this
-turn (`[[n]](url)`) is read against those pages only (`post_checks.cited_pages`), not every
-page the turn searched. A finding code cannot check is marked or shown, never acted on. **Code fixes only what it computes**: a value is replaced by code only
-when code knows the right one (a settled figure, an official hotline, a recomputed date).
+Two rules hold for every group. **Marking is apart from deleting**: no judge model
+deletes or rewrites a sentence unless code has confirmed that one of its figures or
+names is in none of the evidence (`post_checks.code_reading`); a statement that cites
+pages read this turn (`[[n]](url)`) is read against those pages only
+(`post_checks.cited_pages`). A finding code cannot check is marked or shown, never
+acted on. **Code fixes only what it computes**: a value is replaced by code only when
+code knows the right one (a settled figure, an official hotline, a recomputed date).
 
-The small-external column mostly follows the self-hosted one. Change a row here when a fix
-changes what a group gets, and test both a self-hosted and a strong external writer.
+The small-external column mostly follows the self-hosted one. When a fix changes what
+a group gets, change its row here and test both a self-hosted and a strong external
+writer. "Same" means the same as the column to its left.
 
 | Mechanism (code) | Self-hosted | Small external | Strong external |
 |---|---|---|---|
 | Writing rules (`prompt_tier`, `context`) | full rule bundle | full rule bundle | light: one anti-fabrication line |
-| Judge findings of skill post-checks (`post_checks.run`) | judge is the planner; a finding whose figures and names are all in the evidence is dropped; one with none is marked 「(확인 필요)」 where it stands; one with a figure or name in none of the evidence (or a script's own finding) goes to one rewrite and may come out | as self-hosted | the writer judges its own answer; dropped findings as for every group; the rest go back to it once as notes to weigh; nothing it kept is taken out |
-| Copy check claims (`copy_check.run`) | as post-checks: dropped / marked / rewritten by the same code reading; numbers, offers and lengths fixed by code | as self-hosted | notes to the writer; what it kept is marked |
-| Value marks (`value_guard`, `grounding-check/scripts/trace.py`) | marked, never cut; a multiplier (「94x」, 「3×」) is a value too, backed only by a given one or the ratio of two given figures of one measure (「$38」/「$4」 → 「9.5x」), never their sum; not marked: the person's values, also in another notation (「November 3rd」 → 11월 3일, 「nine」, 「1.2 million」, a printed fraction as its percent), and the days inside a month part they give (「9월 하순」), both ends and the length of a period they give (「11월 17~20일」 → 11월 17일, 20일, 나흘), a day of the month they write alone in a month the evidence names (「복귀가 24일이니까」 → 11월 24일), the same measure in another unit (「2시간」 for 120분, 「15억」 for 1,500,000,000), what an attached data table works out (`table_pivots`: a CSV, TSV or pipe table's totals, sums, counts and means by a label column, a date's month or a run of months, a rate column above zero, or two such keys, the gaps between them and their shares; a wrong sum stays marked), a figure said as about so much (「43만 원가량」) a place off, values under a heading or bold label naming assumptions or examples, values in a sentence set as a condition (「4칸이면 2시간」), the system date on a date label (「확인일」), a time slot's own length, fractions (「10분의 1」); a value marked twice reads once; a heading keeps its words (the value is named in the step, not marked inside it); 「배분」, 「배정」, 「배송」 are words, not a multiplier after a figure | as self-hosted | as self-hosted; its own revision stands (`settle(writer=True)`) |
-| Where marks stand in a chat answer (`copy-marks`, `check_stages._advice_note`) | inline; an advice answer with more than three marks gets one 「확인 필요: …」 line, the writer's own marks included | always one 「확인 필요: …」 line at the end | inline, as self-hosted |
-| Report quality follow-through (`report_stages.Verify`, `Quality`) | a web-contradicted sentence is marked; a judged figure code still finds at odds with a settled one, and a number a judge tied to another item whose value with its unit is in none of the evidence (`bound_token`), are repaired once by the planner and marked if they stand; the step shows what a judge found, never its reasoning | as self-hosted | web contradictions, code-confirmed judged figures and code-confirmed bound numbers go back to the writer once; what stands is marked; reasoning hidden |
-| Table and figure shape after the last read (`report_stages.mend_shapes`, `table_mend`) | broken pipe tables rebuilt under one header (also while drafting, `repair_pipe_tables`), uncaptioned tables captioned, a table or figure the text never names pointed at, pipe lines no table takes written as items, a header with no rows marked; read again once and kept only when no finding is added; no model call | same | same |
-| Report length from the pages asked (`report.section_targets`, `report_stages.Sections`, `_lengthened`) | a request that sets A4 pages gives each section its share of their middle length (a 요약 held short) in the draft and section prompts, with token room for it; a document still under 90% of it has its sections under 80% of their share added to once by the writer from the material, kept only when every existing line stands (`report.only_added`) | same | same (the writer adds to its own sections) |
-| Computed table over a writer's table (`calc.replace_tables`) | a table of the computed columns only is replaced; one with more columns (months beside a total) keeps them, only its cells under the computed columns take a differing computed value | same | same |
-| One item given another's attribute (`item_claims`, `checks.item_attributes`) | a comparison-table cell or one-item clause whose words the material says only of other listed items (「C안 \| 국내 데이터센터」) goes back to the repair stage once; a cell still standing says 「자료 없음」 | same | same (the writer repairs its own row) |
-| Owner and deadline blanks (`checks.owner_cells`) | a 「[담당자]」 「[담당 부서]」 owner blank goes back once to be named by the department or role the work belongs to, never a person; a 「[기한]」 blank to be placed on the material's schedule (「2월 시범 운영 전」), never a made-up date; minutes keep their 「미정」 owners | same | same |
-| Deck quiz count and broken notes (`deck.requested_contents`, `deck.finished_notes`) | a quiz slide holding fewer questions than the request counts (「OX 퀴즈 3문제」) is rewritten once with all of them; a note cut back to its last whole sentence, a noun ending in 「요」 not read as one; a lone note broken off before its verb is emptied and said again from the slide (`fill_missing_notes`); a content slide's notes under three sentences (the draft asks for 3~5) are asked for more once, four slides a deck at most | same | same |
-| Deck comparison table without values (`deck._write_slides`, `table_values`) | a slide planned as a table that came out as names only, or a table with no value cell, is rewritten once as a table; kept only with value rows, else the slide stands and the read reports it | same | same (the writer rewrites its own slide) |
+| Judge findings of skill post-checks (`post_checks.run`) | the judge is the planner; a finding whose figures and names are all in the evidence is dropped; one with none is marked 「(확인 필요)」 where it stands; one with a figure or name in none of the evidence (or a script's own finding) goes to one rewrite | as self-hosted | the writer judges its own answer; dropped findings as for every group; the rest go back to it once as notes to weigh; nothing it kept is taken out |
+| Copy check claims (`copy_check.run`) | as post-checks; numbers, offers and lengths fixed by code | as self-hosted | notes to the writer; what it kept is marked |
+| Value marks (`value_guard`, `grounding-check/scripts/trace.py`) | an untraced value is marked, never cut. A multiplier (「94x」) is backed only by a given one or the ratio of two given figures of one measure. Not marked: the person's values in another notation or unit, parts and ends of a period they give, what an attached data table works out (`table_pivots`), values under an assumptions or examples heading, values set as a condition, fractions, the system date | as self-hosted | as self-hosted; its own revision stands (`settle(writer=True)`) |
+| Where marks stand in a chat answer (`copy-marks`, `check_stages._advice_note`) | inline; an advice answer with more than three marks gets one 「확인 필요: …」 line | always one 「확인 필요: …」 line at the end | inline |
+| Report quality follow-through (`report_stages.Verify`, `Quality`) | a web-contradicted sentence is marked; a judged figure code finds at odds with a settled one, and a number a judge tied to another item whose value is in none of the evidence (`bound_token`), are repaired once by the planner and marked if they stand; the step shows what a judge found, never its reasoning | as self-hosted | the same three go back to the writer once; what stands is marked |
+| Table and figure shape after the last read (`report_stages.mend_shapes`, `table_mend`) | broken pipe tables rebuilt under one header, uncaptioned tables captioned, a table or figure the text never names pointed at, a header with no rows marked; read again once and kept only when no finding is added; no model call | same | same |
+| Report length from the pages asked (`report.section_targets`, `report_stages.Sections`, `_lengthened`) | a request that sets A4 pages gives each section its share in the draft and section prompts; a document still under 90% of it has sections under 80% of their share added to once, kept only when every existing line stands (`report.only_added`) | same | same |
+| Computed table over a writer's table (`calc.replace_tables`) | a table of the computed columns only is replaced; one with more columns keeps them and only its cells under the computed columns take a differing computed value | same | same |
+| One item given another's attribute (`item_claims`, `checks.item_attributes`) | a comparison cell or clause whose words the material says only of other listed items goes back to the repair stage once; a cell still standing says 「자료 없음」 | same | same |
+| Owner and deadline blanks (`checks.owner_cells`) | a 「[담당자]」 blank is named by the department or role the work belongs to, never a person; a 「[기한]」 blank is placed on the material's schedule, never a made-up date; minutes keep 「미정」 owners | same | same |
+| Deck quiz count and broken notes (`deck.requested_contents`, `deck.finished_notes`) | a quiz slide with fewer questions than requested is rewritten once; a broken note is cut back to its last whole sentence or emptied and written again (`fill_missing_notes`); content-slide notes under three sentences are asked for more once, four slides at most | same | same |
+| Deck comparison table without values (`deck._write_slides`, `table_values`) | a slide planned as a table that came out as names only is rewritten once; kept only with value rows | same | same |
 | Recommendation override (`report_checks.settle_verdict`) | on | on | off: the finding is reported |
 | Sweeping-claim narrowing (`superlatives`) | on | on | off |
 | Crisis lines (`hotlines.fix`) | a wrong number where a crisis line is meant becomes the official one (109, 1577-0199, 1366, 1388); numbers the person or a source gives stay | same | same |
-| Work notes and check reports (`internal_words.strip_work_notes`) | stripped, also an untagged English plan paragraph, an English tool-step opener, 「N개 중 … 확인」 report sentences | same | same |
-| Mixed script in a chat answer (`hangul.repair_mixed_script`) | on (Cyrillic and kana inside Korean words; runs of Arabic, Thai, Devanagari and other scripts the material does not use taken out) | on | on |
-| Chinese or another script slipped into a Korean report section (`report_stages._korean_again`, `hangul.chinese_slips`, `hangul.foreign_slips`) | each prose paragraph with ideographs, or a run of Arabic, Hebrew, Thai, Devanagari or another script, the request, files and pages lack goes back to the writer once as that paragraph alone; the answer stands only with no slip left and every number, citation mark and Latin word kept, else the Hanja are read in Hangul (`hangul.read_back`) and the other script's run is taken out, its gap closed (`hangul.drop_foreign_runs`, also on a rewritten section) | same | same (rarely fires) |
-| Odd Korean words in a report section or deck draft (`word_fix`, `report_stages`, `deck._write_slides`) | after the section is written (the deck draft once), the judge model (its `strict-local/` twin, else the writer, on a strict-local turn) lists `{from, to}` pairs for wrong words, misspellings and English or Chinese fused into Korean, with the fused words, lowercase English and glossed words code finds named first; code swaps a pair only where it stands verbatim outside code, links and figure markers, and refuses one that touches a digit, a citation or Markdown mark, an acronym or capitalized name, a negation, a word of the request or material, drops a word, or swaps a whole Korean word (one letter only, unless an English gloss beside it pins the meaning); any failure keeps the text | off | off |
-| Calculation time limit (`calc.DEADLINE`, `Calc.run`) | 240 s; a finished run is handed over unchecked; with none, the writer marks its own figures 「(추정)」; after any run short of a checked one (timeout, one run, none), code also gives 「(추정)」 to each worked amount in the document that is neither the material's nor code's (`report_stages._figures_marked`, `units.label_estimates`) | same | same |
-| Written sums and chains (`units.fix_written_sums`, `fix_table_totals`, `fix_written_arithmetic`) | recomputed from the answer's own figures (a rate as a hundredth: 「A × (1 - 5%)」): 「A + B = C」 (a bold C too), a sum after its listed amounts (「A원 + B원으로 합계 N원」), a table's total row over plain rows of one unit, a wrong step of a chain and the steps that start from it; marked 「(확인 필요)」, not rewritten: a result a tool or the calculation printed, a total over subtotals, blanks or a second total that matches no reading, a sum off by 1000× or more; rates, averages, unit prices and rows of other units are not added | same | same |
-| Figures code finds off but cannot settle (`units.mark_slipped_formulas`, `mark_scaled_restatements`, `mark_profit_contradictions`) | marked where they stand, never rewritten: a product a unit off, an amount with a worked result's digits a power of ten off under the same name, a profit above what its paragraph's revenue less its named costs leaves (the arithmetic shown in the mark) | same | same |
+| Work notes and check reports (`internal_words.strip_work_notes`) | stripped, including untagged English plan paragraphs and check-report sentences | same | same |
+| Mixed script in a chat answer (`hangul.repair_mixed_script`) | on (Cyrillic and kana inside Korean words; runs of other scripts the material does not use taken out) | on | on |
+| Chinese or another script in a Korean report section (`report_stages._korean_again`, `hangul.chinese_slips`, `hangul.foreign_slips`) | each prose paragraph with ideographs or a foreign-script run the request, files and pages lack goes back to the writer once as that paragraph alone; the answer stands only with no slip left, else the Hanja are read in Hangul (`hangul.read_back`) and the run is taken out (`hangul.drop_foreign_runs`) | same | same |
+| Odd Korean words in a report section or deck draft (`word_fix`) | the judge model (its `strict-local/` twin on a strict-local turn) lists `{from, to}` pairs for wrong words, misspellings and English or Chinese fused into Korean; code swaps a pair only where it stands verbatim outside code, links and figure markers, and refuses one touching a digit, citation, Markdown mark, acronym, name, negation or a word of the request or material; any failure keeps the text | off | off |
+| Calculation time limit (`calc.DEADLINE`, `Calc.run`) | 240 s; a finished run is handed over unchecked; after any run short of a checked one, code gives 「(추정)」 to each worked amount that is neither the material's nor code's (`report_stages._figures_marked`, `units.label_estimates`) | same | same |
+| Written sums and chains (`units.fix_written_sums`, `fix_table_totals`, `fix_written_arithmetic`) | recomputed from the answer's own figures: 「A + B = C」, a sum after its listed amounts, a table's total row over plain rows of one unit, a wrong step of a chain and the steps after it; marked 「(확인 필요)」 not rewritten: a result a tool printed, a total over subtotals, a sum off by 1000× or more | same | same |
+| Figures code finds off but cannot settle (`units.mark_slipped_formulas`, `mark_scaled_restatements`, `mark_profit_contradictions`) | marked where they stand, never rewritten | same | same |
 | Company-assumption labels (`units.label_assumptions`) | a report table row labelled 「가정(사내)」 whose figures the person never gave reads 「가정(본 검토 설정)」 | same | same |
-| Weekdays beside dates (`weekdays.fix_weekdays`; chat `answer-weekdays`, report `save_stages.last_pass`, composed `compose._last_pass`) | set to the calendar again after every stage that may rewrite; the year the task names, else the one nearest today (within 120 days), else left as written; a weekday the person gave that the calendar contradicts (「10/21 화」 on a Wednesday) is kept and flagged 「(화, 확인 필요: 달력상 수요일)」, never picked for them | same | same |
-| Days a chat question counts from today (`date_rules.today_block`, `dates.from_today`) | 「다음 주 월요일」, 「이번 주 금요일」, 「다음 달 셋째 주 금요일」, 「다음 달 세 번째 금요일」, 「내일」, 「모레」, 「3일 후」 in a line with no date of its own, under no meeting or mail header, are counted by code from today (a week runs Monday to Sunday; a month's first week holds its first Thursday) and given to the chat writer as 「오늘 기준 날짜(코드 계산)」 with the days between (「오늘 빼고 그날까지 28일」); a turn naming no such day reads the person's previous turn (「그날까지 …」) | same | same |
-| Guidance echoes (`guide_echo.scrub`; chat `answer-echo`, report and composed last pass) | an example name from a skill's or template's text (「김현수 드림」) → 「[이름]」, an example full date → 「[날짜]」, a sentence repeating the guidance's own rule wording dropped — each only when the person's input, sources, tool output and today do not give it; quoted 「…」 examples, tables and fenced formats are meant to be copied and count as no echo; a person's own skill is read the same way | same | same |
+| Weekdays beside dates (`weekdays.fix_weekdays`; chat `answer-weekdays`, report `save_stages.last_pass`, composed `compose._last_pass`) | set to the calendar after every stage that may rewrite; the year the task names, else the one nearest today, else as written; a weekday the person gave that the calendar contradicts is kept and flagged 「(화, 확인 필요: 달력상 수요일)」 | same | same |
+| Days a chat question counts from today (`date_rules.today_block`, `dates.from_today`) | 「다음 주 월요일」, 「내일」, 「3일 후」 and similar in a line with no date of its own are counted by code (a week runs Monday to Sunday) and given to the writer as 「오늘 기준 날짜(코드 계산)」 with the days between | same | same |
+| Guidance echoes (`guide_echo.scrub`) | an example name or full date from a skill's or template's text becomes 「[이름]」 / 「[날짜]」, and a sentence repeating the guidance's own rule wording is dropped, each only when the person's input, sources, tool output and today do not give it; quoted examples, tables and fenced formats count as meant to be copied | same | same |
 | Code-printed values (`agent.code_checked`) | a row's own printed values, and any value of five or more digits printed in any run, are kept; a mismatch is marked, never rewritten | as self-hosted | as self-hosted |
 | Citation links (`agent._link_citations`) | a number whose page shares no word with the claim is dropped | same | same |
-| Repair replies (`verify.repair`) | only a sentence string (or `{sentence: …}`) is written into the text, and the prompt asks for the fixed sentence alone, with no note on what was changed or left out; a prose reply keeping no word of the old sentence that only says the section's words again repairs nothing either (`verify.restates`); a reply that restates another sentence of the section with its blank filled (「[회의 일자]에 …」 → 「2026년 10월 14일 …」, `verify.filled_twin`) fills that sentence, and the sentence it was asked to fix stands unrepaired | same | same |
-| Limits, approvals and rules the material only asks about (`stated_policy`, `checks.stated_rules`, `report_stages.mark_policy`; revisions `revise_stages._policy_marked`) | a sentence or table row stating a limit (「허용 한도」), an approval given (「결재 완료」), an approval precondition (「승인 없이는 …않습니다」, 「결재가 없으면 …할 수 없습니다」), a rule (「규정상」), an allowed span (「최대 허용 인하 폭」) or a review done within the team (「팀 내에서 검토한」) of a kind the person's material (request, files, card answers, agent instructions; not the pipeline's settled-figure block or notes) never states, or a cited source's quote for a sentence citing it, goes to one repair; what stands after it, read again over the final text whichever check found it first, is marked 「(확인 필요)」 (the sentence's end, a row's cell); a sentence asking about it (「허용 여부」, 「결재를 요청드립니다」) or setting it as a condition (「…라면」) is left alone, and so is everything when the material is not written in Korean (an English memo's 「approved」 reads as no approval in these Korean patterns); a revision's rewritten part is marked, not repaired | as self-hosted | as self-hosted (the writer repairs its own sentence) |
-| Weekdays the material never gives an item (`stated_days`, `checks.stated_dates`, `report_stages.mark_policy`; revisions `revise_stages._policy_marked`) | a plan-table row under a weekday cell, or a sentence's clause with 「X요일」 (not beside a date, not citing a source), whose item (its clause's words, else the whole sentence's: 「CRM 병합은 60% 진행되었고, 완료 시점은 다음 주 수요일입니다」) shares no word with any stretch of the person's material on that weekday (a 「- 금:」 line, the clause around 「금요일」 or 「(금)」), or shares one only with this week's stretch while a next-week clause on no day says the item more closely or in full (「- 화: 한솔마트 재고 클레임」 against 「다음주 계획: … 한솔마트 재고 점검 방문」), or is placed in a week (its own 「이번 주」/「다음 주」, a 「10월 3주차」 the material says on a line of that week, else the section heading or table caption) whose stretches on that day do not hold it, or, when its own words name the week, hold it less closely than the other week's (「이번 주 목요일 2차 미팅」 against 「다음주 계획: … (목요일 2차 미팅)」), goes (an item holding every word of that week's stretch on the day stands: 「결제 오류 사후 검토 회의(…)」 for 「다음 주: 화요일 결제 오류 사후 검토 회의」) to one repair (drop the day, 「미정」); what stands is marked 「(확인 필요)」 | as self-hosted | as self-hosted (the writer repairs its own sentence) |
-| English dates in a memo (`weekdays.english_days`; `report_checks.meeting_base`, `_day_known`, `stated_days`) | 「Oct 19」, 「October 30th」, 「4 Nov」 and 「(Mon)」 read as 10/19, 10/30, 11/4 and (월) wherever the minutes' meeting day, deadlines and weekdays are read from the memo; a line naming the meeting (also 「meeting」, 「sync」) gives its day, from the clause naming the meeting, the next meeting's clause (also 「Next meeting: …」) and a deadline or start day (「10/23(금)까지」, 「11/2(월)부터」) aside, in Korean memos too; a yearless day there takes the one year the memo's weekday-marked days agree on | same | same |
-| What minutes say about the meeting that the memo never says (`stated_meeting`, `report_checks.minutes_unsourced`, `settle_unsourced`) | in a 회의록, a meeting length or end time (「약 20분 만에」, 「11시에 종료」) or a month part (「10월 말까지」) whose number the memo does not give, an open question (「…정산할지」) most of whose words the memo lacks and that names none of its people or tools, a guess (「…보고될 가능성이 높습니다」) no memo line of doubt shares a word with, a next-meeting agenda sentence no memo line on the next meeting shares a word with, a note that the memo lacks a detail other than an owner, deadline, date or place, something called left open (「집행 담당자가 회의에서 지정되지 않았습니다」) that no memo line leaving things open and no 미정 table row shares a word with, a sentence calling every owner and deadline set beside a 미정 row, a promise to tell more later (「확정되는 대로 안내합니다」), a part of the day (「오전 시간대에」) the memo does not give, the writer's own open flag (「배포 방법은 확인 필요합니다」) on anything but an owner or deadline that no memo line leaving things open shares a word with, the writer's advice (「…하는 것이 좋습니다」), what follows an undone task (「미제출 시 … 지연되어」), a next-meeting agenda in any sentence naming the next meeting or in a row of an agenda table of that part (a date or 「안건」 ties no word to the memo; header, caption and 「다음과 같습니다」 pointer sentences are skipped), a 「제목:/본문:」 mail line when no mail was asked for, the writer's note on what it kept out of the document (「… 본문에 반영하지 않았습니다」; the date block and conflict notes no longer ask the minutes to state their date basis, the memo's wording or which value they used, so those notes are not written), a clause giving a memo person (attendee or absentee, with the role in brackets as another name) a task still to come most of whose words no memo item naming them holds (「박민호가 … 지출 계획을 세우고 집행합니다」), an act still to come for no one on a memo task's thing (「포스터에 해당 일정을 포함해 제작합니다」; a decision told as decided, 「…축소하기로 정했습니다」, is read against every memo item, not only its tasks), and an action row with no owner (「미정」) whose task no memo clause gives anyone or leaves open (the clause holds a word of the task and its act, or most of its words, or any word when it gives a memo person a task, 「서지민이 … 재견적을 … 받아 오기로 함」; the task is the 「할 일」 column before a numbered 「항목」 one; a decision table's rows are no action rows), go to one repair; what stands: the question, the row (with the 「※」 line naming it or its number, 「※ 3번의 …」) and a sentence about the meeting's own length go unless they hold a memo name, tool or figure (then marked), a guess, agenda, missing-detail note, open point, every-set claim, promise or mail line also goes when each such name stands elsewhere in the document (the checks read the memo alone, never the skill's or agent's instructions, whose 「메일」 and 「다음 회의」 would hide them; they run again after the post-verify minutes repair), an 오전·오후 put before the memo's bare clock (「오전 10시」 for 「10시」) is dropped by code in `minutes-repair`, before any rewrite (a writer told to drop it dropped the clock too: `stated_meeting.bare_clocks`), a note on what the writer kept out (whoever wrote it, though another check marked the sentence; a table pointer it held moves to the sentence before), an agreement (동의·합의·전원·이의 없이) on an item whose memo stretch states none is cut with its clause or cell part when the clause says little else (「참석자 전원이 이에 동의했습니다」; the sentence ended again), a decision told with an agreement verb keeps its words and takes a plain verb (「…메우기로 합의했습니다」 → 「…메우기로 정했습니다」; a table's header row is never read; an agreement word heading a list, 「합의한 업무는 A와 B, 그리고 C」, becomes 「정한」 and the list stays), an agenda row is marked in its last cell, another value is marked 「(확인 필요)」 where it stands | as self-hosted | all marked 「(확인 필요)」 (the writer repairs its own sentence first); only mail lines are taken out |
-| The meeting as the memo gives it (`meeting_memo`; `fill_head` in `title-block`, the rest in `minutes-reground`) | in a 회의록, the memo's head stretches (before its agenda) give this meeting's name (a part ending in its kind, 「교육혁신팀 주간회의」, its 「(메모)」 tags off; never a request sentence, and 「11월 말」 keeps its 월), day, clock, place and attendees and its 「다음 회의 …」 clause the next one's; a head 회의명·장소·참석자 left empty takes this meeting's value or a bracket (「[장소]」), a clockless 일시 the memo's clock; a day, clock, place or attendance called missing (「시간은 자료에 없음」, 「장소 | 미정」, 「나와 있는 내용은 날짜뿐」) that the memo gives for that meeting is filled from it (cells, 「장소: 미정」 lines, notes in parentheses) or, as a sentence, goes with its table pointer kept; a sentence giving the value a memo decision changed as the one decided (「간식비를 80만원으로 합의했습니다」 where the memo says 「80만원을 요청했으나 … 50만원으로 줄이자고 했고 합의」), or a decision row holding it without the new one, takes the new value (`decided_values`); a task the memo ties to the next meeting or a week (「다음 회의에서 … 비교표 가져오기」, 「이번 주 안에」) gets that wording in a blank 기한 cell, and a sentence calling its deadline missing goes; a table row repeating the one above it (same first cell, one cell holding the other's words) goes, the fuller row kept; a count in the paragraph right before a table or list (「분담한 일은 세 가지입니다」, its caption between) takes the number of items that table or list holds; a 「확인 필요: …」 line whose first word a table row marking its value open (「미정」, 「자료에 없음」, a flagged date) names goes (`restated_checks`), and a date's weekday flag 「(화, 확인 필요: 달력상 수요일)」 stands at its first mention in the document only, later mentions read the bare date and another 「확인 필요」 beside it goes (`weekdays.flag_once`, also run on every report after the weekday fix); a sentence said twice word for word goes, and for a writer not strong a prose sentence that is the memo's own line in its shorthand (most of it the memo's words in a row, ending unfinished 「…결정 못 함.」, 「…있었음.」, or with 「vs」, an arrow or an agenda label 「안건2 예산:」 in it; a noun-form end inside a finished sentence, 「…하기로 함 회의록상…」) or a sentence after the first saying a clause the document says three or more times goes when the rest of the document holds its numbers, people and the things it names (a Latin word, a Hangul word of three letters or more no verb ending closes: 「간편결제」, 「재논의」, 「approval」), a cell repeating an open item's words said three or more times reads 「미정」 after its first, and a line holding only a marker (「확인 필요」) goes (`meeting_memo.settle_copies`, `bare_marks`). The memo is the request's text before its 「덧붙인 조건」 block plus the block's answer lines, never the block's rule lines (「… 지어내지 않는다 …」), and the block alone is no pasted material | as self-hosted | as self-hosted |
-| The language a new document is written in (`output_language.asked`, `asked_condition`; in `send_message`) | with no output language set on the agent, a new report, deck or page is written in the language the person asked in, added to the request as a condition: the first and last sentence of what they typed that is no memo item (a 「label:」 line reads by the words before its colon), and when these differ the shorter one, so 「아래 메모로 회의록을 만들어줘.」 over an English memo is Korean and an English memo sent alone English; the server's 「덧붙인 조건」 block is no words of the person's; revisions keep their document's language; the finish line (`save_stages._written_note`, `_restructured_said`) is in the written document's language | same | same |
-| An English document's head (`doc_formats.in_english`, `EN_LABELS`, `head_key`; in `title-block`) | when the written body reads English (`output_language.reads_english`), a head whose every field has an English label (minutes and agenda: Meeting, Date, Location, Attendees, Prepared by) is set in English, the block marked `language: en` and its label 「Minutes」/「Agenda」; the day is 「2026-10-19 (Mon)」, an unknown one 「[Date]」, a yearless one 「[Year] 10/14」, blanks the field's English name (「[Location]」, read as a blank by `placeholders.is_blank`, `EN_HEAD_BLANK`, and the web's `isBlank`); every step that finds a head field by name (`minutes_head`, `minutes_head_place`, `minutes_head_day`, `fill_head`) reads it through `head_key`, the body rows 「| Date | [Date] |」 and 「Location: TBD」 are settled as their Korean forms, and the memo head's 「제목」 key is 「Title」 in the web view, DOCX, PDF and HWPX; English material labels (「Location: Room 3A」) fill the head as Korean ones do; a Korean body keeps the Korean head | same | same |
-| An English document's captions and references (`captions`; `report.caption_figures_and_tables`, `table_mend.cite`, `meeting_memo.drop`) | when the written body reads English (`output_language.reads_english` over all sections), tables are captioned 「**Table 1. Title**」, figures 「*Figure 1. Title*」 (a picture's alt 「Figure 1. Title」, an untitled one 「Figure」/「Diagram」), the writer's 〔표〕/〔그림〕 become 「Table 1」/「Figure 1」, a sentence above a table with no separator after the number (「Table 1 lists the action items.」) is not taken for its caption, an unreferenced block is cited as 「 (Table 1)」 after the sentence before it or led into with 「See Table 1 for Title.」 (「See Table 1.」 without a title), and a dangling 「(see 〔그림〕)」 goes whole; the Korean references code wrote into an English document earlier (「…은(는) 표 1과 같습니다.」, 「…(표 1).」) are rewritten in English when it is numbered again; every reader of captions and references (renumbering, the quality read, revised tables, numbered removals 「remove table 2」/「delete tables 2 and 3」 with their citations, drift faults, minutes pointers, exporters) takes both languages' words; a Korean document is numbered exactly as before | same | same |
-| Minutes told as the meeting was (`meeting_tense.held`, `report_checks.minutes_open_due`, in `minutes-reground`) | in a 회의록, a sentence ending in one of the meeting's own acts (열립니다, 합의합니다, 이르지 못합니다, …하기로 합니다) outside the next-meeting and follow-up parts, tables and forward-looking sentences is put in the past by code; prose calling a deadline open (「시안 제출 기한은 미정입니다」) while the one action row for that task gives a date the memo yields takes that date | as self-hosted | as self-hosted |
-| Empty columns in minutes (`report_checks.minutes_blank_columns`) | a table column no memo word names and no cell fills (a 「납기」 column of 「미정」) goes; 할 일·담당·기한·비고·출처 columns stay | same | same |
-| Report reference list (`citations.cite_order`, `same_works`, `credit_attachments`) | a citation number no listed source has is dropped from the text; one work found twice (same DOI, link or title) is listed once and its numbers merged; a Korean sentence citing a web page for figures, or for three or more Latin technical terms (hyphens optional), only the attached file holds (none of its terms only in the cited page) cites the file; a web page the writer cited alone in three or more Korean sentences for the attached file's own terms or figures (four or more of them, at least half its sentences, and three times as many as cite it for its page's own terms) stands in for the file: each of those sentences cites the file, the rest keep the page; a sentence naming a work by its own name (the title's head, e.g. Face4Rag) or giving a decimal figure the cited page lacks and exactly one other page has cites that work or page; markers like [7, 11], [7–9], [7~9], [7; 11] and those in the app's prose blocks (callout, kpi, steps, cards) are renumbered with the list | same | same |
-| Deck values (`check_stages.DeckGrounding`, `ground_slides`) | runs on the person's material, a request writing four or more figures with a measure, or a request or agent instruction forbidding figures with no basis (「근거 없는 수치」, 「세부 수치 없음」); tables and charts are traced row by row as report tables; up to four slides holding untraced values (or a chart titled by a measure it does not plot) go back to the writer once with the list, kept only with fewer; what stays untraced is marked; a chart category holding an untraced value is left out (under two points left: the values as bullets, each in its own unit under a mixed one such as 「억원/%」, an untraced one marked 「(확인 필요)」, never blanked) and a chart's title names its series; a figure the material gives only in the brackets after another named item (「A사 '에어킥 7'(…, 50분)」) on a slide read under a different named item (「S2 사용 시간 50.0분」) goes back with the list and is marked if it stays (`misbound_values`); a slide title or subtitle never holds a mark: what was marked there is named in the slide's notes (`titles_unmarked`) | as self-hosted | the hand-back as self-hosted; then a chart category is marked, not cut, and the title stands |
-| Fractional counts (`report._without_fractional_counts`; report cleanup `report_stages._unbacked_marked`, report edits `revise_stages._figures_marked`) | a count of whole things with a decimal part (「잔여 14.8건」, 「2.5곳」; not 「3.5개월」) that the material or sources do not state is marked 「(확인 필요)」 even when it is worked from given figures (37건 × 40%); an average or rate (「일평균」, 「1인당」, 「매월」, 「/월」, 「건/명」, 「÷」) stands, the later items of a list led by one too (「7월은 1인당 59.2건, 8월은 64.8건」) | as self-hosted | as self-hosted |
-| Percentages (`value_guard.percent_basis`, `check_stages.mark_unbacked_percents`, `check_stages.edited_percents`, `report._without_invented_percents`, `revise_stages._figures_marked`) | a percentage (or %p) stands only when the material, sources or code results give it, or it is a share or change of two of their figures of one measure (a unit, 「원」 for 억/만 amounts, the Latin word after a bare figure; a bare figure only with another on its line or table column), the rest of a given share, or the gap, ratio or change of two given ones (a %p also a worked share against a given one in a short material); a pipe table without outer bars pairs by column too, and 「1,987」 with its thousands comma is a count, not a year; a share of a data table's group sums (`table_pivots`); the result of a formula the document writes (「(1,987 − 1,425) ÷ 1,425 × 100 = 39.4%」, 「324건 / 562건 = 57.65%」, an earlier section's too) whose terms are given, a sum or gap of two given figures, or another such formula's result (`worked_results`); a share or change of two figures one of which its own sentence writes, each of those kinds (「487건은 … 562건의 86.65%」, `_sentence_share`); 「약」 allows a place off, a total or baseline row 100%; else marked 「(확인 필요)」 where it stands (a chart point as an untraced one) after deck grounding, in a report's cleanup (`report_stages._unbacked_marked`, with or without figures in the material; money only without), and on a deck or report edit for a percentage the document did not show before (an edit of a deck made from no figures of the person's is not checked; a report edit also marks new money when the material has no figures) | as self-hosted | as self-hosted (a chart category marked, not cut) |
-| Deck revisions (`revise.slide_clause`, `deck.shown_layout`, `deck.unmet_asks`) | a slide or section named by number (「4장」, 「slide 4」, 「slides 2-3」, 「the 4th slide」) is the target whatever the planner picked (`revise.numbered_target`), and with no structure change asked it is edited without the planner (`revise.numbered_parts`); an outline reading of words that ask no new structure or whole rewrite (`revise.asks_restructure`) edits every part in place when the words carry an edit verb and otherwise changes nothing and asks what to change, never regenerating the document; a question or explicit no-change wording (「설명만 해줘」, 「don't change anything」) changes nothing; each slide reads its own part of a many-slide instruction; a picture asked away is removed by code (no rewrite when that is all); a layout change drops the old shape's fields; the reply names an asked layout (Korean 「…로」 or English 「as a / into a …」, numbered and bullet lists included) or removal the new slide does not show; figures the slide showed and its rewrite left out (`deck.lost_figures`: number with its unit, 「64 percent」 = 「64%」, 「27 point」 ≠ 「27B」; unless the ask may cut some) are asked for once more, then named in the reply; an ask typed in English (`output_language.typed_in_english`) gets the reply in English | same | same |
-| Report revisions' numbered removals (`revise.drop_numbered`, `revise.drop_added`) | the one-copy-per-table tidy (`revised_tables.drop_superseded`) never removes one of two look-alike tables the document already had; 「표 2」 or 「그림 1」 asked away is cut by code with the prose citing it (a short sentence pointing at it by place, 「아래 표와 같습니다」, too, when no such block is left in the part), and with the rest asked of the parts it names (「맨 앞에 3줄 요약」) the planner is not asked (`revise.settled_by_code`), so the edit never becomes a new outline; the same edit's rewrite of that part is told so, and a table or figure it adds there beyond what the part kept is dropped unless the ask asks for one | same | same |
+| Repair replies (`verify.repair`) | only a sentence string (or `{sentence: …}`) is written into the text; a prose reply that only restates the section repairs nothing (`verify.restates`); a reply that restates another sentence of the section with its blank filled (`verify.filled_twin`) fills that sentence and leaves the asked one unrepaired | same | same |
+| Limits, approvals and rules the material only asks about (`stated_policy`, `checks.stated_rules`, `report_stages.mark_policy`; revisions `revise_stages._policy_marked`) | a sentence or row stating a limit (「허용 한도」), an approval given (「결재 완료」), an approval precondition, a rule (「규정상」) or an in-team review that the person's material never states goes to one repair; what stands is marked 「(확인 필요)」; a sentence asking about it or setting it as a condition is left alone, and so is everything when the material is not Korean | as self-hosted | as self-hosted (the writer repairs its own sentence) |
+| Weekdays the material never gives an item (`stated_days`, `checks.stated_dates`, `report_stages.mark_policy`) | a plan-table row under a weekday cell, or a clause with 「X요일」, whose item shares no word with the material's stretch on that weekday (or sits in the wrong week) goes to one repair (drop the day, 「미정」); what stands is marked 「(확인 필요)」 | same | same |
+| English dates in a memo (`weekdays.english_days`; `report_checks.meeting_base`, `_day_known`) | 「Oct 19」, 「4 Nov」, 「(Mon)」 read as 10/19, 11/4, (월) wherever the minutes' meeting day, deadlines and weekdays are read from the memo; a yearless day takes the one year the memo's weekday-marked days agree on | same | same |
+| What minutes say about the meeting that the memo never says (`stated_meeting`, `report_checks.minutes_unsourced`, `settle_unsourced`) | in a 회의록, claims the memo does not support (a meeting length or end time, a part of the day, an open question, a guess, a next-meeting agenda, a promise to tell more later, the writer's advice, a mail line when none was asked for, a note on what was kept out, a task for a memo person or an action row with no basis, an agreement the memo states none of) go to one repair; what stands is dropped or marked 「(확인 필요)」 by kind, an 오전·오후 before the memo's bare clock is dropped by code, and a decision told with an agreement verb takes a plain verb (「합의했습니다」 → 「정했습니다」). The checks read the memo alone, never the skill's or agent's instructions | as self-hosted | all marked 「(확인 필요)」 after the writer repairs its own sentence; only mail lines are taken out |
+| The meeting as the memo gives it (`meeting_memo`; `fill_head` in `title-block`, the rest in `minutes-reground`) | in a 회의록, the head (name, day, clock, place, attendees, next meeting) is filled from the memo's own head stretches, and empty fields take that value or a bracket (「[장소]」); a value called missing that the memo gives is filled; a value a memo decision changed takes the new one (`decided_values`); a task tied to the next meeting or a week fills a blank 기한 cell; a duplicated table row or sentence goes; a count before a table or list takes the number of items it holds; a weekday flag stands at its first mention only (`weekdays.flag_once`, also run on every report). The memo is the request's text before its 「덧붙인 조건」 block plus the block's answer lines, never its rule lines | as self-hosted | as self-hosted |
+| The language a new document is written in (`output_language.asked`, `asked_condition`; in `send_message`) | with no output language set on the agent, a new report, deck or page is written in the language the person asked in, added to the request as a condition (the first and last sentence of what they typed that is no memo item; the shorter when they differ), so a Korean request over an English memo is Korean; revisions keep their document's language; the finish line is in the written document's language | same | same |
+| An English document's head (`doc_formats.in_english`, `EN_LABELS`, `head_key`; in `title-block`) | when the body reads English (`output_language.reads_english`), a head whose fields all have English labels (minutes, agenda) is set in English, the block marked `language: en`, with blanks named in English (「[Location]」; `placeholders.is_blank`, the web's `isBlank`); steps that find a head field by name read it through `head_key`; a Korean body keeps the Korean head | same | same |
+| An English document's captions and references (`captions`; `report.caption_figures_and_tables`, `table_mend.cite`, `meeting_memo.drop`) | when the body reads English, tables are captioned 「**Table 1. Title**」 and figures 「*Figure 1. Title*」, an unreferenced block is cited 「(Table 1)」 or led into with 「See Table 1 for Title.」, a dangling 「(see 〔그림〕)」 goes, and Korean references code wrote earlier are rewritten in English on renumbering; every reader of captions takes both languages' words | same | same |
+| Minutes told as the meeting was (`meeting_tense.held`, `report_checks.minutes_open_due`, in `minutes-reground`) | in a 회의록, a sentence ending in one of the meeting's own acts outside the next-meeting and follow-up parts, tables and forward-looking sentences is put in the past by code; prose calling a deadline open while its one action row gives a date takes that date | as self-hosted | as self-hosted |
+| Empty columns in minutes (`report_checks.minutes_blank_columns`) | a table column no memo word names and no cell fills goes; 할 일·담당·기한·비고·출처 columns stay | same | same |
+| Report reference list (`citations.cite_order`, `same_works`, `credit_attachments`) | a citation number no listed source has is dropped; one work found twice is listed once and its numbers merged; a sentence citing a web page for figures or technical terms only the attached file holds cites the file, and a page cited alone for most of the file's own terms stands in for it; a sentence naming a work by its own name or giving a decimal figure only one other page has cites that page; markers like [7, 11], [7–9], [7; 11], and those in the app's prose blocks, are renumbered with the list | same | same |
+| Deck values (`check_stages.DeckGrounding`, `ground_slides`) | runs on the person's material, a request writing four or more figures with a measure, or a request or agent instruction forbidding unsupported figures; tables and charts are traced row by row; up to four slides holding untraced values go back to the writer once, kept only with fewer; what stays untraced is marked; a chart category holding one is left out (under two points left: the values as bullets, an untraced one marked, never blanked); a figure given only in brackets after another named item and read under a different one is handed back and marked if it stays (`misbound_values`); a slide title or subtitle never holds a mark (`titles_unmarked`) | as self-hosted | the hand-back as self-hosted; then a chart category is marked, not cut, and the title stands |
+| Fractional counts (`report._without_fractional_counts`; `report_stages._unbacked_marked`, `revise_stages._figures_marked`) | a count of whole things with a decimal part (「잔여 14.8건」; not 「3.5개월」) that the material or sources do not state is marked 「(확인 필요)」 even when worked from given figures; averages and rates stand | same | same |
+| Percentages (`value_guard.percent_basis`, `check_stages.mark_unbacked_percents`, `check_stages.edited_percents`, `report._without_invented_percents`) | a percentage (or %p) stands only when the material, sources or code results give it, or it is a share, gap, ratio or change of given figures of one measure, a share of a data table's group sums (`table_pivots`), or the result of a formula the document itself writes from given terms (`worked_results`, `_sentence_share`); 「약」 allows a place off, a total or baseline row 100%; else marked 「(확인 필요)」 where it stands, in deck grounding, in a report's cleanup, and on a deck or report edit for a percentage the document did not show before | same | same (a chart category marked, not cut) |
+| Deck revisions (`revise.slide_clause`, `deck.shown_layout`, `deck.unmet_asks`) | a slide or section named by number (「4장」, 「slide 4」) is the target whatever the planner picked (`revise.numbered_target`) and, with no structure change asked, is edited without the planner; words that ask no new structure or whole rewrite edit every part in place when they carry an edit verb (`revise.asks_restructure`) and otherwise change nothing and ask what to change; a question or explicit no-change wording changes nothing; a picture asked away is removed by code; a layout change drops the old shape's fields; the reply names an asked layout or removal the new slide does not show; figures the slide showed and its rewrite dropped (`deck.lost_figures`) are asked for once more, then named in the reply; an ask typed in English gets an English reply | same | same |
+| Report revisions' numbered removals (`revise.drop_numbered`, `revise.drop_added`) | 「표 2」 or 「그림 1」 asked away is cut by code with the prose citing it, and with the rest asked of the parts it names the planner is not asked (`revise.settled_by_code`); the one-copy-per-table tidy (`revised_tables.drop_superseded`) never removes one of two look-alike tables the document already had; a table or figure the rewrite adds beyond what the part kept is dropped unless the ask wants one | same | same |
 | Deck table width (`deck._clean_rows`) | a wide, short table is transposed; else the five-column cap | same | same |
 | Skill frames and genre rules (`asked_form`, `skill_turn`, `report._genre_rule`, `skills/*/SKILL.md`) | the request's own parts, order, counts, columns and tone are the structure; a skill's frame, default count and extra tables fill only what the request leaves open | same | same |
 | Automatic web search (`report.given_material_suffices`, `routers/sessions.py`) | off on an 「자동」 turn whose given material does the job and that asks for no research or current facts; forced searches (current facts, contacts, advice) and the empty-result retry stay | same | same |
-| Answer plan (`answer_plan`) | a mail or notice written for the person carries only the facts they gave (no invented cause, replacement supply, priority handling or time); a short answer gets no plan | same | same |
-| Duration must-haves (`report_checks.must_status`, `duration_limit`, `option_duration`) | a lead time or period (납기, 보증 기간) is judged in days from the material's own words, never on the reading's unitless number; the limit is the one written with its unit or a deadline counted from a written contract day, else the must is not judged and said so; a range across the limit is open; a longer period the option sells as an extension meets a minimum, said with its cost | same | same; the block is data to weigh (`_must_block(data=True)`) |
-| A 「있음」 the material never writes (`report_checks._mentions`) | a yes/no must read as met for an option whose lines say nothing of it is open (조건 미확인), not 충족 | same | same |
-| Cost readings settled from the price lines (`report_checks.price_lines_reading`, `_compare_cost`) | when the two readings differ, code reads the plainly written price lines (unit price × count, per month/year/once, 「… 시 N% 할인」, VAT basis) as the third reading instead of a thinking read; when no two agree its totals stand; a reading agreeing with it takes its scenarios; a line it cannot read (usage price, two amounts in a clause, an amount outside the options) leaves the old vote; two readings agreeing against it stand | same | same |
-| System prompt order (`context.system_prompt(cache_order=…)`, `model_tier.cache_ordered`) | the old order (date and session blocks before the tool rules and contracts) while `self_hosted_prompt_cache_order` is off, as it is while the 27B's vLLM prefix cache is off | fixed blocks first, then the search toggle, the date, the session's blocks and one line keeping the contracts above them | as small external, on the light prompt |
-| Large connectors by name (`tools/deferred`, `connector_tools_eager_max`) | every schema sent, while `self_hosted_defer_connector_tools` is off (the 27B's choice with an extra load step is unmeasured) | tools of a connector over the limit sent by name; `load_tools` brings their schemas | as small external |
+| Answer plan (`answer_plan`) | a mail or notice written for the person carries only the facts they gave; a short answer gets no plan | same | same |
+| Duration must-haves (`report_checks.must_status`, `duration_limit`, `option_duration`) | a lead time or period is judged in days from the material's own words; the limit is the one written with its unit or a deadline counted from a written contract day, else the must is not judged and said so; a range across the limit is open; an extension the option sells meets a minimum, said with its cost | same | same; the block is data to weigh (`_must_block(data=True)`) |
+| A 「있음」 the material never writes (`report_checks._mentions`) | a yes/no must for an option whose lines say nothing of it is open (조건 미확인), not 충족 | same | same |
+| Cost readings settled from the price lines (`report_checks.price_lines_reading`, `_compare_cost`) | when the two readings differ, code reads the plainly written price lines (unit price × count, per month/year/once, discounts, VAT basis) as a third reading; a reading agreeing with it takes its scenarios; a line it cannot read leaves the vote as it was | same | same |
+| System prompt order (`context.system_prompt(cache_order=…)`, `model_tier.cache_ordered`) | date and session blocks before the tool rules and contracts, unless `self_hosted_prompt_cache_order` is on (default off) | fixed blocks first, then the search toggle, the date, the session's blocks and one line keeping the contracts above them | as small external, on the light prompt |
+| Large connectors by name (`tools/deferred`, `connector_tools_eager_max`) | every schema sent, unless `self_hosted_defer_connector_tools` is on (default off) | tools of a connector over the limit (default 6) sent by name; `load_tools` brings their schemas | as small external |
 
 ### Pipelines
 
-The report writer, the deck and page writers, a chat answer's finish, a
-revision and the hand-over of files are pipelines: an ordered list of named **stages** that read and write one typed **work
-bundle**. A fix to one step lives in one stage with its own tests; every stage of every turn
-is recorded, run or not; and which stages a document runs is data, not an if-chain.
+The report writer, the deck and page writers, a chat answer's finish, a revision and
+the hand-over of files are pipelines: an ordered list of named **stages** that read
+and write one typed **work bundle**. A fix to one step lives in one stage with its own
+tests, every stage of every turn is recorded (run or not), and which stages a document
+runs is data, not an if-chain.
 
-**Where things are.** `app/pipeline/` holds the machinery: `bundle.py` (the work bundle),
-`stage.py` (the contract), `runner.py`, `registry.py`, `compose.py` (composed step lists),
-and the stages by flow — `report_stages.py`, `check_stages.py`, `chat_stages.py`,
-`revise_stages.py`, `export_stages.py`, `save_stages.py` (the `io` stages that load and store
-a document), `make_stages.py` (deck, page), `route_stages.py`; `runs.py` keeps a run across
-requests, `marks.py` the spans a document's reader should look at, `labels.py` the stages'
-Korean names. `app/pipelines/*.toml` declares four pipelines: `report` (every document),
-`chat` (a chat answer's finish), `deck` and `page`.
+**Where things are.** `app/pipeline/` holds the machinery: `bundle.py` (the work
+bundle), `stage.py` (the contract), `runner.py`, `registry.py`, `compose.py` (composed
+step lists), and the stages by flow: `report_stages.py`, `check_stages.py`,
+`chat_stages.py`, `revise_stages.py`, `export_stages.py`, `save_stages.py` (the `io`
+stages that load and store a document), `make_stages.py` (deck, page),
+`route_stages.py`. `runs.py` keeps a run across requests, `marks.py` the spans a
+document's reader should look at, `labels.py` the stages' Korean names.
+`app/pipelines/*.toml` declares four pipelines: `report` (every document), `chat` (a
+chat answer's finish), `deck` and `page`.
 
-**A pipeline file** names the agents it serves, its flows, and a `[summary]` of plain lines
-for the drawn chain:
+**A pipeline file** names the agents it serves, its flows and a `[summary]` of plain
+lines for the drawn chain:
 
 | flow | what it lists | who runs it |
 |---|---|---|
 | `pre` | stages before the first draft (`check:gaps`, `gap-card`) | `sessions._gaps` |
 | `plan` | the planning pass, ending with the offered outline | `report.write` without an approved plan |
 | `write` | the writing pass on the approved outline | `report.write` |
+| `prepass`, `checks`, `judged` | the process-settings groups a format names (pre-pass calculations, code checks, judged checks) | `report.write` |
 | `finish` | a chat answer after the agent loop | `sessions._run_turn` |
 | `revise` | a follow-up applied to the document on screen, `revise-load` … `revise-save` | `sessions._revise_document` |
 | `make` | a one-pass writer: deck, page | `sessions._make_pass` |
 
-What a document does besides writing is not in the file. The template's and the agent's
-**process settings** (`services/process_settings.py`; `[process]` in a shipped `template.toml`,
-`user_templates.process`, `agents.process_settings`) name the pre-pass calculations, the optional
-format-repair stages (each listed in `report.toml` and skipped unless named), the code and
-judged checks, structure rules (sections, tables, summary lines, bullet (개조식) style, page limit),
-written review rules and options such as `search`, `fixed_outline` and `draws`. Every name is from a
-closed list the code ships, so a person who sets the same values as a shipped template gets
-the same run. `tests/test_pipelines.py` holds every shipped format to its expected pre-pass
-steps, check families, stages and options. Runs stored under a per-format pipeline name
-that no longer has a file of its own still open (`registry.LEGACY`).
+What a document does besides writing is not in the file. The template's and the
+agent's **process settings** (`services/process_settings.py`; `[process]` in a shipped
+`template.toml`, `user_templates.process`, `agents.process_settings`) name the pre-pass
+calculations, the optional format-repair stages (each listed in `report.toml` and
+skipped unless named), the code and judged checks, structure rules (sections, tables,
+summary lines, bullet (개조식) style, page limit), written review rules and options
+such as `search`, `fixed_outline` and `draws`. Every name is from a closed list the
+code ships, so a person who sets the same values as a shipped template gets the same
+run. `tests/test_pipelines.py` holds every shipped format to its expected pre-pass
+steps, check families, stages and options. Runs stored under a pipeline name without a
+file of its own still open (`registry.LEGACY`).
 
 **The bundle** (`Bundle`) has narrow, typed parts: `request` (what the turn was asked,
 never written), `spec` (format and genre), `material` (each `Part` with its origin:
@@ -1252,334 +1059,305 @@ attachment, pasted, project, research, computed, settled, conflicts, prepass, no
 `findings` (codes found before and after the repair, what the verify stage left, the
 grounding outcome, the quality record), `files`, `steps` (the records) and `usage`.
 
-**The stage contract** (`stage.py`): a stage has a `name`, a `kind` (`compute`, `model`,
-`check`, `io`), the dotted bundle fields it `reads` and `writes`, `skip(bundle)` — the
-reason it does not apply, or "" — and `run(bundle, ctx)`, an async generator that writes
-its fields and yields the wire events (`step`, `section`, `titleBlock` …) the surface shows.
-It ends the pipeline on purpose by raising `Stop(reason)` (an outline offered, a question
-card, a revision with nothing to do), after yielding its own closing events.
+**The stage contract** (`stage.py`): a stage has a `name`, a `kind` (`compute`,
+`model`, `check`, `io`), the dotted bundle fields it `reads` and `writes`,
+`skip(bundle)` (the reason it does not apply, or "") and `run(bundle, ctx)`, an async
+generator that writes its fields and yields the wire events (`step`, `section`,
+`titleBlock` …) the surface shows. It ends the pipeline on purpose by raising
+`Stop(reason)` (an outline offered, a question card, a revision with nothing to do)
+after yielding its own closing events.
 
 **The runner** records one `StepRecord` per stage: `done`, `skipped` with the stage's
-reason, `stopped`, `failed` (the exception goes on to the caller) or `cancelled` (the turn was closed under it); the stages after a stop are recorded
-as skipped. The records go to the log (`pipeline minutes.write: research:done,
-calc:skipped(nothing to compute…), …`), onto the bundle, and to `report.write(trace=[…])`.
-`run(start="verify")` resumes from a stage on a bundle the earlier ones filled.
-`StepRecord.wire()` is the record as a surface `step` (category `pipeline`, the whole record
-under `stage`: Korean label, summary, evidence, times, attempt); `KLOUDCHAT_PIPELINE_STEPS`
-sends them, on unless set to `0` (the test suite sets `0`; the replay test holds the stream
-with records to the same events plus one record per stage). `KLOUDCHAT_PIPELINE_STRICT=1` (the test suite sets it, `tests/conftest.py`)
-refuses a stage that changed a field it did not declare.
+reason, `stopped`, `failed` (the exception goes on to the caller) or `cancelled` (the
+turn was closed under it); the stages after a stop are recorded as skipped. The
+records go to the log (`pipeline minutes.write: research:done, calc:skipped(…), …`),
+onto the bundle, and to `report.write(trace=[…])`. `run(start="verify")` resumes from
+a stage on a bundle the earlier ones filled. `StepRecord.wire()` is the record as a
+surface `step` (category `pipeline`, the whole record under `stage`: Korean label,
+summary, evidence, times, attempt). `KLOUDCHAT_PIPELINE_STEPS` sends them, on unless
+set to `0`. `KLOUDCHAT_PIPELINE_STRICT=1` refuses a stage that changed a field it did
+not declare; the test suite sets both (`tests/conftest.py`).
 
-**Runs are kept.** A writing pass (report `write`, `revise`, a deck's or page's `make` on an
-approved outline) runs with a `runs.Recorder`: the bundle encoded before the first stage and,
-after each stage, the fields it changed. The run is a `PipelineRun` row (kept
-apart from `messages`, which the transcript reads whole) and a compact copy of its records
-on the message it settled (`routing.run`). `runs.restore` gives the bundle as it stood
-before any recorded stage; `POST /sessions/{id}/runs/{run}/rerun {fromStage, answers}` runs
-that stage and those after it again — the earlier ones are not run and their records are
-carried — and the flow's own save stage stores the result as a new version of the artifact,
-billed like a turn. A value that is a function (the verify stage's checks) is not encoded;
-the stage that built it registers a rebuild (`runs.REBUILT`). `tests/test_pipeline_replay.py`
-reruns every recorded report and revision from each of its stages and requires the same
-document, with no model call from the stages before the restart.
+**Runs are kept.** A writing pass (report `write`, `revise`, a deck's or page's `make`
+on an approved outline) runs with a `runs.Recorder`: the bundle encoded before the
+first stage and, after each stage, the fields it changed. The run is a `PipelineRun`
+row (kept apart from `messages`, which the transcript reads whole) with a compact copy
+of its records on the message it settled (`routing.run`). `runs.restore` gives the
+bundle as it stood before any recorded stage; `POST /sessions/{id}/runs/{run}/rerun
+{fromStage, answers}` runs that stage and those after it again (the earlier records
+are carried), and the flow's own save stage stores the result as a new version of the
+artifact, billed like a turn. A value that is a function (the verify stage's checks)
+is not encoded; the stage that built it registers a rebuild (`runs.REBUILT`).
+`tests/test_pipeline_replay.py` reruns every recorded report and revision from each of
+its stages and requires the same document, with no model call from the stages before
+the restart.
 
-**The gap card is a stage.** `pre` ends with `gap-card`, which raises `Wait`: the run is
-kept as `waiting`, the card's questions (fact, label, why, placeholder) ride on the pending
-turn with its run id, and the answer (or **Go with what arrived**, which leaves each fact its
-bracket blank) closes it; the writing pass that follows names it as its parent.
+**The gap card is a stage.** `pre` ends with `gap-card`, which raises `Wait`: the run
+is kept as `waiting`, the card's questions (fact, label, why, placeholder) ride on the
+pending turn with its run id, and the answer (or **Go with what arrived**, which leaves
+each fact its bracket blank) closes it; the writing pass that follows names it as its
+parent.
 
 **Persistence and routing are stages.** `report-save`, `revise-load`, `revise-save`,
-`deck-save` and `page-save` are `io` stages that reach the database and the
-bill through the router module, so tests that replace `sessions.SessionLocal` reach them.
+`deck-save` and `page-save` are `io` stages that reach the database and the bill
+through the router module, so tests that replace `sessions.SessionLocal` reach them.
 `send_message` decides where a turn goes with the `route` stage (page, file hand-over,
 revision, report, deck, chat); its record opens the stream. A stored report carries
-`data.marks` (placeholders, values the grounding check blanked with what stood there, what
-the verify stage left), found again in the current body by `GET /artifacts/{id}/marks`.
-`GET /pipelines`, `/pipelines/{name}` and `/agents/{id}/pipeline` read the shipped definitions.
+`data.marks` (placeholders, values the grounding check blanked with what stood there,
+what the verify stage left), found again in the current body by
+`GET /artifacts/{id}/marks`. `GET /pipelines`, `/pipelines/{name}` and
+`/agents/{id}/pipeline` read the shipped definitions.
 
-**Check skills are stages of the `check` kind.** A check skill's SKILL.md names its stage:
-`pre` checks run as `check:gaps` (one question card before the first draft); `post` checks
-run as `check:grounding` before the verify stage and `check:grounding-again` after its
-rewrites (report sections), and as `check:answer-grounding` on a chat answer. The verify
-stage and `consistency` are `check` stages too: find, repair once, find again.
+**Check skills are stages of the `check` kind.** A check skill's SKILL.md names its
+stage: `pre` checks run as `check:gaps` (one question card before the first draft);
+`post` checks run as `check:grounding` before the verify stage and
+`check:grounding-again` after its rewrites (report sections), and as
+`check:answer-grounding` on a chat answer. The verify stage and `consistency` are
+`check` stages too: find, repair once, find again.
 
-**Adding a stage.** Write a class on `stage.Base` in the flow's stage module (or a new one
-imported by `registry._load_stages`): name, kind, `reads`/`writes`, `skip`, `run`. Call
-helpers through their module (`report._complete`, `report.fix_products`) so a test that
-replaces one reaches the stage. Register it, list it in the pipelines that run it, and add
-its own test. A format-specific behaviour is a stage listed only in that format's file, or
-an `[options]` switch — not a format comparison inside a stage.
+**Adding a stage.** Write a class on `stage.Base` in the flow's stage module (or a new
+one imported by `registry._load_stages`): name, kind, `reads`/`writes`, `skip`, `run`.
+Call helpers through their module (`report._complete`, `report.fix_products`) so a test
+that replaces one reaches the stage. Register it, list it in the pipelines that run it,
+and add its own test. A format-specific behaviour is a stage listed only in that
+format's file, or an `[options]` switch, not a format comparison inside a stage.
 
-**Replay tests.** `tests/test_pipeline_replay.py` replays recorded turns — one
-acceptance run per format (minutes, bullet-style briefing, client proposal, comparison, career history,
-a long-form proposal through the parallel gate), the data-analysis and career-docs chat
-turns, and two revisions (one that widens, settles again and aligns) — and requires the
-same events, sections and stored rows as when they were recorded. `tests/replay_harness.py`
-answers every `/chat/completions` POST from `tests/fixtures/replay/<case>/calls.json` by
-the call's key (model, messages, max_tokens) and fails on a prompt it has no reply for; any
-other HTTP call fails as offline; the clock and uuids are fixed. `tests/replay_build.py`
-re-records a case from an acceptance run against a scripted model (the run's outline and
-sections, readings of its material); rebuild only when a change in behaviour is meant, and
-say so.
+**Replay tests.** `tests/test_pipeline_replay.py` replays recorded turns (one
+acceptance run per format, the chat turns for data analysis and career documents, and
+two revisions) and requires the same events, sections and stored rows as when they
+were recorded. `tests/replay_harness.py` answers every `/chat/completions` POST from
+`tests/fixtures/replay/<case>/calls.json` by the call's key (model, messages,
+max_tokens) and fails on a prompt it has no reply for; any other HTTP call fails as
+offline; the clock and uuids are fixed. `tests/replay_build.py` re-records a case from
+an acceptance run against a scripted model; rebuild only when a change in behaviour is
+meant, and say so.
 
-**Composed pipelines** (`app/pipeline/compose.py`, `app/routers/user_pipelines.py`). The
-shipped files stay locked. An agent's process › **Set it up yourself (advanced)** edits a `user_pipelines` row: a
-list of at most twelve coarse **steps** `{id, kind, ref, settings}` —
+**Composed pipelines** (`app/pipeline/compose.py`, `app/routers/user_pipelines.py`).
+The shipped files stay locked. An agent's process › **Set it up yourself (advanced)**
+edits a `user_pipelines` row: a list of at most twelve coarse **steps** `{id, kind,
+ref, settings}`:
 
 | kind | ref / settings | needs | leaves |
 |---|---|---|---|
-| `agent` | an agent the person may run (own or organisation's), `instruction` | — | a document (report agent) or an answer (chat agent) |
-| `skill` | a script skill run by code (`date-calc`, `quote-calc`: the pre-pass steps) | — | material |
+| `agent` | an agent the person may run (own or organisation's), `instruction` | none | a document (report agent) or an answer (chat agent) |
+| `skill` | a script skill run by code (`date-calc`, `quote-calc`: the pre-pass steps) | none | material |
 | `check` | `grounding-check` (document or answer), `copy-check` (answer) | a product | findings, repaired once |
 | `review` | `model` (one the person may use), `repair`, `focus` | a product | findings in the grounding check's shape |
 | `human` | `gaps` (the question card) · `outline` (approval; just before a document agent) | a later agent | answers · an approved plan |
 | `export` | `formats` | a document | files (after the save) |
 | `condition` | `name`, `mode` `rule` (`rule: {step, value, op, target}`, branches `yes`/`no`) or `ai` (`question`, 2–4 `branches: [{key, label}]`) | an earlier step's value (rule) | one branch taken |
 
-Step ids are stable (`s1`, `s2` … when none is given; migration 0077 wrote them into stored
-rows). `user_pipelines.edges` (`[{from, to, branch?}]` by step id; `null` = the steps run in
-their stored order, as every pipeline before branches did, and edges that only repeat that order
-are read as `null`) makes the steps a graph from the first step; only a condition step may have
-more than one line out, one per branch. A **rule** reads a value the step it names left behind
-(`compose.CONDITION_VALUES`, also `condition_values` in `GET /user-pipelines/catalogue`: the
-request's attachments, attachment types and text; an agent's result kind, sections, characters
-and text; a calculation's result; a check's found/left; a review's found/fixed/left; the card's
-blanks and answers; the outline's sections) and compares it (`gt`, `eq`, `empty`, `contains`).
-An **AI** condition asks the judge model (`Request.judge`; the writer when a strict-local run's
-judge is not local) one small prompt and keeps its reason; its tokens join the run's usage like
-the card's judge. A rule whose value is missing (that step was on another branch or left none)
+Step ids are stable (`s1`, `s2` … when none is given). `user_pipelines.edges`
+(`[{from, to, branch?}]` by step id; `null` means the steps run in their stored order,
+and edges that only repeat that order are read as `null`) makes the steps a graph from
+the first step; only a condition step may have more than one line out, one per branch.
+A **rule** reads a value the step it names left behind (`compose.CONDITION_VALUES`, also
+`condition_values` in `GET /user-pipelines/catalogue`: the request's attachments and
+text; an agent's result kind, sections, characters and text; a calculation's result; a
+check's found/left; a review's found/fixed/left; the card's blanks and answers; the
+outline's sections) and compares it (`gt`, `eq`, `empty`, `contains`). An **AI**
+condition asks the judge model (`Request.judge`; the writer when a strict-local run's
+judge is not local) one small prompt and keeps its reason; its tokens join the run's
+usage. A rule whose value is missing (that step was on another branch or left none)
 takes `no`, an AI reply naming no branch the last branch, and the record says so.
 
 `compose.validate` holds the order to these contracts before every save and on
-`POST /user-pipelines/validate` (the editor's live messages), one Korean line per problem
-(「1번 검사(근거 대조): 앞 단계에서 만든 문서나 답이 있어야 합니다.」, "check 1
-(grounding check) needs a document or answer from an earlier step"), plus warnings (a card
-before an agent with no facts to ask is skipped). The **recursion guard** refuses an agent step
-whose agent is bound to this pipeline, directly or through the pipelines its agents are bound
-to. The last agent decides the surface: `report` for a document, `chat` for an answer; an
-agent's own pipeline must end on the agent's own surface. With edges the graph is checked first
-(`cycle`, `unreachable_step`, `branch_dead_end` for a branch with no line, `condition_incomplete`
-with what is missing, `parallel_next` for two lines out of a non-condition step), then the order
-rules along every path from the first step; all paths must end on the same surface
-(`branch_surface`) and no condition may sit between a card and its agent (`card_before_branch`).
-Every problem carries `step` (1-based number) and, for a step, `stepId`. A run refuses a
-pipeline with problems (`pipeline_invalid`). Bundles hold no condition steps.
+`POST /user-pipelines/validate` (the editor's live messages), one Korean line per
+problem (「1번 검사(근거 대조): 앞 단계에서 만든 문서나 답이 있어야 합니다.」), plus
+warnings (a card before an agent with no facts to ask is skipped). The **recursion
+guard** refuses an agent step whose agent is bound to this pipeline, directly or
+through the pipelines its agents are bound to. The last agent decides the surface:
+`report` for a document, `chat` for an answer; an agent's own pipeline must end on the
+agent's own surface. With edges the graph is checked first (`cycle`,
+`unreachable_step`, `branch_dead_end`, `condition_incomplete`, `parallel_next` for two
+lines out of a non-condition step), then the order rules along every path from the
+first step; all paths must end on the same surface (`branch_surface`) and no condition
+may sit between a card and its agent (`card_before_branch`). Every problem carries
+`step` (1-based number) and, for a step, `stepId`. A run refuses a pipeline with
+problems (`pipeline_invalid`).
 
-**Running.** A conversation runs a user pipeline when `sessions.pipeline_id` names one or its
-agent has one (`agents.pipeline_id`, set by `PUT /agents/{id}/process`). `send_message` then skips the agent's
-own gap card and, for a new request on the report or chat route, hands the turn to
-`user_pipelines.turn_response`; a follow-up on a finished document still revises it with the
-document's own `revise` flow. `compose.compile_steps` makes one stage per step (named
-`3:check`, titled by the step) and a save stage (`report-save`, or the answer stored as the
-message) before the first export; the existing `Runner` and `runs.Recorder` run them as flow
-`compose` of pipeline `user:<id>`, so every step is recorded, kept and rerunnable
-(`POST …/runs/{id}/rerun` routes a `compose` run to `user_pipelines.rerun`, on the steps as they
-were when it ran: the definition with its edges, the agents and the review models ride on
-`Request.turn`). With edges the stages come in graph order (exports last, so the save still
-precedes them); a condition stage writes its choice to `wire.branches` and the steps a later
-rule reads note their values on `wire.values`, both kept in the snapshots, and every step whose
-incoming lines all come from steps not reached or branches not taken is recorded as skipped
-(`compose.OTHER_BRANCH`); the condition's record keeps `evidence.branch = {key, label, reason,
-missing}`. `GET /user-pipelines/{id}/runs` (the pipeline's owner, their own runs, newest 30) and
-`GET /user-pipelines/runs/{run_id}` (the run's owner) read the stored records per step:
-`{id, number (its place among the owner's runs), status, pipeline_id, request_text (the request's
-opening words), attachments, session_id, parent_id, from_stage, started_at, ended_at, steps: [{step_id,
-kind, title, status (waiting · running · done · failed · skipped), started_at, ended_at,
-input_summary, output_summary, note, branch_taken, branch_label?}]}`, summaries built from the
-records' labels only, never the text a step read.
-**Canvas.** The web edits an agent's custom order as a graph at `/customize/agents/{id}/chain`
-(`pages/customize/ChainPage.tsx`, `@xyflow/react`): tabs 편집 (the canvas), 실행 기록 (the two run
-reads above, read once per run and again on 새로 고침, since runs are stored when they end or stop
-to wait) and 목록으로 보기 (the list editor, read-only once there are branches).
-`lib/pipelineGraph.ts` turns canvas lines into `stages` + `edges`: the step the start node leads to
-is stored first, the rest in reading order (branches in their order), and `edges` is `null` when
-the lines only repeat that order; a step (or a condition branch) keeps one outgoing line, and a line
-that would close a loop is refused. Before a 확인·내보내기 item is added, the palette asks
-`POST /user-pipelines/validate` about the graph with it put after the selected step and shows the
-problem it would have on that step (the server's rules, not a copy). It saves with `PUT /agents/{id}/process` and marks problems by
-their `stepId` (else their number). Dropping a skill opens `/customize/agents/new?from=skill:<id>`
-with `return`, and the agent saved there comes back as a step (`?added=<id>`); unsaved canvas state
-waits in `sessionStorage`. Its e2e answers with `apps/web/e2e/fixtures/chain-canvas.json`, which
-`tests/test_the_chain_canvas_fixture_is_the_apis.py` keeps equal to the API's catalogue, problem
-sentences and run reads.
-An **agent step** runs that agent's own flow as a sub-run: a document agent its format's
-`plan` (or the outline a `human:outline` step got approved) then `write`, with no save of its
-own; a chat agent one answer on its own prompt (tools stay with the conversation surface). What
-the previous agent produced is handed to the next as material (`Part(origin="handoff")`).
-A **review step** asks the chosen model for findings (quote, why, fix) over the product and the
-material, places them, applies the fixes once when `repair` is on, leaves the rest as
-`check-finding` marks, and is billed at its own model's price (`pipeline.review`). A **human
-step** raises `Wait`: what the run spent is billed, the card (`needs`) or the outline
-(`proposal`) is the session's pending turn with `pending.compose = {runId, stage}`, and the
-next message resumes the run from that step with the answers or the approved outline.
+**Running.** A conversation runs a user pipeline when `sessions.pipeline_id` names one
+or its agent has one (`agents.pipeline_id`, set by `PUT /agents/{id}/process`).
+`send_message` then skips the agent's own gap card and, for a new request on the report
+or chat route, hands the turn to `user_pipelines.turn_response`; a follow-up on a
+finished document still revises it with the document's own `revise` flow.
+`compose.compile_steps` makes one stage per step (named `3:check`, titled by the step)
+and a save stage before the first export; the existing `Runner` and `runs.Recorder` run
+them as flow `compose` of pipeline `user:<id>`, so every step is recorded, kept and
+rerunnable (`POST …/runs/{id}/rerun` routes a `compose` run to `user_pipelines.rerun`,
+on the steps as they were when it ran). With edges the stages come in graph order
+(exports last, so the save still precedes them); a condition stage writes its choice to
+`wire.branches` and the steps a later rule reads note their values on `wire.values`,
+both kept in the snapshots, and every step whose incoming lines all come from steps not
+reached or branches not taken is recorded as skipped (`compose.OTHER_BRANCH`); the
+condition's record keeps `evidence.branch = {key, label, reason, missing}`.
+`GET /user-pipelines/{id}/runs` (the pipeline's owner, their own runs, newest 30) and
+`GET /user-pipelines/runs/{run_id}` read the stored records per step: `{id, number,
+status, pipeline_id, request_text (the request's opening words), attachments,
+session_id, parent_id, from_stage, started_at, ended_at, steps: [{step_id, kind, title,
+status (waiting · running · done · failed · skipped), started_at, ended_at,
+input_summary, output_summary, note, branch_taken, branch_label?}]}`, with summaries
+built from the records' labels only, never the text a step read.
+
+**Canvas.** The web edits an agent's custom order as a graph at
+`/customize/agents/{id}/chain` (`pages/customize/ChainPage.tsx`, `@xyflow/react`): tabs
+편집 (the canvas), 실행 기록 (the two run reads above, read once per run and again on
+새로 고침) and 목록으로 보기 (the list editor, read-only once there are branches).
+`lib/pipelineGraph.ts` turns canvas lines into `stages` + `edges`: the step the start
+node leads to is stored first, the rest in reading order (branches in their order), and
+`edges` is `null` when the lines only repeat that order; a step (or a condition branch)
+keeps one outgoing line, and a line that would close a loop is refused. Before a
+확인·내보내기 item is added, the palette asks `POST /user-pipelines/validate` about the
+graph with it after the selected step and shows the server's problem on that step. It
+saves with `PUT /agents/{id}/process` and marks problems by `stepId` (else number).
+Dropping a skill opens `/customize/agents/new?from=skill:<id>` with `return`, and the
+agent saved there comes back as a step (`?added=<id>`); unsaved canvas state waits in
+`sessionStorage`. Its e2e answers with `apps/web/e2e/fixtures/chain-canvas.json`, which
+`tests/test_the_chain_canvas_fixture_is_the_apis.py` keeps equal to the API's
+catalogue, problem sentences and run reads.
+
+An **agent step** runs that agent's own flow as a sub-run: a document agent its
+format's `plan` (or the outline a `human:outline` step got approved) then `write`, with
+no save of its own; a chat agent one answer on its own prompt (tools stay with the
+conversation surface). What the previous agent produced is handed to the next as
+material (`Part(origin="handoff")`). A **review step** asks the chosen model for
+findings (quote, why, fix) over the product and the material, places them, applies the
+fixes once when `repair` is on, leaves the rest as `check-finding` marks, and is billed
+at its own model's price (`pipeline.review`). A **human step** raises `Wait`: what the
+run spent is billed, the card (`needs`) or the outline (`proposal`) is the session's
+pending turn with `pending.compose = {runId, stage}`, and the next message resumes the
+run from that step with the answers or the approved outline.
 
 **An agent's process** (`app/services/bases.py`, `app/services/bundles.py`,
-`PUT /agents/{id}/process`, or `process` on `POST /agents`: a new agent and its process are
-saved in one transaction, so a refused process leaves no agent). The agent form offers **How it works** — **Answer directly** (no base), **Start from a
-base process** (a **base**: an offered catalogue agent, `agents.base_key`) or **Set it up
-yourself (advanced)** (the step editor above, not offered for slides) — and **Extra work**,
-one checkbox per **bundle**.
+`PUT /agents/{id}/process`, or `process` on `POST /agents`: a new agent and its process
+are saved in one transaction, so a refused process leaves no agent). The agent form
+offers **How it works** (**Answer directly** with no base; **Start from a base
+process**, a **base** being an offered catalogue agent, `agents.base_key`; or **Set it
+up yourself (advanced)**, the step editor above, not offered for slides) and **Extra
+work**, one checkbox per **bundle**.
 
 - A **base** is any offered agent file (`starter.offered_agents`; drafts for
-  administrators only). With none offered the form hides the choice (an agent already on a
-  withdrawn base keeps it). Its plain steps are its pipeline's `[summary]` lines (at most five);
-  `sessions._agent_catalog_key` resolves `catalog_key`, then `base_key`, then the original's,
-  so a person's agent with a base runs that base's question card, format, template and
-  pipeline. Picking a base sets `surface`, `doc_format` and (when the agent has none that
-  fits) `render_template_id`.
-- A **bundle** is data: `app/bundles/{prepare,review,finish,publish-check}.toml` ship **Prepare
-  before writing** · **Review after writing** · **Finish** · the pre-publication check; a person's own is a `user_pipelines` row with `kind = "bundle"`
-  in the same item shape (`{id, kind, ref, settings, label, default}`; `GET/POST/PUT/DELETE
-  /bundles`, `POST /bundles/{id}/share`). Where an item runs is decided by its kind alone
-  (`bundles.target`): a check skill with a stage is an `Agent.check_skills` entry, run inside
-  the agent's own flow (the report flow's find → repair → find again); `option` is
-  `Agent.check_options` (`tool_numbers`, `titles`, read by `check_skills.options_for`);
-  `flow` items (format checks, repair) are what the report flow always does; `skill` items
-  are the report flow's own pre-pass but steps before the agent on chat; `human:outline`,
-  `review`, `export`, other agents and `copy-check` are steps around the agent. Agent files
-  name their bundles (`bundles = [...]`) and the seeder compiles them with the same
-  `bundles.compile` the form's save uses, so a person who picks a base and ticks the same
-  bundles gets the same agent (`tests/test_agent_process.py` holds this for every base).
-- `agents.bundles` keeps the ticks; `check_skills`, `check_options` and, only when an item is a
-  step, the agent's **own pipeline** (`user_pipelines.agent_id`) are compiled from them. Its
-  `@self` agent step (`compose.SELF`) runs the agent's own shipped flow with the turn's web
-  search and connectors (none under strict-local); `compose.validate`'s recursion guard does not
-  apply to it. With no step needed there is no pipeline and the shipped flow runs as is.
-- **Review on share.** A shipped bundle never needs review. A person's bundle that exports,
-  reviews or runs another agent, and a set-it-up-yourself pipeline with any of those, reach others only after an
-  administrator approves them (**Process review** on the admin users page, the same queue as
-  below); until then others run the agent on its base (`user_pipelines.runs_for_others`).
-  Installing a copy carries `base_key`, `bundles`, `check_skills`, `check_options` and, when
-  it runs for others, a clone of the pipeline; deleting an agent deletes its own pipeline.
-- `GET /user-pipelines` lists a person's unbound pipelines (no `agent_id`, not bundles), which
-  a set-it-up-yourself pipeline can start from.
+  administrators only). With none offered the form hides the choice (an agent already on
+  a withdrawn base keeps it). Its plain steps are its pipeline's `[summary]` lines (at
+  most five); `sessions._agent_catalog_key` resolves `catalog_key`, then `base_key`,
+  then the original's, so a person's agent with a base runs that base's question card,
+  format, template and pipeline. Picking a base sets `surface`, `doc_format` and (when
+  the agent has none that fits) `render_template_id`.
+- A **bundle** is data: `app/bundles/{prepare,review,finish,publish-check}.toml` ship
+  **Prepare before writing** · **Review after writing** · **Finish** · the
+  pre-publication check; a person's own is a `user_pipelines` row with `kind =
+  "bundle"` in the same item shape (`{id, kind, ref, settings, label, default}`;
+  `GET/POST/PUT/DELETE /bundles`, `POST /bundles/{id}/share`). Where an item runs is
+  decided by its kind alone (`bundles.target`): a check skill with a stage is an
+  `Agent.check_skills` entry, run inside the agent's own flow (find → repair → find
+  again); `option` is `Agent.check_options` (`tool_numbers`, `titles`, read by
+  `check_skills.options_for`); `flow` items (format checks, repair) are what the report
+  flow always does; `skill` items are the report flow's own pre-pass but steps before
+  the agent on chat; `human:outline`, `review`, `export`, other agents and `copy-check`
+  are steps around the agent. Agent files name their bundles (`bundles = [...]`) and the
+  seeder compiles them with the same `bundles.compile` the form's save uses, so a person
+  who picks a base and ticks the same bundles gets the same agent
+  (`tests/test_agent_process.py` holds this for every base).
+- `agents.bundles` keeps the ticks; `check_skills`, `check_options` and, only when an
+  item is a step, the agent's **own pipeline** (`user_pipelines.agent_id`) are compiled
+  from them. Its `@self` agent step (`compose.SELF`) runs the agent's own shipped flow
+  with the turn's web search and connectors (none under strict-local); the recursion
+  guard does not apply to it. With no step needed there is no pipeline and the shipped
+  flow runs as is.
+- **Review on share.** A shipped bundle never needs review. A person's bundle that
+  exports, reviews or runs another agent, and a set-it-up-yourself pipeline with any of
+  those, reach others only after an administrator approves them (**Process review** on
+  the admin users page); until then others run the agent on its base
+  (`user_pipelines.runs_for_others`). Installing a copy carries `base_key`, `bundles`,
+  `check_skills`, `check_options` and, when it runs for others, a clone of the
+  pipeline; deleting an agent deletes its own pipeline.
+- `GET /user-pipelines` lists a person's unbound pipelines (no `agent_id`, not bundles),
+  which a set-it-up-yourself pipeline can start from.
 
-**Save as agent** (`GET /sessions/{id}/agent-draft`, `services/agent_draft.py`): the result
-card's and the panel's ⋯ open `/customize/agents/new?from=session:<id>` prefilled; nothing is
-saved until **Save**. "What this conversation settled" is distilled from the person's own messages only, by the
-model the conversation ran on — its strict-local model (no fallbacks, nothing masked away) when
-any turn ran strict-local, otherwise masked by `governance.mask`. A sealed agent's prompt is
-never copied. The base is the conversation's agent's, else inferred from its template; the
+**Save as agent** (`GET /sessions/{id}/agent-draft`, `services/agent_draft.py`): the
+result card's and the panel's ⋯ open `/customize/agents/new?from=session:<id>`
+prefilled; nothing is saved until **Save**. "What this conversation settled" is
+distilled from the person's own messages only, by the model the conversation ran on:
+its strict-local model (no fallbacks, nothing masked away) when any turn ran
+strict-local, otherwise masked by `governance.mask`. A sealed agent's prompt is never
+copied. The base is the conversation's agent's, else inferred from its template; the
 conversation's files go onto the new agent's shelf as copies
 (`POST /agents/{id}/knowledge/from-files`, the caller's own files only).
 
-**Sharing.** Private by default. Sharing an agent whose set-it-up-yourself pipeline needs
-review sets that pipeline's `review` `pending` when every agent step is one others can run (a
-catalogue agent or one shared with the organisation); an administrator approves (`visibility`
-org) or rejects with a reason (`/admin/user-pipelines/{id}/approve|reject`, the queue on the
-admin users page). A saved edit takes an approved pipeline back to private. A copy of the agent
-remaps catalogue agents to the taker's own copies (`settings.catalogKey`).
-
+**Sharing.** Private by default. Sharing an agent whose set-it-up-yourself pipeline
+needs review sets that pipeline's `review` to `pending` when every agent step is one
+others can run (a catalogue agent or one shared with the organisation); an
+administrator approves (`visibility` org) or rejects with a reason
+(`/admin/user-pipelines/{id}/approve|reject`, the queue on the admin users page). A
+saved edit takes an approved pipeline back to private. A copy of the agent remaps
+catalogue agents to the taker's own copies (`settings.catalogKey`).
 ### Asking for a review
 
-`POST /artifacts/{id}/critique` is the other half: one reading of a finished
-document by somebody who did not write it. It answers with a score out of ten
-and up to six things to fix, in **the same shape the linter produces**, so the
-panel shows one list of things to look at rather than two. The difference
-between the two is only where they came from — the linter is free and certain,
-the review costs a call and is an opinion.
+`POST /artifacts/{id}/critique` is one reading of a finished document by somebody who did not
+write it. It answers with a score out of ten and up to six things to fix, in **the same shape
+the linter produces**, so the panel shows one list. The linter is free and certain; the review
+costs a call and is an opinion.
 
-The score is a reading, not a gate. Nothing is blocked by it, and a review
-annotates the artifact rather than editing it: no version snapshot and no
-version bump, the same rule the fact-check follows.
+The score is a reading, not a gate. A review annotates the artifact (`data.critique`) rather
+than editing it: no version snapshot and no version bump, as with the fact-check. It is one
+reviewer and one pass, asked for explicitly, and charged like any other call (422
+`insufficient_credits` when the balance is short). Reports, decks and HTML artifacts can be
+reviewed.
 
-**One reviewer, one pass.** Every call is somebody's credit and the bill is
-shown before the turn, so the panel is one reviewer and the pass is asked for
-explicitly.
+The rubric is the `checklist.md` of the template an HTML artifact was written into, or a
+default rubric (`critique._DEFAULT_RUBRIC`) otherwise. Reviewing rules are kept apart from
+writing rules on purpose: folded into the brief, a rubric becomes a checklist the model writes
+*to* rather than one it can be measured by.
 
-The rubric comes from the template the document was written into
-(`checklist.md`), or from a default for the built-in report and deck tracks.
-Reviewing rules are kept apart from writing rules on purpose: folded into the
-brief, a rubric becomes a checklist the model writes *to* rather than one it
-can be measured by.
+### Design briefs
 
-### Reading a theme out of a document
+The look of a project's or agent's documents is its 디자인 지침, free text of at most 2000
+characters (`style_spec.MAX_BRIEF`). `design_brief.of(agent, project)` turns the texts into one
+design the writers read (the agent's first). The split is the whole design:
 
-> **Retired 2026-11-15** (`POST /designs/extract` answers 410). A document's look is followed by attaching it as a form.
+**`tokens`** (`accent`, `ink`, `muted`, `font`, plus `visualStyle`, `footer`, `logo`) is what the
+*renderers* draw with. `style_spec.parse` reads a colour, a typeface or a look from the text and
+`design.normalise_tokens` puts every value in a valid shape, so a bad colour becomes the default
+rather than something saved unnoticed. The values are what `.pptx`, `.pdf`, `.hwpx` and the browser
+preview can all express, so the preview does not lie about the file.
 
+**The text** is what the *model* reads, whole, as guidance. Colours do not help a model writing
+report prose (a hex code in a system prompt is spend with no effect); for images the colour is the
+instruction, so it travels as an English phrase (`design.image_clause`) beside the style chip, and a
+line 「그림 스타일: …」 in the brief sets the picture style. `design.CRAFT` holds brand-agnostic rules
+(`restraint`, `typography`) filtered per surface: a rule about heading depth reaches a report and not
+a chat turn.
 
-Four colours and a paragraph of house style are usually already on hand — the
-official-letter template everything is filed on, an earlier report, a page on the
-department site — rather than typed from scratch.
+The tokens are **copied onto the artifact** (`data.design`) when it is made, and the exporters read
+them from there, so a deck made last month does not repaint when the project's brief changes. With
+no brief the default palette is used, down to the greys in the PDF; the export tests pin that output.
 
-`POST /designs/extract` takes a `fileId` (its text is already extracted on
-upload) or a `url` (read through `builtin.scrape`, the same scraper the
-`fetch_url` tool uses) and answers with a **draft**. Nothing is stored. What
-comes back is one model's reading of a document, and the person who owns that
-document is the one who can say whether it read it right, so the editor opens
-on it with a note naming what it was read from.
-
-Every field is put through `design.normalise_tokens` and `design.craft_keys`
-before it leaves the service: a colour in the wrong shape becomes the default
-rather than a value somebody saves without noticing. The prompt says to leave
-`body` and `image_style` empty when there is nothing in the document to observe
-— an invented house style is worse than a blank field, because the blank one is
-obviously unfinished.
-
-Costs one call on the chat default model (`models.pick_default`), charged like any other; an
-uploaded file is internal material, so it is read on a strict-local model
-(see "Other boundaries", §7).
-
-### Themes
-
-> **Retired 2026-11-15.** Theme rows stay but no writer reads them; their writes answer 410 and new accounts get none. Migration 0091 wrote each project's and agent's theme out as its 디자인 지침 (§ Design briefs).
-
-
-One look, read by every surface that produces a document. Split in two, and the
-split is the whole design:
-
-**`tokens`** — `accent`, `ink`, `muted`, `font` — is what the *renderers* draw
-with. Four values, because `.pptx`, `.pdf`, `.hwpx` and the browser preview can
-each express all four; a fifth that only PowerPoint could draw would make the
-preview lie, which is the one property the three deck renderers guarantee.
-
-**`body`** is what the *model* reads, and it is capped at 400 characters.
-Colours are not in it for the text surfaces: a model writing report prose
-cannot act on `#7a1f3d`, and a hex code in a system prompt is spend with no
-effect. Image is the exception — there the colour is the instruction, so it
-travels as an English phrase (`design.image_clause`) appended to the prompt
-beside the style chip.
-
-`craft` names brand-agnostic rules the theme opts into, filtered per
-surface: a rule about heading depth reaches a report and not a chat turn.
-
-The tokens are **copied onto the artifact** when it is made, and the exporters
-read them from there. A deck presented last month does not repaint itself
-because the project changed its theme since — the same rule the
-per-slide accent already followed.
-
-A project with no theme renders with the default palette, down to the
-greys in the PDF. The export tests pin that output.
+Themes (`design_systems` rows) are not read by any writer. `POST /designs`, `PATCH`/`DELETE
+/designs/{id}` and `POST /designs/extract` answer 410 (`themes_retired`).
 
 ### The artifact gallery
 
-`GET /artifacts` returns **a page of cards**, not complete artifact bodies.
-The client fetches full documents only when they enter the viewport or open in
-an editor.
+The 아티팩트 page reads `GET /artifacts/gallery`: **a page of cards**, not complete bodies. It
+lists HTML pages, code files, charts and diagrams (`section`, one or a comma list; the sections
+are in `artifact_section.GALLERY`); reports and decks are listed under 파일함 › 작업 문서
+(`GET /artifacts/working`, one row per document with its version count) and pictures, sound and
+video under 만든 파일. `q` matches titles in the database (titles only, since bodies are what
+the endpoint exists not to read), `sort` is one of `updated`, `title`, `section`, `version` with
+`dir`, and `counts` gives each section over the same search, so the filter row is about the whole
+workspace and not the loaded page.
 
-Three parts, and each is visible in that sentence:
+**Keyset pages.** The default order is `updated_at`, which moves when somebody edits, and an
+offset would skip or repeat rows under the person scrolling. The cursor encodes the sort and the
+last row (ties broken by id) and belongs to one sort; the web client also pages by `offset`.
+`GET /artifacts` (`kind` as a comma list, `project_id`, `q`, `before_at`/`before_id`) is the
+same kind of card list for other callers, and `GET /artifacts/counts` its per-kind counts.
 
-**A page.** Keyset, not offset: the list is ordered by `updated_at`, which
-moves when somebody edits, and an offset would skip or repeat rows underneath
-the person scrolling. The cursor is the last row the client already has —
-`before_at` and `before_id`.
-
-**A card.** `ArtifactOut.card` cuts the body down to what a thumbnail shows:
-an HTML or code artifact travels without its markup at all, a deck as its first
-four slide titles, a report as the top of its first four sections. Media
-artifacts are already card-sized — a `src` and a duration — so they travel
-whole. Every trimmed row is marked `partial`, and anything that renders or
-edits a whole document fetches it by id first; the client keeps its fuller copy
-when a listing row for the same version arrives.
-
-**Counts and search that outlive the page.** The filter row claims to be about
-the workspace, so `GET /artifacts/counts` counts it; `q` searches titles in the
-database rather than filtering the page in the browser. Titles only — the
-bodies are what this endpoint exists not to read.
-
-HTML thumbnails hydrate on approach: an `IntersectionObserver` a screen ahead
-fetches the document for a card about to be seen, so the picture is there when
-it arrives and the ninety cards below it cost nothing.
+**A card.** `ArtifactOut.card` cuts the body down to what a thumbnail shows: an HTML or code
+artifact travels without its markup, a deck as its first four slides (`id`, `title`, `layout`)
+plus `partCount`, a report as its first four sections with the text cut to 400 characters, an
+HWP/Word/PowerPoint artifact as the top 400 characters of its text. Media artifacts are already
+card-sized and travel whole. Every trimmed row is marked `partial`; anything that renders or edits
+a whole document fetches it by id first.
 
 ### HWP documents
 
@@ -1680,15 +1458,15 @@ header's 저장. `open-docx-editor/fonts.css` gives the metric stand-ins for
 Calibri, Cambria, Arial, Times New Roman and Courier New (latin and latin-ext
 woff2, fetched by `unicode-range` only when used).
 
-**Our patch of the editor.** We ship open-docx-editor with a patch of our own,
-`apps/web/patches/open-docx-editor+0.7.6.patch` (not sent upstream; the package's
+**The editor patch.** open-docx-editor ships with a patch of our own,
+`apps/web/patches/open-docx-editor+0.7.6.patch` (the package's
 MIT notice stays in `node_modules/open-docx-editor/LICENSE`). `npm ci` applies it
 through patch-package (the `postinstall` script, `--error-on-fail`), so it is in
 place for local development, the web image (`Dockerfile` copies `patches/` before
 `npm ci`) and CI; `src/components/docx/odxKorean.test.ts` fails when the patched
 source lacks its `kloudchat-odx-patch` marker. The app imports the package's
-`src/` (its `dist/` bundle is not used and is not patched). Moving to another
-version means re-making the patch: edit `node_modules/open-docx-editor`, then
+`src/` (its `dist/` bundle is not used and is not patched). A new
+version needs the patch re-made: edit `node_modules/open-docx-editor`, then
 `npx patch-package open-docx-editor`. What it changes:
 
 - **East Asian fonts.** A run's `w:eastAsia` font (or `w:eastAsiaTheme`, the
@@ -1741,10 +1519,9 @@ copies of the stand-in's `@font-face` rules with the installed font first
 uses the real font, and an `odx-ea:<name>` copy limited to Hangul, kana and
 Han. A name's faces are added the first time the editor draws it
 (`setFontProvider`); each name has some 180 faces and a document uses a few.
-Both
-panels are `components/office/OfficePanel.tsx` (`useOfficeDocument` holds the
+The HWP and Word panels are `components/office/OfficePanel.tsx` (`useOfficeDocument` holds the
 load, save, 409, reload-on-new-version and ask-before-send logic) around their
-editor; on a phone the Word editor is read only, without its ribbon.
+editor, in the chrome every document panel shares (`components/document/DocumentChrome.tsx`); on a phone the Word editor is read only, without its ribbon.
 
 ### Reports written as HWP or Word files
 
@@ -1764,8 +1541,7 @@ chat that already has an office document open stay with the editor beside the ch
 its `hwp_write`/`docx_write`. On the report screen any request naming a file is written as
 that file.
 
-Picking the file. The home screen has no document cards beside its surfaces; the formats
-are the surfaces' own. With 보고서 chosen, a 형식 chip in the prompt box (beside where the
+Picking the file. The formats belong to the surfaces. With 보고서 chosen, a 형식 chip in the prompt box (beside where the
 picture options sit for 이미지) offers 웹 보고서 (the default), 한글 and Word; with 슬라이드,
 웹 슬라이드 and PowerPoint (`Composer` `OutputOptions`). The chip shows the file the typed
 request names (`Composer` reports `reportFileKind`, or
@@ -1773,11 +1549,10 @@ request names (`Composer` reports `reportFileKind`, or
 it as `outputFormat` (`SendMessage.output_format`: `web`, `hwp`, `docx`), and
 `sessions._report_output` prefers it to the request's words. The decided file is kept on the
 waiting card (`pending.output`), so the approval that writes the outline writes that file
-and the browser opens no HTML draft for it. PowerPoint on the slides screen is today's
-PowerPoint path, not the deck pipeline: the request goes to a chat that opens with a blank
+and the browser opens no HTML draft for it. PowerPoint on the slides screen is the PowerPoint
+tool path, not the deck pipeline: the request goes to a chat that opens with a blank
 deck in the editor (`createDocument`), where the `pptx_*` tools write it. With a file picked, a
-「빈 문서로 시작」 chip beside it opens it blank in its editor beside a chat without a prompt, as the
-document cards did.
+「빈 문서로 시작」 chip beside it opens it blank in its editor beside a chat without a prompt.
 
 Nothing new is stored on the session row: `_send_message` passes the format
 (`office`) into `_run_report` and the pass's `Request.turn`, and `report-save`
@@ -1794,8 +1569,7 @@ The file. `report_office.write` gives the exporters the sections as `GET
 template), after drawing what the browser draws for the HTML report: each `chart` fence
 as a one-slide python-pptx chart rendered by the printer (`/pptx/png`) and each `mermaid`
 figure through `diagram_render.render_png`, stored under the section's `diagrams` key that
-`report_export._diagram_picture` reads. OWPML has no chart element, so the HWPX has always
-placed a chart as a picture; the Word file does the same here (`charts_as_pictures`)
+`report_export._diagram_picture` reads. OWPML has no chart element, so the HWPX places a chart as a picture; the Word file does the same here (`charts_as_pictures`)
 because the web editor draws no DrawingML chart, and its 목차 is the headings as text
 (`static_toc`) since no field runs there. Without the printer a chart keeps its numbers'
 table and a mermaid figure its 「[다이어그램]」 line. Both exporters keep a line's
@@ -1838,7 +1612,6 @@ A bare 「PPT 만들어 줘」 or 「발표 자료」 is any deck and still goes
 slides surface (the `deck` kind, whose own export is `.pptx` too): the web
 composer keeps a request on the chat only when `NAMES_PPTX`
 (`lib/documentRequest.ts`) matches, mirroring the server's `_ASKS_PPTX`.
-Migration 0080 adds `pptx` to the Postgres enum.
 
 `services/pptx_edit.py` reads and edits the file with python-pptx (MIT) and
 lxml. Ids are slides `s1…` and, per slide, the shapes worth naming in drawing
@@ -1878,12 +1651,11 @@ the body colour; a line break inside an item is `a:br`, never a raw newline in a
 run (the editor would split it into a paragraph that borrows the bullet's
 style); the corner page number is a `slidenum` field, renumbered on every save.
 Text a pattern layout cannot fit is written whole and shrunk (`a:normAutofit`);
-only the PDF draws an ellipsis. Decks written before this heal as they are read
-(`pptx_edit.healed`: on load for the agent's edits and when the editor fetches
-the file): a lone marker run with `buNone` becomes a real bullet, newlines in runs
-become breaks, a static corner number becomes the field. `pptx_doc.deck` takes the
-project's design tokens and slides template like the web slides' export
-(`pptx_doc.project_look` finds them from the conversation's project).
+only the PDF draws an ellipsis. Older decks are healed as they are read (`pptx_edit.healed`: on load for the agent's
+edits and when the editor fetches the file): a lone marker run with `buNone` becomes a real
+bullet, newlines in runs become breaks, a static corner number becomes the field.
+`pptx_doc.deck` takes design tokens and an optional slides template like the web slides' export
+(`pptx_doc.project_look` finds them from the conversation's agent or project).
 
 The editor is pptx-react-viewer (crv, Apache-2.0, pinned to 4.74.0, with
 `ooxml-core` and `ooxml-ui` pinned as it resolves them), used through its
@@ -1924,7 +1696,7 @@ the slide.
 ### Form files (양식)
 
 A form file is an Office file whose look and slots a document is written into, as opposed to
-material that is read. It replaces templates for the look of PowerPoint, Word and HWPX output.
+material that is read. It decides the look of PowerPoint, Word and HWPX output.
 
 - **Profile on upload.** `services/form_profile.py` reads an Office upload once by code and
   stores `files.form_profile`: a PowerPoint's slide size, theme fonts and colours, and every
@@ -1989,9 +1761,8 @@ Structure comes from the request, not from a picked template (`services/patterns
   instruction, as `report_stages.bundle_for` decides it; a picked template or an agent's bound
   format still wins). With it come the format's pre-writing questions (`gap_questions.resolve`
   by `doc_format`), process settings (`process_settings.governing_template`), genre rule, and
-  now its check skills (`render_template_checks` falls back to `patterns.check_skills`). The
-  format templates still hold these settings; `patterns` is where the turn asks for them by
-  format.
+  its check skills (`render_template_checks` falls back to `patterns.check_skills`). `patterns` is where the turn asks
+  for these settings by format.
 - **Decks.** The pattern is the deck's purpose, one of 13 (`app/patterns/deck/*.toml`): 심사 발표,
   연구·논문 발표, 수업 과제 발표, 투자 IR, 실적·성과 보고, 프로젝트 결과 보고, 제품·서비스 소개, 제안 발표,
   정책·제도 안내, 교육·온보딩, 강의 자료, 케이스 발표, 회의·브리핑 자료. Each file holds the words that
@@ -2010,13 +1781,13 @@ The web slides (`DeckPanel`, a deck artifact's JSON) work the way the PowerPoint
 editor does, so the two read as one family. The header is the document panels'
 (`OfficePanel`): title, version, 저장 안 됨, 저장 (and Ctrl+S), 내려받기, 공유, 더보기
 (버전 기록, 검토, 발표, 이 장 다시 만들기, 이 장 팩트체크, reuse), width, close; it
-mirrors `OfficePanel` until the shared header is extracted. Under it is the
+is the shared `DocumentChrome` header. Under it is the
 chrome the two editors share (`components/pptx/chrome.tsx`, no editor library
 with it): one toolbar row (`DeckToolbar`) in the PowerPoint editor's order and
 icons (실행 취소, 다시 실행, 확대/축소 | 레이아웃, 이미지, 표, 차트 | 글꼴, 크기 | 굵게,
-기울임꼴, 밑줄, 텍스트 색상, 서식 지우기 | 테마, then 검토 and 발표), where the layout,
+기울임꼴, 밑줄, 텍스트 색상, 서식 지우기 | 모양, then 검토 and 발표), where the layout,
 table and chart stand in the place of the text box and shape (a web slide places
-its content by layout) and 테마 holds the deck's look, accent colours, this
+its content by layout) and 모양 holds the deck's look, accent colours, this
 slide's accent and several slides at once; the numbered thumbnail rail with the
 slide menu (새 슬라이드, 슬라이드 복제, 위로 이동, 아래로 이동, 슬라이드 삭제), drag to
 reorder and 「+ 새 슬라이드」; the speaker notes under the slide. A selected table,
@@ -2044,7 +1815,6 @@ left out) is kept on the slide as `held`, said under the slide with
 「다음 장으로 옮기기」, and taken back by a later layout change. On a phone the
 deck reads only, with the PowerPoint editor's note and layout (thumbnails in a
 row under the slide).
-
 ### Office files in the file box
 
 The file box (`FilesPage`, `components/files/FilePreview.tsx`) previews an
@@ -2054,32 +1824,30 @@ of that kind is opened: `DocxPreview` mounts open-docx-editor with
 `readOnly` (pages, no ribbon), `PptxPreview` mounts `SlidesEditor` with
 `canEdit` off (canvas and thumbnails, no toolbar), and `HwpPreview` runs
 rhwp-studio in an unseen iframe and asks it for each page as SVG
-(`getPageSvg`, the first 30 pages). Those pages are put into the app's own DOM,
+(`getPageSvg`), laying out a sheet for every page and drawing each as it is scrolled
+to (`components/hwp/lazyPages.ts`). Those pages are put into the app's own DOM,
 so the app's Korean fonts apply; `safePage` (`officePreview.ts`) first drops
 scripts, `foreignObject`, animation, event handlers and any link that is not to
 the drawing's own parts or a `data:image/` picture. If an editor cannot draw a
 file, the preview falls back to its extracted text with a short note. Legacy
-`.doc`/`.ppt` are text previews as before.
+`.doc`/`.ppt` are text previews.
 
 「편집」 never writes the file: it starts a chat and creates an office artifact
 from the file (`POST /artifacts/{hwp|docx|pptx}` with `fileId`), titled from the
 file name, and opens it in the editor beside the chat, where versions, saves
 and the agent's tools work as for any office document. The artifact remembers
 its file in `data.sourceFileId` (`office_doc.with_source`); saves carry it to
-every version and a restore keeps it, so no migration is needed.
+every version and a restore keeps it.
 `GET /files/{id}/documents` lists the documents opened from a file, newest
 first, and the preview offers the newest whose chat still exists
 (「이어서 편집」) before 「새 사본으로 편집」 makes another. On a phone the
-preview, like the editors, only reads; an HWP preview lays out a sheet for every
-page and draws each as it is scrolled to (`components/hwp/lazyPages.ts`), so a long
-file is never cut at a page count. The old `POST /files/{id}/open-as-document`
-(an `.hwpx` turned into an HTML report session) answers 410 and names
-`POST /artifacts/hwp` with `fileId` instead.
+preview, like the editors, only reads. `POST /files/{id}/open-as-document` answers 410
+and names `POST /artifacts/hwp` with `fileId`.
 
 ### Chat edits of the document open beside the chat
 
 All five document formats (웹 보고서, 한글, Word, 웹 슬라이드, PowerPoint) take chat edits
-the same way; only the file differs.
+the same way.
 
 **Which document.** Every turn carries the document open in the panel,
 `SendMessage.openArtifact` `{id, version}` (`useStore.openTarget`; a local draft is not
@@ -2089,8 +1857,7 @@ sent). The server trusts it only when it is the person's and this conversation's
 pick by `office_doc.target`: the document this turn already read or wrote, else the open
 one, else the conversation's only one of the kind; with several and none open the read
 tool says so and the model asks which (`*_read` takes `document`, a title). The
-server's pre-read and its chapter count (「3장」) read the same document, never "the
-newest of its kind".
+server's pre-read and its chapter count (「3장」) read the same document.
 
 **Versions.** Every writer moves a document only from the version it read. JSON
 documents (web report, web deck) go through `artifact_versions.advance`, the
@@ -2180,8 +1947,7 @@ that would drop them does so unasked. `lib/officeGuard.ts` holds every open
 document's guard (its unsaved state, a fresh read of it, the question, a plain
 save). Closing the panel or opening another artifact (`openArtifact`), a new
 conversation from the chat (`newSession`), another page (`UnsavedLinkGuard`,
-a `useBlocker` on a data router whose one catch-all route renders the old
-`<Routes>`; it covers links, router moves and browser Back, and after the office
+a `useBlocker` on a data router whose one catch-all route renders `<Routes>`; it covers links, router moves and browser Back, and after the office
 question asks 머물기 / 버리고 옮기기 for any other unsaved form, so one move asks
 each once), the new-version bar's reload and the automatic reload after
 a deploy's missing chunk (`vite:preloadError` in `main.tsx`) all ask first:
@@ -2189,7 +1955,7 @@ a deploy's missing chunk (`vite:preloadError` in `main.tsx`) all ask first:
 gets the browser's own prompt (`useMarkUnsaved`, which reads the state as the
 page goes, so an answer just given is not asked again). The idle sign-out asks
 nobody: it saves the open documents as a version first (bounded to 15 s), then
-signs out. Before an agent turn the question is as before, but "discard" sends
+signs out. Before an agent turn the same question is asked, and "discard" sends
 only once the saved file is loaded back.
 
 A save clears the unsaved mark only for what it exported. The panel counts the
@@ -2291,8 +2057,7 @@ partial answer. Closing the outside audience closes every channel with it.
 ### The workspace store
 
 Agents and skills live in one account — the oldest administrator's, resolved by
-`starter.catalog_owner_id`, derived rather than stored — shared to the
-workspace, and taken from the store tabs of **Customize** (`/customize`) a copy at a time.
+`starter.catalog_owner_id` and not stored — shared to the workspace, and taken from the store tabs of **Customize** (`/customize`) a copy at a time.
 `POST /agents/{id}/install` and `POST /skills/{id}/install` do the copying, and
 both are idempotent: pressing **Import** twice returns the row you already have
 rather than a second one with the same name.
@@ -2300,45 +2065,39 @@ rather than a second one with the same name.
 The shipped catalogue is `starter._SKILLS` plus `starter._AGENTS`, the
 agents read from `app/agents/<key>.toml` (prompt, guide, starters, kinds,
 bindings, an explicit tool list — `[]` denies every tool — skill keys and the bundles
-they run). No agent is offered: every shipped agent is withdrawn (below, "Skills instead of
-shipped agents"), and what they did ships as skills.
+they run). No agent is offered: every shipped agent file is withdrawn or retired (below,
+"Skills instead of shipped agents"), and the work they described ships as skills.
 
 **Listed, hidden, retired.** `listed: false` (a SKILL.md, a `template.toml`, a
-`starter._DESIGNS` entry) or `connector_catalog.listed` keeps a shipped part out of the lists
-people pick from — the skill hub and store, the template and theme pickers, the members'
-connector catalogue — while it still runs by name, in bundles, in the editors that name it, and in
-the conversations and documents that already use it. Unlike `draft`, it does not gate
-`run_skill_script`. The wire carries `listed`; administrators see hidden rows behind **Show
-hidden**. Listed: the skills `grounding-check`, `gap-check`, `calc-check`, `date-calc`,
-`quote-calc`, `xlsx-clean`, `pdf-table` and `pii-mask`, the work skills that replaced the
-shipped agents and the two connector companions, and translation `translation`, press release
-`press-release`, Excel file `xlsx-build` and chart `chart-make`; the offered document templates
-(the meeting agenda `doc-agenda` beside the minutes) and
-the briefing deck (`deck-briefing`); the themes **Basic** (기본) and the document serif
-(문서용 명조); the time connector (deep research disabled, YouTube unlisted).
-**Finish**'s export item names `by_format`: an official-letter-family format (`internal_draft`, `official`,
-`event_plan`, `result_report`, `gaejo`) exports HWPX when ticked without a format, anything
-else its first `formats` (`bundles.export_default`). An agent file with `retired = true`
-(cover letter and career history `career-docs`, client proposal `client-proposal`) is never seeded afresh; its
-rows and every copy get `agents.retired`, are listed nowhere, refuse install and new
+`starter._DESIGNS` entry) or a connector catalogue entry's `listed` keeps a shipped part out
+of the lists people pick from — the skill hub and store, the template and theme pickers, the
+members' connector catalogue — while it still runs by name, in bundles, in the editors that
+name it, and in the conversations and documents that already use it. Unlike `draft`, it does
+not gate `run_skill_script`. The wire carries `listed`; administrators see hidden rows behind
+**Show hidden**. Unlisted: the skills `copy-check`, `generic-language-killer`,
+`answer-hold`, `contact-note`, `text-fit` and `source-check`; the deck templates `deck-signal`,
+`deck-proposal`, `deck-editorial`, `deck-lecture`, `deck-defense` and `deck-case`; the theme
+「발표용 청록」.
+**Finish**'s export item names `by_format`: a document format listed there exports HWPX when
+ticked without a format, anything else its first `formats` (`bundles.export_default`).
+An agent file with `retired = true` (`career-docs`, `client-proposal`) is never seeded afresh;
+its rows and every copy get `agents.retired`, are listed nowhere, refuse install and new
 conversations (410 `agent_retired`), and keep their conversations and documents. Their
 templates are in `design_templates.RETIRED_KEPT` and their formats in `doc_formats.RETIRED`.
-A
-prompt's `[채팅에서]` / `[보고서에서]` / `[슬라이드에서]` lines ("in chat", "in reports",
-"in slides") open parts read
-on that surface only (`workspace_context.surface_prompt`); `[보고서·슬라이드에서]` names two.
-A skill body uses the same lines (`surface_body`), so one skill can tell a chat answer to run
-its script and a report writer to copy the server's pre-pass block.
+A prompt's `[채팅에서]` / `[보고서에서]` / `[슬라이드에서]` lines ("in chat", "in reports",
+"in slides") open parts read on that surface only (`workspace_context.surface_prompt`);
+`[보고서·슬라이드에서]` names two. A skill body uses the same lines (`surface_body`), so one
+skill can tell a chat answer to run its script and a report writer to copy the server's
+pre-pass block.
 `seed_catalog` syncs the catalogue on the owner's sign-in and deletes the
 owner's rows whose `catalog_key` is not shipped at all (a key still in a file with
-`retired = true` is kept, hidden); copies people installed are theirs and stay. Sharing is set on the first run only (told apart by a
-catalogue agent, or a shipped skill that is shared or has been installed), so a
-skill the administrator made private stays private. `former_names` in an agent file renames untouched copies on sync.
+`retired = true` is kept, hidden); copies people installed are theirs and stay. Sharing is
+set on the first run only, so a skill the administrator made private stays private. `former_names` in an agent file renames untouched copies on sync.
 
 Shipped skills are ordinary skills of that account (`source = personal`; copies are
 `workspace` — there is no built-in source): the owner
 can edit or unshare them in **Customize** like any skill of their own (a deleted one is seeded
-again on the next sync, as agents are), and the store
+again on the next sync), and the store
 shows them under the owner's name. `skills.package_hash` is the owner row's content as last
 synced; while the row still hashes to it the sync rewrites it from its package, and copies
 whose content equals the owner row's previous content follow along; an edited owner row
@@ -2362,15 +2121,14 @@ switched on. Knowledge shelves never travel: those are the author's documents,
 and copying their agent is not a grant over their files.
 
 `official` is computed per request from the publisher's current role rather
-than stamped on the row, so an entry does not go on claiming to be official
-after the administrator who published it was demoted.
+than stamped on the row.
 
-`_copy_of` matches an account's existing copies by catalogue key — and, for
-agents, by slug — so seeded copies count as installed.
+`_copy_of` matches an account's existing copies by catalogue key (for agents also by
+slug), so seeded copies count as installed.
 
 ### Skills instead of shipped agents
 
-There are no built-in agents. Each thing a shipped agent file describes is an admin-owned
+There are no built-in agents. Each piece of work a shipped agent file describes is an admin-owned
 shared skill (`app/skills/<key>/`, seeded and followed like every package), which a person
 switches on in a conversation or builds into an agent of their own. Five skill fields carry
 what an agent would — the same ones a person sets in the skill form (**Server checks**,
@@ -2450,7 +2208,7 @@ composer greys it out with the same rule (`lib/serverSkills.ts`).
 The skill's body is the agent file's prompt; the agent file's bundles compile to the checks
 above (the prepare bundle's date and amount pre-passes and the review bundle's format checks
 and repair run inside the report flow for every template that sets them). What a skill does
-not carry is the look — the theme stays a choice of the person or the agent — and the agent's
+not carry is the look — the theme stays a choice of the person or the agent — and the agent file's
 0.3 temperature (a turn without an agent writes at 0.4).
 
 Two skills tell the model when and how to use the default connectors: YouTube transcript and
@@ -2466,26 +2224,26 @@ credentials only for env values the person enters — `{{...}}` identity placeho
 shared skill reads **By: Official** in the hub, as their agents do; a copy reads **Original:
 Official**, and **Edited by me · Original: …** once changed.
 
-Four more work skills have no agent file behind them. Translation
-`translation` (chat, report) and press release `press-release` (chat, report; grounding-check
-and generic-language-killer, no search) are instructions only; a press release written as a
-report gets the `press` format's head when the request names it. Excel file `xlsx-build` (chat,
-needs `run_skill_script`) builds a workbook with `scripts/build.py` from `sheets` given in the
+Four more work skills have no agent file behind them: translation `translation` (chat,
+report), press release `press-release` (chat, report; grounding-check and
+generic-language-killer, no search), Excel file `xlsx-build` and chart `chart-make`. Excel
+file (chat, needs `run_skill_script`) builds a workbook with `scripts/build.py` from `sheets` given in the
 args or from a chat file (a pasted table, an attachment, or a CSV `run_code` saved): computed
 columns as `{column}` formulas per row, a `SUM` total row where a formula column repeats its
 formula (a rate stays total ÷ total), number formats, and an optional native chart. LibreOffice
 in the sandbox caches the formula values, which the summary returns for the answer to quote;
 the file is a step output, shown under the answer as a download. Chart `chart-make` (chat,
-needs `create_chart`) tells the model when and how to draw a chart artifact. The meeting agenda
+needs `create_chart`) tells the model when and how to draw a chart artifact. Translation and
+press release are instructions only; a press release written as a report gets the `press`
+format's head when the request names it. The meeting agenda
 template `doc-agenda` binds the `agenda` format (the minutes' head) with its own genre rule,
 missing-information questions (meeting date, attendees) and date pre-pass.
 
-**Withdrawn, not retired.** An agent file with `withdrawn = true` stays in the catalogue: the
-sync keeps its owner row and keeps untouched copies following it, `bases.get` still resolves
-it for the agents built on it as a base, and existing conversations and published bots run as
-before. It is left out of `GET /agents`, the base picker (`bases.bases()` without
-`withdrawn=True`) and install (410 `agent_retired`). Nothing in the database changes for it;
-a member's own copy (which carries `origin_id`) stays listed and theirs.
+**Withdrawn.** An agent file with `withdrawn = true` stays in the catalogue: the sync keeps
+its owner row and untouched copies follow it, `bases.get` still resolves it for agents built
+on it as a base, and existing conversations and published bots keep running. It is left out
+of `GET /agents`, the base picker (`bases.bases()` without `withdrawn=True`) and install (410
+`agent_retired`). A member's own copy (which carries `origin_id`) stays listed.
 
 ### Coding agents
 
@@ -2601,7 +2359,6 @@ System › Features › Text from scans (OCR). With both, the engine reads every
 low or that holds a ruled table is read again by the vision model, whose text is kept;
 when the two readings differ in words or in any number the page is marked for review.
 Pages read are recorded on the ledger as units.
-
 ### Understanding videos and recordings
 
 People upload lecture recordings and screen recordings to a project or a conversation and
@@ -2627,8 +2384,7 @@ for a day are removed by the job loop.
 **The media worker** (`apps/media`, the `media` service). ffmpeg is LGPL/GPL, so it is
 never linked or bundled into the app: it runs as Debian's unmodified package in a container
 of its own, behind a standard-library HTTP API — `/probe` (ffprobe), `/audio` (a 16 kHz mono
-FLAC piece), `/scenes` (the times the picture changes, below), `/frame` (one JPEG), `/poster`'s
-source.
+FLAC piece), `/scenes` (the times the picture changes, below) and `/frame` (one JPEG).
 
 *Finding changes.* The worker compares edge maps — ffmpeg's `edgedetect` at 320×180, averaged
 to 80×45 — because text and slide shapes are crisp edges while a speaker's motion is mostly
@@ -2637,7 +2393,9 @@ last kept frame, and the frame kept is the first after the change settles (a tra
 build). How the frames are read depends on the file: a picture at least 900 px tall whose
 keyframes come at least every 6 s (`MEDIA_KEYFRAME_*`) is read at its keyframes only, one
 seek each, `MEDIA_SCAN_PARALLEL` side by side; anything else is decoded at 1 fps in that many
-segments side by side. A stretch over 90 s without a change still gets a frame. It reads uploads through a read-only mount, so a request names a storage key and
+segments side by side. A stretch over 90 s without a change still gets a frame.
+
+The worker reads uploads through a read-only mount, so a request names a storage key and
 never carries the video; it holds no secrets, joins only the internal `media` network, runs
 ffmpeg at low priority with `MEDIA_JOBS` runs at once, and compose caps it at `KCHAT_MEDIA_CPUS`
 and `KCHAT_MEDIA_MEMORY`.
@@ -2645,19 +2403,18 @@ and `KCHAT_MEDIA_MEMORY`.
 **The job** (`services/video_jobs.py`). Claimed like OCR jobs — `SKIP LOCKED`, a claim token,
 a ten-minute lease another replica takes over — and taken through:
 
-1. *probe* — duration and streams; a file with neither, or longer than `VIDEO_MAX_MINUTES`,
-   fails at once with the reason;
+1. *probe* — duration and streams; a file with neither, or longer than `VIDEO_MAX_MINUTES`
+   (240), fails at once with the reason;
 2. *frames* — the worker's candidate times (twice the cap), each frame fetched once; one that
    is the same picture as the last kept frame is dropped (`video_read.same_picture`: a 64-bit
    difference hash within 6 bits *and* at most 1.5 % of a 640×360 edge map moved — the hash
    alone calls slides of one template with different text the same); the rest thinned evenly to
    `VIDEO_FRAMES_PER_MINUTE` × minutes (at most `VIDEO_MAX_FRAMES`); each kept frame and a
    320 px thumbnail are stored beside the video (`<key>.frames/`, removed with it);
-3. *reading* — speech and pictures side by side. Speech: ten-minute pieces overlapping by 5 s
+3. *reading* — speech and pictures side by side. Speech: pieces of 580 s overlapping by 5 s
    to the internal Whisper (`transcribe.segments_of`, `verbose_json` with segment timings; the
    first piece's language holds for the rest). Pictures: each frame to the strict-local vision
-   model the OCR settings choose (`video_read`, `qwen3.8-flash` by default, checked per
-   deployment before the first frame), `VIDEO_VISION_PARALLEL` at a time, for its kind, its
+   model the OCR settings choose (`video_read`; checked per deployment before the first frame), `VIDEO_VISION_PARALLEL` at a time, for its kind, its
    text verbatim and a one-line description; a picture shown again (back to an earlier
    slide) is read once. Without a vision model the speech still counts; without audio the
    pictures do;
@@ -2666,19 +2423,11 @@ a ten-minute lease another replica takes over — and taken through:
    speech said while they were on screen, a long talk over one picture split every 75 s.
 
 Every finished piece and frame is a `media_parts` row with its own short session, so a job
-taken over after a restart resumes where it stopped, and a failure is retried three times
+taken over after a restart resumes where it stopped, and a failure is retried up to three attempts
 (a file that cannot be read fails at once). Speech is recorded on the ledger as seconds
 (`media.transcribe`), pictures as tokens (`media.vision`) — a priced vision model is charged
-at its full rate, no cache discount, and is checked against the owner's credits before the
+at its full rate and is checked against the owner's credits before the
 first frame.
-
-Measured on 20-minute windows of three public-domain lectures with 61 slide changes marked by
-hand (a slide webinar, a CDC Grand Rounds deck where every slide shares one template, a Zoom
-lecture with a speaker inset): slides missed went from 3, 5 and 9 with the first version
-(ffmpeg's scene score and the hash alone) to 1, 0 and 0 — the one missed was on screen for
-three seconds. The 1080p scene pass took 14.6 s instead of 48.8 s (keyframes; 24 of 25
-slides, the full decode 25 of 25 in 24.5 s), and a 1080p talking head now gives two frames in
-ten minutes, read in 6 s.
 
 **The time-coded document** becomes the file's text, so search, project context, the index
 and per-file digests read it like any document:
@@ -2709,8 +2458,7 @@ moment's thumbnail (`TimeChip`); a click opens the player at that time.
 `GET /files/{id}/media` for the state, the segments and signed URLs — `stream` (the original,
 served from disk with HTTP Range, so seeking never downloads the whole file) and `frames`
 (thumbnails). The signature is an HMAC over the file, its owner and an expiry six hours out:
-an element cannot send an Authorization header, and an access token in a URL would outlive
-nothing and land in logs. Below the player, the outline lists each stretch with its picture,
+an element cannot send an Authorization header, and an access token in a URL would land in logs. Below the player, the outline lists each stretch with its picture,
 what was on screen and what was said; a click plays from there. While the job runs, the file
 chip and the player show the step and progress, and a failed video offers 「다시 읽기」
 (finished pieces are kept). A conversation asking about a video still being read is told so,
@@ -2833,8 +2581,7 @@ opening block, which is a stable prefix across turns.
 once the model is final. Every model has one (`context.effective_window`): the
 window its catalogue row states (LiteLLM metadata or a `MODEL_OVERRIDES`
 `context_window`), else `DEFAULT_CONTEXT_WINDOW` (128k tokens) — most hosted
-models state none, and without it they were sent the whole conversation every
-turn. The estimate below is calibrated on the self-hosted Qwen tokenizer; another
+models state none, so none is ever sent an unbounded conversation. The estimate below is calibrated on the self-hosted Qwen tokenizer; another
 model may count the same Korean text up to 1.4× higher (GLM), so outside the
 self-hosted group the window is read 1.5× smaller in the estimate's units. The
 attached-text budget follows the same window (`file_budget`). The fixed
@@ -2959,10 +2706,8 @@ artifact payloads and routing metadata) is deterministically masked with the
 `answer` scope described next, even when the inbound envelope was clean. Title
 generation and automatic memory receive only the masked turn text.
 
-**A strict-local turn asks before it searches** (`services/search_consent.py`). Dropping
-the search silently left the person unaware that a question about other work was answered
-from their own material alone, so a strict-local turn whose web search is on (or 자동) shows
-what would leave and asks. Nothing but short queries ever leaves; the material stays inside.
+**A strict-local turn asks before it searches** (`services/search_consent.py`). A strict-local turn whose web search is on (or 자동) shows what would leave and asks, so the
+person knows when a question was answered from their own material alone. Nothing but short queries ever leaves; the material stays inside.
 
 - *Chat.* The turn is offered a local tool, `request_web_search(queries)` (1–5 short keyword
   queries, no sentences or figures from the material). A question the server would search
@@ -3065,12 +2810,10 @@ what is the same for every turn of the deployment first: the surface, accuracy, 
 writing rules, the tool rules, the chat task contract and the grounding instruction; then the
 web-search toggle, today's date, and the session's own blocks (agent, project, theme,
 memories, skills, the turn's language rule). Nothing that changes per day, person or session
-sits before the date. Those contracts used to come last so that nothing after them could
-override them; in this order a closing line says they still apply over the blocks after the
-date. The answer policy `freshness.with_answer_policy` appends per turn stays at the end.
+sits before the date. A closing line says those contracts still apply over the blocks after the date. The answer policy `freshness.with_answer_policy` appends per turn stays at the end.
 Tool schemas follow the system turn in the chat templates, so a change anywhere in the system
 turn ends the reusable prefix before them; within a turn every hop after the first reuses the
-whole prefix. Who gets this order is in § Mechanisms by model group.
+whole prefix. Which models get this order is described under "Mechanisms by model group".
 
 The tool schemas are the other fixed cost of every hop. Built-in descriptions carry the rules
 a model needs before it calls a tool; what it needs only after a call comes back in the
@@ -3087,26 +2830,24 @@ it gets no source number and adds no number sources.
 ### Super Agent
 
 Super Agent is two picker entries, `routing_mode` `super` and `super_strict`, that choose a
-model, a reasoning effort and a tool budget for every turn (`services/super_agent.py`). Both
-replace the two Auto lanes in the picker; conversations on an Auto lane were moved to `super`
-by migration 0083. The Auto code below stays for comparison and for sessions set through the
-API.
+model, a reasoning effort and a tool budget for every turn (`services/super_agent.py`). `super`
+may use any model the account is allowed, under the usual privacy rules; `super_strict` only
+self-hosted strict-local models. The older Auto routing (`adaptive_routing`) still serves
+sessions set to it through the API.
 
-**Always there, and the default.** There is no switch (migration 0089 dropped
-`governance.super_agent_enabled`): the picker lists both entries first on chat, report and
-slides, each with its credit range, or as unavailable while a conversation is on an entry
-whose table has no model the account may use. A new conversation the caller sends without a
-`routing_mode` starts as `services/start_mode.py` decides: a model fixed by the caller or the
-conversation's agent keeps it `manual`; the person's own pick for the surface
-(`preferences.modelByKind`, a model id or the entry `super` / `super_strict`) comes next; otherwise the
-surface's start from 설정 › 시스템 › 모델 (`system_settings` `routing.chat`, `routing.report`,
-`routing.slides`; unset is `super`), with `super` moved to `super_strict` in a project where
-internal material stays strict-local, and to `manual` when neither entry has a usable model
-(a `super_strict` start never widens to `super`). The web client applies the same rule before
-the first send (`lib/superAgent.ts` `startingMode`, from the catalogue's
-`defaultRoutingByKind` and `superAgent.projectStrict`, so a project conversation shows
-Super Agent (strict-local) before anything is sent), and a chat handed off to a report or deck starts the same way.
-Existing conversations keep their stored mode.
+**Always there, and the default.** There is no switch: the picker lists both entries first on
+chat, report and slides, each with its credit range, or as unavailable while a conversation is
+on an entry whose table has no model the account may use. A new conversation the caller sends
+without a `routing_mode` starts as `services/start_mode.py` decides: a model fixed by the caller
+or the conversation's agent keeps it `manual`; the person's own pick for the surface
+(`preferences.modelByKind`, a model id or the entry `super` / `super_strict`) comes next;
+otherwise the surface's start from 설정 › 시스템 › 모델 (`system_settings` `routing.chat`,
+`routing.report`, `routing.slides`; unset is `super`), with `super` moved to `super_strict` in a
+project where internal material stays strict-local, and to `manual` when neither entry has a
+usable model (a `super_strict` start never widens to `super`). The web client applies the same
+rule before the first send (`lib/superAgent.ts` `startingMode`, from the catalogue's
+`defaultRoutingByKind` and `superAgent.projectStrict`), and a chat handed off to a report or
+deck starts the same way. Existing conversations keep their stored mode.
 
 **Task class first, by rules.** Each turn is sorted into `simple`, `chat`, `transform`
 (translate, summarise, proofread), `calc`, `code`, `visual`, `current` (facts that change;
@@ -3124,16 +2865,15 @@ for nothing to be built (「이 차트가 뭘 뜻하는지 설명해줘」) stay
 (`super_agent.visual_class`). Calculation and
 current-fact cues reuse `calculation_policy` and `freshness`. Only a turn the rules cannot
 place (short or unmarked) goes to the classifier: a zero-cost strict-local model
-(`adaptive_classifier_model_id`, else the table's strict `simple` model) that receives the
-request and the previous question, each cut short — about 300 tokens, against the 4,000+ of
-Auto's whole-envelope classifier — and answers one JSON class. A failure or a confidence
+(the configured classifier model, else the table's strict `simple` model) that receives the
+request and the previous question, each cut short (about 300 tokens), and answers one JSON class. A failure or a confidence
 under 0.6 keeps the rule's answer. The classifier is never called when the turn holds
 personal data.
 
 **The table.** `DEFAULT_RULES` maps every class to a model for `super`, a strict-local model
 for `super_strict`, and an effort (`default`, `none`, `low`, `high`) with an optional
-`strictEffort` for the strict-local column (absent: `effort` applies there too); the admin edits it in
-설정 › 시스템 › 라우팅 and only changes are stored (`governance.super_agent_rules`). Effort
+`strictEffort` for the strict-local column (absent: `effort` applies there too). The admin edits
+it in 설정 › 시스템 › 라우팅 and only changes are stored (`governance.super_agent_rules`). Effort
 becomes the request fields of the routed writer only (`agent.TURN_REASONING`): OpenRouter
 `reasoning.effort` for external models (the lowest offered level when a model cannot turn
 reasoning off), the vLLM template switch for self-hosted ones (`enable_thinking` for Qwen,
@@ -3141,46 +2881,37 @@ reasoning off), the vLLM template switch for self-hosted ones (`enable_thinking`
 2000 at `high` and deeper; `SELF_HOSTED_THINKING_BUDGET_LOW/HIGH`, 0 sends none) so a thinking
 call cannot run away. A table model that is not served, not allowed, too small for the
 conversation, without tools a class needs or without vision for pictures falls back along a
-short list, then to the surface default. Defaults come from the 2026-11-13 evaluation (31
-scenarios, judged blind by Sonnet and Opus separately), with hard classes moved to DeepSeek
-V4.1 Flash at high effort by the owner's decision of 2026-11-14, and on 2026-11-20 every row
-the evaluations allowed moved onto the self-hosted Qwen3.8 Flash (no default names the
-self-hosted DeepSeek V4 Flash or Qwen3 Coder Next any more; an admin may still put any served
-model in a cell). Effort `low`/`high` on Flash means a 500/2000-token thinking budget.
+short list, then to the surface default. Self-hosted Qwen3.8 Flash is the default wherever
+thinking is not needed; hard turns go to an external model with reasoning on.
 
-| Class | `super` | `super_strict` | Effort (`super` / strict) | Why |
-|---|---|---|---|---|
-| simple, chat, transform | Qwen3.8 Flash | strict Flash | none | Flash matched every larger model (8.5/8.2 of 10) |
-| calc, long, reasoning, current | DeepSeek V4.1 Flash | strict Flash (no search for current) | high | hard turns: thinking Flash matched (8.3–8.5) but sometimes left nothing; DeepSeek searches and cites best (8.7 vs Flash 6.3) |
-| code | Qwen3.8 Flash | strict Flash | none | 46 artifact prompts × 3 runs, Playwright checks and blind judges, Flash vs DeepSeek V4.1 Flash high (2026-11-20): calculators 7.30 vs 7.70, shop and landing pages 7.41 vs 6.85, games 7.27 vs 7.53, Python 6.44 vs 5.81 (the external model lost artifacts), forms 6.33 vs 7.00 |
-| visual | DeepSeek V4.1 Flash | strict Flash | high / none | dashboards were the one artifact kind Flash clearly lost (6.81 vs 7.96, same run) |
-| document | Qwen3.8 Flash | strict Flash | none | Flash's body judged 1.0–1.5 above the 27B's (blind Sonnet, 12 tasks × 3) at the same speed and cost; the strict column end to end (body Flash none, stages Flash low) 5.92 vs the 27B column's 4.53, no failures under the 300 s rule, no external call (2026-11-20) |
-| material (a row, not a class) | — (the class's own row) | — (the class's own row) | high | moves nothing by default: on the re-run strict DeepSeek scored 7.6 vs thinking Flash 7.7 over files (8.2 with passback) at ~50 s more to the first text |
-| complex_document (a row, not a class) | Qwen3.8 Flash | strict Flash | high / high | forms and attachments task set (2026-11-20): Flash high 6.28 vs self-hosted DeepSeek V4 Flash high 5.70 over its successes, 4.11 with failures as 0 (DeepSeek failed 28% under the 300 s rule, Flash never); see "Complex documents" below |
-| document_plan, document_hard, document_repair (rows, not classes) | GLM-5.3 (`z-ai/glm-5.3`); the plan row GLM-5.3 Flash (`z-ai/glm-5.3-flash`) | strict Flash | low / default / default; strict low | the 27B alone wrote poor documents (3.8 of 10 for reports, 5.3 for decks on the 2026-11-17 benchmark; a stronger open-weight model 5.5–6.5), so one model never writes a whole document; strict stages on the strict writer's own model run because they ask it to think (see "Staged documents" below) |
-| escalation | DeepSeek V4.1 Flash | strict Flash | high / high | never empty; 9/10 where thinking Flash left nothing; strict: Flash high 6.89 vs strict DeepSeek V4 Flash high 6.11 over 18 dialogues × 3 (2026-11-20), with more garbled terms and mixed languages |
+| Class | `super` | `super_strict` | Effort (`super` / strict) |
+|---|---|---|---|
+| simple, chat, transform | Qwen3.8 Flash | strict Flash | none |
+| calc, long, reasoning, current | DeepSeek V4.1 Flash | strict Flash (no search for current) | high |
+| code | Qwen3.8 Flash | strict Flash | none |
+| visual | DeepSeek V4.1 Flash | strict Flash | high / none |
+| document | Qwen3.8 Flash | strict Flash | none |
+| material (a row, not a class) | empty: the class's own row | empty: the class's own row | high |
+| complex_document (a row) | Qwen3.8 Flash | strict Flash | high / high |
+| document_plan (a row) | GLM-5.3 Flash (`z-ai/glm-5.3-flash`) | strict Flash | low / low |
+| document_hard, document_repair (rows) | GLM-5.3 (`z-ai/glm-5.3`) | strict Flash | default / low |
+| escalation (a row) | DeepSeek V4.1 Flash | strict Flash | high / high |
 
-The strict column first kept the self-hosted DeepSeek V4 Flash for `escalation` (owner decision
-of 2026-11-14, after a strict-column comparison of 26 scenarios × 3 judged blind by Sonnet:
-DeepSeek with thinking on did not beat thinking Flash on reasoning, calculation, code, long
-pasted text or current facts, 6.7 vs 6.9 overall, 2–5× slower, but was slightly better as the
-「다시」 writer). The 2026-11-20 re-run with Flash's thinking budget reversed that, and the row is
-on Flash. Questions over attached documents first looked clearly better on DeepSeek (8.6 vs
-6.9) but not on a re-run (7.6 vs 7.7; 8.2 with passback, first text p50 60 s vs 9 s), so on
-2026-11-15 the owner kept them on Flash: the `material` row exists for an admin to fill, and is
-empty by default. Material too long for Flash's window reaches a larger model through the size
-check (`usable_for`, the last-resort pick by window).
+`visual` is the one artifact kind Flash writes clearly worse without thinking, hence its own row.
+The rows marked "a row" are not request classes; the sections below say when a turn moves to
+them. Material too long for Flash's window reaches a larger model through the size check
+(`usable_for`, the last-resort pick by window).
 
 **Escalation, de-escalation, stickiness.** 「다시」, 「더 자세히」, 「틀렸어」 and the like, or an
 empty or failed previous answer, move the turn to the `escalation` row; that row's model also
 rewrites, inside the same turn, an answer the class's model left empty or cut (the rescue
 writer, with its own effort). A rescuer gets `_FALLBACK_PATIENCE` (240 s) to show text; if it
 fails or stays silent, the turn's own model still writes (`_RESCUE_PATIENCE`, 300 s, sits
-above it). A thanks or 「ok」 after a hard turn comes down to `simple`. A
-short follow-up with no markers of its own keeps the previous turn's class and model (one
-voice per thread, and the provider's prefix cache stays warm), and every revision of a report
-or deck keeps the model that wrote its first version (`_first_document_model`). The pick is
-the turn's: `sessions.model` is not overwritten.
+above it). A thanks or 「ok」 after a hard turn comes down to `simple`. A short follow-up with no
+markers of its own keeps the previous turn's class and model (one voice per thread, and the
+provider's prefix cache stays warm), and every revision of a report or deck keeps the model that
+wrote its first version (`_first_document_model`). The pick is the turn's: `sessions.model` is
+not overwritten.
 
 **Internal material.** A chat turn works over internal material when a file that is not a
 picture is attached to it, or when `search_knowledge` has something to search in the
@@ -3190,21 +2921,17 @@ Pasted text alone is not material here (it is the `long` class's business). Such
 to the `material` row (`route.row`), in a column where that row names a model, except a thanks
 (`simple`), a document and a retry (`escalation`), which keep their rows; the class stays what
 the request is. By default neither column names a model, so nothing moves (an override row's
-empty column keeps the class's row; the admin may fill or empty either column). 빠르게 still sends the turn to the `chat` row, 깊게 to `escalation`.
+empty column keeps the class's row; the admin may fill or empty either column). 빠르게 still
+sends the turn to the `chat` row, 깊게 to `escalation`.
 
 **Complex documents (the `complex_document` row).** Documents are routed by what they ask of
-the writer, not only by the surface (owner decision 2026-11-15). The row is a proper table
-row like `material`: an override row (`OVERRIDE_ROWS`), editable per column and effort in
-설정 › 시스템 › 라우팅 (「복잡한 문서」), defaults `local/qwen3.8-flash` /
-`strict-local/qwen3.8-flash` at effort `high` in both columns (a 2000-token thinking budget;
-the `document` row writes ordinary documents on the same model without thinking). Until
-2026-11-20 the row was the self-hosted DeepSeek V4 Flash, which Flash high beat on the forms
-and attachments task set (6.28 vs 5.70, DeepSeek failing 28% under the 300 s rule). An empty
-column moves nothing there. A document
-turn (a report or deck session, including its HWPX, Word and PowerPoint files, which run as chat
-turns) is complex when any of these holds, read from signals the app already computes
-(`sessions._document_signals`, `super_agent.complexity`; every threshold is a constant in
-`super_agent.py`):
+the writer, not only by the surface. The row is an override row (`OVERRIDE_ROWS`), editable per
+column and effort in 설정 › 시스템 › 라우팅 (「복잡한 문서」). By default it is the same Flash
+as the `document` row but with thinking on (effort `high`, a 2000-token budget). An empty column
+moves nothing there. A document turn (a report or deck session, including its HWPX, Word and
+PowerPoint files, which run as chat turns) is complex when any of these holds, read from signals
+the app already computes (`sessions._document_signals`, `super_agent.complexity`; every
+threshold is a constant in `super_agent.py`):
 
 | Reason (`complexReason`) | Signal | Threshold |
 |---|---|---|
@@ -3213,54 +2940,50 @@ turns) is complex when any of these holds, read from signals the app already com
 | `tools` | a deck asked for a chart over an attached data table (native chart from data), or for a paper's own figures with a PDF at hand (`_ASKS_FIGURES`, `pdf_figures`) | either |
 | `long_source` | characters of text in those source files | `LONG_CONTEXT_BYTES // 3` (20,000) |
 
-A simple document stays on the `document` row (Flash, thinking off). The same rule covers the
-office files (HWPX, Word, PowerPoint), which run as chat turns: the report and deck screens always
-send the model they show, so for those conversations the stored mode decides (`super_turn` ignores
-`payload.model` there; a model picked by hand already made the conversation `manual`), and the
-turn is classified as a document turn (`Turn.kind` is the conversation's), so only the
-`document` and `complex_document` rows apply, never the hard-class rows. Before this, an
-office-file turn on Super Agent skipped the router and ran on the screen's default model. The route note carries
-`row: complex_document`, `complexReason` and `complexSignals`; the answer's processing row reads
-「이번 답: Qwen3.8 Flash · 복잡한 문서 · 양식을 따름」. A model picked by hand is never moved.
-Revisions keep the first version's writer and row (`_first_document_route`): a complex document
-stays complex whatever its revision brings, and a simple document is not moved by a later form.
-The reasoning chip steers the row's effort only: 빠르게 turns thinking off but keeps the row's
-model (a form must not silently go to another writer), 깊게 raises it to the highest level.
-When the row's model cannot write the turn (failed lately in `model_health`, not served, window
-too small) the pick goes to the `document` row's model, not the table's fallback list, and the
-note says `skipped`.
+A simple document stays on the `document` row (Flash, thinking off). For the office-file
+conversations the report and deck screens always send the model they show, so the stored mode
+decides (`super_turn` ignores `payload.model` there; a model picked by hand already made the
+conversation `manual`), and the turn is classified as a document turn (`Turn.kind` is the
+conversation's), so only the `document` and `complex_document` rows apply, never the hard-class
+rows. The route note carries `row: complex_document`, `complexReason` and `complexSignals`; the
+answer's processing row reads 「이번 답: Qwen3.8 Flash · 복잡한 문서 · 양식을 따름」. A model picked
+by hand is never moved. Revisions keep the first version's writer and row
+(`_first_document_route`): a complex document stays complex whatever its revision brings, and a
+simple document is not moved by a later form. The reasoning chip steers the row's effort only:
+빠르게 turns thinking off but keeps the row's model (a form must not silently go to another
+writer), 깊게 raises it to the highest level. When the row's model cannot write the turn (failed
+lately in `model_health`, not served, window too small) the pick goes to the `document` row's
+model, not the table's fallback list, and the note says `skipped`.
 
 *Same-turn fallback.* The fallback writer is the `document` row's model in the turn's column
 (`super_agent.complex_fallback`, inside the boundary), thinking as that row says. With the
 built-in table both rows are Flash, so there is none (the same model again would not help); an
-admin who puts another model in the complex row gets the `document` row's Flash behind it. A chat-path turn (office files) takes it through `agent.run_turn(fallback_model=…)`
-(the machinery above: refused, dropped stream, 240 s silent; the 「깊이 생각하는 중」 row shows while
-it thinks). A report or deck pipeline makes whole-answer calls (`report._complete`,
-`deck._complete`, `page._complete`) that go through `complex_turn.run_call`: a call that fails or
-takes longer than `complex_document_call_sec` (480 s) is asked again on the fallback, the failed
-model is marked in `model_health`, and the turn's later calls go straight to the fallback. The
-pipeline turn shows 「깊이 생각하는 중」 from its start until its first output.
+admin who puts another model in the complex row gets the `document` row's model behind it. A
+chat-path turn (office files) takes it through `agent.run_turn(fallback_model=…)` (the machinery
+above: refused, dropped stream, 240 s silent; the 「깊이 생각하는 중」 row shows while it thinks).
+A report or deck pipeline makes whole-answer calls (`report._complete`, `deck._complete`,
+`page._complete`) that go through `complex_turn.run_call`: a call that fails or takes longer than
+`complex_document_call_sec` (480 s) is asked again on the fallback, the failed model is marked in
+`model_health`, and the turn's later calls go straight to the fallback. The pipeline turn shows
+「깊이 생각하는 중」 from its start until its first output.
 
 *Slots.* A slow self-hosted model that chat shares must not have all its sequences taken by
 long document tool loops, so with `COMPLEX_DOCUMENT_SLOTS` set at most that many complex turns
-on a self-hosted model run at once across all API replicas. The default is 0 (no cap) since
-2026-11-20: the cap of 2 was for the single 8-sequence DeepSeek server, while the built-in row is
-now Flash, which serves these turns like any other document, and with no fallback behind it
-(see above) a capped Flash turn would only wait in line. A slot is a Postgres session-level advisory lock
+on a self-hosted model run at once across all API replicas. The default is 0 (no cap); set it
+when the row names a slow model. A slot is a Postgres session-level advisory lock
 (`complex_turn.LOCK_BASE + i`) on a connection of its own, so a replica that dies releases its
 slots with its connection; without Postgres (tests) the cap is per process. The stream
 (`_survive_disconnect` → `_with_slot`) takes a slot before the turn starts, shows 「대기 중 · n번째」
 (n counts the waiting turns of this replica) while it waits, and gives the slot back however the
 turn ends. After `COMPLEX_DOCUMENT_WAIT_SEC` (120 s) without a slot the fallback writes the turn
-(`route.fallbackReason: queue`). There is no migration: the caps are environment settings.
+(`route.fallbackReason: queue`).
 
-**Staged documents (the `document_plan`, `document_hard` and `document_repair` rows).** On
-the 2026-11-17 benchmark the self-hosted 27B alone wrote poor reports and decks (garbled terms,
-unwritten sections, invented clauses, wrong slide counts, an English deck), while a stronger
-open-weight model scored 5.5–6.5. So in `super` and `super_strict` a report or deck is written in
-stages and no one model writes the whole document (owner decision 2026-11-18). The `document`
-row's model stays the writer of the ordinary sections and slides; three override rows
-(`OVERRIDE_ROWS`, editable per column and effort like the others) name the upper model of a stage:
+**Staged documents (the `document_plan`, `document_hard` and `document_repair` rows).** A small
+self-hosted model alone writes weak reports and decks (garbled terms, unwritten sections, wrong
+slide counts), so in `super` and `super_strict` a report or deck is written in stages and no one
+model writes the whole document. The `document` row's model stays the writer of the ordinary
+sections and slides; three override rows (`OVERRIDE_ROWS`, editable per column and effort like
+the others) name the upper model of a stage:
 
 | Stage | What it does | Where |
 |---|---|---|
@@ -3268,21 +2991,19 @@ row's model stays the writer of the ordinary sections and slides; three override
 | `hard` (`document_hard`) | the sections or slides the objective signals below mark as hard, one call each, started together | `Draft` and `Sections` stages; `deck._write_slides` |
 | `repair` (`document_repair`) | only what an existing check sends back: an error text, tool call, cut-off or empty section, placeholder or table gaps, a language slip, a format amendment, the verify stage's findings, a retold, empty or unusable slide, a deck check's rewrite (a language slip, long lines, template blanks, a missing summary) | `report_stages` `_staged` and `_repair_complete`; `deck.rewrite_slide(stage="repair")` |
 
-Defaults: `super` column `z-ai/glm-5.3` for `hard` and `repair` (the model's default effort) and
-`z-ai/glm-5.3-flash` for `plan` (owner decision 2026-11-21: outline quality tied, 7.13/7.40 vs
-7.30/7.40 over the same prompts, no failures either way, cheaper). Neither model can switch
-reasoning off on OpenRouter (400 "Reasoning is mandatory"), and GLM-5.3 Flash with no reasoning
-field spent up to 35k thinking tokens and 17-300 s on an outline, so the plan row sends `low`
-explicitly from the first call (`reasoning: {effort: "low"}`, never `enabled: false`; 110-170
-thinking tokens, no failures). The `-flash` suffix puts it in the small-external group of
-"Mechanisms by model group", the group the comparison ran in. The
-strict column `strict-local/qwen3.8-flash` with `strictEffort` `low` for all three (a
-500-token thinking budget; the strict writer is Flash too, so these stages run only because they
-ask it to think, as below). To compare another upper model change only a row, for example
-`moonshotai/kimi-k3.1-pro` in the three `super` cells; nothing else needs a code change.
-An empty column switches the stage off: the writer does it. So does a stage whose model is the
-writer's own, unless the stage's effort asks it to think (`low` or `high`): then it is a real stage
-on the same model, called with its own reasoning fields (`stage_pick`, `doc_stages.staged`).
+Defaults: the `super` column is `z-ai/glm-5.3` for `hard` and `repair` (the model's default
+effort) and `z-ai/glm-5.3-flash` for `plan`. Neither model can switch reasoning off on
+OpenRouter (400 "Reasoning is mandatory"), and GLM-5.3 Flash with no reasoning field can spend
+tens of thousands of thinking tokens on an outline, so the plan row sends `low` explicitly
+(`reasoning: {effort: "low"}`, never `enabled: false`). The `-flash` suffix puts it in the
+small-external group of "Mechanisms by model group". The strict column is
+`strict-local/qwen3.8-flash` with `strictEffort` `low` for all three (a 500-token thinking
+budget; the strict writer is Flash too, so these stages run only because they ask it to think).
+To use another upper model change only a row, for example `moonshotai/kimi-k3.1-pro` in the three
+`super` cells; nothing else needs a code change. An empty column switches the stage off: the
+writer does it. So does a stage whose model is the writer's own, unless the stage's effort asks
+it to think (`low` or `high`): then it is a real stage on the same model, called with its own
+reasoning fields (`stage_pick`, `doc_stages.staged`).
 
 *What is hard* (`doc_stages`, no model judgement, no phrase lists of its own). A report's
 section is hard by its role, read from the headings with the words `report._section_role`
@@ -3292,10 +3013,10 @@ already uses: the summary that opens the document (`summary`), the conclusion th
 figures to trace (at least six distinct numbers or a table). A deck's slide is hard when it is a
 data layout (chart, metrics, big number, table) over such material (`data`), or when its title
 is a summary or decision (`summary`); structural slides take no model call. At most half of the
-sections or content slides go up (`HARD_MAX_SHARE`), strongest reason first, so the writer
-always keeps a share. The one-call draft of the report or deck leaves the hard parts out (and
-says they are written separately); hard sections that need no earlier text (all but the
-conclusion) are started together.
+sections (`DOCUMENT_HARD_SHARE`) and 30 % of the content slides (`DOCUMENT_DECK_HARD_SHARE`) go
+up, strongest reason first, so the writer always keeps a share. The one-call draft of the report
+or deck leaves the hard parts out (and says they are written separately); hard sections that
+need no earlier text (all but the conclusion) are started together.
 
 *Fallbacks.* A stage whose row names no model, a model that is not served, not allowed, failed
 lately (`model_health`), or is the writer itself, stays with the writer
@@ -3320,7 +3041,7 @@ that model's own price, and the stored message's `routing.runInfo` lists each st
 calls, fallbacks and tokens with what sent work up (`triggers`) and `selfHostedShare` (the share
 of the turn's tokens, input and output, that stayed on the house's servers) and
 `selfHostedOutputShare`. 「이번 답」 details show them. Revisions of an existing document are not
-staged. There is no migration.
+staged.
 
 **Failure inside a strict turn.** A strict-local model other than Flash (an admin's pick; the
 built-in table names none) may be served by fewer nodes, and the gateway refuses strict aliases
@@ -3328,20 +3049,18 @@ outright (503 `strict_local_unavailable`) while vLLM has requests waiting. A str
 turn whose writer is not Qwen3.8 Flash therefore carries a same-turn fallback
 (`_super_fallback`, `agent.run_turn(fallback_model=…)`): when the writer's call is refused,
 cannot connect, breaks mid-stream, or shows neither answer text nor a finished call within
-`_FALLBACK_PATIENCE` (240 s; DeepSeek took at most 180 s on one call in the evaluation, a
-stalled stream 20 minutes), the shown part is taken back and Flash continues the same
+`_FALLBACK_PATIENCE` (240 s), the shown part is taken back and Flash continues the same
 conversation, tool results included, at the writer's effort; nothing is answered outside
 strict-local. The switch is a `writer_fallback` event: the answer's route note gains
 `fallbackModel`/`fallbackReason`, the answer row records Flash, and the tokens the failed
 writer spent bill on its own ledger line. The failed model is marked in `model_health` (60 s
 after a busy refusal, 300 s otherwise, per process) and left out of Super Agent picks, rescuers
 and the 깊게 route meanwhile, so the next turns go to Flash at once (`route.skipped` says so).
-Within a tool loop a self-hosted DeepSeek writer (no longer in the built-in table; an admin may pick one) gets its own reasoning back on each tool
-call (`reasoning_content`, `agent._passes_reasoning`; no other model is sent it): on
-「다시」 turns it no longer re-derives figures at every step (judged 7.7 vs 6.6, ~20% fewer
-output tokens, first text p50 85 s vs 143 s). DeepSeek's first visible text takes ~50 s on material turns and 85 s on 「다시」 turns (Flash ~6–20 s): the step list shows a
-running 「깊이 생각하는 중」 row naming the writer, the wait and the fallback until the first text
-or tool call, next to the turn's elapsed clock.
+Within a tool loop a self-hosted DeepSeek writer (an admin's pick) gets its own reasoning back
+on each tool call (`reasoning_content`, `agent._passes_reasoning`; no other model is sent it),
+so it does not re-derive figures at every step. Its first visible text can take a minute or
+more: the step list shows a running 「깊이 생각하는 중」 row naming the writer, the wait and the
+fallback until the first text or tool call, next to the turn's elapsed clock.
 
 **Boundaries.** `super_strict` picks only `self_hosted` strict-local models; with none usable
 the turn is refused (503 `strict_local_unavailable`), never answered outside, and titles,
@@ -3356,129 +3075,109 @@ kept inside); its title names rules or classifier, the effort, tools and the cla
 tokens and time. The picker shows each entry with a typical answer's credits (10k tokens in,
 1k out) across the table. The route is stored as `routing.superAgent` and audited as
 `routing.super`.
-
 ### The reasoning chip
 
 The composer's **추론** chip (자동 / 빠르게 / 깊게; `auto`, `fast`, `deep`) is a per-conversation
-setting (`sessions.reasoning_mode`, NULL for `auto`, migration 0088) sent with every chat,
-report and slides turn (`SendMessage.reasoning`) and stored in the question's `turnOptions`, so
-a retry or regeneration runs under the choice it was asked with. A sent value also becomes the
-conversation's; the composer patches the conversation as soon as a choice is made, and a
-choice made before a conversation exists goes with its creation.
+setting (`sessions.reasoning_mode`, NULL for `auto`) sent with every chat, report and slides
+turn (`SendMessage.reasoning`) and stored in the question's `turnOptions`, so a retry or
+regeneration runs under the choice it was asked with. A sent value also becomes the
+conversation's; a choice made before a conversation exists goes with its creation.
 
-- **Super Agent** (`super_agent.steer`): `auto` is the table as above. `fast` sends a class
+- **Super Agent** (`super_agent.steer`): `auto` follows the routing table. `fast` sends a class
   whose row reasons (`low`/`high`) to the `chat` row and every class to effort `none`, so no
   turn escalates to a reasoning route; the class's other needs (tools, vision, a long window)
-  still narrow the pick, and the rescue writer also runs without reasoning. `deep` sends every
-  chat class to the `escalation` row's model (strict column under `super_strict`, personal
-  data or internal material) at effort `high`, skipping the classifier and stickiness; when
-  that model cannot answer the turn (not served, not allowed) the class's own pick answers at
-  effort `high`. A report or deck keeps its writer: the `document` row's model for a first
-  version (or the `complex_document` row's, for a complex one), the first writer for revisions
-  (`_first_document_model`), under every choice; `deep` raises only its effort, to the highest
-  level it takes (`highest`), and `fast` sets `none`.
+  still narrow the pick. `deep` sends every chat class to the `escalation` row's model (strict
+  column under `super_strict`, personal data or internal material) at effort `high`, skipping
+  the classifier and stickiness; when that model cannot answer the turn (not served, not
+  allowed) the class's own pick answers at effort `high`. A report or deck keeps its writer
+  (the `document` row's model, or `complex_document`'s for a complex one; revisions reuse the
+  first writer, `_first_document_model`) under every choice; `deep` raises only its effort to
+  the highest level the model takes (`highest`), `fast` sets `none`.
 - **A model picked by hand** (`super_agent.manual_effort`): `auto` sends nothing (the
   deployment's thinking switches), `fast` sends effort `none` (the lowest level where reasoning
-  is mandatory), `deep` the highest level the model offers (`reasoning.effort` = its last
-  level; the template switch on for a self-hosted model). A model is steerable when it has
-  effort levels or a self-hosted thinking switch (`reasoning.controllable`, `reasoningControl`
-  in the catalogue); on any other model the chip is shown disabled with the reason, and a chip
-  value sent anyway is recorded as `unsupported` rather than pretended. The same mark goes on a
-  Super Agent turn whose writer cannot be steered (a report on the 27B under 깊게).
+  is mandatory), `deep` the highest level the model offers (the template switch on for a
+  self-hosted model). A model is steerable when it has effort levels or a self-hosted thinking
+  switch (`reasoning.controllable`, `reasoningControl` in the catalogue); on any other model the
+  chip is shown disabled with the reason, and a value sent anyway is recorded with
+  `unsupported: true`. The same mark goes on a Super Agent turn whose writer cannot be steered.
 - **Document writers** read the same fields (`thinking.TURN_REASONING`, set in the request for
   report and deck turns) through `thinking.writer_switch`/`writer_room`; without them they keep
-  turning thinking off as before.
+  thinking off.
 
 The question and answer carry `routing.reasoning` = `{mode, effort}`, where `effort` is what
 the writer was actually sent (`super_agent.applied_effort`: a level, `on`, `none` or
 `default`); the answer's usage line reads it as 「깊게 · high」.
 
-### Auto routing (earlier lanes)
+### Auto routing
 
-Auto is a session mode, not a model alias. `sessions.model` always stores the
-last real model the person selected; the separate `routing_mode` field is
-`manual`, `auto` (cost: a low-complexity turn may use an economy model) or
-`auto_quality` (a high-complexity turn may use an administrator-ordered upgrade
-model that does not widen the data boundary and keeps its tools).
-This prevents a synthetic `auto` id from reaching LiteLLM and keeps manual
-model selection authoritative.
+Auto is a session mode, not a model alias. `sessions.model` always stores the last real model
+the person selected; `routing_mode` is `manual`, `auto` (cost: a low-complexity turn may use an
+economy model) or `auto_quality` (a high-complexity turn may use an administrator-ordered
+upgrade model that does not widen the data boundary and keeps its tools). (`super` and
+`super_strict` are the Super Agent modes above.) No synthetic `auto` id ever reaches LiteLLM,
+and manual model selection stays authoritative.
 
-Privacy inspection runs before classification. If the assembled envelope has
-a finding, Auto performs no key issuance or model call and the existing privacy
-decision owns the turn. A clean, ordinary chat turn may be classified by a
-live, zero-cost strict-local model using the caller's virtual key, redacted
-LiteLLM logging and `disable_fallbacks`. The classifier receives the complete
-answer-visible messages and quality-model tool schema snapshot. If that payload
-exceeds 80,000 characters, it is not truncated and the chosen model is kept.
-Only a high-confidence JSON verdict moves a turn (low on the cost lane, high on
-the quality lane); every timeout, malformed response or uncertain state keeps
-the chosen model. Report and deck turns are classified on the request text;
-a turn moved to strict-local for its internal material stays there.
+Privacy inspection runs before classification. If the assembled envelope has a finding, Auto
+makes no key issuance or model call and the privacy decision owns the turn. A clean, ordinary
+chat turn may be classified by a live, zero-cost strict-local model using the caller's virtual
+key, redacted LiteLLM logging and `disable_fallbacks`. The classifier receives the complete
+answer-visible messages and the quality model's tool schemas; a payload over 80,000
+characters is not truncated and the chosen model is kept. Only a high-confidence JSON verdict
+moves a turn (low on the cost lane, high on the quality lane); every timeout, malformed
+response or uncertain state keeps the chosen model. Report and deck turns are classified on
+the request text; a turn moved to strict-local for its internal material stays there.
 
-Economy candidates are administrator-ordered and revalidated against the live
-catalogue, caller allowlist, context window, data boundary and both token
-prices. `unknown` and `privacyOnly` models are excluded, and none may have a
-wider boundary than the chosen model. The chosen
-answer call receives no tools and also disables fallback, so an unbounded tool
-result cannot invalidate the checked context fit and a failed economy route
-cannot cause a second, hidden premium charge. Message routing stores the
-quality, selected and actual models plus enum-only decision metadata; classifier
-prompts and free-form model reasoning are never persisted.
+Economy candidates are administrator-ordered and revalidated against the live catalogue,
+caller allowlist, context window, data boundary and both token prices. `unknown` and
+`privacyOnly` models are excluded, and none may have a wider boundary than the chosen model.
+The economy answer call receives no tools and disables fallback, so an unbounded tool result
+cannot invalidate the checked context fit and a failed economy route cannot cause a second,
+hidden premium charge. Message routing stores the quality, selected and actual models plus
+enum-only decision metadata; classifier prompts and free-form model reasoning are never
+persisted.
 
 ### Chat answer shaping
 
-**Standing rules are repeated next to the question.** An earlier user message
-that sets a rule for every later answer (「앞으로 … 세 문장 이내로」, "from now on … within three sentences";
-"keep this whole conversation in English") is replayed verbatim as a short exchange right before the
+**Standing rules are repeated next to the question.** An earlier user message that sets a rule
+for every later answer (「앞으로 … 세 문장 이내로」, "from now on … within three sentences"; "keep
+this whole conversation in English") is replayed verbatim as a short exchange right before the
 latest question (`standing_directives`, chat only). A rule is read as a *scope* and an
 *aspect*: a scope that reaches past this answer (「앞으로」, 「항상」, 「이 대화 내내」, "from now
 on", "the whole conversation") makes a rule on its own; a weaker one (「계속」, 「유지」, "keep",
-"stick to") only when it names what it sets — the language, the tone (「존댓말」), the
-format (「표로」, 「개조식」) or the length — so 「계속 진행해 줘」 ("keep going") stays a task, and
-「이번만」 ("just this once") is never standing. A short message is replayed whole; in a long one
-only its rule sentences, and pasted material never sets a rule. A later rule replaces an
-earlier one on the same aspect (a new answer language replaces the old one), up to five are
-kept, and a withdrawal such as 「원래대로」 ("back to normal") clears them. The rules are read off
-the **whole** conversation, not only the turns that still fit the window, so a rule set in a
-turn the window has cut still travels with every question. A standing English rule also sets
-the answer language when the question is in Korean: the system turn says so, the replay adds it
-as a plain line of its own, and the acknowledgements the envelope writes for the assistant
-(after the replay and after this turn's attachment) are in English too — a Korean 「네, …」 right
-before the question pulled answers back to Korean. The replay is where a small model attends. A skill fetched through
+"stick to") only when it names what it sets (language, tone such as 「존댓말」, format such as
+「표로」, length), so 「계속 진행해 줘」 ("keep going") stays a task and 「이번만」 ("just this
+once") is never standing. A short message is replayed whole, a long one only its rule
+sentences, and pasted material never sets a rule. A later rule replaces an earlier one on the
+same aspect, up to five are kept, and a withdrawal such as 「원래대로」 ("back to normal")
+clears them. Rules are read off the **whole** conversation, not only the turns that still fit
+the window. A standing English rule also sets the answer language for a Korean question: the
+system turn says so, the replay adds it as a plain line, and the envelope's own
+acknowledgements for the assistant are written in English too. A skill fetched through
 `use_skill` is told that such rules take precedence over its own instructions.
 
-**The auto toggle's forced search asks about the world.** `needs_web_search`
-stands down when the person is telling rather than asking (their team, memo,
-rule, code), when the question is about the conversation (「아까」 "earlier",
-「그 규칙」 "that rule", 「지금 코드」 "the current code"), when it is arithmetic on supplied numbers or a rule of thumb
-(「몇 장이 적당해?」 "how many slides is right?", 「보통 얼마」 "usually how much"), and when a sentence has a time word but no
-world cue (news, price, version, law, office). The search tool stays offered;
-only the forced first hop is withheld.
+**The auto toggle's forced search asks about the world.** `needs_web_search` stands down when
+the person is telling rather than asking (their team, memo, rule, code), when the question is
+about the conversation (「아까」 "earlier", 「그 규칙」 "that rule"), when it is arithmetic on
+supplied numbers or a rule of thumb (「몇 장이 적당해?」 "how many slides is right?"), and when
+a sentence has a time word but no world cue (news, price, version, law, office). The search
+tool stays offered; only the forced first hop is withheld. The auto instruction likewise names
+what never needs a search and ties searching to answers that depend on events after training
+or today's values; `create_chart` is for charts the user asked for, not for trend questions.
 
-**Auto search is for the world, not the conversation.** The auto instruction
-names what never needs a search (the conversation itself, the user's own
-figures and the arithmetic on them, code behaviour, textbook principles, rules
-of thumb) and ties searching to answers that depend on events after training
-or today's values; `create_chart` is for charts the user asked for, not for
-trend questions.
+**A rough figure still says where to check.** A question about the usual level of a changing
+value (「왕복 요금은 보통 얼마나 해?」, "what does a round trip usually cost?") forces no search,
+but the figure comes from training data, so the turn runs with `caveat_request`
+(`freshness.ballpark_current_value`): the answer streams live and closes with the same light
+caveat an unverified current-fact answer gets, unless the conversation's files ground it.
 
-**A rough figure still says where to check.** A question about the usual level
-of a changing value (「왕복 요금은 보통 얼마나 해?」, "what does a round trip usually cost?") forces no search, but the
-figure comes from training data, so the turn runs with `caveat_request`
-(`freshness.ballpark_current_value`): the answer streams live and closes with
-the same light caveat an unverified current-fact answer gets, unless the
-conversation's files ground it.
+**Length follows the question.** The chat contract asks for two to four sentences of prose on
+a casual question or quick fact, with structure only when the user asks for detail or the
+material has parallel parts.
 
-**Length follows the question.** The chat contract asks for two to four
-sentences of prose on a casual question or quick fact, with structure only when
-the user asks for detail or the material has parallel parts.
-
-**One answer, once.** A small model sometimes restates its whole answer after
-the prompt's silent self-check. When a tool-less hop ends with one block written
-twice in a row, the agent keeps the first copy and takes the second back with a
-`retract` event (`_repeated_tail`), so neither the stream nor the stored message
-shows the paragraph twice. The style guide's worked example is marked as showing
-form only and uses a neutral domain, so its content is not repeated as fact.
+**One answer, once.** A small model sometimes restates its whole answer after the prompt's
+silent self-check. When a tool-less hop ends with one block written twice in a row, the agent
+keeps the first copy and takes the second back with a `retract` event (`_repeated_tail`), so
+neither the stream nor the stored message shows it twice.
 
 ### Other boundaries
 
@@ -3542,7 +3241,7 @@ form only and uses a neutral domain, so its content is not repeated as fact.
   answer settles or stop is pressed, renewed every minute while it runs, and
   ignored once four minutes stale. Two replicas serialize on the row; the
   second sees the claim and answers 409. Restarts free claims without waiting
-  for that bound (below, "Restarts and turn claims").
+  for that bound (see "Restarts and turn claims").
 - A save, picture insert, rewrite or restore of a report, deck or page moves
   the version in one conditional `UPDATE … WHERE id = … AND version = expected`
   (`workspace._next_version`), the way office documents save
@@ -3555,13 +3254,12 @@ form only and uses a neutral domain, so its content is not repeated as fact.
 - **Restarts and turn claims.** On SIGTERM uvicorn stops accepting and waits
   up to 120 s for open responses (`--timeout-graceful-shutdown 120`); the
   lifespan then gives turns still running — those whose reader left included —
-  the rest of `TURN_DRAIN_SEC` (120 s, counted from the signal), stops what is
+  the rest of `TURN_DRAIN_SEC` (default 120 s, counted from the signal), stops what is
   left through the stop signal with the label *interrupted* (a partial answer
   is kept, as on **Stop**), cancels anything still there after ten seconds,
   and frees every claim this process holds, marking a question left without an
   answer `failure = interrupted` (`sessions.drain_turns`). The container's
-  `stop_grace_period` (150 s) sits above that; Docker's default 10 s would cut
-  answers and leave their conversations claimed. A claim token names its
+  `stop_grace_period` (150 s) sits above that. A claim token names its
   replica and boot (`<host>:<boot>:<random>`); the host name survives a restart
   of the same container, so a replica that crashed frees what its earlier boot
   held as soon as it starts again (`free_claims_of_earlier_boots`), never
@@ -3586,11 +3284,8 @@ form only and uses a neutral domain, so its content is not repeated as fact.
   CRC instead of growing; `CappedZipFile.read` still counts what it actually
   unpacks. Parsing runs in a worker thread so one upload cannot stall the
   event loop.
-- The shared view renders a section through the same component as the owner's
-  view, so an edited HTML body shows there too.
 - The release workflow publishes an image only after the CI workflow passed on
   the same commit (`verify` calls `ci.yml`).
-- Sidebar day buckets compare local calendar dates, not elapsed milliseconds.
 
 ## 8. Agent knowledge and retrieval
 
@@ -3616,32 +3311,30 @@ stay in the file box (`forget_session_files`), unless the person ticked 「대�
 지우기」 (`?files=true`, bulk `files: true`): then the files attached or made in it go too,
 a project's or an agent's excepted (`delete_session_files`). Each file records how it came
 (`files.origin`: `upload`, or `generated` for a code run's output, an image, a chart, a
-figure, audio, video, an export) and, when it only copies an artifact listed elsewhere — a
-document's export, the picture of a chart or a diagram — which one (`files.copy_of`); the file
-box (`/files` in the web app) lists 「올린 파일」 and 「만든 파일」 (`?tab=made`) apart, copies
-left out, a page at a time (`GET /files/page?box=true`: agents' knowledge left out, `origin`,
-a name search `q`, `sort` `created`/`name`/`size` with `dir`, a keyset `cursor` tied to
-the sort and direction (ties broken by id), with `total` and per-origin `counts`, plus
-`working` in the whole box), and a composer's 「파일함에서 고르기」 attaches one again by id. A third tab,
-「작업 문서」 (`/files?tab=working`), lists the documents worked on as a whole — the HWP, Word
-and PowerPoint artifacts and the web reports and web slides — one row per artifact, its
-version count being its `version` (`GET /artifacts/working`: `kind` one kind or a comma list,
-a title search `q`, `sort` `updated`/`title`/`kind`/`version` with `dir` `asc`/`desc`, a
-keyset `cursor` tied to the sort and direction, with
-`total`, per-kind `counts` and each row's conversation and project names, someone else's or a
-deleted one left out). The rows are the artifacts themselves, not copies: they open in the
-editor they have in chat (`/s/{session}?artifact={id}`; an office document with no
-conversation joins a new chat, a web document with none opens over the file box,
-`/files?tab=working&doc={id}`),
+figure, audio, video, an export) and, when it only copies an artifact listed elsewhere (a
+document's export, the picture of a chart or a diagram), which one (`files.copy_of`). The file
+box (`/files`) lists 「올린 파일」 and 「만든 파일」 (`?tab=made`) apart, copies left out, a page
+at a time (`GET /files/page?box=true`: agents' knowledge left out; `origin`, a name search `q`,
+`sort` `created`/`name`/`size` with `dir`, a keyset `cursor` tied to the sort; `total`,
+per-origin `counts` and `working` in the reply), and a composer's 「파일함에서 고르기」
+attaches one again by id. A third tab, 「작업 문서」 (`/files?tab=working`), lists the documents
+worked on as a whole (HWP, Word and PowerPoint artifacts, web reports and web slides), one row
+per artifact (`GET /artifacts/working`: `kind` one kind or a comma list, a title search `q`,
+`sort` `updated`/`title`/`kind`/`version` with `dir`, a keyset `cursor`; `total`, per-kind
+`counts`, each row's conversation and project names; someone else's or a deleted conversation's
+left out). The rows are the artifacts themselves, not copies: they open in the editor they
+have in chat (`/s/{session}?artifact={id}`; an office document with no conversation joins a new
+chat, a web document with none opens over the file box, `/files?tab=working&doc={id}`),
 download in their own format (the office file, Markdown, `.pptx`), and rename and delete
-through `PATCH`/`DELETE /artifacts/{id}`; deleting an office document, or the conversation
+through `PATCH`/`DELETE /artifacts/{id}`. Deleting an office document, or the conversation
 that holds it (singly or in bulk), also removes the file it keeps per version, after the
 commit (`office_doc.kept_files`, `drop_files`); deleting an account with its files takes them
-with its directory, and one deleted with `purgeFiles=false` leaves them to the storage sweep. Uploaded office files stay in 올린 파일 as files; a
-copy opened from one for editing is the working document. Every file-box tab sorts on the server by clicking its
-column headings (`components/files/ListSort.tsx`: `SortHeader` cells over a grid list, the
-sorted one carrying `aria-sort`), the order kept in the address (`?sort=…&dir=…`); a phone,
-which has no heading row, picks the column and the direction instead (`PhoneSort`). Deleting
+with its directory, and one deleted with `purgeFiles=false` leaves them to the storage sweep.
+Uploaded office files stay in 올린 파일 as files; a copy opened from one for editing is the
+working document. Every file-box tab sorts on the server by its column headings
+(`components/files/ListSort.tsx`: `SortHeader` cells, the sorted one carrying `aria-sort`),
+the order kept in the address (`?sort=…&dir=…`); a phone picks column and direction instead
+(`PhoneSort`). Deleting
 the project drops the collection; `POST /projects/{id}/knowledge/reindex`
 backfills files uploaded before the index existed. The lexical shelf the tool
 also reads includes the project's files, so a passage the budget could not
@@ -3658,7 +3351,7 @@ while it fits (§7). Once it does not, the turn still sees **every file**:
   lazily when a turn finds it without a current digest, or by the administrator's backfill
   (`POST /admin/knowledge/digests`, `?project_id=`, `?force=true`). The digest is written
   only by a strict-local model the catalogue lists as such (`KNOWLEDGE_DIGEST_MODEL`,
-  default the strict-local flash; an outside model configured there is never used), so a
+  default `strict-local/qwen3.8-flash`; an outside model configured there is never used), so a
   file's text never leaves the deployment whatever model the conversation uses. The file
   text is sent as delimited data the prompt tells the model never to follow. The call is
   billed as a side call (`knowledge.digest`): a priced model at its full rate, a self-hosted
@@ -3774,13 +3467,11 @@ indexed like an upload; later edits update it).
 
 **Models.** Which model writes each output kind, and with what reasoning effort, is one table
 (`services/shelf_models.py`, overridable as JSON in `KNOWLEDGE_MODELS`): a strict-local pick
-and a pick for where material may leave. On a ten-lecture project judged by Sonnet, flash beat
-the 27B on the briefing (7 vs 6), the glossary (7 vs 5) and the quiz (8 vs 7). With thinking
-on, flash ran past a 14k-token room on every long document, so documents are written without
-thinking and quizzes and flashcards with it; a thinking call that runs out of room is answered
-again without thinking. Where material may leave, each kind takes the Super Agent's escalation
-pick (DeepSeek V4.1 Flash, reasoning on). At most `KNOWLEDGE_CONCURRENCY` calls (2) run at once
-per replica, since flash serves conversations on the same node.
+and a pick for where material may leave (the Super Agent's escalation model, reasoning on).
+Documents are written without thinking, quizzes and flashcards with it; a thinking call that
+runs out of room is answered again without thinking. At most `KNOWLEDGE_CONCURRENCY` calls
+(default 2) run at once per replica, since the self-hosted models serve conversations on the
+same node.
 
 **Boundaries and billing.** Project sources are internal material: while
 `governance.internal_data_strict_local` holds, guides and studio outputs use a strict-local
@@ -3801,12 +3492,13 @@ apps/web/src/
   pages/        one per route; settings/ holds the account tabs and the admin
                 System screen's sections, customize/ the agent, skill, template
                 and publication editors
-  components/   chat · report · slides · chart · artifacts · media · agents ·
+  components/   one folder per area: chat · report · slides · chart · artifacts ·
+                office · files · shelf · projects · media · agents · chain ·
                 customize · publishing · issues · memory · share · auth ·
-                layout · ui
+                layout · ui · …
   store/        useStore.ts — a single zustand store
-  lib/          api.ts (the backend seam) · kinds.ts · i18n.ts · useT.ts ·
-                reportDoc.ts · mermaid.ts · shortcuts.ts
+  lib/          api.ts (the backend seam) · kinds.ts · i18n.ts · mermaid.ts ·
+                shelfNames.ts · …
 ```
 
 **The store has an epoch guard.** Every action that writes to the workspace

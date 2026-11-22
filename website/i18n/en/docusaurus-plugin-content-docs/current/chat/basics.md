@@ -33,7 +33,7 @@ The answer area shows **Retry** and **Another model** buttons. **Another model**
 
 ## Editing a sent message
 
-In Chat, select **Edit message** (the pencil icon) next to a message you sent. The composer shows **Editing · sending starts a new conversation; this one stays as it is** and fills in the original text and attachments. When you send the edited text, the answer is generated in a **new conversation** that copies everything before that message. The original conversation stays as it was. Use **Cancel edit** or `Esc` to stop editing. You cannot edit while an answer is being generated.
+In Chat, select **Edit message** (the pencil icon) next to a message you sent. The composer shows **Editing a message · sending continues in a new conversation** and fills in the original text and attachments. When you send the edited text, the answer is generated in a **new conversation** that copies everything before that message. The original conversation stays as it was. Use **Cancel edit** or `Esc` to stop editing. You cannot edit while an answer is being generated.
 
 ## Keeping conversation context
 

@@ -14,9 +14,9 @@ for every agent, skill or document pattern that attaches it — the model is not
 | `stage` | `pre` (before writing: what to ask) or `post` (after writing: what to fix) |
 | `entry` | the script under `scripts/` the server imports                          |
 
-Attach a check by key: `checks = ["gap-check", "grounding-check"]` in `app/agents/<key>.toml`; a
-report's purpose format brings its own (`check_skills` in the format's `template.toml`, read by
-`services/patterns.py`).
+An agent attaches checks through its bundles (items of kind `check` in `app/bundles/*.toml`,
+compiled by `services/bundles.py`); a report's purpose format brings its own (`check_skills` in
+the format's `template.toml`, read by `services/patterns.py`).
 `services/check_skills.py` resolves the attached keys and runs them; the pipelines run them as
 `check` stages (`app/pipeline/check_stages.py`: `check:gaps`, `check:grounding`,
 `check:answer-grounding`; docs/architecture.md § Pipelines). `copy-check` runs as a stage of its
@@ -77,7 +77,7 @@ of shipped agents):
 
 The same fields are set in the skill form and in an uploaded SKILL.md.
 
-A skill's `process` lists (`prepass`, `checks`, `stages`, …) join the 서식's instead of replacing
+A skill's `process` lists (`prepass`, `checks`, `stages`, …) join the document format's instead of replacing
 them, so `date-calc` on a report adds its pre-pass to whatever the format already runs; its
 single values (`search`, `deep_search`, `code_calc`, `draws`, …) sit under the agent's own.
 `code_calc` (set by `calc-check`) runs the code calculation pass on a report or deck even when

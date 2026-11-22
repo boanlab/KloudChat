@@ -80,6 +80,8 @@ itself reads are in the second column.
 | `KCHAT_TOOLS_GATEWAY_KEY` | `TOOLS_GATEWAY_KEY` | — | Shared secret the gateway requires on every `/tools/*` request, sent as `X-Tools-Key`. Must equal `TOOLS_GATEWAY_KEY` in KloudChat-LLM's `.env`. Generate with `openssl rand -hex 32`. Attached only to requests under a configured tool address (see below); blank sends nothing and a gateway that requires it answers 401. |
 | `LITELLM_BASE_URL` | `LITELLM_BASE_URL` | derived | Only when LiteLLM is not behind the gateway. |
 | `LITELLM_MASTER_KEY` | `LITELLM_MASTER_KEY` | — | Never leaves the API process. Not returned by any route, including admin routes. |
+| `SEARXNG_URL`, `SCRAPER_URL`, `CODE_INTERPRETER_URL`, `DEEP_RESEARCH_URL`, `INDEX_URL`, `OCR_URL`, `WHISPER_URL` | same | — | Per-tool addresses, used when a tool is not behind the gateway (they map to search, fetch, exec, research, index, ocr and stt). A saved address in **System › Features › Integrations** wins. Set them on the `api` service; compose does not pass them from `.env`. |
+| `SCRAPER_API_KEY`, `CODE_INTERPRETER_API_KEY` | same | `internal-shim-noauth`, — | Bearer keys for the fetch and exec backends when they are not behind the gateway. |
 | `KCHAT_PRINT_BASE_URL` | `PRINT_BASE_URL` | `http://kloudchat-print:8200` | The printer — a headless browser that turns a finished document into a PDF that looks like the screen. Compose runs one, on a network with no route out. Blank turns it off: exports still produce a PDF, drawn by the structural renderer, carrying the words without the template's own layout. |
 
 The gateway derives these paths:
@@ -149,6 +151,7 @@ it when nobody is mid-turn):
 | --- | --- | --- | --- |
 | `KCHAT_ADMIN_EMAIL` | `BOOTSTRAP_ADMIN_EMAIL` | — | Applied only when the database has no accounts at all. Blank means the first signup becomes administrator. |
 | `KCHAT_ADMIN_PASSWORD` | `BOOTSTRAP_ADMIN_PASSWORD` | — | Set both to create an administrator on first boot. Never commit a value — this file is published. |
+| — | `BOOTSTRAP_ADMIN_NAME` | `관리자` | Display name of that administrator. |
 | `KCHAT_SIGNUP_MODE` | `SIGNUP_MODE` | `approval` | `open` (active immediately), `approval` (admin approves), `closed` (signup disabled). |
 | `KCHAT_DEFAULT_MONTHLY_CREDITS` | `DEFAULT_MONTHLY_CREDITS` | `500000` | First-install seed of **System › Signup › Monthly credits for new accounts**, which then decides. Assigned at approval unless the administrator overrides it. 1 credit = $0.00001, so 500,000 ≈ $5/month. |
 | `KCHAT_DEFAULT_CHAT_MODEL` | `DEFAULT_CHAT_MODEL` | `local/qwen3.8-flash` | First-install seed of **System › Model › Default chat model** (as are the four rows below). Absent from the catalogue (or outside an account's allowlist) → the first allowed chat model in catalogue order; price never picks a default. |
@@ -156,23 +159,23 @@ it when nobody is mid-turn):
 | `KCHAT_DEFAULT_IMAGE_MODEL` | `DEFAULT_IMAGE_MODEL` | `bytedance-seed/seedream-5-0-flash` | Default picture model, for the image surface and for pictures in reports and decks. The picture models are whatever the gateway's catalogue lists; one that does not honour an aspect ratio is offered square only (`imagegen.aspects_for`). Absent from the catalogue → pictures are unavailable until an administrator picks one (`409 default_image_model_unset`); outside an account's allowlist → the first picture model it may use. A strict-local conversation never uses it: see [Governance](#governance-security--audit-admingovernance). |
 | `KCHAT_DEFAULT_AUDIO_MODEL` / `KCHAT_DEFAULT_VIDEO_MODEL` | `DEFAULT_AUDIO_MODEL` / `DEFAULT_VIDEO_MODEL` | `openai/gpt-audio-mini` / `google/veo-3.1-lite` | The Audio / Video surface keeps one default per modality. Absent from the catalogue → that mode is unavailable until an administrator picks one (`409 default_audio_model_unset` for audio). |
 
-### Super Agent and the earlier Auto lanes
+### Super Agent and Auto
 
 Super Agent has no switch: the model picker always lists **Super Agent** and **Super Agent
 (strict-local)** first on chat, report and slides, and a new conversation there starts on
-the surface's default from **System › Model** (Super Agent unless the administrator chose
-otherwise; see [Model](#model)). Migration 0089 dropped the earlier `super_agent_enabled`
-column. An entry whose class table has no model an account may use is shown as unavailable
-only while a conversation is on it, and a new conversation then starts on the surface's
-model. **System › Routing** holds its classifier (`adaptive_classifier_model_id`,
-a live zero-cost strict-local model) and the class table (`super_agent_rules`, the admin's
-changes to `super_agent.DEFAULT_RULES`; see docs/architecture.md, "Super Agent"). A `super`
-pick must be a chat model the gateway serves; a `super_strict` pick must be strict-local.
+the surface's default from **System › Model** (see [Model](#model)). An entry whose class
+table has no model an account may use is shown as unavailable only while a conversation is
+on it; a new conversation then starts on the surface's model. **System › Routing** holds its
+classifier (`adaptive_classifier_model_id`, a live zero-cost strict-local model) and the
+class table (`super_agent_rules`, the admin's changes to `super_agent.DEFAULT_RULES`; see
+docs/architecture.md, "Super Agent"). A `super` pick must be a chat model the gateway
+serves; a `super_strict` pick must be strict-local. The API setting
+`api_super_agent_enabled` (**System › Features**, on unless set to `0`) lists the
+`kloudchat/super-agent` model ids on the `/llm` proxy.
 
-The earlier Auto lanes (`adaptive_routing_enabled`, `adaptive_economy_model_ids`,
-`adaptive_quality_enabled`, `adaptive_quality_model_ids`) are no longer offered in the picker;
-migration 0083 moved their first models into the table (economy → simple, upgrade →
-reasoning) and their conversations to Super Agent. The API still accepts them for comparison:
+The two Auto lanes (`adaptive_routing_enabled`, `adaptive_economy_model_ids`,
+`adaptive_quality_enabled`, `adaptive_quality_model_ids`) are accepted by the API but not
+offered in the picker:
 
 - **Auto · Save credits** (cost) sends a turn classified as low-complexity to one of
   one to three ordered economy models: cheaper than the chosen model on known
@@ -226,6 +229,7 @@ shown instead of silently retrying the premium model.
 | `.env` | Container | Default | Notes |
 | --- | --- | --- | --- |
 | `KCHAT_COOKIE_SECURE` | `COOKIE_SECURE` | `false` | **Set to `true` behind TLS.** The refresh cookie is httpOnly; over plain HTTP it is readable on the wire. Also switches `SameSite` from `Lax` to `None`. |
+| — | `REFRESH_COOKIE_NAME`, `COOKIE_DOMAIN` | `kchat_refresh`, unset | Name and `Domain` attribute of the refresh cookie. |
 | `KCHAT_CORS_ORIGINS` | `CORS_ORIGINS` | `["http://localhost:5173"]` | JSON array of exact origins. Credentialed requests make a wildcard impossible. |
 | `KCHAT_WEB_PORT` | — | `5173` | Host port for the web container. |
 | `KCHAT_API_URL` | `KCHAT_API_URL` | `http://api:8100` | nginx upstream, resolved at run time so the API can move hosts without an image rebuild. `api` is the compose service name, not a fixed container: nginx re-resolves it on every request (`resolver 127.0.0.11`), so it reaches every `api` replica. |
@@ -299,11 +303,14 @@ service's `environment:` — or, for `CODE_MODEL` and `CODE_FALLBACK_MODEL`, to
 | `CHAT_TIMEOUT_SEC` | `900` | A tool-using turn on a large local model runs for minutes. |
 | `CHAT_STALL_SEC` | `180` | The longest gap allowed between two chunks of a streamed model reply; a stream that stops sending is given up here instead of at `CHAT_TIMEOUT_SEC`. Time to the first token counts, so keep it above a long prompt's prefill. |
 | `TURN_DRAIN_SEC` | `120` | At shutdown, how long answers in progress may still finish, counted from SIGTERM; the rest are stored as interrupted and their conversations freed. Keep it, plus about 20 s, under the container's `stop_grace_period` (150 s in `docker-compose.yml`) and in step with uvicorn's `--timeout-graceful-shutdown`. |
-| `COMPLEX_DOCUMENT_SLOTS` | `0` | How many complex document turns (Super Agent's `complex_document` row: a form followed, many source files, a chart or paper-figure deck, a long source) may run at once on a self-hosted model, across all API replicas (Postgres advisory locks). `0` (the default) is no cap: the built-in row is Qwen3.8 Flash, which needs none. Set it when the row names a slow self-hosted model that chat shares (a single server with few sequences). |
+| `COMPLEX_DOCUMENT_SLOTS` | `0` | How many complex document turns (Super Agent's `complex_document` row: a form followed, many source files, a chart or paper-figure deck, a long source) may run at once on a self-hosted model, across all API replicas (Postgres advisory locks). `0` (the default) is no cap. Set it when the row names a slow self-hosted model that chat shares (a single server with few sequences). |
 | `COMPLEX_DOCUMENT_WAIT_SEC` | `120` | How long such a turn waits in line (「대기 중 · n번째」) before the `document` row's model writes it instead. |
-| `DOCUMENT_SECTION_CONCURRENCY` | `4` | How many sections of a long report are written at the same time (at least 1). Three at once wrote a 20-page report about 1.5 times faster than one at a time with the same quality; with several people writing at once a higher value stops helping once the model node is saturated. |
+| `DOCUMENT_SECTION_CONCURRENCY` | `4` | How many sections of a long report are written at the same time (at least 1). A higher value stops helping once the model node is saturated by several people writing at once. |
 | `COMPLEX_DOCUMENT_CALL_SEC` | `480` | How long one whole-answer call of a report or deck on the complex row's model may take before the `document` row's model is asked instead. |
+| `DOCUMENT_HARD_SHARE` / `DOCUMENT_DECK_HARD_SHARE` | `0.5` / `0.3` | The most a report's sections, or a deck's content slides, the upper model may write; the writer keeps the rest. A deck's charts carry its numbers, so fewer slides need the upper model. |
+| `DOCUMENT_UPPER_CALLS` | `3` | Upper-model calls of a deck's hard and repair stages; a deck needing more has the rest done by the writer. |
 | `TOOL_TIMEOUT_SEC` | `300` | Per-tool ceiling. `MAX_TOOL_HOPS` is what bounds the turn. |
+| `RESEARCH_TIMEOUT_SEC` | `1800` | Deep-research modes that take 5 to 30 minutes (`detailed_research`, `generate_report`). |
 | `MAX_TOOL_HOPS` | `8` | Model↔tool round trips per turn; past eight a model is usually in a retry loop. The last hop runs without tools so the turn still ends in an answer. |
 | `MAX_UPLOAD_MB` | `200` | Exists so one upload cannot fill the disk. Set it as `KCHAT_MAX_UPLOAD_MB` in `.env`: compose hands that one value to the API and to `web`, whose nginx allows a request body 16 MB larger (multipart wrapping; computed at container start by `kchat-body-size.envsh`). `/auth/config` reports it as `upload.maxMb`, and the web app refuses a larger file before sending it. A proxy in front needs the same room — see the deployment guide. |
 | `STORAGE_RECLAIM_AT` | `0.8` | Disk fill (used ÷ total) past which the files of deleted accounts are removed, oldest first, until the volume is back under it. Checked every 30 minutes and from the admin usage screen's **Sweep orphaned files** button. `0` disables the sweep. Living accounts are never touched. |
@@ -321,20 +328,34 @@ service's `environment:` — or, for `CODE_MODEL` and `CODE_FALLBACK_MODEL`, to
 | `APP_BASE_URL` | — | Origin used to build password reset links. Never taken from the request `Host`, which is attacker-controlled. |
 | `TIMEZONE` | `Asia/Seoul` | IANA name. The service time zone: the date given to the model on every turn, the monthly credit refill (the 1st at its midnight), the daily usage bars, and every date the web app prints or groups by (sent to the browser in `/auth/config`, whatever the browser's own zone). Every timestamp in the database stays UTC. Set through `KCHAT_TIMEZONE`. |
 | `GEOIP_DATABASE` | — | Path to a MaxMind GeoLite2 City `.mmdb`. Empty disables region lookup; see [Where an address is](#where-an-address-is). Set through `KCHAT_GEOIP_DATABASE`. |
+| `AGENT_DRAFT_TIMEOUT_SEC` | `45` | Drafting an agent from a description or a skill. |
 | `TITLE_TIMEOUT_SEC` | `20` | Naming a conversation and extracting memories. Both are best effort, so this is short: a title that takes longer than the turn did is not worth waiting for. |
 | `LITELLM_TIMEOUT_SEC` / `LITELLM_PROBE_TIMEOUT_SEC` | `20` / `4` | The master-key client — provisioning a user, issuing a key, listing the catalogue — and the probe behind the admin connection test. **Not the model call**, which is `CHAT_TIMEOUT_SEC` above; raising this one will not help a generation that is being cut off. |
 | `AUTO_ROUTING_CLASSIFIER_TIMEOUT_SEC` | `8` | Auto's classification call. On timeout the quality model answers. |
 | `FILE_STORAGE_DIR` | `/srv/data/files` | Where uploads and generated media are written. Mount it, or a container rebuild loses every picture. |
 | `SELF_HOSTED_CHAT_THINKING` | `false` | First-install seed of **System › Model**'s thinking switch. Whether self-hosted chat models may think before answering. Off sends `enable_thinking: false` to the models named below. Set through `KCHAT_SELF_HOSTED_CHAT_THINKING`. |
 | `SELF_HOSTED_THINKING_MODELS` | `qwen3.8-flash` | Comma-separated name fragments of self-hosted models that think unless told not to. Set through `KCHAT_SELF_HOSTED_THINKING_MODELS`. |
-| `SELF_HOSTED_THINKING_BUDGET_LOW`, `SELF_HOSTED_THINKING_BUDGET_HIGH` | `500`, `2000` | The thinking-token cap (`thinking_token_budget`, passed through the gateway to vLLM) sent with `enable_thinking: true` to those models when the routed effort is `low`, or `high` and deeper. Without a cap a thinking Flash call ran about 23 times longer and a quarter of artifact generations passed 300 s; with these about 3 times. `0` sends no cap. Models that do not think by default, DeepSeek and the 27B are unchanged. |
+| `SELF_HOSTED_THINKING_BUDGET_LOW`, `SELF_HOSTED_THINKING_BUDGET_HIGH` | `500`, `2000` | The thinking-token cap (`thinking_token_budget`, passed through the gateway to vLLM) sent with `enable_thinking: true` to those models when the routed effort is `low`, or `high` and deeper. Without a cap a thinking call can run many times longer. `0` sends no cap. Models that do not think by default are unaffected. |
+| `SELF_HOSTED_PRESENCE_PENALTY_MODELS` / `SELF_HOSTED_PRESENCE_PENALTY` | `qwen3.8-27b` / `1.0` | Comma-separated name fragments of self-hosted models that are sent this `presence_penalty`. |
 | `SELF_HOSTED_PROMPT_CACHE_ORDER` | `false` | Whether self-hosted writers get the cache-ordered system prompt (fixed blocks first, architecture § Prompt caching) that external models always get. Turn it on only when the vLLM serving them has prefix caching on; with it off the order buys nothing. |
 | `CONNECTOR_TOOLS_EAGER_MAX` | `6` | A connector with more enabled tools than this sends them to the model by name only, with a `load_tools` step that brings the schemas it asks for (architecture § Prompt caching); fewer go out whole every hop. |
-| `SELF_HOSTED_DEFER_CONNECTOR_TOOLS` | `false` | Whether self-hosted writers get that by-name list too. Off until the 27B's tool choice with the extra step is measured. |
+| `SELF_HOSTED_DEFER_CONNECTOR_TOOLS` | `false` | Whether self-hosted writers get that by-name list too. |
 | `EXTERNAL_CHAT_THINKING` | `false` | First-install seed, as above. The same for external chat models; off sends OpenRouter's `reasoning` switch. Set through `KCHAT_EXTERNAL_CHAT_THINKING`. |
-| `INTERNAL_DATA_STRICT_LOCAL_DEFAULT` | `true` | Default of the governance switch that keeps turns carrying internal material (attachments, project files, memories) on strict-local models. The admin screen's value wins once saved. |
+| `INTERNAL_DATA_STRICT_LOCAL_DEFAULT` | `true` | Default of the governance switch that keeps turns carrying internal material (attachments, project files, memories) on strict-local models. The admin screen's value wins once saved. Compose reads it under this name, without the `KCHAT_` prefix. |
+| `ADAPTIVE_ROUTING_DEFAULT` / `ADAPTIVE_QUALITY_DEFAULT` | `true` / `true` | Initial value of the two Auto lane switches in a fresh governance row. |
+| `ADAPTIVE_ECONOMY_MODELS_DEFAULT` / `ADAPTIVE_QUALITY_MODELS_DEFAULT` | `local/qwen3.8-flash` / `deepseek/deepseek-v4.1-flash,z-ai/glm-5.3-flash` | Initial model lists of those lanes (comma-separated). |
+| `OCR_VISION_MODEL` | `strict-local/qwen3.8-flash` | The vision model used when **Text from scans** is set to **Auto**. |
+| `KNOWLEDGE_DIGEST_MODEL` | `strict-local/qwen3.8-flash` | Writes the per-file digests of project material. Only a strict-local model is used; empty gives code digests only. |
+| `SANDBOX_IN_BOUNDARY` | `true` | Whether the code sandbox counts as inside the data boundary, so that strict-local turns are offered code execution. Keep `true` only when the sandbox has no network. |
+| `SKILL_DRAFTS` | `false` | Seeds skills with `status: draft` (administrator-private, runnable). Off: neither. |
+| `GUIDE_BASE_URL` | `https://boanlab.github.io/KloudChat` | Base address of the user guide that in-app help links to. |
+| `VAPID_PRIVATE_KEY` / `VAPID_PUBLIC_KEY` / `VAPID_SUBJECT` | — | Web push key pair, passed from `KCHAT_VAPID_*`. Empty: the API generates a pair on first start and keeps it sealed in the database. The subject (`mailto:` or `https:`) is the contact push services see; empty uses the contact address of the admin settings. |
+| `PUSH_PER_MINUTE` / `PUSH_BACKOFF_SEC` / `PUSH_EXTRA_HOSTS` | `6` / `1.0` / `[]` | Notices per user per minute (all devices together), the first retry wait (doubles per attempt), and push-service hosts allowed besides the browsers' own. |
+| `JWT_ALGORITHM` | `HS256` | Signing algorithm of access tokens. Not for product use; leave as is. |
 | `API_REPLICAS` / `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | `1` / `10` / `20` | Set through `KCHAT_API_REPLICAS`, `KCHAT_DB_POOL_SIZE`, `KCHAT_DB_MAX_OVERFLOW` (above). |
-| `SMTP_HOST` … `SMTP_FROM` | — | Seed values for **System › Mail**; the admin screen wins. |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM` | —, `587`, `starttls`, —, —, — | Seed values for **System › Mail**; the admin screen wins. |
+| `BRAND_NAME` | `KloudChat` | Service name when **System › Branding** has none stored. |
+| `PERF_*` | | See [Performance monitoring](#performance-monitoring). |
 
 ---
 
@@ -351,7 +372,9 @@ above.
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `PERF_MONITORING` | `true` | Off: nothing is collected. |
+| `PERF_RAW_HOURS`, `PERF_RETENTION_DAYS` | `48`, `30` | How long one-minute rows are kept before folding into 10-minute rows, and when rows are deleted. |
 | `PERF_HOST_PROC`, `PERF_HOST_CGROUP` | `/host/proc`, `/host/cgroup` | The host's `/proc` and `/sys/fs/cgroup`, mounted read-only in `docker-compose.yml`. Without them the page has no host or container figures. Containers are named from their processes (command line, process names, bind-mount sources) and from `PERF_DNS_NAMES`; there is no docker socket. |
+| `PERF_DNS_NAMES` | `web,db,print,kloudchat-web,kloudchat-db,kloudchat-print` | Container names resolved to addresses to label containers. |
 | `PERF_DISKS` | `data=/srv/data/files,docker=/` | `label=path` pairs whose filesystems are reported. |
 | `PERF_TARGETS` | — | Empty: every target the backend lists at `<backend address>/metrics/targets` (KloudChat-LLM finds the model servers and GPU nodes from its endpoint settings; [tools.md](https://github.com/boanlab/kloudchat-llm/blob/main/docs/tools.md)), each read from `/metrics/<name>` with `X-Tools-Key`; model servers are shown as `model · node`, GPU nodes by hostname. A comma list reads only those names (`gpu-*` as gpu-exporter). `PERF_METRICS_URL` overrides the base. |
 | `PERF_MODEL_LOGS` | `true` | Per-model latency and errors from LiteLLM `/spend/logs/v2` (master key; no prompts or responses are read). |
@@ -484,27 +507,24 @@ one (`422 model_audio_required`, `422 model_video_required`); report and slides
 left empty follow the chat default. Price never picks a default.
 
 Chat, report and slides also offer **Super Agent** and **Super Agent (strict-local)**,
-listed first; Super Agent is the default for all three on a fresh installation
+listed first; Super Agent is the default for all three
 (`system_settings` `routing.chat`, `routing.report`, `routing.slides`: `super`,
 `super_strict`, `manual`, or empty for report and slides to follow chat; unset means
 `super`). A new conversation starts in that mode unless the person picked a model or a Super Agent
 entry for that surface (home screen or Settings › Preferences) or its agent has its own model; a project conversation where
 internal material stays strict-local starts on `super_strict`. With a Super Agent entry
 chosen, the model last chosen for the surface stays stored as the fallback a turn uses when
-the class table has nothing usable. Migration 0089 moved the three surfaces to Super Agent
-unless an administrator had saved a model other than the shipped default
-(`local/qwen3.8-flash` for chat, `local/qwen3.8-27b` for report and slides); existing
-conversations keep their own mode. An agent saved
+the class table has nothing usable. An agent saved
 with no model follows its surface's default. The
 side-work models read the conversation, so only self-hosted chat models can be
 chosen (`422 model_title_invalid` and the like otherwise); a strict-local turn
-uses the `strict-local/` twin. A model the gateway stopped serving stays
+uses the `strict-local/` twin. A saved model the gateway no longer serves stays
 selectable as it is, marked unavailable, and is not swapped silently.
 
 ### Routing
 
 Super Agent's classifier and class table — see
-[Super Agent and the earlier Auto lanes](#super-agent-and-the-earlier-auto-lanes) — and the
+[Super Agent and Auto](#super-agent-and-auto) — and the
 outline model, which plans
 a document before the surface's own model writes it.
 
@@ -527,21 +547,12 @@ better on Korean institutional requests:
 | `run_code` file programs | `local/qwen3.8-27b`, then Flash | **System › Model › Code-writing model**, its fallback |
 | Re-reading scanned pages | `strict-local/qwen3.8-flash` | **System › Features › Text from scans (OCR)** |
 
-Why this split:
-
-- **Writing goes to the 27B.** Flash adds details nobody gave (a booth size, a
-  promise to pay costs in an official letter) and lets Chinese characters and
-  English words slip into Korean; the 27B does neither.
-- **Reading and judging go to Flash.** It copies totals out of the material,
-  writes calculation programs and classifies in a valid shape more reliably,
-  and keeps more key facts in a long conversation's summary.
-- **Code that reads files stays on the 27B.** Flash's pandas code can return
-  wrong counts without failing.
-- **Thinking stays off.** It makes Flash's readings exact but takes minutes a
-  call instead of seconds.
-- **Load is split by node.** Prose, the bulk of the tokens, runs on the 27B's
-  node, which serves more sequences at once; Flash's node takes the many short
-  readings.
+Why this split: writing goes to the 27B, which invents fewer details and keeps Korean free of
+stray Chinese characters and English words; reading and judging go to Flash, which copies
+totals, writes calculation programs and classifies in a valid shape more reliably; code that
+reads files stays on the 27B; thinking stays off because it costs minutes a call instead of
+seconds; and prose, the bulk of the tokens, runs on the 27B's node while Flash's node takes the
+many short readings.
 
 ### Integrations
 
