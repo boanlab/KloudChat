@@ -271,6 +271,7 @@ export function FilesPage() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          className="max-sm:h-9 max-sm:w-9"
                           aria-label={t('{name} 미리보기').replace('{name}', row.name)}
                           title={t('미리보기')}
                           onClick={() => setPreviewing(row)}
@@ -280,6 +281,7 @@ export function FilesPage() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          className="max-sm:h-9 max-sm:w-9"
                           aria-label={t('{name} 내려받기').replace('{name}', row.name)}
                           title={t('내려받기')}
                           onClick={() => void downloadFile(row.id, row.name).catch((err) => setError(errorMessage(err, t('내려받지 못했습니다. 잠시 뒤 다시 시도하세요.'))))}
@@ -289,6 +291,7 @@ export function FilesPage() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          className="ml-1.5 max-sm:h-9 max-sm:w-9"
                           aria-label={t('{name} 삭제').replace('{name}', row.name)}
                           title={t('이 파일을 삭제합니다')}
                           onClick={() => setConfirming(row)}

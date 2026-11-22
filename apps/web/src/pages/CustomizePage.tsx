@@ -141,7 +141,15 @@ function Segment({ view, onChange }: { view: View; onChange: (next: View) => voi
 }
 
 /** 「+ 추가 ▾」 per tab. */
-function AddMenu({ tab, compact = false }: { tab: HubTab; compact?: boolean }) {
+function AddMenu({
+  tab,
+  compact = false,
+  onAddServer,
+}: {
+  tab: HubTab
+  compact?: boolean
+  onAddServer?: () => void
+}) {
   const t = useT()
   const navigate = useNavigate()
   const items: { label: string; icon: ReactNode; run: () => void }[] =
@@ -155,7 +163,9 @@ function AddMenu({ tab, compact = false }: { tab: HubTab; compact?: boolean }) {
             { label: '스킬 만들기', icon: <Pencil size={14} />, run: () => navigate('/customize/skills/new') },
             { label: '스킬 올리기', icon: <Upload size={14} />, run: () => navigate('/customize/skills/upload') },
           ]
-        : []
+        : tab === 'connectors' && onAddServer
+          ? [{ label: '서버 직접 추가', icon: <Plus size={14} />, run: onAddServer }]
+          : []
   if (items.length === 0) return null
   return (
     <Dropdown
@@ -387,7 +397,7 @@ function SectionHead({ title, onAll }: { title: string; onAll?: () => void }) {
     <div className="mb-3 flex items-center justify-between gap-2">
       <h2 className="text-md font-semibold">{title}</h2>
       {onAll && (
-        <button type="button" onClick={onAll} className="inline-flex items-center gap-1 text-sm text-muted hover:text-fg">
+        <button type="button" onClick={onAll} className="inline-flex min-h-6 items-center gap-1 py-0.5 text-sm text-muted hover:text-fg">
           {t('모두 보기')}
           <ArrowRight size={14} aria-hidden />
         </button>
@@ -440,9 +450,11 @@ function Hub() {
   ) : null
   const { tryItem, addItem } = useItemActions()
   const cardTab = CARD_TABS.includes(tab)
-  const hasView = cardTab
+  const connTab = tab === 'connectors'
+  const hasView = cardTab || connTab
+  const [addingServer, setAddingServer] = useState(false)
   const rawView = params.get('view')
-  const fallback: View = hub.mine.length > 0 || hub.loading || workspaceLoading ? 'mine' : 'explore'
+  const fallback: View = connTab || hub.mine.length > 0 || hub.loading || workspaceLoading ? 'mine' : 'explore'
   const view: View = rawView === 'mine' || rawView === 'explore' ? rawView : fallback
 
   const kindWord = t(TAB_LABEL[tab])
@@ -657,19 +669,19 @@ function Hub() {
     )
   }
 
-  const searchable = cardTab
+  const searchable = cardTab || connTab
   const filterCount = filter.status.length + filter.kinds.length
 
   return (
     <>
       <TopBar
         left={<span className="text-base font-medium">{t('사용자 지정')}</span>}
-        right={phone && cardTab ? <AddMenu tab={tab} compact /> : undefined}
+        right={phone && hasView ? <AddMenu tab={tab} compact onAddServer={() => setAddingServer(true)} /> : undefined}
       />
       <PageBody>
         <div className="mb-5 flex items-center justify-between gap-3 max-sm:mb-3">
           <h1 className="text-2xl font-semibold tracking-tight">{t('사용자 지정')}</h1>
-          {!phone && <AddMenu tab={tab} />}
+          {!phone && <AddMenu tab={tab} onAddServer={() => setAddingServer(true)} />}
         </div>
 
         {phone ? (
@@ -718,7 +730,15 @@ function Hub() {
         )}
 
         <div role="tabpanel" aria-label={t(TAB_LABEL[tab])}>
-          {tab === 'connectors' && <ConnectorsPage embedded />}
+          {tab === 'connectors' && (
+            <ConnectorsPage
+              embedded
+              view={view}
+              query={filter.q}
+              adding={addingServer}
+              onAddingChange={setAddingServer}
+            />
+          )}
           {cardTab && (view === 'mine' ? mineBody() : exploreBody())}
         </div>
       </PageBody>

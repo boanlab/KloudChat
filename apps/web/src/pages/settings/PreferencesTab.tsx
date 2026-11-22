@@ -56,6 +56,7 @@ export function PreferencesTab() {
           {saveError ?? t('저장 중…')}
         </p>
       )}
+      <p className="text-sm text-muted">{t('화면·언어·기본 모델 등 사용 환경을 정합니다.')}</p>
       <section className="space-y-3">
         <div>
           <h2 className="text-base font-semibold">{t('기본 모델')}</h2>

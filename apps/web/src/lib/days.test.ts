@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { dayLabel, dayOf } from '@/lib/days'
+import { dayBucket, dayLabel, dayOf } from '@/lib/days'
 import { serviceMidnight, serviceTimeZone, setServiceTimeZone, shiftDate } from '@/lib/utils'
 
 const t = (s: string) => s
@@ -49,5 +49,17 @@ describe('days in the service time zone', () => {
     expect(serviceTimeZone()).toBe('Asia/Seoul')
     setServiceTimeZone(undefined)
     expect(serviceTimeZone()).toBe('Asia/Seoul')
+  })
+})
+
+describe('day buckets for the conversation list', () => {
+  const now = new Date('2026-11-11T15:00:30Z') // 00:00:30 KST, 12 November
+  it('groups by calendar day in the service zone', () => {
+    expect(dayBucket('2026-11-11T15:00:00Z', now)).toBe('today')
+    expect(dayBucket('2026-11-11T14:59:00Z', now)).toBe('yesterday') // 23:59 KST on the 11th
+    expect(dayBucket('2026-11-09T20:00:00Z', now)).toBe('week') // 10 November
+    expect(dayBucket('2026-11-04T20:00:00Z', now)).toBe('week') // 5 November, seven days back
+    expect(dayBucket('2026-11-03T20:00:00Z', now)).toBe('older') // 4 November
+    expect(dayBucket('', now)).toBe('older')
   })
 })

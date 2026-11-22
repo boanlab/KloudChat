@@ -19,3 +19,17 @@ export function dayLabel(
   if (day === shiftDate(today, -1)) return t('어제')
   return formatDate(iso)
 }
+
+export type DayBucket = 'today' | 'yesterday' | 'week' | 'older'
+
+/** 오늘 / 어제 / 이번 주 (within the last seven days) / 이전, by service-zone calendar days. */
+export function dayBucket(iso: string | null | undefined, now: Date = new Date()): DayBucket {
+  const day = dayOf(iso)
+  const today = serviceDate(now)
+  // Undated rows are old as far as the list is concerned.
+  if (!day) return 'older'
+  if (day >= today) return 'today'
+  if (day === shiftDate(today, -1)) return 'yesterday'
+  if (day >= shiftDate(today, -7)) return 'week'
+  return 'older'
+}

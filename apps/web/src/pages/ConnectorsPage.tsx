@@ -93,14 +93,23 @@ function ConnectorCard({
         <button onClick={onOpen} className="min-w-0 flex-1 text-left">
           <span className="flex flex-wrap items-center gap-1.5">
             <span className="text-base font-medium">{t(connector.name)}</span>
-            {connector.official && (
+            {/* A default copy is always official: one badge says both. */}
+            {connector.official && !connector.byDefault && (
               <Badge tone="accent">
                 <ShieldCheck size={10} />
                 {t('공식')}
               </Badge>
             )}
             {connector.byDefault && <Badge tone="accent">{t('기본 제공')}</Badge>}
-            <Badge tone={status.tone}>{t(status.label)}</Badge>
+            {/* Connected is the normal state: a dot, not a badge; the others stay badges. */}
+            {connector.status === 'connected' ? (
+              <span className="inline-flex items-center" title={t(status.label)}>
+                <span aria-hidden className="size-2 rounded-full bg-success" />
+                <span className="sr-only">{t(status.label)}</span>
+              </span>
+            ) : (
+              <Badge tone={status.tone}>{t(status.label)}</Badge>
+            )}
           </span>
           <span className="mt-1 block text-base text-muted">{t(connector.description)}</span>
         </button>
@@ -413,7 +422,21 @@ function parseEnv(text: string): Record<string, string> {
   return out
 }
 
-export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}) {
+export function ConnectorsPage({
+  embedded = false,
+  view,
+  query: queryProp,
+  adding: addingProp,
+  onAddingChange,
+}: {
+  embedded?: boolean
+  /** Given by the customize hub, which then owns the segment, search and add button. */
+  view?: 'mine' | 'explore'
+  query?: string
+  adding?: boolean
+  onAddingChange?: (next: boolean) => void
+} = {}) {
+  const hubFrame = view !== undefined
   const t = useT()
   const tHub = useTIn('hub')
   const {
@@ -434,11 +457,14 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
   useEffect(() => {
     void ensureWorkspace()
   }, [ensureWorkspace])
-  const [tab, setTab] = useState<'installed' | 'catalog'>('installed')
+  const [tabLocal, setTab] = useState<'installed' | 'catalog'>('installed')
+  const tab = hubFrame ? (view === 'mine' ? 'installed' : 'catalog') : tabLocal
   const [detail, setDetail] = useState<Connector | null>(null)
   const [credentialsFor, setCredentialsFor] = useState<CatalogEntry | null>(null)
   const [reCredential, setReCredential] = useState<Connector | null>(null)
-  const [adding, setAdding] = useState(false)
+  const [addingLocal, setAddingLocal] = useState(false)
+  const adding = hubFrame ? !!addingProp : addingLocal
+  const setAdding = (next: boolean) => (hubFrame ? onAddingChange?.(next) : setAddingLocal(next))
   const [addError, setAddError] = useState('')
   const addRefusal = (err: unknown) => {
     const detail = err instanceof ApiError ? err.detail : ''
@@ -456,7 +482,8 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
     envText: '',
   })
 
-  const [query, setQuery] = useState('')
+  const [queryLocal, setQuery] = useState('')
+  const query = hubFrame ? (queryProp ?? '') : queryLocal
   // Names and descriptions as shown, in either language.
   const found = <T extends { name: string; description: string }>(items: T[]) =>
     items.filter((c) => matchesQuery(query, c.name, t(c.name), c.description, t(c.description)))
@@ -479,6 +506,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
   return (
     <>
       <PageFrame title={t('MCP 서버')} embedded={embedded}>
+        {!hubFrame && (
         <PageHeader
           embedded={embedded}
           title={t('MCP 서버')}
@@ -490,19 +518,20 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
             </Button>
           }
         />
+        )}
 
-        <Tabs<'installed' | 'catalog'>
+        {!hubFrame && <Tabs<'installed' | 'catalog'>
           value={tab}
           onChange={setTab}
           tabs={[
             { id: 'installed', label: t('내 MCP 서버'), count: installed.length },
             { id: 'catalog', label: tHub('탐색'), count: catalog.filter((e) => !e.installed).length },
           ]}
-        />
+        />}
 
         {workspaceFailed && <ReloadNotice onRetry={() => void loadWorkspace()} />}
 
-        {!empty && (
+        {!hubFrame && !empty && (
           <ListSearch value={query} onChange={setQuery} label={t('MCP 서버 검색')} className="mt-4" />
         )}
 

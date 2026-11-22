@@ -1758,6 +1758,7 @@ const EN: Record<string, string> = {
   '작업 종류별 모델': 'Model by task type',
   '작업 종류': 'Task type',
   '추론 강도': 'Reasoning effort',
+  '추론 강도 (strict-local)': 'Reasoning effort (strict-local)',
   '{class} · Super Agent 모델': '{class} · Super Agent model',
   '{class} · strict-local 모델': '{class} · strict-local model',
   '{class} · 추론 강도': '{class} · reasoning effort',
@@ -2408,6 +2409,9 @@ const EN: Record<string, string> = {
   '관리자에게 문의': 'Contact administrator',
   'CSV 내보내기': 'Export CSV',
   '서버 직접 추가': 'Add a server',
+  '월 {n} 크레딧 중': 'of {n} credits a month',
+  '화면·언어·기본 모델 등 사용 환경을 정합니다.': 'Set up the screen, language, default models and more.',
+  '대화 길이: 컨텍스트의 {n}%를 쓰고 있습니다': 'Conversation length: using {n}% of the context window',
   '모든 대화 삭제': 'Delete all conversations',
   '{name} 키 관리': 'Keys of {name}',
   'KloudChat 키를 재발급·교체하고, 이 사용자가 발급한 키를 확인·삭제합니다': 'Reissue or replace the KloudChat key, and see or revoke the keys this person issued',
@@ -2863,6 +2867,7 @@ const EN: Record<string, string> = {
   '스킬을 불러오는 중…': 'Loading skills…',
   '날짜 없음': 'No date',
   '어제': 'Yesterday',
+  '이번 주': 'This week',
   // ── report editor ──────────────────────────────────────────────
   // Two-letter labels in place of icons; English uses Row/Col.
   '행+': 'Row+',

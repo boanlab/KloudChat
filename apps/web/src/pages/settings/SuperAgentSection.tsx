@@ -127,14 +127,15 @@ export function SuperAgentSection() {
 
       {/* A phone stacks each row as a card with its own field names; wider screens keep the table. */}
       <div className="overflow-x-auto max-sm:overflow-visible">
-        <table className="w-full min-w-[640px] text-sm max-sm:block max-sm:min-w-0" data-testid="super-agent-table">
+        <table className="w-full min-w-[760px] text-sm max-sm:block max-sm:min-w-0" data-testid="super-agent-table">
           <caption className="sr-only">{t('작업 종류별 모델')}</caption>
           <thead className="max-sm:hidden">
             <tr className="text-left text-xs text-faint">
               <th scope="col" className="py-1.5 pr-2 font-medium">{t('작업 종류')}</th>
               <th scope="col" className="py-1.5 pr-2 font-medium">Super Agent</th>
               <th scope="col" className="py-1.5 pr-2 font-medium">Super Agent (strict-local)</th>
-              <th scope="col" className="py-1.5 font-medium">{t('추론 강도')}</th>
+              <th scope="col" className="py-1.5 pr-2 font-medium">{t('추론 강도')}</th>
+              <th scope="col" className="py-1.5 font-medium">{t('추론 강도 (strict-local)')}</th>
             </tr>
           </thead>
           <tbody className="max-sm:block max-sm:space-y-2">
@@ -170,19 +171,8 @@ export function SuperAgentSection() {
                       {options(strictOnly(pool), rule.strictModel, SUPER_OVERRIDE_ROWS.has(name), true)}
                     </Select>
                     {rate(strictOnly(pool), rule.strictModel)}
-                    <Select
-                      className="mt-1 min-w-[10.5em]"
-                      aria-label={t('{class} · strict-local 추론 강도').replace('{class}', label)}
-                      value={rule.strictEffort ?? rule.effort}
-                      onChange={(event) =>
-                        setRule(name, { strictEffort: event.target.value as SuperAgentRule['effort'] })}
-                    >
-                      {EFFORTS.map((effort) => (
-                        <option key={effort} value={effort}>{t(SUPER_EFFORT_LABEL[effort])}</option>
-                      ))}
-                    </Select>
                   </td>
-                  <td className="py-2 max-sm:block max-sm:p-0">
+                  <td className="py-2 pr-2 max-sm:block max-sm:p-0">
                     <span className="mb-1 hidden text-xs text-faint max-sm:block" aria-hidden>{t('추론 강도')}</span>
                     {/* As wide as its longest label: a shared column width cut 「추론 높게」. */}
                     <Select
@@ -191,6 +181,20 @@ export function SuperAgentSection() {
                       value={rule.effort}
                       onChange={(event) =>
                         setRule(name, { effort: event.target.value as SuperAgentRule['effort'] })}
+                    >
+                      {EFFORTS.map((effort) => (
+                        <option key={effort} value={effort}>{t(SUPER_EFFORT_LABEL[effort])}</option>
+                      ))}
+                    </Select>
+                  </td>
+                  <td className="py-2 max-sm:block max-sm:p-0">
+                    <span className="mb-1 hidden text-xs text-faint max-sm:block" aria-hidden>{t('추론 강도 (strict-local)')}</span>
+                    <Select
+                      className="min-w-[10.5em]"
+                      aria-label={t('{class} · strict-local 추론 강도').replace('{class}', label)}
+                      value={rule.strictEffort ?? rule.effort}
+                      onChange={(event) =>
+                        setRule(name, { strictEffort: event.target.value as SuperAgentRule['effort'] })}
                     >
                       {EFFORTS.map((effort) => (
                         <option key={effort} value={effort}>{t(SUPER_EFFORT_LABEL[effort])}</option>
