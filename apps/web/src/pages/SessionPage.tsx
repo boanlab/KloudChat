@@ -601,7 +601,6 @@ export function SessionPage() {
       ) : loadFailed ? (
         <div role="alert" className="flex max-w-sm flex-col items-center gap-3 text-center">
           <p className="text-base text-muted">{t('최신 내용을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')}</p>
-          {retrying && <p className="text-sm text-faint">{t('잠시 후 다시 불러옵니다.')}</p>}
           <Button onClick={retryLoad}>
             <RotateCw size={14} />
             {t('다시 시도')}

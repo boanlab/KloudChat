@@ -44,6 +44,7 @@ function KindGlyph({ kind }: { kind: WorkingKind }) {
 function useOpenInEditor() {
   const navigate = useNavigate()
   const newSession = useStore((s) => s.newSession)
+  const renameSession = useStore((s) => s.renameSession)
   const ensureSession = useStore((s) => s.ensureSession)
   const refreshArtifact = useStore((s) => s.refreshArtifact)
   return async (row: WorkingDocRow) => {
@@ -56,7 +57,9 @@ function useOpenInEditor() {
       navigate(`/files?tab=working&doc=${row.id}`)
       return
     }
-    const sessionId = await ensureSession(await newSession('chat', { projectId: row.projectId }))
+    const fresh = await newSession('chat', { projectId: row.projectId })
+    await renameSession(fresh, row.title)
+    const sessionId = await ensureSession(fresh)
     await artifactsApi.attachDocument(row.kind, row.id, sessionId)
     await refreshArtifact(row.id)
     navigate(`/s/${sessionId}?artifact=${row.id}`)

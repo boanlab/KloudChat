@@ -198,13 +198,13 @@ export function FilesPage() {
           onQuery={setQuery}
         />
         {working && <WorkingDocs query={query} onCount={noteWorking} />}
-        {!working && box.failed && <ReloadNotice onRetry={() => void box.load()} />}
+        {!working && box.failed && <ReloadNotice empty={shown.length === 0} onRetry={() => void box.load()} />}
         {!working && error && <p className="pt-3 text-base text-danger">{error}</p>}
         {!working && (
         <div className="pt-4">
           {box.loading ? (
             <ListSkeleton />
-          ) : shown.length === 0 ? (
+          ) : box.failed && shown.length === 0 ? null : shown.length === 0 ? (
             <EmptyState
               icon={<FolderOpen size={18} />}
               title={query ? t('찾는 파일이 없습니다') : origin === 'upload' ? t('올린 파일이 없습니다') : t('만든 파일이 없습니다')}

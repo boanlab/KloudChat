@@ -44,6 +44,7 @@ export function FilePreview({ row, onClose, start }: { row: FileRow | null; onCl
   const navigate = useNavigate()
   const phone = useMediaQuery('(max-width: 40rem)')
   const newSession = useStore((s) => s.newSession)
+  const renameSession = useStore((s) => s.renameSession)
   const ensureSession = useStore((s) => s.ensureSession)
   const [shown, setShown] = useState<Shown>({ kind: 'loading' })
   const [drawn, setDrawn] = useState(false)
@@ -118,7 +119,10 @@ export function FilePreview({ row, onClose, start }: { row: FileRow | null; onCl
     setOpening('new')
     setError(null)
     try {
-      const id = await ensureSession(await newSession('chat', { projectId: row.projectId }))
+      const fresh = await newSession('chat', { projectId: row.projectId })
+      // the chat is named after the file, not left as 「새 작업」
+      await renameSession(fresh, row.name)
+      const id = await ensureSession(fresh)
       const made = await artifactsApi.createDocument(office, { sessionId: id, fileId: row.id })
       navigate(`/s/${id}?artifact=${made.id}`)
     } catch (err) {

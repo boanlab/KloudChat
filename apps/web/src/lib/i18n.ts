@@ -3031,7 +3031,6 @@ const EN: Record<string, string> = {
   '검사에서 지적된 문제를 고쳐 주세요: {message}': 'Fix what the check raised: {message}',
   '최신 내용을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.': 'Could not load the latest. Try again in a moment.',
   '대화를 찾을 수 없습니다. 삭제되었거나 볼 수 없는 대화입니다.': 'Conversation not found. It was deleted or you cannot view it.',
-  '잠시 후 다시 불러옵니다.': 'Trying again shortly.',
   '대화를 불러오는 중…': 'Loading the conversation…',
   '(계속)': '(cont.)',
   '자동으로 나눌 항목을 찾지 못했습니다. 문장을 줄이거나 새 장을 추가해 주세요.': 'Nothing here divides cleanly. Shorten the text or add a slide.',
@@ -3569,6 +3568,7 @@ const EN: Record<string, string> = {
   '삭제한 대화': 'Deleted conversation',
   '대화 밖에서 올림': 'Uploaded outside a conversation',
   '찾는 파일이 없습니다': 'No files match',
+  '목록을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.': 'Could not load the list. Try again in a moment.',
   '올린 파일이 없습니다': 'No uploaded files',
   '이름의 다른 부분으로 찾아보세요.': 'Try another part of the name.',
   // 파일함 › 작업 문서
