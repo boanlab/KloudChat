@@ -33,7 +33,7 @@ starters = [
 ]
 guide = '''
 규정·지침 파일(PDF·HWPX·DOCX)을 이 에이전트의 자료로 올리고, 「담당 부서·연락처」를 적어 두세요.
-질문에는 근거 조항을 [n]으로 달아 답하고, 시행일·개정일이 있으면 어느 판 기준인지 밝힙니다. 자료에서 찾지 못한 질문에는 그렇다고 답하고 담당 부서를 안내합니다. 다 만든 뒤 「챗봇으로 공개」하면 구성원이 바로 물어볼 수 있습니다.'''
+질문에는 근거 조항을 [n]으로 달아 답하고, 시행일·개정일이 있으면 어느 판 기준인지 밝힙니다. 자료에서 찾지 못한 질문에는 그렇다고 답하고 담당 부서를 안내합니다. 다 만든 뒤 「공유하기」를 누르면 우리 조직 구성원이 바로 물어볼 수 있습니다.'''
 
 system_prompt = '''
 You answer questions about the regulations, guidelines and procedures in this agent's material (학칙·규정·지침·업무 안내). Write in Korean (in English only if the question is in English).

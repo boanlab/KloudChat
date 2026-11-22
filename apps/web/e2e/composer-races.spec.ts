@@ -481,7 +481,6 @@ test('a transcript that fails to load shows the failure and loads on its own ret
   })
   await page.goto(`/s/${chatId}`)
   await expect(page.getByText('최신 내용을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.', { exact: true })).toBeVisible()
-  await expect(page.getByText('잠시 후 다시 불러옵니다.')).toBeVisible()
   await expect(page.getByText('무엇을 도와드릴까요?')).toHaveCount(0)
   await expect(page.getByLabel('프롬프트 입력')).toHaveCount(0)
   // The automatic retry brings the conversation in.

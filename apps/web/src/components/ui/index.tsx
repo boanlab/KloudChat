@@ -16,6 +16,7 @@ import {
 import { createPortal } from 'react-dom'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/useT'
+import { splitSentences } from '@/lib/sentences'
 
 /* ── Button ─────────────────────────────────────────────────────────── */
 
@@ -761,6 +762,21 @@ export function MenuSeparator() {
 
 /* ── Misc ───────────────────────────────────────────────────────────── */
 
+/** A message that wraps between sentences first; a sentence too long for one line still wraps by word. */
+export function Sentences({ text }: { text: string }) {
+  const parts = splitSentences(text)
+  return (
+    <>
+      {parts.map((p, i) => (
+        <span key={i} className="inline-block [overflow-wrap:normal] [word-break:keep-all]">
+          {p}
+          {i < parts.length - 1 ? ' ' : ''}
+        </span>
+      ))}
+    </>
+  )
+}
+
 export function EmptyState({
   icon,
   title,
@@ -783,7 +799,11 @@ export function EmptyState({
       </div>
       <div className="space-y-1">
         <Heading className="text-base font-medium">{title}</Heading>
-        {description && <p className="max-w-sm text-base text-muted">{description}</p>}
+        {description && (
+          <p className="max-w-sm text-balance text-base text-muted">
+            <Sentences text={description} />
+          </p>
+        )}
       </div>
       {action}
     </div>
@@ -843,7 +863,7 @@ export function ResourceStatus({
 }
 
 /** Stale-list notice with a retry. */
-export function ReloadNotice({ onRetry }: { onRetry: () => void }) {
+export function ReloadNotice({ onRetry, empty = false }: { onRetry: () => void; empty?: boolean }) {
   const t = useT()
   return (
     <div
@@ -851,7 +871,13 @@ export function ReloadNotice({ onRetry }: { onRetry: () => void }) {
       className="mb-3 flex flex-wrap items-center gap-2 rounded-control border border-warn/30 bg-warn/5 px-3 py-2 text-base text-warn"
     >
       <span className="min-w-0 flex-1 max-sm:basis-32">
-        {t('목록을 새로 불러오지 못했습니다. 화면에 보이는 것은 마지막으로 받은 내용입니다.')}
+        <Sentences
+          text={
+            empty
+              ? t('목록을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')
+              : t('목록을 새로 불러오지 못했습니다. 화면에 보이는 것은 마지막으로 받은 내용입니다.')
+          }
+        />
       </span>
       <Button size="sm" onClick={onRetry}>
         {t('다시 시도')}

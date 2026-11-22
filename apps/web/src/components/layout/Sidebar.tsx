@@ -242,7 +242,7 @@ export function Sidebar() {
 
   if (rail) {
     return (
-      <aside className="flex h-full w-16 shrink-0 flex-col items-center border-r border-line bg-sidebar py-3 transition-[width] duration-300">
+      <aside aria-label={t('사이드바')} className="flex h-full w-16 shrink-0 flex-col items-center border-r border-line bg-sidebar py-3 transition-[width] duration-300">
         <Brand name={brand.name} logo={brand.logo} markOnly />
         <nav className="mt-3 flex flex-col items-center gap-1">
           {[{ to: '/', label: '새 대화', icon: Plus, end: true }, ...workspaceNav].map(
@@ -275,7 +275,7 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="flex h-full w-[268px] shrink-0 flex-col border-r border-line bg-sidebar transition-[width] duration-300">
+    <aside aria-label={t('사이드바')} className="flex h-full w-[268px] shrink-0 flex-col border-r border-line bg-sidebar transition-[width] duration-300">
       <div className="flex items-center gap-2 px-3 py-3">
         <Brand name={brand.name} logo={brand.logo} />
       </div>

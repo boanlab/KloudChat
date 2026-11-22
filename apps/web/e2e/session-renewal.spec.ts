@@ -214,3 +214,34 @@ test('going offline shows a quiet notice that leaves once the network is back', 
   await page.context().setOffline(false)
   await expect(page.getByTestId('offline-bar')).toHaveCount(0)
 })
+
+test('a sign-in that is gone on reload says it expired, keeps the address and the typed text', async ({ page }, testInfo) => {
+  const seen = await app(page, testInfo)
+  await page.goto(`/s/${id}`)
+  const input = page.getByLabel('프롬프트 입력')
+  await input.fill('쓰던 질문입니다')
+  // The refresh cookie lapses while the page is closed.
+  seen.signedIn = false
+  await page.reload()
+  await expect(signInForm(page)).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByText('로그인이 만료되었습니다. 다시 로그인하면 하던 화면으로 돌아갑니다.')).toBeVisible()
+  await expect(page).toHaveURL(new RegExp(`/s/${id}$`))
+
+  await signInForm(page).fill('renew@example.test')
+  await page.getByLabel('비밀번호').fill('correct horse battery')
+  await page.getByRole('button', { name: '로그인', exact: true }).last().click()
+  await expect(page.getByLabel('프롬프트 입력')).toHaveValue('쓰던 질문입니다', { timeout: 15_000 })
+  await expect(page).toHaveURL(new RegExp(`/s/${id}$`))
+})
+
+test('signing out by choice does not say the sign-in expired', async ({ page }, testInfo) => {
+  const seen = await app(page, testInfo)
+  await page.goto('/')
+  await expect(accountMenu(page)).toBeVisible()
+  seen.signedIn = false
+  await page.evaluate(() => localStorage.setItem('kchat-signed-out', '1'))
+  await page.evaluate(() => localStorage.removeItem('kchat-had-session'))
+  await page.reload()
+  await expect(signInForm(page)).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByText(/로그인이 만료되었습니다/)).toHaveCount(0)
+})

@@ -56,6 +56,7 @@ export function PerfModelsPage() {
           <ModelLatencyTable
             rows={data.models}
             errorRateMax={th?.errorRateMax ?? 5}
+            errorMinCalls={th?.errorMinCalls ?? 20}
             empty={
               data.collector.modelLogAt ? t('이 기간에 모델 호출이 없습니다.') : t('LiteLLM 요청 기록을 아직 읽지 못했습니다.')
             }

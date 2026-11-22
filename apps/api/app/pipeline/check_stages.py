@@ -175,9 +175,26 @@ class GroundCheck(Base):
 TRACE = "grounding-check"
 
 
+def has_sources(req) -> bool:
+    """Whether the turn carries anything an answer's values could be traced to: the person's
+    material or files, a tool's output, search evidence, or an earlier answer's cited sources.
+    The person's own typed words are not a source: a plain question has none to quote.
+    Pasted material arrives as `traced`."""
+    if req.traced or req.advice or (req.check_material or "").strip():
+        return True
+    if any(str(o or "").strip() for o in (*(req.tool_outputs or ()), *(req.evidence or ()))):
+        return True
+    return any(m.get("role") == "assistant" and _CITED.search(str(m.get("content") or ""))
+               for m in req.messages or ())
+
+
 def answer_checks(req) -> tuple[str, ...]:
-    """Attached `post` checks; on the person's material the grounding check too."""
+    """Attached `post` checks; on the person's material the grounding check too. Without any
+    source on the turn the grounding check does not run, even when an agent attached it: the
+    model's background knowledge is not a claim about a source."""
     keys = tuple(req.check_keys or ())
+    if TRACE in keys and not has_sources(req):
+        keys = tuple(k for k in keys if k != TRACE)
     return (*keys, TRACE) if req.traced and TRACE not in keys else keys
 
 

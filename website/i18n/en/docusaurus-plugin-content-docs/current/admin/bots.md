@@ -4,7 +4,7 @@ title: Approving published chatbots
 
 # Approving published chatbots
 
-When a member publishes an agent as a chatbot, other members can use it at once. Opening it to people without an account — **anyone with the link** or **public** — waits for an administrator's approval. Handle these under the account menu's **Admin** → **Published chatbots**. A number appears on the menu while requests are waiting.
+When a member shares an agent as a chatbot, other members can use it at once. Opening it to people without an account — **Anyone with the link** or **Anyone** — waits for an administrator's approval. Handle these under the account menu's **Admin** → **Published chatbots**. A number appears on the menu while requests are waiting.
 
 ## What you review
 
@@ -20,10 +20,10 @@ When a new version arrives on a chatbot open to people without an account, it is
 
 ## Channel requests
 
-The publisher of a chatbot open by link or to everyone can ask for the **Embed on other sites**, **API** and **MCP** channels. A request appears in the same review queue as "Channel request", and the review shows the channels and sites asked for.
+The publisher of a chatbot open to "Anyone with the link" or "Anyone" can ask for the **Embed on other sites**, **API** and **MCP** channels. A request appears in the same review queue as "Channel request", and the review shows the channels and sites asked for.
 
 - **Approve** opens the channels asked for. An embedded chat shows only on the sites you approved; adding a site is reviewed again.
-- **Close to people without an account** closes the embed, API and MCP channels too. From then on the embedded chat, the API and MCP are refused at once.
+- **Close the Anyone / Anyone with the link scope** closes the embed, API and MCP channels too. From then on the embedded chat, the API and MCP are refused at once.
 - The channels open now are listed under **Open channels** on the review screen.
 
 ## Reading conversations
@@ -34,7 +34,7 @@ The publisher of a chatbot open by link or to everyone can ask for the **Embed o
 
 | Action | Result |
 |---|---|
-| Close to people without an account | Returns it to members only. Visitors without an account cannot open it from their next request |
+| Close the Anyone / Anyone with the link scope | Returns it to your organization only. Visitors without an account cannot open it from their next request |
 | Pause / Reopen | Stops or resumes questions from every visitor |
 | Close chatbot | Nobody but the publisher can open it |
 

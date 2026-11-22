@@ -3,18 +3,19 @@
 import { useEffect, useMemo } from 'react'
 import { create } from 'zustand'
 import { ApiError, BASE_URL, botsApi, publicationsApi } from '@/lib/api'
-import type { BotChannel, BotListItem, BotLimits, BotVisibility, Publication, PublicationSettings, PublicationStatus, ShowProcess } from '@/lib/api'
+import type { BotChannel, BotListItem, BotLimits, BotPage as BotPageData, BotVisibility, Publication, PublicationSettings, PublicationStatus, ShowProcess } from '@/lib/api'
 import { useStore } from '@/store/useStore'
+import type { AgentPublication } from '@/types'
 import type { Translator } from '@/lib/useT'
 
 /** Why an agent cannot be published as it stands. */
 export const PROBLEM_LABEL: Record<string, string> = {
-  no_local_model: '이 기관에서 쓸 수 있는 내부 모델이 없어 공개할 수 없습니다. 관리자에게 문의하세요.',
-  not_chat: '대화로 답하는 에이전트만 챗봇으로 공개할 수 있습니다.',
-  sealed: '봉인된 사본은 공개할 수 없습니다.',
-  own_process: '직접 구성한 진행 과정을 쓰는 에이전트는 챗봇으로 공개할 수 없습니다.',
-  credits: '남은 크레딧이 없어 공개할 수 없습니다.',
-  account: '계정이 활성 상태가 아니어서 공개할 수 없습니다.',
+  no_local_model: '이 기관에서 쓸 수 있는 내부 모델이 없어 공유할 수 없습니다. 관리자에게 문의하세요.',
+  not_chat: '대화로 답하는 에이전트만 챗봇으로 공유할 수 있습니다.',
+  sealed: '봉인된 사본은 공유할 수 없습니다.',
+  own_process: '직접 구성한 진행 과정을 쓰는 에이전트는 챗봇으로 공유할 수 없습니다.',
+  credits: '남은 크레딧이 없어 공유할 수 없습니다.',
+  account: '계정이 활성 상태가 아니어서 공유할 수 없습니다.',
   retired: '더 이상 제공하지 않는 에이전트입니다.',
   not_owner: '내 에이전트만 공개할 수 있습니다.',
 }
@@ -44,7 +45,7 @@ export const FINDING_LABEL: Record<string, string> = {
 export const STATUS_LABEL: Record<PublicationStatus, string> = {
   draft: '준비 중',
   pending: '승인 대기',
-  approved: '공개 중',
+  approved: '공유 중',
   paused: '일시 중지',
   rejected: '반려',
   revoked: '닫힘',
@@ -70,23 +71,51 @@ export const RETENTION_DAYS = [7, 14, 30, 90, 180]
 export const VISIBILITIES: BotVisibility[] = ['internal', 'link', 'external']
 
 export const VISIBILITY_LABEL: Record<BotVisibility, string> = {
-  internal: '구성원 공개',
-  link: '링크 공개',
-  external: '외부 공개',
+  internal: '우리 조직',
+  link: '링크를 아는 사람',
+  external: '누구나',
 }
 
 export const VISIBILITY_HINT: Record<BotVisibility, string> = {
   internal: '구성원이 「공유된 에이전트」에서 찾아 씁니다. 바로 열립니다.',
-  link: '주소를 아는 누구나 로그인 없이 씁니다. 목록에는 나오지 않고, 승인 뒤 열립니다.',
-  external: '누구나 로그인 없이 씁니다. 공개 목록과 검색에 나오고, 승인 뒤 열립니다.',
+  link: '로그인 없이 씁니다. 목록에는 나오지 않습니다. 관리자 승인이 필요합니다.',
+  external: '공개 목록과 검색에 나옵니다. 관리자 승인이 필요합니다.',
+}
+
+/** Daily credit cap a share dialog starts with when the scope needs approval. */
+export const DEFAULT_CREDITS_PER_DAY = 3000
+
+export type ScopeState = 'open' | 'pending' | 'none'
+
+/** One scope as the owner reads it: open now, asked of an administrator, or not asked. */
+export function scopeState(
+  pub: Pick<Publication, 'visibility' | 'requestedVisibility' | 'reviewState'>,
+  scope: BotVisibility,
+): ScopeState {
+  const rank = (v: BotVisibility) => VISIBILITIES.indexOf(v)
+  if (rank(scope) <= rank(pub.visibility)) return 'open'
+  if (pub.reviewState === 'pending' && pub.requestedVisibility && rank(scope) <= rank(pub.requestedVisibility)) return 'pending'
+  return 'none'
+}
+
+const SCOPE_SHORT: Record<BotVisibility, string> = { internal: '우리 조직', link: '링크', external: '누구나' }
+
+/** The one badge a shared agent wears: where it is open and, when asked, where it waits. */
+export function shareBadge(pub: AgentPublication, t: Translator): string {
+  if (pub.status === 'paused') return t('일시 중지')
+  const open = t(VISIBILITY_LABEL[pub.visibility])
+  if (pub.reviewState === 'pending' && pub.requestedVisibility) {
+    return `${open} · ${t('{scope} 승인 대기').replace('{scope}', t(SCOPE_SHORT[pub.requestedVisibility]))}`
+  }
+  return open
 }
 
 /** The owner's view of a request: what is waiting, or why it was refused. */
 export function reviewLine(pub: Publication, t: Translator): string {
   const asked = pub.requestedVisibility ? t(VISIBILITY_LABEL[pub.requestedVisibility]) : ''
   if (pub.reviewState === 'pending') {
-    if (asked && pub.pendingVersionId) return t('관리자가 공개 범위({scope})와 새 판을 확인하고 있습니다.').replace('{scope}', asked)
-    if (asked) return t('관리자가 공개 범위({scope})를 확인하고 있습니다. 그동안 지금 범위로 답합니다.').replace('{scope}', asked)
+    if (asked && pub.pendingVersionId) return t('관리자가 공유 범위({scope})와 새 판을 확인하고 있습니다.').replace('{scope}', asked)
+    if (asked) return t('관리자가 공유 범위({scope})를 확인하고 있습니다. 그동안 지금 범위로 답합니다.').replace('{scope}', asked)
     if (pub.requestedChannels && !pub.pendingVersionId) return t('채널 요청을 관리자가 확인하고 있습니다. 그동안 지금 열린 채널만 씁니다.')
     return t('새 판을 관리자가 확인하고 있습니다. 그동안 승인된 판이 답합니다.')
   }
@@ -112,6 +141,29 @@ export function noticeLines(view: 'off' | 'on', days: number, t: Translator, sig
   }
   lines.push(t('개인정보를 입력하지 마세요.'))
   return lines
+}
+
+/** The one line above the question box, in place of the whole notice; 「자세히」 opens `noticeLines`. */
+export function consentLine(view: 'off' | 'on', days: number, t: Translator): string {
+  return view === 'on'
+    ? t.n('대화는 만든 사람의 계정으로 처리되고, 만든 사람이 볼 수 있으며, {n}일 뒤 삭제됩니다. 개인정보는 입력하지 마세요.', days)
+    : t.n('대화는 만든 사람의 계정으로 처리되고 {n}일 뒤 삭제됩니다. 개인정보는 입력하지 마세요.', days)
+}
+
+/** On the owner's preview: why the address is not open to people outside yet; empty once it is. */
+export function previewReason(
+  bot: Pick<BotPageData, 'visibility' | 'requestedVisibility' | 'reviewState'>,
+  t: Translator,
+): string {
+  if (bot.visibility !== 'internal') return ''
+  const asked = bot.requestedVisibility ? t(VISIBILITY_LABEL[bot.requestedVisibility]) : ''
+  if (asked && bot.reviewState === 'pending') {
+    return t('「{scope}」 범위가 승인 대기 중입니다. 승인되기 전에는 우리 조직 구성원만 열 수 있습니다.').replace('{scope}', asked)
+  }
+  if (asked && bot.reviewState === 'rejected') {
+    return t('「{scope}」 요청이 반려되었습니다. 지금은 우리 조직 구성원만 열 수 있습니다.').replace('{scope}', asked)
+  }
+  return t('우리 조직 구성원만 열 수 있습니다. 로그인하지 않은 사람에게는 열리지 않습니다.')
 }
 
 /** A refused question, in words a visitor can act on. */
@@ -170,15 +222,15 @@ export const CHANNEL_LABEL: Record<BotChannel, string> = {
 }
 
 export const CHANNEL_HINT: Record<BotChannel, string> = {
-  embed: '내 사이트에 대화창을 넣습니다. 외부 공개일 때 씁니다.',
-  api: '내 프로그램에서 OpenAI 호환 방식으로 부릅니다. 링크·외부 공개일 때 씁니다.',
-  mcp: 'AI 도구에 이 챗봇을 도구로 연결합니다. 링크·외부 공개일 때 씁니다.',
+  embed: '내 사이트에 대화창을 넣습니다. 누구나일 때 씁니다.',
+  api: '내 프로그램에서 OpenAI 호환 방식으로 부릅니다. 링크를 아는 사람이나 누구나일 때 씁니다.',
+  mcp: 'AI 도구에 이 챗봇을 도구로 연결합니다. 링크를 아는 사람이나 누구나일 때 씁니다.',
 }
 
 export const CHANNEL_ERROR: Record<string, string> = {
   bad_origin: '사이트 주소는 https://로 시작하는 주소만 쓸 수 있습니다. 경로 없이 적어 주세요.',
   origins_required: '넣을 사이트 주소를 하나 이상 적어 주세요.',
-  channel_needs_audience: '이 채널은 지금 공개 범위에서 쓸 수 없습니다. 공개 범위를 먼저 넓혀 주세요.',
+  channel_needs_audience: '이 채널은 지금 공유 범위에서 쓸 수 없습니다. 공유 범위를 먼저 넓혀 주세요.',
   credits_cap_required: '채널을 열려면 하루 최대 크레딧을 정해야 합니다.',
   revoked: '닫힌 챗봇입니다.',
 }
@@ -189,13 +241,13 @@ export function channelAllowed(visibility: BotVisibility, channel: BotChannel): 
   return visibility !== 'internal'
 }
 
-export type ChannelState = 'open' | 'pending' | 'closed' | 'unavailable'
+export type ChannelState = 'open' | 'pending' | 'closed'
 
 /** One channel as the owner reads it. */
 export function channelState(pub: Publication, channel: BotChannel): ChannelState {
   if (pub.channels?.[channel]) return 'open'
   if (pub.reviewState === 'pending' && pub.requestedChannels?.[channel]) return 'pending'
-  return channelAllowed(pub.requestedVisibility || pub.visibility, channel) ? 'closed' : 'unavailable'
+  return 'closed'
 }
 
 /** The API's address as other programs reach it. */
@@ -214,7 +266,7 @@ export function embedSnippet(slug: string): string {
 
 /** The owner's refusals on the audience, in words. */
 export const SCOPE_ERROR: Record<string, string> = {
-  credits_cap_required: '구성원 밖으로 공개하려면 하루 최대 크레딧을 정해야 합니다.',
+  credits_cap_required: '조직 밖으로 공유하려면 하루 최대 크레딧을 정해야 합니다.',
   revoked: '닫힌 챗봇입니다.',
   no_change: '지난 판과 달라진 것이 없어 새 판을 만들지 않았습니다.',
 }

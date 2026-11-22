@@ -198,17 +198,17 @@ interface Look {
 }
 
 const LOOKS: Record<VisualStyle, Look> = {
-  editorial: { bg: '#ffffff', ink: '#1a1a1a', muted: '#666666', faint: '#8a8a8a', hair: '#e6e6e6', tint: 7, card: 'filled', radius: 0, badge: 'square', cover: 'gradient', ornament: 'top-band', titleWeight: 700, tracking: -0.2, leading: 1.6 },
-  poster: { bg: '#f7f3ed', ink: '#1a1a1a', muted: '#666666', faint: '#8a8a8a', hair: '#e2ddd4', tint: 9, card: 'filled', radius: 0, badge: 'square', cover: 'gradient', ornament: 'left-bar', titleWeight: 800, tracking: -0.4, leading: 1.55 },
-  minimal: { bg: '#ffffff', ink: '#1a1a1a', muted: '#666666', faint: '#8a8a8a', hair: '#ececec', tint: 5, card: 'outlined', radius: 0, badge: 'square', cover: 'wash', ornament: 'corner-circle', titleWeight: 600, tracking: -0.3, leading: 1.7 },
-  dark: { bg: '#0f172a', ink: '#f1f5f9', muted: '#a3b1c6', faint: '#64748b', hair: '#273449', tint: 22, card: 'filled', radius: 6, badge: 'circle', cover: 'glow', ornament: 'bottom-rule', titleWeight: 700, tracking: 0, leading: 1.6 },
-  split: { bg: '#ffffff', ink: '#111827', muted: '#5b6472', faint: '#9aa3b2', hair: '#e5e7eb', tint: 6, card: 'outlined', radius: 0, badge: 'square', cover: 'split', ornament: 'gutter', titleWeight: 700, tracking: -0.2, leading: 1.6 },
-  warm: { bg: '#f6f1e8', ink: '#3f3328', muted: '#7a6a5a', faint: '#a8998a', hair: '#e2d8c8', tint: 12, card: 'filled', radius: 10, badge: 'circle', cover: 'paper', ornament: 'bottom-band', titleWeight: 700, tracking: 0, leading: 1.7 },
-  mono: { bg: '#ffffff', ink: '#111111', muted: '#555555', faint: '#8a8a8a', hair: '#111111', tint: 0, card: 'outlined', radius: 0, badge: 'square', cover: 'brackets', ornament: 'frame', titleWeight: 700, tracking: 0.3, leading: 1.6 },
-  pastel: { bg: '#f3f0fa', ink: '#2b2540', muted: '#6b6480', faint: '#9a93ad', hair: '#e3ddf0', tint: 14, card: 'filled', radius: 12, badge: 'circle', cover: 'wash', ornament: 'corner-circle', titleWeight: 600, tracking: -0.2, leading: 1.65 },
-  forest: { bg: '#f1f5f0', ink: '#1f2d22', muted: '#5c6b5e', faint: '#8e9a90', hair: '#d9e2da', tint: 10, card: 'filled', radius: 6, badge: 'square', cover: 'gradient', ornament: 'left-bar', titleWeight: 700, tracking: -0.2, leading: 1.6 },
-  slate: { bg: '#eef1f5', ink: '#1c2431', muted: '#55617a', faint: '#8b96ab', hair: '#d5dbe6', tint: 8, card: 'outlined', radius: 2, badge: 'square', cover: 'split', ornament: 'bottom-rule', titleWeight: 700, tracking: 0, leading: 1.6 },
-  paper: { bg: '#fbfaf6', ink: '#2a2622', muted: '#6b655c', faint: '#9b948a', hair: '#e6e1d6', tint: 6, card: 'outlined', radius: 0, badge: 'square', cover: 'paper', ornament: 'frame', titleWeight: 600, tracking: 0, leading: 1.7 },
+  editorial: { bg: '#ffffff', ink: '#1a1a1a', muted: '#666666', faint: '#757575', hair: '#e6e6e6', tint: 7, card: 'filled', radius: 0, badge: 'square', cover: 'gradient', ornament: 'top-band', titleWeight: 700, tracking: -0.2, leading: 1.6 },
+  poster: { bg: '#f7f3ed', ink: '#1a1a1a', muted: '#666666', faint: '#6d6d6d', hair: '#e2ddd4', tint: 9, card: 'filled', radius: 0, badge: 'square', cover: 'gradient', ornament: 'left-bar', titleWeight: 800, tracking: -0.4, leading: 1.55 },
+  minimal: { bg: '#ffffff', ink: '#1a1a1a', muted: '#666666', faint: '#757575', hair: '#ececec', tint: 5, card: 'outlined', radius: 0, badge: 'square', cover: 'wash', ornament: 'corner-circle', titleWeight: 600, tracking: -0.3, leading: 1.7 },
+  dark: { bg: '#0f172a', ink: '#f1f5f9', muted: '#a3b1c6', faint: '#8a99ae', hair: '#273449', tint: 22, card: 'filled', radius: 6, badge: 'circle', cover: 'glow', ornament: 'bottom-rule', titleWeight: 700, tracking: 0, leading: 1.6 },
+  split: { bg: '#ffffff', ink: '#111827', muted: '#5b6472', faint: '#6d757f', hair: '#e5e7eb', tint: 6, card: 'outlined', radius: 0, badge: 'square', cover: 'split', ornament: 'gutter', titleWeight: 700, tracking: -0.2, leading: 1.6 },
+  warm: { bg: '#f6f1e8', ink: '#3f3328', muted: '#7a6a5a', faint: '#74695e', hair: '#e2d8c8', tint: 12, card: 'filled', radius: 10, badge: 'circle', cover: 'paper', ornament: 'bottom-band', titleWeight: 700, tracking: 0, leading: 1.7 },
+  mono: { bg: '#ffffff', ink: '#111111', muted: '#555555', faint: '#757575', hair: '#111111', tint: 0, card: 'outlined', radius: 0, badge: 'square', cover: 'brackets', ornament: 'frame', titleWeight: 700, tracking: 0.3, leading: 1.6 },
+  pastel: { bg: '#f3f0fa', ink: '#2b2540', muted: '#6b6480', faint: '#6d687b', hair: '#e3ddf0', tint: 14, card: 'filled', radius: 12, badge: 'circle', cover: 'wash', ornament: 'corner-circle', titleWeight: 600, tracking: -0.2, leading: 1.65 },
+  forest: { bg: '#f1f5f0', ink: '#1f2d22', muted: '#5c6b5e', faint: '#646d65', hair: '#d9e2da', tint: 10, card: 'filled', radius: 6, badge: 'square', cover: 'gradient', ornament: 'left-bar', titleWeight: 700, tracking: -0.2, leading: 1.6 },
+  slate: { bg: '#eef1f5', ink: '#1c2431', muted: '#55617a', faint: '#616a7a', hair: '#d5dbe6', tint: 8, card: 'outlined', radius: 2, badge: 'square', cover: 'split', ornament: 'bottom-rule', titleWeight: 700, tracking: 0, leading: 1.6 },
+  paper: { bg: '#fbfaf6', ink: '#2a2622', muted: '#6b655c', faint: '#767169', hair: '#e6e1d6', tint: 6, card: 'outlined', radius: 0, badge: 'square', cover: 'paper', ornament: 'frame', titleWeight: 600, tracking: 0, leading: 1.7 },
 }
 type SlideElement = 'title' | 'content' | 'image' | 'table' | 'chart' | 'metrics' | 'cards'
 

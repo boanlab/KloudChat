@@ -18,7 +18,6 @@ import {
   CHANNEL_HINT,
   CHANNEL_LABEL,
   CHANNELS,
-  channelAllowed,
   channelState,
   embedSnippet,
   mcpUrl,
@@ -33,13 +32,11 @@ const STATE_LABEL: Record<ChannelState, string> = {
   open: '열림',
   pending: '승인 대기',
   closed: '닫힘',
-  unavailable: '이 공개 범위에서는 쓸 수 없음',
 }
-const STATE_TONE: Record<ChannelState, 'success' | 'accent' | 'neutral' | 'warn'> = {
+const STATE_TONE: Record<ChannelState, 'success' | 'accent' | 'neutral'> = {
   open: 'success',
   pending: 'accent',
   closed: 'neutral',
-  unavailable: 'neutral',
 }
 
 const day = (iso: string | null | undefined) => (iso ? formatDate(iso) : '')
@@ -77,7 +74,16 @@ function CodeBlock({ code, testId }: { code: string; testId?: string }) {
 }
 
 /** Bot channels: state, on (admin request) / off (immediate), framing sites, paste code once open. */
-export function ChannelsCard({ pub, onChange }: { pub: Publication; onChange: (next: Publication) => void }) {
+export function ChannelsCard({
+  pub,
+  onChange,
+  channels = CHANNELS,
+}: {
+  pub: Publication
+  onChange: (next: Publication) => void
+  /** The channels this scope can carry; others are not shown. */
+  channels?: BotChannel[]
+}) {
   const t = useT()
   const open = pub.channels ?? {}
   const wantedNow = pub.requestedChannels ?? open
@@ -90,7 +96,6 @@ export function ChannelsCard({ pub, onChange }: { pub: Publication; onChange: (n
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const list = origins.split('\n').map((o) => o.trim()).filter(Boolean)
-  const audience = pub.requestedVisibility || pub.visibility
   const opening = CHANNELS.some((c) => on[c] && !open[c]) ||
     (on.embed && list.some((o) => !(open.embed?.origins ?? []).includes(o.toLowerCase().replace(/\/$/, ''))))
   const changed =
@@ -117,10 +122,9 @@ export function ChannelsCard({ pub, onChange }: { pub: Publication; onChange: (n
         <p className="text-sm text-muted">{t('다른 사이트·API·MCP에서도 이 챗봇을 씁니다. 켜면 관리자 승인 뒤 열립니다.')}</p>
       </div>
       <ul className="divide-y divide-line rounded-card border border-line">
-        {CHANNELS.map((channel) => {
+        {channels.map((channel) => {
           const Icon = ICON[channel]
           const state = channelState(pub, channel)
-          const allowed = channelAllowed(audience, channel)
           return (
             <li key={channel} className="space-y-2 px-3 py-3" data-testid={`channel-${channel}`}>
               <div className="flex flex-wrap items-center gap-2">
@@ -130,7 +134,7 @@ export function ChannelsCard({ pub, onChange }: { pub: Publication; onChange: (n
                 <span className="flex-1" />
                 <Switch
                   checked={on[channel]}
-                  disabled={busy || (!allowed && !on[channel])}
+                  disabled={busy}
                   label={t(CHANNEL_LABEL[channel])}
                   onChange={(next) => setOn({ ...on, [channel]: next })}
                 />
@@ -274,7 +278,7 @@ export function ApiTab({ pub }: { pub: Publication }) {
     <div className="max-w-3xl space-y-4" data-testid="publication-api">
       {!apiOpen && !mcpOpen && (
         <p role="status" className="rounded-control border border-line bg-elevated px-3 py-2 text-base text-muted">
-          {t('API·MCP 채널이 아직 열리지 않았습니다. 개요 › 채널에서 켜고 승인을 받으면 아래 키로 부릅니다.')}
+          {t('API·MCP 채널이 아직 열리지 않았습니다. 위 「채널」에서 켜고 승인을 받으면 아래 키로 부릅니다.')}
         </p>
       )}
       <Card className="space-y-3 p-4">

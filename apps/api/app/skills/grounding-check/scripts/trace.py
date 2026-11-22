@@ -1571,6 +1571,10 @@ def _other_values(line: str, masked: str, sources: Sources, k: int, found: list[
     for m in VAGUE_MONTH.finditer(masked):
         if not free(*m.span()):
             continue
+        if options.get("surface") == "chat":
+            # a chat answer's 「3월」「11월 초」 names a period of the year, not a dated claim
+            taken.append(m.span())
+            continue
         mo, part = int(m.group("m")), m.group("part")
         taken.append(m.span())
         if not 1 <= mo <= 12:

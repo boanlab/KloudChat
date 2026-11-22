@@ -429,6 +429,7 @@ async def overview(admin: AdminUser, db: DbSession, range: str = RangeName):  # 
             "diskWarn": th.disk_warn,
             "diskCritical": th.disk_critical,
             "errorRateMax": th.error_rate_max,
+            "errorMinCalls": th.error_min_calls,
             "gpuTempMax": th.gpu_temp_max,
             "gpuNodeMemMax": th.gpu_node_mem_max,
             "sustainMin": th.sustain_min,

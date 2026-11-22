@@ -6,6 +6,7 @@ import { ShareButton } from '@/components/share/ShareButton'
 import { Badge, Button, Dropdown, MenuItem, MenuLabel, Modal } from '@/components/ui'
 import type { AskReason } from '@/lib/officeGuard'
 import { cn } from '@/lib/utils'
+import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
 
 /* Chrome shared by every document panel: header, conflict notice, agent lock, read-only note, unsaved-edits prompt.
@@ -93,6 +94,9 @@ export function DocumentHeader({
   const [sharing, setSharing] = useState(false)
   // a read-only header at phone width (no 저장, icons only) fits one row
   const oneRow = Boolean(compact && !showSave)
+  // At phone width the top bar already shows the conversation's title; the same words twice are both cut short.
+  const sessionTitle = useStore((st) => st.sessions.find((c) => c.id === st.activeSessionId)?.title)
+  const titleInBar = oneRow && sessionTitle === title
   useEffect(() => {
     if (historyRequest) setRequest(historyRequest)
   }, [historyRequest])
@@ -101,7 +105,7 @@ export function DocumentHeader({
       {icon}
       {/* keeps room to be read: the actions wrap to a second row first; at phone width they
           stay on one row (icons only) and the title gives way */}
-      <p className={cn('flex-1 truncate text-base font-medium', oneRow ? 'min-w-0' : 'min-w-20 basis-20')} title={title}>{title}</p>
+      <p className={cn('flex-1 truncate text-base font-medium', oneRow ? 'min-w-0' : 'min-w-20 basis-20', titleInBar && 'sr-only')} title={title}>{title}</p>
       <Badge>v{version}</Badge>
       {/* at phone width the line under the header says so */}
       {dirty && !compact && <span className="shrink-0 text-xs text-warn">{t('저장 안 됨')}</span>}

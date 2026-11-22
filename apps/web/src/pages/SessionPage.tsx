@@ -13,7 +13,7 @@ import { JobCard } from '@/components/media/JobCard'
 import { CitationLayer, SourcesButton } from '@/components/shelf/CitationLayer'
 import { SourcesPanel } from '@/components/shelf/SourcesPanel'
 import { SelectionNote } from '@/components/shelf/SelectionNote'
-import { Badge, Button, Dropdown, LoadingState, MenuItem, MenuLabel } from '@/components/ui'
+import { Badge, Button, Dropdown, LoadingState, MenuItem, MenuLabel, Sentences } from '@/components/ui'
 import { agentKinds, kindMeta } from '@/lib/kinds'
 import { directionParticle } from '@/lib/formCheck'
 import { templateText } from '@/lib/api'
@@ -535,6 +535,8 @@ export function SessionPage() {
   }, [])
   const lastMessageId = session?.messages.at(-1)?.id
   const lastRole = session?.messages.at(-1)?.role
+  // A failure box appears without any new text; it must still be scrolled fully into view above the composer.
+  const lastFailure = session?.messages.at(-1)?.error ?? session?.messages.at(-1)?.failure ?? ''
   useLayoutEffect(() => {
     // A just-sent question brings the bottom into view.
     if (lastRole === 'user') following.current = true
@@ -542,7 +544,13 @@ export function SessionPage() {
   useLayoutEffect(() => {
     if (!following.current) return
     scrollToBottom(streaming ? 'auto' : 'smooth')
-  }, [timeline.length, lastLength, runningProgress, streaming, scrollToBottom])
+  }, [timeline.length, lastLength, lastFailure, runningProgress, streaming, scrollToBottom])
+  // A failure always ends the follow pause: the reader must see what happened and the retry button.
+  useLayoutEffect(() => {
+    if (!lastFailure) return
+    following.current = true
+    scrollToBottom('smooth')
+  }, [lastFailure, scrollToBottom])
   // New conversation opens at the bottom.
   useEffect(() => {
     following.current = true
@@ -600,8 +608,9 @@ export function SessionPage() {
         </div>
       ) : loadFailed ? (
         <div role="alert" className="flex max-w-sm flex-col items-center gap-3 text-center">
-          <p className="text-base text-muted">{t('최신 내용을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')}</p>
-          {retrying && <p className="text-sm text-faint">{t('잠시 후 다시 불러옵니다.')}</p>}
+          <p className="text-balance text-base text-muted">
+            <Sentences text={t('최신 내용을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')} />
+          </p>
           <Button onClick={retryLoad}>
             <RotateCw size={14} />
             {t('다시 시도')}
@@ -614,7 +623,7 @@ export function SessionPage() {
   if (!session) {
     return (
       <>
-        <TopBar left={<span className="text-base font-medium">{t('작업')}</span>} />
+        <TopBar left={<h1 className="text-base font-medium">{t('작업')}</h1>} />
         {loadingTranscript}
       </>
     )
@@ -628,9 +637,9 @@ export function SessionPage() {
         left={
           <div className="flex min-w-0 items-center gap-2">
             {plainStart ? null : <Icon size={14} className="shrink-0" style={{ color: meta.color }} />}
-            <span className="truncate text-base font-medium">
+            <h1 className="truncate text-base font-medium">
               {plainStart ? t('홈') : (session?.title ?? t('새 {kind}').replace('{kind}', t(meta.label)))}
-            </span>
+            </h1>
             {project && (
               <Badge tone="accent" className="max-sm:hidden">
                 <Boxes size={11} />

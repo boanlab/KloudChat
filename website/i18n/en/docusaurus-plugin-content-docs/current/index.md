@@ -24,7 +24,7 @@ KloudChat is an AI assistant your organization runs on its own servers. It answe
 | Passing an artifact on as a link | **Share** at the top of the conversation | [Sharing](write/share.md) |
 | Grouping files and instructions for repeated use | Sidebar → **Projects** | [Projects](personal/projects.md) |
 | Delegating to an assistant with a defined role | **+** → Agents in the composer | [Agents and skills](chat/agents.md) |
-| Opening an agent to others as a chatbot | Agent page → **Publish as a chatbot** | [Publishing a chatbot](chat/bots.md) |
+| Opening an agent to others as a chatbot | Agent page → **Share** | [Sharing a chatbot](chat/bots.md) |
 | Getting a document on your company form | Attach a PowerPoint or Word form in the conversation; the project's **Default form files** | [Format and design](chat/starters.md) |
 | Storing information you have to repeat often | Account menu → **Settings** → **Memory** | [Memory](personal/memory.md) |
 | Calling models from external tools and code | Account menu → **API access** | [API and coding tool integration](api.md) |

@@ -186,6 +186,16 @@ body {
   border-color: var(--border);
 }
 
+/* Short centred messages break evenly, other text avoids a lone last word; in the base layer so a `text-*` utility still wins. */
+@layer base {
+  :where(p, li, dd, label) {
+    text-wrap: pretty;
+  }
+  :where(.text-center) {
+    text-wrap: balance;
+  }
+}
+
 ::selection {
   background: var(--accent-soft);
 }
@@ -552,3 +562,16 @@ body {
 [data-ribbon-look='word'] [data-ribbon-label] { font-size: 11.5px; line-height: 1.15; white-space: nowrap; font-weight: 500; }
 [data-ribbon-look='word'] [data-ribbon-stack] { display: flex; flex-direction: column; gap: 2px; }
 [data-ribbon-look='word'] [data-ribbon-stack] > div { display: flex; align-items: center; gap: 1px; }
+
+/* The Word editor's stacked ribbon buttons (잘라내기·복사·서식 복사) have a fixed 24px height, and the icon sat on its own
+   line above the label, so the label was cut off. Put icon and label in one row. */
+.odx-toolbar.odx-toolbar .odx-col > button {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  white-space: nowrap;
+  line-height: 1;
+  overflow: hidden;
+}

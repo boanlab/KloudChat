@@ -139,7 +139,7 @@ test('slide menu, keys and deck-wide undo: nothing is saved until 저장', async
   expect(first).toBe('0')
   await thumbs(page).nth(0).click({ button: 'right' })
   await page.getByRole('menuitem', { name: '아래로 이동' }).click()
-  await expect(thumbs(page).nth(1)).toHaveAttribute('aria-current', 'true')
+  await expect(thumbs(page).nth(1).locator('.kc-tframe')).toHaveAttribute('aria-current', 'true')
   // drag to reorder
   await thumbs(page).nth(4).dragTo(thumbs(page).nth(0))
   expect(sent).toHaveLength(0)
@@ -355,7 +355,7 @@ test('the deck locks while the agent works, then shows its version where the per
   await expect(panel(page).getByTestId('deck-agent-lock')).toBeHidden()
   await expect(header(page).getByText('v2', { exact: true })).toBeVisible()
   // the new version in place, on the slide the person was on, nothing asked
-  await expect(thumbs(page).nth(2)).toHaveAttribute('aria-current', 'true')
+  await expect(thumbs(page).nth(2).locator('.kc-tframe')).toHaveAttribute('aria-current', 'true')
   await expect(editor(page).locator('.kc-canvas')).toContainText('역할 비교(에이전트)')
   await expect(unsaved(page)).toHaveCount(0)
   expect(sent).toHaveLength(1)
@@ -373,7 +373,7 @@ test('in the file box preview the keys work as in the panel', async ({ page }, t
   // a press on the slide's background, then the keys of the editor
   await preview.locator('.kc-canvas').click({ position: { x: 4, y: 4 } })
   await page.keyboard.press('ArrowDown')
-  await expect(rail.nth(1)).toHaveAttribute('aria-current', 'true')
+  await expect(rail.nth(1).locator('.kc-tframe')).toHaveAttribute('aria-current', 'true')
   await page.keyboard.press('Control+d')
   await expect(rail).toHaveCount(5)
   await expect(preview.getByText('저장 안 됨')).toBeVisible()
@@ -385,7 +385,7 @@ test('in the file box preview the keys work as in the panel', async ({ page }, t
   await preview.getByRole('toolbar', { name: '슬라이드 도구' }).getByRole('button', { name: '실행 취소' }).click()
   await expect(rail).toHaveCount(4)
   await page.keyboard.press('End')
-  await expect(rail.nth(3)).toHaveAttribute('aria-current', 'true')
+  await expect(rail.nth(3).locator('.kc-tframe')).toHaveAttribute('aria-current', 'true')
   // closing the preview over an edit asks first, with the documents' own question
   await page.keyboard.press('Control+d')
   await preview.locator('header').first().getByRole('button', { name: '닫기' }).click()
@@ -416,7 +416,7 @@ test('a phone reads only, with the same note as the PowerPoint editor', { tag: '
     .toHaveText('휴대폰에서는 읽기만 합니다. 고칠 내용은 대화에서 에이전트에게 부탁하세요.')
   await expect(toolbar(page)).toHaveCount(0)
   await expect(header(page).getByRole('button', { name: '저장' })).toHaveCount(0)
-  await expect(notes(page)).toHaveAttribute('readonly', '')
+  await expect(notes(page)).toHaveCount(0)
   await expect(editor(page).locator('[contenteditable="true"]')).toHaveCount(0)
   await expect(editor(page).getByRole('button', { name: '새 슬라이드' })).toHaveCount(0)
   // the slides still step, and 발표 is in 더보기
