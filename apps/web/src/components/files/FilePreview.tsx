@@ -148,10 +148,10 @@ export function FilePreview({ row, onClose, start }: { row: FileRow | null; onCl
       description={fileSize(row.size)}
       width={office ? 'max-w-6xl' : 'max-w-4xl'}
       footer={
-        <div className="flex w-full flex-wrap items-center justify-end gap-2">
-          {error && <p className="mr-auto self-center text-base text-danger">{error}</p>}
+        <div className="flex w-full flex-wrap items-center justify-end gap-2 max-sm:grid max-sm:grid-cols-2">
+          {error && <p className="mr-auto self-center text-base text-danger max-sm:col-span-2">{error}</p>}
           {!error && office && (
-            <p className="mr-auto min-w-0 flex-1 basis-60 text-sm text-muted" data-testid="file-edit-note">
+            <p className="mr-auto min-w-0 flex-1 basis-60 text-sm text-muted max-sm:col-span-2" data-testid="file-edit-note">
               {latest
                 ? t('이 파일로 만든 문서: {title} · v{version} · {when}')
                   .replace('{title}', latest.title)
@@ -164,12 +164,13 @@ export function FilePreview({ row, onClose, start }: { row: FileRow | null; onCl
           )}
           <Button
             variant="secondary"
+            className="max-sm:w-full"
             onClick={() => void downloadFile(row.id, row.name).catch((err) => setError(errorMessage(err, t('내려받지 못했습니다. 잠시 뒤 다시 시도하세요.'))))}
           >
             <Download size={14} /> {t('내려받기')}
           </Button>
           {office && latest && (
-            <Button variant="secondary" disabled={!!opening} onClick={() => void edit()}>
+            <Button variant="secondary" className="max-sm:w-full" disabled={!!opening} onClick={() => void edit()}>
               {opening === 'new' ? <Loader2 size={14} className="animate-spin" /> : <FilePenLine size={14} />}
               {t('새 사본으로 편집')}
             </Button>
@@ -177,6 +178,7 @@ export function FilePreview({ row, onClose, start }: { row: FileRow | null; onCl
           {office && (
             <Button
               variant="primary"
+              className={latest ? 'max-sm:col-span-2' : 'max-sm:w-full'}
               disabled={!!opening}
               onClick={() => (latest ? reopen(latest) : void edit())}
             >
