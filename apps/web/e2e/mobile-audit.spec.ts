@@ -105,7 +105,7 @@ test('모바일 감사 — 390px 에서 일이 끝나는가', async ({ page }) =
     ['/history', '대화 기록'],
     ['/usage', '내 사용량'],
     ['/agent-setup', '에이전트 설정'],
-    ['/connectors', '커넥터'],
+    ['/connectors', 'MCP'],
     ['/settings', '설정'],
     ['/admin/system', '관리자 · 시스템'],
     ['/admin/users', '관리자 · 사용자'],

@@ -27,7 +27,7 @@ Korean guide and on Korean screens.
 | 한글(.hwp/.hwpx) | Hangul (.hwp/.hwpx) | |
 | 자료 찾기 | Find in files | Tool name |
 | 웹 검색 | web search | |
-| 커넥터 | connector | |
+| MCP | MCP server | |
 | 에이전트 | agent | |
 | 스킬 | skill | |
 | 템플릿 | template | The artifact's structure (text formatting, 「서식」, is "formatting") |

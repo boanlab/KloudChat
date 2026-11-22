@@ -1983,7 +1983,7 @@ export function Composer({
         <button
           type="button"
           aria-label={t('도구')}
-          title={t('파일·스킬·웹 검색·커넥터·에이전트')}
+          title={t('파일·스킬·웹 검색·MCP·에이전트')}
           className={cn(
             'grid size-9 shrink-0 place-items-center rounded-full transition-colors hover:bg-elevated hover:text-fg',
             open ? 'bg-elevated text-fg' : 'text-muted',
@@ -2047,14 +2047,14 @@ export function Composer({
                 icon={<Plug size={15} />}
                 label={
                   activeConnectors.length
-                    ? t.n('커넥터 {n}개', activeConnectors.length)
-                    : t('커넥터')
+                    ? t.n('MCP {n}개', activeConnectors.length)
+                    : t('MCP')
                 }
                 submenu
                 hint={activeConnectors.length ? String(activeConnectors.length) : undefined}
                 onClick={() => openPlusView('connectors')}
               >
-                {t('커넥터')}
+                {t('MCP')}
               </ToolItem>
             )}
             {(menuAgents.length > 0 || !isMedia) && (
@@ -2199,7 +2199,7 @@ export function Composer({
         )}
         {plusView === 'connectors' && (
           <>
-            {back(t('커넥터'))}
+            {back(t('MCP'))}
             {/* Account-wide, unlike the per-turn controls beside it. */}
             <p className="px-2.5 pb-1.5 text-xs text-faint">
               {t('계정 전체 설정입니다. 여기서 끄면 모든 대화에서 꺼집니다.')}
@@ -2217,7 +2217,7 @@ export function Composer({
             ))}
             <MenuSeparator />
             <MenuItem icon={<Plus size={14} />} onClick={() => navigate('/customize?tab=connectors')}>
-              {t('커넥터 관리')}
+              {t('MCP 관리')}
             </MenuItem>
           </>
         )}

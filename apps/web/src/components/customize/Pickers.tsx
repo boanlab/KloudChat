@@ -225,7 +225,7 @@ function toolOption(tool: ToolCatalogEntry, hasKnowledge = false, t: (s: string)
     id: tool.name,
     title: tool.title || (connector ? tool.label.split(' · ').slice(1).join(' · ') || tool.label : tool.label),
     description: tool.description ?? '',
-    group: tool.group || (connector ? tool.label.split(' · ')[0] || '커넥터' : BUILTIN),
+    group: tool.group || (connector ? tool.label.split(' · ')[0] || 'MCP' : BUILTIN),
     disabled: !runtime,
     why:
       tool.name === 'search_knowledge'

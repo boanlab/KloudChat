@@ -64,7 +64,7 @@ test('tabs, 내 항목 / 탐색, search, filter and sort are kept in the address
 
   // Three tabs, like an assistant's own settings: no 워크플로, 메모리, 양식 or 디자인 tab.
   const strip = page.getByRole('tablist', { name: '사용자 지정' })
-  await expect(strip.getByRole('tab')).toHaveText(['에이전트', '스킬', '커넥터'])
+  await expect(strip.getByRole('tab')).toHaveText(['에이전트', '스킬', 'MCP'])
   await expect(page.getByText(/워크플로|작동 단계/)).toHaveCount(0)
 
   // 묶음 live with the agents that tick them.
@@ -76,9 +76,9 @@ test('tabs, 내 항목 / 탐색, search, filter and sort are kept in the address
   await expect(page.getByRole('region', { name: '내 묶음' })).toContainText('두 번 검토하고 PDF로')
   await page.goBack()
 
-  await page.getByRole('tab', { name: '커넥터' }).click()
+  await page.getByRole('tab', { name: 'MCP' }).click()
   await expect(page.getByRole('button', { name: '내 항목' })).toHaveCount(0)
-  await expect(page.getByRole('tab', { name: /내 커넥터/ })).toBeVisible()
+  await expect(page.getByRole('tab', { name: /내 MCP/ })).toBeVisible()
   // The catalogue is one flat list, official first: no category headings, no category chips.
   await page.getByRole('tab', { name: /카탈로그/ }).click()
   const catalog = page.getByTestId('connector-catalog')
@@ -197,7 +197,7 @@ test('account menu: one 사용자 지정 item, 대화 기록 beside it, 계정 u
   const menu = page.getByRole('menu')
   const names = (await menu.getByRole('menuitem').allTextContents()).map((n) => n.replace(/(Ctrl|⌘) \/$/, '').trim())
   expect(names).toEqual(['사용자 지정', '대화 기록', 'AI 에이전트 연동', 'API 연동', '사용량', '설정', '문의·신고', '키보드 단축키', '로그아웃'])
-  for (const gone of ['에이전트', '스킬', '워크플로', '커넥터', '메모리', '디자인']) {
+  for (const gone of ['에이전트', '스킬', '워크플로', 'MCP', '메모리', '디자인']) {
     await expect(menu.getByRole('menuitem', { name: gone, exact: true })).toHaveCount(0)
   }
   await menu.getByRole('menuitem', { name: '사용자 지정' }).click()
@@ -267,7 +267,7 @@ test('a built-in connector is marked and can be switched off, not removed', asyn
   await expect(time.getByRole('switch', { name: '시간 사용' })).toBeVisible()
   await time.getByRole('button', { name: /시간/ }).first().click()
   const dialog = page.getByRole('dialog')
-  await expect(dialog).toContainText('기본 제공 커넥터는 지울 수 없습니다')
+  await expect(dialog).toContainText('기본 제공 MCP는 지울 수 없습니다')
   await expect(dialog.getByRole('button', { name: '제거' })).toHaveCount(0)
   await page.keyboard.press('Escape')
   await expect(dialog).toHaveCount(0)

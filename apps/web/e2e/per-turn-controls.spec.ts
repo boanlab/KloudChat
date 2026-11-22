@@ -110,7 +110,7 @@ test('웹 검색은 strict-local 모델에서 바로 검색하지 않고 먼저 
   expect(payloads[0]).toMatchObject({ webSearch: true })
 })
 
-test('작성 도구 옆의 커넥터 스위치는 계정 전체 설정이라고 밝힌다', async ({ page }, testInfo) => {
+test('작성 도구 옆의 MCP 스위치는 계정 전체 설정이라고 밝힌다', async ({ page }, testInfo) => {
   await stubModels(page)
   await page.route('**/api/connectors', async (route) => {
     if (route.request().method() !== 'GET') {
@@ -145,7 +145,7 @@ test('작성 도구 옆의 커넥터 스위치는 계정 전체 설정이라고 
   await composerFixture(page, testInfo)
 
   await page.goto('/new/chat')
-  await openTool(page, /^커넥터/)
+  await openTool(page, /^MCP/)
   await expect(
     page.getByText('계정 전체 설정입니다. 여기서 끄면 모든 대화에서 꺼집니다.'),
   ).toBeVisible()

@@ -554,7 +554,7 @@ many short readings.
 
 ### MCP
 
-The MCP connectors users can install from **Customize › Connectors**: name,
+The MCP connectors users can install from **Customize › MCP**: name,
 address or stdio command, whether the entry is listed, and whether it is
 **Built in** (`by_default`). An installed connector keeps its entry's slug.
 Users can also register their own MCP server by address. A server that runs as

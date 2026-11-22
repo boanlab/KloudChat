@@ -2924,7 +2924,7 @@ export const useStore = create<State>((set, get) => ({
     } catch (err) {
       set((s) => ({
         connectors: s.connectors.map((c) => (c.id === id ? { ...c, enabled: !enabled } : c)),
-        notice: errorMessage(err, enabled ? tr('커넥터를 켜지 못했습니다.') : tr('커넥터를 끄지 못했습니다.')),
+        notice: errorMessage(err, enabled ? tr('MCP를 켜지 못했습니다.') : tr('MCP를 끄지 못했습니다.')),
       }))
     }
   },

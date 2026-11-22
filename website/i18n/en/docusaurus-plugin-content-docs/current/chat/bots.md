@@ -11,7 +11,7 @@ Publish an agent that answers in chat as a **chatbot**, and other people can ask
 The **Publish as a chatbot** button at the top of your agent's page. Before publishing you see:
 
 - The strict-local model it will answer with. Without a strict-local model you can use, it cannot be published.
-- What a chatbot does not use: your memory, personal settings, other files and projects, connectors, web search, documents and slides, skills. A chatbot uses only **material search** and **calculation**.
+- What a chatbot does not use: your memory, personal settings, other files and projects, MCP servers, web search, documents and slides, skills. A chatbot uses only **material search** and **calculation**.
 - Values in the material that look like personal details (mobile numbers, emails and so on). Remove or check them before publishing.
 
 ## Audience

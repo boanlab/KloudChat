@@ -1,6 +1,6 @@
 ---
 name: YouTube 영상 전사·요약
-description: YouTube 주소를 주면 「YouTube 전사」 커넥터로 자막(없으면 음성 전사)을 받아, 그 전사문만으로 요약·핵심 정리·인용을 합니다. 전사문에 없는 내용은 쓰지 않습니다.
+description: YouTube 주소를 주면 「YouTube 전사」 MCP로 자막(없으면 음성 전사)을 받아, 그 전사문만으로 요약·핵심 정리·인용을 합니다. 전사문에 없는 내용은 쓰지 않습니다.
 when_to_use: 사용자가 YouTube 링크를 주고 「이 영상 요약해 줘」「무슨 내용이야」「자막 뽑아 줘」「강의 핵심 정리」를 부탁할 때.
 kinds: [chat]
 required_tools: [mcp__youtube__transcript]

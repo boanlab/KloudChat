@@ -274,7 +274,7 @@ without a translation fall back to Korean. The user guide is published at
 | `/artifacts` | Every artifact, filtered by kind, with a way back to its conversation |
 | `/files` | The file box: uploads and generated files, listed apart |
 | `/bots` | Redirects to **Customize** → **Agents** (shared agents), where members' published bots show as agents. `/b/:slug` is a bot's own page, `/b` the public list, `/embed/b/:slug` the embeddable frame |
-| `/customize` | **Customize** — agents, skills and connectors (`?tab=agents\|skills\|connectors`), including what others shared; an agent's step canvas at `/customize/agents/:id/chain`; bundles at `/customize/bundles` |
+| `/customize` | **Customize** — agents, skills and MCP servers (`?tab=agents\|skills\|connectors`), including what others shared; an agent's step canvas at `/customize/agents/:id/chain`; bundles at `/customize/bundles` |
 | `/history` | Conversation history — selective and bulk deletion |
 | `/usage` | Your own usage, by day, model and surface |
 | `/issues` | Questions and reports you sent, with the answers |

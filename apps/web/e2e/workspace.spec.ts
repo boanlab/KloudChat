@@ -99,11 +99,11 @@ test('에이전트를 만들면 새로고침 후에도 남는다', async ({ page
   await removeNamed(page, name)
 })
 
-test('커넥터를 설치하면 MCP 서버가 실제로 도구를 보고한다', async ({ page }) => {
+test('MCP를 설치하면 MCP 서버가 실제로 도구를 보고한다', async ({ page }) => {
   await page.goto('/connectors')
 
   // Scoped to the 시간 card: "22시간 전" is on the screen too, and the first entry may need credentials.
-  const mine = page.getByRole('tab', { name: /내 커넥터/ })
+  const mine = page.getByRole('tab', { name: /내 MCP/ })
   await page.getByRole('tab', { name: /카탈로그/ }).click()
   const install = page
     .locator('[data-connector="time"]')

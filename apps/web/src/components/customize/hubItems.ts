@@ -18,7 +18,7 @@ export const CARD_TABS: HubTab[] = ['agents', 'skills']
 export const TAB_LABEL: Record<HubTab, string> = {
   agents: '에이전트',
   skills: '스킬',
-  connectors: '커넥터',
+  connectors: 'MCP',
 }
 
 /** Destination of a tab that left the hub, for old `?tab=` links. */

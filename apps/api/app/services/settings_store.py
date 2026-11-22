@@ -132,9 +132,6 @@ SIGNUP_MODE = "signup.mode"
 SIGNUP_DOMAINS = "signup.domains"
 SIGNUP_VERIFY_EMAIL = "signup.verify_email"
 
-#: stdio commands members may register as their own connectors, one per line
-CONNECTOR_STDIO_ALLOW = "connectors.stdio_allow"
-
 #: web push VAPID private key; public half derived (`services.push.vapid_keys`)
 PUSH_VAPID_PRIVATE = "push.vapid_private"
 
