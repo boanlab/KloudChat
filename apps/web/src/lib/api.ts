@@ -3770,7 +3770,7 @@ export const userTemplatesApi = {
   toAgent: (id: string) => call<AgentRow>(`/user-templates/${encodeURIComponent(id)}/to-agent`, { method: 'POST' }),
 }
 
-/** The connector catalogue administrators keep (관리 › 커넥터 카탈로그). */
+/** The connector catalogue administrators keep (관리 › MCP). */
 export type CatalogEntryIn = Omit<CatalogEntryAdmin, 'id' | 'updatedAt'>
 export interface CatalogAdmin {
   entries: CatalogEntryAdmin[]

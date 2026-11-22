@@ -13,7 +13,7 @@ When you sign in with an administrator account, a **Manage** item appears in the
 | Published chatbots | Approve link and external publishing and channels (other sites, API, MCP), close or pause, abuse-check viewing |
 | Security · Audit | The **Policy** tab (personal data protection, internal material, safe model, blocked topics, idle sign-out, retention period) and the **Audit log** tab |
 | Feedback & issues | Read bug reports, feature requests and questions from users, set the assignee and status, reply |
-| System | The **Proxy · Models · Routing · Features · Branding · Mail · Sign-up · Connector catalogue** tabs |
+| System | The **Proxy · Models · Routing · Features · Branding · Mail · Sign-up · MCP** tabs |
 | Performance | One-screen dashboard of verdicts, key figures, GPU nodes and model servers; each item opens trends and details for the host, models, a node or a server |
 
 ## Order of initial setup

@@ -552,7 +552,7 @@ reads files stays on the 27B; thinking stays off because it costs minutes a call
 seconds; and prose, the bulk of the tokens, runs on the 27B's node while Flash's node takes the
 many short readings.
 
-### Connector catalogue
+### MCP
 
 The MCP connectors users can install from **Customize › Connectors**: name,
 address or stdio command, whether the entry is listed, and whether it is

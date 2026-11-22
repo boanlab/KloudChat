@@ -18,7 +18,7 @@ Connectors the administrator marks **Built in** are installed for everyone and a
 | YouTube transcription | Fetches a video's captions from its address, or transcribes the audio when there are none. Available in Chat and Reports. |
 | Deep research | Searches and reads the web over several rounds and sums up what it found. It can take minutes. Available in Chat and Reports. |
 
-The catalogue shows only the entries the administrator made visible in the connector catalogue. A connector hidden from the list keeps working for anyone who already installed it.
+The catalogue shows only the entries the administrator made visible in the MCP tab. A connector hidden from the list keeps working for anyone who already installed it.
 
 ## Adding a server directly
 
