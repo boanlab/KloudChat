@@ -186,6 +186,16 @@ body {
   border-color: var(--border);
 }
 
+/* Short centred messages break evenly, other text avoids a lone last word; in the base layer so a `text-*` utility still wins. */
+@layer base {
+  :where(p, li, dd, label) {
+    text-wrap: pretty;
+  }
+  :where(.text-center) {
+    text-wrap: balance;
+  }
+}
+
 ::selection {
   background: var(--accent-soft);
 }

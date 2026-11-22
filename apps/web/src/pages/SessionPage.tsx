@@ -13,7 +13,7 @@ import { JobCard } from '@/components/media/JobCard'
 import { CitationLayer, SourcesButton } from '@/components/shelf/CitationLayer'
 import { SourcesPanel } from '@/components/shelf/SourcesPanel'
 import { SelectionNote } from '@/components/shelf/SelectionNote'
-import { Badge, Button, Dropdown, LoadingState, MenuItem, MenuLabel } from '@/components/ui'
+import { Badge, Button, Dropdown, LoadingState, MenuItem, MenuLabel, Sentences } from '@/components/ui'
 import { agentKinds, kindMeta } from '@/lib/kinds'
 import { directionParticle } from '@/lib/formCheck'
 import { templateText } from '@/lib/api'
@@ -600,7 +600,9 @@ export function SessionPage() {
         </div>
       ) : loadFailed ? (
         <div role="alert" className="flex max-w-sm flex-col items-center gap-3 text-center">
-          <p className="text-base text-muted">{t('최신 내용을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')}</p>
+          <p className="text-balance text-base text-muted">
+            <Sentences text={t('최신 내용을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')} />
+          </p>
           {retrying && <p className="text-sm text-faint">{t('잠시 후 다시 불러옵니다.')}</p>}
           <Button onClick={retryLoad}>
             <RotateCw size={14} />

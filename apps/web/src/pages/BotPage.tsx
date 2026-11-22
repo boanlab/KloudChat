@@ -18,7 +18,7 @@ import {
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Markdown } from '@/components/chat/Markdown'
-import { Button, ConfirmDialog, Textarea } from '@/components/ui'
+import { Button, ConfirmDialog, Sentences, Textarea } from '@/components/ui'
 import {
   ApiError,
   botsApi,
@@ -417,10 +417,14 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
       <div className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6 text-center">
         <Bot size={22} className="mx-auto mb-3 text-faint" aria-hidden />
         <h1 className="text-lg font-semibold">{t('열 수 없는 챗봇입니다')}</h1>
-        <p className="mt-1.5 text-base text-muted">
-          {authenticated || embedded
-            ? t('닫혔거나 주소가 올바르지 않습니다.')
-            : t('닫혔거나 주소가 올바르지 않습니다. 구성원에게만 열린 챗봇이면 로그인해야 합니다.')}
+        <p className="mt-1.5 text-balance text-base text-muted">
+          <Sentences
+            text={
+              authenticated || embedded
+                ? t('닫혔거나 주소가 올바르지 않습니다.')
+                : t('닫혔거나 주소가 올바르지 않습니다. 구성원에게만 열린 챗봇이면 로그인해야 합니다.')
+            }
+          />
         </p>
         {embedded ? null : authenticated ? (
           <Link to={SHARED_AGENTS_PATH} className="mt-4 text-base text-accent hover:underline">
