@@ -301,33 +301,34 @@ test.describe('페르소나 커버리지', () => {
               case 'grad-zotero':
               case 'soc-citation':
                 await page.goto('/connectors')
-                await page.getByRole('tab', { name: /카탈로그/ }).click()
+                await page.getByRole('button', { name: '탐색', exact: true }).click()
                 await probe(page.getByText('Zotero').first()).toBeVisible()
                 break
               case 'soc-stats-db':
               case 'dev-db':
                 await page.goto('/connectors')
-                await page.getByRole('tab', { name: /카탈로그/ }).click()
+                await page.getByRole('button', { name: '탐색', exact: true }).click()
                 await probe(page.getByText('PostgreSQL').first()).toBeVisible()
                 break
               case 'eng-arxiv':
                 await page.goto('/connectors')
-                await page.getByRole('tab', { name: /카탈로그/ }).click()
+                await page.getByRole('button', { name: '탐색', exact: true }).click()
                 await probe(page.getByText('arXiv').first()).toBeVisible()
                 break
               case 'dev-github':
                 await page.goto('/connectors')
-                await page.getByRole('tab', { name: /카탈로그/ }).click()
+                await page.getByRole('button', { name: '탐색', exact: true }).click()
                 await probe(page.getByText('GitHub').first()).toBeVisible()
                 break
               case 'off-drive':
                 await page.goto('/connectors')
-                await page.getByRole('tab', { name: /카탈로그/ }).click()
+                await page.getByRole('button', { name: '탐색', exact: true }).click()
                 await probe(page.getByText('Google Drive').first()).toBeVisible()
                 break
               case 'res-custom-mcp':
                 await page.goto('/connectors')
-                await probe(page.getByRole('button', { name: '서버 직접 추가' })).toBeVisible()
+                await page.getByRole('button', { name: '추가', exact: true }).filter({ visible: true }).first().click()
+                await probe(page.getByRole('menuitem', { name: '서버 직접 추가' })).toBeVisible()
                 break
               case 'dev-tool-scope':
                 await page.goto('/connectors')

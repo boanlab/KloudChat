@@ -77,10 +77,10 @@ test('tabs, 내 항목 / 탐색, search, filter and sort are kept in the address
   await page.goBack()
 
   await page.getByRole('tab', { name: 'MCP 서버' }).click()
-  await expect(page.getByRole('button', { name: '내 항목' })).toHaveCount(0)
-  await expect(page.getByRole('tab', { name: /내 MCP 서버/ })).toBeVisible()
+  // Same frame as agents and skills: 내 항목 / 탐색 segment.
+  await expect(page.getByRole('button', { name: '내 항목', exact: true })).toBeVisible()
   // The catalogue is one flat list, official first: no category headings, no category chips.
-  await page.getByRole('tab', { name: /카탈로그/ }).click()
+  await page.getByRole('button', { name: '탐색', exact: true }).click()
   const catalog = page.getByTestId('connector-catalog')
   await expect(catalog).toBeVisible()
   await expect(catalog).toContainText('YouTube')
@@ -213,7 +213,8 @@ test('sidebar: pinned, then the 15 most recent, then 모든 대화 보기; the b
   if (viewport(testInfo) === 'phone') await page.getByRole('button', { name: '사이드바 토글' }).click()
   const side = page.locator('aside')
   await expect(side.getByText('고정됨')).toBeVisible({ timeout: 15_000 })
-  await expect(side.getByText('최근', { exact: true })).toBeVisible()
+  // Day headings (오늘 · 어제 · 이번 주 · 이전) group the recent list.
+  await expect(side.getByRole('heading', { name: /^(오늘|어제|이번 주|이전)$/ }).first()).toBeVisible()
   // 1 pinned + 15 recent.
   await expect(side.getByRole('link', { name: /^대화 \d+$/ })).toHaveCount(16)
   await expect(side.getByRole('link', { name: old.title, exact: true })).toHaveCount(0)

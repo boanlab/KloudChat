@@ -468,7 +468,7 @@ export function AdminUsersPage() {
         <p className="flex items-center gap-1.5 font-medium">
           <button
             type="button"
-            className="min-w-0 truncate text-left hover:text-accent hover:underline"
+            className="min-h-6 min-w-0 truncate py-0.5 text-left hover:text-accent hover:underline"
             title={t('상세 보기')}
             onClick={() => openDetail(u)}
           >

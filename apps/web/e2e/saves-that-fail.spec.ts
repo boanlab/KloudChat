@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Route } from '@playwright/test'
 import { at, hubFixture, installedConnectors } from './customize-fixture'
+import { viewport } from './project'
 
 /**
  * Refused saves and deletes (fixture data): the screen reverts to the server's state and says so.
@@ -103,10 +104,11 @@ test('the connector list is searched by name', async ({ page }, testInfo) => {
   await page.goto('/customize?tab=connectors')
   const list = page.getByTestId('connector-list')
   await expect(list.locator('[data-connector]')).toHaveCount(2, { timeout: 15_000 })
-  await page.getByRole('searchbox', { name: 'MCP 서버 검색' }).fill('위키')
+  if (viewport(testInfo) === 'phone') await page.getByRole('button', { name: '검색', exact: true }).click()
+  await page.getByRole('searchbox', { name: '검색' }).fill('위키')
   await expect(list.locator('[data-connector]')).toHaveCount(1)
   await expect(list.locator('[data-connector="wiki"]')).toBeVisible()
-  await page.getByRole('searchbox', { name: 'MCP 서버 검색' }).fill('없는 이름')
+  await page.getByRole('searchbox', { name: '검색' }).fill('없는 이름')
   await expect(page.getByTestId('no-match')).toBeVisible()
 })
 
