@@ -101,7 +101,6 @@ export async function mockApp(
     superAgentRules: defaultRules,
     superAgentDefaultRules: defaultRules,
     internalDataStrictLocal: true,
-    outlineModelId: null,
   }
   let me: Record<string, unknown> = {}
   await page.route(/\/api\/auth\/me$/, async (r) => {

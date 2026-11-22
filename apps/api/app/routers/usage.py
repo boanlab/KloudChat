@@ -852,7 +852,6 @@ async def get_governance(admin: AdminUser, db: DbSession):
         "superAgentRules": super_agent.normalise_rules(policy.super_agent_rules),
         "superAgentDefaultRules": super_agent.DEFAULT_RULES,
         "adaptiveQualityModelIds": list(policy.adaptive_quality_model_ids or []),
-        "outlineModelId": policy.outline_model_id,
         "intentFilter": policy.intent_filter,
         "blockedCategories": list(policy.blocked_categories or []),
         "retentionDays": policy.retention_days,
@@ -909,22 +908,6 @@ async def put_governance(payload: GovernanceIn, request: Request, admin: AdminUs
     """Policy write; retention applied retroactively."""
     policy = await db.get(Governance, "default") or Governance(id="default")
     patch = payload.model_dump(exclude_unset=True)
-    if "outline_model_id" in patch:
-        # empty clears; non-document models refused
-        wanted = (patch["outline_model_id"] or "").strip()
-        patch["outline_model_id"] = wanted or None
-        if wanted:
-            catalogue = await model_service.list_models()
-            usable = {
-                model["id"]
-                for model in catalogue["models"]
-                if {"slides", "report"} & set(model.get("kinds") or [])
-            }
-            if wanted not in usable:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail="outline_model_cannot_write_documents",
-                )
     if "privacy_safe_model_ids" in patch:
         catalogue = await model_service.list_models()
         strict_ids = {

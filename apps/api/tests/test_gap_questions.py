@@ -165,21 +165,16 @@ def test_the_gap_judge_model_stays_in_the_boundary():
     assert sessions._gap_judge_model(user, models[:1], models[0]) == ""
 
 
-def test_the_gap_judge_is_the_planners_strict_local_entry():
+def test_the_gap_judge_is_the_turns_own_or_the_first_strict_local_model():
     user = User(email="x@example.test", name="X", password_hash="h")
     models = [{"id": "local/big", "kinds": ["chat"], "strictLocal": False, "creditCost": 0},
               {"id": "strict-local/big", "kinds": ["chat"], "strictLocal": True, "creditCost": 0},
-              {"id": "strict-local/planner", "kinds": ["chat"], "strictLocal": True,
+              {"id": "strict-local/other", "kinds": ["chat"], "strictLocal": True,
                "creditCost": 0}]
-    # The planner judges; by price and name alone the first strict-local model would.
-    assert sessions._gap_judge_model(user, models, models[0], "local/planner") == (
-        "strict-local/planner")
-    # A planner with no strict-local entry, or none at all, leaves the first one.
-    assert sessions._gap_judge_model(user, models, models[0], "cloud/x") == "strict-local/big"
-    assert sessions._gap_judge_model(user, models, models[0], None) == "strict-local/big"
-    # The turn's own strict-local model still comes first.
-    assert sessions._gap_judge_model(user, models, models[1], "local/planner") == (
-        "strict-local/big")
+    # Otherwise the first strict-local model judges.
+    assert sessions._gap_judge_model(user, models, models[0]) == "strict-local/big"
+    # The turn's own strict-local model comes first.
+    assert sessions._gap_judge_model(user, models, models[2]) == "strict-local/other"
 
 
 # ── the agent form ─────────────────────────────────────────────────────

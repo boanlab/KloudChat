@@ -137,7 +137,6 @@ def install_renderer(patch: Patch) -> None:
 RECORDED_DEFAULTS = {
     "code_fallback_model": "local/qwen3.5-122b",
     "adaptive_economy_models_default": "local/qwen3.5-122b",
-    "outline_model_default": "local/qwen3.5-122b",
 }
 
 

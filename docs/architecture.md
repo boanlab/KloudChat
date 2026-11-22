@@ -503,14 +503,10 @@ also refuses an outline that is really the planner's notes to itself (「Slides:
 (6 is fine)」, repeated section names, an English plan for a Korean request), and the
 outline is asked for once more.
 
-**The outline can run on a different model.** `governance.outline_model_id` names one;
-empty (the default) plans with the surface's own model. It applies to all three writing
-tracks and only to the planning call, which is one call per document however many blocks
-follow. Its tokens are billed at its own price, and the turn reports planning and writing
-apart. The id is checked when saved and again per turn against the account's allowlist,
-the surface, and the boundary the turn was decided on. A turn privacy routed to a
-strict-local model gets no planner at all, and a planner may never be less contained than
-the writer; anything that fails falls back to the writing model rather than failing the turn.
+**Planning and judging follow the chosen model.** The model that writes a document also plans it (one call
+per document however many blocks follow) and judges it; with Super Agent, its class table picks the
+model for each. A writer that is not contained (an external model) gets a self-hosted judge only where
+`_local_planner` names one, and a judge may never be less contained than the writer.
 
 Reports search the web before writing and cite what they found; with no search
 backend the shelf is empty and the citation rule drops out of the prompts. A

@@ -53,7 +53,7 @@ authorizes raw, masked or strict-local egress.
 | Deployment | `PERF_*` | Performance monitoring: mounts, targets and thresholds of this host. |
 | Product, seeded once | `DEFAULT_CHAT_MODEL`, `DEFAULT_REPORT_MODEL`, `DEFAULT_SLIDES_MODEL`, `DEFAULT_IMAGE_MODEL`, `DEFAULT_AUDIO_MODEL`, `DEFAULT_VIDEO_MODEL`, `TITLE_MODEL`, `CODE_MODEL`, `CODE_FALLBACK_MODEL`, `SELF_HOSTED_CHAT_THINKING`, `EXTERNAL_CHAT_THINKING` | **System › Model** (`models.*`, `thinking.*` in `system_settings`). The environment seeds a fresh install once. |
 | Product, seeded once | `DEFAULT_MONTHLY_CREDITS` | **System › Signup** (`credits.default_monthly`). Seeded once the same way. |
-| Product, environment as fallback | `ADAPTIVE_ROUTING_DEFAULT`, `ADAPTIVE_CLASSIFIER_MODEL_DEFAULT`, `ADAPTIVE_ECONOMY_MODELS_DEFAULT`, `ADAPTIVE_QUALITY_DEFAULT`, `ADAPTIVE_QUALITY_MODELS_DEFAULT`, `OUTLINE_MODEL_DEFAULT`, `INTERNAL_DATA_STRICT_LOCAL_DEFAULT` | **System › Routing** and **Security · audit** (`governance` row). The environment only fills the row when it is first created. |
+| Product, environment as fallback | `ADAPTIVE_ROUTING_DEFAULT`, `ADAPTIVE_CLASSIFIER_MODEL_DEFAULT`, `ADAPTIVE_ECONOMY_MODELS_DEFAULT`, `ADAPTIVE_QUALITY_DEFAULT`, `ADAPTIVE_QUALITY_MODELS_DEFAULT`, `INTERNAL_DATA_STRICT_LOCAL_DEFAULT` | **System › Routing** and **Security · audit** (`governance` row). The environment only fills the row when it is first created. |
 | Product, environment as fallback | `BRAND_NAME`, `SIGNUP_MODE`, `SMTP_HOST` … `SMTP_FROM` | **System › Branding / Signup / Mail**. A stored value wins; with none stored the environment applies. |
 | Product, admin screen only | enabled surfaces, OCR on/off, reading mode, vision model, page limit, contact address, signup domains and verification, logo, governance policies | No environment variable. |
 
@@ -323,7 +323,7 @@ service's `environment:` — or, for `CODE_MODEL` and `CODE_FALLBACK_MODEL`, to
 | `ARGON2_TIME_COST` / `ARGON2_MEMORY_COST` / `ARGON2_PARALLELISM` | `3` / `65536` / `4` | `memory_cost` is in KiB. |
 | `TITLE_MODEL` | `local/qwen3.8-flash` | First-install seed of **System › Model › Titles, memories and summaries model**. Names conversations, extracts memories and writes the running summary of a long conversation. A strict-local turn uses its own model instead. Empty falls back to the session's own model — correct, but wasteful on an expensive one. Set through `KCHAT_TITLE_MODEL`. |
 | `CODE_MODEL` / `CODE_FALLBACK_MODEL` | `local/qwen3.8-27b` / `local/qwen3.8-flash` | First-install seeds of **System › Model › Code-writing model** and its fallback. Write the Python behind `run_code`: the first gets a try and a repair, the second one more try. The fallback also settles two cost readings of a comparison that disagree. A strict-local turn uses the `strict-local/` twin of a `local/` id and drops any other. |
-| `OUTLINE_MODEL_DEFAULT` / `ADAPTIVE_CLASSIFIER_MODEL_DEFAULT` | `local/qwen3.8-flash` / `strict-local/qwen3.8-flash` | The outline model and the Auto classifier of a fresh governance row; once an administrator saves **System › Routing**, the saved values win. |
+| `ADAPTIVE_CLASSIFIER_MODEL_DEFAULT` | `strict-local/qwen3.8-flash` | The Auto classifier of a fresh governance row; once an administrator saves **System › Routing**, the saved value wins. |
 | `WEB_SEARCH_RESULTS` / `WEB_SEARCH_SCRAPE` | `5` / `3` | Each scrape is a page fetch; this trades answer quality against turn latency. |
 | `APP_BASE_URL` | — | Origin used to build password reset links. Never taken from the request `Host`, which is attacker-controlled. |
 | `TIMEZONE` | `Asia/Seoul` | IANA name. The service time zone: the date given to the model on every turn, the monthly credit refill (the 1st at its midnight), the daily usage bars, and every date the web app prints or groups by (sent to the browser in `/auth/config`, whatever the browser's own zone). Every timestamp in the database stays UTC. Set through `KCHAT_TIMEZONE`. |
@@ -537,9 +537,8 @@ better on Korean institutional requests:
 | Chat answers | Super Agent's class table (Flash for everyday turns, DeepSeek V4.1 Flash for hard ones) | the person's choice; else **System › Model › Default chat model** (Super Agent by default; a fixed model there answers instead) |
 | Report and deck prose | `local/qwen3.8-27b` (Super Agent's `document` row) | the person's choice; else **System › Model › Default report / slides model** (Super Agent by default) |
 | Writing an empty or announced-only chat answer once more | the other self-hosted model (27B for Flash, Flash for 27B) | follows the chat, report and slides roles |
-| Outline, research plan, figure proposals | `local/qwen3.8-flash` | **System › Routing › Model that plans** (`outline_model_id`) |
-| Judging: key figures, cost and score readings, checks, repairs, title block | the outline model, else the writer | follows the outline model |
-| Calculation programs for a document (`calc`) | the outline model, else the writer | follows the outline model |
+| Outline, research plan, figure proposals; judging: key figures, cost and score readings, checks, repairs, title block | the writer | follows the writer |
+| Calculation programs for a document (`calc`) | the writer | follows the writer |
 | Missing-information questions judged against the material | the outline model's `strict-local/` twin, else the first strict-local model | follows the outline model |
 | Super Agent classifier | `strict-local/qwen3.8-flash` | **System › Routing › 분류 모델** |
 | Titles, memories, running summary | `local/qwen3.8-flash` | **System › Model › Titles, memories and summaries model** |

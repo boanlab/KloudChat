@@ -13,7 +13,6 @@ import { FeaturesSection } from './settings/FeaturesSection'
 import { IntegrationsSection } from './settings/IntegrationsSection'
 import { MailSection } from './settings/MailSection'
 import { ModelRolesSection } from './settings/ModelRolesSection'
-import { OutlineModelSection } from './settings/OutlineModelSection'
 import { ProxySection } from './settings/ProxySection'
 import { SignupSection } from './settings/SignupSection'
 import { ToolsSection } from './settings/ToolsSection'
@@ -130,7 +129,6 @@ export function AdminSystemPage() {
                 >
                   <SuperAgentSection />
                 </Group>
-                <OutlineModelSection />
               </div>
             }
           />

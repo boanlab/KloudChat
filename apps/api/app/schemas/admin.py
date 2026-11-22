@@ -155,7 +155,6 @@ class GovernanceIn(Wire):
     strict_local_web_search: Literal["ask", "allow", "off"] | None = None
     #: class → {model, strictModel, effort, strictEffort}; validated against the live catalogue
     super_agent_rules: dict[str, dict[str, str]] | None = Field(default=None, max_length=20)
-    outline_model_id: str | None = Field(default=None, max_length=200)
     intent_filter: bool | None = None
     blocked_categories: list[str] | None = None
     retention_days: int | None = Field(default=None, ge=0, le=3650)

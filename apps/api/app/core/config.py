@@ -227,7 +227,6 @@ class Settings(BaseSettings):
     adaptive_economy_models_default: str = "local/qwen3.8-flash"
     adaptive_quality_default: bool = True
     adaptive_quality_models_default: str = "deepseek/deepseek-v4.1-flash,z-ai/glm-5.3-flash"
-    outline_model_default: str = "local/qwen3.8-flash"
     #: External equivalent via OpenRouter `reasoning`; refusing providers remembered.
     external_chat_thinking: bool = False
 

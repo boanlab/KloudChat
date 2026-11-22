@@ -1041,7 +1041,6 @@ export interface GovernancePolicy {
   /** The built-in table (read-only), for 「기본값으로」. */
   superAgentDefaultRules?: Record<string, SuperAgentRule>
   /** Plans documents when set; null lets each surface's own model plan. */
-  outlineModelId: string | null
 }
 
 export interface ApiKeyRow {
