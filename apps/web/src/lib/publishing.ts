@@ -44,7 +44,7 @@ export const FINDING_LABEL: Record<string, string> = {
 export const STATUS_LABEL: Record<PublicationStatus, string> = {
   draft: '준비 중',
   pending: '승인 대기',
-  approved: '공개 중',
+  approved: '공유 중',
   paused: '일시 중지',
   rejected: '반려',
   revoked: '닫힘',
@@ -81,12 +81,28 @@ export const VISIBILITY_HINT: Record<BotVisibility, string> = {
   external: '공개 목록과 검색에 나옵니다. 관리자 승인이 필요합니다.',
 }
 
+/** Daily credit cap a share dialog starts with when the scope needs approval. */
+export const DEFAULT_CREDITS_PER_DAY = 3000
+
+export type ScopeState = 'open' | 'pending' | 'none'
+
+/** One scope as the owner reads it: open now, asked of an administrator, or not asked. */
+export function scopeState(
+  pub: Pick<Publication, 'visibility' | 'requestedVisibility' | 'reviewState'>,
+  scope: BotVisibility,
+): ScopeState {
+  const rank = (v: BotVisibility) => VISIBILITIES.indexOf(v)
+  if (rank(scope) <= rank(pub.visibility)) return 'open'
+  if (pub.reviewState === 'pending' && pub.requestedVisibility && rank(scope) <= rank(pub.requestedVisibility)) return 'pending'
+  return 'none'
+}
+
 /** The owner's view of a request: what is waiting, or why it was refused. */
 export function reviewLine(pub: Publication, t: Translator): string {
   const asked = pub.requestedVisibility ? t(VISIBILITY_LABEL[pub.requestedVisibility]) : ''
   if (pub.reviewState === 'pending') {
-    if (asked && pub.pendingVersionId) return t('관리자가 공개 범위({scope})와 새 판을 확인하고 있습니다.').replace('{scope}', asked)
-    if (asked) return t('관리자가 공개 범위({scope})를 확인하고 있습니다. 그동안 지금 범위로 답합니다.').replace('{scope}', asked)
+    if (asked && pub.pendingVersionId) return t('관리자가 공유 범위({scope})와 새 판을 확인하고 있습니다.').replace('{scope}', asked)
+    if (asked) return t('관리자가 공유 범위({scope})를 확인하고 있습니다. 그동안 지금 범위로 답합니다.').replace('{scope}', asked)
     if (pub.requestedChannels && !pub.pendingVersionId) return t('채널 요청을 관리자가 확인하고 있습니다. 그동안 지금 열린 채널만 씁니다.')
     return t('새 판을 관리자가 확인하고 있습니다. 그동안 승인된 판이 답합니다.')
   }
@@ -178,7 +194,7 @@ export const CHANNEL_HINT: Record<BotChannel, string> = {
 export const CHANNEL_ERROR: Record<string, string> = {
   bad_origin: '사이트 주소는 https://로 시작하는 주소만 쓸 수 있습니다. 경로 없이 적어 주세요.',
   origins_required: '넣을 사이트 주소를 하나 이상 적어 주세요.',
-  channel_needs_audience: '이 채널은 지금 공개 범위에서 쓸 수 없습니다. 공개 범위를 먼저 넓혀 주세요.',
+  channel_needs_audience: '이 채널은 지금 공유 범위에서 쓸 수 없습니다. 공유 범위를 먼저 넓혀 주세요.',
   credits_cap_required: '채널을 열려면 하루 최대 크레딧을 정해야 합니다.',
   revoked: '닫힌 챗봇입니다.',
 }

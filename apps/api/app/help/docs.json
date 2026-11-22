@@ -508,7 +508,7 @@
 "path": "chat/bots",
 "title": "챗봇 공유",
 "heading": "공유하기",
-"text": "내 에이전트 화면 위쪽의 **공유하기** 버튼. 공유 전에 다음을 확인합니다.\n\n- 답할 strict-local 모델. 쓸 수 있는 strict-local 모델이 없으면 공유할 수 없습니다.\n- 챗봇에서는 쓰지 않는 것: 내 메모리, 개인 맞춤 설정, 다른 파일·프로젝트, MCP 서버, 웹 검색, 문서·발표 만들기, 스킬. 챗봇은 **자료 찾기**와 **계산**만 씁니다.\n- 자료에서 개인정보로 보이는 값(휴대전화 번호, 이메일 등). 공유하기 전에 지우거나 확인합니다."
+"text": "내 에이전트 화면 위쪽의 **공유하기** 버튼. 공유 전에 다음을 확인합니다.\n\n- 답할 strict-local 모델. 쓸 수 있는 strict-local 모델이 없으면 공유할 수 없습니다.\n- 챗봇에서는 쓰지 않는 것: 내 메모리, 개인 맞춤 설정, 다른 파일·프로젝트, MCP 서버, 웹 검색, 문서·발표 만들기, 스킬. 챗봇은 **자료 찾기**와 **계산**만 씁니다.\n- 자료에서 개인정보로 보이는 값(휴대전화 번호, 이메일 등). 공유하기 전에 지우거나 확인합니다.\n- 자료가 없다는 경고. **자료 추가**를 누르면 에이전트의 **자료** 칸으로 이동합니다. 자료 없이도 공유할 수 있지만 지시문에 있는 내용만 답합니다.\n\n창이 묻는 것은 누구와 공유할지 하나입니다. 「링크를 아는 사람」이나 「누구나」를 고르면 **하루 최대 크레딧**도 묻고, 처음 값은 3,000입니다. 이름, 첫 인사, 추천 질문, 보관 기간 같은 나머지는 기본값으로 시작하며 공유한 뒤 관리 화면의 **설정**에서 바꿉니다.\n\n공유하면 범위마다 **열림** 또는 **승인 대기**가 따로 보입니다. 승인 전에는 우리 조직 구성원에게만 주소를 보내세요. 승인되면 알려 드립니다."
 },
 {
 "lang": "ko",
@@ -2251,7 +2251,7 @@
 "path": "chat/bots",
 "title": "Sharing a chatbot",
 "heading": "Sharing",
-"text": "The **Share** button at the top of your agent's page. Before sharing you see:\n\n- The strict-local model it will answer with. Without a strict-local model you can use, it cannot be shared.\n- What a chatbot does not use: your memory, personal settings, other files and projects, MCP servers, web search, documents and slides, skills. A chatbot uses only **material search** and **calculation**.\n- Values in the material that look like personal details (mobile numbers, emails and so on). Remove or check them before sharing."
+"text": "The **Share** button at the top of your agent's page. Before sharing you see:\n\n- The strict-local model it will answer with. Without a strict-local model you can use, it cannot be shared.\n- What a chatbot does not use: your memory, personal settings, other files and projects, MCP servers, web search, documents and slides, skills. A chatbot uses only **material search** and **calculation**.\n- Values in the material that look like personal details (mobile numbers, emails and so on). Remove or check them before sharing.\n- A warning when there is no material. **Add a source** takes you to the agent's material section. You can share without material, but the chatbot then answers only from its instructions.\n\nThe dialog asks one thing: who to share with. \"Anyone with the link\" and \"Anyone\" also ask for a **daily credit limit**, which starts at 3,000. Everything else (name, greeting, suggested questions, retention and so on) starts at its default and is changed on the dashboard's **Settings** after sharing.\n\nAfter sharing, each scope shows its own state, **Open** or **Pending**. Until approval, send the address only to people in your organization. You are told when it is approved."
 },
 {
 "lang": "en",

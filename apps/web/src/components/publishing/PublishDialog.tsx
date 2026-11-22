@@ -1,26 +1,28 @@
 import { AlertTriangle, CheckCircle2, Clock, Copy, ExternalLink, Loader2, XCircle } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { Button, Modal } from '@/components/ui'
+import { Link, useNavigate } from 'react-router-dom'
+import { Badge, Button, Modal } from '@/components/ui'
 import { ApiError, errorMessage, publicationsApi, type BotVisibility, type Publication, type PublishPreflight } from '@/lib/api'
 import { copyText } from '@/lib/clipboard'
 import {
   botUrl,
   creditsCap,
+  DEFAULT_CREDITS_PER_DAY,
   DISABLED_LABEL,
   FINDING_LABEL,
   PROBLEM_LABEL,
   SCOPE_ERROR,
+  scopeState,
   toSettings,
+  VISIBILITIES,
   VISIBILITY_LABEL,
   type SettingsDraft,
 } from '@/lib/publishing'
 import { useT } from '@/lib/useT'
 import type { Agent } from '@/types'
-import { PublicationSettingsForm } from './PublicationSettingsForm'
 import { ScopePicker } from './ScopePicker'
 
-/** 「공유하기」: publish check, audience, settings, address; link or listing asked of an admin. */
+/** 「공유하기」: publish check, scope and (for a scope needing approval) the daily cap; every other setting starts at its default and is edited on the dashboard. */
 export function PublishDialog({
   agent,
   open,
@@ -33,6 +35,7 @@ export function PublishDialog({
   onPublished?: (pub: Publication) => void
 }) {
   const t = useT()
+  const navigate = useNavigate()
   const [check, setCheck] = useState<PublishPreflight | null>(null)
   const [draft, setDraft] = useState<SettingsDraft | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -40,7 +43,7 @@ export function PublishDialog({
   const [done, setDone] = useState<Publication | null>(null)
   const [copied, setCopied] = useState(false)
   const [scope, setScope] = useState<BotVisibility>('internal')
-  const [credits, setCredits] = useState('')
+  const [credits, setCredits] = useState(String(DEFAULT_CREDITS_PER_DAY))
   const capMissing = scope !== 'internal' && creditsCap(credits) === undefined
 
   useEffect(() => {
@@ -65,7 +68,7 @@ export function PublishDialog({
           limits: found.defaults,
         })
       })
-      .catch((err) => live && setError(errorMessage(err, t('공개할 수 있는지 확인하지 못했습니다.'))))
+      .catch((err) => live && setError(errorMessage(err, t('공유할 수 있는지 확인하지 못했습니다.'))))
     return () => {
       live = false
     }
@@ -88,7 +91,7 @@ export function PublishDialog({
       onPublished?.(made)
     } catch (err) {
       const code = err instanceof ApiError ? err.detail : ''
-      setError(SCOPE_ERROR[code] ? t(SCOPE_ERROR[code]) : errorMessage(err, t('공개하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
+      setError(SCOPE_ERROR[code] ? t(SCOPE_ERROR[code]) : errorMessage(err, t('공유하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
       setBusy(false)
     }
@@ -98,10 +101,24 @@ export function PublishDialog({
     setCopied(await copyText(botUrl(slug)))
   }
 
+  /** Closes the dialog and opens the agent's 자료 group, which sits in the form on this page. */
+  const goToKnowledge = () => {
+    onClose()
+    window.requestAnimationFrame(() => {
+      const group = document.querySelector<HTMLElement>('[data-testid="agent-knowledge-group"]')
+      if (!group) return navigate(`/customize/agents/${agent.id}`)
+      if (group instanceof HTMLDetailsElement) group.open = true
+      group.scrollIntoView({ block: 'start' })
+    })
+  }
+
+  // Why 「공유하기」 cannot be pressed is always on the screen: a problem line, the cap's error, or the spinner.
+  const blocked = busy || !check?.ok || !draft || (!check?.existingId && capMissing)
+
   const footer = done ? (
     <>
       <Link to={`/customize/publications/${done.id}`} className="inline-flex h-9 items-center rounded-control px-3.5 text-base font-medium text-muted hover:bg-elevated hover:text-fg">
-        {t('관리')}
+        {t('관리 화면으로')}
       </Link>
       <Button variant="primary" onClick={onClose}>
         {t('닫기')}
@@ -110,15 +127,18 @@ export function PublishDialog({
   ) : (
     <>
       <Button onClick={onClose}>{t('취소')}</Button>
-      <Button variant="primary" disabled={busy || !check?.ok || !draft || (!check?.existingId && capMissing)} onClick={() => void publish()}>
+      <Button variant="primary" disabled={blocked} onClick={() => void publish()}>
         {busy && <Loader2 size={14} className="animate-spin" />}
         {check?.existingId ? t('새 판으로 공개') : scope === 'internal' ? t('공유하기') : t('승인 요청하기')}
       </Button>
     </>
   )
 
+  const openToMembersOnly = done ? done.visibility === 'internal' : false
+  const waiting = done ? VISIBILITIES.some((id) => scopeState(done, id) === 'pending') : false
+
   return (
-    <Modal open={open} onClose={onClose} title={t('공유하기')} width="max-w-xl" footer={footer}>
+    <Modal open={open} onClose={onClose} title={done ? t('공유 상태') : t('누구와 공유할까요?')} width="max-w-xl" footer={footer}>
       {error && (
         <p role="alert" className="rounded-control border border-danger/30 bg-danger/5 px-3 py-2 text-base text-danger">
           {error}
@@ -126,46 +146,62 @@ export function PublishDialog({
       )}
       {done ? (
         <div className="space-y-3" data-testid="publish-done">
-          <p className="flex items-center gap-2 text-base font-medium text-success">
-            <CheckCircle2 size={16} aria-hidden />
-            {t('챗봇을 공개했습니다.')}
-          </p>
-          <p className="text-base text-muted">{t('구성원이 아래 주소나 「공유된 에이전트」에서 물어볼 수 있습니다.')}</p>
-          {done.reviewState === 'pending' && done.requestedVisibility && (
-            <p className="flex items-start gap-2 text-base text-warn" data-testid="publish-requested">
-              <Clock size={15} className="mt-0.5 shrink-0" aria-hidden />
-              {t('요청한 공개 범위({scope})는 관리자가 승인하면 열립니다. 결과는 관리 화면에서 볼 수 있습니다.').replace(
-                '{scope}',
-                t(VISIBILITY_LABEL[done.requestedVisibility]),
-              )}
-            </p>
-          )}
+          <ul className="divide-y divide-line rounded-card border border-line" data-testid="publish-scopes">
+            {VISIBILITIES.filter((id) => scopeState(done, id) !== 'none').map((id) => {
+              const state = scopeState(done, id)
+              return (
+                <li key={id} className="flex items-start gap-2.5 px-3 py-2.5" data-testid={`publish-scope-${id}`}>
+                  {state === 'open' ? (
+                    <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-success" aria-hidden />
+                  ) : (
+                    <Clock size={16} className="mt-0.5 shrink-0 text-warn" aria-hidden />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-base font-medium">{t(VISIBILITY_LABEL[id])}</p>
+                    <p className="text-sm text-muted">
+                      {state === 'open'
+                        ? id === 'internal'
+                          ? t('지금 열려 있습니다. 구성원은 이 주소나 「공유된 에이전트」에서 열 수 있습니다.')
+                          : t('지금 열려 있습니다.')
+                        : t('관리자가 승인하면 열립니다. 승인되면 알려 드립니다.')}
+                    </p>
+                  </div>
+                  <Badge tone={state === 'open' ? 'success' : 'warn'}>{state === 'open' ? t('열림') : t('승인 대기')}</Badge>
+                </li>
+              )
+            })}
+          </ul>
           <div className="flex min-w-0 items-center gap-2 rounded-control border border-line bg-elevated px-3 py-2">
             <code className="min-w-0 flex-1 truncate text-sm" data-testid="bot-url">
               {botUrl(done.slug)}
             </code>
-            <Button size="sm" variant="ghost" onClick={() => void copy(done.slug)} aria-label={t('주소 복사')}>
+            <Button size="sm" variant="ghost" onClick={() => void copy(done.slug)}>
               <Copy size={14} />
-              {copied ? t('복사됨') : t('복사')}
+              {copied ? t('복사됨') : waiting || openToMembersOnly ? t('구성원에게 복사') : t('복사')}
             </Button>
             <a href={`/b/${done.slug}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm text-accent hover:underline">
               <ExternalLink size={13} aria-hidden />
               {t('열기')}
             </a>
           </div>
+          {waiting && (
+            <p className="flex items-start gap-2 rounded-control bg-warn/10 px-3 py-2 text-base text-warn" data-testid="publish-requested">
+              <AlertTriangle size={15} className="mt-0.5 shrink-0" aria-hidden />
+              {t('승인 전에는 조직 밖 사람에게 이 주소를 보내지 마세요. 열리지 않습니다.')}
+            </p>
+          )}
         </div>
       ) : !check || !draft ? (
         !error && (
           <p role="status" className="flex items-center gap-2 text-base text-faint">
             <Loader2 size={14} className="animate-spin" />
-            {t('공개할 수 있는지 확인하는 중…')}
+            {t('공유할 수 있는지 확인하는 중…')}
           </p>
         )
       ) : (
         <>
           {!check.existingId && (
-            <section aria-label={t('공개 범위')} className="space-y-2">
-              <p className="text-base font-medium">{t('공개 범위')}</p>
+            <section aria-label={t('공유 범위')} className="space-y-2">
               <ScopePicker
                 value={scope}
                 onChange={setScope}
@@ -175,7 +211,7 @@ export function PublishDialog({
               />
             </section>
           )}
-          <section aria-label={t('공개 전 확인')} className="space-y-2 rounded-card border border-line bg-elevated/50 px-3.5 py-3">
+          <section aria-label={t('공유 전 확인')} className="space-y-2 rounded-card border border-line bg-elevated/50 px-3.5 py-3">
             {check.model ? (
               <p className="flex items-center gap-2 text-base" data-testid="publish-model">
                 <CheckCircle2 size={15} className="shrink-0 text-success" aria-hidden />
@@ -199,10 +235,17 @@ export function PublishDialog({
               </ul>
             </div>
             <p className="text-sm text-muted">
-              {t('공개한 때의 지시·자료로 고정됩니다. 고친 뒤에는 「새 판으로 공개」하세요.')}
+              {t('공유한 때의 지시·자료로 고정됩니다. 고친 뒤에는 「새 판으로 공개」하세요.')}
             </p>
             {check.knowledge.length === 0 ? (
-              <p className="text-sm text-warn">{t('올린 자료가 없어 챗봇이 근거로 쓸 것이 없습니다.')}</p>
+              <div className="flex flex-wrap items-start gap-2 rounded-control bg-warn/10 px-3 py-2" data-testid="publish-no-knowledge">
+                <p className="min-w-0 flex-1 text-sm text-warn max-sm:basis-40">
+                  {t('챗봇이 근거로 쓸 자료가 없습니다. 자료 없이도 공유할 수 있지만, 지시문에 있는 내용만 답합니다.')}
+                </p>
+                <Button size="sm" onClick={goToKnowledge} data-testid="publish-add-knowledge">
+                  {t('자료 추가')}
+                </Button>
+              </div>
             ) : (
               <ul className="space-y-1">
                 {check.knowledge.map((file) => (
@@ -211,7 +254,7 @@ export function PublishDialog({
                     {file.findings.length > 0 && (
                       <span className="ml-2 inline-flex items-center gap-1 text-warn" data-testid="publish-finding">
                         <AlertTriangle size={13} aria-hidden />
-                        {t('개인정보로 보이는 값: {list}. 공개하기 전에 확인하세요.').replace(
+                        {t('개인정보로 보이는 값: {list}. 공유하기 전에 확인하세요.').replace(
                           '{list}',
                           file.findings.map((f) => `${t(FINDING_LABEL[f.category] ?? f.category)} ${f.count}`).join(', '),
                         )}
@@ -230,7 +273,7 @@ export function PublishDialog({
               </Link>
             </p>
           ) : (
-            <PublicationSettingsForm draft={draft} defaults={check.defaults} onChange={setDraft} />
+            <p className="text-sm text-muted">{t('이름, 첫 인사, 보관 기간 같은 설정은 공유한 뒤 관리 화면에서 바꿉니다.')}</p>
           )}
         </>
       )}

@@ -320,7 +320,7 @@ test('the owner publishes a chat agent to members and gets its address', async (
   await expect(page.getByTestId('item-detail-header')).toBeVisible({ timeout: 15_000 })
   // Main action on one's own chat agent, not under 더 보기.
   await page.getByRole('button', { name: '공유하기' }).filter({ visible: true }).first().click()
-  const dialog = page.getByRole('dialog', { name: '공유하기' })
+  const dialog = page.getByRole('dialog', { name: '누구와 공유할까요?' })
   await expect(dialog.getByTestId('publish-model')).toContainText('내부 Qwen')
   // Members by default, at once; no credit cap asked.
   await expect(dialog.getByRole('radio', { name: /우리 조직/ })).toHaveAttribute('aria-checked', 'true')
@@ -331,11 +331,20 @@ test('the owner publishes a chat agent to members and gets its address', async (
   await expect(dialog.getByTestId('publish-disabled')).toContainText('내 메모리')
   await expect(dialog.getByTestId('publish-disabled')).toContainText('웹 검색')
   await expect(dialog.getByTestId('publish-finding')).toContainText('휴대전화 번호 1')
+  // Only the scope and (for approval scopes) the cap are asked; the rest starts at its default.
+  await expect(dialog.getByLabel('이름')).toHaveCount(0)
+  await expect(dialog).toContainText('이름, 첫 인사, 보관 기간 같은 설정은 공유한 뒤 관리 화면에서 바꿉니다.')
   await shot(page, 'publish-dialog', viewport(testInfo))
   await dialog.getByRole('button', { name: '공유하기' }).click()
-  await expect(dialog.getByTestId('publish-done')).toBeVisible()
-  await expect(dialog.getByTestId('bot-url')).toContainText(`/b/${SLUG}`)
-  await expect(dialog.getByTestId('publish-done')).toContainText('「공유된 에이전트」에서 물어볼 수 있습니다')
+  // The result screen is a new step of the same dialog, titled by what it shows.
+  const result = page.getByRole('dialog', { name: '공유 상태' })
+  await expect(result.getByTestId('publish-done')).toBeVisible()
+  await expect(result.getByTestId('bot-url')).toContainText(`/b/${SLUG}`)
+  await expect(result.getByTestId('publish-scope-internal')).toContainText('「공유된 에이전트」에서 열 수 있습니다')
+  await expect(result.getByTestId('publish-scope-internal')).toContainText('열림')
+  await expect(result.getByTestId('publish-scope-link')).toHaveCount(0)
+  await expect(result.getByRole('button', { name: '구성원에게 복사' })).toBeVisible()
+  await expect(result.getByTestId('publish-requested')).toHaveCount(0)
   await shot(page, 'publish-done', viewport(testInfo))
   const sent = writes.find((w) => w.method === 'POST' && w.path === '/publications')?.body as Record<string, unknown>
   expect(sent).toMatchObject({ agentId: AGENT, visibility: 'internal', showProcess: 'summary', conversationView: 'off', allowCopy: false })
@@ -349,19 +358,30 @@ test('opening a bot by link asks an administrator and needs a daily credit cap',
   await expect(page.getByTestId('item-detail-header')).toBeVisible({ timeout: 15_000 })
   // Main action on one's own chat agent, not under 더 보기.
   await page.getByRole('button', { name: '공유하기' }).filter({ visible: true }).first().click()
-  const dialog = page.getByRole('dialog', { name: '공유하기' })
+  const dialog = page.getByRole('dialog', { name: '누구와 공유할까요?' })
   await dialog.getByRole('radio', { name: /링크를 아는 사람/ }).click()
-  await expect(dialog.getByTestId('scope-picker')).toContainText('승인 뒤 열립니다')
-  await expect(dialog.getByRole('button', { name: '승인 요청하기' })).toBeDisabled()
+  await expect(dialog.getByTestId('scope-picker')).toContainText('관리자 승인이 필요합니다')
+  // The cap starts at a default, with its reason beside it; the button names the next step.
+  await expect(dialog.getByTestId('scope-credits')).toHaveValue('3000')
+  await expect(dialog).toContainText('방문자가 쓰는 크레딧은 내 크레딧에서 빠집니다. 다 쓰면 다음 날까지 멈춥니다. 나중에 바꿀 수 있습니다.')
+  await expect(dialog.getByRole('button', { name: '승인 요청하기' })).toBeEnabled()
   // Out of range says why, next to the box, instead of only greying the button out.
   await dialog.getByTestId('scope-credits').fill('0')
   await expect(dialog.getByTestId('scope-credits-error')).toContainText('1부터 100,000,000까지의 정수')
   await expect(dialog.getByRole('button', { name: '승인 요청하기' })).toBeDisabled()
+  await dialog.getByTestId('scope-credits').fill('')
+  await expect(dialog.getByTestId('scope-credits-error')).toBeVisible()
   await dialog.getByTestId('scope-credits').fill('3000')
   await expect(dialog.getByTestId('scope-credits-error')).toHaveCount(0)
   await shot(page, 'publish-dialog-link', viewport(testInfo))
   await dialog.getByRole('button', { name: '승인 요청하기' }).click()
-  await expect(dialog.getByTestId('publish-requested')).toContainText('요청한 공개 범위(링크를 아는 사람)는 관리자가 승인하면 열립니다')
+  const result = page.getByRole('dialog', { name: '공유 상태' })
+  await expect(result.getByTestId('publish-scope-internal')).toContainText('열림')
+  await expect(result.getByTestId('publish-scope-link')).toContainText('승인 대기')
+  await expect(result.getByTestId('publish-scope-link')).toContainText('승인되면 알려 드립니다')
+  await expect(result.getByTestId('publish-scope-external')).toHaveCount(0)
+  await expect(result.getByRole('button', { name: '구성원에게 복사' })).toBeVisible()
+  await expect(result.getByTestId('publish-requested')).toContainText('승인 전에는 조직 밖 사람에게 이 주소를 보내지 마세요. 열리지 않습니다.')
   const sent = writes.find((w) => w.method === 'POST' && w.path === '/publications')?.body as Record<string, unknown>
   expect(sent).toMatchObject({ visibility: 'link', limits: { creditsPerDay: 3000 } })
   expect(state.unexpected).toEqual([])
@@ -519,9 +539,26 @@ test('without an internal model the dialog says why and publishes nothing', asyn
   await expect(page.getByTestId('item-detail-header')).toBeVisible({ timeout: 15_000 })
   // Main action on one's own chat agent, not under 더 보기.
   await page.getByRole('button', { name: '공유하기' }).filter({ visible: true }).first().click()
-  const dialog = page.getByRole('dialog', { name: '공유하기' })
+  const dialog = page.getByRole('dialog', { name: '누구와 공유할까요?' })
   await expect(dialog.getByTestId('publish-problem')).toContainText('내부 모델이 없어')
-  await expect(dialog.getByRole('button', { name: '승인 요청하기' })).toBeDisabled()
+  // Nothing to press while a problem stands, and the problem is the reason on screen.
+  await expect(dialog.getByRole('button', { name: '공유하기' })).toBeDisabled()
+})
+
+test('with no material the dialog warns and 자료 추가 leads to the agent’s material', async ({ page }, testInfo) => {
+  await hubFixture(page, testInfo)
+  await page.route('**/api/publications/preflight', (route) => route.fulfill({ json: preflight({ knowledge: [] }) }))
+  await page.goto(`/customize/agents/${AGENT}`)
+  await expect(page.getByTestId('item-detail-header')).toBeVisible({ timeout: 15_000 })
+  await page.getByRole('button', { name: '공유하기' }).filter({ visible: true }).first().click()
+  const dialog = page.getByRole('dialog', { name: '누구와 공유할까요?' })
+  const warning = dialog.getByTestId('publish-no-knowledge')
+  await expect(warning).toContainText('자료 없이도 공유할 수 있지만, 지시문에 있는 내용만 답합니다')
+  await warning.getByRole('button', { name: '자료 추가' }).click()
+  await expect(dialog).toHaveCount(0)
+  const group = page.getByTestId('agent-knowledge-group')
+  await expect(group).toBeVisible()
+  await expect(group).toHaveJSProperty('open', true)
 })
 
 test('a member reads the notice, asks, rates and sends the conversation to the maker', async ({ page }, testInfo) => {
@@ -759,7 +796,6 @@ test('the dashboard shows statistics, sent conversations and versions, and rolls
   await page.getByRole('button', { name: '이 판으로 되돌리기' }).click()
   await expect(page.getByTestId('publication-versions').getByText('지금 판')).toHaveCount(1)
   await shot(page, 'dashboard-versions', viewport(testInfo))
-  await page.getByRole('tab', { name: '설정' }).click()
   await page.getByRole('switch', { name: '대화 열람' }).click()
   await expect(page.getByText('복사를 허용하면 구성원이 지시문까지 내 에이전트로 가져갈 수 있습니다.')).toBeVisible()
   await page.getByRole('switch', { name: '복사 허용' }).click()
@@ -899,8 +935,8 @@ test('the publishing screens read in English', async ({ page }, testInfo) => {
 
   await page.goto(`/customize/agents/${AGENT}`)
   await expect(page.getByTestId('item-detail-header')).toBeVisible({ timeout: 15_000 })
-  await page.getByRole('button', { name: 'Publish as a chatbot' }).filter({ visible: true }).first().click()
-  const dialog = page.getByRole('dialog', { name: 'Publish as a chatbot' })
+  await page.getByRole('button', { name: 'Share' }).filter({ visible: true }).first().click()
+  const dialog = page.getByRole('dialog', { name: 'Who do you want to share with?' })
   await expect(dialog.getByTestId('publish-model')).toBeVisible()
   await dialog.getByRole('radio', { name: /Anyone with the link/ }).click()
   expect(untranslated(await dialog.innerText())).toEqual([])
@@ -959,7 +995,6 @@ test('the owner asks for the API channel and makes a key shown once', async ({ p
   await expect(page.getByTestId('channel-api')).toContainText('승인 대기')
   expect(writes.find((w) => w.path === `/publications/${PUB}/channels`)?.body).toEqual({ embed: { on: false, origins: [] }, api: true, mcp: false })
 
-  await page.getByRole('tab', { name: 'API' }).click()
   const api = page.getByTestId('publication-api')
   await expect(api).toContainText('API·MCP 채널이 아직 열리지 않았습니다')
   await api.getByLabel('키 이름').fill('학과 홈페이지 서버')

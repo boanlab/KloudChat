@@ -13,6 +13,11 @@ The **Share** button at the top of your agent's page. Before sharing you see:
 - The strict-local model it will answer with. Without a strict-local model you can use, it cannot be shared.
 - What a chatbot does not use: your memory, personal settings, other files and projects, MCP servers, web search, documents and slides, skills. A chatbot uses only **material search** and **calculation**.
 - Values in the material that look like personal details (mobile numbers, emails and so on). Remove or check them before sharing.
+- A warning when there is no material. **Add a source** takes you to the agent's material section. You can share without material, but the chatbot then answers only from its instructions.
+
+The dialog asks one thing: who to share with. "Anyone with the link" and "Anyone" also ask for a **daily credit limit**, which starts at 3,000. Everything else (name, greeting, suggested questions, retention and so on) starts at its default and is changed on the dashboard's **Settings** after sharing.
+
+After sharing, each scope shows its own state, **Open** or **Pending**. Until approval, send the address only to people in your organization. You are told when it is approved.
 
 ## Who can use it
 
