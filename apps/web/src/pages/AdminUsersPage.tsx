@@ -1119,7 +1119,7 @@ export function AdminUsersPage() {
           if (target) void run(target.id, () => suspendUser(target.id))
         }}
         title={t('{name}님의 접속을 막을까요?').replace('{name}', suspending?.name ?? '')}
-        description={t('바로 로그아웃되고 키도 막힙니다. 이 사람이 공개한 챗봇도 함께 멈춥니다. 「정지 해제」로 되돌릴 수 있습니다.')}
+        description={t('바로 로그아웃되고 키도 막힙니다. 이 사람이 공유한 챗봇도 함께 멈춥니다. 「정지 해제」로 되돌릴 수 있습니다.')}
         confirmLabel={t('정지')}
       />
       <ConfirmDialog

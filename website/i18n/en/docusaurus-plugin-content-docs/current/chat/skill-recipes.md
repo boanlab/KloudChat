@@ -85,7 +85,7 @@ In **Customize** → **Agents** → **Add** → **Create an agent**, skills you 
 1. Create an agent with **규정 근거 답변** + **날짜 계산** set to Always.
 2. Upload the regulation files under **Sources** and fill in **Department and contact**.
 3. Under **Extra work**, tick **공개 전 점검** (the pre-publication check: hold answers without grounds · point to the department · mask personal information).
-4. Try it, then [publish it as a chatbot](bots.md). The bot answers with the skills' instructions frozen into the published version.
+4. Try it, then [share it as a chatbot](bots.md). The bot answers with the skills' instructions frozen into the published version.
 
 ## Video and research agents
 

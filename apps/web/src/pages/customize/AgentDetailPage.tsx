@@ -11,10 +11,9 @@ import { agentItem } from '@/components/customize/hubItems'
 import { ShareDialog } from '@/components/customize/ShareDialog'
 import { useItemActions } from '@/components/customize/tryItem'
 import { Badge, ConfirmDialog, EmptyState, LoadingState, Switch } from '@/components/ui'
-import type { PublicationStatus } from '@/lib/api'
 import { startFailure } from '@/lib/failures'
 import { agentStartKind } from '@/lib/kinds'
-import { STATUS_LABEL } from '@/lib/publishing'
+import { shareBadge } from '@/lib/publishing'
 import { useT, useTIn } from '@/lib/useT'
 import { uid } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -118,7 +117,7 @@ export function AgentDetailPage() {
           mine
             ? // The settings form is on this page already: no 편집 button that only scrolls to it.
               canPublish
-              ? { label: '챗봇으로 공개', run: () => setPublishing(true) }
+              ? { label: '공유하기', run: () => setPublishing(true) }
               : undefined
             : {
                 label: agent.installed ? '추가됨' : '추가',
@@ -179,11 +178,11 @@ export function AgentDetailPage() {
         {mine && agent.publication && (
           <DetailSection title={t('챗봇')}>
             <div className="flex flex-wrap items-center gap-3 rounded-card border border-line bg-panel px-4 py-3" data-testid="agent-publication">
-              <Badge tone={agent.publication.status === 'approved' ? 'success' : 'warn'}>
-                {t(STATUS_LABEL[agent.publication.status as PublicationStatus] ?? agent.publication.status)}
+              <Badge tone={agent.publication.status === 'approved' ? 'success' : 'warn'} data-testid="agent-share-badge">
+                {shareBadge(agent.publication, t)}
               </Badge>
               <span className="min-w-0 flex-1 truncate text-base text-muted">
-                {t('구성원이 이 에이전트의 공개한 판에 물어볼 수 있습니다.')}
+                {t('공유한 판에 물어볼 수 있습니다.')}
               </span>
               <a href={`/b/${agent.publication.slug}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm text-muted hover:text-fg">
                 <ExternalLink size={13} aria-hidden />

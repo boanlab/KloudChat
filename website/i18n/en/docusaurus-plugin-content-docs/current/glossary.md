@@ -30,5 +30,5 @@ title: Glossary
 | Image · picture · diagram | An image file you attach or generate · a picture you place in a document (UI label) · a flow chart or structure chart a text model draws |
 | Outline card (개요 카드) | The card that confirms the structure before a report or slide deck is written |
 | Masking (마스킹) | Replacing personal data with a placeholder before sending |
-| Chatbot (챗봇) | An agent published so others can ask it. Member, link or external publishing |
+| Chatbot (챗봇) | An agent shared so others can ask it. Scopes: your organization, anyone with the link, anyone |
 | Feedback & issues (문의·신고) | Bug reports, feature requests and questions sent to the administrators |

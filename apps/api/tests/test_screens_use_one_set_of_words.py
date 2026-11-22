@@ -15,8 +15,13 @@ _REPO = Path(__file__).resolve().parents[3]
 _WEB = _REPO / "apps/web/src"
 _APP = Path(__file__).resolve().parents[1] / "app"
 
-#: 「양식」, 「디자인 지침」 and 「MCP」 are the current words; the old terms must not reappear.
-_OLD = re.compile(r"워크플로|작동 단계|결과물|추천|서식 보정|새로 만들기|커넥터")
+#: 「양식」, 「디자인 지침」, 「MCP」 and the share scopes 「우리 조직 / 링크를 아는 사람 / 누구나」
+#: are the current words; the old terms must not reappear. 「링크 공개 중」 is a shared
+#: conversation's badge, not a scope.
+_OLD = re.compile(
+    r"워크플로|작동 단계|결과물|추천|서식 보정|새로 만들기|커넥터"
+    r"|구성원 공개|링크 공개(?! 중)|외부 공개|챗봇으로 공개"
+)
 
 #: (file suffix, text the line carries) → why the word may stand there.
 _ALLOWED = {
@@ -86,3 +91,7 @@ def test_the_check_catches_a_replaced_word():
     assert not _OLD.search("{t('서식')}")
     assert not _OLD.search(_without_comments("x() // 예전 워크플로"))
     assert not _OLD.search("{t('기본 양식 파일')}")
+    assert _OLD.search("{t('구성원 공개')}")
+    assert _OLD.search("{t('챗봇으로 공개')}")
+    assert not _OLD.search("{t('링크 공개 중')}")
+    assert not _OLD.search("{t('링크를 아는 사람')}")

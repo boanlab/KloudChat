@@ -1385,6 +1385,16 @@ export interface MemoryEntry {
 /** Web search per turn: 자동 (server decides), 항상, 끔. */
 export type WebSearchMode = 'auto' | 'on' | 'off'
 
+/** What an agent's card and page say of its published bot: where it is open or asked to open. */
+export interface AgentPublication {
+  id: string
+  slug: string
+  status: string
+  visibility: 'internal' | 'link' | 'external'
+  requestedVisibility: '' | 'internal' | 'link' | 'external'
+  reviewState: '' | 'pending' | 'rejected'
+}
+
 export interface Agent {
   /** Shared agents are read-only to everyone but the owner. */
   ownerId: string
@@ -1410,7 +1420,7 @@ export interface Agent {
   /** 담당 부서·연락처: said as written when the material does not answer the question. */
   contact?: string
   /** The owner's published bot of this agent (공개 챗봇): its dashboard id, address and state. */
-  publication?: { id: string; slug: string; status: string } | null
+  publication?: AgentPublication | null
   starters: string[]
   /** `sealed`: copies run the author's prompt without being able to read it. */
   shareMode: 'open' | 'sealed'

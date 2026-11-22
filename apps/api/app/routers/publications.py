@@ -1132,6 +1132,9 @@ async def bot_page(slug: str, request: Request, response: Response, user: BotCal
         "blocked": visitor is not None and visitor.blocked,
         "color": snap.color if snap else "#5b53e8",
         "maxInputChars": publishing.limits_of(pub)["maxInputChars"],
+        # only the owner's preview learns why a link is not open outside yet
+        **({"publicationId": pub.id, "requestedVisibility": pub.requested_visibility,
+            "reviewState": pub.review_state} if mine else {}),
     }
 
 
