@@ -175,6 +175,33 @@ def _usage(bundle: Bundle) -> dict[str, Any]:
     return {"type": "usage", **bundle.usage}
 
 
+#: a report from the person's own material written in one pass — the whole document in one call,
+#: no separate hard sections, no assumption or premise section the request does not ask for, no
+#: lengthening pass. On for the self-hosted writers (11-22 A/B on strict-local, 4 runs x 10 tasks:
+#: overall 4.67 -> 5.49, answers with a fatal error 29 -> 18 of 39); other writers keep the staged
+#: path. `REPORT_ONE_PASS=1` forces it for every writer, `0` turns it off.
+ONE_PASS_ENV = "REPORT_ONE_PASS"
+_UNASKED_FRAME = (
+    "\n- Use only the sections the request names or the document type needs. Do not add a "
+    "「핵심 가정」, 「비용 계산의 전제」, 「산정 전제」, 「보고 목적과 범위」 or similar framing section "
+    "unless the request asks for one: inputs and their basis go where they are used.")
+
+
+def one_pass(bundle: Bundle) -> bool:
+    """Whether this report is written in one pass (`ONE_PASS_ENV`): only from the person's own
+    material, no web page among its sources, and by default only for a self-hosted writer."""
+    import os
+
+    from app.services import model_tier
+
+    setting = os.environ.get(ONE_PASS_ENV)
+    if setting == "0":
+        return False
+    if setting != "1" and bundle.group != model_tier.SELF_HOSTED:
+        return False
+    return not any(str(s.get("origin") or "") == "web" for s in bundle.material.sources or [])
+
+
 def _material_text(bundle: Bundle) -> str:
     # derived material is no check source
     return "\n".join([bundle.request.text, *bundle.material.grounds])
@@ -452,7 +479,7 @@ class Outline(Base):
                 hi=wanted or most,
                 genre=bundle.spec.genre,
                 request=prompt_request(request, 2000),
-            ) + each_rule + nudge
+            ) + each_rule + (_UNASKED_FRAME if one_pass(bundle) else "") + nudge
             return await doc_stages.staged(
                 report._complete, "plan", req.outline_model or req.model,
                 lambda model: _messages(bundle, prompt, model), req.api_key,
@@ -1063,10 +1090,12 @@ class Draft(Base):
 
     async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
         report, req, plan = _report(), bundle.request, bundle.plan
-        long_form = report._long_form(req.text)
+        single = one_pass(bundle)
+        long_form = report._long_form(req.text) and not single
         bundle.document.long_form = long_form
         stages = doc_stages.CURRENT.get()
-        if stages is not None and stages.model("hard") and len(plan.headings) > 1:
+        if (stages is not None and stages.model("hard") and len(plan.headings) > 1
+                and not single):
             # sections the objective signals mark as hard go to the upper model, one call
             # each (`Sections`); the writer drafts the rest
             hard = doc_stages.hard_report_sections(list(plan.headings), _material_text(bundle))
@@ -1483,10 +1512,57 @@ class Sections(Base):
                    "message": "보고서의 어느 절도 쓰지 못했습니다. 잠시 뒤 다시 시도해 주세요."}
             yield _usage(bundle)
             raise Stop("every section failed")
-        if not long_form:
+        if (hard or long_form) and sections and _SUMMARY_HEADING.search(
+                str(sections[0].get("heading") or "")) and 0 not in failed:
+            # the summary was written before the sections written apart (the upper model's
+            # recommendation, a long document's parts): said again from the finished body
+            await _summary_last(bundle, sections)
+        if not long_form and not one_pass(bundle):
             # a document short of the pages asked: its shortest sections added to once
             async for event in _lengthened(bundle, sections, targets, outline_text):
                 yield event
+
+
+#: a summary section's heading
+_SUMMARY_HEADING = re.compile(r"^\s*(?:\d+[.)]\s*)?(?:요약|개요\s?및\s?요약|핵심\s?요약|executive summary|summary)\s*$",
+                              re.I)
+_SUMMARY_PROMPT = """Below is a finished document. Rewrite its first section, 「{heading}」, so that it
+states what the document as written concludes: the key figures and the recommendation exactly
+as the later sections give them (if a later section recommends one option, the summary
+recommends that same option). Keep it about as long as it is now, in the document's language
+and style. Use only figures that appear in the document; do not add anything new. Output only
+the section's body, without its heading.
+
+Document:
+{document}"""
+_NUMBER_TOKEN = re.compile(r"\d[\d,]*(?:\.\d+)?")
+
+
+async def _summary_last(bundle: Bundle, sections: list[dict]) -> None:
+    """The summary said again from the finished sections; kept only when every figure it
+    writes is in the document and it is not much shorter or longer."""
+    report, req = _report(), bundle.request
+    old = str(sections[0].get("content") or "")
+    document = "\n\n".join(f"## {s.get('heading')}\n{s.get('content') or ''}" for s in sections)
+    try:
+        said, spent = await _written(
+            req.model, _messages(bundle, _SUMMARY_PROMPT.format(
+                heading=sections[0].get("heading"), document=document[:14000]), req.model),
+            req.api_key, max_tokens=max(800, len(old) + 600))
+    except _CAUGHT as exc:
+        log.info("summary not said again: %s", exc)
+        return
+    _count(bundle, spent)
+    said = richtext.detach_tables(report.unwrap_json_prose(
+        internal_words.strip_work_notes(said, request=req.text, document=True))).strip()
+    rest = "\n".join(str(s.get("content") or "") for s in sections[1:])
+    figures = {n.replace(",", "") for n in _NUMBER_TOKEN.findall(said)}
+    known = {n.replace(",", "") for n in _NUMBER_TOKEN.findall(rest + "\n" + old + "\n" + req.text)}
+    if (not said or report.error_text(said, req.text) or not figures <= known
+            or not 0.5 * len(old) <= len(said) <= 1.8 * len(old) + 200):
+        log.info("summary said again was not kept")
+        return
+    sections[0]["content"] = _cleaned(bundle, 0, sections[0], said)
 
 
 #: sections one document lengthens at most
