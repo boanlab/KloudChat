@@ -123,6 +123,7 @@ export function AdminPerformancePage() {
   const slowest = p95s.length ? Math.max(...p95s) : null
   const calls = data?.models.reduce((s, m) => s + m.calls, 0) ?? 0
   const errors = data?.models.reduce((s, m) => s + m.errors, 0) ?? 0
+  const enoughCalls = calls >= (th?.errorMinCalls ?? 20)
   const errorRate = calls ? (100 * errors) / calls : null
   const servers = data?.vllm ?? []
   const down = servers.filter((m) => !m.up).length
@@ -223,8 +224,12 @@ export function AdminPerformancePage() {
             to={models}
             label={t('모델 오류율')}
             value={fmt(errorRate, '%')}
-            sub={t('호출 {n}건').replace('{n}', num(calls, 0))}
-            tone={errorRate !== null && errorRate >= (th?.errorRateMax ?? 5) ? 'danger' : undefined}
+            sub={
+              errorRate !== null && !enoughCalls
+                ? t('호출 {n}건으로 표본이 적습니다').replace('{n}', num(calls, 0))
+                : t('호출 {n}건').replace('{n}', num(calls, 0))
+            }
+            tone={errorRate !== null && enoughCalls && errorRate >= (th?.errorRateMax ?? 5) ? 'danger' : undefined}
           />
           <Tile
             to={models}

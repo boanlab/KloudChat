@@ -40,6 +40,8 @@ class Thresholds:
     disk_warn: float = 85
     disk_critical: float = 95
     error_rate_max: float = 5
+    # Below this many calls an error rate is too noisy to judge (status and tiles alike).
+    error_min_calls: int = 20
     gpu_temp_max: float = 85
     # vLLM pre-reserves GB10 unified memory: ~97% is resting level
     gpu_node_mem_max: float = 99
@@ -299,7 +301,7 @@ def evaluate(
             errors = sum(
                 v for _, v in _within(series.get(("model", "errors", subject), []), now, 15)
             )
-            if calls >= 20 and 100 * errors / calls >= th.error_rate_max:
+            if calls >= th.error_min_calls and 100 * errors / calls >= th.error_rate_max:
                 rate = 100 * errors / calls
                 out.append(
                     Verdict(

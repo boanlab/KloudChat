@@ -1347,6 +1347,7 @@ const EN: Record<string, string> = {
   '모델 p95': 'Model p95',
   '가장 느린 모델 기준': 'Slowest model',
   '호출 {n}건': '{n} calls',
+  '호출 {n}건으로 표본이 적습니다': 'Only {n} calls, too few to judge',
   '모델 서버 대기': 'Waiting at model servers',
   '미연결 {n}개': '{n} not connected',
   '노드 {g} · 서버 {s}': '{g} nodes · {s} servers',

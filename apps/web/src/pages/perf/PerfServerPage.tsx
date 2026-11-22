@@ -81,6 +81,7 @@ export function PerfServerPage() {
           <ModelLatencyTable
             rows={calls}
             errorRateMax={th?.errorRateMax ?? 5}
+            errorMinCalls={th?.errorMinCalls ?? 20}
             empty={t('이 기간에 이 모델의 호출 기록이 없습니다.')}
           />
         </Section>
