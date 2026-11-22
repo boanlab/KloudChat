@@ -197,7 +197,7 @@ def one_pass(bundle: Bundle) -> bool:
     setting = os.environ.get(ONE_PASS_ENV)
     if setting == "0":
         return False
-    if setting != "1" and bundle.group != model_tier.SELF_HOSTED:
+    if setting != "1" and bundle.request.group != model_tier.SELF_HOSTED:
         return False
     return not any(str(s.get("origin") or "") == "web" for s in bundle.material.sources or [])
 

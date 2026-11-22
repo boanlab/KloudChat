@@ -4,16 +4,16 @@ sources. `REPORT_ONE_PASS` forces it on (1) or off (0)."""
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import pytest
 
 from app.pipeline import report_stages
+from app.pipeline.bundle import Bundle, Material, Request
 
 
 def _bundle(model, sources=()):
-    group = "self_hosted" if model.startswith(("local/", "strict-local/")) else "external"
-    return SimpleNamespace(group=group, material=SimpleNamespace(sources=list(sources)))
+    """A real bundle: the writer's group is read from the request, as in a live run."""
+    return Bundle(request=Request(text="보고서 써 줘", model=model, api_key="k"),
+                  material=Material(sources=list(sources)))
 
 
 @pytest.fixture(autouse=True)
