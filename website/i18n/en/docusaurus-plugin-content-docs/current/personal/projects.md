@@ -21,7 +21,7 @@ Go to the sidebar → **Projects** → New project, then enter a name, a descrip
 | Studio | Makes a study guide, FAQ, briefing, timeline, glossary, mind map, quiz or flashcards from the sources you pick. See [Knowledge shelf](./knowledge-shelf.md). |
 | Notes | Collects answers, selected passages and notes written by hand, and makes a note a source. |
 | Skills | Skills you pick with **Choose skills** appear first in this project's composer. |
-| Memory | Memory shared at the project level. Conclusions that an agent leaves through **Share note** also accumulate here. |
+| Memory | Memory shared at the project level. Conclusions that an agent leaves through a shared note also accumulate here. |
 
 ## How knowledge is delivered
 
@@ -39,7 +39,7 @@ A new report or slides conversation opened in this project shows a **Project for
 
 ## Design brief
 
-The **design brief** is a single text field that describes, in words, how the project's reports and slides look: colors, fonts, how tables are drawn, how much goes on a page. For example: "Navy as the only accent color. Serif body, sans-serif headings. Shade only the header row of tables, no vertical lines." The values read from it appear below the field as **Read as** chips. Text marked (테마에서 옮김) can be edited like any other guidance. When there is a form file, the brief fills only what the form leaves open.
+The **design brief** is a single text field that describes, in words, how the project's reports and slides look: colors, fonts, how tables are drawn, how much goes on a page. For example: "Navy as the only accent color. Serif body, sans-serif headings. Shade only the header row of tables, no vertical lines." The values read from it appear below the field as **Read as** chips. When there is a form file, the brief fills only what the form leaves open.
 
 ## Deleting a project
 

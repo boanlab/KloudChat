@@ -5,6 +5,7 @@
 - [API](#api)
 - [Migrations](#migrations)
 - [Tests](#tests)
+- [CI](#ci)
 - [Adding things](#adding-things)
 - [Troubleshooting](#troubleshooting)
 
@@ -26,13 +27,15 @@ make build       # or: docker compose -f docker-compose.yml \
 does. `make build` builds every image from this checkout, which is what you
 want while working on any of them.
 
-`make help` lists everything below as a target. `make check` runs CI's lint,
+`make help` lists everything below as a target. `make check` needs the host toolchains
+(`npm ci` in `apps/web`, the API virtualenv and `shellcheck`) and runs CI's lint,
 build, unit-test, shellcheck and compose checks; the Playwright fixture suite
 and the image builds run separately.
 
 You do not need a model backend to work on most of the app. Projects, skills,
 memory, agents, history, sharing and administration all function without one;
-model calls and tools report "not connected". Point `BACKEND_BASE_URL` at a
+model calls and tools report "not connected". The app is then at `http://localhost:5173` (sign up first; the first account becomes
+administrator). Point `BACKEND_BASE_URL` at a
 running [`KloudChat-LLM`](https://github.com/boanlab/KloudChat-LLM)
 when you need to exercise a generation path.
 
@@ -61,6 +64,7 @@ Checks:
 
 ```bash
 npm run lint         # oxlint
+npm run test:unit    # vitest, src/
 npm run test:config  # the Vite config; every e2e spec in one CI surface or live
 npm run build        # tsc -b && vite build
 ```
@@ -94,7 +98,7 @@ ruff check .
 pytest -q
 ```
 
-Python 3.12, FastAPI, SQLModel over asyncpg, Alembic.
+Python 3.11+ (the image and CI use 3.12), FastAPI, SQLModel over asyncpg, Alembic.
 
 Most unit tests exercise pure functions and the document pipelines against
 fake model replies (`tests/conftest.py` turns web search off unless a test
@@ -112,10 +116,10 @@ docker compose restart api
 docker compose exec api python -c "from app.core.config import settings; print(settings.env)"
 ```
 
-Interactive API docs are served at `/docs` on the API process when `ENV=dev`
-(the web container proxies only `/api` and `/llm`, so reach it from inside the
+Interactive API docs are served at `/docs` on the API process when `ENV=dev`,
+the compose default (the web container proxies only `/api` and `/llm`, so reach it from inside the
 compose network, e.g. `docker compose exec api curl -s localhost:8100/docs`).
-They are disabled in `prod`.
+They are disabled when `KCHAT_ENV=prod`.
 
 ## Migrations
 
@@ -168,15 +172,20 @@ details and the one config that stays out of CI. Every spec is either in exactly
 surface of `playwright.ci.config.ts` or listed in `e2e/live-specs.ts` (the specs that
 sign in to a running stack, below); the config refuses to load otherwise, and
 `npm run test:config` runs that check in the web job. A new project's time goes into
-`e2e/shard-weights.json` (a rough local figure until `.github/ci/e2e-weights.py`
-measures it on CI).
+`e2e/shard-weights.json` (a rough local figure; `.github/ci/e2e-weights.py`
+computes the measured values from CI timings).
 
 ### API integration
 
 Non-destructive: each run creates its own accounts and workspace objects and
 removes them at the end.
 
+The scripts default to `API=http://localhost:8100/api`, which compose does not
+publish; against a compose stack, set `API=http://localhost:5173/api` (exported, or in
+front of each command).
+
 ```bash
+export API=http://localhost:5173/api
 bash scripts/smoke-test.sh      # auth, approval, rotation, suspension
 bash scripts/workspace-test.sh  # workspace CRUD
 bash scripts/context-test.sh    # context assembly reaches the answer
@@ -220,8 +229,10 @@ npx playwright test --project=desktop
 npx playwright test e2e/auth.spec.ts --project=desktop --reporter=list
 ```
 
-Run `scripts/e2e-seed.sh` first — the suite signs in as a seeded, approved
-account.
+The suite drives the app at `http://localhost:5173` (the compose stack, or `make dev`;
+otherwise Playwright starts `npm run dev` there) and signs in as a seeded, approved
+account, so run `API=http://localhost:5173/api bash scripts/e2e-seed.sh` first
+(`KCHAT_E2E_EMAIL`, `KCHAT_E2E_PASSWORD` and `KCHAT_E2E_NAME` override the account).
 
 **Do not override `--workers`.** The config pins `workers: 1`. Every spec uses
 the same account and several pick "the most recent X"; in parallel they produce
@@ -287,7 +298,7 @@ cover the same ground.
 
 ## Adding things
 
-**A sixth output kind.** Start at `SessionKind` in `apps/web/src/types.ts` and
+**A new output kind.** Start at `SessionKind` in `apps/web/src/types.ts` and
 the metadata table in `apps/web/src/lib/kinds.ts`; those two are the single
 source of truth the UI branches on. Server-side, the kind has to be accepted by
 the session router and appear in `OPTIONAL_KINDS` in
@@ -308,7 +319,7 @@ Keep the total small. Every active tool ships its full schema on every turn,
 and model selection accuracy degrades well before twenty of them.
 
 **A connector.** Catalogue entries are database rows an administrator keeps
-under **System › Connector catalogue** (`app/services/tools/catalog.py`); a stdio
+under **System › Connector catalog** (`app/services/tools/catalog.py`); a stdio
 script goes under `mcp/` and runs via `uv run --script`. Only add servers you
 have actually started and whose tool count you have checked.
 

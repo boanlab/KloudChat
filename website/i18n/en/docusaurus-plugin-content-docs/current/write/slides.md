@@ -6,7 +6,7 @@ title: Writing slides
 
 On the home screen, select **Slides** and enter the presentation topic and the audience. The procedure is the same as for a report. It runs through clarifying questions, the **structure check**, the **Add pictures?** card, and then writing slide by slide.
 
-Choose **Web slides** or **PowerPoint** with the **Format** chip above the prompt box (the same in a new conversation, one started from a project or an agent, or one reopened from history). When you pick PowerPoint, a **Start blank** button appears, and the turn makes a PowerPoint file and fills it. You edit the file in the [PowerPoint editor](pptx). Attach a PowerPoint form (`.pptx`, `.potx`), or keep one in the project's or agent's **Default form files**, and the deck is made on that form ([Writing on a form](pptx#writing-on-a-form)). A project form shows as a **Project form** chip beside the format chip; ✕ removes it for this conversation only. The deck's purpose pattern (internal briefing, case presentation, review presentation, proposal presentation, lecture material) is chosen automatically from the words of the request. Opening `/new/slides?format=pptx` preselects the format. What follows describes web slides.
+Choose **Web slides** or **PowerPoint** with the **Format** chip above the prompt box (the same in a new conversation, one started from a project or an agent, or one reopened from history). When you pick PowerPoint, a **Start blank** button appears, and the turn makes a PowerPoint file and fills it. You edit the file in the [PowerPoint editor](pptx). Attach a PowerPoint form (`.pptx`, `.potx`), or keep one in the project's or agent's **Default form files**, and the deck is made on that form ([Writing on a form](pptx#writing-on-a-form)). A project form shows as a **Project form** chip beside the format chip; ✕ removes it for this conversation only. The deck's purpose pattern (see [Structure by purpose](#structure-by-purpose) below) is chosen automatically from the words of the request. Opening `/new/slides?format=pptx` preselects the format. What follows describes web slides.
 
 ![A finished slide deck](/img/guide/slides.png)
 
@@ -47,7 +47,7 @@ The words of the request tell the deck's purpose, and the deck follows that purp
 | Example input | What it does |
 |---|---|
 | "6 slides", "a 20-slide deck" | Writes the number of slides you set. The maximum is 50. |
-| "a 20-minute presentation" | Calculates the minimum number of slides at one slide per two minutes. 20 minutes gives at least 10 slides. |
+| "a 20-minute presentation" | Calculates the minimum number of slides at one slide per two minutes. 20 minutes gives at least 10 slides. Under 4 minutes the time is ignored, and the count stays between 5 and 12. |
 | Not specified | Writes 5 to 12 slides to suit the topic. |
 
 If the deck runs to more than 6 slides, a table of contents is inserted as the second slide.
@@ -58,16 +58,16 @@ The model chooses the type that suits the content. It uses cover, table of conte
 
 ## Changing the look
 
-In the panel's **Look** menu you can change the look and the accent color, and run **Redo this slide**. If the project or agent has a [design brief](../personal/projects.md#design-brief), the deck follows its colors and typefaces.
+The **Look** menu in the panel toolbar changes the look and the accent color. **Redo this slide** in the ⋯ menu writes the selected slide again. If the project or agent has a [design brief](../personal/projects.md#design-brief), the deck follows its colors and typefaces.
 
 ## Presentation mode
 
-Switch to full screen from **Slide show** in the ribbon. Move between slides with `←` and `→`, and exit with `Esc`. It provides a presentation timer, speaker notes shown with the `N` key, and a slide list.
+**Present** in the toolbar or the ⋯ menu opens full-screen presenter view. Move between slides with `←` and `→`, and exit with `Esc`. It provides a presentation timer (click it to reset to zero), speaker notes shown with the `N` key, and a slide list.
 
 ## Export
 
-In **File → Export**, choose PowerPoint (PPTX), PDF (for presenting), or text (with notes). If there are slides at overflow risk, slides whose evidence needs checking, or unresolved review notes, it tells you before exporting. **Copy the script** copies the slide body text and the speaker notes at once. The dark impression applies to PPTX only, and PDF is output on a light background. To fill and edit a received `.pptx` or a company form as it is, use [PowerPoint documents](pptx).
+In **Download**, choose PowerPoint (PPTX), PDF (for presenting), or text (with notes). If there are slides at overflow risk, slides whose evidence needs checking, or unresolved review notes, it tells you before exporting. To fill and edit a received `.pptx` or a company form as it is, use [PowerPoint documents](pptx).
 
 ## Revising
 
-If you ask for something like "make slide 2 more concise", only that slide is written again. A request that changes the structure, such as "extend it to 20 slides" or "add a case study slide", proposes the structure again and waits for your approval. For details, see [Revising by request](revise). To edit sentences yourself or reorder slides, use the [Artifact editor](editor).
+If you ask for something like "make slide 2 more concise", only that slide is written again. A request that changes the structure, such as "extend it to 20 slides" or "add a case study slide", is written straight away with the new structure, without questions or an approval step. For details, see [Revising by request](revise). To edit sentences yourself or reorder slides, use the [Artifact editor](editor).

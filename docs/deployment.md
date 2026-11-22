@@ -7,11 +7,13 @@ This guide covers running KloudChat for real users. For a laptop trial, the
 - [Prerequisites](#prerequisites)
 - [Install](#install)
 - [TLS and reverse proxy](#tls-and-reverse-proxy)
+- [Video understanding](#video-understanding)
 - [Published images](#published-images)
 - [Backups](#backups)
 - [Upgrades](#upgrades)
 - [Operational checks](#operational-checks)
 - [Scaling notes](#scaling-notes)
+- [Process reaping](#process-reaping)
 
 ## What you are deploying
 
@@ -78,11 +80,15 @@ Edit `.env`. At minimum:
 KCHAT_JWT_SECRET=$(openssl rand -hex 32)   # generate, never reuse the example
 KCHAT_SECRET_KEY=$(openssl rand -hex 32)   # seals stored secrets; a second key, not the same one
 KCHAT_COOKIE_SECURE=true                   # you are behind TLS
+KCHAT_ENV=prod                             # the default, dev, serves the interactive API docs at /docs
 KCHAT_CORS_ORIGINS=["https://kchat.example.com"]
 KCHAT_DB_PASSWORD=<something long>
 BACKEND_BASE_URL=http://<llm-host-ip>:8080        # the KloudChat-LLM gateway
 KCHAT_TOOLS_GATEWAY_KEY=<TOOLS_GATEWAY_KEY of KloudChat-LLM>   # /tools/* refuse requests without it
 ```
+
+`KCHAT_DB_PASSWORD` is read when Postgres first initialises `./data/postgres`;
+changing it afterwards does not change the stored password.
 
 Every variable is described in [configuration.md](configuration.md). Which
 model does which job, credits and policies are not `.env` settings: they are
@@ -111,7 +117,7 @@ docker compose up -d
 curl -fsS localhost:5173/api/health
 ```
 
-Create the administrator either by signing up first (the first account becomes
+Then open `http://localhost:5173` (or the TLS host name). Create the administrator either by signing up first (the first account becomes
 administrator) or by setting `KCHAT_ADMIN_EMAIL` and `KCHAT_ADMIN_PASSWORD`
 before the first start. Those two apply **only** when the database has no
 accounts, so they cannot be used to reset a forgotten password later.
@@ -213,16 +219,13 @@ and recordings*). It needs nothing beyond `docker compose up -d`; what to know w
 - **Models.** Speech goes to the Whisper behind `/tools/stt`, pictures to the strict-local
   vision model chosen under System › Features › Text from scans (OCR). Without a vision model
   videos are read for their speech only; without the worker (`KCHAT_MEDIA_URL=`) audio and
-  video are transcribed whole at upload as before (up to Whisper's 25 MB), with no frames.
+  video are transcribed whole at upload (up to Whisper's 25 MB), with no frames.
 - **Size and proxies.** Audio and video go up in 8 MB pieces (`KCHAT_UPLOAD_PIECE_MB`) to
   `KCHAT_MAX_VIDEO_UPLOAD_MB` (500), so neither the web container's nginx nor a proxy in front
   needs a body limit above `KCHAT_MAX_UPLOAD_MB`; the player streams the original with HTTP
   Range, which a proxy passes through unchanged. Keep the disk in mind: a video stays on disk
   at its full size, with up to 120 keyframes (about 15 MB) beside it.
-- **Load.** Measured through the gateway (strict-local flash, Whisper behind `/tools/stt`)
-  with the worker at 4 CPUs: a ten-minute 720p slide webinar took 15 s end to end (scene pass
-  4 s, audio 6 s, 14 frames read in 8 s, side by side); a ten-minute 1080p talk's scene pass
-  6 s (keyframes). The job loop runs on every API replica and takes one video at a time per
+- **Load.** The job loop runs on every API replica and takes one video at a time per
   replica.
 
 ## Published images
@@ -272,6 +275,7 @@ Two things are stateful and both matter:
 
 ```bash
 # Database — users, sessions, artifacts, the credit ledger
+# (-U is KCHAT_DB_USER, default kchat; the database is always kchat)
 docker compose exec -T db pg_dump -U kchat kchat | gzip > kloudchat-$(date +%F).sql.gz
 
 # Blobs — uploads and generated media. The database references these by id.
@@ -281,12 +285,13 @@ tar czf kloudchat-files-$(date +%F).tar.gz data/files
 Take both at the same time. A database restored without its blobs leaves
 artifacts whose content 404s.
 
-Restore:
+Restore into a fresh install — an empty `./data/postgres` — because the dump
+recreates every table:
 
 ```bash
 docker compose up -d db
 gunzip -c kloudchat-<date>.sql.gz | docker compose exec -T db psql -U kchat kchat
-tar xzf kloudchat-files-<date>.tar.gz
+tar xzf kloudchat-files-<date>.tar.gz     # from the repository root: recreates data/files
 docker compose up -d
 ```
 
@@ -383,10 +388,12 @@ docker compose ps
 Non-destructive integration checks against a live stack:
 
 ```bash
-bash scripts/smoke-test.sh
+API=http://localhost:5173/api bash scripts/smoke-test.sh
 ```
 
-Each run creates its own accounts, exercises auth, approval, rotation and
+The scripts default to `http://localhost:8100/api`, which the stock compose file
+does not publish, so point `API` at the web container (or to
+your TLS host name). Each run creates its own accounts, exercises auth, approval, rotation and
 suspension, then deletes what it created. It does not touch existing users or
 conversations. Administrator credentials come from `.env`
 (`KCHAT_ADMIN_EMAIL` / `KCHAT_ADMIN_PASSWORD`, or `ADMIN_EMAIL` / `ADMIN_PASS`

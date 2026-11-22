@@ -22,7 +22,7 @@ The buttons that create a report or slides in an agent conversation (**보고서
 - An agent conversation uses the model, tools, and material set on the agent. When material is registered, the model searches it with the **Find in files** tool. Not all of the material is sent with every request.
 - Within the same project, other conversations reference the conclusions that the agent left through **Shared notes**.
 
-There are no built-in agents. Jobs such as Regulations and procedures, Bullet-style briefing, Compare and decide, Extract and tally and Minutes are done by official skills of the same names. The built-in agents for these jobs do not show in the lists or among the base processes, but conversations with them, copies you took and chatbots published from them keep working.
+There are no built-in agents. Jobs such as Regulations and procedures, Bullet-style briefing, Compare and decide, Extract and tally and Minutes are done by official skills of the same names.
 
 ## Creating an agent
 
@@ -35,7 +35,7 @@ The form runs from top to bottom like this:
 1. The **name**, the **one-line description** and the **instructions** (the role and rules the agent always follows). Instructions for one surface only go under a line `[채팅에서]` (chat), `[보고서에서]` (report) or `[슬라이드에서]` (slides); what comes before the first such line applies everywhere.
 2. **How it works** (진행 과정): Answer directly · Start from a base process · Set it up yourself (advanced) (see "How it works" below).
 3. **Extra work**: the bundle checkboxes (see "Bundles"). Set it up yourself has none; you build steps instead.
-4. **Detailed settings — The process's calculations, checks and outline**: shown only for an agent that writes reports (see "Detailed settings and templates I made").
+4. **Detailed settings**: shown only for an agent that writes reports (see "Detailed settings and templates I made").
 5. **Missing-information questions**: what to ask before writing when the material lacks it; up to four at a time while "Ask for missing information first" is on. A * marks a field you must fill.
 6. Under **More settings**: **Format & design**, **Conversation start**, **Sources**, **Skills and tools**, **Advanced** and **Share** (see "Format & design and sources").
 
@@ -106,7 +106,7 @@ These are under **Advanced** in the agent form.
 
 ## Detailed settings and templates I made
 
-An agent that writes reports can turn on **Set for this agent** under **Detailed settings — The process's calculations, checks and outline** below the process and change what its document format sets, starting from the format's values. Turned off, the calculations, checks and structure the document format sets apply as they are.
+An agent that writes reports can turn on **Set for this agent** under **Detailed settings** below the process and change what its document format sets, starting from the format's values. Turned off, the calculations, checks and structure the document format sets apply as they are.
 
 - **Calculate before writing**: built-in calculations such as dates, quote totals, staffing, total cost per option, must-haves and weighted scores, career periods; and the **date basis** (the material's date or the meeting day).
 - **How it writes**: no web search, figures only when asked, a fixed outline.

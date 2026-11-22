@@ -25,8 +25,8 @@ Open a Hangul (HWP) editor beside the conversation and write or edit an HWP docu
 - Attach a Hangul form (`.hwpx`) such as an application or a numbered official form in a report conversation and its chip says **Form**: the result is that form file itself. It opens in the editor beside the chat, and the agent fills its value cells, the text under its headings and its bracket blanks in place. Tables, cell sizes and page setup stay as they are.
 - Guidance such as "※ 작성요령" is replaced with content, and the form's sample text (a name like "홍길동") is never taken as fact. A value the material does not give stays a blank such as `[대표자]`, and the answer says what is left.
 - Open the **Followed the form** line under the file's card to see how many cells are filled and which are still empty.
-- An old Hangul file (`.hwp`) cannot be a form. In Hangul, use **File › Save As › file type "Hangul standard document (*.hwpx)"** and upload that. A `.hwp` is still read as material.
-- Put a Hangul form in the project's **Default form files** and every report written as a Hangul file in that project fills it.
+- A `.hwp` file (Hangul 97–2022 format) cannot be a form. In Hangul, use **File › Save As › file type "Hangul standard document (*.hwpx)"** and upload that. A `.hwp` is still read as material.
+- Put a Hangul form in a project's or agent's **Default form files** and every report written as a Hangul file there fills it.
 
 ## Editing by hand and saving
 

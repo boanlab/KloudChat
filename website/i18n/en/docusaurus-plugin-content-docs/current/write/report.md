@@ -10,7 +10,7 @@ On the home screen, select **Report** and enter the topic of the report you want
 
 On Home and in any empty report conversation (new, started from a project or an agent, or reopened from history), a row of chips appears above the prompt box.
 
-- **Format** chip: choose **Web report**, **HWP** or **Word**. A web report is an HTML document you edit with the ribbon. HWP and Word write that file in its [HWP](hwp) or [Word](docx) editor beside the conversation. When you pick HWP or Word, a **Start blank** button appears. Opening `/new/report?format=hwp` preselects the format.
+- **Format** chip: choose **Web report**, **HWP** or **Word**. A web report is an HTML document you edit in the panel. HWP and Word write that file in its [HWP](hwp) or [Word](docx) editor beside the conversation. When you pick HWP or Word, a **Start blank** button appears. Opening `/new/report?format=hwp` preselects the format.
 - **Form file**: attach a company or organization Word form (`.docx`, `.dotx`) and the report is written as a Word file on that form ([Word documents](docx#writing-on-a-form)). When the project or agent has **Default form files**, a **Project form** chip appears beside the format chip; ✕ removes it for this conversation only.
 - You do not pick a structure. The document format that fits the purpose in the request, such as "meeting minutes", "agenda" or "results report", is chosen, and it brings the questions to ask before writing and the checks after.
 
@@ -21,7 +21,7 @@ KloudChat does not write the document right away. It proposes a **structure** fi
 ![Structure confirmation card](/img/guide/proposal-card.png)
 
 - You can edit section titles, change their order, and add or delete sections. After editing, **Back to the proposal** restores the original.
-- On the structure card, **Format** lets you switch between Web report, HWP and Word. The change is applied when you press **Generate as it is**. For a web report, choose the look after writing, from **Layout → Look** in the ribbon.
+- On the structure card, **Format** lets you switch between Web report, HWP and Word. The change is applied when you press **Generate as it is**. For a web report, choose the look after writing, from **Edit** → **Layout → Look**.
 - Press **Generate as it is**, or **Generate with my changes** if you edited anything, and writing begins.
 - If you type a sentence into the input box below the card, it proposes the structure again with that sentence as a condition. You can only approve it with the buttons.
 - If the topic needs diagrams or pictures, an **Add pictures?** card follows. It tells you the number of pictures and the estimated credits. Diagrams (flowcharts and structure charts) are written as a flow by the text model and drawn as shapes by the server, so they do not consume image credits. Pictures are drawn by the image model.
@@ -34,14 +34,14 @@ It writes section by section in order, and shows the first section in the right-
 
 A report in HWP or Word appears as a finished file in the editor beside the conversation, and you keep editing it there. What follows describes a web report.
 
-The default look is an official document: body text justified, a navy accent, and plain statements with their basis instead of strong adjectives. Numbers stay in the sentences and tables that use them; there is no separate strip of key figures at the end. Change the look and the accent colour from **Layout → Look** and **Accent** on the ribbon, and the look of a whole project in its [design brief](../personal/projects.md#design-brief).
+The default look is an official document: body text justified, a navy accent, and plain statements with their basis instead of strong adjectives. Numbers stay in the sentences and tables that use them; there is no separate strip of key figures at the end. Change the look and the accent colour from **Edit** → **Layout → Look** and **Accent**, and the look of a whole project in its [design brief](../personal/projects.md#design-brief).
 
 ## Step 3: Revising
 
 Two methods are provided.
 
 - **Revise by request**: type into the input box at the bottom of the document, for example "Cut section 2 in half" or "Add one more section". [Revising by request](revise)
-- **Edit directly**: use the ribbon in the panel to edit sentences, reorder sections, insert pictures, and get a review. [Artifact editor](editor)
+- **Edit directly**: use the **Edit** ribbon and the **Edit the section** menu in the panel to edit sentences, reorder sections, insert pictures, and get a review. [Artifact editor](editor)
 
 ## Items you can specify in your request
 
@@ -53,4 +53,4 @@ Two methods are provided.
 
 ## Export
 
-In the ribbon, open **File → Export** and choose PDF, Word (DOCX), Hangul (HWPX), the Markdown source, or print. If any item has evidence that is not confirmed, it tells you before exporting. PDF reproduces the chosen look as it is, and DOCX puts an easily editable structure first.
+Open **Download** in the panel header and choose PDF, Word document (DOCX), Hangul document (HWPX), the Markdown source, or print. If any item has evidence that is not confirmed, it tells you before exporting. PDF reproduces the chosen look as it is, and DOCX puts an easily editable structure first.

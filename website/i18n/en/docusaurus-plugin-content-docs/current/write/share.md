@@ -29,7 +29,7 @@ After creation, the status is shown as **Account required** or **Opens without a
 
 ## Sharing only an artifact
 
-To share one artifact without its conversation, press **Share only this artifact** in the artifact panel. For reports and slides it is in the **⋯** menu of the header; for charts, pictures, audio, video and code it is the share icon in the header. Scope, view history and revocation work as for a conversation. Changes made after sharing also appear in the link.
+To share one artifact without its conversation, press **Share only this artifact** in the artifact panel. The button is the share icon in the artifact's header, and on a narrow screen it is in the **⋯** menu. Scope, view history and revocation work as for a conversation. Changes made after sharing also appear in the link.
 
 ## View history and revocation
 

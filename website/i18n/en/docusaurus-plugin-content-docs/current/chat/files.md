@@ -15,9 +15,9 @@ Attach files from **+** → **Attach files or photos** in the composer, and the 
 | Documents | PDF, Word (.docx), Hangul (.hwp, .hwpx), PowerPoint (.pptx), Excel (.xlsx) | A scanned PDF is read page by page when the administrator has connected text from scans (OCR). |
 | Text and code | .txt, .md, .csv, .tsv, .json, and most code files | Read as text. |
 | Images | PNG, JPG, GIF, WebP, TIFF, BMP | The text of a document photo is read with OCR. The picture itself goes only to **strict-local** models that support image recognition (marked 👁), as PNG, JPG, GIF or WebP of **4MB or smaller**. |
-| Audio and video | mp3, wav, mp4, and similar | **25MB or smaller**. Converted to text and read when the administrator has connected speech transcription. |
+| Audio and video | mp3, wav, mp4, and similar | Converted to text and read when the administrator has connected speech transcription, at **25MB or smaller**. Where a media server is also connected, files go up in pieces and are accepted up to **500MB and 240 minutes** (an administrator can change this), and video scenes are read too. |
 
-The maximum size for a single file is 200MB (an administrator can change it). A larger file is stopped before it uploads, with the limit named. Older Office formats (.doc, .ppt, .xls) are not supported. A file that could not be read appears as **Unread attachment** in the processing steps of the answer.
+The maximum size for a single file is 200MB (an administrator can change it). A larger file is stopped before it uploads, with the limit named. Older Office formats (.doc, .ppt, .xls) are not supported. A file that could not be read appears as 「file name could not be read」 in the processing steps of the answer.
 
 ## How long an attachment is referenced
 

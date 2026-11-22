@@ -11,7 +11,7 @@ This page explains how to request an account and sign in, and how to manage your
 ## Requesting an account
 
 1. On the sign-in screen, select the **Sign up** tab.
-2. Enter your name, email and password, then press **Request sign-up**. The password must be at least 10 characters long and contain a number and a symbol. If the screen lists the addresses that may sign up, only addresses at those domains may apply.
+2. Enter your name, email and password, then press **Request sign-up**. The password must be at least 10 characters long. If the screen lists the addresses that may sign up, only addresses at those domains may apply.
 3. What happens next depends on the sign-up method the administrator has set.
 
 | Sign-up method | Right after you apply |
