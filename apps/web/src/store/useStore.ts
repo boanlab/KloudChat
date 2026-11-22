@@ -1046,7 +1046,25 @@ function knownSignedOut(): boolean {
     return false
   }
 }
+/** Set while this browser holds a sign-in; its loss without a sign-out is an expiry, not a first visit. */
+const HAD_SESSION_KEY = 'kchat-had-session'
+function hadSession(): boolean {
+  try {
+    return localStorage.getItem(HAD_SESSION_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+function markSession(has: boolean) {
+  try {
+    if (has) localStorage.setItem(HAD_SESSION_KEY, '1')
+    else localStorage.removeItem(HAD_SESSION_KEY)
+  } catch {
+    // No storage: a reload after an expiry shows the plain sign-in screen.
+  }
+}
 function rememberSignedOut(out: boolean) {
+  if (!out) markSession(true)
   try {
     if (out) localStorage.setItem(SIGNED_OUT_KEY, '1')
     else localStorage.removeItem(SIGNED_OUT_KEY)
@@ -1080,6 +1098,7 @@ function clearAccount(set: Set, reason?: 'idle') {
   disarmIdleWatch()
   setAccessToken(null)
   rememberSignedOut(true)
+  markSession(false)
   // Invalidates any workspace load still in flight for the previous account.
   touchWorkspace()
   set({
@@ -1156,7 +1175,9 @@ export const useStore = create<State>((set, get) => ({
     inFlight = (async () => {
       // No cookie after a sign-out or failed refresh: asking only logs a 401.
       if (knownSignedOut()) {
-        set({ authenticated: false, user: null, authLoading: false })
+        // Signed out by an expiry (not by choice): the reload still says why.
+        set({ authenticated: false, user: null, authLoading: false,
+          ...(hadSession() ? { signedOutReason: 'expired' as const } : {}) })
         inFlight = null
         return
       }
@@ -1197,7 +1218,8 @@ export const useStore = create<State>((set, get) => ({
       } catch (err) {
         // Sign out only on an explicit refusal; a network error or 5xx says nothing about the cookie.
         if (refusedRefresh(err)) {
-          endSession(set, get().authenticated)
+          // A cookie gone from a browser that was signed in (a reload after the expiry) is an expiry too.
+          endSession(set, get().authenticated || hadSession())
         } else if (get().authenticated) {
           retryRefreshLater(() => void get().bootstrap())
         } else {

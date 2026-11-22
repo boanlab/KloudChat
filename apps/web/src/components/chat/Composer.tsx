@@ -29,7 +29,7 @@ import { FormRoleToggle, SavedFormChip, followable, formRoleOf } from '@/compone
 import { FileBoxPicker } from '@/components/files/FileBoxPicker'
 import { warmStudio } from '@/components/hwp/warmStudio'
 import { errorCode, errorMessage, PrivacyDecisionError } from '@/lib/api'
-import { refusedBeforeWrite, refusalSentence, startFailure, withRetryWait } from '@/lib/failures'
+import { refusedBeforeWrite, refusalSentence, startFailure, uploadFailure, withRetryWait } from '@/lib/failures'
 import {
   agentDocumentNames, agentHandoffSurface, handoffSurface, NAMES_DOCX, NAMES_HWP, NAMES_PPTX,
   officeReportRequest, reportFileKind,
@@ -65,6 +65,12 @@ import { isImeKey } from '@/lib/ime'
 import { useBlankDocument } from '@/lib/useBlankDocument'
 
 /** Shown when a send timed out at the gateway: the turn may be running on the server. */
+/** Whether the conversation's last turn is a failed one the thread itself shows (box and retry). */
+function threadHoldsFailedTurn(sessionId: string): boolean {
+  const last = useStore.getState().sessions.find((c) => c.id === sessionId)?.messages.at(-1)
+  return Boolean(last && (last.error || last.failure))
+}
+
 const GATEWAY_NOTICE =
   '응답이 늦어 연결이 끊겼습니다. 답이 진행 중이면 이 대화에 이어서 표시됩니다.'
 
@@ -1379,6 +1385,9 @@ export function Composer({
         void useStore.getState().openSession(attemptedSessionId)
         return
       }
+      // A failure the server did not refuse leaves the question in the thread with its own failure box
+      // and 「다시 시도」: restoring the text and a second error here would show both twice.
+      if (!refusedBeforeWrite(error) && attemptedSessionId && threadHoldsFailedTurn(attemptedSessionId)) throw error
       // Branch on the code: `errorMessage` swallows machine strings.
       const notice =
         errorCode(error) === 'auto_quality_model_required'
@@ -1489,9 +1498,8 @@ export function Composer({
           },
         }).catch((err) => {
           // Said where the chips are: a file that never arrived must not look attached.
-          // Too large (a proxy's 413 too) says the limit; anything else names the file only.
-          const label =
-            err instanceof ApiError && err.status === 413 ? `${file.name} — ${err.detail}` : file.name
+          // Says why (too large, unsupported, offline) and whether trying again can help.
+          const label = `${file.name} — ${uploadFailure(err, t)}`
           if (movedOn()) failLate(uploadSession!, label)
           else setUploadFailed((current) => [...current, label])
           return null

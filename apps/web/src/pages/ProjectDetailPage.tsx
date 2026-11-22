@@ -38,7 +38,7 @@ import {
 } from '@/components/memory/MemoryEditor'
 import { useFileDrop } from '@/lib/useFileDrop'
 import { useStore } from '@/store/useStore'
-import { startFailure } from '@/lib/failures'
+import { startFailure, uploadFailure } from '@/lib/failures'
 import type { MemoryEntry, Session } from '@/types'
 import { useMarkUnsaved } from '@/lib/unsaved'
 import { useT } from '@/lib/useT'
@@ -248,7 +248,7 @@ export function ProjectDetailPage() {
           projectId: project.id,
           onProgress: (sent, total) => setUploadProgress({ name: file.name, sent, total }),
         }).catch((err) => {
-          problems.push(`${file.name}: ${errorMessage(err, t('올리지 못했습니다. 잠시 뒤 다시 시도하세요.'))}`)
+          problems.push(`${file.name}: ${uploadFailure(err, t)}`)
         })
         setUploadProgress(null)
       }

@@ -59,6 +59,14 @@ Search for the message exactly as it appears on the screen.
 | No text could be read from this file | An unsupported format, or a scan while text from scans (OCR) is not connected | Use a file that contains text, or ask the administrator to connect text from scans |
 | The text could not be read. Upload it again in a moment | The text-from-scans service did not answer | Upload it again later |
 | The file is too large. Each file can be up to 200 MB. | The file is over the per-file limit; it is stopped before uploading | Split or shrink the file |
+| This file type is not supported | A kind of file that cannot be read | Convert it to another format and upload again. Retrying as is will not help |
+| The file cannot be read. Check that it is not empty or damaged | The file is empty or damaged | Upload a file that has content |
+| A server problem stopped the upload | Server error | Upload again in a moment |
+| The connection dropped, so the file was not uploaded | The internet connection was lost | Check the connection, then upload again |
+| Your sign-in expired | The sign-in could not be renewed; the sign-in screen shows this notice | Sign in again to return to where you were; text you were typing stays in the box |
+| Only the latest question can be retried | The answer already has a later question after it | Retry from the question at the bottom of the conversation |
+| This agent is retired, so no new conversation can start with it | The agent was retired; earlier conversations stay readable | Pick another agent |
+| The request could not be processed. If it fails again, contact an administrator | A refusal that has no sentence of its own | Try once more; if it fails again, contact an administrator |
 | A new version is available · Reload | KloudChat was updated while you were using it | Finish what you are doing, then select **Reload**. Your conversations stay on the server |
 | Too many failed sign-ins, so this address is locked for a while | Five failures in a row within 15 minutes | Try again after the time shown, or have an administrator reset the password |
 | Sign-ups are not being accepted right now | The administrator has blocked sign-up | Ask your administrator for an account |
