@@ -134,7 +134,12 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
       // the conversation the home screen's document button starts, under the id the client chose
       const body = request.postDataJSON()
       if (options.holdCreate) await options.holdCreate
-      Object.assign(session, { id: body.id, title: '새 작업', kind: body.kind ?? 'chat', messages: [], messageCount: 0 })
+      Object.assign(session, { id: body.id, title: body.title ?? '새 작업', kind: body.kind ?? 'chat', messages: [], messageCount: 0 })
+      return json(session)
+    }
+    if (path === `/sessions/${session.id}` && method === 'PATCH') {
+      // the chat's name, set before its first send
+      Object.assign(session, request.postDataJSON())
       return json(session)
     }
     if (path === `/artifacts/${kind}` && method === 'POST') {
