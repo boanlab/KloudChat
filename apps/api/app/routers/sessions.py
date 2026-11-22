@@ -5285,17 +5285,11 @@ def render_template_checks(session: ChatSession, pattern: str | None = None) -> 
 
 
 def _gap_judge_model(user: User, catalogue_models: list[dict],
-                     requested: dict | None, planner: str | None = None) -> str:
+                     requested: dict | None) -> str:
     """Judge model for 빠진 정보 질문 (strict-local only); "" if none."""
     if requested and requested.get("strictLocal"):
         return str(requested["id"])
     usable = _allowed_models(user, catalogue_models, kind="chat")
-    if planner:
-        twin = ("strict-local/" + planner.removeprefix("local/")
-                if planner.startswith("local/") else planner)
-        found = model_service.find(usable, twin)
-        if found is not None and found.get("strictLocal"):
-            return str(found["id"])
     return next((str(m["id"]) for m in sorted(usable, key=model_service.fallback_order)
                  if m.get("strictLocal")), "")
 
@@ -6244,8 +6238,7 @@ async def _send_message(
     judge_model, judge_key = "", ""
     if gap_questions.needs_judge(asking):
         # judge reads material before routing: in-boundary model only, else nothing asked
-        judge_model = _gap_judge_model(user, catalogue_models, requested_model,
-                                       policy.outline_model_id)
+        judge_model = _gap_judge_model(user, catalogue_models, requested_model)
         judge_key = (await litellm_service.credentials_for(user))[1] if judge_model else ""
     first_draft = not revising and not approved_plan and (_plans_first(kind) or not any(
         m.role is Role.assistant and not (m.routing or {}).get("askedCard") for m in history))
@@ -6929,17 +6922,8 @@ async def _send_message(
 
     is_first_turn = len(history) == 0
 
-    # planner: writer's allowlist, surface, boundary; default = local model
-    outline_model = _planner_model(
-        policy.outline_model_id or _document_role(await settings_store.model_roles()),
-        user=user,
-        catalogue=catalogue_models,
-        kind=kind.value,
-        writer=model,
-        strict_local=strict_local,
-    )
-    if outline_model is not None and outline_model["id"] == model["id"]:
-        outline_model = None  # the writer plans for itself; nothing to account for apart
+    # the chosen model plans and judges as well as writes
+    outline_model = None
 
     #: draws document figures; none = no figure card
     image_model = _document_image_model(user, catalogue, strict_local=strict_local)

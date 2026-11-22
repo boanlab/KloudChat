@@ -77,11 +77,6 @@ class Governance(SQLModel, table=True):
     strict_local_web_search: str = Field(
         default="ask", sa_column=Column(String, nullable=False, server_default="ask")
     )
-    #: outline call only; empty: surface model
-    outline_model_id: str | None = Field(
-        default_factory=lambda: settings.outline_model_default or None,
-        sa_column=Column(String, nullable=True),
-    )
     intent_filter: bool = Field(
         default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false"))
     )

@@ -95,7 +95,7 @@ async function adminFixture(page: Page, info: TestInfo): Promise<Fixture> {
       piiMasking: false, externalDataGuard: true, internalDataStrictLocal: true, allowUserRawExternal: false,
       privacySafeModelIds: ['strict-local/c', 'strict-local/a'], intentFilter: false, blockedCategories: [],
       retentionDays: 0, idleTimeoutMinutes: 0, adaptiveRoutingEnabled: false, adaptiveClassifierModelId: null,
-      adaptiveEconomyModelIds: [], adaptiveQualityEnabled: false, adaptiveQualityModelIds: [], outlineModelId: null,
+      adaptiveEconomyModelIds: [], adaptiveQualityEnabled: false, adaptiveQualityModelIds: [],
     },
   }
   let refreshes = 0

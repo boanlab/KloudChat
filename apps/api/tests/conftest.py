@@ -14,7 +14,6 @@ os.environ.setdefault("ADAPTIVE_CLASSIFIER_MODEL_DEFAULT", "")
 os.environ.setdefault("ADAPTIVE_ECONOMY_MODELS_DEFAULT", "")
 os.environ.setdefault("ADAPTIVE_QUALITY_DEFAULT", "false")
 os.environ.setdefault("ADAPTIVE_QUALITY_MODELS_DEFAULT", "")
-os.environ.setdefault("OUTLINE_MODEL_DEFAULT", "")
 # Every pipeline stage is held to the bundle fields it declares (`app.pipeline.runner`).
 os.environ.setdefault("KLOUDCHAT_PIPELINE_STRICT", "1")
 # Stage records off: the recorded streams carry none; tests that read them turn them on.
