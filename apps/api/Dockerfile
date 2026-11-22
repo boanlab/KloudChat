@@ -1,6 +1,6 @@
 # slim, not alpine: argon2-cffi and asyncpg ship glibc wheels; musl builds them
 # from source.
-FROM python:3.12-slim
+FROM python:3.15-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
