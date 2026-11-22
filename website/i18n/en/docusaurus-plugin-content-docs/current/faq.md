@@ -46,4 +46,4 @@ Reports are written section by section and slide decks slide by slide, in order.
 It is the unit that represents model usage. A model marked **Free** does not consume credits. [Usage and conversation history](personal/usage-history#credits)
 
 ### Can administrators see my conversations
-There is no administrator screen that shows conversation content. Administrators see a conversation in three cases: a copy you sent with [Feedback and issues](personal/issues) after ticking **Share this session with the administrators**, a link or external chatbot's conversations opened with a stated reason to check abuse (recorded in the audit log), and a share link. Otherwise they see only usage and sign-in history.
+There is no administrator screen that shows conversation content. Administrators see a conversation in three cases: a copy you sent with [Feedback and issues](personal/issues) after ticking **Share this session with the administrators**, a chatbot's ("Anyone with the link" or "Anyone") conversations opened with a stated reason to check abuse (recorded in the audit log), and a share link. Otherwise they see only usage and sign-in history.

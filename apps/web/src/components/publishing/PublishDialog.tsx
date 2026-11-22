@@ -20,7 +20,7 @@ import type { Agent } from '@/types'
 import { PublicationSettingsForm } from './PublicationSettingsForm'
 import { ScopePicker } from './ScopePicker'
 
-/** 「챗봇으로 공개」: publish check, audience, settings, address; link or listing asked of an admin. */
+/** 「공유하기」: publish check, audience, settings, address; link or listing asked of an admin. */
 export function PublishDialog({
   agent,
   open,
@@ -112,13 +112,13 @@ export function PublishDialog({
       <Button onClick={onClose}>{t('취소')}</Button>
       <Button variant="primary" disabled={busy || !check?.ok || !draft || (!check?.existingId && capMissing)} onClick={() => void publish()}>
         {busy && <Loader2 size={14} className="animate-spin" />}
-        {check?.existingId ? t('새 판으로 공개') : t('공개하기')}
+        {check?.existingId ? t('새 판으로 공개') : scope === 'internal' ? t('공유하기') : t('승인 요청하기')}
       </Button>
     </>
   )
 
   return (
-    <Modal open={open} onClose={onClose} title={t('챗봇으로 공개')} width="max-w-xl" footer={footer}>
+    <Modal open={open} onClose={onClose} title={t('공유하기')} width="max-w-xl" footer={footer}>
       {error && (
         <p role="alert" className="rounded-control border border-danger/30 bg-danger/5 px-3 py-2 text-base text-danger">
           {error}
@@ -185,7 +185,7 @@ export function PublishDialog({
             {check.problems.map((code) => (
               <p key={code} className="flex items-start gap-2 text-base text-danger" data-testid="publish-problem">
                 <XCircle size={15} className="mt-0.5 shrink-0" aria-hidden />
-                {t(PROBLEM_LABEL[code] ?? '지금은 공개할 수 없습니다.')}
+                {t(PROBLEM_LABEL[code] ?? '지금은 공유할 수 없습니다.')}
               </p>
             ))}
             <div>
@@ -224,7 +224,7 @@ export function PublishDialog({
           </section>
           {check.existingId ? (
             <p className="text-base text-muted">
-              {t('이 에이전트는 이미 챗봇으로 공개되어 있습니다. 지금 에이전트를 새 판으로 공개하거나 관리 화면에서 설정을 바꾸세요.')}{' '}
+              {t('이 에이전트는 이미 챗봇으로 공유되어 있습니다. 지금 에이전트를 새 판으로 공개하거나 관리 화면에서 설정을 바꾸세요.')}{' '}
               <Link to={`/customize/publications/${check.existingId}`} className="text-accent hover:underline">
                 {t('관리')}
               </Link>

@@ -1,31 +1,31 @@
 ---
-title: Publishing a chatbot
+title: Sharing a chatbot
 ---
 
-# Publishing a chatbot
+# Sharing a chatbot
 
-Publish an agent that answers in chat as a **chatbot**, and other people can ask it. A chatbot is fixed to the instructions, material and checks it had when published, and answers with this organization's strict-local models only. The credits it spends are its publisher's, and questions are handled under the same policy as if the publisher had typed them.
+Share an agent that answers in chat as a **chatbot**, and other people can ask it. A chatbot is fixed to the instructions, material and checks it had when shared, and answers with this organization's strict-local models only. The credits it spends are its publisher's, and questions are handled under the same policy as if the publisher had typed them.
 
-## Publishing
+## Sharing
 
-The **Publish as a chatbot** button at the top of your agent's page. Before publishing you see:
+The **Share** button at the top of your agent's page. Before sharing you see:
 
-- The strict-local model it will answer with. Without a strict-local model you can use, it cannot be published.
+- The strict-local model it will answer with. Without a strict-local model you can use, it cannot be shared.
 - What a chatbot does not use: your memory, personal settings, other files and projects, MCP servers, web search, documents and slides, skills. A chatbot uses only **material search** and **calculation**.
-- Values in the material that look like personal details (mobile numbers, emails and so on). Remove or check them before publishing.
+- Values in the material that look like personal details (mobile numbers, emails and so on). Remove or check them before sharing.
 
-## Audience
+## Who can use it
 
-| Audience | Who uses it | Opens |
+| Scope | Who uses it | Opens |
 |---|---|---|
-| Members | Members of this organization, signed in. Members see it as a **shared agent** | At once |
+| Your organization | Members of this organization, signed in. Members see it as a **shared agent** | At once |
 | Anyone with the link | Anyone with the address, without signing in. Listed nowhere | After an administrator approves |
-| Public | Anyone, without signing in. Listed on the public chatbot page (`/b`) and may show up in search | After an administrator approves |
+| Anyone | Anyone, without signing in. Listed on the public chatbot page (`/b`) and may show up in search | After an administrator approves |
 
-- Choosing a link or public audience needs a **daily credit limit**. When the day's spending reaches it, the chatbot stops until the next day.
+- Choosing "Anyone with the link" or "Anyone" needs a **daily credit limit**. When the day's spending reaches it, the chatbot stops until the next day.
 - While the request waits, members can use the chatbot as usual. The request shows at the top of the management page, and **Withdraw request** takes it back.
 - When a request is declined, the administrator's reason shows on the management page. The chatbot keeps answering its previous audience.
-- Narrowing the audience (public → link → members) needs no approval and applies at once.
+- Narrowing the scope (Anyone → Anyone with the link → Your organization) needs no approval and applies at once.
 
 ## Versions and approval
 
@@ -39,9 +39,9 @@ A chatbot open to people without an account can also be reached through these ch
 
 | Channel | What it does | Available at |
 |---|---|---|
-| Embed on other sites | Puts the chat on your own sites, such as your organization's homepage | Open to everyone |
-| API | Calls the bot from your service or program, OpenAI-compatible | By link, open to everyone |
-| MCP | Connects the bot as a tool in AI tools such as Claude | By link, open to everyone |
+| Embed on other sites | Puts the chat on your own sites, such as your organization's homepage | Anyone |
+| API | Calls the bot from your service or program, OpenAI-compatible | Anyone with the link, Anyone |
+| MCP | Connects the bot as a tool in AI tools such as Claude | Anyone with the link, Anyone |
 
 - **Embed on other sites**: list the sites (starting with `https://`, up to 10) and ask. Once approved, paste the one-line embed code before `</body>`: a chat button appears in the corner and opens the chat (full screen on a phone). The chat shows only on approved sites, and inside them it always acts as a visitor without an account.
 - **API and MCP**: on the dashboard's **API** tab, make a key that calls this bot only. A key is shown once, when it is made; keep it then. **Revoke** a key you no longer use and it stops at once.
@@ -49,7 +49,7 @@ A chatbot open to people without an account can also be reached through these ch
   - Connect MCP at `/api/bots/mcp/<bot address>` with the same key; it offers one tool, `ask`.
   - Questions through a key have per-minute and per-day limits for that key, and the daily credit cap and the bot's own limits still apply.
 - The **API** tab and **Statistics** show questions by channel (bot page, other sites, API, MCP).
-- When an administrator closes the outside audience, or the audience is narrowed, the channels it can no longer carry close with it.
+- When an administrator closes the outside scope, or the scope is narrowed, the channels it can no longer carry close with it.
 
 ## What the publisher sees
 
@@ -66,7 +66,7 @@ When a chatbot stops (credits used up, paused by an administrator and so on) or 
 
 ## On a member's side
 
-A chatbot published to members (or to the public) shows to other members as an agent. There is no separate chatbot menu.
+A chatbot shared with your organization (or wider) shows to other members as an agent. There is no separate chatbot menu.
 
 - It is listed under **Shared agents** in **Customize** → **Agents** → **Explore**, with its publisher's name. Agents shared with everyone sit in the same place, and an agent that is both shows once.
 - In the composer, **+** → **Agents** lists it under **Shared agents**, below your own agents.

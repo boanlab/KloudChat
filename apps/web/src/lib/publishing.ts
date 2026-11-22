@@ -9,12 +9,12 @@ import type { Translator } from '@/lib/useT'
 
 /** Why an agent cannot be published as it stands. */
 export const PROBLEM_LABEL: Record<string, string> = {
-  no_local_model: '이 기관에서 쓸 수 있는 내부 모델이 없어 공개할 수 없습니다. 관리자에게 문의하세요.',
-  not_chat: '대화로 답하는 에이전트만 챗봇으로 공개할 수 있습니다.',
-  sealed: '봉인된 사본은 공개할 수 없습니다.',
-  own_process: '직접 구성한 진행 과정을 쓰는 에이전트는 챗봇으로 공개할 수 없습니다.',
-  credits: '남은 크레딧이 없어 공개할 수 없습니다.',
-  account: '계정이 활성 상태가 아니어서 공개할 수 없습니다.',
+  no_local_model: '이 기관에서 쓸 수 있는 내부 모델이 없어 공유할 수 없습니다. 관리자에게 문의하세요.',
+  not_chat: '대화로 답하는 에이전트만 챗봇으로 공유할 수 있습니다.',
+  sealed: '봉인된 사본은 공유할 수 없습니다.',
+  own_process: '직접 구성한 진행 과정을 쓰는 에이전트는 챗봇으로 공유할 수 없습니다.',
+  credits: '남은 크레딧이 없어 공유할 수 없습니다.',
+  account: '계정이 활성 상태가 아니어서 공유할 수 없습니다.',
   retired: '더 이상 제공하지 않는 에이전트입니다.',
   not_owner: '내 에이전트만 공개할 수 있습니다.',
 }
@@ -70,15 +70,15 @@ export const RETENTION_DAYS = [7, 14, 30, 90, 180]
 export const VISIBILITIES: BotVisibility[] = ['internal', 'link', 'external']
 
 export const VISIBILITY_LABEL: Record<BotVisibility, string> = {
-  internal: '구성원 공개',
-  link: '링크 공개',
-  external: '외부 공개',
+  internal: '우리 조직',
+  link: '링크를 아는 사람',
+  external: '누구나',
 }
 
 export const VISIBILITY_HINT: Record<BotVisibility, string> = {
   internal: '구성원이 「공유된 에이전트」에서 찾아 씁니다. 바로 열립니다.',
-  link: '주소를 아는 누구나 로그인 없이 씁니다. 목록에는 나오지 않고, 승인 뒤 열립니다.',
-  external: '누구나 로그인 없이 씁니다. 공개 목록과 검색에 나오고, 승인 뒤 열립니다.',
+  link: '로그인 없이 씁니다. 목록에는 나오지 않습니다. 관리자 승인이 필요합니다.',
+  external: '공개 목록과 검색에 나옵니다. 관리자 승인이 필요합니다.',
 }
 
 /** The owner's view of a request: what is waiting, or why it was refused. */
@@ -170,9 +170,9 @@ export const CHANNEL_LABEL: Record<BotChannel, string> = {
 }
 
 export const CHANNEL_HINT: Record<BotChannel, string> = {
-  embed: '내 사이트에 대화창을 넣습니다. 외부 공개일 때 씁니다.',
-  api: '내 프로그램에서 OpenAI 호환 방식으로 부릅니다. 링크·외부 공개일 때 씁니다.',
-  mcp: 'AI 도구에 이 챗봇을 도구로 연결합니다. 링크·외부 공개일 때 씁니다.',
+  embed: '내 사이트에 대화창을 넣습니다. 누구나일 때 씁니다.',
+  api: '내 프로그램에서 OpenAI 호환 방식으로 부릅니다. 링크를 아는 사람이나 누구나일 때 씁니다.',
+  mcp: 'AI 도구에 이 챗봇을 도구로 연결합니다. 링크를 아는 사람이나 누구나일 때 씁니다.',
 }
 
 export const CHANNEL_ERROR: Record<string, string> = {
@@ -214,7 +214,7 @@ export function embedSnippet(slug: string): string {
 
 /** The owner's refusals on the audience, in words. */
 export const SCOPE_ERROR: Record<string, string> = {
-  credits_cap_required: '구성원 밖으로 공개하려면 하루 최대 크레딧을 정해야 합니다.',
+  credits_cap_required: '조직 밖으로 공유하려면 하루 최대 크레딧을 정해야 합니다.',
   revoked: '닫힌 챗봇입니다.',
   no_change: '지난 판과 달라진 것이 없어 새 판을 만들지 않았습니다.',
 }

@@ -220,6 +220,8 @@ term per English term; the product's own vocabulary is fixed here:
 | Move up / Move down | 위로 옮기기 / 아래로 옮기기 | Not 이동 |
 | Undo | 실행 취소 | Not 편집 취소 |
 | Explore | 탐색 | Sub-tab for browsing what can be added (agents, skills, MCP servers); not 카탈로그 |
+| Share (an agent as a chatbot) | 공유하기 | The maker's word; the page visitors use is a 챗봇. Not 공개 |
+| Share scopes | 우리 조직 / 링크를 아는 사람 / 누구나 | Who can open a shared chatbot; the last two need administrator approval (승인 요청하기). Not 구성원 공개 / 링크 공개 / 외부 공개 |
 
 Every change to a Korean string changes its key in `lib/i18n.ts` and every use
 of the literal (web, e2e, API messages, tests) in the same commit.

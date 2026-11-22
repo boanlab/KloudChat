@@ -118,7 +118,7 @@ export function AgentDetailPage() {
           mine
             ? // The settings form is on this page already: no 편집 button that only scrolls to it.
               canPublish
-              ? { label: '챗봇으로 공개', run: () => setPublishing(true) }
+              ? { label: '공유하기', run: () => setPublishing(true) }
               : undefined
             : {
                 label: agent.installed ? '추가됨' : '추가',

@@ -10,7 +10,7 @@ When you sign in with an administrator account, a **Manage** item appears in the
 |---|---|
 | Users · Credits | Approve and reject sign-ups, suspend, edit details, monthly credits, allowed models, key management, review of shared processes and skills |
 | Usage | Usage by period, by model, and by user, CSV, storage space |
-| Published chatbots | Approve link and external publishing and channels (other sites, API, MCP), close or pause, abuse-check viewing |
+| Published chatbots | Approve the "Anyone with the link" and "Anyone" scopes and channels (other sites, API, MCP), close or pause, abuse-check viewing |
 | Security · Audit | The **Policy** tab (personal data protection, internal material, safe model, blocked topics, idle sign-out, retention period) and the **Audit log** tab |
 | Feedback & issues | Read bug reports, feature requests and questions from users, set the assignee and status, reply |
 | System | The **Proxy · Models · Routing · Features · Branding · Mail · Sign-up · MCP servers** tabs |

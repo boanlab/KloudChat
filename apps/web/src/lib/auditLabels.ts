@@ -65,7 +65,7 @@ export const ACTION_LABEL: Record<string, string> = {
   'publication.request_withdrawn': '챗봇 승인 요청 취소',
   'publication.reviewed': '챗봇 공개 검토',
   'publication.narrowed': '챗봇 공개 범위 좁힘',
-  'publication.withdrawn': '챗봇 링크·외부 공개 닫기',
+  'publication.withdrawn': '챗봇 공개 범위 닫기',
   'publication.version': '챗봇 새 판 공개',
   'publication.rollback': '챗봇 판 되돌리기',
   'publication.settings': '챗봇 설정 변경',

@@ -97,7 +97,7 @@ type Decision = 'approve' | 'reject' | 'withdraw' | 'paused' | 'approved' | 'rev
 const DECISION: Record<Decision, { title: string; hint: string; required: boolean; danger?: boolean }> = {
   approve: { title: '승인', hint: '만든 사람에게 보일 메모(선택)', required: false },
   reject: { title: '반려', hint: '만든 사람에게 보일 반려 사유', required: true, danger: true },
-  withdraw: { title: '공개 범위 닫기', hint: '구성원에게만 열린 상태로 돌리고, 다른 사이트·API·MCP 채널도 함께 닫습니다. 만든 사람에게 보일 사유', required: true, danger: true },
+  withdraw: { title: '공개 범위 닫기', hint: '우리 조직에만 열린 상태로 돌리고, 다른 사이트·API·MCP 채널도 함께 닫습니다. 만든 사람에게 보일 사유', required: true, danger: true },
   paused: { title: '일시 중지', hint: '만든 사람에게 보일 사유', required: true },
   approved: { title: '다시 열기', hint: '감사 기록에 남길 사유', required: true },
   revoked: { title: '챗봇 닫기', hint: '누구도 쓸 수 없게 닫습니다. 만든 사람에게 보일 사유', required: true, danger: true },
@@ -141,7 +141,7 @@ function PublicationList() {
       <PageBody>
         <PageHeader
           title={t('공개 챗봇')}
-          description={t('구성원이 공개한 챗봇입니다. 링크·외부 공개는 여기서 승인합니다.')}
+          description={t('구성원이 공유한 챗봇입니다. 「링크를 아는 사람」과 「누구나」는 여기서 승인합니다.')}
         />
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <Tabs
@@ -454,7 +454,7 @@ function ReviewView({ id }: { id: string }) {
               <div className="flex flex-wrap gap-2">
                 {outside && (
                   <Button onClick={() => setDeciding('withdraw')}>
-                    {t(pub.visibility === 'link' ? '링크 공개 닫기' : '외부 공개 닫기')}
+                    {t(pub.visibility === 'link' ? '링크를 아는 사람 범위 닫기' : '누구나 범위 닫기')}
                   </Button>
                 )}
                 {pub.status === 'approved' && (
