@@ -351,7 +351,6 @@ service's `environment:` — or, for `CODE_MODEL` and `CODE_FALLBACK_MODEL`, to
 | `GUIDE_BASE_URL` | `https://boanlab.github.io/KloudChat` | Base address of the user guide that in-app help links to. |
 | `VAPID_PRIVATE_KEY` / `VAPID_PUBLIC_KEY` / `VAPID_SUBJECT` | — | Web push key pair, passed from `KCHAT_VAPID_*`. Empty: the API generates a pair on first start and keeps it sealed in the database. The subject (`mailto:` or `https:`) is the contact push services see; empty uses the contact address of the admin settings. |
 | `PUSH_PER_MINUTE` / `PUSH_BACKOFF_SEC` / `PUSH_EXTRA_HOSTS` | `6` / `1.0` / `[]` | Notices per user per minute (all devices together), the first retry wait (doubles per attempt), and push-service hosts allowed besides the browsers' own. |
-| `JWT_ALGORITHM` | `HS256` | Signing algorithm of access tokens. Not for product use; leave as is. |
 | `API_REPLICAS` / `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | `1` / `10` / `20` | Set through `KCHAT_API_REPLICAS`, `KCHAT_DB_POOL_SIZE`, `KCHAT_DB_MAX_OVERFLOW` (above). |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM` | —, `587`, `starttls`, —, —, — | Seed values for **System › Mail**; the admin screen wins. |
 | `BRAND_NAME` | `KloudChat` | Service name when **System › Branding** has none stored. |
