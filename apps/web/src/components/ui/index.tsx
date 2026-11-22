@@ -768,7 +768,7 @@ export function Sentences({ text }: { text: string }) {
   return (
     <>
       {parts.map((p, i) => (
-        <span key={i} className="inline-block">
+        <span key={i} className="inline-block [overflow-wrap:normal] [word-break:keep-all]">
           {p}
           {i < parts.length - 1 ? ' ' : ''}
         </span>
