@@ -27,20 +27,20 @@ After sharing, each scope shows its own state, **Open** or **Pending**. Until ap
 | Anyone with the link | Anyone with the address, without signing in. Listed nowhere | After an administrator approves |
 | Anyone | Anyone, without signing in. Listed on the public chatbot page (`/b`) and may show up in search | After an administrator approves |
 
-- Choosing "Anyone with the link" or "Anyone" needs a **daily credit limit**. When the day's spending reaches it, the chatbot stops until the next day.
-- While the request waits, members can use the chatbot as usual. The request shows at the top of the management page, and **Withdraw request** takes it back.
-- When a request is declined, the administrator's reason shows on the management page. The chatbot keeps answering its previous audience.
+- Choosing "Anyone with the link" or "Anyone" needs a **daily credit limit** (3,000 to start). When the day's spending reaches it, the chatbot stops until the next day.
+- While the request waits, members can use the chatbot as usual. On the management page that scope shows as **Pending**, and **Withdraw request** takes it back.
+- When a request is declined, the administrator's reason shows in that scope's row. The chatbot keeps answering its previous audience.
 - Narrowing the scope (Anyone → Anyone with the link → Your organization) needs no approval and applies at once.
 
 ## Versions and approval
 
-After changing the agent, use **Versions** → **Publish new version** on the management page for the chatbot to pick it up. Roll back to an earlier version if something is wrong.
+After changing the agent, use **Versions** under **Settings** → **Publish new version** on the management page for the chatbot to pick it up. Roll back to an earlier version if something is wrong.
 
 On a chatbot open to people without an account, a new version is also reviewed by an administrator before it answers. Until then the approved version keeps answering, and the new one shows as **Awaiting approval** in the version list. Rolling back to a version that was approved before applies at once.
 
 ## Channels: other sites, API, MCP
 
-A chatbot open to people without an account can also be reached through these channels besides its own page. Switch them under **Channels** on the dashboard's **Overview**. Switching one on opens once an administrator approves; switching off applies at once.
+A chatbot open to people without an account can also be reached through these channels besides its own page. Switch them under **Channels** on the dashboard's **Integrations** tab. It shows only the channels the current scope can carry and says in one line what unlocks the rest. Switching one on opens once an administrator approves; switching off applies at once.
 
 | Channel | What it does | Available at |
 |---|---|---|
@@ -49,21 +49,21 @@ A chatbot open to people without an account can also be reached through these ch
 | MCP | Connects the bot as a tool in AI tools such as Claude | Anyone with the link, Anyone |
 
 - **Embed on other sites**: list the sites (starting with `https://`, up to 10) and ask. Once approved, paste the one-line embed code before `</body>`: a chat button appears in the corner and opens the chat (full screen on a phone). The chat shows only on approved sites, and inside them it always acts as a visitor without an account.
-- **API and MCP**: on the dashboard's **API** tab, make a key that calls this bot only. A key is shown once, when it is made; keep it then. **Revoke** a key you no longer use and it stops at once.
+- **API and MCP**: on the dashboard's **Integrations** tab, make a key that calls this bot only. A key is shown once, when it is made; keep it then. **Revoke** a key you no longer use and it stops at once.
   - Call the API at `/api/bots/v1/chat/completions` with the bot's address as `model`. Only checked answers go out, so with `stream` on the answer arrives once it is finished. Cited material is in `kloudchat.citations`.
   - Connect MCP at `/api/bots/mcp/<bot address>` with the same key; it offers one tool, `ask`.
   - Questions through a key have per-minute and per-day limits for that key, and the daily credit cap and the bot's own limits still apply.
-- The **API** tab and **Statistics** show questions by channel (bot page, other sites, API, MCP).
+- The **Integrations** tab and the statistics on **Overview** show questions by channel (bot page, other sites, API, MCP).
 - When an administrator closes the outside scope, or the scope is narrowed, the channels it can no longer carry close with it.
 
 ## What the publisher sees
 
 The management page (**Chatbot** → **Manage** on your agent's page) shows:
 
-- **Statistics**: questions, conversations, visitors, frequent topics, unanswered questions (sentences with personal details masked), 👍👎.
-- **Sent conversations**: only conversations a visitor sent with **Send to the maker**, personal details masked. With **Conversation access** on, conversations after the visitor's consent show too. Turn it on only for chatbots whose conversations are the work itself, such as counselling or complaints.
+- Statistics on **Overview**: questions, conversations, visitors, frequent topics, unanswered questions (sentences with personal details masked), 👍👎.
+- **Visitor conversations**: only conversations a visitor sent with **Send to the maker**, personal details masked. With **Conversation access** on, conversations after the visitor's consent show too. Turn it on only for chatbots whose conversations are the work itself, such as counselling or complaints.
 - **Allow copies** under **Settings**: off (locked) by default. Turn it on and members can take the chatbot, instructions included, as their own agent. Leave it off to keep the instructions to yourself.
-- Visitors show as "Visitor ABC123" with only whether they signed in. **Block this visitor** on a sent conversation stops them from asking; unblock them under **Settings** → **Blocked visitors**.
+- Visitors show as "Visitor ABC123" with only whether they signed in. **Block this visitor** on a visitor conversation stops them from asking; unblock them under **Settings** → **Blocked visitors**.
 
 When an administrator reads conversations to check abuse, the date and reason appear under **Administrator reads** on **Overview**.
 

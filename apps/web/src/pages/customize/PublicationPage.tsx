@@ -5,8 +5,9 @@ import { Markdown } from '@/components/chat/Markdown'
 import { HubTopBar } from '@/components/customize/DetailLayout'
 import { PageBody } from '@/components/layout/AppShell'
 import { AdminReadsCard, ApiTab, ChannelsCard } from '@/components/publishing/BotChannels'
+import { ScopeList } from '@/components/publishing/ScopeList'
 import { PublicationSettingsForm } from '@/components/publishing/PublicationSettingsForm'
-import { ScopePicker } from '@/components/publishing/ScopePicker'
+import { CreditsField } from '@/components/publishing/ScopePicker'
 import { Badge, Button, Card, ConfirmDialog, EmptyState, Field, Input, LoadingState, ReloadNotice, ResourceStatus, Select, Tabs } from '@/components/ui'
 import { ListPager } from '@/components/ui/ListPager'
 import {
@@ -15,7 +16,6 @@ import {
   publicationsApi,
   type BotConversationRow,
   type BotTranscriptMessage,
-  type BotVisibility,
   type BotVisitor,
   type Publication,
   type PublicationStats,
@@ -23,10 +23,14 @@ import {
 import { copyText } from '@/lib/clipboard'
 import {
   botUrl,
+  channelAllowed,
+  CHANNELS,
   creditsCap,
+  DEFAULT_CREDITS_PER_DAY,
   PAUSE_LABEL,
   reviewLine,
   SCOPE_ERROR,
+  scopeState,
   SHOW_PROCESS_LABEL,
   STATUS_LABEL,
   toSettings,
@@ -40,16 +44,16 @@ import { useResource } from '@/lib/useResource'
 import { useT } from '@/lib/useT'
 import { cn, formatDate } from '@/lib/utils'
 
-type Tab = 'overview' | 'stats' | 'conversations' | 'api' | 'versions' | 'settings'
-const TABS: Tab[] = ['overview', 'stats', 'conversations', 'api', 'versions', 'settings']
+type Tab = 'overview' | 'conversations' | 'settings' | 'integrations'
+const TABS: Tab[] = ['overview', 'conversations', 'settings', 'integrations']
 const TAB_LABEL: Record<Tab, string> = {
   overview: '개요',
-  stats: '통계',
-  conversations: '보낸 대화',
-  api: 'API',
-  versions: '버전',
+  conversations: '방문자 대화',
   settings: '설정',
+  integrations: '연동',
 }
+/** Links to tabs that were folded into another: 통계 into 개요, 버전 into 설정, API into 연동. */
+const FOLDED: Record<string, Tab> = { stats: 'overview', versions: 'settings', api: 'integrations' }
 
 function draftOf(pub: Publication): SettingsDraft {
   return {
@@ -75,8 +79,8 @@ export function PublicationPage() {
   const navigate = useNavigate()
   const { publicationId = '' } = useParams()
   const [params, setParams] = useSearchParams()
-  const raw = params.get('tab') as Tab | null
-  const tab: Tab = raw && TABS.includes(raw) ? raw : 'overview'
+  const raw = params.get('tab') ?? ''
+  const tab: Tab = TABS.includes(raw as Tab) ? (raw as Tab) : (FOLDED[raw] ?? 'overview')
   const [pub, setPub] = useState<Publication | null>(null)
   const [missing, setMissing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -140,7 +144,11 @@ export function PublicationPage() {
 
   const paused = pub.status === 'paused'
   const active = pub.versions?.find((v) => v.active)
-  const review = reviewLine(pub, t)
+  // A request that is not a wider scope (a new version, channels) has no row of its own.
+  const otherRequest = pub.reviewState && !pub.requestedVisibility ? reviewLine(pub, t) : ''
+  const onlyMembers = pub.visibility === 'internal'
+  const waiting = VISIBILITIES.some((id) => scopeState(pub, id) === 'pending')
+  const badge = pub.status === 'approved' ? { tone: 'success' as const, text: t(VISIBILITY_LABEL[pub.visibility]) } : { tone: 'warn' as const, text: t(STATUS_LABEL[pub.status]) }
 
   return (
     <>
@@ -150,11 +158,12 @@ export function PublicationPage() {
           <div className="min-w-0 flex-1 max-sm:basis-32">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-semibold tracking-tight break-words">{pub.title}</h1>
-              <Badge tone={pub.status === 'approved' ? 'success' : 'warn'} >{t(STATUS_LABEL[pub.status])}</Badge>
-              {pub.reviewState === 'pending' && <Badge tone="accent">{t('승인 대기')}</Badge>}
+              <Badge tone={badge.tone} data-testid="publication-badge">
+                {badge.text}
+              </Badge>
             </div>
             <p className="mt-1 text-sm text-faint">
-              {t('챗봇')} · {t(VISIBILITY_LABEL[pub.visibility])}
+              {t('챗봇')}
               {pub.agentName && (
                 <>
                   {' · '}
@@ -196,27 +205,38 @@ export function PublicationPage() {
             {pub.pauseReason === 'admin' && pub.reviewNote && ` ${t('사유: {reason}').replace('{reason}', pub.reviewNote)}`}
           </p>
         )}
-        {review && (
-          <div
-            role="status"
-            data-testid="publication-review"
-            className={cn(
-              'mt-4 flex flex-wrap items-center gap-2 rounded-control border px-3 py-2 text-base',
-              pub.reviewState === 'rejected' ? 'border-danger/30 bg-danger/5 text-danger' : 'border-accent/30 bg-accent-soft text-fg',
-            )}
-          >
-            {pub.reviewState === 'rejected' ? <XCircle size={15} aria-hidden /> : <Clock size={15} aria-hidden />}
-            <span className="min-w-0 flex-1">{review}</span>
-            <Button size="sm" variant="ghost" disabled={busy} onClick={() => void run(() => publicationsApi.withdrawRequest(pub.id))}>
-              {pub.reviewState === 'rejected' ? t('닫기') : t('요청 취소')}
-            </Button>
-          </div>
-        )}
-        {!review && pub.reviewNote && !(paused && pub.pauseReason === 'admin') && (
-          <p role="status" className="mt-4 rounded-control border border-line bg-elevated px-3 py-2 text-base text-muted" data-testid="publication-note">
-            {t('관리자 메모: {reason}').replace('{reason}', pub.reviewNote)}
-          </p>
-        )}
+
+        <div className="mt-5 space-y-3">
+          <ScopeList
+            key={pub.updatedAt}
+            pub={pub}
+            busy={busy}
+            onRequest={(visibility, credits) => run(() => publicationsApi.setScope(pub.id, visibility, credits))}
+            onNarrow={(visibility) => run(() => publicationsApi.setScope(pub.id, visibility))}
+            onCancel={() => run(() => publicationsApi.withdrawRequest(pub.id))}
+          />
+          {otherRequest && (
+            <div
+              role="status"
+              data-testid="publication-other-request"
+              className={cn(
+                'flex flex-wrap items-center gap-2 rounded-control border px-3 py-2 text-base',
+                pub.reviewState === 'rejected' ? 'border-danger/30 bg-danger/5 text-danger' : 'border-accent/30 bg-accent-soft text-fg',
+              )}
+            >
+              {pub.reviewState === 'rejected' ? <XCircle size={15} aria-hidden /> : <Clock size={15} aria-hidden />}
+              <span className="min-w-0 flex-1 max-sm:basis-40">{otherRequest}</span>
+              <Button size="sm" variant="ghost" disabled={busy} onClick={() => void run(() => publicationsApi.withdrawRequest(pub.id))}>
+                {pub.reviewState === 'rejected' ? t('닫기') : t('요청 취소')}
+              </Button>
+            </div>
+          )}
+          {!otherRequest && pub.reviewNote && !pub.reviewState && !(paused && pub.pauseReason === 'admin') && (
+            <p role="status" className="rounded-control border border-line bg-elevated px-3 py-2 text-base text-muted" data-testid="publication-note">
+              {t('관리자 메모: {reason}').replace('{reason}', pub.reviewNote)}
+            </p>
+          )}
+        </div>
 
         <div className="mt-5">
           <Tabs
@@ -229,18 +249,22 @@ export function PublicationPage() {
         <div className="pt-5">
           {tab === 'overview' && (
             <div className="space-y-4">
-              <ScopeCard key={pub.updatedAt} pub={pub} busy={busy} onSave={(visibility, credits) => run(() => publicationsApi.setScope(pub.id, visibility, credits))} />
-              <ChannelsCard key={`channels-${pub.updatedAt}`} pub={pub} onChange={setPub} />
               <Card className="space-y-2 p-4">
                 <p className="text-sm text-faint">{t('주소')}</p>
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
                   <code className="min-w-0 flex-1 truncate text-sm" data-testid="publication-url">{botUrl(pub.slug)}</code>
                   <Button size="sm" variant="ghost" onClick={async () => setCopied(await copyText(botUrl(pub.slug)))}>
                     <Copy size={13} />
-                    {copied ? t('복사됨') : t('복사')}
+                    {copied ? t('복사됨') : onlyMembers || waiting ? t('구성원에게 복사') : t('복사')}
                   </Button>
                 </div>
+                {waiting && (
+                  <p className="text-sm text-warn" data-testid="publication-url-warning">
+                    {t('승인 전에는 조직 밖 사람에게 이 주소를 보내지 마세요. 열리지 않습니다.')}
+                  </p>
+                )}
               </Card>
+              <StatsTab id={pub.id} />
               <div className="grid gap-4 sm:grid-cols-2">
                 <Card className="space-y-1 p-4">
                   <p className="text-sm text-faint">{t('지금 판')}</p>
@@ -266,32 +290,26 @@ export function PublicationPage() {
                   {t('답을 만드는 과정')}: {t(SHOW_PROCESS_LABEL[pub.showProcess])} · {t('출처 목록')}: {pub.showSources ? t('보임') : t('숨김')} · {t('복사')}: {pub.allowCopy ? t('허용') : t('잠금')}
                 </p>
                 <p className="text-sm text-muted">
-                  {t('공개한 판의 지시와 자료로만 답하고 내 메모리는 쓰지 않습니다. 사용량은 내 크레딧으로 셉니다.')}
+                  {t('공유한 판의 지시와 자료로만 답하고 내 메모리는 쓰지 않습니다. 사용량은 내 크레딧으로 셉니다.')}
                 </p>
               </Card>
               <AdminReadsCard pub={pub} />
             </div>
           )}
-          {tab === 'api' && <ApiTab pub={pub} />}
-          {tab === 'stats' && <StatsTab id={pub.id} />}
           {tab === 'conversations' && <ConversationsTab pub={pub} />}
-          {tab === 'versions' && (
-            <VersionsTab
-              pub={pub}
-              busy={busy}
-              onNew={(note) => run(() => publicationsApi.newVersion(pub.id, note))}
-              onActivate={(versionId) => run(() => publicationsApi.activate(pub.id, versionId))}
-            />
-          )}
           {tab === 'settings' && (
             <SettingsTab
               key={pub.updatedAt}
               pub={pub}
               busy={busy}
               onSave={(draft) => run(() => publicationsApi.update(pub.id, toSettings(draft)))}
+              onSaveCredits={(credits) => run(() => publicationsApi.setScope(pub.id, pub.visibility, credits))}
+              onNew={(note) => run(() => publicationsApi.newVersion(pub.id, note))}
+              onActivate={(versionId) => run(() => publicationsApi.activate(pub.id, versionId))}
               onDelete={() => setDeleting(true)}
             />
           )}
+          {tab === 'integrations' && <IntegrationsTab pub={pub} onChange={setPub} />}
         </div>
       </PageBody>
       <ConfirmDialog
@@ -307,42 +325,23 @@ export function PublicationPage() {
   )
 }
 
-/** Narrowing applies at once; widening goes to an administrator. */
-function ScopeCard({
-  pub,
-  busy,
-  onSave,
-}: {
-  pub: Publication
-  busy: boolean
-  onSave: (visibility: BotVisibility, credits?: number) => Promise<void>
-}) {
+/** Channels the current scope can carry, with one line on what unlocks the rest. */
+function IntegrationsTab({ pub, onChange }: { pub: Publication; onChange: (next: Publication) => void }) {
   const t = useT()
-  const [value, setValue] = useState<BotVisibility>(pub.requestedVisibility || pub.visibility)
-  const [credits, setCredits] = useState(pub.limits.creditsPerDay ? String(pub.limits.creditsPerDay) : '')
-  const rank = (v: BotVisibility) => VISIBILITIES.indexOf(v)
-  const wider = rank(value) > rank(pub.visibility)
-  const cap = creditsCap(credits)
-  const changed = value !== pub.visibility || (value !== 'internal' && cap !== pub.limits.creditsPerDay)
-  const asked = pub.reviewState === 'pending' && pub.requestedVisibility === value
+  const available = CHANNELS.filter((c) => channelAllowed(pub.visibility, c))
+  const keyed = available.some((c) => c !== 'embed')
   return (
-    <Card className="space-y-3 p-4" data-testid="publication-scope">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-base font-medium">{t('공개 범위')}</p>
-        <p className="text-sm text-faint">{t('지금: {scope}').replace('{scope}', t(VISIBILITY_LABEL[pub.visibility]))}</p>
-      </div>
-      <ScopePicker value={value} onChange={setValue} credits={credits} onCredits={setCredits} current={pub.visibility} />
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {wider && <p className="min-w-0 flex-1 max-sm:basis-32 text-sm text-muted">{t('관리자가 승인할 때까지 지금 범위로 답합니다.')}</p>}
-        <Button
-          variant="primary"
-          disabled={busy || !changed || asked || (value !== 'internal' && cap === undefined)}
-          onClick={() => void onSave(value, value !== 'internal' ? cap : undefined)}
-        >
-          {wider ? t('승인 요청') : t('범위 바꾸기')}
-        </Button>
-      </div>
-    </Card>
+    <div className="max-w-3xl space-y-4" data-testid="publication-integrations">
+      {available.length < CHANNELS.length && (
+        <p role="status" className="rounded-control border border-line bg-elevated px-3 py-2 text-base text-muted" data-testid="integrations-unlock">
+          {available.length === 0
+            ? t('연동(다른 사이트에 넣기, API, MCP)은 「링크를 아는 사람」이나 「누구나」로 열린 뒤에 나타납니다.')
+            : t('다른 사이트에 넣기는 「누구나」로 열린 뒤에 나타납니다.')}
+        </p>
+      )}
+      {available.length > 0 && <ChannelsCard key={`channels-${pub.updatedAt}`} pub={pub} onChange={onChange} channels={available} />}
+      {keyed && <ApiTab pub={pub} />}
+    </div>
   )
 }
 
@@ -561,7 +560,7 @@ function BlockedVisitors({ pub }: { pub: Publication }) {
     <Card className="space-y-2 p-4" data-testid="publication-blocked">
       <p className="text-base font-medium">{t('차단한 방문자')}</p>
       {rows === null ? null : rows.length === 0 ? (
-        <p className="text-sm text-faint">{t('차단한 방문자가 없습니다. 보낸 대화에서 방문자를 차단할 수 있습니다.')}</p>
+        <p className="text-sm text-faint">{t('차단한 방문자가 없습니다. 방문자 대화에서 방문자를 차단할 수 있습니다.')}</p>
       ) : (
         <ul className="divide-y divide-line">
           {rows.map((v) => (
@@ -649,15 +648,23 @@ function SettingsTab({
   pub,
   busy,
   onSave,
+  onSaveCredits,
+  onNew,
+  onActivate,
   onDelete,
 }: {
   pub: Publication
   busy: boolean
   onSave: (draft: SettingsDraft) => Promise<void>
+  onSaveCredits: (credits: number) => Promise<void>
+  onNew: (note: string) => Promise<void>
+  onActivate: (versionId: string) => Promise<void>
   onDelete: () => void
 }) {
   const t = useT()
   const [draft, setDraft] = useState<SettingsDraft>(() => draftOf(pub))
+  const [credits, setCredits] = useState(String(pub.limits.creditsPerDay ?? DEFAULT_CREDITS_PER_DAY))
+  const cap = creditsCap(credits)
   const viewChanged = draft.conversationView !== pub.conversationView || draft.retentionDays !== pub.retentionDays
   return (
     <div className="max-w-2xl space-y-6">
@@ -667,6 +674,20 @@ function SettingsTab({
           {t('저장')}
         </Button>
       </div>
+      {pub.visibility !== 'internal' && (
+        <Card className="space-y-3 p-4" data-testid="publication-credits">
+          <CreditsField credits={credits} onCredits={setCredits} />
+          <div className="flex justify-end">
+            <Button disabled={busy || cap === undefined || cap === pub.limits.creditsPerDay} onClick={() => cap !== undefined && void onSaveCredits(cap)}>
+              {t('한도 저장')}
+            </Button>
+          </div>
+        </Card>
+      )}
+      <section className="space-y-3" aria-label={t('버전')} data-testid="publication-versions-section">
+        <h2 className="text-base font-semibold">{t('버전')}</h2>
+        <VersionsTab pub={pub} busy={busy} onNew={onNew} onActivate={onActivate} />
+      </section>
       <BlockedVisitors pub={pub} />
       <Card className="flex flex-wrap items-center gap-3 border-danger/30 p-4">
         <div className="min-w-0 flex-1 max-sm:basis-32">
