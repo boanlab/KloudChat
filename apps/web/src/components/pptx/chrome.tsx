@@ -186,9 +186,6 @@ export function SlideRail({
             className={'kc-thumb' + (i === active ? ' on' : '') + (drag && drag.over === i ? ' over' : '') +
               (hidden?.(i) ? ' hid' : '')}
             draggable={canEdit}
-            role="button"
-            aria-label={t('{n}번 장').replace('{n}', String(i + 1))}
-            aria-current={i === active ? 'true' : undefined}
             onDragStart={() => setDrag({ from: i, over: i })}
             onDragOver={(event) => { event.preventDefault(); if (drag) setDrag({ ...drag, over: i }) }}
             onDrop={() => { if (drag && drag.from !== i) onMove(drag.from, i); setDrag(null) }}
@@ -201,7 +198,10 @@ export function SlideRail({
             }}>
             <span className="kc-num">{i + 1}</span>
             {lead?.(i)}
-            <div className="kc-tframe" style={{ width }}>
+            {/* The button role sits on the picture, not the whole row, so the ⋮ button and the check box are not nested in it. */}
+            <div className="kc-tframe" style={{ width }} role="button"
+              aria-label={t('{n}번 장').replace('{n}', String(i + 1))}
+              aria-current={i === active ? 'true' : undefined}>
               {thumb(i, width)}
               {badge?.(i)}
             </div>
