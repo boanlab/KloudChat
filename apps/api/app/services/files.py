@@ -250,7 +250,7 @@ def _from_pdf(data: bytes) -> str:
     pages = [f"[페이지 {i + 1}]\n{body}" for i, body in enumerate(texts) if body.strip()]
     text = "\n\n".join(pages)
     if not text.strip():
-        raise RuntimeError("텍스트를 추출하지 못했습니다. 스캔본이라면 OCR 이 필요합니다.")
+        raise RuntimeError("텍스트를 추출하지 못했습니다. 스캔본이라면 OCR이 필요합니다.")
     return text
 
 
@@ -639,7 +639,7 @@ def _from_hwp(data: bytes) -> str:
         log.info("hwp open failed: %s", exc)
         raise RuntimeError(
             "한글 문서(.hwp)를 읽지 못했습니다. 손상되었거나 암호가 걸려 있을 수 있습니다. "
-            "PDF 로 변환해 올려 주세요."
+            "PDF로 변환해 올려 주세요."
         ) from exc
 
     try:
@@ -797,13 +797,13 @@ def _extract_text(name: str, mime: str, data: bytes) -> str:
     if suffix == ".hwp":
         return _from_hwp(data)
     if suffix in {".doc", ".ppt", ".xls"}:
-        raise RuntimeError("구형 오피스 형식입니다. docx/pptx/xlsx 또는 PDF 로 변환해 주세요.")
+        raise RuntimeError("구형 오피스 형식입니다. docx/pptx/xlsx 또는 PDF로 변환해 주세요.")
     if mime.startswith("image/"):
         # pictures have no text; reads_pictures decides per turn
         if pictures.can_be_seen(mime, len(data)):
             return ""
         raise RuntimeError(
-            "이 그림은 읽을 수 없습니다. PNG·JPEG·GIF·WebP 로, 4MB 이하로 올려 주세요."
+            "이 그림은 읽을 수 없습니다. PNG·JPEG·GIF·WebP로, 4MB 이하로 올려 주세요."
         )
     if is_speech(mime):
         # only when transcription is unavailable
@@ -816,5 +816,5 @@ def _extract_text(name: str, mime: str, data: bytes) -> str:
     text = _from_text(data)
     printable = sum(1 for ch in text[:2000] if ch.isprintable() or ch.isspace())
     if printable < len(text[:2000]) * 0.8:
-        raise RuntimeError("읽을 수 없는 형식입니다. 텍스트나 PDF 로 올려 주세요.")
+        raise RuntimeError("읽을 수 없는 형식입니다. 텍스트나 PDF로 올려 주세요.")
     return text

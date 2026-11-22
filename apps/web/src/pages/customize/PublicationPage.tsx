@@ -110,7 +110,7 @@ export function PublicationPage() {
       if (next) setPub(next)
     } catch (err) {
       const code = err instanceof ApiError ? err.detail : ''
-      setError(SCOPE_ERROR[code] ? t(SCOPE_ERROR[code]) : errorMessage(err, t('저장하지 못했습니다.')))
+      setError(SCOPE_ERROR[code] ? t(SCOPE_ERROR[code]) : errorMessage(err, t('저장하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
       running.current = false
       setBusy(false)
@@ -122,7 +122,7 @@ export function PublicationPage() {
       <>
         <HubTopBar tab="agents" tabLabel="에이전트" title="" />
         <PageBody>
-          <EmptyState icon={<PauseCircle size={18} />} title={t('이 챗봇을 찾을 수 없습니다')} description={t('지워졌거나 볼 수 없는 챗봇입니다.')} />
+          <EmptyState icon={<PauseCircle size={18} />} title={t('이 챗봇을 찾을 수 없습니다')} description={t('삭제되었거나 볼 수 없는 챗봇입니다.')} />
         </PageBody>
       </>
     )
@@ -257,7 +257,7 @@ export function PublicationPage() {
                       ? t('대화 열람: 방문자가 동의한 뒤의 대화')
                       : t('통계와 방문자가 보낸 대화만')}
                   </p>
-                  <p className="text-sm text-muted">{t.n('대화는 마지막 질문 뒤 {n}일이 지나면 지워집니다.', pub.retentionDays)}</p>
+                  <p className="text-sm text-muted">{t.n('대화는 마지막 질문 뒤 {n}일이 지나면 삭제됩니다.', pub.retentionDays)}</p>
                 </Card>
               </div>
               <Card className="space-y-1 p-4">
@@ -298,10 +298,10 @@ export function PublicationPage() {
         open={deleting}
         onClose={() => setDeleting(false)}
         onConfirm={() =>
-          void publicationsApi.remove(pub.id).then(() => navigate(pub.agentId ? `/customize/agents/${pub.agentId}` : '/customize?tab=agents'), (err) => setError(errorMessage(err, t('지우지 못했습니다.'))))
+          void publicationsApi.remove(pub.id).then(() => navigate(pub.agentId ? `/customize/agents/${pub.agentId}` : '/customize?tab=agents'), (err) => setError(errorMessage(err, t('삭제하지 못했습니다. 잠시 뒤 다시 시도하세요.'))))
         }
-        title={t('챗봇 지우기')}
-        description={t('챗봇과 그 대화·통계·판이 모두 지워집니다. 에이전트는 그대로 남습니다.')}
+        title={t('이 챗봇 삭제')}
+        description={t('챗봇과 그 대화·통계·판이 모두 삭제됩니다. 에이전트는 그대로 남습니다.')}
       />
     </>
   )
@@ -366,7 +366,7 @@ function StatsTab({ id }: { id: string }) {
     return (
       <div className="space-y-5">
         <div className="flex justify-end">{period}</div>
-        <ResourceStatus resource={loaded} failed={t('통계를 불러오지 못했습니다.')} />
+        <ResourceStatus resource={loaded} failed={t('통계를 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')} />
       </div>
     )
   }
@@ -670,12 +670,12 @@ function SettingsTab({
       <BlockedVisitors pub={pub} />
       <Card className="flex flex-wrap items-center gap-3 border-danger/30 p-4">
         <div className="min-w-0 flex-1 max-sm:basis-32">
-          <p className="text-base font-medium">{t('챗봇 지우기')}</p>
-          <p className="text-sm text-muted">{t('챗봇과 그 대화·통계·판이 모두 지워집니다. 에이전트는 그대로 남습니다.')}</p>
+          <p className="text-base font-medium">{t('이 챗봇 삭제')}</p>
+          <p className="text-sm text-muted">{t('챗봇과 그 대화·통계·판이 모두 삭제됩니다. 에이전트는 그대로 남습니다.')}</p>
         </div>
         <Button variant="danger" onClick={onDelete}>
           <Trash2 size={14} />
-          {t('지우기')}
+          {t('삭제')}
         </Button>
       </Card>
     </div>

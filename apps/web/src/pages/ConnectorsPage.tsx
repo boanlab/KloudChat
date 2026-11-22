@@ -36,7 +36,7 @@ import { pageOf, usePaging } from '@/lib/usePaging'
 import { useStore } from '@/store/useStore'
 import type { CatalogEntry } from '@/lib/api'
 import type { Connector, ConnectorStatus } from '@/types'
-import { useT } from '@/lib/useT'
+import { useT, useTIn } from '@/lib/useT'
 
 const statusMeta: Record<ConnectorStatus, { label: string; tone: 'success' | 'warn' | 'danger' | 'neutral' }> = {
   connected: { label: '연결됨', tone: 'success' },
@@ -93,14 +93,23 @@ function ConnectorCard({
         <button onClick={onOpen} className="min-w-0 flex-1 text-left">
           <span className="flex flex-wrap items-center gap-1.5">
             <span className="text-base font-medium">{t(connector.name)}</span>
-            {connector.official && (
+            {/* A default copy is always official: one badge says both. */}
+            {connector.official && !connector.byDefault && (
               <Badge tone="accent">
                 <ShieldCheck size={10} />
                 {t('공식')}
               </Badge>
             )}
             {connector.byDefault && <Badge tone="accent">{t('기본 제공')}</Badge>}
-            <Badge tone={status.tone}>{t(status.label)}</Badge>
+            {/* Connected is the normal state: a dot, not a badge; the others stay badges. */}
+            {connector.status === 'connected' ? (
+              <span className="inline-flex items-center" title={t(status.label)}>
+                <span aria-hidden className="size-2 rounded-full bg-success" />
+                <span className="sr-only">{t(status.label)}</span>
+              </span>
+            ) : (
+              <Badge tone={status.tone}>{t(status.label)}</Badge>
+            )}
           </span>
           <span className="mt-1 block text-base text-muted">{t(connector.description)}</span>
         </button>
@@ -235,7 +244,7 @@ function CatalogCard({ entry, onNeedsCredentials }: {
             try {
               await installConnector(entry.slug)
             } catch (err) {
-              setError(errorMessage(err, t('설치에 실패했습니다.')))
+              setError(errorMessage(err, t('설치에 실패했습니다. 잠시 뒤 다시 시도하세요.')))
             } finally {
               setBusy(false)
             }
@@ -303,7 +312,7 @@ function ReCredentialModal({
                 await updateConnectorEnv(connector.id, values)
                 onClose()
               } catch (err) {
-                setError(errorMessage(err, t('저장에 실패했습니다.')))
+                setError(errorMessage(err, t('저장에 실패했습니다. 잠시 뒤 다시 시도하세요.')))
               } finally {
                 setBusy(false)
               }
@@ -370,7 +379,7 @@ function CredentialsModal({
                 await installConnector(entry.slug, values)
                 onClose()
               } catch (err) {
-                setError(errorMessage(err, t('설치에 실패했습니다.')))
+                setError(errorMessage(err, t('설치에 실패했습니다. 잠시 뒤 다시 시도하세요.')))
               } finally {
                 setBusy(false)
               }
@@ -413,8 +422,23 @@ function parseEnv(text: string): Record<string, string> {
   return out
 }
 
-export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}) {
+export function ConnectorsPage({
+  embedded = false,
+  view,
+  query: queryProp,
+  adding: addingProp,
+  onAddingChange,
+}: {
+  embedded?: boolean
+  /** Given by the customize hub, which then owns the segment, search and add button. */
+  view?: 'mine' | 'explore'
+  query?: string
+  adding?: boolean
+  onAddingChange?: (next: boolean) => void
+} = {}) {
+  const hubFrame = view !== undefined
   const t = useT()
+  const tHub = useTIn('hub')
   const {
     connectors,
     connectorCatalog,
@@ -433,11 +457,14 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
   useEffect(() => {
     void ensureWorkspace()
   }, [ensureWorkspace])
-  const [tab, setTab] = useState<'installed' | 'catalog'>('installed')
+  const [tabLocal, setTab] = useState<'installed' | 'catalog'>('installed')
+  const tab = hubFrame ? (view === 'mine' ? 'installed' : 'catalog') : tabLocal
   const [detail, setDetail] = useState<Connector | null>(null)
   const [credentialsFor, setCredentialsFor] = useState<CatalogEntry | null>(null)
   const [reCredential, setReCredential] = useState<Connector | null>(null)
-  const [adding, setAdding] = useState(false)
+  const [addingLocal, setAddingLocal] = useState(false)
+  const adding = hubFrame ? !!addingProp : addingLocal
+  const setAdding = (next: boolean) => (hubFrame ? onAddingChange?.(next) : setAddingLocal(next))
   const [addError, setAddError] = useState('')
   const addRefusal = (err: unknown) => {
     const detail = err instanceof ApiError ? err.detail : ''
@@ -445,7 +472,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
       return t('명령으로 실행하는 서버는 관리자만 등록할 수 있습니다.')
     }
     if (detail.startsWith('env_not_allowed:')) return t('이 서버에는 환경 변수를 넣을 수 없습니다.')
-    return errorMessage(err, t('서버를 추가하지 못했습니다.'))
+    return errorMessage(err, t('서버를 추가하지 못했습니다. 잠시 뒤 다시 시도하세요.'))
   }
   const [draft, setDraft] = useState({
     name: '',
@@ -455,7 +482,8 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
     envText: '',
   })
 
-  const [query, setQuery] = useState('')
+  const [queryLocal, setQuery] = useState('')
+  const query = hubFrame ? (queryProp ?? '') : queryLocal
   // Names and descriptions as shown, in either language.
   const found = <T extends { name: string; description: string }>(items: T[]) =>
     items.filter((c) => matchesQuery(query, c.name, t(c.name), c.description, t(c.description)))
@@ -478,6 +506,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
   return (
     <>
       <PageFrame title={t('MCP 서버')} embedded={embedded}>
+        {!hubFrame && (
         <PageHeader
           embedded={embedded}
           title={t('MCP 서버')}
@@ -489,19 +518,20 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
             </Button>
           }
         />
+        )}
 
-        <Tabs<'installed' | 'catalog'>
+        {!hubFrame && <Tabs<'installed' | 'catalog'>
           value={tab}
           onChange={setTab}
           tabs={[
             { id: 'installed', label: t('내 MCP 서버'), count: installed.length },
-            { id: 'catalog', label: t('카탈로그'), count: catalog.filter((e) => !e.installed).length },
+            { id: 'catalog', label: tHub('탐색'), count: catalog.filter((e) => !e.installed).length },
           ]}
-        />
+        />}
 
         {workspaceFailed && <ReloadNotice onRetry={() => void loadWorkspace()} />}
 
-        {!empty && (
+        {!hubFrame && !empty && (
           <ListSearch value={query} onChange={setQuery} label={t('MCP 서버 검색')} className="mt-4" />
         )}
 
@@ -522,7 +552,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
               onToggleAll={pick.toggleAll}
               onClear={pick.clear}
               title={t('MCP 서버')}
-              note={t('저장해 둔 인증 정보도 함께 지워집니다.')}
+              note={t('저장해 둔 인증 정보도 함께 삭제됩니다.')}
               onDelete={async () => {
                 await deleteMany('connectors', pick.ids)
                 pick.clear()
@@ -592,7 +622,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
             )}
             {current?.byDefault && (
               <p className="mr-auto text-sm text-muted">
-                {t('기본 제공 MCP 서버는 지울 수 없습니다. 쓰지 않으려면 끄세요.')}
+                {t('기본 제공 MCP 서버는 삭제할 수 없습니다. 쓰지 않으려면 끄세요.')}
               </p>
             )}
             <Button onClick={() => setDetail(null)}>{t('닫기')}</Button>

@@ -186,7 +186,7 @@ def resolve(deck: pe._Deck, op: dict, pictures: dict[str, tuple[str, bytes]]) ->
         if not 0 <= col < cols:
             raise _err(f"{kind}: c{col} 열이 없습니다 (0~{cols - 1}).")
         if kind == "delete_table_column" and cols < 2:
-            raise _err("delete_table_column: 열이 하나뿐인 표의 열은 지울 수 없습니다.")
+            raise _err("delete_table_column: 열이 하나뿐인 표의 열은 삭제할 수 없습니다.")
         if kind == "insert_table_column" and cols >= office_edit.MAX_TABLE_COLS:
             raise _err(f"insert_table_column: 표는 {office_edit.MAX_TABLE_COLS}칸까지입니다.")
         return item, col

@@ -45,7 +45,7 @@ function useSessionDraft(): {
         if (draft.distilled !== 'pending')
           setDecided({ id: sessionId, state: draft.distilled ?? (draft.systemPrompt ? 'ok' : 'empty'), prompt: '' })
       })
-      .catch((err) => current && setState({ id: sessionId, draft: null, error: errorMessage(err, t('대화를 읽어 오지 못했습니다.')) }))
+      .catch((err) => current && setState({ id: sessionId, draft: null, error: errorMessage(err, t('대화를 읽어 오지 못했습니다. 잠시 뒤 다시 시도하세요.')) }))
     return () => {
       current = false
     }

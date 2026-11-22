@@ -317,7 +317,7 @@ export function OffSurfaceNote({ ids, skills, surfaces }: { ids: string[]; skill
     <ul role="status" data-testid="skill-surface-warning" className="space-y-1 rounded-control border border-warn/30 bg-warn/10 px-3 py-2 text-sm text-warn">
       {off.map((s) => (
         <li key={s.id}>
-          {t('「{name}」 스킬은 {skill} 화면에서만 쓰여 이 에이전트의 화면({agent})에서는 적용되지 않습니다. 고급 › 사용할 화면에서 {skill} 화면을 더하거나 스킬을 빼세요.')
+          {t('「{name}」 스킬은 {skill} 화면 전용이라 이 에이전트({agent})에서는 쓰이지 않습니다. 고급 › 사용할 화면에 {skill} 화면을 더하거나 스킬을 빼세요.')
             .replace('{name}', s.name)
             .replaceAll('{skill}', words(s.kinds))
             .replace('{agent}', words(surfaces))}

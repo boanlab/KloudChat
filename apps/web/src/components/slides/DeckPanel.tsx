@@ -1375,7 +1375,7 @@ function SlideFigure({ slide, accent, look, artifactId }: { slide: Slide; accent
   if (failed) {
     return (
       <p className="text-center" style={{ fontSize: '11px', color: look.muted }}>
-        {t('도식을 그리지 못했습니다.')}
+        {t('도식을 그리지 못했습니다. 잠시 뒤 다시 시도하세요.')}
       </p>
     )
   }
@@ -1409,7 +1409,7 @@ function SlidePicture({ deck, slide, open, onClose }: { deck: DeckArtifact; slid
       await loadArtifacts()
       onClose()
     } catch (err) {
-      setError(errorMessage(err, t('그림을 넣지 못했습니다.')))
+      setError(errorMessage(err, t('그림을 넣지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
       setBusy(false)
     }
@@ -1820,7 +1820,7 @@ export function PresentStage({
         >
           <ChevronLeft size={18} />
         </button>
-        <span className="text-sm phone:hidden">{t('← → 로 넘기고 Esc 로 끝냅니다')}</span>
+        <span className="text-sm phone:hidden">{t('← →로 넘기고 Esc로 끝냅니다')}</span>
         <button
           onClick={() => onIndex(Math.min(index + 1, count - 1))}
           disabled={index >= count - 1}
@@ -2205,7 +2205,7 @@ export function DeckPanel({
   }
   const deleteSlide = (at: number) => {
     if (slides.length <= 1) {
-      setOpError(t('마지막 한 장은 지울 수 없습니다. 덱은 파일함 › 작업 문서에서 지웁니다.'))
+      setOpError(t('마지막 한 장은 삭제할 수 없습니다. 덱은 파일함 › 작업 문서에서 삭제합니다.'))
       return
     }
     doc.edit((now) => ({ ...now, slides: now.slides.filter((_, i) => i !== at) }))
@@ -2425,7 +2425,7 @@ export function DeckPanel({
       useStore.getState().noteArtifactVersion(deck.id, row.version)
       setReviewComments(comments)
     } catch (err) {
-      setOpError(errorMessage(err, t('검토 메모를 저장하지 못했습니다.')))
+      setOpError(errorMessage(err, t('검토 메모를 저장하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
       setReviewSaving(false)
     }
@@ -2647,7 +2647,7 @@ export function DeckPanel({
       <label className="kc-item">
         <ImagePlus size={14} />
         {t('그림 올리기')}
-        <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" aria-label={t('로컬 그림 업로드')}
+        <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" aria-label={t('로컬 그림 올리기')}
           className="sr-only" onChange={(event) => { loadLocalPicture(event.target.files?.[0]); event.target.value = ''; close() }} />
       </label>
       <button type="button" className="kc-item" onClick={() => { close(); openPicture() }}>
@@ -2940,7 +2940,7 @@ export function DeckPanel({
                 <div className="kc-strip" role="group" aria-label={t('여러 장 서식')}>
                   <span className="font-semibold">{t('{n}장 선택').replace('{n}', String(bulkSelected.size))}</span>
                   <Button size="sm" onClick={() => setBulkSelected(new Set(bulkSelected.size === slides.length ? [] : slides.map((candidate) => candidate.id)))}>
-                    {bulkSelected.size === slides.length ? t('전체 해제') : t('전체 선택')}
+                    {bulkSelected.size === slides.length ? t('모두 해제') : t('모두 선택')}
                   </Button>
                   <label className="relative grid size-8 cursor-pointer place-items-center rounded-control" title={t('일괄 강조색')}>
                     <Palette size={15} />
@@ -2961,7 +2961,7 @@ export function DeckPanel({
                 <div className="kc-strip" role="status" data-testid="deck-held">
                   <TriangleAlert size={14} className="shrink-0 text-warn" />
                   <span className="min-w-0 flex-1">
-                    {t('이 레이아웃에 보이지 않는 내용을 지우지 않고 보관했습니다: {what}').replace('{what}', [
+                    {t('이 레이아웃에 보이지 않는 내용을 삭제하지 않고 보관했습니다: {what}').replace('{what}', [
                       held.lines > 0 ? t.n('문장 {n}개', held.lines) : '',
                       held.chart ? t('차트') : '',
                     ].filter(Boolean).join(', '))}
@@ -2970,7 +2970,7 @@ export function DeckPanel({
                     <ListPlus size={13} />{t('다음 장으로 옮기기')}
                   </Button>
                   <Button size="sm" variant="ghost" onClick={() => editSlide((current) => ({ ...current, held: undefined }))}>
-                    {t('보관한 내용 지우기')}
+                    {t('보관한 내용 삭제')}
                   </Button>
                 </div>
               )}

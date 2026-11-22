@@ -56,8 +56,8 @@ export function StudioTab({ projectId }: { projectId: string }) {
         setStrict(listing.strictLocal)
         setPicked(new Set(listing.sources.filter((s) => s.readable).map((s) => s.id)))
       })
-      .catch((err) => alive && setError(errorMessage(err, t('자료를 불러오지 못했습니다.'))))
-    loadItems().catch((err) => alive && setError(errorMessage(err, t('결과를 불러오지 못했습니다.'))))
+      .catch((err) => alive && setError(errorMessage(err, t('자료를 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.'))))
+    loadItems().catch((err) => alive && setError(errorMessage(err, t('결과를 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.'))))
     return () => {
       alive = false
     }
@@ -213,10 +213,10 @@ export function StudioTab({ projectId }: { projectId: string }) {
           shelfApi
             .remove(target.id)
             .then(() => setItems((rows) => (rows ?? []).filter((row) => row.id !== target.id)))
-            .catch((err) => setError(errorMessage(err, t('삭제하지 못했습니다.'))))
+            .catch((err) => setError(errorMessage(err, t('삭제하지 못했습니다. 잠시 뒤 다시 시도하세요.'))))
         }}
         title={t('{name} 삭제').replace('{name}', removing?.title ?? '')}
-        description={withNames(t('{studio}에서만 지웁니다. 문서로 저장한 것은 파일함에 남습니다.'), t)}
+        description={withNames(t('{studio}에서만 삭제합니다. 문서로 저장한 것은 파일함에 남습니다.'), t)}
       />
     </div>
   )

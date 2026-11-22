@@ -267,7 +267,7 @@ export function DocMarksLayer({
     const ok = await onFill(filling.sectionId, filling.text, filling.nth, value.trim())
     setSaving(false)
     if (ok) setFilling(null)
-    else setError(t('저장하지 못했습니다.'))
+    else setError(t('저장하지 못했습니다. 잠시 뒤 다시 시도하세요.'))
   }
   // Gutter just left of the column.
   const column = root.querySelector<HTMLElement>('article.doc-web')

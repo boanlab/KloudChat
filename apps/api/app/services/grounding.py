@@ -59,7 +59,7 @@ def questions_for(files: list[ContextFile]) -> list[Question]:
             Question(
                 id="unreadable",
                 question="읽지 못한 파일이 있습니다. 어떻게 할까요?",
-                detail=f"{names} — 내용을 꺼내지 못했습니다. 스캔본이라면 OCR 이 필요합니다.",
+                detail=f"{names} — 내용을 꺼내지 못했습니다. 스캔본이라면 OCR이 필요합니다.",
                 options=[
                     "이 파일 없이 나머지로 진행",
                     "내용을 직접 붙여넣겠습니다",

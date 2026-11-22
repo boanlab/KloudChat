@@ -193,7 +193,7 @@ test('작업 문서 opens each kind in its editor, downloads it, renames and del
 
   await page.getByRole('button', { name: '사업 설명회 발표 삭제' }).click()
   const confirm = page.getByRole('dialog', { name: '사업 설명회 발표 삭제' })
-  await expect(confirm).toContainText('버전 기록도 함께 지워집니다')
+  await expect(confirm).toContainText('버전 기록도 함께 삭제됩니다')
   await confirm.getByRole('button', { name: '삭제', exact: true }).click()
   await expect(rows(page).filter({ hasText: '사업 설명회 발표' })).toHaveCount(0)
   await expect(page.getByRole('tab', { name: /작업 문서\s*56/ })).toBeVisible()

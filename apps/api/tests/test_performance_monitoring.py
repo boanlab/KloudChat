@@ -342,7 +342,7 @@ def test_api_cpu_disk_errors_and_memory():
     }
     found = {v.code: v for v in rules.evaluate(series, NOW, th, NOW)}
     assert set(found) == {"api_cpu", "disk_full", "model_errors", "host_memory"}
-    assert "api 복제본 추가 검토" in found["api_cpu"].title and found["api_cpu"].level == "warn"
+    assert "API 복제본 추가 검토" in found["api_cpu"].title and found["api_cpu"].level == "warn"
     assert "f9ff31" in found["api_cpu"].title
     assert found["disk_full"].level == "critical"
     assert "13.3%" in found["model_errors"].detail

@@ -176,6 +176,7 @@ export function ContextGauge({
   const tokens = t('대화 {used} / {window} 토큰')
     .replace('{used}', compactTokens(now.used))
     .replace('{window}', compactTokens(now.window))
+  const explain = t('대화 길이: 컨텍스트의 {n}%를 쓰고 있습니다').replace('{n}', String(percent))
   const willSummarise = now.used >= summaryLimit(now)
 
   return (
@@ -203,6 +204,7 @@ export function ContextGauge({
         type="button"
         className="absolute inset-0 rounded-control hover:bg-elevated/60 focus-visible:outline-2 focus-visible:outline-accent"
         aria-label={`${t('컨텍스트 사용량 자세히')} (${percent}%)`}
+        title={explain}
         aria-expanded={shown}
         aria-controls={shown ? popoverId : undefined}
         onClick={() => setOpen((was) => !was)}
@@ -230,6 +232,7 @@ export function ContextGauge({
             onPointerEnter={(event) => event.pointerType === 'mouse' && setHover(true)}
             onPointerLeave={(event) => event.pointerType === 'mouse' && setHover(false)}
           >
+            <p className="mb-1 text-muted">{explain}</p>
             <p className="flex items-baseline justify-between gap-2 font-medium">
               <span>{tokens}</span>
               <span className={cn('tabular-nums', TONE[level])}>{percent}%</span>

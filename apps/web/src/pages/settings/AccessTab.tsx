@@ -66,7 +66,7 @@ function ActiveSessions() {
         if (res.items.length === 0 && page > last) return setPage(last)
         setData(res)
       })
-      .catch((err) => live && setError(errorMessage(err, t('로그인 목록을 불러오지 못했습니다.'))))
+      .catch((err) => live && setError(errorMessage(err, t('로그인 목록을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.'))))
     return () => {
       live = false
     }
@@ -85,7 +85,7 @@ function ActiveSessions() {
       }
       setReloads((n) => n + 1)
     } catch (err) {
-      setError(errorMessage(err, t('로그아웃하지 못했습니다.')))
+      setError(errorMessage(err, t('로그아웃하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
       setBusy(null)
     }
@@ -226,7 +226,7 @@ function AccessLog() {
     accessApi
       .mine(page, EVENTS_PER_PAGE)
       .then((r) => live && setData(r))
-      .catch((err) => live && setError(errorMessage(err, t('접속 기록을 불러오지 못했습니다.'))))
+      .catch((err) => live && setError(errorMessage(err, t('접속 기록을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.'))))
     return () => {
       live = false
     }

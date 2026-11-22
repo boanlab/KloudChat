@@ -56,7 +56,7 @@ function EntryForm({
       onSaved(out.entries)
     } catch (err) {
       const said = ERRORS[errorCode(err) ?? '']
-      setError(said ? t(said) : errorMessage(err, t('저장하지 못했습니다.')))
+      setError(said ? t(said) : errorMessage(err, t('저장하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     }
   }
   return (
@@ -162,7 +162,7 @@ function EntryForm({
               onChange={(e) => set('listed', e.target.checked)} />
             {t('목록에 보이기')}
           </label>
-          <label className="flex items-center gap-1.5 text-base" title={t('켜 두면 모든 사용자에게 설치됩니다. 사용자는 끌 수 있지만 지울 수는 없습니다.')}>
+          <label className="flex items-center gap-1.5 text-base" title={t('켜 두면 모든 사용자에게 설치됩니다. 사용자는 끌 수 있지만 삭제할 수는 없습니다.')}>
             <input type="checkbox" className="size-4 accent-[var(--accent)]" checked={value.byDefault}
               data-testid="catalog-entry-default"
               onChange={(e) => set('byDefault', e.target.checked)} />
@@ -185,7 +185,7 @@ export function ConnectorCatalogSection() {
     try {
       setMeta(await connectorCatalogApi.list())
     } catch (err) {
-      setError(errorMessage(err, t('카탈로그를 불러오지 못했습니다.')))
+      setError(errorMessage(err, t('카탈로그를 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     }
   }, [t])
   useEffect(() => {

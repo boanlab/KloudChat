@@ -160,7 +160,7 @@ test('잘못된 주소를 저장하면 연결이 끊기고, 되돌리면 복구�
       .getByRole('button', { name: '저장', exact: true })
       .first()
       .click()
-    await expect(page.getByText('LiteLLM 에 연결되지 않았습니다')).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByText('LiteLLM에 연결되지 않았습니다')).toBeVisible({ timeout: 30_000 })
   } finally {
     // Instance-wide configuration: always revert. Through the UI, since `page.request` has no token.
     await page
@@ -169,5 +169,5 @@ test('잘못된 주소를 저장하면 연결이 끊기고, 되돌리면 복구�
       .catch(() => {})
   }
 
-  await expect(page.getByText('LiteLLM 에 연결되어 있습니다')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('LiteLLM에 연결되어 있습니다')).toBeVisible({ timeout: 30_000 })
 })

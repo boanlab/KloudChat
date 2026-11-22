@@ -349,7 +349,7 @@ test('pending sign-ups are approved together from a selection', async ({ page },
   const fx = await adminFixture(page, info)
   await page.goto('/admin/users')
   await expect(page.getByTestId('users-range')).toBeVisible({ timeout: 15_000 })
-  await page.getByRole('checkbox', { name: '이 페이지 전체 선택' }).check()
+  await page.getByRole('checkbox', { name: '이 페이지 모두 선택' }).check()
   const bar = page.getByTestId('users-bulk')
   await expect(bar).toContainText('3명 선택')
   await expect(bar).toContainText('승인 대기 2명')

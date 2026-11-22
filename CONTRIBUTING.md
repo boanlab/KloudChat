@@ -196,6 +196,34 @@ UI that renders a price renders its unit with it.
 Korean source string as the key (`lib/i18n.ts`); a new string needs an English
 entry, and untranslated strings fall back to the Korean original.
 
+**Screen copy follows one style.** Korean strings use the polite register
+(합니다 / 하세요), never 해요체. Labels, headings, empty-state titles and badges
+are noun phrases with no final period; toasts, notices and hints that are full
+sentences end with a period. A message about a failure that can be retried ends
+with the next step (`… 못했습니다. 잠시 뒤 다시 시도하세요.`); a refusal that
+retrying cannot fix (limits, permissions, validation) names the reason instead.
+Do not put a space between Latin text and a following particle (`Dock에`, not
+`Dock 에`), and do not put a particle after a placeholder: end the sentence on
+it (`삭제하지 못했습니다: {name}`) or wrap it in parentheses. Use one Korean
+term per English term; the product's own vocabulary is fixed here:
+
+| English | Korean | Meaning |
+| --- | --- | --- |
+| Delete | 삭제 | Destroy something the user owns (conversation, chatbot, section, slide, table, file, key) |
+| Remove | 제거 | Take something out of a list, connection or attachment without destroying the original |
+| Clear | 지우기 | Empty a value, format or filter (filter, formatting, color, search) |
+| Upload | 올리기 | Send a file to the app (not 업로드) |
+| Download | 내려받기 | Save a file from the app (not 다운로드) |
+| Sign up | 가입하기 | Create an account (not 회원가입) |
+| Select all / Select none | 모두 선택 / 모두 해제 | Bulk selection (not 전체 선택 / 전체 해제) |
+| Reset password | 비밀번호 재설정 | Not 초기화 |
+| Move up / Move down | 위로 옮기기 / 아래로 옮기기 | Not 이동 |
+| Undo | 실행 취소 | Not 편집 취소 |
+| Explore | 탐색 | Sub-tab for browsing what can be added (agents, skills, MCP servers); not 카탈로그 |
+
+Every change to a Korean string changes its key in `lib/i18n.ts` and every use
+of the literal (web, e2e, API messages, tests) in the same commit.
+
 **The master key never leaves the API process.** No route returns it, no log
 line prints it, and the browser has no path to LiteLLM. Per-user virtual keys
 are what upstream calls are made with.

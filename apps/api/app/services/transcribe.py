@@ -140,7 +140,7 @@ async def _whisper(
         raise TranscribeError("음성 인식 서버에 연결하지 못했습니다.") from exc
     if response.status_code >= 400:
         log.warning("whisper %s: %s", response.status_code, response.text[:200])
-        raise TranscribeError("받아쓰지 못했습니다.")
+        raise TranscribeError("받아쓰지 못했습니다. 잠시 뒤 다시 시도하세요.")
     try:
         body = response.json()
     except ValueError:

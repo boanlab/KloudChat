@@ -34,7 +34,7 @@ const ROUTES: [string, string][] = [
 
 /** Synonyms that must not both appear: 편집 beside 수정 reads as two actions. */
 const SYNONYMS: [name: string, words: string[]][] = [
-  ['삭제', ['삭제', '지우기', '제거', '없애기']],
+  ['삭제', ['삭제', '제거', '없애기']],
   ['수정', ['수정', '편집', '고치기']],
   ['저장', ['저장', '적용']],
   ['만들기', ['만들기', '생성']],

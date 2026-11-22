@@ -7,6 +7,7 @@ import { kindMeta } from '@/lib/kinds'
 import { useBotAttention } from '@/lib/publishing'
 import { isMac } from '@/lib/shortcuts'
 import { cn } from '@/lib/utils'
+import { dayBucket, type DayBucket } from '@/lib/days'
 import { useStore } from '@/store/useStore'
 import type { Project, Session } from '@/types'
 import { useT } from '@/lib/useT'
@@ -172,6 +173,13 @@ function SessionRow({
   )
 }
 
+const BUCKETS: { id: DayBucket; label: string }[] = [
+  { id: 'today', label: '오늘' },
+  { id: 'yesterday', label: '어제' },
+  { id: 'week', label: '이번 주' },
+  { id: 'older', label: '이전' },
+]
+
 export function Sidebar() {
   const navigate = useNavigate()
   const t = useT()
@@ -326,7 +334,7 @@ export function Sidebar() {
         <div className="border-t border-line px-3 py-2">
           {sessionsFailed && (
             <p role="alert" className="mb-2 flex flex-wrap items-center gap-x-2 px-2.5 text-sm text-danger">
-              {t('대화 목록을 불러오지 못했습니다.')}
+              {t('대화 목록을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')}
               <button
                 type="button"
                 onClick={() => void loadSessions()}
@@ -344,15 +352,18 @@ export function Sidebar() {
               <div className="space-y-0.5">{pinned.map(renderRow)}</div>
             </section>
           )}
-          {visible.length > 0 && (
-            // One heading: day buckets would mostly hold one row.
-            <section className="mb-2">
-              <p className="px-2.5 pb-1 text-xs font-semibold tracking-wide text-faint uppercase">
-                {t('최근')}
-              </p>
-              <div className="space-y-0.5">{visible.map(renderRow)}</div>
-            </section>
-          )}
+          {BUCKETS.map(({ id, label }) => {
+            const rows = visible.filter((c) => dayBucket(c.updatedAt) === id)
+            if (rows.length === 0) return null
+            return (
+              <section key={id} className="mb-2">
+                <h3 className="px-2.5 pb-1 text-xs font-semibold tracking-wide text-faint uppercase">
+                  {t(label)}
+                </h3>
+                <div className="space-y-0.5">{rows.map(renderRow)}</div>
+              </section>
+            )
+          })}
           {unpinned.length > 0 && (
             <NavLink
               to="/history"
@@ -407,7 +418,7 @@ export function Sidebar() {
         }}
         onConfirm={() => confirming && void deleteSession(confirming.id, { files: withFiles && !!fileCount })}
         title={t('{name} 삭제').replace('{name}', confirming?.title ?? '')}
-        description={t('되돌릴 수 없습니다. 이 대화의 문서·아티팩트와 공유 링크도 지워집니다.')}
+        description={t('되돌릴 수 없습니다. 이 대화의 문서·아티팩트와 공유 링크도 삭제됩니다.')}
       >
         <DeleteFilesChoice checked={withFiles} onChange={setWithFiles} count={fileCount ?? 0} />
       </ConfirmDialog>

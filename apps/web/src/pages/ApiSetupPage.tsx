@@ -148,7 +148,7 @@ export function ApiSetupPage() {
         <section className="mt-5">
           <h2 className="text-base font-medium">{t('스트리밍')}</h2>
           <p className="mt-1 mb-2 text-base text-muted">
-            {t('긴 답은 흘려 받습니다. 위에서 만든 client 를 그대로 씁니다.')}
+            {t('긴 답은 흘려 받습니다. 위에서 만든 client를 그대로 씁니다.')}
           </p>
           <Snippet text={streamSnippet} />
         </section>
@@ -168,7 +168,7 @@ export function ApiSetupPage() {
           </p>
           <ShellSnippet
             commands={{ linux: curlSnippet, mac: curlSnippet, windows: curlPowershell }}
-            note={{ windows: t('PowerShell 에서는 curl 이 Invoke-WebRequest 의 별칭이라 curl.exe 로 부릅니다.') }}
+            note={{ windows: t('PowerShell에서는 curl이 Invoke-WebRequest의 별칭이라 curl.exe로 부릅니다.') }}
           />
         </section>
 
@@ -187,7 +187,7 @@ export function ApiSetupPage() {
             <li>
               {t('임베딩도 같은 주소로 받습니다 — client.embeddings.create(model="local/bge-m3", input=[...]).')}
             </li>
-            <li>{t('키를 폐기하면 즉시 막힙니다. 코드 쪽 설정도 함께 지우세요.')}</li>
+            <li>{t('키를 폐기하면 즉시 막힙니다. 코드 쪽 설정도 함께 제거하세요.')}</li>
           </ul>
         </section>
       </PageBody>

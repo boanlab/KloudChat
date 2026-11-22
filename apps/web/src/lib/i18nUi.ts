@@ -147,7 +147,7 @@ export const EN_UI: Record<string, string> = {
   '앱으로 설치해 쓰고 있습니다.': 'You are using the installed app.',
   '설치하면 브라우저 탭 없이 따로 열립니다.': 'Installed, it opens in its own window without browser tabs.',
   'Safari 공유 메뉴의 「홈 화면에 추가」로 설치합니다.': 'Install with “Add to Home Screen” in Safari\'s Share menu.',
-  'Safari 파일 메뉴의 「Dock 에 추가」로 설치합니다.': 'Install with “Add to Dock” in Safari\'s File menu.',
+  'Safari 파일 메뉴의 「Dock에 추가」로 설치합니다.': 'Install with “Add to Dock” in Safari\'s File menu.',
   '이 브라우저에서는 앱으로 설치할 수 없습니다.': 'This browser cannot install the app.',
   '앱으로 설치': 'Install as an app',
   '설치 방법 보기': 'How to install',

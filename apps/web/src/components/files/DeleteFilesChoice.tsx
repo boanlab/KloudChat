@@ -23,7 +23,7 @@ export function useSessionFileCount(open: boolean, sessionId: string | null | un
   return count
 }
 
-/** 「파일도 함께 지우기」 in a conversation's delete dialog; off by default (they stay in the file box). */
+/** 「파일도 함께 삭제」 in a conversation's delete dialog; off by default (they stay in the file box). */
 export function DeleteFilesChoice({
   checked,
   onChange,
@@ -47,11 +47,11 @@ export function DeleteFilesChoice({
       <span className="min-w-0">
         <span className="block font-medium">
           {count === null
-            ? t('대화의 파일도 함께 지우기')
-            : t.n('대화의 파일 {n}개도 함께 지우기', count)}
+            ? t('대화의 파일도 함께 삭제')
+            : t.n('대화의 파일 {n}개도 함께 삭제', count)}
         </span>
         <span className="block text-muted">
-          {t('체크하지 않으면 파일함에 남고, 프로젝트 파일은 지우지 않습니다.')}
+          {t('체크하지 않으면 파일함에 남고, 프로젝트 파일은 삭제하지 않습니다.')}
         </span>
       </span>
     </label>

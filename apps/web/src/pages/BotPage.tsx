@@ -132,7 +132,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
         setBot(page)
         setMissing(false)
       })
-      .catch((err) => live && (err instanceof ApiError && err.status === 404 ? setMissing(true) : setError(t('챗봇을 불러오지 못했습니다.'))))
+      .catch((err) => live && (err instanceof ApiError && err.status === 404 ? setMissing(true) : setError(t('챗봇을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.'))))
     void loadList()
     return () => {
       live = false
@@ -182,7 +182,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
       const stored = asked ? got.messages.slice(0, -1) : got.messages
       setTurns(reply ? [...stored, reply.question, reply.answer] : stored)
     } catch {
-      if (shown.current === row.id) setError(t('대화를 불러오지 못했습니다.'))
+      if (shown.current === row.id) setError(t('대화를 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.'))
     }
   }
 
@@ -397,7 +397,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
     } catch {
       // The conversation stays on screen and in the list.
       setDeleting(false)
-      setError(t('대화를 지우지 못했습니다. 다시 시도해 주세요.'))
+      setError(t('대화를 삭제하지 못했습니다. 다시 시도해 주세요.'))
       return
     }
     setDeleting(false)
@@ -466,7 +466,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
       <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto" data-testid="bot-conversations">
         {listFailed ? (
           <li className="flex flex-wrap items-center gap-x-2 px-1 text-sm text-danger" data-testid="bot-conversations-failed">
-            {t('불러오지 못했습니다.')}
+            {t('불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')}
             <button type="button" className="text-accent underline hover:no-underline" onClick={() => void loadList()}>
               {t('다시 시도')}
             </button>
@@ -505,7 +505,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
         )}
       </ul>
       <p className="px-1 text-xs text-faint">
-        {t.n('대화는 마지막 질문 뒤 {n}일이 지나면 지워집니다.', bot.retentionDays)}
+        {t.n('대화는 마지막 질문 뒤 {n}일이 지나면 삭제됩니다.', bot.retentionDays)}
       </p>
     </nav>
   )
@@ -564,7 +564,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
                   {t('만든 사람에게 보내기')}
                 </Button>
               )}
-              <Button size="sm" variant="ghost" onClick={() => setDeleting(true)} aria-label={t('이 대화 지우기')} disabled={busy}>
+              <Button size="sm" variant="ghost" onClick={() => setDeleting(true)} aria-label={t('이 대화 삭제')} disabled={busy}>
                 <Trash2 size={13} />
               </Button>
             </div>
@@ -748,7 +748,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
         open={deleting}
         onClose={() => setDeleting(false)}
         onConfirm={() => void remove()}
-        title={t('이 대화 지우기')}
+        title={t('이 대화 삭제')}
         description={t('되돌릴 수 없습니다.')}
       />
     </div>

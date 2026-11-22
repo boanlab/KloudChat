@@ -105,7 +105,7 @@ export function MyUsagePage() {
         <div className="mt-6">
           <EmptyState
             icon={<BarChart3 size={18} />}
-            title={t('사용량을 불러오지 못했습니다.')}
+            title={t('사용량을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')}
             action={
               <Button variant="secondary" onClick={() => setAttempt((n) => n + 1)}>
                 {t('다시 시도')}

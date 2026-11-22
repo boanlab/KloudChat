@@ -288,7 +288,7 @@ export function AuditLog({ onTotal, account: initialAccount = '' }: {
           <ResourceStatus
             resource={audit}
             label={t('기록을 불러오는 중입니다…')}
-            failed={t('기록을 불러오지 못했습니다.')}
+            failed={t('기록을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')}
           />
         </Card>
       ) : data.items.length === 0 ? (

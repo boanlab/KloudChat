@@ -43,7 +43,7 @@ test('store skill: taken as a copy first, said so, with 빼기', async ({ page }
   const paths = state.calls.map((c) => `${c.method} ${c.path}`)
   expect(paths.filter((path) => !path.startsWith('GET '))).toEqual([`POST /skills/${storeSkills[0].id}/install`])
   const toast = page.getByTestId('toast')
-  await expect(toast).toContainText('바로 쓰려고 내 스킬에 추가했어요')
+  await expect(toast).toContainText('바로 쓸 수 있게 내 스킬에 추가했습니다')
   await expect(toast.getByRole('button', { name: '빼기' })).toBeVisible()
   expect(state.problems).toEqual([])
 })

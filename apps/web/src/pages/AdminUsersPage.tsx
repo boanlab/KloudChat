@@ -163,7 +163,7 @@ export function AdminUsersPage() {
     try {
       setKeys(await adminApi.userKeys(id))
     } catch (err) {
-      setKeyError(errorMessage(err, t('키 목록을 불러오지 못했습니다.')))
+      setKeyError(errorMessage(err, t('키 목록을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     }
   }
   const openKeys = (u: User) => {
@@ -419,7 +419,7 @@ export function AdminUsersPage() {
         title={
           u.id === user?.id
             ? t('자기 계정은 삭제할 수 없습니다')
-            : t('계정과 그 계정이 만든 모든 것을 지웁니다. 되돌릴 수 없습니다.')
+            : t('계정과 그 계정이 만든 모든 것을 삭제합니다. 되돌릴 수 없습니다.')
         }
         disabled={u.id === user?.id}
         onClick={() => setDeleting(u)}
@@ -468,7 +468,7 @@ export function AdminUsersPage() {
         <p className="flex items-center gap-1.5 font-medium">
           <button
             type="button"
-            className="min-w-0 truncate text-left hover:text-accent hover:underline"
+            className="min-h-6 min-w-0 truncate py-0.5 text-left hover:text-accent hover:underline"
             title={t('상세 보기')}
             onClick={() => openDetail(u)}
           >
@@ -653,7 +653,7 @@ export function AdminUsersPage() {
                 {usersLoading ? (
                   <Loader2 size={16} className="mx-auto animate-spin" />
                 ) : !usersPage ? (
-                  t('사용자를 불러오지 못했습니다.')
+                  t('사용자를 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')
                 ) : (
                   t('조건에 맞는 사용자가 없습니다.')
                 )}
@@ -697,7 +697,7 @@ export function AdminUsersPage() {
                   <input
                     type="checkbox"
                     className="size-4 cursor-pointer accent-[var(--accent)]"
-                    aria-label={t('이 페이지 전체 선택')}
+                    aria-label={t('이 페이지 모두 선택')}
                     checked={allTicked}
                     disabled={users.length === 0}
                     onChange={() => setTicked(allTicked ? new Set() : new Set(users.map((u) => u.id)))}
@@ -746,7 +746,7 @@ export function AdminUsersPage() {
                     {usersLoading ? (
                       <Loader2 size={16} className="mx-auto animate-spin" />
                     ) : !usersPage ? (
-                      t('사용자를 불러오지 못했습니다.')
+                      t('사용자를 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')
                     ) : (
                       t('조건에 맞는 사용자가 없습니다.')
                     )}
@@ -880,9 +880,9 @@ export function AdminUsersPage() {
             className="mt-1"
           />
           <span>
-            {t('올린 파일과 만든 이미지·클립도 디스크에서 지웁니다')}
+            {t('올린 파일과 만든 이미지·클립도 디스크에서 삭제합니다')}
             <span className="block text-xs text-faint">
-              {t('끄면 파일은 남고, 디스크가 차면 저장소 정리가 오래된 것부터 지웁니다.')}
+              {t('끄면 파일은 남고, 디스크가 차면 저장소 정리가 오래된 것부터 삭제합니다.')}
             </span>
           </span>
         </label>
@@ -920,7 +920,7 @@ export function AdminUsersPage() {
                       setProfileNote(t('저장했습니다.'))
                       setProfile((current) => current ? { ...current, ...patch } : current)
                     } catch (err) {
-                      setProfileError(errorMessage(err, t('저장하지 못했습니다.')))
+                      setProfileError(errorMessage(err, t('저장하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
                     }
                   })
                 }}
@@ -929,7 +929,7 @@ export function AdminUsersPage() {
               </Button>
             </div>
             <div className="border-t border-line pt-4">
-              <Field label={t('비밀번호 초기화')} hint={t('새 비밀번호를 정해 본인에게 따로 전달하세요. 저장하면 이 계정의 모든 로그인이 풀립니다.')}>
+              <Field label={t('비밀번호 재설정')} hint={t('새 비밀번호를 정해 본인에게 따로 전달하세요. 저장하면 이 계정의 모든 로그인이 풀립니다.')}>
                 <div className="flex gap-2">
                   <Input
                     value={draftPassword}
@@ -962,7 +962,7 @@ export function AdminUsersPage() {
                           await resetUserPassword(id, password)
                           setProfileNote(t('비밀번호를 바꿨습니다. 이 계정의 기존 로그인은 모두 풀렸습니다.'))
                         } catch (err) {
-                          setProfileError(errorMessage(err, t('비밀번호를 바꾸지 못했습니다.')))
+                          setProfileError(errorMessage(err, t('비밀번호를 바꾸지 못했습니다. 잠시 뒤 다시 시도하세요.')))
                         }
                       })
                     }}
@@ -1016,7 +1016,7 @@ export function AdminUsersPage() {
                             setKeyNote(t('새 키를 발급했습니다.'))
                             await loadKeys(id)
                           } catch (err) {
-                            setKeyError(errorMessage(err, t('키를 발급하지 못했습니다.')))
+                            setKeyError(errorMessage(err, t('키를 발급하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
                           }
                         })
                       }}
@@ -1137,7 +1137,7 @@ export function AdminUsersPage() {
               setKeyNote(t('「{name}」 키를 삭제했습니다.').replace('{name}', target.name))
               await loadKeys(owner.id)
             } catch (err) {
-              setKeyError(errorMessage(err, t('키를 삭제하지 못했습니다.')))
+              setKeyError(errorMessage(err, t('키를 삭제하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
             }
           })
         }}
@@ -1333,7 +1333,7 @@ function CreditDialog({
             {/* Only for a value that would be saved: no 「$0.00」 for an empty or bad entry. */}
             {valid && (
               <p className="text-xs text-faint" data-testid="credit-proxy-budget">
-                {t('LiteLLM 에도 {limit} 한도로 반영됩니다 (여유분 {pct}%).')
+                {t('LiteLLM에도 {limit} 한도로 반영됩니다 (여유분 {pct}%).')
                   .replace('{limit}', proxyBudget(parsed, economics))
                   .replace('{pct}', String(Math.round(economics.budgetHeadroom * 100)))}
               </p>

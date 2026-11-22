@@ -46,7 +46,7 @@ export function SourcesPanel({
       setStrict(listing.strictLocal)
       setOff(new Set(selection.off))
     } catch (err) {
-      setError(errorMessage(err, t('자료를 불러오지 못했습니다.')))
+      setError(errorMessage(err, t('자료를 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     }
   }, [projectId, sessionId, t])
 

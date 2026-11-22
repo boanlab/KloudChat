@@ -14,7 +14,7 @@ const GIVEN = Boolean(process.env.KCHAT_E2E_EMAIL)
 async function submitAuthForm(page: Page, mode: 'login' | 'signup') {
   const form = page.locator('form')
   await page
-    .getByRole('button', { name: mode === 'login' ? '로그인' : '회원가입', exact: true })
+    .getByRole('button', { name: mode === 'login' ? '로그인' : '가입하기', exact: true })
     .first()
     .click()
   if (mode === 'signup') await page.getByLabel('이름').fill(E2E_ADMIN.name)

@@ -88,7 +88,7 @@ test('upload: a kept script shows its code and its findings by file and line', a
   await page.route('**/api/skills/import**', (route) =>
     route.fulfill({ json: { dryRun: true, items: [item], created: [] } }))
   await page.goto('/customize/skills/upload')
-  await expect(page.getByRole('heading', { level: 1, name: '스킬 업로드' })).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByRole('heading', { level: 1, name: '스킬 올리기' })).toBeVisible({ timeout: 15_000 })
   await page.getByLabel('스킬 파일 고르기').setInputFiles({ name: 'table-tidy.zip', mimeType: 'application/zip', buffer: Buffer.from('PK') })
   const card = page.getByTestId('skill-preview')
   await expect(card.getByTestId('skill-preview-scripts')).toContainText('스크립트 2개 · 코드 실행 샌드박스에서만 실행')

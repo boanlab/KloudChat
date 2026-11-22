@@ -394,7 +394,7 @@ test('errors: every section action that fails says so', async ({ page }, testInf
   const shots = testInfo.outputPath('section-errors')
   const first = audit.data.sections[0].heading as string
   const menuButton = panel(page).getByRole('button', { name: `${first} 절 편집` })
-  const items = ['앞에 절 추가', '뒤에 절 추가', '아래로 옮기기', '이 절 지우기', '이 절만 다시 쓰기', '검토']
+  const items = ['앞에 절 추가', '뒤에 절 추가', '아래로 옮기기', '이 절 삭제', '이 절만 다시 쓰기', '검토']
   let n = 0
   for (const item of items) {
     await menuButton.click()

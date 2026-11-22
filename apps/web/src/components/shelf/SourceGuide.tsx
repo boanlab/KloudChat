@@ -31,7 +31,7 @@ export function SourceGuide({
     shelfApi
       .guide(projectId, subject)
       .then((found) => alive && setGuide(found))
-      .catch((err) => alive && setError(errorMessage(err, t('안내를 불러오지 못했습니다.'))))
+      .catch((err) => alive && setError(errorMessage(err, t('안내를 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.'))))
     return () => {
       alive = false
     }
@@ -94,7 +94,7 @@ export function SourceGuide({
       {running && (
         <p role="status" className="flex items-center gap-2 text-sm text-muted">
           <Loader2 size={13} className="animate-spin" />
-          {withNames(t('{guide}를 만드는 중… (자료는 안에서만 읽습니다)'), t)}
+          {withNames(t('{guide} 만드는 중… (자료는 안에서만 읽습니다)'), t)}
         </p>
       )}
       {guide?.state === 'failed' && (

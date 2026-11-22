@@ -115,7 +115,7 @@ export function VersionHistory({
       setVersions(await artifactsApi.versions(artifact.id))
     } catch (err) {
       setVersions([])
-      setError(errorMessage(err, t('버전 기록을 불러오지 못했습니다.')))
+      setError(errorMessage(err, t('버전 기록을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     }
   }
 
@@ -130,7 +130,7 @@ export function VersionHistory({
       onRestored?.()
       setOpen(false)
     } catch (err) {
-      setError(errorMessage(err, t('되돌리지 못했습니다.')))
+      setError(errorMessage(err, t('되돌리지 못했습니다. 잠시 뒤 다시 시도하세요.')))
       // 409: someone saved since; catch the panel up so the next try starts from that save
       if (err instanceof ApiError && err.status === 409) void refreshArtifact(artifact.id)
     } finally {
@@ -149,7 +149,7 @@ export function VersionHistory({
         comparison: compareVersion(row.data, currentData),
       })
     } catch (err) {
-      setError(errorMessage(err, t('이전 내용을 불러오지 못했습니다.')))
+      setError(errorMessage(err, t('이전 내용을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
       setPreviewing(null)
     }

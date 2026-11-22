@@ -32,7 +32,7 @@ export function SetExports({ item, onError }: { item: StudioItem; onError: (mess
       const blob = await shelfApi.exportSet(item.id, format)
       saveBlob(blob, `${item.title || item.kind}.${format === 'csv' ? 'csv' : 'txt'}`)
     } catch (err) {
-      onError(errorMessage(err, t('내려받지 못했습니다.')))
+      onError(errorMessage(err, t('내려받지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     }
   }
   const sheet = async (format: 'hwp' | 'docx' | 'web') => {
@@ -40,7 +40,7 @@ export function SetExports({ item, onError }: { item: StudioItem; onError: (mess
       const made = await shelfApi.sheet(item.id, format)
       navigate(`/s/${made.sessionId}?artifact=${made.artifactId}`)
     } catch (err) {
-      onError(errorMessage(err, t('시험지를 만들지 못했습니다.')))
+      onError(errorMessage(err, t('시험지를 만들지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     }
   }
   return (

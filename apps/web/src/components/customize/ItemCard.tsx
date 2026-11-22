@@ -118,7 +118,7 @@ export function ItemCard({
             )
           })}
         </p>
-        {item.summary && <p className="mt-0.5 line-clamp-2 text-base text-muted">{t(item.summary)}</p>}
+        {item.summary && <p className="mt-0.5 line-clamp-2 text-base text-muted" title={t(item.summary)}>{t(item.summary)}</p>}
         <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-sm text-faint">
           <span>{itemMeta(item, view, t)}</span>
           {/* Phone: status here, name keeps the width. */}
@@ -141,7 +141,7 @@ export function ItemCard({
         </p>
       </div>
       {/* Phone: a row of its own under the name, buttons with their words. */}
-      <div className="flex shrink-0 items-center gap-1.5 max-sm:w-full max-sm:justify-end" onClick={(e) => e.stopPropagation()}>
+      <div className="flex shrink-0 items-center gap-1.5 max-sm:w-full max-sm:flex-wrap max-sm:justify-end" onClick={(e) => e.stopPropagation()}>
         <button
           type="button"
           aria-label={t('{name} 바로 쓰기').replace('{name}', name)}
@@ -155,7 +155,7 @@ export function ItemCard({
               setBusy(null)
             }
           }}
-          className="inline-flex h-8 items-center gap-1.5 rounded-control border border-line bg-panel px-2.5 text-sm font-medium text-fg transition-colors hover:bg-elevated disabled:opacity-50"
+          className="inline-flex h-8 items-center gap-1.5 rounded-control border border-line bg-panel px-2.5 text-sm whitespace-nowrap font-medium text-fg transition-colors hover:bg-elevated disabled:opacity-50"
         >
           {busy === 'try' ? <Loader2 size={14} className="animate-spin" /> : <MessageCircle size={14} />}
           <span>{t('바로 쓰기')}</span>
@@ -167,7 +167,7 @@ export function ItemCard({
             title={t('이 스킬로 에이전트 만들기')}
             data-testid="skill-make-agent"
             onClick={() => navigate(`/customize/agents/new?from=skill:${item.id}`)}
-            className="flex h-8 min-w-8 items-center justify-center gap-1.5 rounded-control border border-line bg-panel text-sm text-fg transition-colors hover:bg-elevated max-sm:px-2.5"
+            className="flex h-8 min-w-8 items-center justify-center gap-1.5 whitespace-nowrap rounded-control border border-line bg-panel text-sm text-fg transition-colors hover:bg-elevated max-sm:px-2.5"
           >
             <Bot size={15} aria-hidden />
             <span className="sm:hidden">{t('에이전트로')}</span>
@@ -178,7 +178,7 @@ export function ItemCard({
             <span
               title={t('이미 내 항목에 있습니다')}
               aria-label={t('{name} 추가됨').replace('{name}', name)}
-              className="flex h-8 min-w-8 items-center justify-center gap-1.5 rounded-control border border-line text-sm text-success max-sm:px-2.5"
+              className="flex h-8 min-w-8 items-center justify-center gap-1.5 whitespace-nowrap rounded-control border border-line text-sm text-success max-sm:px-2.5"
             >
               <Check size={15} aria-hidden />
               <span className="sm:hidden">{t('추가됨')}</span>
@@ -205,7 +205,7 @@ export function ItemCard({
                     setLockOpen(false)
                   }
                 }}
-                className="flex h-8 min-w-8 items-center justify-center gap-1.5 rounded-control border border-line text-sm text-faint hover:bg-elevated max-sm:px-2.5"
+                className="flex h-8 min-w-8 items-center justify-center gap-1.5 whitespace-nowrap rounded-control border border-line text-sm text-faint hover:bg-elevated max-sm:px-2.5"
               >
                 <Lock size={14} aria-hidden />
                 <span className="sm:hidden">{t('복사 잠김')}</span>
@@ -235,7 +235,7 @@ export function ItemCard({
                   setBusy(null)
                 }
               }}
-              className="flex h-8 min-w-8 items-center justify-center gap-1.5 rounded-control border border-line bg-panel text-sm text-fg transition-colors hover:bg-elevated disabled:opacity-50 max-sm:px-2.5"
+              className="flex h-8 min-w-8 items-center justify-center gap-1.5 whitespace-nowrap rounded-control border border-line bg-panel text-sm text-fg transition-colors hover:bg-elevated disabled:opacity-50 max-sm:px-2.5"
             >
               {busy === 'add' ? <Loader2 size={14} className="animate-spin" /> : <Plus size={15} />}
               <span className="sm:hidden">{t('추가')}</span>

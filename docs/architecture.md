@@ -1782,7 +1782,7 @@ icons (실행 취소, 다시 실행, 확대/축소 | 레이아웃, 이미지, �
 table and chart stand in the place of the text box and shape (a web slide places
 its content by layout) and 모양 holds the deck's look, accent colours, this
 slide's accent and several slides at once; the numbered thumbnail rail with the
-slide menu (새 슬라이드, 슬라이드 복제, 위로 이동, 아래로 이동, 슬라이드 삭제), drag to
+slide menu (새 슬라이드, 슬라이드 복제, 위로 옮기기, 아래로 옮기기, 슬라이드 삭제), drag to
 reorder and 「+ 새 슬라이드」; the speaker notes under the slide. A selected table,
 chart, metric set or picture opens its data editor between the slide and the
 notes. Keys: Ctrl+S, Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z), Ctrl+D (duplicate the
@@ -3301,7 +3301,7 @@ conversation to another project forgets the old entry and indexes the file
 into the new home's collection (`reindex_session_files`); deleting the
 conversation, singly or in bulk, forgets its uploads' entries while the rows
 stay in the file box (`forget_session_files`), unless the person ticked 「대화의 파일도 함께
-지우기」 (`?files=true`, bulk `files: true`): then the files attached or made in it go too,
+삭제」 (`?files=true`, bulk `files: true`): then the files attached or made in it go too,
 a project's or an agent's excepted (`delete_session_files`). Each file records how it came
 (`files.origin`: `upload`, or `generated` for a code run's output, an image, a chart, a
 figure, audio, video, an export) and, when it only copies an artifact listed elsewhere (a

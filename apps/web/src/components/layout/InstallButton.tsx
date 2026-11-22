@@ -22,17 +22,17 @@ export function InstallHowTo({ open, onClose, macSafari }: { open: boolean; onCl
     <Modal
       open={open}
       onClose={onClose}
-      title={t('Dock 에 추가하기')}
-      description={t('Safari 에서는 파일 메뉴로 설치합니다.')}
+      title={t('Dock에 추가하기')}
+      description={t('Safari에서는 파일 메뉴로 설치합니다.')}
       width="max-w-sm"
     >
       <ol className="space-y-3 text-base text-fg">
         <Step n={1}>{t('메뉴 막대의 「파일」을 엽니다')}</Step>
         <Step n={2}>
           <SquarePlus size={16} className="text-accent" />
-          {t('「Dock 에 추가…」를 고릅니다')}
+          {t('「Dock에 추가…」를 고릅니다')}
         </Step>
-        <Step n={3}>{t('「추가」를 누르면 Dock 에 KloudChat 아이콘이 생깁니다')}</Step>
+        <Step n={3}>{t('「추가」를 누르면 Dock에 KloudChat 아이콘이 생깁니다')}</Step>
       </ol>
     </Modal>
   ) : (
@@ -40,7 +40,7 @@ export function InstallHowTo({ open, onClose, macSafari }: { open: boolean; onCl
       open={open}
       onClose={onClose}
       title={t('홈 화면에 추가하기')}
-      description={t('Safari 에서는 공유 메뉴로 설치합니다.')}
+      description={t('Safari에서는 공유 메뉴로 설치합니다.')}
       width="max-w-sm"
     >
       <ol className="space-y-3 text-base text-fg">
@@ -71,7 +71,7 @@ export function InstallButton() {
         size="sm"
         onClick={() => void app.install()}
         aria-label={t('앱 설치')}
-        title={t('KloudChat 을 앱으로 설치합니다')}
+        title={t('KloudChat을 앱으로 설치합니다')}
       >
         <Download size={16} />
         <span className="text-sm font-medium">{t('앱 설치')}</span>

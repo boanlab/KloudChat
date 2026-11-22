@@ -1225,7 +1225,7 @@ def apply(data: bytes, ops: list[dict],
             tbl = _tbl(item.shape)
             index, rows = _row(tbl, op.get("after" if kind == "insert_table_row" else "row"))
             if kind == "delete_table_row" and len(rows) < 2:
-                raise PptxError("줄이 하나뿐인 표의 줄은 지울 수 없습니다.")
+                raise PptxError("줄이 하나뿐인 표의 줄은 삭제할 수 없습니다.")
             plan.append((op, (item.shape, rows[index])))
         elif kind == "add_slide":
             after = _slide_ref(deck, op.get("after", f"s{len(deck.slides)}"), zero=True)

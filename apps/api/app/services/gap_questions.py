@@ -154,7 +154,7 @@ def clean(raw: Any) -> list[dict[str, Any]]:
         qid = str(data.get("id") or "").strip() or f"q{n}"
         if not _ID.fullmatch(qid) or qid in seen:
             raise QuestionError("gap_id_invalid",
-                                f"질문 {n}: 영문 소문자로 시작하는 겹치지 않는 id 가 필요합니다.")
+                                f"질문 {n}: 영문 소문자로 시작하는 겹치지 않는 id가 필요합니다.")
         seen.add(qid)
         texts = {key: " ".join(str(data.get(key) or "").split())[:limit]
                  for key, limit in _TEXT_MAX.items()}

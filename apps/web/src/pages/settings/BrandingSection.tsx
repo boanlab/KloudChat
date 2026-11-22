@@ -47,7 +47,7 @@ export function BrandingSection({
       await onSaved()
       await refreshConfig()
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('실패했습니다.'))
+      setError(e instanceof Error ? e.message : t('실패했습니다. 잠시 뒤 다시 시도하세요.'))
     } finally {
       setBusy(false)
     }

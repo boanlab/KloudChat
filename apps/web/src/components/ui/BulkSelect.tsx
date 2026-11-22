@@ -95,7 +95,7 @@ export function BulkBar({
       await onDelete()
       setConfirming(false)
     } catch (err) {
-      setError(errorMessage(err, t('삭제하지 못했습니다.')))
+      setError(errorMessage(err, t('삭제하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
       setBusy(false)
     }
@@ -106,7 +106,7 @@ export function BulkBar({
       <div className="mb-3 flex flex-wrap items-center gap-2 rounded-card border border-accent/30 bg-accent-soft px-3 py-2 text-base">
         <span className="font-medium">{t('{n}개 선택됨').replace('{n}', String(count))}</span>
         <Button size="sm" onClick={onToggleAll}>
-          {allPicked ? t('전체 해제') : t('전체 선택')}
+          {allPicked ? t('모두 해제') : t('모두 선택')}
         </Button>
         <Button size="sm" onClick={onClear}>
           <X size={13} />

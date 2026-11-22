@@ -38,4 +38,4 @@ def test_an_unreadable_document_names_a_theme(monkeypatch: pytest.MonkeyPatch, r
     monkeypatch.setattr(design_extract, "_complete", fake_complete)
     with pytest.raises(design_extract.ExtractError) as caught:
         asyncio.run(design_extract.extract(source="공문 " * 40, model="m", api_key="k"))
-    assert str(caught.value) == "문서에서 테마를 읽어내지 못했습니다."
+    assert str(caught.value) == "문서에서 테마를 읽어내지 못했습니다. 잠시 뒤 다시 시도하세요."

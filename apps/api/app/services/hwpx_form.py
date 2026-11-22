@@ -339,7 +339,7 @@ class Guard:
     def may_delete(self, pid: str, paragraph: etree._Element) -> None:
         old = hwpx_edit._own_text(paragraph).strip()
         if _compact(old) in self.paras:
-            raise Skip(f"{pid}: 「{old[:20]}」는 서식이 정한 글이라 지우지 않았습니다.")
+            raise Skip(f"{pid}: 「{old[:20]}」는 서식이 정한 글이라 삭제하지 않았습니다.")
 
     # ── after the edits ────────────────────────────────────────────────────
 

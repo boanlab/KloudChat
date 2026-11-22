@@ -215,7 +215,7 @@ function IssueDetailView({ id }: { id: string }) {
       setNextStatus('')
       setReason('')
     } catch (err) {
-      setError(t(UPDATE_ERROR[errorCode(err)] ?? '저장하지 못했습니다.'))
+      setError(t(UPDATE_ERROR[errorCode(err)] ?? '저장하지 못했습니다. 잠시 뒤 다시 시도하세요.'))
     } finally {
       setSaving(false)
     }
@@ -227,7 +227,7 @@ function IssueDetailView({ id }: { id: string }) {
     try {
       setSnapshot(await issuesApi.adminSnapshot(id))
     } catch {
-      setError(t('세션 사본을 열지 못했습니다.'))
+      setError(t('세션 사본을 열지 못했습니다. 잠시 뒤 다시 시도하세요.'))
     } finally {
       setOpening(false)
     }

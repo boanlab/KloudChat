@@ -127,14 +127,15 @@ export function SuperAgentSection() {
 
       {/* A phone stacks each row as a card with its own field names; wider screens keep the table. */}
       <div className="overflow-x-auto max-sm:overflow-visible">
-        <table className="w-full min-w-[640px] text-sm max-sm:block max-sm:min-w-0" data-testid="super-agent-table">
+        <table className="w-full min-w-[760px] text-sm max-sm:block max-sm:min-w-0" data-testid="super-agent-table">
           <caption className="sr-only">{t('작업 종류별 모델')}</caption>
           <thead className="max-sm:hidden">
             <tr className="text-left text-xs text-faint">
               <th scope="col" className="py-1.5 pr-2 font-medium">{t('작업 종류')}</th>
               <th scope="col" className="py-1.5 pr-2 font-medium">Super Agent</th>
               <th scope="col" className="py-1.5 pr-2 font-medium">Super Agent (strict-local)</th>
-              <th scope="col" className="py-1.5 font-medium">{t('추론 강도')}</th>
+              <th scope="col" className="py-1.5 pr-2 font-medium">{t('추론 강도')}</th>
+              <th scope="col" className="py-1.5 font-medium">{t('추론 강도 (strict-local)')}</th>
             </tr>
           </thead>
           <tbody className="max-sm:block max-sm:space-y-2">
@@ -170,19 +171,8 @@ export function SuperAgentSection() {
                       {options(strictOnly(pool), rule.strictModel, SUPER_OVERRIDE_ROWS.has(name), true)}
                     </Select>
                     {rate(strictOnly(pool), rule.strictModel)}
-                    <Select
-                      className="mt-1 min-w-[10.5em]"
-                      aria-label={t('{class} · strict-local 추론 강도').replace('{class}', label)}
-                      value={rule.strictEffort ?? rule.effort}
-                      onChange={(event) =>
-                        setRule(name, { strictEffort: event.target.value as SuperAgentRule['effort'] })}
-                    >
-                      {EFFORTS.map((effort) => (
-                        <option key={effort} value={effort}>{t(SUPER_EFFORT_LABEL[effort])}</option>
-                      ))}
-                    </Select>
                   </td>
-                  <td className="py-2 max-sm:block max-sm:p-0">
+                  <td className="py-2 pr-2 max-sm:block max-sm:p-0">
                     <span className="mb-1 hidden text-xs text-faint max-sm:block" aria-hidden>{t('추론 강도')}</span>
                     {/* As wide as its longest label: a shared column width cut 「추론 높게」. */}
                     <Select
@@ -191,6 +181,20 @@ export function SuperAgentSection() {
                       value={rule.effort}
                       onChange={(event) =>
                         setRule(name, { effort: event.target.value as SuperAgentRule['effort'] })}
+                    >
+                      {EFFORTS.map((effort) => (
+                        <option key={effort} value={effort}>{t(SUPER_EFFORT_LABEL[effort])}</option>
+                      ))}
+                    </Select>
+                  </td>
+                  <td className="py-2 max-sm:block max-sm:p-0">
+                    <span className="mb-1 hidden text-xs text-faint max-sm:block" aria-hidden>{t('추론 강도 (strict-local)')}</span>
+                    <Select
+                      className="min-w-[10.5em]"
+                      aria-label={t('{class} · strict-local 추론 강도').replace('{class}', label)}
+                      value={rule.strictEffort ?? rule.effort}
+                      onChange={(event) =>
+                        setRule(name, { strictEffort: event.target.value as SuperAgentRule['effort'] })}
                     >
                       {EFFORTS.map((effort) => (
                         <option key={effort} value={effort}>{t(SUPER_EFFORT_LABEL[effort])}</option>
@@ -210,7 +214,7 @@ export function SuperAgentSection() {
         {t('대시보드·차트·그래프를 그리는 코드와 아티팩트는 「대시보드·차트」 줄의 모델이 씁니다.')}
       </p>
       <p className="text-xs text-faint">
-        {t('보고서·슬라이드는 「보고서·슬라이드」 줄의 모델이 쓰고, 개요·어려운 부분·검사에 걸린 부분만 「문서 개요·구성」「문서의 어려운 부분」「문서 고쳐 쓰기」 줄의 모델이 맡습니다. 줄을 비우면 그 단계도 쓰는 모델이 합니다.')}
+        {t('보고서·슬라이드는 「보고서·슬라이드」 줄의 모델이 씁니다. 개요·어려운 부분·고쳐 쓰기는 아래 줄의 모델이 맡고, 줄을 비우면 쓰는 모델이 합니다.')}
       </p>
       <p className="text-xs text-faint">
         {t('양식을 따르거나 자료가 많은 문서는 「복잡한 문서」 줄의 모델이 쓰고, 실패하면 「보고서·슬라이드」 줄의 모델이 잇습니다.')}
@@ -253,7 +257,7 @@ export function SuperAgentSection() {
             } catch (saveError) {
               const reason = SUPER_REFUSALS[errorCode(saveError)]
               setError(
-                reason ? t(reason) : errorMessage(saveError, t('Super Agent 설정을 저장하지 못했습니다.')),
+                reason ? t(reason) : errorMessage(saveError, t('Super Agent 설정을 저장하지 못했습니다. 잠시 뒤 다시 시도하세요.')),
               )
             } finally {
               setBusy(false)

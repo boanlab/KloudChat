@@ -104,7 +104,7 @@ export function ChannelsCard({ pub, onChange }: { pub: Publication; onChange: (n
       onChange(await publicationsApi.setChannels(pub.id, { embed: { on: on.embed, origins: list }, api: on.api, mcp: on.mcp }))
     } catch (err) {
       const code = err instanceof ApiError ? err.detail : ''
-      setError(CHANNEL_ERROR[code] ? t(CHANNEL_ERROR[code]) : errorMessage(err, t('저장하지 못했습니다.')))
+      setError(CHANNEL_ERROR[code] ? t(CHANNEL_ERROR[code]) : errorMessage(err, t('저장하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
       setBusy(false)
     }
@@ -235,7 +235,7 @@ export function ApiTab({ pub }: { pub: Publication }) {
       setKeys([{ ...key, key: undefined }, ...(keys ?? [])])
     } catch (err) {
       const code = err instanceof ApiError ? err.detail : ''
-      setError(code === 'too_many_keys' ? t('키는 10개까지 만들 수 있습니다. 쓰지 않는 키를 폐기하세요.') : errorMessage(err, t('키를 만들지 못했습니다.')))
+      setError(code === 'too_many_keys' ? t('키는 10개까지 만들 수 있습니다. 쓰지 않는 키를 폐기하세요.') : errorMessage(err, t('키를 만들지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     }
   }
 
@@ -387,7 +387,7 @@ export function ApiTab({ pub }: { pub: Publication }) {
           void publicationsApi
             .revokeKey(pub.id, target.id)
             .then(() => setKeys((keys ?? []).filter((k) => k.id !== target.id)))
-            .catch((err) => setError(errorMessage(err, t('키를 폐기하지 못했습니다.'))))
+            .catch((err) => setError(errorMessage(err, t('키를 폐기하지 못했습니다. 잠시 뒤 다시 시도하세요.'))))
         }}
         title={t('키 폐기')}
         confirmLabel={t('폐기')}

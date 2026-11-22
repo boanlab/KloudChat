@@ -147,7 +147,7 @@ export function SkillForm({
       setDone(true)
       onSaved(saved)
     } catch (err) {
-      setError(errorMessage(err, t('저장하지 못했습니다.')))
+      setError(errorMessage(err, t('저장하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
       setSaving(false)
     }

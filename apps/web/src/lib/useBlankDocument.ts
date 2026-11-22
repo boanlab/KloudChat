@@ -7,9 +7,9 @@ import { useStore } from '@/store/useStore'
 
 /** A file picked with nothing typed opens blank in its editor beside a chat. */
 const BLANK_START = {
-  hwp: { title: '새 한글 문서', failed: '한글 문서를 열지 못했습니다.' },
-  docx: { title: '새 Word 문서', failed: 'Word 문서를 열지 못했습니다.' },
-  pptx: { title: '새 PowerPoint 문서', failed: 'PowerPoint 문서를 열지 못했습니다.' },
+  hwp: { title: '새 한글 문서', failed: '한글 문서를 열지 못했습니다. 잠시 뒤 다시 시도하세요.' },
+  docx: { title: '새 Word 문서', failed: 'Word 문서를 열지 못했습니다. 잠시 뒤 다시 시도하세요.' },
+  pptx: { title: '새 PowerPoint 문서', failed: 'PowerPoint 문서를 열지 못했습니다. 잠시 뒤 다시 시도하세요.' },
 } as const satisfies Record<OfficeKind, { title: string; failed: string }>
 
 /** 「빈 문서로 시작」 of the 형식 chip, the same on the home screen and in an empty session;

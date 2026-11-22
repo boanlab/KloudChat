@@ -90,7 +90,7 @@ async def test_a_local_whisper_that_cannot_answer_is_reported_not_rerouted(monke
         return _Tools("http://whisper.local")
 
     async def local(*_args, **_kwargs) -> str:
-        raise t.TranscribeError("받아쓰지 못했습니다.")
+        raise t.TranscribeError("받아쓰지 못했습니다. 잠시 뒤 다시 시도하세요.")
 
     monkeypatch.setattr(t.settings_store, "tools_config", tools_config)
     monkeypatch.setattr(t, "_transcribe_locally", local)

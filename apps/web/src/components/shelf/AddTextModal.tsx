@@ -35,7 +35,7 @@ export function AddTextModal({
       setText('')
       onClose()
     } catch (err) {
-      setError(errorMessage(err, t('자료로 넣지 못했습니다.')))
+      setError(errorMessage(err, t('자료로 넣지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
       setBusy(false)
     }

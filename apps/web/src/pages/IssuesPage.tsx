@@ -221,7 +221,7 @@ function IssueItem({
             />
           ) : detailFailed ? (
             <div role="alert" className="flex flex-wrap items-center gap-2 text-base text-danger">
-              {t('답변을 불러오지 못했습니다.')}
+              {t('답변을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')}
               <Button size="sm" onClick={() => setAttempt((n) => n + 1)}>
                 {t('다시 시도')}
               </Button>

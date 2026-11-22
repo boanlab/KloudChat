@@ -4,7 +4,7 @@ import type { AuditRow } from '@/lib/api'
 import type { SessionKind } from '@/types'
 
 export const ACTION_LABEL: Record<string, string> = {
-  signup: '회원가입',
+  signup: '가입하기',
   'signup.verified': '이메일 인증 완료',
   'signup.verification_resent': '인증 메일 재발송',
   login: '로그인',
@@ -20,7 +20,7 @@ export const ACTION_LABEL: Record<string, string> = {
   'user.reinstate': '정지 해제',
   'user.role': '권한 변경',
   'user.update': '계정 정보 수정',
-  'user.password_reset': '비밀번호 초기화',
+  'user.password_reset': '비밀번호 재설정',
   'user.litellm_key': 'LiteLLM 키 교체',
   'user.delete': '계정 삭제',
   'user.models': '모델 허용 변경',
@@ -40,7 +40,7 @@ export const ACTION_LABEL: Record<string, string> = {
   'pipeline.reject': '진행 과정 반려',
   'issue.update': '문제 신고 처리 변경',
   'issue.snapshot_view': '신고된 대화 열람',
-  'skill.import': '스킬 업로드',
+  'skill.import': '스킬 올리기',
   'skill.approve': '스킬 공유 승인',
   'skill.reject': '스킬 공유 반려',
   'storage.reclaim': '저장 공간 자동 정리',
@@ -344,7 +344,7 @@ function deletionWords(meta: Record<string, unknown>, t: (s: string) => string):
     if (typeof meta[key] === 'number') parts.push(t(words).replace('{n}', (meta[key] as number).toLocaleString()))
   }
   if (typeof meta.sessions === 'number' && typeof meta.files === 'number' && meta.files > 0) {
-    parts.push(t('첨부 파일은 지우지 않음'))
+    parts.push(t('첨부 파일은 삭제하지 않음'))
   }
   return parts.join(' · ')
 }

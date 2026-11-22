@@ -114,7 +114,7 @@ export function WorkingDocs({ query, onCount }: { query: string; onCount: (n: nu
     try {
       await openInEditor(row)
     } catch (err) {
-      setError(errorMessage(err, t('편집기에서 열지 못했습니다.')))
+      setError(errorMessage(err, t('편집기에서 열지 못했습니다. 잠시 뒤 다시 시도하세요.')))
       setOpening(null)
     }
   }
@@ -131,7 +131,7 @@ export function WorkingDocs({ query, onCount }: { query: string; onCount: (n: nu
       docs.removeRows(ids)
       forget(ids)
     } catch (err) {
-      setError(errorMessage(err, t('삭제하지 못했습니다.')))
+      setError(errorMessage(err, t('삭제하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
       void docs.load()
     }
   }
@@ -150,7 +150,7 @@ export function WorkingDocs({ query, onCount }: { query: string; onCount: (n: nu
       }))
       setRenaming(null)
     } catch (err) {
-      setError(errorMessage(err, t('이름을 바꾸지 못했습니다.')))
+      setError(errorMessage(err, t('이름을 바꾸지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
       setSaving(false)
     }
@@ -212,7 +212,7 @@ export function WorkingDocs({ query, onCount }: { query: string; onCount: (n: nu
               onToggleAll={pick.toggleAll}
               onClear={pick.clear}
               title={t('문서')}
-              note={t('버전 기록도 함께 지워집니다.')}
+              note={t('버전 기록도 함께 삭제됩니다.')}
               onDelete={async () => {
                 await remove(pick.ids)
                 pick.clear()
@@ -298,7 +298,7 @@ export function WorkingDocs({ query, onCount }: { query: string; onCount: (n: nu
                       size="icon"
                       aria-label={t('{name} 내려받기').replace('{name}', row.title)}
                       title={t('내려받기')}
-                      onClick={() => void workingDocsApi.download(row).catch((err) => setError(errorMessage(err, t('내려받지 못했습니다.'))))}
+                      onClick={() => void workingDocsApi.download(row).catch((err) => setError(errorMessage(err, t('내려받지 못했습니다. 잠시 뒤 다시 시도하세요.'))))}
                     >
                       <Download size={14} />
                     </Button>
@@ -381,7 +381,7 @@ export function WorkingDocs({ query, onCount }: { query: string; onCount: (n: nu
         onClose={() => setConfirming(null)}
         onConfirm={() => confirming && void remove([confirming.id])}
         title={t('{name} 삭제').replace('{name}', confirming?.title ?? '')}
-        description={t('되돌릴 수 없습니다. 버전 기록도 함께 지워집니다.')}
+        description={t('되돌릴 수 없습니다. 버전 기록도 함께 삭제됩니다.')}
       />
     </div>
   )

@@ -115,7 +115,7 @@ export function ShareButton({
       const target = artifact ? { artifactId: artifact.id } : { sessionId: session?.id }
       setShare(await sharesApi.create({ ...target, scope }))
     } catch (err) {
-      setError(errorMessage(err, t('링크를 만들지 못했습니다.')))
+      setError(errorMessage(err, t('링크를 만들지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
       setBusy(false)
     }
@@ -168,7 +168,7 @@ export function ShareButton({
             className="flex flex-wrap items-center gap-x-2 text-sm text-danger"
             data-testid="share-list-failed"
           >
-            {t('공유 상태를 불러오지 못했습니다.')}
+            {t('공유 상태를 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')}
             <button
               type="button"
               className="text-accent underline hover:no-underline"
@@ -271,7 +271,7 @@ function ShareViews({ shareId }: { shareId: string }) {
     }
   }, [shareId])
 
-  if (failed) return <p className="text-sm text-muted">{t('열람 기록을 불러오지 못했습니다.')}</p>
+  if (failed) return <p className="text-sm text-muted">{t('열람 기록을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')}</p>
   if (rows === null) return <Loader2 size={14} className="animate-spin text-faint" />
   if (rows.length === 0) {
     return <p className="text-sm text-muted">{t('아직 아무도 열지 않았습니다.')}</p>

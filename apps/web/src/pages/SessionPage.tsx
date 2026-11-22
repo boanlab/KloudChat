@@ -266,7 +266,7 @@ function HandOffButtons({ agent, sessionId }: { agent: Agent; sessionId: string 
               <Button
                 size="sm"
                 disabled={busy || streaming}
-                title={t('이 대화를 자료로 같은 에이전트가 {name}을 씁니다').replace('{name}', name)}
+                title={t('이 대화를 자료로 같은 에이전트가 씁니다: {name}').replace('{name}', name)}
               >
                 <Icon size={14} />
                 {t('{name} 만들기').replace('{name}', name)}
@@ -600,7 +600,7 @@ export function SessionPage() {
         </div>
       ) : loadFailed ? (
         <div role="alert" className="flex max-w-sm flex-col items-center gap-3 text-center">
-          <p className="text-base text-muted">{t('최신 내용을 불러오지 못했습니다.')}</p>
+          <p className="text-base text-muted">{t('최신 내용을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')}</p>
           {retrying && <p className="text-sm text-faint">{t('잠시 후 다시 불러옵니다.')}</p>}
           <Button onClick={retryLoad}>
             <RotateCw size={14} />

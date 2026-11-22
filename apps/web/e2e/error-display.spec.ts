@@ -47,5 +47,5 @@ test('실패는 사유를 말한다 — 꺼진 에이전트에 보낸 경우', a
   // A 422 before the turn is written carries a machine code.
   await ask(page, testInfo, '꺼진 에이전트 확인', { status: 422, json: { detail: 'agent_disabled' } })
   await expect(page.getByText(/에이전트가 꺼져 있어/).first()).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByText('요청을 처리하지 못했습니다.')).toHaveCount(0)
+  await expect(page.getByText('요청을 처리하지 못했습니다. 잠시 뒤 다시 시도하세요.')).toHaveCount(0)
 })

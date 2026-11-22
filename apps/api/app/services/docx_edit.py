@@ -626,16 +626,16 @@ def apply(data: bytes, ops: list[dict],
             paragraph = _paragraph(doc, op.get("id"))[1]
             if paragraph.find(f"{_PPR}/{_SECT}") is not None:
                 raise DocxError(
-                    f"{op.get('id')}에는 구역 설정이 있어 지울 수 없습니다. 글만 비우세요."
+                    f"{op.get('id')}에는 구역 설정이 있어 삭제할 수 없습니다. 글만 비우세요."
                 )
             if len(doc.paragraphs) < 2:
-                raise DocxError("문서의 마지막 문단은 지울 수 없습니다. 글만 비우세요.")
+                raise DocxError("문서의 마지막 문단은 삭제할 수 없습니다. 글만 비우세요.")
             plan.append((op, paragraph))
         elif kind in ("insert_table_row", "delete_table_row"):
             table = _table(doc, op.get("table"))
             index, rows = _row(table, op.get("after" if kind == "insert_table_row" else "row"))
             if kind == "delete_table_row" and len(rows) < 2:
-                raise DocxError("줄이 하나뿐인 표의 줄은 지울 수 없습니다.")
+                raise DocxError("줄이 하나뿐인 표의 줄은 삭제할 수 없습니다.")
             plan.append((op, (table, rows[index])))
         elif kind == "insert_table":
             rows = office_edit.table_arg(op, DocxError)

@@ -58,8 +58,8 @@ export function SettingsPage() {
           }
         />
 
-        {/* Page links, not tabs: own addresses; NavLink sets aria-current. A phone wraps them. */}
-        <nav ref={strip} aria-label={t('설정 메뉴')} className="mb-5 flex gap-1 border-b border-line max-sm:flex-wrap sm:overflow-x-auto [scrollbar-width:none]">
+        {/* Page links, not tabs: own addresses; NavLink sets aria-current. A phone scrolls them in one row. */}
+        <nav ref={strip} aria-label={t('설정 메뉴')} className="mb-5 flex gap-1 overflow-x-auto border-b border-line [scrollbar-width:none] max-sm:pr-8 max-sm:[mask-image:linear-gradient(to_right,#000_calc(100%_-_2rem),transparent)]">
           {tabs.map((tab) => (
             <NavLink
               key={tab.to}

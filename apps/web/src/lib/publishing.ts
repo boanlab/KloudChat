@@ -85,8 +85,8 @@ export const VISIBILITY_HINT: Record<BotVisibility, string> = {
 export function reviewLine(pub: Publication, t: Translator): string {
   const asked = pub.requestedVisibility ? t(VISIBILITY_LABEL[pub.requestedVisibility]) : ''
   if (pub.reviewState === 'pending') {
-    if (asked && pub.pendingVersionId) return t('{scope}와 새 판을 관리자가 확인하고 있습니다.').replace('{scope}', asked)
-    if (asked) return t('{scope}를 관리자가 확인하고 있습니다. 그동안 지금 범위로 답합니다.').replace('{scope}', asked)
+    if (asked && pub.pendingVersionId) return t('관리자가 공개 범위({scope})와 새 판을 확인하고 있습니다.').replace('{scope}', asked)
+    if (asked) return t('관리자가 공개 범위({scope})를 확인하고 있습니다. 그동안 지금 범위로 답합니다.').replace('{scope}', asked)
     if (pub.requestedChannels && !pub.pendingVersionId) return t('채널 요청을 관리자가 확인하고 있습니다. 그동안 지금 열린 채널만 씁니다.')
     return t('새 판을 관리자가 확인하고 있습니다. 그동안 승인된 판이 답합니다.')
   }
@@ -103,11 +103,11 @@ export function noticeLines(view: 'off' | 'on', days: number, t: Translator, sig
     view === 'on'
       ? [
           t('입력 내용은 이 챗봇을 만든 사람 계정으로 처리·기록됩니다.'),
-          t.n('이 챗봇을 만든 사람이 대화 내용을 볼 수 있습니다. {n}일 뒤 지워집니다.', days),
+          t.n('이 챗봇을 만든 사람이 대화 내용을 볼 수 있습니다. {n}일 뒤 삭제됩니다.', days),
         ]
       : [t('입력 내용은 이 챗봇을 만든 사람 계정으로 처리·기록됩니다(개선을 위해 개인정보를 가린 통계로만 보입니다).')]
   if (!signedIn) {
-    if (view !== 'on') lines.push(t.n('대화는 마지막 질문 뒤 {n}일이 지나면 지워집니다.', days))
+    if (view !== 'on') lines.push(t.n('대화는 마지막 질문 뒤 {n}일이 지나면 삭제됩니다.', days))
     lines.push(t('로그인하지 않으면 이 브라우저에서만 대화를 이어 볼 수 있습니다. 쿠키를 지우면 대화를 다시 열 수 없습니다.'))
   }
   lines.push(t('개인정보를 입력하지 마세요.'))

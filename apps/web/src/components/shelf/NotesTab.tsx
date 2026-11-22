@@ -58,7 +58,7 @@ function NoteEditor({
       return true
     } catch (err) {
       if (err instanceof ApiError && err.detail === 'note_conflict') setConflict(true)
-      else setError(errorMessage(err, t('저장하지 못했습니다.')))
+      else setError(errorMessage(err, t('저장하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
       return false
     } finally {
       setBusy(false)
@@ -147,7 +147,7 @@ export function NotesTab({ projectId }: { projectId: string }) {
   const notesPaging = usePaging(notes?.length ?? 0, [projectId])
 
   const load = useCallback(
-    () => shelfApi.notes(projectId).then(setNotes).catch((err) => setError(errorMessage(err, t('메모를 불러오지 못했습니다.')))),
+    () => shelfApi.notes(projectId).then(setNotes).catch((err) => setError(errorMessage(err, t('메모를 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')))),
     [projectId, t],
   )
   useEffect(() => {
@@ -161,7 +161,7 @@ export function NotesTab({ projectId }: { projectId: string }) {
       addProjectFile(projectId, row)
       await load()
     } catch (err) {
-      setError(errorMessage(err, t('자료로 만들지 못했습니다.')))
+      setError(errorMessage(err, t('자료로 만들지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     }
   }
 
@@ -237,10 +237,10 @@ export function NotesTab({ projectId }: { projectId: string }) {
           const target = removing
           setRemoving(null)
           if (!target) return
-          shelfApi.removeNote(target.id).then(() => load()).catch((err) => setError(errorMessage(err, t('삭제하지 못했습니다.'))))
+          shelfApi.removeNote(target.id).then(() => load()).catch((err) => setError(errorMessage(err, t('삭제하지 못했습니다. 잠시 뒤 다시 시도하세요.'))))
         }}
         title={t('{name} 삭제').replace('{name}', removing?.title ?? '')}
-        description={withNames(t('메모를 지웁니다. 이 메모로 만든 자료는 지식 탭에서 따로 지울 때까지 남습니다.'), t)}
+        description={withNames(t('메모를 삭제합니다. 이 메모로 만든 자료는 지식 탭에서 따로 삭제할 때까지 남습니다.'), t)}
       />
     </div>
   )

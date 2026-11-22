@@ -43,7 +43,7 @@ function Finding({ finding, onFix }: { finding: LintFinding; onFix?: () => Promi
       await onFix()
       setDone(true)
     } catch (err) {
-      setFailed(errorMessage(err, t('고치지 못했습니다.')))
+      setFailed(errorMessage(err, t('고치지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
       setBusy(false)
     }
@@ -124,7 +124,7 @@ export function LintFindings({
       await onFixAll(all)
       setFixedAll(true)
     } catch (err) {
-      setFixAllError(errorMessage(err, t('고치지 못했습니다.')))
+      setFixAllError(errorMessage(err, t('고치지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
       setFixingAll(false)
     }
@@ -139,7 +139,7 @@ export function LintFindings({
       artifact.critique = (row.data as { critique?: Critique } | null)?.critique
       void loadArtifacts()
     } catch (err) {
-      setError(mediaFailure(err, t('검토하지 못했습니다.'), t))
+      setError(mediaFailure(err, t('검토하지 못했습니다. 잠시 뒤 다시 시도하세요.'), t))
     } finally {
       setBusy(false)
     }
@@ -228,7 +228,7 @@ export function LintFindings({
             )}
             <div className="px-2 pt-1 pb-2">
               <Button size="sm" onClick={() => void run()} disabled={busy}>
-                {busy ? t('읽는 중입니다…') : critique ? t('다시 검토') : t('검토 받기')}
+                {busy ? t('읽는 중…') : critique ? t('다시 검토') : t('검토 받기')}
               </Button>
             </div>
             {error && <p className="px-2.5 pb-2 text-sm text-danger">{error}</p>}

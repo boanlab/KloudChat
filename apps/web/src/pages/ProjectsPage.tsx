@@ -151,7 +151,7 @@ export function ProjectsPage() {
             onToggleAll={pick.toggleAll}
             onClear={pick.clear}
             title={t('프로젝트')}
-            note={t('붙여 둔 자료도 함께 지워집니다. 대화는 남고, 프로젝트에서만 빠집니다.')}
+            note={t('붙여 둔 자료도 함께 삭제됩니다. 대화는 남고, 프로젝트에서만 빠집니다.')}
             onDelete={async () => {
               await deleteMany('projects', pick.ids)
               pick.clear()

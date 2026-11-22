@@ -269,7 +269,7 @@ test('@phone an empty 대화 기록 offers nothing to pick or delete', async ({ 
   const state = await fixture(page, info, { empty: true })
   await page.goto('/history')
   await expect(page.getByRole('main').getByText('아직 대화가 없습니다')).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByRole('button', { name: '이 페이지 전체 선택' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '이 페이지 모두 선택' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: /선택 \d+개 삭제/ })).toHaveCount(0)
   await expect(page.getByRole('button', { name: '모든 대화 삭제' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: '새 대화 시작' })).toBeVisible()
@@ -280,7 +280,7 @@ test('@phone an empty 대화 기록 offers nothing to pick or delete', async ({ 
 test('a full history still offers its bulk actions', async ({ page }, info) => {
   await fixture(page, info)
   await page.goto('/history')
-  await expect(page.getByRole('button', { name: '이 페이지 전체 선택' })).toBeEnabled()
+  await expect(page.getByRole('button', { name: '이 페이지 모두 선택' })).toBeEnabled()
   await expect(page.getByRole('button', { name: '모든 대화 삭제' })).toBeEnabled()
 })
 
@@ -319,7 +319,7 @@ test('@phone a failed answer keeps its reason readable, the actions under it', a
     await page.setViewportSize({ width: phone, height: 844 })
     await page.goto(`/s/${failedId}`)
     const failure = page.getByTestId('answer-failure')
-    await expect(failure).toContainText('답변을 받지 못했습니다.', { timeout: 15_000 })
+    await expect(failure).toContainText('답변을 받지 못했습니다. 잠시 뒤 다시 시도하세요.', { timeout: 15_000 })
     const reason = failure.getByTestId('answer-failure-reason')
     expect(await lines(reason.locator('span').last())).toBeLessThanOrEqual(2)
     // measured in one go: the row is still sliding in
@@ -337,7 +337,7 @@ test('a failed answer keeps its actions beside a short reason on a wide screen',
   await fixture(page, info)
   await page.goto(`/s/${failedId}`)
   const failure = page.getByTestId('answer-failure')
-  await expect(failure).toContainText('답변을 받지 못했습니다.', { timeout: 15_000 })
+  await expect(failure).toContainText('답변을 받지 못했습니다. 잠시 뒤 다시 시도하세요.', { timeout: 15_000 })
   // side by side: the button's top within the reason's height (polled: the row slides in)
   await expect.poll(() => failure.evaluate((box) => {
     const reasonBox = box.querySelector('[data-testid="answer-failure-reason"]')!.getBoundingClientRect()

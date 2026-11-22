@@ -480,7 +480,7 @@ export function PipelineApprovals() {
                       await userPipelinesApi.approve(p.id)
                       void reload()
                     } catch (err) {
-                      setError(errorMessage(err, t('승인하지 못했습니다.')))
+                      setError(errorMessage(err, t('승인하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
                     }
                   }}
                 >
@@ -517,7 +517,7 @@ export function PipelineApprovals() {
                   setRejecting(null)
                   void reload()
                 } catch (err) {
-                  setError(errorMessage(err, t('반려하지 못했습니다.')))
+                  setError(errorMessage(err, t('반려하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
                 }
               }}
             >

@@ -67,7 +67,7 @@ export function HistoryPage() {
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [confirmAll, setConfirmAll] = useState(false)
   const [confirmPicked, setConfirmPicked] = useState(false)
-  /** 「대화의 파일도 함께 지우기」: off unless ticked in the dialog. */
+  /** 「대화의 파일도 함께 삭제」: off unless ticked in the dialog. */
   const [withFiles, setWithFiles] = useState(false)
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState<number | null>(null)
@@ -124,7 +124,7 @@ export function HistoryPage() {
         if (urlQuery && page > pages && next.total > 0) goTo({ page: pages })
       })
       .catch((err) => {
-        if (!controller.signal.aborted) setFailed(errorMessage(err, t('대화 기록을 불러오지 못했습니다.')))
+        if (!controller.signal.aborted) setFailed(errorMessage(err, t('대화 기록을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')))
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false)
@@ -165,7 +165,7 @@ export function HistoryPage() {
       setAllTotal(null)
       setReload((n) => n + 1)
     } catch (err) {
-      setError(errorMessage(err, t('삭제하지 못했습니다.')))
+      setError(errorMessage(err, t('삭제하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
       setBusy(false)
     }
@@ -183,7 +183,7 @@ export function HistoryPage() {
       goTo({ page: 1 })
       setReload((n) => n + 1)
     } catch (err) {
-      setError(errorMessage(err, t('삭제하지 못했습니다.')))
+      setError(errorMessage(err, t('삭제하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
       setBusy(false)
     }
@@ -218,7 +218,7 @@ export function HistoryPage() {
         </div>
         <Button
           disabled={rows.length === 0}
-          title={rows.length === 0 ? t('지울 대화가 없습니다') : undefined}
+          title={rows.length === 0 ? t('삭제할 대화가 없습니다') : undefined}
           onClick={() =>
             setPicked((prev) => {
               const next = new Set(prev)
@@ -228,12 +228,12 @@ export function HistoryPage() {
             })
           }
         >
-          {allPagePicked ? t('선택 해제') : t('이 페이지 전체 선택')}
+          {allPagePicked ? t('선택 해제') : t('이 페이지 모두 선택')}
         </Button>
         <Button
           variant="danger"
           disabled={busy || picked.size === 0}
-          title={picked.size === 0 ? t('먼저 지울 대화를 고르세요') : undefined}
+          title={picked.size === 0 ? t('먼저 삭제할 대화를 고르세요') : undefined}
           onClick={() => setConfirmPicked(true)}
         >
           <Trash2 size={14} />
@@ -348,7 +348,7 @@ export function HistoryPage() {
         }}
         onConfirm={() => void removePicked()}
         title={t('대화 {n}개를 삭제할까요?').replace('{n}', String(picked.size))}
-        description={t('되돌릴 수 없습니다. 이 대화들의 문서·아티팩트와 공유 링크도 지워집니다.')}
+        description={t('되돌릴 수 없습니다. 이 대화들의 문서·아티팩트와 공유 링크도 삭제됩니다.')}
       >
         <DeleteFilesChoice checked={withFiles} onChange={setWithFiles} count={null} />
       </ConfirmDialog>
@@ -365,7 +365,7 @@ export function HistoryPage() {
         <div className="flex items-start gap-2 rounded-card border border-danger/30 bg-danger/5 px-3 py-2.5 text-base text-danger">
           <TriangleAlert size={14} className="mt-0.5 shrink-0" />
           <span>
-            {t('되돌릴 수 없습니다. 이 대화들의 문서·아티팩트와 공유 링크도 지워집니다.')}
+            {t('되돌릴 수 없습니다. 이 대화들의 문서·아티팩트와 공유 링크도 삭제됩니다.')}
           </span>
         </div>
         <div className="mt-3">

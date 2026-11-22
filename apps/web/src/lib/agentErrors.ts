@@ -34,7 +34,7 @@ const AGENT_SAVE_ERRORS: Record<string, { message: string; place?: AgentErrorPla
     place: 'gap',
   },
   gap_too_many: { message: '빠진 정보 질문은 12개까지입니다.', place: 'gap' },
-  gap_id_invalid: { message: '빠진 정보 질문의 번호가 겹칩니다. 그 질문을 지우고 다시 추가하세요.', place: 'gap' },
+  gap_id_invalid: { message: '빠진 정보 질문의 번호가 겹칩니다. 그 질문을 삭제하고 다시 추가하세요.', place: 'gap' },
   gap_question_empty: { message: '빠진 정보 질문: 「물어볼 것」을 적으세요.', place: 'gap' },
   process_sections: { message: '세부 설정: 목차는 12개까지입니다.', place: 'settings' },
   process_table: { message: '세부 설정: 필수 표는 3개까지, 표마다 열 이름을 2~8개 적으세요.', place: 'settings' },

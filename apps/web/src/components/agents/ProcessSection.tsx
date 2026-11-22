@@ -248,7 +248,7 @@ function SaveAsBundle({ steps, onSaved }: { steps: PipelineStep[]; onSaved: () =
       setOpen(false)
       onSaved()
     } catch (err) {
-      setError(errorMessage(err, t('묶음으로 저장하지 못했습니다.')))
+      setError(errorMessage(err, t('묶음으로 저장하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     }
   }
   return (
@@ -479,7 +479,7 @@ export function ProcessSection({
           cat
             ? '기본 에이전트가 일하는 순서를 그대로 따릅니다.'
             : catState.status === 'error'
-              ? '기본 과정을 불러오지 못했습니다.'
+              ? '기본 과정을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.'
               : catState.slow
                 ? '기본 과정을 불러오는 중… 평소보다 오래 걸립니다.'
                 : '기본 과정을 불러오는 중…',
@@ -487,7 +487,7 @@ export function ProcessSection({
         )}
         {!cat && catState.status === 'error' && (
           <div className="ml-7">
-            <ResourceStatus resource={catState} compact failed={t('기본 과정을 불러오지 못했습니다.')} />
+            <ResourceStatus resource={catState} compact failed={t('기본 과정을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')} />
           </div>
         )}
         {value.mode === 'base' && (

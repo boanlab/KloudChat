@@ -49,7 +49,7 @@ export function useItemActions(onChanged?: () => void) {
         const copy = held.find((s) => s.originId === item.skill?.id) ?? held.find((s) => !before.has(s.id))
         if (!copy) return
         setToast({
-          text: t('바로 쓰려고 내 스킬에 추가했어요'),
+          text: t('바로 쓸 수 있게 내 스킬에 추가했습니다'),
           action: before.has(copy.id)
             ? undefined
             : { label: t('빼기'), run: () => void deleteSkill(copy.id) },
@@ -58,7 +58,7 @@ export function useItemActions(onChanged?: () => void) {
         await chatWithSkill(copy.id)
       }
     } catch (err) {
-      setNotice(item.agent ? startFailure(err, t) : errorMessage(err, t('시작하지 못했습니다.')))
+      setNotice(item.agent ? startFailure(err, t) : errorMessage(err, t('시작하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     }
   }
 
@@ -86,7 +86,7 @@ export function useItemActions(onChanged?: () => void) {
       setNotice(
         errorCode(err) === 'copy_closed'
           ? t('만든 사람이 복사를 허용하지 않아 내 에이전트로 가져올 수 없습니다.')
-          : errorMessage(err, t('가져오지 못했습니다.')),
+          : errorMessage(err, t('가져오지 못했습니다. 잠시 뒤 다시 시도하세요.')),
       )
     }
     return null

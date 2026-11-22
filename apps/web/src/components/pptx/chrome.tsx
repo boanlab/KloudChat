@@ -237,7 +237,7 @@ export function SlideRail({
           </button>
           <button type="button" role="menuitem" className="kc-item" disabled={menu.i === 0}
             onClick={close(() => onMove(menu.i, menu.i - 1))}>
-            <ArrowUp size={14} />{t('위로 이동')}
+            <ArrowUp size={14} />{t('위로 옮기기')}
           </button>
           <button type="button" role="menuitem" className="kc-item" disabled={menu.i === count - 1}
             onClick={close(() => onMove(menu.i, menu.i + 1))}>

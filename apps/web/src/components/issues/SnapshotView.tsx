@@ -46,7 +46,7 @@ export function SnapshotView({ reportId, snapshot }: { reportId: string; snapsho
     try {
       save(await issuesApi.adminFile(reportId, index, artifact), name)
     } catch {
-      setError(t('파일을 받지 못했습니다.'))
+      setError(t('파일을 받지 못했습니다. 잠시 뒤 다시 시도하세요.'))
     }
   }
 

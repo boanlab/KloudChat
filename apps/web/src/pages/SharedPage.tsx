@@ -247,7 +247,7 @@ function SharedOffice({
         const bytes = await blob.arrayBuffer()
         if (live) setFile({ blob, bytes })
       })
-      .catch((err: unknown) => live && setFailed(errorMessage(err, t('문서를 불러오지 못했습니다.'))))
+      .catch((err: unknown) => live && setFailed(errorMessage(err, t('문서를 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.'))))
     return () => {
       live = false
     }

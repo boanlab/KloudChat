@@ -804,7 +804,7 @@ export function Composer({
       }
       return text ?? ''
     } catch (err) {
-      setChatError(errorMessage(err, t('받아쓰지 못했습니다.')))
+      setChatError(errorMessage(err, t('받아쓰지 못했습니다. 잠시 뒤 다시 시도하세요.')))
       return ''
     } finally {
       setTranscribing(false)
@@ -1926,7 +1926,7 @@ export function Composer({
       const copy = useStore.getState().skills.find((mine) => mine.originId === s.id)
       if (copy) toggleSkill(copy.id, false, copy)
     } catch {
-      setNotice(t('스킬을 추가하지 못했습니다.'))
+      setNotice(t('스킬을 추가하지 못했습니다. 잠시 뒤 다시 시도하세요.'))
     } finally {
       setAdding(null)
     }
@@ -2667,7 +2667,7 @@ export function Composer({
                   ? t('{name} 올리는 중 {percent}%')
                     .replace('{name}', uploadProgress.name)
                     .replace('{percent}', String(Math.floor((uploadProgress.sent / uploadProgress.total) * 100)))
-                  : t('업로드 중')}
+                  : t('올리는 중')}
               </span>
             )}
             {uploading && mediaNotes.map((note) => (

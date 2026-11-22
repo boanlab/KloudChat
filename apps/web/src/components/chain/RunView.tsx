@@ -132,7 +132,7 @@ export function RunView({ agent, onEditStep }: { agent: Agent; onEditStep: (id: 
         </div>
         {failed && (
           <p className="text-sm text-danger" role="alert">
-            {t('실행 기록을 불러오지 못했습니다.')}{' '}
+            {t('실행 기록을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')}{' '}
             <button type="button" className="underline" onClick={() => void loadRuns()}>
               {t('다시 시도')}
             </button>

@@ -70,7 +70,7 @@ export function PasswordSection() {
         setProblem({ key: 'current', message: t('현재 비밀번호가 맞지 않습니다.') })
         refs.current.current?.focus()
       } else {
-        setFailed(errorMessage(err, t('변경에 실패했습니다.')))
+        setFailed(errorMessage(err, t('변경에 실패했습니다. 잠시 뒤 다시 시도하세요.')))
       }
     } finally {
       setBusy(false)

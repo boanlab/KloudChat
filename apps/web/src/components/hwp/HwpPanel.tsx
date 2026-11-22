@@ -292,7 +292,7 @@ export function HwpPanel({
       const type = format === 'hwpx' ? 'application/hwp+zip' : 'application/x-hwp'
       saveBlob(new Blob([bytes as BlobPart], { type }), `${fileStem(doc.title)}.${format}`)
     } catch (err) {
-      setError(errorMessage(err, t('내려받지 못했습니다.')))
+      setError(errorMessage(err, t('내려받지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     }
   }
 

@@ -70,7 +70,7 @@ async def upload_logo(
     if files.sniff(file.filename or "", data) != mime:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="파일 내용이 PNG, JPG, WebP 가 아닙니다.",
+            detail="파일 내용이 PNG, JPG, WebP가 아닙니다.",
         )
     if len(data) > MAX_BYTES:
         raise HTTPException(

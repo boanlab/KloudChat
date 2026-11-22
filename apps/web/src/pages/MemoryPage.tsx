@@ -165,7 +165,7 @@ export function MemoryPage({ embedded = false }: { embedded?: boolean } = {}) {
         onClose={() => setConfirming(null)}
         onConfirm={() => confirming && deleteMemory(confirming.id)}
         title={t('{name} 삭제').replace('{name}', confirming?.name ?? '')}
-        description={t('지운 뒤 몇 초 동안은 되돌릴 수 있습니다.')}
+        description={t('삭제한 뒤 몇 초 동안은 되돌릴 수 있습니다.')}
       />
 
       <MemoryEditor draft={draft} onDraft={setDraft} onClose={() => setDraft(null)} />

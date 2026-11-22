@@ -221,7 +221,7 @@ function OutputLanguageField({ value, onChange }: { value: string; onChange: (ne
             value={value === 'auto' ? '' : value}
             maxLength={40}
             onChange={(e) => onChange(e.target.value.slice(0, 40))}
-            placeholder={t('예: Vietnamese, 독일어')}
+            placeholder={t('예: 베트남어, 독일어')}
           />
         )}
       </div>
@@ -344,7 +344,7 @@ export function AgentForm({
         try {
           await installSkill(storeId)
         } catch {
-          setError(t('스킬을 추가하지 못했습니다.'))
+          setError(t('스킬을 추가하지 못했습니다. 잠시 뒤 다시 시도하세요.'))
           return null
         }
         return useStore.getState().skills.find((mine) => mine.originId === storeId)?.id ?? null
@@ -488,7 +488,7 @@ export function AgentForm({
           await agentsApi.knowledge.fromFiles(saved.id, keepFiles)
           setKeepFiles([])
         } catch (err) {
-          setError(errorMessage(err, t('대화의 파일을 자료로 옮기지 못했습니다.')))
+          setError(errorMessage(err, t('대화의 파일을 자료로 옮기지 못했습니다. 잠시 뒤 다시 시도하세요.')))
         }
       }
       await loadWorkspace()
@@ -754,7 +754,7 @@ export function AgentForm({
               rows={3}
               value={draft.guide}
               onChange={(e) => edit({ ...draft, guide: e.target.value.slice(0, 2000) })}
-              placeholder={t('예: 논문 PDF 를 첨부하고 어느 학회 기준인지 알려 주세요. 리뷰어 관점에서 검토합니다.')}
+              placeholder={t('예: 논문 PDF를 첨부하고 어느 학회 기준인지 알려 주세요. 리뷰어 관점에서 검토합니다.')}
             />
           </Field>
           <Field label={t('시작 문장')} hint={t('한 줄에 하나, 여섯 개까지. 누르면 그대로 보냅니다.')}>
@@ -901,7 +901,7 @@ export function AgentForm({
                     reload: () => void loadModels(),
                   }}
                   label={t('모델 목록을 불러오는 중…')}
-                  failed={t('모델 목록을 불러오지 못했습니다.')}
+                  failed={t('모델 목록을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')}
                 />
               ) : (
                 <Select

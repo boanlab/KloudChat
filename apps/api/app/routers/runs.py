@@ -201,7 +201,8 @@ async def rerun(session_id: str, run_id: str, payload: RerunIn, user: CurrentUse
     attempts = {n: earlier.get(n, 1) + (1 if n in after else 0) for n in names}
 
     if run.flow == "make":
-        stream = sessions._make_pass(work, pipe, crashed="문서를 만들지 못했습니다.", start=start,
+        crashed = "문서를 만들지 못했습니다. 잠시 뒤 다시 시도하세요."
+        stream = sessions._make_pass(work, pipe, crashed=crashed, start=start,
                                      recorder=recorder, carried=carried, attempts=attempts,
                                      parent=run)
     elif run.flow == "revise":
@@ -249,7 +250,9 @@ async def _write_pass(work, pipe, recorder: pipeline_runs.Recorder, *, session_i
             yield chat_service.sse(event)
     except Exception as exc:  # noqa: BLE001 — turn must still settle
         log.exception("report rerun crashed for session %s", session_id)
-        yield chat_service.sse(sessions._error_event("보고서를 만들지 못했습니다.", exc))
+        yield chat_service.sse(
+            sessions._error_event(
+                "보고서를 만들지 못했습니다. 잠시 뒤 다시 시도하세요.", exc))
     finally:
         sessions._carry_records(work, parent, start)
     async for chunk in sessions._report_tail(work, recorder=recorder, session_id=session_id,

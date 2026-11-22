@@ -403,7 +403,7 @@ export function AdminGovernancePage() {
                 <Card className="p-4">
                   <p className="text-base font-medium">{t('대화 보존 기간')}</p>
                   <p className="text-base text-muted">
-                    {t('이 일수가 지난 대화 내용을 지웁니다. 사용 기록과 감사 로그는 남습니다. 0은 계속 보관.')}
+                    {t('이 일수가 지난 대화 내용을 삭제합니다. 사용 기록과 감사 로그는 남습니다. 0은 계속 보관.')}
                   </p>
                   <div className="mt-2 flex items-center gap-2">
                     <Input
@@ -434,7 +434,7 @@ export function AdminGovernancePage() {
 
         <p className="mt-3 flex items-center gap-1.5 text-sm text-faint">
           <ShieldCheck size={13} />
-          {t('기록은 고치거나 지울 수 없습니다.')}
+          {t('기록은 고치거나 삭제할 수 없습니다.')}
         </p>
       </PageBody>
     </>

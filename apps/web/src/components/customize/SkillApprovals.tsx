@@ -57,7 +57,7 @@ export function SkillApprovals() {
                       await adminSkillsApi.approve(skill.id)
                       void reload()
                     } catch (err) {
-                      setError(errorMessage(err, t('승인하지 못했습니다.')))
+                      setError(errorMessage(err, t('승인하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
                     }
                   }}
                 >
@@ -98,7 +98,7 @@ export function SkillApprovals() {
                   setRejecting(null)
                   void reload()
                 } catch (err) {
-                  setError(errorMessage(err, t('반려하지 못했습니다.')))
+                  setError(errorMessage(err, t('반려하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
                 }
               }}
             >

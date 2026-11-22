@@ -69,7 +69,7 @@ function refusal(detail: string, t: (s: string) => string): string {
   if (/^model_(title|code|code_fallback)_invalid$/.test(detail))
     return t('보조 작업에는 이 인스턴스가 직접 운영하는 모델만 고를 수 있습니다.')
   if (/^model_\w+_invalid$/.test(detail)) return t('이 작업에 쓸 수 없는 모델입니다. 목록에서 다시 고르세요.')
-  return t('저장하지 못했습니다.')
+  return t('저장하지 못했습니다. 잠시 뒤 다시 시도하세요.')
 }
 
 /** The Super Agent entries a routed surface's default may be; product names, not translated. */
@@ -200,7 +200,7 @@ export function ModelRolesSection({
       await onSaved()
       setSaved(true)
     } catch (err) {
-      setError(err instanceof ApiError ? refusal(err.detail, t) : t('저장하지 못했습니다.'))
+      setError(err instanceof ApiError ? refusal(err.detail, t) : t('저장하지 못했습니다. 잠시 뒤 다시 시도하세요.'))
     } finally {
       setBusy(false)
     }

@@ -130,7 +130,7 @@ export function ChainCanvas({
           ariaLabelConfig={{
             'node.a11yDescription.default': t('Enter나 Space로 단계를 고릅니다. Delete로 뺍니다.'),
             'node.a11yDescription.keyboardDisabled': t('Enter나 Space로 단계를 고르고 화살표로 옮깁니다. Delete로 뺍니다.'),
-            'edge.a11yDescription.default': t('Enter나 Space로 선을 고르고 Delete로 지웁니다.'),
+            'edge.a11yDescription.default': t('Enter나 Space로 선을 고르고 Delete로 삭제합니다.'),
             'handle.ariaLabel': t('연결점'),
           }}
         >

@@ -76,7 +76,7 @@ export function ProfileTab() {
         </span>
         <div className="min-w-0 flex-1 max-sm:basis-32">
           <p className="text-base font-medium">{user?.name}</p>
-          <p className="break-all text-base text-muted">{user?.email}</p>
+          <p className="truncate text-base text-muted" title={user?.email}>{user?.email}</p>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {user?.role === 'admin' && (
               <Badge tone="accent">
@@ -91,7 +91,7 @@ export function ProfileTab() {
         <div className="text-right">
           <p className="text-xs text-faint">{t('남은 크레딧')}</p>
           <p className="text-lg font-semibold tabular-nums">{remaining.toLocaleString()}</p>
-          <p className="text-xs text-faint">/ {t('{n} 월').replace('{n}', user?.monthlyCredits.toLocaleString() ?? '0')}</p>
+          <p className="text-xs text-faint">{t('월 {n} 크레딧 중').replace('{n}', user?.monthlyCredits.toLocaleString() ?? '0')}</p>
         </div>
       </Card>
 

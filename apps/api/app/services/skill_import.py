@@ -211,7 +211,7 @@ def scan_script(source: str, *, file: str) -> list[Finding]:
                 flag("script_dynamic_code", f"실행 중에 만든 코드를 돌립니다({called}).",
                      node.lineno)
             elif _writes_outside(node, called):
-                flag("script_file_write", "작업 폴더 밖의 경로에 쓰거나 지웁니다.", node.lineno)
+                flag("script_file_write", "작업 폴더 밖의 경로에 쓰거나 삭제합니다.", node.lineno)
     return out
 
 
@@ -376,13 +376,15 @@ def _read_skill_md(preview: Preview, text: str, file: str) -> None:
     if ignored:
         preview.warn(
             "server_field_ignored",
-            f"서버 전용 항목은 무시했어요: {', '.join(sorted(ignored))}",
+            f"서버 전용 항목은 제외했습니다: {', '.join(sorted(ignored))}",
             file,
         )
     unknown = [str(key)[:40] for key in meta if key not in skill_packages._FIELDS]
     if unknown:
         preview.warn(
-            "unknown_field", f"모르는 항목은 무시했어요: {', '.join(sorted(unknown)[:10])}", file
+            "unknown_field",
+            f"알 수 없는 항목은 제외했습니다: {', '.join(sorted(unknown)[:10])}",
+            file,
         )
 
     preview.name = _clean(meta["name"])
@@ -400,7 +402,7 @@ def _read_skill_md(preview: Preview, text: str, file: str) -> None:
         )
         good = [k for k in dict.fromkeys(str(i).strip() for i in items) if k in _KINDS]
         if len(good) != len(items):
-            preview.warn("unknown_kind", "모르는 kinds 값은 뺐어요.", file)
+            preview.warn("unknown_kind", "지원하지 않는 값이라 제외했습니다: kinds", file)
         preview.kinds = good or ["chat"]
 
     tools = meta.get("required_tools") or []
@@ -425,7 +427,7 @@ def _read_server_fields(preview: Preview, meta: dict, file: str) -> None:
         return
     fields, errors = skill_specs.validate(raw, own_scripts=tuple(s.name for s in preview.scripts))
     for error in errors:
-        preview.warn(error.code, f"{error} 이 항목은 뺐어요.", file)
+        preview.warn(error.code, f"{error} 이 항목은 제외했습니다.", file)
     preview.server = None if skill_specs.empty(fields) else fields
 
 
@@ -440,14 +442,14 @@ def _check_tools(preview: Preview, known: set[str] | None) -> None:
         elif tool == "run_skill_script":
             preview.warn(
                 "script_tool_dropped",
-                "올린 스킬의 스크립트는 실행하지 않아 run_skill_script 를 뺐어요.",
+                "올린 스킬의 스크립트는 실행하지 않아 run_skill_script 도구를 제외했습니다.",
             )
         elif known is not None and tool not in known:
             dropped.append(tool)
         else:
             keep.append(tool)
     if dropped:
-        preview.warn("unknown_tools", f"모르는 도구는 뺐어요: {', '.join(dropped[:10])}")
+        preview.warn("unknown_tools", f"알 수 없는 도구는 제외했습니다: {', '.join(dropped[:10])}")
     preview.required_tools = keep
 
 
@@ -512,12 +514,12 @@ def _read_archive(preview: Preview, data: bytes) -> None:
 
         skill_mds = [i for i in entries if PurePosixPath(i.filename).name.lower() == "skill.md"]
         if not skill_mds:
-            preview.block("no_skill_md", "압축 안에 SKILL.md 가 없습니다.", file)
+            preview.block("no_skill_md", "압축 안에 SKILL.md가 없습니다.", file)
             return
         if len(skill_mds) > 1:
             preview.block(
                 "multiple_skill_md",
-                "압축 안에 SKILL.md 가 여러 개입니다. 하나만 넣어 주세요.",
+                "압축 안에 SKILL.md가 여러 개입니다. 하나만 넣어 주세요.",
                 file,
             )
             return
@@ -525,7 +527,7 @@ def _read_archive(preview: Preview, data: bytes) -> None:
         if len(root_parts) > 1:
             preview.block(
                 "skill_md_not_at_root",
-                "SKILL.md 는 압축 맨 위나 폴더 하나 바로 안에 있어야 합니다.",
+                "SKILL.md는 압축 맨 위나 폴더 하나 바로 안에 있어야 합니다.",
                 file,
             )
             return
@@ -584,7 +586,7 @@ def _read_archive(preview: Preview, data: bytes) -> None:
 
         if any(e.reason == "script" for e in preview.excluded):
             preview.warn("scripts_excluded",
-                         "파이썬이 아닌 스크립트와 scripts/ 밖의 스크립트는 제외했어요.", file)
+                         "파이썬이 아닌 스크립트와 scripts/ 밖의 스크립트는 제외했습니다.", file)
 
     if skill_text is None:
         preview.block("not_utf8", "SKILL.md 가 UTF-8 텍스트가 아닙니다.", file)
@@ -659,7 +661,7 @@ def _append_resources(preview: Preview, texts: dict[str, str]) -> None:
     if skipped:
         preview.warn(
             "resources_skipped",
-            f"본문 한도({BODY_MAX:,}자)를 넘어 참고 자료 {len(skipped)}개는 넣지 못했어요.",
+            f"본문 한도({BODY_MAX:,}자)를 넘어 참고 자료 {len(skipped)}개는 넣지 못했습니다.",
             preview.filename,
         )
 

@@ -30,7 +30,7 @@ export function MediaPlayer({ fileId, start, audio = false }: { fileId: string; 
             timer = window.setTimeout(() => void load(true), POLL_MS)
           }
         })
-        .catch((err) => live && setFailed(errorMessage(err, t('영상을 불러오지 못했습니다.'))))
+        .catch((err) => live && setFailed(errorMessage(err, t('영상을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.'))))
     void load(false)
     return () => {
       live = false
@@ -98,7 +98,7 @@ export function MediaPlayer({ fileId, start, audio = false }: { fileId: string; 
       )}
       {info.state === 'failed' && (
         <p role="status" data-testid="media-status" className="flex flex-wrap items-center gap-2 text-sm text-warn">
-          {info.error ?? t('영상을 읽지 못했습니다.')}
+          {info.error ?? t('영상을 읽지 못했습니다. 다른 영상으로 다시 시도하세요.')}
           <Button size="sm" variant="secondary" onClick={retry}>
             <RotateCcw size={13} /> {t('다시 읽기')}
           </Button>

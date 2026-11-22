@@ -348,7 +348,7 @@ def validate(raw: Any, *,
     entry = str(data.get("entry") or "").strip()
     if stage and stage not in skill_packages.STAGES:
         errors.append(FieldError("skill_stage_unknown",
-                                 f"stage 는 pre 또는 post 입니다: {stage[:20]}"))
+                                 f"stage는 pre 또는 post 입니다: {stage[:20]}"))
     elif stage:
         allowed = entry_refs().get(stage, ())
         if entry not in allowed:
@@ -359,7 +359,7 @@ def validate(raw: Any, *,
         else:
             out["stage"], out["entry"] = stage, entry
     elif entry:
-        errors.append(FieldError("skill_entry_without_stage", "entry 는 stage 와 함께 씁니다."))
+        errors.append(FieldError("skill_entry_without_stage", "entry는 stage와 함께 씁니다."))
     for ref in _refs(data.get("post_check")):
         if ref in post_check_refs():
             out["post_check"].append(ref)

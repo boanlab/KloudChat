@@ -55,7 +55,7 @@ export function AgentDetailPage() {
           {workspaceLoading || agents.length === 0 ? (
             <LoadingState label={t('에이전트를 불러오는 중…')} />
           ) : (
-            <EmptyState icon={<Bot size={18} />} title={t('이 에이전트를 찾을 수 없습니다')} description={t('지워졌거나 볼 수 없는 에이전트입니다.')} />
+            <EmptyState icon={<Bot size={18} />} title={t('이 에이전트를 찾을 수 없습니다')} description={t('삭제되었거나 볼 수 없는 에이전트입니다.')} />
           )}
         </PageBody>
       </>

@@ -188,7 +188,7 @@ export function OutputFiles({ files }: { files: NonNullable<Step['outputs']> }) 
           <Download size={12} className="shrink-0 text-faint" />
         </button>
       ))}
-      {failed && <span className="text-sm text-danger">{t('파일을 내려받지 못했습니다.')}</span>}
+      {failed && <span className="text-sm text-danger">{t('파일을 내려받지 못했습니다. 잠시 뒤 다시 시도하세요.')}</span>}
     </span>
   )
 }

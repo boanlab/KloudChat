@@ -118,5 +118,5 @@ test('만들지 못하면 그 프롬프트가 실패한 차례로 남는다', as
     await route.fulfill({ json: session })
   })
   await page.reload()
-  await expect(page.getByText('만들지 못했습니다.')).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByText('만들지 못했습니다. 잠시 뒤 다시 시도하세요.')).toBeVisible({ timeout: 20_000 })
 })

@@ -69,7 +69,7 @@ export function SelectionNote({
       window.getSelection()?.removeAllRanges()
       setPicked(null)
     } catch (err) {
-      setToast({ text: errorMessage(err, t('메모로 저장하지 못했습니다.')) })
+      setToast({ text: errorMessage(err, t('메모로 저장하지 못했습니다. 잠시 뒤 다시 시도하세요.')) })
     } finally {
       setBusy(false)
     }
