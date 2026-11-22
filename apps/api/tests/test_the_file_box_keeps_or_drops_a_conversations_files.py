@@ -85,7 +85,7 @@ async def test_deleting_a_conversations_files_leaves_a_projects_and_an_agents(db
 
 def test_the_audit_note_says_whether_the_files_stayed():
     assert sessions._files_note(0, 0) == ""
-    assert sessions._files_note(3, 0) == "첨부 파일은 지우지 않음"
+    assert sessions._files_note(3, 0) == "첨부 파일은 삭제하지 않음"
     assert sessions._files_note(3, 3) == "파일 3개도 지움"
     # kept by default: the person is asked first
     assert SessionBulkDelete().files is False

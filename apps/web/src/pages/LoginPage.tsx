@@ -24,7 +24,7 @@ const ERRORS: Record<string, string> = {
   email_unavailable: '이미 사용 중인 이메일입니다.',
   account_suspended: '정지된 계정입니다. 관리자에게 문의하세요.',
   account_locked: '로그인에 여러 번 실패해 잠시 잠겼습니다. 잠시 뒤에 다시 시도하세요.',
-  signup_closed: '지금은 회원가입을 받지 않습니다. 관리자에게 문의하세요.',
+  signup_closed: '지금은 가입을 받지 않습니다. 관리자에게 문의하세요.',
   signup_domain_not_allowed: '이 이메일 도메인으로는 가입할 수 없습니다. 허용된 주소를 쓰세요.',
   invalid_verify_token: '확인 링크가 올바르지 않습니다. 로그인해서 확인 메일을 다시 받으세요.',
   verify_token_used: '이미 확인한 링크입니다. 로그인하세요.',
@@ -39,7 +39,7 @@ export function LoginPage() {
   const lang = useStore((s) => s.lang)
   const { login, signup, authError, authRetryAfter, bootstrap, signedOutReason, adoptSession } = useStore()
   const [mode, setMode] = useState<'login' | 'signup'>('login')
-  usePageTitle(mode === 'signup' ? t('회원가입') : t('로그인'))
+  usePageTitle(mode === 'signup' ? t('가입하기') : t('로그인'))
   // No router while signed out: `?token=` on `/verify` confirms signup, elsewhere resets a password.
   const [resetToken, setResetToken] = useState(() =>
     window.location.pathname === '/verify'
@@ -426,7 +426,7 @@ export function LoginPage() {
             {(
               [
                 { id: 'login', label: t('로그인') },
-                { id: 'signup', label: t('회원가입') },
+                { id: 'signup', label: t('가입하기') },
               ] as const
             ).map((t) => (
               <button

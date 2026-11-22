@@ -135,7 +135,7 @@ function AddSectionImage({ report }: { report: ReportArtifact }) {
       setPicked(null)
       setCaption('')
     } catch (err) {
-      setError(errorMessage(err, t('그림을 넣지 못했습니다.')))
+      setError(errorMessage(err, t('그림을 넣지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
       setBusy(false)
     }
@@ -664,7 +664,7 @@ export function ReportPanel({
       report.version = row.version
       useStore.getState().noteArtifactVersion(report.id, row.version)
     } catch (err) {
-      setCitationError(errorMessage(err, t('인용 형식을 바꾸지 못했습니다.')))
+      setCitationError(errorMessage(err, t('인용 형식을 바꾸지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
       setCitationSaving(false)
     }
@@ -684,7 +684,7 @@ export function ReportPanel({
       useStore.getState().noteArtifactVersion(report.id, row.version)
       return true
     } catch (err) {
-      setCitationError(errorMessage(err, t('참고 자료를 저장하지 못했습니다.')))
+      setCitationError(errorMessage(err, t('참고 자료를 저장하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
       return false
     } finally {
       setCitationSaving(false)
@@ -898,7 +898,7 @@ export function ReportPanel({
       useStore.getState().noteArtifactVersion(report.id, row.version)
       setTick((n) => n + 1)
     } catch (err) {
-      setSaveError(errorMessage(err, t('저장하지 못했습니다.')))
+      setSaveError(errorMessage(err, t('저장하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
       setRestructuring(false)
     }
@@ -928,7 +928,7 @@ export function ReportPanel({
       setTick((n) => n + 1)
       return true
     } catch (err) {
-      setSaveError(errorMessage(err, t('저장하지 못했습니다.')))
+      setSaveError(errorMessage(err, t('저장하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
       return false
     } finally {
       setRestructuring(false)
@@ -974,7 +974,7 @@ export function ReportPanel({
 
   const removeSection = (at: number) => {
     if (report.sections.length <= 1) {
-      setSaveError(t('마지막 한 절은 지울 수 없습니다. 보고서는 파일함 › 작업 문서에서 지웁니다.'))
+      setSaveError(t('마지막 한 절은 삭제할 수 없습니다. 보고서는 파일함 › 작업 문서에서 삭제합니다.'))
       return Promise.resolve()
     }
     const next = report.sections.filter((_, i) => i !== at)
@@ -1004,7 +1004,7 @@ export function ReportPanel({
       setView('page')
       setTick((value) => value + 1)
     } catch (err) {
-      setSaveError(errorMessage(err, t('모양을 바꾸지 못했습니다.')))
+      setSaveError(errorMessage(err, t('모양을 바꾸지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
       setTemplateSaving(false)
     }
@@ -1031,7 +1031,7 @@ export function ReportPanel({
       setView('page')
       setTick((value) => value + 1)
     } catch (err) {
-      setSaveError(errorMessage(err, t('색을 바꾸지 못했습니다.')))
+      setSaveError(errorMessage(err, t('색을 바꾸지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
       setTemplateSaving(false)
     }
@@ -1178,7 +1178,7 @@ export function ReportPanel({
       return true
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) setNotice('conflict')
-      else setSaveError(errorMessage(err, t('저장하지 못했습니다.')))
+      else setSaveError(errorMessage(err, t('저장하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
       return false
     } finally {
       setPageSaving(false)
@@ -1894,7 +1894,7 @@ export function ReportPanel({
                         {t('아래로 옮기기')}
                       </MenuItem>
                       <MenuItem onClick={() => setRemovingSection(sectionIndex)}>
-                        {t('이 절 지우기')}
+                        {t('이 절 삭제')}
                       </MenuItem>
                       {s.status === 'done' && (
                         <>
@@ -2032,12 +2032,12 @@ export function ReportPanel({
       <ConfirmDialog
         open={removingSection !== null}
         onClose={() => setRemovingSection(null)}
-        title={t('이 절 지우기')}
+        title={t('이 절 삭제')}
         description={t('「{name}」 절과 그 내용이 보고서에서 빠집니다. 이전 내용은 버전 기록에서 되돌릴 수 있습니다.').replace(
           '{name}',
           (removingSection !== null && report.sections[removingSection]?.heading) || t('제목 없음'),
         )}
-        confirmLabel={t('지우기')}
+        confirmLabel={t('삭제')}
         onConfirm={() => removingSection !== null && void removeSection(removingSection)}
       />
       <DocumentAsk reason={asking?.reason ?? null} onAnswer={(choice) => void answer(choice)} />

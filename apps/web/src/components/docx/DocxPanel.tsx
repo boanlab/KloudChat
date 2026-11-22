@@ -65,7 +65,7 @@ export function DocxPanel({
       onSave: (bytes, name) =>
         saveBlob(new Blob([bytes as BlobPart], { type: OFFICE_MIME.docx }), name),
       onError: (err) =>
-        setError(errorMessage(err, latest.current.t('문서를 불러오지 못했습니다.'))),
+        setError(errorMessage(err, latest.current.t('문서를 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.'))),
     })
     api.setZoom('pageWidth')
     editor.current = api
@@ -146,7 +146,7 @@ export function DocxPanel({
       const blob = new Blob([bytes as BlobPart], { type: OFFICE_MIME.docx })
       saveBlob(blob, fileName)
     } catch (err) {
-      setError(errorMessage(err, t('내려받지 못했습니다.')))
+      setError(errorMessage(err, t('내려받지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     }
   }
 

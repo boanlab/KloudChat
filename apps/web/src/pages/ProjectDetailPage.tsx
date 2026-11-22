@@ -80,7 +80,7 @@ function EmojiGrid({ onPick }: { onPick: (emoji: string) => void }) {
 
 /** Mirrors server delete: knowledge files go, sessions detached, artifacts and memories stay. */
 const DELETE_SCOPE =
-  '되돌릴 수 없습니다. 지침과 지식 파일은 지워지고, 대화는 프로젝트 밖으로 나옵니다.'
+  '되돌릴 수 없습니다. 지침과 지식 파일은 삭제되고, 대화는 프로젝트 밖으로 나옵니다.'
 
 export function ProjectDetailPage() {
   const t = useT()
@@ -215,7 +215,7 @@ export function ProjectDetailPage() {
       setFileError(
         err instanceof ApiError && err.detail === 'index_unavailable'
           ? t('검색 색인 서비스에 연결할 수 없습니다. 잠시 후 다시 시도하세요.')
-          : errorMessage(err, t('색인하지 못했습니다.')),
+          : errorMessage(err, t('색인하지 못했습니다. 잠시 뒤 다시 시도하세요.')),
       )
     } finally {
       setReindexing(false)
@@ -248,7 +248,7 @@ export function ProjectDetailPage() {
           projectId: project.id,
           onProgress: (sent, total) => setUploadProgress({ name: file.name, sent, total }),
         }).catch((err) => {
-          problems.push(`${file.name}: ${errorMessage(err, t('올리지 못했습니다.'))}`)
+          problems.push(`${file.name}: ${errorMessage(err, t('올리지 못했습니다. 잠시 뒤 다시 시도하세요.'))}`)
         })
         setUploadProgress(null)
       }
@@ -266,7 +266,7 @@ export function ProjectDetailPage() {
     try {
       await downloadFile(id, name)
     } catch (err) {
-      setFileError(errorMessage(err, t('파일을 내려받지 못했습니다.')))
+      setFileError(errorMessage(err, t('파일을 내려받지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     }
   }
 
@@ -683,7 +683,7 @@ export function ProjectDetailPage() {
                   </Button>
                   <Button size="sm" disabled={uploading} onClick={() => fileInput.current?.click()}>
                     <Upload size={14} className={uploading ? 'animate-pulse' : undefined} />
-                    {uploading ? t('업로드 중') : t('파일 추가')}
+                    {uploading ? t('올리는 중') : t('파일 추가')}
                   </Button>
                 </div>
               </div>

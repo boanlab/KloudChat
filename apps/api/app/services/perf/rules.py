@@ -247,7 +247,7 @@ def evaluate(
                     Verdict(
                         "critical" if sustained(points, now, minutes, 0.95) else "warn",
                         "api_cpu",
-                        f"api 복제본 추가 검토 — {subject}",
+                        f"API 복제본 추가 검토 — {subject}",
                         f"이 복제본이 {minutes}분 동안 CPU 한 코어의 {_fmt(th.api_cpu_max, 0)}% 이상을 썼습니다 "
                         "(api 프로세스는 코어 하나로 요청을 처리합니다).",
                         "KCHAT_API_REPLICAS를 하나 늘리고 docker compose up -d로 복제본을 추가하세요. "

@@ -127,7 +127,7 @@ async def submit(
 
     if response.status_code >= 400:
         log.warning("video submit %s: %s", response.status_code, response.text[:300])
-        raise VideoError("영상 작업을 시작하지 못했습니다.")
+        raise VideoError("영상 작업을 시작하지 못했습니다. 잠시 뒤 다시 시도하세요.")
 
     body = response.json()
     job_id = body.get("id") or (body.get("data") or {}).get("id")

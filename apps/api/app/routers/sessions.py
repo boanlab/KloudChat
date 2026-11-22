@@ -3974,7 +3974,7 @@ async def delete_session(
 
 
 #: conversation uploads stay in the file box; only their search entries go
-_FILES_KEPT = "첨부 파일은 지우지 않음"
+_FILES_KEPT = "첨부 파일은 삭제하지 않음"
 
 
 def _files_note(files: int, gone: int) -> str:
@@ -9117,7 +9117,7 @@ async def _run_page(
         turn=turn))
     work.usage = {"inputTokens": 0, "outputTokens": 0}
     async for chunk in _make_pass(work, pipeline_registry.pipeline("page"),
-                                  crashed="문서를 만들지 못했습니다.",
+                                  crashed="문서를 만들지 못했습니다. 잠시 뒤 다시 시도하세요.",
                                   attachments=attachments, answers=answers):
         yield chunk
 
@@ -9381,7 +9381,7 @@ async def _run_deck(
             plan, request,
             has_material=traced or any(t.strip() for t in untrusted_context or ())))
     async for chunk in _make_pass(work, pipeline_registry.pipeline("deck"),
-                                  crashed="슬라이드를 만들지 못했습니다.",
+                                  crashed="슬라이드를 만들지 못했습니다. 잠시 뒤 다시 시도하세요.",
                                   attachments=attachments, answers=answers,
                                   straight=straight or None, stopping=stopping):
         yield chunk
@@ -10325,7 +10325,9 @@ async def _run_report(
             yield chat_service.sse(event)
     except Exception as exc:  # noqa: BLE001 — the turn must still settle
         log.exception("report generation crashed for session %s", session_id)
-        yield chat_service.sse(_error_event("보고서를 만들지 못했습니다.", exc))
+        yield chat_service.sse(
+            _error_event(
+                "보고서를 만들지 못했습니다. 잠시 뒤 다시 시도하세요.", exc))
 
     work = built[0][0] if built else None
     if stopping is not None and stopping.is_set() and not (
@@ -10382,7 +10384,9 @@ async def _run_report(
                 yield chat_service.sse(event)
         except Exception as exc:  # noqa: BLE001 — the turn must still settle
             log.exception("report store failed for session %s", session_id)
-            yield chat_service.sse(_error_event("보고서를 만들지 못했습니다.", exc))
+            yield chat_service.sse(
+                _error_event(
+                    "보고서를 만들지 못했습니다. 잠시 뒤 다시 시도하세요.", exc))
         recorder = None
     async for chunk in _report_tail(work, recorder=recorder, session_id=session_id,
                                     user_id=user_id, usage=usage, parent=parent_run_id):

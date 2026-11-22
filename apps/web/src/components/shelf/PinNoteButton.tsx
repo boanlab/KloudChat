@@ -19,7 +19,7 @@ export function PinNoteButton({ sessionId, messageId, content }: { sessionId: st
       setDone(true)
       setToast({ text: withNames(t('{notes}에 저장했습니다.'), t) })
     } catch (err) {
-      setToast({ text: errorMessage(err, t('메모로 저장하지 못했습니다.')) })
+      setToast({ text: errorMessage(err, t('메모로 저장하지 못했습니다. 잠시 뒤 다시 시도하세요.')) })
     }
   }
   const label = withNames(t('{notes}에 저장'), t)

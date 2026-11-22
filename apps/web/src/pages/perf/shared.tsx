@@ -654,7 +654,7 @@ export function Thresholds({ th }: { th: PerfOverview['thresholds'] }) {
               .replace('{m}', String(th.sustainMin))}
           </li>
           <li>
-            <b className="text-fg">{t('api 복제본')}</b> ·{' '}
+            <b className="text-fg">{t('API 복제본')}</b> ·{' '}
             {t('한 복제본이 CPU 한 코어의 {n}% 이상을 {m}분 → 복제본 추가 검토')
               .replace('{n}', num(th.apiCpuMax, 0))
               .replace('{m}', String(th.apiCpuSustainMin))}

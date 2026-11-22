@@ -67,8 +67,8 @@ export function ProxySection({
               : !settings
                 ? t('LiteLLM 연결 상태를 확인하는 중입니다')
                 : connected
-                  ? t('LiteLLM 에 연결되어 있습니다')
-                  : t('LiteLLM 에 연결되지 않았습니다')}
+                  ? t('LiteLLM에 연결되어 있습니다')
+                  : t('LiteLLM에 연결되지 않았습니다')}
           </p>
           <p className="break-all text-base text-muted">
             {settings ? settings.litellm.baseUrl || t('주소가 설정되지 않았습니다') : ' '}
@@ -105,7 +105,7 @@ export function ProxySection({
                 ok: result.ok,
                 detail: result.ok
                   ? t.n('연결됨 · 모델 {n}종', result.models ?? 0)
-                  : (result.detail ?? t('연결하지 못했습니다.')),
+                  : (result.detail ?? t('연결하지 못했습니다. 잠시 뒤 다시 시도하세요.')),
               })
               await reload()
             } catch (err) {
@@ -203,7 +203,7 @@ export function ProxySection({
             {t.n('가격을 알 수 없어 숨긴 모델 {n}개', settings!.unpricedModels.length)}
           </p>
           <p className="mt-1 text-base text-muted">
-            {t('프록시가 서빙하지만 단가를 보고하지 않습니다. 추정치로 과금하지 않기 위해 목록에서 빼두었습니다. 쓰려면 제공자의 가격표를 확인해 MODEL_OVERRIDES 에 실제 단가를 넣으세요.')}
+            {t('프록시가 단가를 알려 주지 않아 목록에서 뺐습니다. 쓰려면 제공자의 가격표를 확인해 MODEL_OVERRIDES에 단가를 넣으세요.')}
           </p>
           <ul className="mt-2 space-y-0.5">
             {settings!.unpricedModels.map((m) => (
@@ -272,7 +272,7 @@ export function ProxySection({
               await resetForm()
               await loadModels()
             } catch (err) {
-              setError(err instanceof ApiError ? err.detail : t('저장에 실패했습니다.'))
+              setError(err instanceof ApiError ? err.detail : t('저장에 실패했습니다. 잠시 뒤 다시 시도하세요.'))
             } finally {
               setBusy(false)
             }
@@ -293,7 +293,7 @@ export function ProxySection({
               await resetForm()
               await loadModels()
             } catch (err) {
-              setError(errorMessage(err, t('환경변수로 되돌리지 못했습니다.')))
+              setError(errorMessage(err, t('환경변수로 되돌리지 못했습니다. 잠시 뒤 다시 시도하세요.')))
             } finally {
               setBusy(false)
             }

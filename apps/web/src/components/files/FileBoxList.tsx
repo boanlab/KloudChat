@@ -82,7 +82,7 @@ function FilePlace({ row }: { row: FileRow }) {
       </Link>
     )
   }
-  return <span className="truncate">{row.sessionId ? t('지운 대화') : t('대화 밖에서 올림')}</span>
+  return <span className="truncate">{row.sessionId ? t('삭제한 대화') : t('대화 밖에서 올림')}</span>
 }
 
 /** Read progress or result of a scan or video (「읽는 중」); nothing for other files. */

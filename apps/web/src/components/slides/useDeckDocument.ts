@@ -162,7 +162,7 @@ export function useDeckDocument(deck: DeckArtifact) {
       return true
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) setNotice('conflict')
-      else setError(errorMessage(err, t('저장하지 못했습니다.')))
+      else setError(errorMessage(err, t('저장하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
       return false
     } finally {
       busy.current = false
@@ -184,7 +184,7 @@ export function useDeckDocument(deck: DeckArtifact) {
       setError('')
       return true
     } catch (err) {
-      setError(errorMessage(err, t('최신 내용을 불러오지 못했습니다.')))
+      setError(errorMessage(err, t('최신 내용을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')))
       return false
     }
   }, [deck, refreshArtifact, reset, t])

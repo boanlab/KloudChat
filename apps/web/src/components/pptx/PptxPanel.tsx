@@ -98,7 +98,7 @@ export function PptxPanel({
       const bytes = await office.current!.export()
       saveBlob(new Blob([bytes as BlobPart], { type: OFFICE_MIME.pptx }), fileName)
     } catch (err) {
-      setError(errorMessage(err, t('내려받지 못했습니다.')))
+      setError(errorMessage(err, t('내려받지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     }
   }
 

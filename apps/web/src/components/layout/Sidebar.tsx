@@ -326,7 +326,7 @@ export function Sidebar() {
         <div className="border-t border-line px-3 py-2">
           {sessionsFailed && (
             <p role="alert" className="mb-2 flex flex-wrap items-center gap-x-2 px-2.5 text-sm text-danger">
-              {t('대화 목록을 불러오지 못했습니다.')}
+              {t('대화 목록을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')}
               <button
                 type="button"
                 onClick={() => void loadSessions()}
@@ -407,7 +407,7 @@ export function Sidebar() {
         }}
         onConfirm={() => confirming && void deleteSession(confirming.id, { files: withFiles && !!fileCount })}
         title={t('{name} 삭제').replace('{name}', confirming?.title ?? '')}
-        description={t('되돌릴 수 없습니다. 이 대화의 문서·아티팩트와 공유 링크도 지워집니다.')}
+        description={t('되돌릴 수 없습니다. 이 대화의 문서·아티팩트와 공유 링크도 삭제됩니다.')}
       >
         <DeleteFilesChoice checked={withFiles} onChange={setWithFiles} count={fileCount ?? 0} />
       </ConfirmDialog>

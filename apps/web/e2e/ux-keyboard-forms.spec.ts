@@ -179,8 +179,8 @@ test.describe('signed out', () => {
     expect(state.logins).toBe(2)
 
     // The sign-in error stays with sign-in: 회원가입 opens without it.
-    await page.getByRole('button', { name: '회원가입', exact: true }).click()
-    await expect(page.getByRole('button', { name: '회원가입', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await page.getByRole('button', { name: '가입하기', exact: true }).click()
+    await expect(page.getByRole('button', { name: '가입하기', exact: true })).toHaveAttribute('aria-pressed', 'true')
     await expect(page.getByText('이메일 또는 비밀번호가 올바르지 않습니다.')).toHaveCount(0)
     expect(state.problems).toEqual([])
   })
@@ -189,7 +189,7 @@ test.describe('signed out', () => {
     const state = await app(page, testInfo, { signedIn: false, signupMode: 'closed' })
     await page.goto('/')
     await expect(page.getByRole('button', { name: '로그인', exact: true }).last()).toBeVisible({ timeout: 30_000 })
-    await expect(page.getByRole('button', { name: '회원가입', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '가입하기', exact: true })).toHaveCount(0)
     await expect(page.getByText('계정 만들기')).toHaveCount(0)
     expect(state.problems).toEqual([])
   })
@@ -197,7 +197,7 @@ test.describe('signed out', () => {
   test('signup: open signup says so, ticks the rule as typed, and a 422 reads as Korean', async ({ page }, testInfo) => {
     const state = await app(page, testInfo, { signedIn: false, signupMode: 'open' })
     await page.goto('/')
-    const tab = page.getByRole('button', { name: '회원가입', exact: true })
+    const tab = page.getByRole('button', { name: '가입하기', exact: true })
     await expect(tab).toBeVisible({ timeout: 30_000 })
     await tab.click()
     await expect(page.getByText('가입하면 바로 시작할 수 있습니다.')).toBeVisible()

@@ -210,7 +210,7 @@ export function AdminPerformancePage() {
             to={models}
             label={t('동시 스트림')}
             value={num(streams, 0)}
-            sub={t('api 복제본 {n}개').replace('{n}', String(data.replicas.length))}
+            sub={t('API 복제본 {n}개').replace('{n}', String(data.replicas.length))}
           />
           <Tile
             to={models}

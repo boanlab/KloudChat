@@ -111,13 +111,13 @@ export function AdminUsagePage() {
     try {
       const done = await usageApi.reclaimStorage()
       setReclaimed(
-        t('{files}개, {size}를 지웠습니다.')
+        t('삭제했습니다: 파일 {files}개, {size}')
           .replace('{files}', done.freedFiles.toLocaleString())
           .replace('{size}', bytes(done.freedBytes)),
       )
       setStorage(await usageApi.storage())
     } catch {
-      setReclaimed(t('정리하지 못했습니다.'))
+      setReclaimed(t('정리하지 못했습니다. 잠시 뒤 다시 시도하세요.'))
     } finally {
       setReclaiming(false)
     }
@@ -409,7 +409,7 @@ export function AdminUsagePage() {
                           {' '}
                           · {t.n('{n}개', storage.orphanFiles)}
                           {storage.reclaimAt > 0 &&
-                            ` · ${t('디스크가 {pct}% 차면 오래된 것부터 자동으로 지웁니다').replace('{pct}', String(Math.round(storage.reclaimAt * 100)))}`}
+                            ` · ${t('디스크가 {pct}% 차면 오래된 것부터 자동으로 삭제합니다').replace('{pct}', String(Math.round(storage.reclaimAt * 100)))}`}
                         </span>
                       </span>
                       <Button
@@ -431,7 +431,7 @@ export function AdminUsagePage() {
                     {reclaimed && <p className="mt-1 text-xs text-success">{reclaimed}</p>}
                   </>
                 ) : (
-                  <p className="text-base text-muted">{t('저장 공간 정보를 불러오지 못했습니다.')}</p>
+                  <p className="text-base text-muted">{t('저장 공간 정보를 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')}</p>
                 )}
               </Card>
             </div>

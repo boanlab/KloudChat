@@ -131,7 +131,7 @@ export function ArtifactsPage() {
       .catch((err) => {
         if (!live) return
         clear()
-        setError(errorMessage(err, t('아티팩트를 열지 못했습니다.')))
+        setError(errorMessage(err, t('아티팩트를 열지 못했습니다. 잠시 뒤 다시 시도하세요.')))
       })
     return () => {
       live = false
@@ -150,7 +150,7 @@ export function ArtifactsPage() {
       gallery.removeRows(ids)
       forget(ids)
     } catch (err) {
-      setError(errorMessage(err, t('삭제하지 못했습니다.')))
+      setError(errorMessage(err, t('삭제하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
       void gallery.load()
     }
   }

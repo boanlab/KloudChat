@@ -414,7 +414,7 @@ export function ChainPage() {
       setToast({ text: t('저장했습니다.') })
       return true
     } catch (err) {
-      setError(errorMessage(err, t('저장하지 못했습니다.')))
+      setError(errorMessage(err, t('저장하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
       return false
     } finally {
       setSaving(false)
@@ -428,7 +428,7 @@ export function ChainPage() {
       const id = await newSession(agentStartKind(agent), { agentId: agent.id })
       navigate(`/s/${id}`)
     } catch (err) {
-      setError(errorMessage(err, t('대화를 열지 못했습니다.')))
+      setError(errorMessage(err, t('대화를 열지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     }
   }
 
@@ -447,7 +447,7 @@ export function ChainPage() {
           {workspaceLoading || agents.length === 0 ? (
             <LoadingState label={t('에이전트를 불러오는 중…')} />
           ) : (
-            <EmptyState icon={<Bot size={18} />} title={t('이 에이전트를 찾을 수 없습니다')} description={t('지워졌거나 볼 수 없는 에이전트입니다.')} />
+            <EmptyState icon={<Bot size={18} />} title={t('이 에이전트를 찾을 수 없습니다')} description={t('삭제되었거나 볼 수 없는 에이전트입니다.')} />
           )}
         </PageBody>
       </>
@@ -467,7 +467,7 @@ export function ChainPage() {
     />
   ) : catFailed ? (
     <p className="text-sm text-danger" role="alert">
-      {t('단계 목록을 불러오지 못했습니다.')}{' '}
+      {t('단계 목록을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')}{' '}
       <button type="button" className="underline" onClick={() => setCatTry((n) => n + 1)}>
         {t('다시 시도')}
       </button>

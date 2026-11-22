@@ -132,7 +132,7 @@ async def generate(
 
     body = b"".join(chunks)
     if not body:
-        raise AudioError("오디오를 만들지 못했습니다.")
+        raise AudioError("오디오를 만들지 못했습니다. 잠시 뒤 다시 시도하세요.")
 
     if speech:
         data, mime, extension = _wav(body), "audio/wav", "wav"

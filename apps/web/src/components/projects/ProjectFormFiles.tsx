@@ -20,7 +20,7 @@ const REFUSALS: Record<string, string> = {
   form_hwp_needs_hwpx:
     '예전 한글 형식(.hwp)은 양식으로 쓸 수 없습니다. 한글에서 다른 이름으로 저장 › 「한글 표준 문서 (*.hwpx)」로 저장해 올려 주세요.',
   form_kind_unknown: 'PowerPoint·Word·한글(HWPX) 파일만 양식으로 쓸 수 있습니다.',
-  form_unreadable: '이 파일을 양식으로 읽지 못했습니다.',
+  form_unreadable: '이 파일을 양식으로 읽지 못했습니다. 다른 파일로 다시 시도하세요.',
   form_kind_mismatch: '이 칸에 맞는 종류의 파일이 아닙니다.',
 }
 

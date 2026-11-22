@@ -153,7 +153,7 @@ function AddMenu({ tab, compact = false }: { tab: HubTab; compact?: boolean }) {
       : tab === 'skills'
         ? [
             { label: '스킬 만들기', icon: <Pencil size={14} />, run: () => navigate('/customize/skills/new') },
-            { label: '스킬 업로드', icon: <Upload size={14} />, run: () => navigate('/customize/skills/upload') },
+            { label: '스킬 올리기', icon: <Upload size={14} />, run: () => navigate('/customize/skills/upload') },
           ]
         : []
   if (items.length === 0) return null
@@ -536,7 +536,7 @@ function Hub() {
             onToggleAll={pick.toggleAll}
             onClear={pick.clear}
             title={kindWord}
-            note={tab === 'agents' ? t('붙여 둔 자료와 검색 색인도 함께 지워집니다.') : undefined}
+            note={tab === 'agents' ? t('붙여 둔 자료와 검색 색인도 함께 삭제됩니다.') : undefined}
             onDelete={async () => {
               await deleteMany(tab === 'agents' ? 'agents' : 'skills', pick.ids)
               pick.clear()

@@ -19,7 +19,7 @@ const FINDING_TEXT: Record<string, string> = {
   not_utf8: 'UTF-8 텍스트가 아닙니다.',
   unsupported_type: '.md, .zip, .skill 파일만 올릴 수 있습니다.',
   front_matter: '맨 앞에 --- 로 감싼 YAML 머리(name, description)가 필요합니다.',
-  missing_fields: 'YAML 머리에 name 과 description 이 모두 있어야 합니다.',
+  missing_fields: 'YAML 머리에 name과 description이 모두 있어야 합니다.',
   too_long: '이름이나 설명이 너무 깁니다.',
   empty_body: 'SKILL.md 본문(절차)이 비어 있습니다.',
   body_too_long: '본문이 24,000자를 넘습니다.',
@@ -31,31 +31,31 @@ const FINDING_TEXT: Record<string, string> = {
   too_large: '압축을 푼 크기가 2MB를 넘습니다.',
   compression_ratio: '압축률이 비정상적으로 높습니다(압축 폭탄 의심).',
   nested_archive: '압축 안에 또 다른 압축 파일이 있습니다.',
-  no_skill_md: '압축 안에 SKILL.md 가 없습니다.',
-  multiple_skill_md: '압축 안에 SKILL.md 가 여러 개입니다. 하나만 넣어 주세요.',
-  skill_md_not_at_root: 'SKILL.md 는 압축 맨 위나 폴더 하나 바로 안에 있어야 합니다.',
-  server_field_ignored: '카탈로그 전용 항목(status)은 무시했어요.',
-  unknown_field: '모르는 YAML 항목은 무시했어요.',
-  unknown_kind: '모르는 kinds 값은 뺐어요.',
-  script_tool_dropped: '실행할 스크립트가 없어 run_skill_script 를 뺐어요.',
-  unknown_tools: '모르는 도구는 뺐어요.',
-  scripts_excluded: '파이썬이 아닌 스크립트와 scripts/ 밖의 스크립트는 제외했어요.',
+  no_skill_md: '압축 안에 SKILL.md가 없습니다.',
+  multiple_skill_md: '압축 안에 SKILL.md가 여러 개입니다. 하나만 넣어 주세요.',
+  skill_md_not_at_root: 'SKILL.md는 압축 맨 위나 폴더 하나 바로 안에 있어야 합니다.',
+  server_field_ignored: '카탈로그 전용 항목(status)은 제외했습니다.',
+  unknown_field: '알 수 없는 YAML 항목은 제외했습니다.',
+  unknown_kind: '지원하지 않는 값이라 제외했습니다: kinds',
+  script_tool_dropped: '실행할 스크립트가 없어 run_skill_script 도구를 제외했습니다.',
+  unknown_tools: '알 수 없는 도구는 제외했습니다.',
+  scripts_excluded: '파이썬이 아닌 스크립트와 scripts/ 밖의 스크립트는 제외했습니다.',
   script_network: '네트워크에 접속하는 모듈을 씁니다. 샌드박스에서는 외부로 나가지 못할 수 있습니다.',
   script_process: '다른 프로그램을 실행합니다.',
-  script_file_write: '작업 폴더 밖의 경로에 쓰거나 지웁니다.',
+  script_file_write: '작업 폴더 밖의 경로에 쓰거나 삭제합니다.',
   script_dynamic_code: '실행 중에 만든 코드를 돌립니다.',
   script_syntax: '파이썬 문법 오류가 있어 실행할 수 없습니다.',
   script_name: '스크립트 이름은 영문 소문자·숫자·_ 로 40자까지입니다.',
   too_many_scripts: '스크립트는 8개까지 올릴 수 있습니다.',
   script_too_large: '스크립트 하나는 64KB까지입니다.',
-  skill_stage_unknown: 'stage 는 pre 또는 post 만 쓸 수 있어 뺐어요.',
-  skill_entry_unknown: '기본 제공 검사가 아닌 entry 는 뺐어요.',
-  skill_entry_without_stage: 'stage 없는 entry 는 뺐어요.',
-  skill_post_check_unknown: '기본 제공 스크립트가 아닌 post_check 는 뺐어요.',
-  skill_post_check_own_script: '직접 올린 스크립트는 post_check 로 쓸 수 없어 뺐어요. run_skill_script 로 샌드박스에서만 실행됩니다.',
-  skill_script_unknown: '모르는 스크립트 이름은 uses 에서 뺐어요.',
-  skill_copy_kind_unknown: '모르는 copy_kinds 값은 뺐어요.',
-  resources_skipped: '본문 한도를 넘어 일부 참고 자료는 넣지 못했어요.',
+  skill_stage_unknown: '지원하지 않는 값이라 제외했습니다: stage (pre 또는 post만 가능)',
+  skill_entry_unknown: '기본 제공 검사가 아니라서 제외했습니다: entry',
+  skill_entry_without_stage: 'stage가 없어 제외했습니다: entry',
+  skill_post_check_unknown: '기본 제공 스크립트가 아니라서 제외했습니다: post_check',
+  skill_post_check_own_script: '직접 올린 스크립트는 post_check로 쓸 수 없어 제외했습니다. run_skill_script로 샌드박스에서만 실행됩니다.',
+  skill_script_unknown: '알 수 없는 스크립트 이름은 uses에서 제외했습니다.',
+  skill_copy_kind_unknown: '지원하지 않는 값이라 제외했습니다: copy_kinds',
+  resources_skipped: '본문 한도를 넘어 일부 참고 자료는 넣지 못했습니다.',
   instruction_override: '이전 지시를 무시하라는 식의 문장이 있습니다.',
   data_exfiltration: '자료를 외부 주소나 메일로 보내라는 지시가 있습니다.',
   hidden_characters: '보이지 않는 방향 제어·폭 없는 문자가 있습니다.',
@@ -147,7 +147,7 @@ export function SkillUploadPage() {
       })
       navigate(made.length === 1 ? `/customize/skills/${made[0].id}` : '/customize?tab=skills&view=mine', { replace: true })
     } catch (err) {
-      setError(errorMessage(err, t('올리지 못했습니다.')))
+      setError(errorMessage(err, t('올리지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
       setSaving(false)
     }
@@ -155,11 +155,11 @@ export function SkillUploadPage() {
 
   return (
     <>
-      <HubTopBar tab="skills" tabLabel="스킬" title={t('스킬 업로드')} />
+      <HubTopBar tab="skills" tabLabel="스킬" title={t('스킬 올리기')} />
       <PageBody>
         <div className="mx-auto max-w-3xl pb-24" data-testid="skill-upload">
           <BackLink tab="skills" label="스킬" />
-          <h1 className="mb-1 text-2xl font-semibold tracking-tight">{t('스킬 업로드')}</h1>
+          <h1 className="mb-1 text-2xl font-semibold tracking-tight">{t('스킬 올리기')}</h1>
           <p className="mb-6 text-base text-muted">{t('다른 곳에서 만든 스킬 파일을 내 스킬로 가져옵니다.')}</p>
 
           <div
@@ -195,7 +195,7 @@ export function SkillUploadPage() {
 
           <ul className="mt-4 list-disc space-y-1 pl-5 text-sm text-muted">
             <li>{t('.md 파일은 맨 앞 YAML 머리에 스킬 이름(name)과 설명(description)이 있어야 합니다.')}</li>
-            <li>{t('.zip 또는 .skill 파일에는 SKILL.md 가 들어 있어야 합니다.')}</li>
+            <li>{t('.zip 또는 .skill 파일에는 SKILL.md가 들어 있어야 합니다.')}</li>
           </ul>
 
           <div className="mt-5 flex items-start gap-3 rounded-card border border-line bg-panel px-4 py-3">
@@ -203,7 +203,7 @@ export function SkillUploadPage() {
             <div className="min-w-0 flex-1">
               <p className="flex flex-wrap items-center gap-x-2 text-base font-medium text-fg">
                 {t('보안 스캔')}
-                <span className="text-sm font-normal text-muted">{t('업로드할 때 실행')}</span>
+                <span className="text-sm font-normal text-muted">{t('올릴 때 실행')}</span>
               </p>
               <p className="mt-0.5 text-sm text-muted">
                 {t('위험한 지시·숨은 문자·키·스크립트 동작을 검사합니다. 모든 위험을 찾지는 못합니다.')}
@@ -248,7 +248,7 @@ export function SkillUploadPage() {
               <Button onClick={() => navigate('/customize?tab=skills')}>{t('취소')}</Button>
               <Button variant="primary" disabled={!ready || saving} onClick={() => void upload()}>
                 <Upload size={15} />
-                {saving ? t('올리는 중…') : t('업로드')}
+                {saving ? t('올리는 중…') : t('올리기')}
               </Button>
             </div>
             {blocked && <p className="w-full text-sm text-danger">{t('막힌 파일을 빼야 올릴 수 있습니다.')}</p>}

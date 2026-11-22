@@ -248,7 +248,7 @@ test('50 compact rows a page; page and words live in the address', { tag: '@phon
   await expect(pager(page).getByRole('button', { name: '다음 페이지' })).toBeDisabled()
 
   // Selecting is per page.
-  await page.getByRole('button', { name: '이 페이지 전체 선택' }).click()
+  await page.getByRole('button', { name: '이 페이지 모두 선택' }).click()
   await expect(page.getByRole('button', { name: '선택 20개 삭제' })).toBeEnabled()
   await page.getByRole('button', { name: '선택 해제' }).click()
 

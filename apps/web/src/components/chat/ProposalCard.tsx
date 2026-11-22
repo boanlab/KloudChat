@@ -272,7 +272,7 @@ export function ProposalCard({
             <Button
               variant="ghost"
               size="icon"
-              aria-label={t('{n}번 지우기').replace('{n}', String(i + 1))}
+              aria-label={t('{n}번 삭제').replace('{n}', String(i + 1))}
               disabled={items.length <= 1}
               onClick={() => change(items.filter((_, at) => at !== i))}
             >

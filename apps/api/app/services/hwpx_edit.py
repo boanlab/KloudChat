@@ -622,7 +622,7 @@ def apply(data: bytes, ops: list[dict],
             paragraph = _paragraph(doc, op.get("id"))[1]
             if paragraph.find(f".//{{{HP}}}secPr") is not None:
                 raise HwpxError(
-                    f"{op.get('id')}에는 쪽 설정이 있어 지울 수 없습니다. 글만 비우세요."
+                    f"{op.get('id')}에는 쪽 설정이 있어 삭제할 수 없습니다. 글만 비우세요."
                 )
             if guard is not None:
                 try:
@@ -635,7 +635,7 @@ def apply(data: bytes, ops: list[dict],
             table = _table(doc, op.get("table"))
             index, rows = _row(table, op.get("after" if kind == "insert_table_row" else "row"))
             if kind == "delete_table_row" and len(rows) < 2:
-                raise HwpxError("줄이 하나뿐인 표의 줄은 지울 수 없습니다.")
+                raise HwpxError("줄이 하나뿐인 표의 줄은 삭제할 수 없습니다.")
             plan.append((op, (table, rows[index])))
         elif kind == "insert_table":
             rows = office_edit.table_arg(op, HwpxError)

@@ -214,7 +214,7 @@ for (const streamResponses of [true, false]) {
       control.finishReadRetry!()
     })
     await expect(timeline(page)).toContainText('답을 마치지 못했습니다')
-    await expect(page.getByText('답변을 받지 못했습니다.')).toBeVisible()
+    await expect(page.getByText('답변을 받지 못했습니다. 잠시 뒤 다시 시도하세요.')).toBeVisible()
     await expect(page.getByRole('button', { name: '다시 시도', exact: true })).toBeVisible()
     if (streamResponses && process.env.TOOL_RECOVERY_SCREENSHOT_DIR) {
       await page.screenshot({
@@ -242,7 +242,7 @@ test('텍스트 없이 산출물만 도착하면 본문을 불러오는 동안�
     })
     // The body request is held; the stream's artifact announcement is sufficient.
     await expect(timeline(page)).toContainText('답했습니다')
-    await expect(page.getByText('답변을 받지 못했습니다.')).toHaveCount(0)
+    await expect(page.getByText('답변을 받지 못했습니다. 잠시 뒤 다시 시도하세요.')).toHaveCount(0)
   } finally {
     releaseArtifact()
   }
@@ -264,6 +264,6 @@ test('텍스트 일괄 표시 모드에서도 버퍼에 도착한 답변은 정�
   })
   await expect(timeline(page)).toContainText('답했습니다')
   await expect(page.getByText(answer)).toBeVisible()
-  await expect(page.getByText('답변을 받지 못했습니다.')).toHaveCount(0)
+  await expect(page.getByText('답변을 받지 못했습니다. 잠시 뒤 다시 시도하세요.')).toHaveCount(0)
   expect(unexpected).toEqual([])
 })

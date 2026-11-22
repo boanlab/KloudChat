@@ -447,7 +447,7 @@ function AddBlockImage({ artifact }: { artifact: CodeArtifact }) {
       setPicked(null)
       setCaption('')
     } catch (err) {
-      setError(errorMessage(err, t('그림을 넣지 못했습니다.')))
+      setError(errorMessage(err, t('그림을 넣지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
       setBusy(false)
     }
@@ -539,7 +539,7 @@ export function CodePanel({
     try {
       await downloadArtifact(artifact.id, 'source', artifact.title || 'document')
     } catch (err) {
-      setDownloadError(errorMessage(err, t('원본을 다운로드하지 못했습니다.')))
+      setDownloadError(errorMessage(err, t('원본을 내려받지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
       setDownloading(false)
     }
@@ -554,8 +554,8 @@ export function CodePanel({
             <Button
               variant="secondary"
               size="icon"
-              title={t('원본 다운로드')}
-              aria-label={t('원본 다운로드')}
+              title={t('원본 내려받기')}
+              aria-label={t('원본 내려받기')}
               disabled={downloading}
               onClick={() => void downloadSource()}
             >
@@ -914,7 +914,7 @@ export function ArtifactPanel() {
             <ButtonLink
               variant="ghost"
               size="icon"
-              aria-label={t('다운로드')}
+              aria-label={t('내려받기')}
               title={t('원본 파일을 내려받습니다')}
               href={fileUrl(artifact.src)}
               download={artifact.title}

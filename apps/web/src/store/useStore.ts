@@ -2238,7 +2238,7 @@ export const useStore = create<State>((set, get) => ({
       id = await get().ensureSession(sessionId ?? fresh!)
     } catch (err) {
       if (fresh) void get().deleteSession(fresh)
-      set({ mediaError: errorMessage(err, tr('영상 작업을 시작하지 못했습니다.')) })
+      set({ mediaError: errorMessage(err, tr('영상 작업을 시작하지 못했습니다. 잠시 뒤 다시 시도하세요.')) })
       return
     }
     if (fresh) opts.onSession?.(id)
@@ -2274,7 +2274,7 @@ export const useStore = create<State>((set, get) => ({
               seconds: avOptions.durationSec,
               audio: avOptions.withAudio,
             },
-            error: errorMessage(err, tr('영상 작업을 시작하지 못했습니다.')),
+            error: errorMessage(err, tr('영상 작업을 시작하지 못했습니다. 잠시 뒤 다시 시도하세요.')),
             createdAt: new Date().toISOString(),
             finishedAt: new Date().toISOString(),
           },
@@ -2330,7 +2330,7 @@ export const useStore = create<State>((set, get) => ({
       // The server's rows carry the message ids and the settled charge.
       await get().openSession(id)
     } catch (err) {
-      failMediaTurn(set, id, promptId, answerId, errorMessage(err, tr('오디오를 만들지 못했습니다.')))
+      failMediaTurn(set, id, promptId, answerId, errorMessage(err, tr('오디오를 만들지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
       endRun(set, id)
     }
@@ -2343,7 +2343,7 @@ export const useStore = create<State>((set, get) => ({
       id = await get().ensureSession(sessionId ?? fresh!)
     } catch (err) {
       if (fresh) void get().deleteSession(fresh)
-      set({ mediaError: errorMessage(err, tr('이미지를 만들지 못했습니다.')) })
+      set({ mediaError: errorMessage(err, tr('이미지를 만들지 못했습니다. 잠시 뒤 다시 시도하세요.')) })
       return
     }
     if (fresh) opts.onSession?.(id)
@@ -2363,10 +2363,10 @@ export const useStore = create<State>((set, get) => ({
           // The drawing step's own sentences are ours to show; server text is not.
           const said =
             err instanceof ApiError
-              ? mediaFailure(err, tr('도식을 만들지 못했습니다.'), tr)
+              ? mediaFailure(err, tr('도식을 만들지 못했습니다. 잠시 뒤 다시 시도하세요.'), tr)
               : err instanceof Error && err.message
                 ? err.message
-                : tr('도식을 만들지 못했습니다.')
+                : tr('도식을 만들지 못했습니다. 잠시 뒤 다시 시도하세요.')
           failMediaTurn(set, id, promptId, answerId, said)
         }
         return
@@ -2396,7 +2396,7 @@ export const useStore = create<State>((set, get) => ({
       // The server's rows carry the message ids and the settled charge.
       await get().openSession(id)
     } catch (err) {
-      failMediaTurn(set, id, promptId, answerId, mediaFailure(err, tr('이미지를 만들지 못했습니다.'), tr))
+      failMediaTurn(set, id, promptId, answerId, mediaFailure(err, tr('이미지를 만들지 못했습니다. 잠시 뒤 다시 시도하세요.'), tr))
     } finally {
       endRun(set, id)
     }
@@ -2559,7 +2559,7 @@ export const useStore = create<State>((set, get) => ({
     try {
       id = await get().ensureSession(sessionId)
     } catch (err) {
-      set({ mediaError: errorMessage(err, tr('이미지를 고치지 못했습니다.')) })
+      set({ mediaError: errorMessage(err, tr('이미지를 고치지 못했습니다. 잠시 뒤 다시 시도하세요.')) })
       return
     }
     const { promptId, answerId } = beginMediaTurn(set, id, prompt, true)
@@ -2585,7 +2585,7 @@ export const useStore = create<State>((set, get) => ({
       await get().loadSessions()
       await get().openSession(id)
     } catch (err) {
-      failMediaTurn(set, id, promptId, answerId, mediaFailure(err, tr('이미지를 고치지 못했습니다.'), tr))
+      failMediaTurn(set, id, promptId, answerId, mediaFailure(err, tr('이미지를 고치지 못했습니다. 잠시 뒤 다시 시도하세요.'), tr))
     } finally {
       endRun(set, id)
     }
@@ -2634,7 +2634,7 @@ export const useStore = create<State>((set, get) => ({
     } catch (err) {
       set((s) => ({
         jobs: s.jobs.map((j) => (j.id === id ? before : j)),
-        mediaError: errorMessage(err, tr('작업을 취소하지 못했습니다.')),
+        mediaError: errorMessage(err, tr('작업을 취소하지 못했습니다. 잠시 뒤 다시 시도하세요.')),
       }))
     }
   },
@@ -2693,7 +2693,7 @@ export const useStore = create<State>((set, get) => ({
         )
         set((s) => ({ projects: s.projects.map((p) => (p.id === id ? { ...p, ...back } : p)) }))
       }
-      set({ notice: errorMessage(err, tr('저장하지 못했습니다.')) })
+      set({ notice: errorMessage(err, tr('저장하지 못했습니다. 잠시 뒤 다시 시도하세요.')) })
       return false
     }
   },
@@ -2744,7 +2744,7 @@ export const useStore = create<State>((set, get) => ({
       // The project comes back from the server; say why instead of letting it reappear silently.
       await get().loadWorkspace()
       get().setToast({
-        text: errorMessage(err, tr('프로젝트를 삭제하지 못했습니다.')),
+        text: errorMessage(err, tr('프로젝트를 삭제하지 못했습니다. 잠시 뒤 다시 시도하세요.')),
         action: { label: tr('다시 시도'), run: () => void get().deleteProject(id) },
       })
     })
@@ -2822,7 +2822,7 @@ export const useStore = create<State>((set, get) => ({
       commit: () =>
         filesApi.remove(id).catch((err: unknown) => {
           putBack()
-          const failed = tr('{name}을(를) 지우지 못했습니다.').replace('{name}', removed.name)
+          const failed = tr('삭제하지 못했습니다: {name}').replace('{name}', removed.name)
           set({ notice: errorMessage(err, failed) })
         }),
     })
@@ -2924,7 +2924,7 @@ export const useStore = create<State>((set, get) => ({
     } catch (err) {
       set((s) => ({
         connectors: s.connectors.map((c) => (c.id === id ? { ...c, enabled: !enabled } : c)),
-        notice: errorMessage(err, enabled ? tr('MCP 서버를 켜지 못했습니다.') : tr('MCP 서버를 끄지 못했습니다.')),
+        notice: errorMessage(err, enabled ? tr('MCP 서버를 켜지 못했습니다. 잠시 뒤 다시 시도하세요.') : tr('MCP 서버를 끄지 못했습니다. 잠시 뒤 다시 시도하세요.')),
       }))
     }
   },
@@ -4174,7 +4174,7 @@ async function streamTurn(
       settled = true
       let sentence =
         refusalSentence(errorCode(err), tr) ??
-        errorMessage(err, tr('요청을 처리하지 못했습니다.'))
+        errorMessage(err, tr('요청을 처리하지 못했습니다. 잠시 뒤 다시 시도하세요.'))
       if (err instanceof UnauthorizedError) {
         // The access token lapsed under the send; the refresh cookie usually renews it.
         const renewed = await renewSession()
@@ -4526,7 +4526,7 @@ async function streamReport(
     } else {
       patchMessage(set, sessionId, assistantId, (m) => ({
         ...m,
-        error: errorMessage(err, tr('보고서를 만들지 못했습니다.')),
+        error: errorMessage(err, tr('보고서를 만들지 못했습니다. 잠시 뒤 다시 시도하세요.')),
       }))
     }
     if (refusedBeforeWrite(err)) throw err
@@ -4819,7 +4819,7 @@ async function streamDeck(
     } else {
       patchMessage(set, sessionId, assistantId, (m) => ({
         ...m,
-        error: errorMessage(err, tr('슬라이드를 만들지 못했습니다.')),
+        error: errorMessage(err, tr('슬라이드를 만들지 못했습니다. 잠시 뒤 다시 시도하세요.')),
       }))
     }
     if (refusedBeforeWrite(err)) throw err

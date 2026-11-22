@@ -88,7 +88,7 @@ export function PublishDialog({
       onPublished?.(made)
     } catch (err) {
       const code = err instanceof ApiError ? err.detail : ''
-      setError(SCOPE_ERROR[code] ? t(SCOPE_ERROR[code]) : errorMessage(err, t('공개하지 못했습니다.')))
+      setError(SCOPE_ERROR[code] ? t(SCOPE_ERROR[code]) : errorMessage(err, t('공개하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
       setBusy(false)
     }
@@ -134,7 +134,7 @@ export function PublishDialog({
           {done.reviewState === 'pending' && done.requestedVisibility && (
             <p className="flex items-start gap-2 text-base text-warn" data-testid="publish-requested">
               <Clock size={15} className="mt-0.5 shrink-0" aria-hidden />
-              {t('{scope}는 관리자가 승인하면 열립니다. 결과는 관리 화면에서 볼 수 있습니다.').replace(
+              {t('요청한 공개 범위({scope})는 관리자가 승인하면 열립니다. 결과는 관리 화면에서 볼 수 있습니다.').replace(
                 '{scope}',
                 t(VISIBILITY_LABEL[done.requestedVisibility]),
               )}

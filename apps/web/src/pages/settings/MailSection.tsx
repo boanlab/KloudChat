@@ -91,10 +91,10 @@ export function MailSection({
               const result = await adminApi.testSmtp()
               setMailProbe({
                 ok: result.ok,
-                detail: result.detail ?? (result.ok ? t('보냈습니다.') : t('보내지 못했습니다.')),
+                detail: result.detail ?? (result.ok ? t('보냈습니다.') : t('보내지 못했습니다. 잠시 뒤 다시 시도하세요.')),
               })
             } catch (err) {
-              setMailProbe({ ok: false, detail: errorMessage(err, t('보내지 못했습니다.')) })
+              setMailProbe({ ok: false, detail: errorMessage(err, t('보내지 못했습니다. 잠시 뒤 다시 시도하세요.')) })
             } finally {
               setBusy(false)
             }
@@ -253,7 +253,7 @@ export function MailSection({
             try {
               await save()
             } catch (err) {
-              setError(err instanceof ApiError ? err.detail : t('저장에 실패했습니다.'))
+              setError(err instanceof ApiError ? err.detail : t('저장에 실패했습니다. 잠시 뒤 다시 시도하세요.'))
             } finally {
               setBusy(false)
             }

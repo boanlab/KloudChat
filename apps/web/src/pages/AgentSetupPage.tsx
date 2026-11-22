@@ -28,9 +28,9 @@ export function AgentSetupPage() {
   const modelId = model?.id ?? 'local/qwen3.8-27b'
   const key = `<${t('발급받은 키')}>`
   const shellNote = {
-    linux: t('이 터미널 창에서만 유효합니다. 영구 적용은 ~/.bashrc 나 ~/.zshrc 에 넣으세요.'),
-    mac: t('이 터미널 창에서만 유효합니다. 영구 적용은 ~/.bashrc 나 ~/.zshrc 에 넣으세요.'),
-    windows: t('PowerShell 기준입니다. 이 창에서만 유효하며, cmd.exe 에서는 set 이름=값 을 씁니다.'),
+    linux: t('이 터미널 창에서만 유효합니다. 영구 적용은 ~/.bashrc 나 ~/.zshrc에 넣으세요.'),
+    mac: t('이 터미널 창에서만 유효합니다. 영구 적용은 ~/.bashrc 나 ~/.zshrc에 넣으세요.'),
+    windows: t('PowerShell 기준입니다. 이 창에서만 유효하며, cmd.exe에서는 set 이름=값 을 씁니다.'),
   }
 
   return (
@@ -103,7 +103,7 @@ export function AgentSetupPage() {
         <section className="mt-5">
           <h2 className="text-base font-medium">{t('Codex · OpenAI 호환 도구')}</h2>
           <p className="mt-1 mb-2 text-base text-muted">
-            {t('OpenAI 형식으로 주고받습니다. 주소 끝에 /v1 이 붙는 것에 주의하세요.')}
+            {t('OpenAI 형식으로 주고받습니다. 주소 끝에 /v1이 붙는 것에 주의하세요.')}
           </p>
           <ShellSnippet
             commands={envCommands([
@@ -127,7 +127,7 @@ export function AgentSetupPage() {
             <li>
               {t('월 한도는 계정에 걸려 있어 키를 늘려도 늘지 않습니다.')}
             </li>
-            <li>{t('키를 폐기하면 즉시 막힙니다. 도구 쪽 설정도 함께 지우세요.')}</li>
+            <li>{t('키를 폐기하면 즉시 막힙니다. 도구 쪽 설정도 함께 제거하세요.')}</li>
           </ul>
         </section>
       </PageBody>

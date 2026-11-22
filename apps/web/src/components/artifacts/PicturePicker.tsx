@@ -122,7 +122,7 @@ export function PicturePicker({
       setError(
         err instanceof Error && !(err instanceof ApiError) && err.message
           ? err.message
-          : mediaFailure(err, t('그림을 만들지 못했습니다.'), t),
+          : mediaFailure(err, t('그림을 만들지 못했습니다. 잠시 뒤 다시 시도하세요.'), t),
       )
     } finally {
       setMaking(false)

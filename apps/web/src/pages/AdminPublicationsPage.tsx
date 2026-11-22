@@ -241,7 +241,7 @@ function ReviewView({ id }: { id: string }) {
       load()
       void refreshBadge()
     } catch (err) {
-      setError(errorMessage(err, t('처리하지 못했습니다.')))
+      setError(errorMessage(err, t('처리하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
       setBusy(false)
     }
@@ -261,7 +261,7 @@ function ReviewView({ id }: { id: string }) {
         <EmptyState
           icon={<Bot size={18} />}
           title={t('공개 신청을 찾을 수 없습니다')}
-          description={t('지워졌거나 주소가 잘못되었습니다.')}
+          description={t('삭제되었거나 주소가 잘못되었습니다.')}
           action={<Link className="text-accent" to="/admin/publications">{t('목록으로')}</Link>}
         />
       </PageBody>
@@ -604,7 +604,7 @@ function ConversationsCard({ id }: { id: string }) {
                     onClick={() =>
                       void adminPublicationsApi
                         .conversation(id, row.id, given ?? '')
-                        .then(setOpen, (err) => setError(errorMessage(err, t('대화를 열지 못했습니다.'))))
+                        .then(setOpen, (err) => setError(errorMessage(err, t('대화를 열지 못했습니다. 잠시 뒤 다시 시도하세요.'))))
                     }
                     className={
                       'w-full rounded-control border px-3 py-2 text-left text-sm transition-colors ' +
@@ -638,7 +638,7 @@ function ConversationsCard({ id }: { id: string }) {
         ))}
       {(error || list.failed) && (
         <p role="alert" className="text-sm text-danger">
-          {error ?? t('대화를 열지 못했습니다.')}
+          {error ?? t('대화를 열지 못했습니다. 잠시 뒤 다시 시도하세요.')}
         </p>
       )}
       <Modal

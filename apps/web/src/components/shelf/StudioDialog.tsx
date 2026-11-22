@@ -50,7 +50,7 @@ export function StudioDialog({
       shelfApi
         .estimate(projectId, request)
         .then((found) => alive && setEstimate(found))
-        .catch((err) => alive && setError(err instanceof ApiError ? shelfFailure(err.detail, t) : errorMessage(err, t('예상치를 내지 못했습니다.'))))
+        .catch((err) => alive && setError(err instanceof ApiError ? shelfFailure(err.detail, t) : errorMessage(err, t('예상치를 내지 못했습니다. 잠시 뒤 다시 시도하세요.'))))
     }, 250)
     return () => {
       alive = false
@@ -70,7 +70,7 @@ export function StudioDialog({
       onStarted()
       onClose()
     } catch (err) {
-      setError(err instanceof ApiError ? shelfFailure(err.detail, t) : errorMessage(err, t('시작하지 못했습니다.')))
+      setError(err instanceof ApiError ? shelfFailure(err.detail, t) : errorMessage(err, t('시작하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
       setBusy(false)
     }

@@ -15,7 +15,7 @@ const REFUSALS: Record<string, string> = {
   agent_not_found: '이 대화의 에이전트를 더는 찾을 수 없습니다. 새 대화를 시작하세요.',
   agent_kind_mismatch: '이 에이전트는 이 화면에서 쓸 수 없습니다.',
   agent_origin_gone:
-    '이 에이전트는 지침을 원본에서 읽는데, 원본이 지워졌거나 공개가 풀렸습니다. 작성자에게 문의하거나 다른 에이전트를 쓰세요.',
+    '이 에이전트는 지침을 원본에서 읽는데, 원본이 삭제되었거나 공개가 풀렸습니다. 작성자에게 문의하거나 다른 에이전트를 쓰세요.',
   project_not_found: '이 대화의 프로젝트를 더는 찾을 수 없습니다.',
   session_not_found: '이 대화를 더는 찾을 수 없습니다.',
   attachment_not_found: '첨부 파일을 찾을 수 없습니다. 다시 첨부하세요.',
@@ -35,7 +35,7 @@ const REFUSALS: Record<string, string> = {
   image_model_cannot_edit: '이 모델은 이미지를 고칠 수 없습니다. 다른 모델을 고르세요.',
   image_edit_strict_local: '내부 자료라 외부 모델로 고칠 수 없습니다.',
   image_source_not_found: '고칠 이미지를 찾을 수 없습니다.',
-  image_source_unreadable: '고칠 이미지를 읽지 못했습니다.',
+  image_source_unreadable: '고칠 이미지를 읽지 못했습니다. 다른 이미지로 다시 시도하세요.',
   internal_data_requires_strict_local:
     '내부 자료나 개인정보가 있어 strict-local 모델로만 만들 수 있는데, 쓸 수 있는 strict-local 모델이 없습니다. 관리자에게 문의하세요.',
   factcheck_needs_web:
@@ -132,5 +132,5 @@ export function withRetryWait(sentence: string, err: unknown, t: T): string {
 
 /** A conversation that could not be started from a card or a menu. */
 export function startFailure(err: unknown, t: T): string {
-  return refusalSentence(errorCode(err), t) ?? errorMessage(err, t('대화를 시작하지 못했습니다.'))
+  return refusalSentence(errorCode(err), t) ?? errorMessage(err, t('대화를 시작하지 못했습니다. 잠시 뒤 다시 시도하세요.'))
 }

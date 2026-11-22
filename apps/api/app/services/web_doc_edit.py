@@ -380,7 +380,7 @@ def apply(data: dict, title: str, ops: list, *, deck: bool, request: str = "") -
         elif kind in ("delete_section", "delete_slide"):
             i = _ref(parts, op.get("section" if not deck else "slide"))
             if len(parts) < 2:
-                raise WebDocError("마지막 하나는 지울 수 없습니다.")
+                raise WebDocError("마지막 하나는 삭제할 수 없습니다.")
             gone = parts.pop(i)
             changes.append(f"s{i + 1} 「{short(_part_name(gone, deck))}」 삭제")
         elif kind in ("move_section", "move_slide"):
@@ -472,7 +472,7 @@ def _table_op(parts: list[dict], op: dict, deck: bool) -> str:
     elif kind == "delete_table_row":
         r = _int(op, "row")
         if not 1 <= r < len(rows):
-            raise WebDocError(f"r{r} 줄을 지울 수 없습니다 (머리 줄 r0 제외, 1~{len(rows) - 1}).")
+            raise WebDocError(f"r{r} 줄을 삭제할 수 없습니다 (머리 줄 r0 제외, 1~{len(rows) - 1}).")
         rows.pop(r)
         said = f"s{i + 1} 표 r{r} 줄 삭제"
     elif kind == "insert_table_column":
@@ -486,7 +486,7 @@ def _table_op(parts: list[dict], op: dict, deck: bool) -> str:
     else:
         c = _int(op, "col")
         if not 0 <= c < width or width < 2:
-            raise WebDocError(f"c{c} 열을 지울 수 없습니다.")
+            raise WebDocError(f"c{c} 열을 삭제할 수 없습니다.")
         for row in rows:
             row.pop(c)
         said = f"s{i + 1} 표 c{c} 열 삭제"

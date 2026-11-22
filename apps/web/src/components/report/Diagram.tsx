@@ -75,7 +75,7 @@ export function Diagram({
           <code>{source}</code>
         </pre>
         <figcaption className="mt-1 text-xs text-danger">
-          {t('이 다이어그램을 그리지 못했습니다.')}
+          {t('이 다이어그램을 그리지 못했습니다. 잠시 뒤 다시 시도하세요.')}
         </figcaption>
       </figure>
     )

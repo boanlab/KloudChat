@@ -380,7 +380,7 @@ test('reporter: a reply that cannot be fetched says so with 다시 시도 and st
   await expect(items).toHaveCount(1)
   await items.first().getByRole('button').first().click()
   const alert = items.first().getByRole('alert')
-  await expect(alert).toContainText('답변을 불러오지 못했습니다.')
+  await expect(alert).toContainText('답변을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')
   // Not marked read while the answer is not on screen.
   expect(state.calls).not.toContain('POST /issues/i1/read')
   failing = false

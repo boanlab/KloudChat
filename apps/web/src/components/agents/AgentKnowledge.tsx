@@ -85,7 +85,7 @@ export function AgentKnowledge({
             setSavedNote(true)
           }
         } catch (err) {
-          setError(errorMessage(err, t('파일을 올리지 못했습니다.')))
+          setError(errorMessage(err, t('파일을 올리지 못했습니다. 잠시 뒤 다시 시도하세요.')))
         } finally {
           setBusy(null)
           if (fileInput.current) fileInput.current.value = ''
@@ -117,7 +117,7 @@ export function AgentKnowledge({
     return (
       <Field label={t('자료')} hint={t('에이전트를 저장하면 자료를 붙일 수 있습니다')}>
         <p className="text-base text-faint">
-          {t('파일이나 URL 을 붙이면, 이 에이전트가 그 안에서 찾아 답합니다.')}
+          {t('파일이나 URL을 붙이면, 이 에이전트가 그 안에서 찾아 답합니다.')}
         </p>
       </Field>
     )
@@ -130,7 +130,7 @@ export function AgentKnowledge({
       const row = await agentsApi.knowledge.upload(agentId, picked)
       replaceRows([row, ...rowsRef.current])
     } catch (err) {
-      setError(errorMessage(err, t('파일을 올리지 못했습니다.')))
+      setError(errorMessage(err, t('파일을 올리지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
       setBusy(null)
       if (fileInput.current) fileInput.current.value = ''
@@ -151,7 +151,7 @@ export function AgentKnowledge({
       replaceRows([row, ...rowsRef.current])
       setUrl('')
     } catch (err) {
-      setError(errorMessage(err, t('페이지를 읽지 못했습니다.')))
+      setError(errorMessage(err, t('페이지를 읽지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
       setBusy(null)
     }
@@ -165,7 +165,7 @@ export function AgentKnowledge({
       await agentsApi.knowledge.reindex(agentId, true)
       replaceRows(await agentsApi.knowledge.list(agentId))
     } catch (err) {
-      setError(errorMessage(err, t('색인하지 못했습니다.')))
+      setError(errorMessage(err, t('색인하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
       setBusy(null)
     }
@@ -176,7 +176,7 @@ export function AgentKnowledge({
     try {
       await downloadFile(id, name)
     } catch (err) {
-      setError(errorMessage(err, t('파일을 내려받지 못했습니다.')))
+      setError(errorMessage(err, t('파일을 내려받지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     }
   }
 
@@ -196,7 +196,7 @@ export function AgentKnowledge({
       commit: () =>
         agentsApi.knowledge.remove(agentId, file.id).catch((err: unknown) => {
           putBack()
-          const failed = t('{name}을(를) 지우지 못했습니다.').replace('{name}', file.name)
+          const failed = t('삭제하지 못했습니다: {name}').replace('{name}', file.name)
           setNotice(errorMessage(err, failed))
         }),
     })
@@ -261,7 +261,7 @@ export function AgentKnowledge({
             className="flex flex-wrap items-center gap-x-2 text-base text-danger"
             data-testid="agent-knowledge-failed"
           >
-            {t('자료 목록을 불러오지 못했습니다.')}
+            {t('자료 목록을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')}
             <button
               type="button"
               className="text-accent underline hover:no-underline"

@@ -15,7 +15,7 @@ export function AppTab() {
       : app.ios
         ? t('Safari 공유 메뉴의 「홈 화면에 추가」로 설치합니다.')
         : app.macSafari
-          ? t('Safari 파일 메뉴의 「Dock 에 추가」로 설치합니다.')
+          ? t('Safari 파일 메뉴의 「Dock에 추가」로 설치합니다.')
           : t('이 브라우저에서는 앱으로 설치할 수 없습니다.')
   return (
     <section className="space-y-3" aria-labelledby="app-install">

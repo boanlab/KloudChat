@@ -90,7 +90,7 @@ test('the toolbar, rail and notes read like the PowerPoint editor', async ({ pag
   // the slide menu
   await thumbs(page).nth(1).click({ button: 'right' })
   const menu = page.getByRole('menu', { name: '슬라이드 메뉴' })
-  await expect(menu.getByRole('menuitem')).toHaveText(['새 슬라이드', '슬라이드 복제', '위로 이동', '아래로 이동', '슬라이드 삭제'])
+  await expect(menu.getByRole('menuitem')).toHaveText(['새 슬라이드', '슬라이드 복제', '위로 옮기기', '아래로 이동', '슬라이드 삭제'])
   await page.keyboard.press('Escape')
   await expect(menu).toHaveCount(0)
 

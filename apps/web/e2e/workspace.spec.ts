@@ -104,7 +104,7 @@ test('MCP 서버를 설치하면 MCP 서버가 실제로 도구를 보고한다'
 
   // Scoped to the 시간 card: "22시간 전" is on the screen too, and the first entry may need credentials.
   const mine = page.getByRole('tab', { name: /내 MCP 서버/ })
-  await page.getByRole('tab', { name: /카탈로그/ }).click()
+  await page.getByRole('tab', { name: /탐색/ }).click()
   const install = page
     .locator('[data-connector="time"]')
     .getByRole('button', { name: /추가|설치됨/ })

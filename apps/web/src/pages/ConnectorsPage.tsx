@@ -36,7 +36,7 @@ import { pageOf, usePaging } from '@/lib/usePaging'
 import { useStore } from '@/store/useStore'
 import type { CatalogEntry } from '@/lib/api'
 import type { Connector, ConnectorStatus } from '@/types'
-import { useT } from '@/lib/useT'
+import { useT, useTIn } from '@/lib/useT'
 
 const statusMeta: Record<ConnectorStatus, { label: string; tone: 'success' | 'warn' | 'danger' | 'neutral' }> = {
   connected: { label: '연결됨', tone: 'success' },
@@ -235,7 +235,7 @@ function CatalogCard({ entry, onNeedsCredentials }: {
             try {
               await installConnector(entry.slug)
             } catch (err) {
-              setError(errorMessage(err, t('설치에 실패했습니다.')))
+              setError(errorMessage(err, t('설치에 실패했습니다. 잠시 뒤 다시 시도하세요.')))
             } finally {
               setBusy(false)
             }
@@ -303,7 +303,7 @@ function ReCredentialModal({
                 await updateConnectorEnv(connector.id, values)
                 onClose()
               } catch (err) {
-                setError(errorMessage(err, t('저장에 실패했습니다.')))
+                setError(errorMessage(err, t('저장에 실패했습니다. 잠시 뒤 다시 시도하세요.')))
               } finally {
                 setBusy(false)
               }
@@ -370,7 +370,7 @@ function CredentialsModal({
                 await installConnector(entry.slug, values)
                 onClose()
               } catch (err) {
-                setError(errorMessage(err, t('설치에 실패했습니다.')))
+                setError(errorMessage(err, t('설치에 실패했습니다. 잠시 뒤 다시 시도하세요.')))
               } finally {
                 setBusy(false)
               }
@@ -415,6 +415,7 @@ function parseEnv(text: string): Record<string, string> {
 
 export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const t = useT()
+  const tHub = useTIn('hub')
   const {
     connectors,
     connectorCatalog,
@@ -445,7 +446,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
       return t('명령으로 실행하는 서버는 관리자만 등록할 수 있습니다.')
     }
     if (detail.startsWith('env_not_allowed:')) return t('이 서버에는 환경 변수를 넣을 수 없습니다.')
-    return errorMessage(err, t('서버를 추가하지 못했습니다.'))
+    return errorMessage(err, t('서버를 추가하지 못했습니다. 잠시 뒤 다시 시도하세요.'))
   }
   const [draft, setDraft] = useState({
     name: '',
@@ -495,7 +496,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
           onChange={setTab}
           tabs={[
             { id: 'installed', label: t('내 MCP 서버'), count: installed.length },
-            { id: 'catalog', label: t('카탈로그'), count: catalog.filter((e) => !e.installed).length },
+            { id: 'catalog', label: tHub('탐색'), count: catalog.filter((e) => !e.installed).length },
           ]}
         />
 
@@ -522,7 +523,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
               onToggleAll={pick.toggleAll}
               onClear={pick.clear}
               title={t('MCP 서버')}
-              note={t('저장해 둔 인증 정보도 함께 지워집니다.')}
+              note={t('저장해 둔 인증 정보도 함께 삭제됩니다.')}
               onDelete={async () => {
                 await deleteMany('connectors', pick.ids)
                 pick.clear()
@@ -592,7 +593,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
             )}
             {current?.byDefault && (
               <p className="mr-auto text-sm text-muted">
-                {t('기본 제공 MCP 서버는 지울 수 없습니다. 쓰지 않으려면 끄세요.')}
+                {t('기본 제공 MCP 서버는 삭제할 수 없습니다. 쓰지 않으려면 끄세요.')}
               </p>
             )}
             <Button onClick={() => setDetail(null)}>{t('닫기')}</Button>

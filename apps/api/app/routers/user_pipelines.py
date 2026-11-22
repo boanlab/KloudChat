@@ -1175,7 +1175,8 @@ async def compose_pass(work: Bundle, steps: list[dict], agents: dict[str, compos
                 yield _sse(event)
         except Exception as exc:  # noqa: BLE001 — turn must still settle
             log.exception("pipeline %s crashed for session %s", pipeline, session_id)
-            yield _sse(sessions._error_event("진행 과정을 끝까지 돌리지 못했습니다.", exc))
+            yield _sse(sessions._error_event(
+                "진행 과정을 끝까지 돌리지 못했습니다. 잠시 뒤 다시 시도하세요.", exc))
         finally:
             if parent is not None:
                 sessions._carry_records(work, parent, start)

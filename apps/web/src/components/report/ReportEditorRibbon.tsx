@@ -223,7 +223,7 @@ export function ReportEditorRibbon({
               <div>
                 <RibbonButton icon={<span className="text-[10px] font-semibold">{t('열+')}</span>} label={t('오른쪽에 열 추가')} onClick={() => chain().addColumnAfter().run()} />
                 <RibbonButton icon={<span className="text-[10px] font-semibold">{t('열−')}</span>} label={t('현재 열 삭제')} onClick={() => chain().deleteColumn().run()} />
-                <RibbonButton icon={<Trash2 size={14} />} label={t('표 지우기')} onClick={() => chain().deleteTable().run()} />
+                <RibbonButton icon={<Trash2 size={14} />} label={t('표 삭제')} onClick={() => chain().deleteTable().run()} />
               </div>
             </div>
           )}

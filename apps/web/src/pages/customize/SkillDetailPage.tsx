@@ -50,7 +50,7 @@ export function SkillDetailPage() {
           {workspaceLoading || skillStoreLoading || !skillStoreLoaded ? (
             <LoadingState label={t('스킬을 불러오는 중…')} />
           ) : (
-            <EmptyState icon={<Sparkles size={18} />} title={t('이 스킬을 찾을 수 없습니다')} description={t('지워졌거나 볼 수 없는 스킬입니다.')} />
+            <EmptyState icon={<Sparkles size={18} />} title={t('이 스킬을 찾을 수 없습니다')} description={t('삭제되었거나 볼 수 없는 스킬입니다.')} />
           )}
         </PageBody>
       </>
@@ -80,7 +80,7 @@ export function SkillDetailPage() {
           })
           navigate(`/customize/skills/${copy.id}`)
         } catch (err) {
-          setNotice(errorMessage(err, t('복제하지 못했습니다.')))
+          setNotice(errorMessage(err, t('복제하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
         }
       },
     })
@@ -93,7 +93,7 @@ export function SkillDetailPage() {
         try {
           await downloadSkill(own.id, own.name)
         } catch (err) {
-          setNotice(errorMessage(err, t('내보내지 못했습니다.')))
+          setNotice(errorMessage(err, t('내보내지 못했습니다. 잠시 뒤 다시 시도하세요.')))
         }
       },
     })

@@ -15,7 +15,7 @@ const good = {
   bodyChars: 420, estimatedTokens: 180, kept: ['scripts/tidy.py', 'SKILL.md', 'resources/guide.md'],
   excluded: [{ path: 'tool.sh', reason: 'script' }, { path: 'logo.png', reason: 'binary' }],
   findings: [
-    { severity: 'warn', code: 'scripts_excluded', message: '파이썬이 아닌 스크립트와 scripts/ 밖의 스크립트는 제외했어요.', file: 'meeting.skill', line: null },
+    { severity: 'warn', code: 'scripts_excluded', message: '파이썬이 아닌 스크립트와 scripts/ 밖의 스크립트는 제외했습니다.', file: 'meeting.skill', line: null },
     { severity: 'warn', code: 'script_process', message: '다른 프로그램을 실행합니다(subprocess.run).', file: 'scripts/tidy.py', line: 4 },
     { severity: 'warn', code: 'instruction_override', message: '이전 지시를 무시하라는 식의 문장이 있습니다.', file: 'meeting.skill', line: 7 },
   ],
@@ -27,7 +27,7 @@ const good = {
 const bad = {
   filename: 'notes.zip', ok: false, name: '', description: '', whenToUse: '', kinds: ['chat'], requiredTools: [], version: '1.0.0',
   bodyChars: 0, estimatedTokens: 0, kept: [], excluded: [],
-  findings: [{ severity: 'block', code: 'no_skill_md', message: '압축 안에 SKILL.md 가 없습니다.', file: 'notes.zip', line: null }],
+  findings: [{ severity: 'block', code: 'no_skill_md', message: '압축 안에 SKILL.md가 없습니다.', file: 'notes.zip', line: null }],
 }
 
 async function mockImport(page: Page) {
@@ -67,18 +67,18 @@ test('upload: menu, dry-run findings, a blocked file holds the upload, commit op
   await expect(page.getByTestId('item-card').first()).toBeVisible({ timeout: 15_000 })
   await page.getByRole('button', { name: '추가', exact: true }).filter({ visible: true }).first().click()
   await expect(page.getByRole('menuitem', { name: '스킬 만들기' })).toBeVisible()
-  await page.getByRole('menuitem', { name: '스킬 업로드' }).click()
+  await page.getByRole('menuitem', { name: '스킬 올리기' }).click()
   await expect(page).toHaveURL(/\/customize\/skills\/upload$/)
-  await expect(page.getByRole('heading', { level: 1, name: '스킬 업로드' })).toBeVisible()
-  await expect(page.getByText('.zip 또는 .skill 파일에는 SKILL.md 가 들어 있어야 합니다.')).toBeVisible()
-  await expect(page.getByText('업로드할 때 실행')).toBeVisible()
-  const upload = page.getByRole('button', { name: '업로드', exact: true })
+  await expect(page.getByRole('heading', { level: 1, name: '스킬 올리기' })).toBeVisible()
+  await expect(page.getByText('.zip 또는 .skill 파일에는 SKILL.md가 들어 있어야 합니다.')).toBeVisible()
+  await expect(page.getByText('올릴 때 실행')).toBeVisible()
+  const upload = page.getByRole('button', { name: '올리기', exact: true })
   await expect(upload).toBeDisabled()
 
   await drop(page, 'meeting.skill')
   const card = page.getByTestId('skill-preview').first()
   await expect(card.getByText('회의록 정리')).toBeVisible()
-  await expect(card.getByText('파이썬이 아닌 스크립트와 scripts/ 밖의 스크립트는 제외했어요.')).toBeVisible()
+  await expect(card.getByText('파이썬이 아닌 스크립트와 scripts/ 밖의 스크립트는 제외했습니다.')).toBeVisible()
   await expect(card.getByText('7번째 줄')).toBeVisible()
   await expect(card.locator('[data-severity="warn"]')).toHaveCount(3)
   // A kept script: its scan names the file and line, its code opens behind 「코드 보기」.
@@ -97,7 +97,7 @@ test('upload: menu, dry-run findings, a blocked file holds the upload, commit op
   await page.getByLabel('스킬 파일 고르기').setInputFiles({ name: 'notes.zip', mimeType: 'application/zip', buffer: Buffer.from('PK') })
   await expect(page.getByTestId('skill-preview')).toHaveCount(2)
   const blocked = page.getByTestId('skill-preview').nth(1)
-  await expect(blocked.locator('[data-severity="block"]')).toContainText('압축 안에 SKILL.md 가 없습니다.')
+  await expect(blocked.locator('[data-severity="block"]')).toContainText('압축 안에 SKILL.md가 없습니다.')
   await expect(blocked.getByText('올릴 수 없음')).toBeVisible()
   await expect(upload).toBeDisabled()
   await expect(page.getByText('막힌 파일을 빼야 올릴 수 있습니다.')).toBeVisible()

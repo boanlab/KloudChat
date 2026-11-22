@@ -67,7 +67,7 @@ export function UserDetail({
         })
       })
       .catch((err) => {
-        if (live) setFailed(errorMessage(err, t('사용자 정보를 불러오지 못했습니다.')))
+        if (live) setFailed(errorMessage(err, t('사용자 정보를 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')))
       })
     return () => {
       live = false

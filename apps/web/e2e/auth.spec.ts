@@ -34,7 +34,7 @@ async function fillAuthForm(
   // Tab and submit share the label 로그인: tab from outside the form, submit inside it.
   const form = page.locator('form')
   await page
-    .getByRole('button', { name: mode === 'login' ? '로그인' : '회원가입', exact: true })
+    .getByRole('button', { name: mode === 'login' ? '로그인' : '가입하기', exact: true })
     .first()
     .click()
   if (mode === 'signup') await page.getByLabel('이름').fill(who.name ?? '')
@@ -146,11 +146,11 @@ test('로그아웃하면 세션이 끊긴다', async ({ page }) => {
   await expect(shell(page)).toBeVisible({ timeout: 15_000 })
   await page.goto('/settings')
   await page.getByRole('button', { name: '로그아웃' }).click()
-  await expect(page.getByRole('button', { name: '회원가입', exact: true })).toBeVisible({
+  await expect(page.getByRole('button', { name: '가입하기', exact: true })).toBeVisible({
     timeout: 10_000,
   })
   await page.reload()
-  await expect(page.getByRole('button', { name: '회원가입', exact: true })).toBeVisible({
+  await expect(page.getByRole('button', { name: '가입하기', exact: true })).toBeVisible({
     timeout: 10_000,
   })
 })

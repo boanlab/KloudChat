@@ -200,7 +200,7 @@ for (const status of [404, 503]) {
       await page.goto(`/s/${id}`)
       // 404: said to be missing (deleted or not ours), still retryable; 503: a load failure.
       await expect(page.getByText(
-        status === 404 ? '대화를 찾을 수 없습니다. 삭제되었거나 볼 수 없는 대화입니다.' : '최신 내용을 불러오지 못했습니다.',
+        status === 404 ? '대화를 찾을 수 없습니다. 삭제되었거나 볼 수 없는 대화입니다.' : '최신 내용을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.',
         { exact: true },
       )).toBeVisible()
       await expect(page.getByLabel('프롬프트 입력')).toHaveCount(0)

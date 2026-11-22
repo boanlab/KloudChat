@@ -50,7 +50,7 @@ function BundleEditor({
       reloadProcessCatalogue()
       onSaved()
     } catch (err) {
-      setError(errorMessage(err, t('묶음을 저장하지 못했습니다.')))
+      setError(errorMessage(err, t('묶음을 저장하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
       setBusy(false)
     }
@@ -118,7 +118,7 @@ export function BundlesPage() {
       reloadProcessCatalogue()
       void reload()
     } catch (err) {
-      setNotice(errorMessage(err, t('공유 설정을 바꾸지 못했습니다.')))
+      setNotice(errorMessage(err, t('공유 설정을 바꾸지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     }
   }
 
@@ -235,7 +235,7 @@ export function BundlesPage() {
             reloadProcessCatalogue()
             void reload()
           } catch (err) {
-            setNotice(errorMessage(err, t('삭제하지 못했습니다.')))
+            setNotice(errorMessage(err, t('삭제하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
           }
           setRemoving(null)
         }}

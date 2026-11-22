@@ -166,7 +166,7 @@ test('a new account stays signed in across a reload', async ({ page }, testInfo)
   await expect(signInForm(page)).toBeVisible()
   expect(seen.refreshes).toBe(0)
 
-  await page.getByRole('button', { name: '회원가입', exact: true }).click()
+  await page.getByRole('button', { name: '가입하기', exact: true }).click()
   await page.getByLabel('이름').fill(member.name)
   await page.getByLabel('이메일').fill(member.email)
   await page.getByLabel('비밀번호').fill('long-enough-password-1!')

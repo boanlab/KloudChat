@@ -37,7 +37,7 @@ export function FormRoleToggle({
   return (
     <span
       role="radiogroup"
-      aria-label={t('{name}을 어떻게 쓸까요').replace('{name}', file.name)}
+      aria-label={t('어떻게 쓸까요: {name}').replace('{name}', file.name)}
       data-testid="form-role"
       data-role={role ?? 'unsure'}
       className="ml-0.5 inline-flex overflow-hidden rounded-[5px] border border-line text-[11px] leading-5"

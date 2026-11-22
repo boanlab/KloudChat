@@ -80,7 +80,7 @@ test('tabs, 내 항목 / 탐색, search, filter and sort are kept in the address
   await expect(page.getByRole('button', { name: '내 항목' })).toHaveCount(0)
   await expect(page.getByRole('tab', { name: /내 MCP 서버/ })).toBeVisible()
   // The catalogue is one flat list, official first: no category headings, no category chips.
-  await page.getByRole('tab', { name: /카탈로그/ }).click()
+  await page.getByRole('tab', { name: /탐색/ }).click()
   const catalog = page.getByTestId('connector-catalog')
   await expect(catalog).toBeVisible()
   await expect(catalog).toContainText('YouTube')
@@ -267,7 +267,7 @@ test('a built-in connector is marked and can be switched off, not removed', asyn
   await expect(time.getByRole('switch', { name: '시간 사용' })).toBeVisible()
   await time.getByRole('button', { name: /시간/ }).first().click()
   const dialog = page.getByRole('dialog')
-  await expect(dialog).toContainText('기본 제공 MCP 서버는 지울 수 없습니다')
+  await expect(dialog).toContainText('기본 제공 MCP 서버는 삭제할 수 없습니다')
   await expect(dialog.getByRole('button', { name: '제거' })).toHaveCount(0)
   await page.keyboard.press('Escape')
   await expect(dialog).toHaveCount(0)

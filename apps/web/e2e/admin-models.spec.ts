@@ -222,7 +222,7 @@ test('a settings fetch that fails says so on every tab, and 다시 시도 reads 
   await expect(page.locator('[data-section="model-roles"]')).toBeVisible()
   await expect(notice).toHaveCount(0)
   await menu.getByRole('link', { name: '프록시', exact: true }).click()
-  await expect(status).toHaveText('LiteLLM 에 연결되어 있습니다')
+  await expect(status).toHaveText('LiteLLM에 연결되어 있습니다')
   await expect(page.getByTestId('proxy-checked-at')).toContainText('마지막 확인')
   expect(unexpected).toEqual([])
 })
@@ -246,7 +246,7 @@ test('a failed connection test and a failed revert are said, not dropped', async
   const { unexpected } = await adminFixture(page, info)
   await page.route('**/api/admin/settings/test', (route) => route.fulfill({ status: 500, json: { detail: 'boom' } }))
   await page.goto('/admin/system')
-  await expect(page.getByTestId('proxy-status')).toHaveText('LiteLLM 에 연결되어 있습니다', { timeout: 15_000 })
+  await expect(page.getByTestId('proxy-status')).toHaveText('LiteLLM에 연결되어 있습니다', { timeout: 15_000 })
   await expect(page.getByTestId('proxy-checked-at')).toContainText('마지막 확인')
 
   await page.getByRole('button', { name: '연결 테스트' }).click()
@@ -256,7 +256,7 @@ test('a failed connection test and a failed revert are said, not dropped', async
   await page.route('**/api/admin/settings', (route) =>
     route.request().method() === 'PUT' ? route.fulfill({ status: 500, json: { detail: 'boom' } }) : route.fallback())
   await page.getByRole('button', { name: '환경변수로 되돌리기' }).click()
-  await expect(page.getByText('환경변수로 되돌리지 못했습니다.')).toBeVisible()
+  await expect(page.getByText('환경변수로 되돌리지 못했습니다. 잠시 뒤 다시 시도하세요.')).toBeVisible()
   expect(unexpected).toEqual([])
 })
 

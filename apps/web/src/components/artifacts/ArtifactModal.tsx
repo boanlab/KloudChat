@@ -49,7 +49,7 @@ function OfficeArtifactView({ artifact }: { artifact: Extract<Artifact, { kind: 
     artifactsApi
       .documentFile(kind, id)
       .then((file) => live && setBytes(file.bytes))
-      .catch((err: unknown) => live && setFailed(errorMessage(err, t('문서를 불러오지 못했습니다.'))))
+      .catch((err: unknown) => live && setFailed(errorMessage(err, t('문서를 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.'))))
     return () => {
       live = false
     }
@@ -68,7 +68,7 @@ function OfficeArtifactView({ artifact }: { artifact: Extract<Artifact, { kind: 
       }
       navigate(`/s/${sessionId}?artifact=${id}`)
     } catch (err) {
-      setError(errorMessage(err, t('편집기에서 열지 못했습니다.')))
+      setError(errorMessage(err, t('편집기에서 열지 못했습니다. 잠시 뒤 다시 시도하세요.')))
       setOpening(false)
     }
   }

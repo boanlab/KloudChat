@@ -432,7 +432,7 @@ export function ConfirmDialog({
   title: string
   description?: string
   confirmLabel?: string
-  /** A choice that goes with the action (「파일도 함께 지우기」). */
+  /** A choice that goes with the action (「파일도 함께 삭제」). */
   children?: ReactNode
 }) {
   const t = useT()
@@ -826,7 +826,7 @@ export function ResourceStatus({
   if (resource.status === 'error') {
     return (
       <div role="alert" className={cn(box, 'text-danger')}>
-        <span>{failed ?? t('불러오지 못했습니다.')}</span>
+        <span>{failed ?? t('불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')}</span>
         <Button type="button" size="sm" onClick={resource.reload}>
           {t('다시 시도')}
         </Button>

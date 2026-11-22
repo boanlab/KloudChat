@@ -35,7 +35,7 @@ export function PerfHostPage() {
   }, [loaded, hash])
 
   return (
-    <PerfScreen perf={perf} description={t('호스트와 컨테이너, api 복제본의 판단 근거와 추이입니다.')}>
+    <PerfScreen perf={perf} description={t('호스트와 컨테이너, API 복제본의 판단 근거와 추이입니다.')}>
       <Card
         id="verdicts"
         className={cn(
@@ -114,7 +114,7 @@ export function PerfHostPage() {
       {data && (
         <Section
           title={t('컴포넌트')}
-          hint={t('CPU 코어는 한 코어=1입니다. api 복제본은 코어 하나로 요청을 처리하므로 0.8을 넘는 상태가 이어지면 복제본을 늘립니다.')}
+          hint={t('CPU 코어는 한 코어=1입니다. API 복제본은 코어 하나로 요청을 처리하므로 0.8을 넘는 상태가 이어지면 복제본을 늘립니다.')}
         >
           <Table
             empty={t('컨테이너 지표가 없습니다.')}
@@ -136,7 +136,7 @@ export function PerfHostPage() {
       )}
 
       {data && (
-        <Section title={t('api 복제본')}>
+        <Section title={t('API 복제본')}>
           <Table
             empty={t('복제본 표본이 없습니다.')}
             head={[t('복제본'), t('스트림'), t('최고'), t('진행 중 턴'), t('요청/분'), t('5xx'), t('응답 p95')]}

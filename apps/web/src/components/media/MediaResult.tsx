@@ -302,7 +302,7 @@ export function MediaResult({
             <ButtonLink
               variant="ghost"
               size="icon"
-              aria-label={t('다운로드')}
+              aria-label={t('내려받기')}
               href={fileUrl(v.src)}
               download={v.title}
             >
@@ -324,7 +324,7 @@ export function MediaResult({
             <ButtonLink
               variant="ghost"
               size="icon"
-              aria-label={t('다운로드')}
+              aria-label={t('내려받기')}
               href={fileUrl(a.src)}
               download={a.title}
             >

@@ -87,7 +87,7 @@ for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
     const state = await fixture(page, testInfo, { language: 'csv', title: '주간 일정.csv', filename: '주간 일정.csv' })
     await page.reload()
-    const button = page.getByRole('button', { name: '원본 다운로드', exact: true })
+    const button = page.getByRole('button', { name: '원본 내려받기', exact: true })
     await expect(button).toBeVisible()
     await expect(page.locator('pre').filter({ hasText: source.trim() })).toBeVisible()
     const pending = page.waitForEvent('download')
@@ -116,7 +116,7 @@ for (const language of ['text', 'unknown', undefined]) {
   test(`a ${language ?? 'missing'} language uses the server txt filename without CSV inference`, async ({ page }, testInfo) => {
     const state = await fixture(page, testInfo, { language, filename: '주간 일정.txt' })
     const pending = page.waitForEvent('download')
-    await page.getByRole('button', { name: '원본 다운로드', exact: true }).click()
+    await page.getByRole('button', { name: '원본 내려받기', exact: true }).click()
     const download = await pending
     expect(download.suggestedFilename()).toBe('주간 일정.txt')
     expect(await downloadedText(download)).toBe(source)
@@ -128,7 +128,7 @@ for (const language of ['text', 'unknown', undefined]) {
 test('a missing download filename falls back to text, not a source extension', async ({ page }, testInfo) => {
   const state = await fixture(page, testInfo)
   const pending = page.waitForEvent('download')
-  await page.getByRole('button', { name: '원본 다운로드', exact: true }).click()
+  await page.getByRole('button', { name: '원본 내려받기', exact: true }).click()
   expect((await pending).suggestedFilename()).toBe('주간 일정.txt')
   expect(state.unexpected).toEqual([])
 })
@@ -137,7 +137,7 @@ test('an owner-scoped export failure shows an error and permits retry without a 
   const state = await fixture(page, testInfo, { language: 'csv', filename: '주간 일정.csv', fail: true })
   const downloads: Download[] = []
   page.on('download', (download) => downloads.push(download))
-  const button = page.getByRole('button', { name: '원본 다운로드', exact: true })
+  const button = page.getByRole('button', { name: '원본 내려받기', exact: true })
   await button.click()
   await expect(page.getByRole('alert')).toContainText('Artifact not found')
   expect(downloads).toEqual([])
@@ -152,7 +152,7 @@ test('an owner-scoped export failure shows an error and permits retry without a 
 
 test('HTML keeps its preview, source tabs and existing export formats', async ({ page }, testInfo) => {
   const state = await fixture(page, testInfo, { kind: 'html', language: 'html' })
-  await expect(page.getByRole('button', { name: '원본 다운로드', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '원본 내려받기', exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: '소스', exact: true }).click()
   await expect(page.locator('pre')).toHaveText(state.content)
   await page.getByRole('button', { name: '미리보기', exact: true }).click()

@@ -86,10 +86,10 @@ export function KeyboardShortcuts() {
           const text = lastAnswer()
           e.preventDefault()
           if (!text) {
-            setToast(t('복사할 답변이 없습니다'))
+            setToast(t('복사할 답변이 없습니다.'))
             return
           }
-          void copyText(text).then((ok) => setToast(ok ? t('마지막 답변을 복사했습니다') : t('복사하지 못했습니다')))
+          void copyText(text).then((ok) => setToast(ok ? t('마지막 답변을 복사했습니다.') : t('복사하지 못했습니다. 다시 시도하세요.')))
           return
         }
         case 'copy-last-code': {
@@ -100,7 +100,7 @@ export function KeyboardShortcuts() {
             setToast(t('마지막 답변에 코드 블록이 없습니다'))
             return
           }
-          void copyText(code).then((ok) => setToast(ok ? t('마지막 코드 블록을 복사했습니다') : t('복사하지 못했습니다')))
+          void copyText(code).then((ok) => setToast(ok ? t('마지막 코드 블록을 복사했습니다.') : t('복사하지 못했습니다. 다시 시도하세요.')))
           return
         }
         case 'personalization':
@@ -179,7 +179,7 @@ export function KeyboardShortcuts() {
           if (location.pathname.startsWith('/s/')) navigate('/', { replace: true })
         }}
         title={t('{name} 삭제').replace('{name}', active?.title ?? t('이 대화'))}
-        description={t('되돌릴 수 없습니다. 이 대화의 문서·아티팩트와 공유 링크도 지워집니다.')}
+        description={t('되돌릴 수 없습니다. 이 대화의 문서·아티팩트와 공유 링크도 삭제됩니다.')}
       >
         <DeleteFilesChoice checked={withFiles} onChange={setWithFiles} count={fileCount ?? 0} />
       </ConfirmDialog>

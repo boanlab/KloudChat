@@ -301,7 +301,7 @@ def source_image(data: bytes) -> SourceImage:
             picture.save(out, "PNG")
             return SourceImage(out.getvalue(), "image/png", picture.width, picture.height)
     except Exception as exc:  # noqa: BLE001 — any decode failure: not a picture to edit
-        raise ImageError("고칠 이미지를 읽지 못했습니다.") from exc
+        raise ImageError("고칠 이미지를 읽지 못했습니다. 다른 이미지로 다시 시도하세요.") from exc
 
 
 def edit_prompt(instruction: str, *, design: str = "") -> str:
@@ -449,7 +449,7 @@ def _extract(message: dict[str, Any]) -> tuple[bytes, str]:
     if not images:
         # prose instead of an image: refusal
         text = (message.get("content") or "").strip()
-        raise ImageError(text[:200] or "이미지를 만들지 못했습니다.")
+        raise ImageError(text[:200] or "이미지를 만들지 못했습니다. 잠시 뒤 다시 시도하세요.")
 
     url = (images[0].get("image_url") or {}).get("url") or ""
     match = _DATA_URL.match(url)
@@ -509,7 +509,7 @@ async def generate(
     body = response.json()
     choices = body.get("choices") or []
     if not choices:
-        raise ImageError("이미지를 만들지 못했습니다.")
+        raise ImageError("이미지를 만들지 못했습니다. 잠시 뒤 다시 시도하세요.")
     data, mime = _extract(choices[0].get("message") or {})
     usage = body.get("usage") or {}
     width, height = _measure(data)

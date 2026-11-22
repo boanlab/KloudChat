@@ -63,7 +63,7 @@ export function FilesPage() {
     let live = true
     filesApi.get(opening)
       .then((row) => live && setPreviewing(row))
-      .catch((err) => live && setError(errorMessage(err, t('파일을 열지 못했습니다.'))))
+      .catch((err) => live && setError(errorMessage(err, t('파일을 열지 못했습니다. 잠시 뒤 다시 시도하세요.'))))
     return () => {
       live = false
     }
@@ -87,7 +87,7 @@ export function FilesPage() {
       setImageEdit({ ...source, sessionId: id })
       navigate(`/s/${id}`)
     } catch (err) {
-      setError(errorMessage(err, t('이미지를 고치지 못했습니다.')))
+      setError(errorMessage(err, t('이미지를 고치지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     }
   }
   // scans and videos still being read follow their reading here too
@@ -120,7 +120,7 @@ export function FilesPage() {
         if (tab !== 'upload') setTab('upload')
         box.addRow(row)
       } catch (err) {
-        problems.push(`${file.name} — ${errorMessage(err, t('올리지 못했습니다.'))}`)
+        problems.push(`${file.name} — ${errorMessage(err, t('올리지 못했습니다. 잠시 뒤 다시 시도하세요.'))}`)
       }
     }
     setUploading(null)
@@ -137,7 +137,7 @@ export function FilesPage() {
         gone.push(id)
       }
     } catch (err) {
-      setError(errorMessage(err, t('삭제하지 못했습니다.')))
+      setError(errorMessage(err, t('삭제하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
       box.removeRows(gone)
     }
@@ -167,7 +167,7 @@ export function FilesPage() {
               />
               <Button size="sm" disabled={!!uploading} onClick={() => fileInput.current?.click()}>
                 <Upload size={14} className={uploading ? 'animate-pulse' : undefined} />
-                {uploading ? t('업로드 중') : t('파일 올리기')}
+                {uploading ? t('올리는 중') : t('파일 올리기')}
               </Button>
             </>
           }
@@ -282,7 +282,7 @@ export function FilesPage() {
                           size="icon"
                           aria-label={t('{name} 내려받기').replace('{name}', row.name)}
                           title={t('내려받기')}
-                          onClick={() => void downloadFile(row.id, row.name).catch((err) => setError(errorMessage(err, t('내려받지 못했습니다.'))))}
+                          onClick={() => void downloadFile(row.id, row.name).catch((err) => setError(errorMessage(err, t('내려받지 못했습니다. 잠시 뒤 다시 시도하세요.'))))}
                         >
                           <Download size={14} />
                         </Button>

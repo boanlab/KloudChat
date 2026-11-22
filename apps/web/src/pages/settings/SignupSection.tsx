@@ -80,8 +80,8 @@ export function SignupSection({
     } catch (err) {
       setError(
         err instanceof ApiError && err.detail
-          ? `${t('저장하지 못했습니다.')} (${err.detail})`
-          : t('저장하지 못했습니다.'),
+          ? `${t('저장하지 못했습니다. 잠시 뒤 다시 시도하세요.')} (${err.detail})`
+          : t('저장하지 못했습니다. 잠시 뒤 다시 시도하세요.'),
       )
     } finally {
       setBusy(false)

@@ -184,7 +184,7 @@ function turnFailureNotice(
       : t('답변이 중간에 끊겨 여기까지만 남았습니다.')
   }
   if (message.failure === 'no_answer') {
-    return media ? t('만들지 못했습니다.') : t('답변을 받지 못했습니다.')
+    return media ? t('만들지 못했습니다. 잠시 뒤 다시 시도하세요.') : t('답변을 받지 못했습니다. 잠시 뒤 다시 시도하세요.')
   }
   return undefined
 }
@@ -351,9 +351,9 @@ function MessageItemInner({
       setReopened(null)
     } catch (err) {
       const failed = {
-        hwp: '이 파일을 한글 편집기로 열지 못했습니다.',
-        docx: '이 파일을 Word 편집기로 열지 못했습니다.',
-        pptx: '이 파일을 PowerPoint 편집기로 열지 못했습니다.',
+        hwp: '이 파일을 한글 편집기로 열지 못했습니다. 잠시 뒤 다시 시도하세요.',
+        docx: '이 파일을 Word 편집기로 열지 못했습니다. 잠시 뒤 다시 시도하세요.',
+        pptx: '이 파일을 PowerPoint 편집기로 열지 못했습니다. 잠시 뒤 다시 시도하세요.',
       }[kind]
       setFileError(errorMessage(err, t(failed)))
     } finally {
@@ -366,7 +366,7 @@ function MessageItemInner({
     try {
       await downloadFile(id, name)
     } catch (err) {
-      setFileError(errorMessage(err, t('파일을 내려받지 못했습니다.')))
+      setFileError(errorMessage(err, t('파일을 내려받지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     }
   }
   const model = models.find((m) => m.id === message.model)

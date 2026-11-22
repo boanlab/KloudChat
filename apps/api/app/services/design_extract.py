@@ -103,7 +103,7 @@ async def extract(*, source: str, model: str, api_key: str) -> tuple[dict, dict[
     data = _object(reply)
     if not data:
         log.warning("design extraction unparseable: %s", reply[:300])
-        raise ExtractError("문서에서 테마를 읽어내지 못했습니다.")
+        raise ExtractError("문서에서 테마를 읽어내지 못했습니다. 잠시 뒤 다시 시도하세요.")
 
     draft = {
         "name": str(data.get("name") or "").strip()[:60],
@@ -114,7 +114,7 @@ async def extract(*, source: str, model: str, api_key: str) -> tuple[dict, dict[
         "craft": design.craft_keys(data.get("craft")),
     }
     if not draft["name"]:
-        raise ExtractError("문서에서 테마를 읽어내지 못했습니다.")
+        raise ExtractError("문서에서 테마를 읽어내지 못했습니다. 잠시 뒤 다시 시도하세요.")
     return draft, usage
 
 

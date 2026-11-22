@@ -155,7 +155,7 @@ async def test_a_delete_asked_to_take_the_files_takes_them_and_says_so(db, tmp_p
     left = (await db.exec(select(StoredFile))).all()
     assert {f.session_id for f in left} == {kept}
     kept_note, gone_note = (e.event_metadata.get("note") or e.detail for e in await _events(db))
-    assert "첨부 파일은 지우지 않음" in str(kept_note) and "파일 2개도 지움" in str(gone_note)
+    assert "첨부 파일은 삭제하지 않음" in str(kept_note) and "파일 2개도 지움" in str(gone_note)
 
 
 @pytest.mark.asyncio

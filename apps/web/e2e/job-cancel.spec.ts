@@ -104,7 +104,7 @@ test('취소가 실패하면 카드는 되던 대로 돌아간다', async ({ pag
   await page.getByRole('button', { name: '취소', exact: true }).first().click()
 
   // Still being made and still to be charged, so the card must not claim it stopped.
-  await expect(page.getByText('작업을 취소하지 못했습니다.')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByText('작업을 취소하지 못했습니다. 잠시 뒤 다시 시도하세요.')).toBeVisible({ timeout: 15_000 })
   await expect(page.getByText('만드는 중').first()).toBeVisible()
   await expect(page.getByText('취소됨')).toHaveCount(0)
 })

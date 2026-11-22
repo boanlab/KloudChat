@@ -16,9 +16,9 @@ import { PREVIEW_LABEL, PREVIEWS } from './OfficeView'
 
 /** What each kind's preview is called, and what is said when its editor cannot open a copy. */
 const EDITOR: Record<OfficeKind, { label: string; failed: string }> = {
-  hwp: { label: PREVIEW_LABEL.hwp, failed: '이 파일을 한글 편집기로 열지 못했습니다.' },
-  docx: { label: PREVIEW_LABEL.docx, failed: '이 파일을 Word 편집기로 열지 못했습니다.' },
-  pptx: { label: PREVIEW_LABEL.pptx, failed: '이 파일을 PowerPoint 편집기로 열지 못했습니다.' },
+  hwp: { label: PREVIEW_LABEL.hwp, failed: '이 파일을 한글 편집기로 열지 못했습니다. 잠시 뒤 다시 시도하세요.' },
+  docx: { label: PREVIEW_LABEL.docx, failed: '이 파일을 Word 편집기로 열지 못했습니다. 잠시 뒤 다시 시도하세요.' },
+  pptx: { label: PREVIEW_LABEL.pptx, failed: '이 파일을 PowerPoint 편집기로 열지 못했습니다. 잠시 뒤 다시 시도하세요.' },
 }
 
 type Shown =
@@ -88,7 +88,7 @@ export function FilePreview({ row, onClose, start }: { row: FileRow | null; onCl
       const { text, truncated } = await filesApi.text(row.id)
       if (alive) setShown({ kind: 'text', text, truncated })
     }
-    load().catch((err) => alive && setShown({ kind: 'failed', message: errorMessage(err, t('미리보기를 불러오지 못했습니다.')) }))
+    load().catch((err) => alive && setShown({ kind: 'failed', message: errorMessage(err, t('미리보기를 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')) }))
     if (officeKindOf(row.name)) {
       filesApi.documents(row.id)
         // a copy whose conversation is gone has nowhere to reopen
@@ -109,7 +109,7 @@ export function FilePreview({ row, onClose, start }: { row: FileRow | null; onCl
       .then(({ text, truncated }) => setShown({
         kind: 'text', text, truncated, note: t('모양은 그리지 못해 글자만 보여 줍니다.'),
       }))
-      .catch((err) => setShown({ kind: 'failed', message: errorMessage(err, t('미리보기를 불러오지 못했습니다.')) }))
+      .catch((err) => setShown({ kind: 'failed', message: errorMessage(err, t('미리보기를 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')) }))
   }
 
   /** A copy of the file in its editor beside a new chat; the file stays as it is. */
@@ -160,7 +160,7 @@ export function FilePreview({ row, onClose, start }: { row: FileRow | null; onCl
           )}
           <Button
             variant="secondary"
-            onClick={() => void downloadFile(row.id, row.name).catch((err) => setError(errorMessage(err, t('내려받지 못했습니다.'))))}
+            onClick={() => void downloadFile(row.id, row.name).catch((err) => setError(errorMessage(err, t('내려받지 못했습니다. 잠시 뒤 다시 시도하세요.'))))}
           >
             <Download size={14} /> {t('내려받기')}
           </Button>

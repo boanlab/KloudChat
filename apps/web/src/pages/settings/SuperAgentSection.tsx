@@ -210,7 +210,7 @@ export function SuperAgentSection() {
         {t('대시보드·차트·그래프를 그리는 코드와 아티팩트는 「대시보드·차트」 줄의 모델이 씁니다.')}
       </p>
       <p className="text-xs text-faint">
-        {t('보고서·슬라이드는 「보고서·슬라이드」 줄의 모델이 쓰고, 개요·어려운 부분·검사에 걸린 부분만 「문서 개요·구성」「문서의 어려운 부분」「문서 고쳐 쓰기」 줄의 모델이 맡습니다. 줄을 비우면 그 단계도 쓰는 모델이 합니다.')}
+        {t('보고서·슬라이드는 「보고서·슬라이드」 줄의 모델이 씁니다. 개요·어려운 부분·고쳐 쓰기는 아래 줄의 모델이 맡고, 줄을 비우면 쓰는 모델이 합니다.')}
       </p>
       <p className="text-xs text-faint">
         {t('양식을 따르거나 자료가 많은 문서는 「복잡한 문서」 줄의 모델이 쓰고, 실패하면 「보고서·슬라이드」 줄의 모델이 잇습니다.')}
@@ -253,7 +253,7 @@ export function SuperAgentSection() {
             } catch (saveError) {
               const reason = SUPER_REFUSALS[errorCode(saveError)]
               setError(
-                reason ? t(reason) : errorMessage(saveError, t('Super Agent 설정을 저장하지 못했습니다.')),
+                reason ? t(reason) : errorMessage(saveError, t('Super Agent 설정을 저장하지 못했습니다. 잠시 뒤 다시 시도하세요.')),
               )
             } finally {
               setBusy(false)

@@ -62,7 +62,7 @@ test('a project file is held for undo before it is deleted, and comes back if th
   // Sent after the undo window; the server refuses and the file is back with the reason.
   await remove.click()
   await expect(remove).toHaveCount(0)
-  await expect(page.getByRole('alert')).toContainText('학사일정.md을(를) 지우지 못했습니다.', { timeout: 10_000 })
+  await expect(page.getByRole('alert')).toContainText('삭제하지 못했습니다: 학사일정.md', { timeout: 10_000 })
   await expect(remove).toBeVisible()
   expect(deletes).toEqual(['DELETE'])
 })
@@ -75,7 +75,7 @@ test('project instructions that did not save stay unsaved with the reason', asyn
   await expect(box).toHaveValue('공문체로 쓴다.', { timeout: 15_000 })
   await box.fill('공문체로 쓰고 날짜는 2026. 3. 2. 꼴로 쓴다.')
   await page.getByRole('button', { name: '저장', exact: true }).click()
-  await expect(page.getByRole('alert')).toContainText('저장하지 못했습니다.')
+  await expect(page.getByRole('alert')).toContainText('저장하지 못했습니다. 잠시 뒤 다시 시도하세요.')
   // Still marked unsaved, with the text as typed, so it can be sent again.
   await expect(page.getByRole('button', { name: '저장', exact: true })).toBeVisible()
   await expect(box).toHaveValue('공문체로 쓰고 날짜는 2026. 3. 2. 꼴로 쓴다.')
@@ -93,7 +93,7 @@ test('a connector switch the server refused goes back and says why', async ({ pa
   const toggle = page.getByRole('switch', { name: '사내 위키 사용' })
   await expect(toggle).toHaveAttribute('aria-checked', 'true', { timeout: 15_000 })
   await toggle.click()
-  await expect(page.getByRole('alert')).toContainText('MCP 서버를 끄지 못했습니다.')
+  await expect(page.getByRole('alert')).toContainText('MCP 서버를 끄지 못했습니다. 잠시 뒤 다시 시도하세요.')
   await expect(toggle).toHaveAttribute('aria-checked', 'true')
   expect(sent).toEqual([{ enabled: false }])
 })

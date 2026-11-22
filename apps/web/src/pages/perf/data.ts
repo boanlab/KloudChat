@@ -39,7 +39,7 @@ export function usePerfOverview() {
       setData(await perfApi.overview(range))
       setError(null)
     } catch (err) {
-      setError(errorMessage(err, t('성능 지표를 불러오지 못했습니다.')))
+      setError(errorMessage(err, t('성능 지표를 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     }
   }, [range, t])
 

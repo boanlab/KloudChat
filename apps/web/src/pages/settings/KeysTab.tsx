@@ -98,7 +98,7 @@ export function KeysTab() {
 
       {apiKeys === null || listing.status === 'error' ? (
         <Card>
-          <ResourceStatus resource={listing} label={t('불러오는 중입니다…')} failed={t('키 목록을 불러오지 못했습니다.')} />
+          <ResourceStatus resource={listing} label={t('불러오는 중입니다…')} failed={t('키 목록을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')} />
         </Card>
       ) : apiKeys.length === 0 ? (
         <Card className="p-8 text-center">
@@ -197,7 +197,7 @@ export function KeysTab() {
                   try {
                     setIssued(await createApiKey(name.trim()))
                   } catch (err) {
-                    setError(errorMessage(err, t('발급에 실패했습니다.')))
+                    setError(errorMessage(err, t('발급에 실패했습니다. 잠시 뒤 다시 시도하세요.')))
                   } finally {
                     setBusy(false)
                   }

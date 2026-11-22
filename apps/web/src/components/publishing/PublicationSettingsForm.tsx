@@ -57,7 +57,7 @@ export function PublicationSettingsForm({
             ))}
           </Select>
         </Field>
-        <Field label={t('대화 보관 기간')} hint={t('마지막 질문 뒤 이 기간이 지나면 대화를 지웁니다.')}>
+        <Field label={t('대화 보관 기간')} hint={t('마지막 질문 뒤 이 기간이 지나면 대화를 삭제합니다.')}>
           <Select value={String(draft.retentionDays)} onChange={(e) => set({ retentionDays: Number(e.target.value) })}>
             {RETENTION_DAYS.map((d) => (
               <option key={d} value={d}>

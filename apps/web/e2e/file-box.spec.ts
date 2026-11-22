@@ -33,7 +33,7 @@ test('파일함 lists uploaded and made files apart and deletes one after asking
 
   await page.getByRole('tab', { name: /만든 파일\s*2/ }).click()
   await expect(rows).toHaveCount(2)
-  await expect(rows.filter({ hasText: '방법 구조도.png' })).toContainText('지운 대화')
+  await expect(rows.filter({ hasText: '방법 구조도.png' })).toContainText('삭제한 대화')
   await page.getByLabel('파일 검색').fill('lru')
   await expect(rows).toHaveCount(1)
 
@@ -93,7 +93,7 @@ test('deleting a conversation keeps its files unless the choice is ticked', asyn
   await page.getByRole('menuitem', { name: '삭제' }).click()
   const dialog = page.getByRole('dialog')
   // the conversation holds two files (one attached, one made in it)
-  const choice = dialog.getByLabel(/대화의 파일 2개도 함께 지우기/)
+  const choice = dialog.getByLabel(/대화의 파일 2개도 함께 삭제/)
   await expect(choice).not.toBeChecked()
   await choice.check()
   await dialog.getByRole('button', { name: '삭제', exact: true }).click()

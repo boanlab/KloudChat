@@ -99,7 +99,7 @@ test('장별 강조색과 그림 설명을 수정하고 그림을 제거할 수 
   expect(stored.image).toBeUndefined()
 
   // 이미지 › 그림 올리기 puts a local picture on the slide
-  await pictures.getByLabel('로컬 그림 업로드').setInputFiles({
+  await pictures.getByLabel('로컬 그림 올리기').setInputFiles({
     name: '내그림.png',
     mimeType: 'image/png',
     buffer: Buffer.from(PNG.split(',')[1], 'base64'),
