@@ -175,9 +175,11 @@ def _usage(bundle: Bundle) -> dict[str, Any]:
     return {"type": "usage", **bundle.usage}
 
 
-#: experiment (11-21, owner-approved A/B): a report from the person's own material written in one
-#: pass — the whole document in one call, no separate hard sections, no assumption or premise
-#: section the request does not ask for, no lengthening pass. Off unless the environment sets it.
+#: a report from the person's own material written in one pass — the whole document in one call,
+#: no separate hard sections, no assumption or premise section the request does not ask for, no
+#: lengthening pass. On for the self-hosted writers (11-22 A/B on strict-local, 4 runs x 10 tasks:
+#: overall 4.67 -> 5.49, answers with a fatal error 29 -> 18 of 39); other writers keep the staged
+#: path. `REPORT_ONE_PASS=1` forces it for every writer, `0` turns it off.
 ONE_PASS_ENV = "REPORT_ONE_PASS"
 _UNASKED_FRAME = (
     "\n- Use only the sections the request names or the document type needs. Do not add a "
@@ -187,10 +189,15 @@ _UNASKED_FRAME = (
 
 def one_pass(bundle: Bundle) -> bool:
     """Whether this report is written in one pass (`ONE_PASS_ENV`): only from the person's own
-    material, no web page among its sources."""
+    material, no web page among its sources, and by default only for a self-hosted writer."""
     import os
 
-    if os.environ.get(ONE_PASS_ENV) != "1":
+    from app.services import model_tier
+
+    setting = os.environ.get(ONE_PASS_ENV)
+    if setting == "0":
+        return False
+    if setting != "1" and bundle.group != model_tier.SELF_HOSTED:
         return False
     return not any(str(s.get("origin") or "") == "web" for s in bundle.material.sources or [])
 
