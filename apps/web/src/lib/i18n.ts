@@ -1670,6 +1670,7 @@ const EN: Record<string, string> = {
   '대화 기록': 'History',
   '워크스페이스': 'Workspace',
   '사이드바 토글': 'Toggle sidebar',
+  '사이드바': 'Sidebar',
   '화면 밝기: 밝게': 'Brightness: light',
   '화면 밝기: 어둡게': 'Brightness: dark',
   '밝게 바꾸기': 'Switch to light',
