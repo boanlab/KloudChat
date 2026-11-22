@@ -694,10 +694,12 @@ export function Thresholds({ th }: { th: PerfOverview['thresholds'] }) {
 export function ModelLatencyTable({
   rows,
   errorRateMax,
+  errorMinCalls = 20,
   empty,
 }: {
   rows: PerfOverview['models']
   errorRateMax: number
+  errorMinCalls?: number
   empty: string
 }) {
   const t = useT()
@@ -708,7 +710,7 @@ export function ModelLatencyTable({
       rows={rows.map((m) => [
         m.model,
         num(m.calls, 0),
-        <span key="e" className={cn(m.errorRate >= errorRateMax && 'text-danger')}>
+        <span key="e" className={cn(m.calls >= errorMinCalls && m.errorRate >= errorRateMax && 'text-danger')}>
           {fmt(m.errorRate, '%')}
         </span>,
         fmt(m.latencyP50, 's'),

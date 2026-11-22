@@ -547,3 +547,22 @@ def test_the_migration_creates_and_drops_metric_samples_on_sqlite():
         with Operations.context(MigrationContext.configure(conn)):
             migration.downgrade()
         assert "metric_samples" not in sa.inspect(conn).get_table_names()
+
+
+async def test_the_overview_exposes_the_minimum_call_count_the_status_uses(db):
+    out = await perf_router.overview(_admin(), db, range="1h")
+    assert out["thresholds"]["errorMinCalls"] == rules.Thresholds().error_min_calls == 20
+
+
+def test_a_small_sample_of_failures_is_not_judged_by_the_status():
+    th = rules.Thresholds()
+    few = {
+        ("model", "calls", "m"): _points([4, 4, 8], 2),
+        ("model", "errors", "m"): _points([1, 1, 2], 2),
+    }
+    assert "model_errors" not in {v.code for v in rules.evaluate(few, NOW, th, NOW)}
+    enough = {
+        ("model", "calls", "m"): _points([10, 10, 10], 2),
+        ("model", "errors", "m"): _points([3, 3, 3], 2),
+    }
+    assert "model_errors" in {v.code for v in rules.evaluate(enough, NOW, th, NOW)}
