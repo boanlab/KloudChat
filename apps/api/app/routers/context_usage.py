@@ -1,10 +1,7 @@
-"""How much of the model's window a conversation's next turn takes, for the composer's gauge.
+"""Estimate of the model window the next turn takes, for the composer's gauge.
 
-Built from the pieces the turn itself uses (`routers.sessions._send_message`): the same
-workspace assembly, tool list, `context.build_messages` envelope, `context.fit_history` cut and
-cached summary, counted with `context.estimate_tokens`. No model is called and nothing is
-written; per-turn extras the turn adds from the question's wording (a date rule, a forced
-search's instructions, a table brief) are left out, so the figure is an estimate."""
+Counts the pieces `routers.sessions._send_message` builds with `context.estimate_tokens`; no
+model call, no writes. Per-turn extras (date rule, forced-search instructions) are left out."""
 
 from __future__ import annotations
 

@@ -106,10 +106,8 @@ class Settings(BaseSettings):
     max_tool_hops: int = 8
     chat_stall_sec: int = 180
     #: Complex document turns (`super_agent.complexity`) that may run at once on a self-hosted
-    #: complex row model, across all API replicas; the rest wait in line. 0 = no cap (the
-    #: default since 2026-11-20: the built-in row is Qwen3.8 Flash, which serves these turns like
-    #: any other document; the cap of 2 was for a single 8-sequence DeepSeek server). Set it when
-    #: the row names a slow self-hosted model that chat shares. Env: COMPLEX_DOCUMENT_SLOTS.
+    #: complex row model, across all API replicas; the rest wait. 0 = no cap. Set it when the
+    #: row names a slow self-hosted model that chat shares. Env: COMPLEX_DOCUMENT_SLOTS.
     complex_document_slots: int = 0
     #: The most a report's sections (or a deck's content slides) the upper model may write, as a
     #: share (`doc_stages`); the writer keeps the rest. Env: DOCUMENT_HARD_SHARE.
@@ -140,7 +138,7 @@ class Settings(BaseSettings):
     #: A connector with more enabled tools than this sends them by name until the model asks
     #: for their schemas (`tools/deferred`); fewer go out whole.
     connector_tools_eager_max: int = 6
-    #: Self-hosted writers defer large connectors too; off until measured on the 27B.
+    #: Also defer large connectors for self-hosted writers.
     self_hosted_defer_connector_tools: bool = False
 
     file_storage_dir: str = "/srv/data/files"

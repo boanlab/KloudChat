@@ -43,18 +43,12 @@ const rhwpHeaders = (): Plugin => ({
 })
 
 /**
- * Build-time changes to the PowerPoint editor (pptx-react-viewer, `components/pptx`), pinned to
- * its exact version in package.json; node_modules is untouched.
- * - `useViewerBuildingBlocks()` hands out neither the speaker-notes writer its own
- *   `PowerPointViewer` uses nor a way to clear its unsaved flag after a save: both are added to
- *   its result (`updateNotes`, `markClean`).
- * - Its stylesheet sets its theme variables (`--font-sans`, `--color-accent`, …) on `:root`,
- *   where they would replace the app's own once a deck opens: they are set on the editor's
- *   own elements instead.
- * - Its utility classes share the app's names (`.text-sm`, `.px-2`, …) but read those scoped
- *   variables, so once a deck opened they resized every element of the app that used one:
- *   each of their selectors is kept to the editor's own elements.
- * A new version that moves any of these spots fails the build rather than shipping without them.
+ * Build-time patches to the PowerPoint editor (pptx-react-viewer, pinned exactly; node_modules untouched):
+ * - `useViewerBuildingBlocks()` also returns `updateNotes` and `markClean`.
+ * - Theme variables (`--font-sans`, `--color-accent`, ...) are set on the editor's elements, not `:root`,
+ *   so they cannot replace the app's own.
+ * - Utility class selectors (`.text-sm`, `.px-2`, ...) are scoped to the editor's elements.
+ * A version that moves any of these spots fails the build.
  */
 const CRV_RESULT = '    slidesPaneProps,\n    mode,\n    loading,\n    error,\n    autosaveStatus,'
 const CRV_ADDED =
@@ -141,11 +135,7 @@ function scopeRules(css: string): string | null {
   return out
 }
 
-/**
- * The sheet with its `@layer utilities` rules applied only inside the editor: each selector
- * gains a zero-specificity `:where(…)` for the editor's boxes (not `@scope`, which older
- * Firefox and Safari drop whole).
- */
+/** The sheet with `@layer utilities` rules limited to the editor via a zero-specificity `:where(...)` (not `@scope`, which older Firefox and Safari drop whole). */
 function scopeCrvUtilities(css: string): string | null {
   const start = css.indexOf(CRV_UTILITIES)
   if (start < 0) return null

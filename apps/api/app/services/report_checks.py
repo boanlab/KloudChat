@@ -243,11 +243,10 @@ def _weekday_year(text: str, today: dt.date) -> int | None:
 
 def meeting_date(request: str, material: str, today: dt.date | None = None) -> dt.date | None:
     """Meeting date from the person or material header: the day in the clause naming the meeting
-    (not a deadline's or the next meeting's); yearless day resolved by its weekday or the year the
-    text's other weekdays fix, or, for a meeting the request says is still to come, by the next
-    such day. A request naming its meeting's record by day (「11월 10일 회의록」) dates that
-    meeting, its year from the material's files or, failing that, the latest such day passed —
-    never the first dated meeting line of some other file."""
+    (not a deadline's or the next meeting's); a yearless day is resolved by its weekday, the year
+    other weekdays fix, or the next such day for a meeting still to come. A request naming the
+    record by day (「11월 10일 회의록」) dates that meeting, its year from the material's files or
+    else the latest such day passed."""
     from app.services import source_focus
 
     if (named := source_focus.named_day(request)) and _MEETING.search(named[3]) and (
@@ -1546,10 +1545,8 @@ def year_lines(label: str, totals: dict[str, dict]) -> list[str]:
 
 
 def _cost_block(result: dict, *, data: bool = False) -> str:
-    """The code's totals for the writer. `data`: a strong writer gets them as figures to use,
-    with no verdict (the lowest alternative, 「settled facts」) to follow: which condition
-    applies and what to recommend stay its judgment (a total stated as settled tilts the
-    recommendation)."""
+    """The code's totals for the writer. `data`: a strong writer gets them as figures to use, with
+    no verdict, so which condition applies and what to recommend stay its judgment."""
     if data:
         return _cost_data(result)
     period = result["period"] or "비교 기간"
@@ -2160,13 +2157,11 @@ def _item_name(before: str, per: str) -> str:
 
 
 def price_lines_reading(request: str, material: str) -> dict | None:
-    """The cost reading code takes from price lines written plainly — 「1인당 월 14,000원 ×
-    40명, 연 단위 계약 시 15% 할인」, 「1회 300만원」, 「대당 10,000원(부가세 포함)」 — in the
-    shape the model's reading has (`_COST_PROMPT`). `None` unless every amount under every
-    option is read: a line it cannot read (a usage price, two amounts in one clause, a discount
-    with no price beside it, an amount outside the options) leaves the reading to the model.
-    The request and the material are read apart (the material may be the request's own
-    lines); both giving options, they must name the same ones."""
+    """Cost reading taken by code from plainly written price lines (「1인당 월 14,000원 × 40명」,
+    「1회 300만원」), in the shape of `_COST_PROMPT`. `None` unless every amount under every
+    option is read (a usage price, two amounts in one clause, a stray discount or an amount
+    outside the options leaves it to the model). Request and material are read apart; both
+    giving options, they must name the same ones."""
     found = [r for r in (_price_lines(request, request), _price_lines(material, request)) if r]
     if len(found) == 2 and ({_option_key(o["name"]) for o in found[0]["options"]}
                             != {_option_key(o["name"]) for o in found[1]["options"]}):
@@ -2268,11 +2263,10 @@ _READINGS_DIFFER = " — 읽을 때마다 값이 다름"
 
 def _split_scenarios(costs: dict, others: list[dict], *,
                      strong: bool) -> tuple[dict, list[str]]:
-    """`costs` with its scenarios that another agreeing reading prices alike; the rest are
-    never dropped silently. A strong writer gets each differing scenario with every reading's
-    totals, marked, to judge from the material; for a small writer a differing scenario that
-    lowers an option's total (a discount) leaves that option unsettled (the names returned),
-    and any other differing scenario is listed as left out."""
+    """`costs` with the scenarios another agreeing reading prices alike. A strong writer gets
+    each differing scenario with every reading's totals, marked; for a small writer a differing
+    scenario that lowers an option's total leaves that option unsettled (names returned), and
+    any other is listed as left out."""
     agreed = [sc for sc in costs["scenarios"] if any(
         _same_totals(sc["options"], other["options"])
         for o in others for other in o["scenarios"])]
@@ -2321,7 +2315,7 @@ async def _compare_cost(pre: Prepass, job: PrepassJob) -> None:
                                 material=given), (
                 why[0] if why else "")
 
-        # split settled by outline model w/ thinking (15/15 vs 12/15 without, 150 s median); plain third past cap
+        # split settled by the outline model with thinking; a plain third reading past the cap
         thinker = next((m for m in (model, tiebreak_model)
                         if m and thinking.thinks_by_default(m)), "")
         deliberated = False
@@ -2758,10 +2752,9 @@ UNASSIGNED_WHY = ("이 행의 할 일은 자료에서 누구에게도 맡겨지�
 
 
 def unassigned_rows(sections: list[dict], material: str) -> list[tuple[int, str, list[str]]]:
-    """(section, row, [task]) for action rows with no owner whose task no memo clause gives
-    anyone or leaves open: 「2학기 튜터링 모집 시행 | 미정」 from 「모집 기간은 11/3~11/14로 확정」.
-    A task sharing a word with a memo clause giving one of its people a task is that person's
-    (the writer left the owner out), and a decision table's rows are no action rows."""
+    """(section, row, [task]) for action rows with no owner whose task no memo clause gives anyone
+    or leaves open. A task sharing a word with a memo clause giving one of its people a task is
+    that person's (the writer left the owner out); decision-table rows are no action rows."""
     from app.services import stated_days, stated_meeting
 
     clauses = [re.sub(r"\s+", "", c).lower() for c in _MEMO_CLAUSE.split(material or "")
@@ -4234,8 +4227,8 @@ def _head_day(day: dt.date, english: bool) -> str:
 
 
 def _head_year(written: str, pre: Prepass, today: dt.date | None, english: bool = False) -> str:
-    """「10/14」 → 「2026-10-14(수)」: the read meeting date, else the year nearest today when
-    clear, else 「[연도]」; a weekday the person wrote is kept, flagged when the calendar differs."""
+    """「10/14」 to 「2026-10-14(수)」: the read meeting date, else the year nearest today when
+    clear, else 「[연도]」; a weekday the person wrote is kept, flagged if the calendar differs."""
     from app.services import weekdays
 
     # 「2026년 10/14」: the year the person gave, the day in one form
@@ -5362,11 +5355,10 @@ def _day_of(m: re.Match, year: int) -> dt.date | None:
 
 
 def duration_limit(must: dict, text: str, today: dt.date | None = None) -> dict | None:
-    """A duration must's limit in days, from the request and material by code: the limit as
-    written with its unit (「4주 이내」), else a lead-time limit the text writes (「납품 6주
-    이내」), else a deadline counted from a contract day both written (「10월 12일 계약」,
-    「11월 30일까지」 → 49일). `None` when the text settles none — the reading's own number
-    (「1달」 for 「11월 30일까지」) is never the limit."""
+    """A duration must's limit in days by code from the request and material: the limit as
+    written with its unit (「4주 이내」), a lead-time limit (「납품 6주 이내」), or a deadline counted
+    from a written contract day. `None` when the text settles none; the reading's own number is
+    never the limit."""
     unit = str(must.get("unit") or "").strip().lower()
     unit = _EN_UNIT.get(unit, unit)
     limit = _plain(must.get("limit"))
@@ -5437,10 +5429,9 @@ def _mentions(option: str, options: list[str], must: str, material: str) -> bool
 
 def must_status(data: dict, numbers: list[float], material: str = "",
                 costs: dict | None = None, today: dt.date | None = None) -> dict | None:
-    """Each option 충족 / 탈락(사유) / 조건 미확인; unstated limits/values left out; a yearly
-    money limit the reading left blank is judged on compare-cost's yearly cost. A duration
-    must (납기, 보증 기간) is judged in days by code from the material's own words, never on
-    the reading's numbers, whose units it does not say (「납기 2주」 is not 14달)."""
+    """Each option 충족 / 탈락(사유) / 조건 미확인; unstated limits/values left out; a yearly money
+    limit the reading left blank is judged on compare-cost's yearly cost. A duration must (납기,
+    보증 기간) is judged in days by code from the material's words, not the reading's numbers."""
     if material:
         data = must_values_from_tables(data, material)
     musts = []
@@ -5538,10 +5529,10 @@ def must_status(data: dict, numbers: list[float], material: str = "",
 def _judge_duration(option: str, names: list[str], must: dict, limit: dict, raw: Any,
                     material: str, failed: list[str], unknown: list[str],
                     conditional: list[str]) -> None:
-    """One duration must for one option, in days: the material's own duration under the
-    must's word, else the reading's number only where the option's text writes it with the
-    must's unit; a range across the limit is open; a longer period the option sells as an
-    extension (「3년 연장 시」) meets a minimum, said with its cost."""
+    """One duration must for one option, in days: the material's duration under the must's word,
+    else the reading's number only where the option's text writes it with the must's unit; a
+    range across the limit is open; a longer period sold as an extension meets a minimum,
+    said with its cost."""
     value = option_duration(option, names, must, material)
     if value is None:
         plain = _plain(raw.get("value") if isinstance(raw, dict) else raw)

@@ -53,9 +53,8 @@ ADAPTER_MODELS: list[dict[str, Any]] = [
 
 # keyed on `model_name`, merged over `/model/info`
 MODEL_OVERRIDES: dict[str, dict[str, Any]] = {
-    # both twins of a Qwen3.8 model take images (12 image tasks: flash 9.62, 27B 9.75 of 10).
-    # What is sent to a model is still decided by `workspace_context.reads_pictures`: the privacy
-    # guard cannot inspect images, so an attached picture goes only to a strict-local model.
+    # What is sent is decided by `workspace_context.reads_pictures`: the privacy guard cannot
+    # inspect images, so an attached picture goes only to a strict-local model.
     "strict-local/qwen3.8-27b": {"supports_vision": True},
     "strict-local/qwen3.8-flash": {"supports_vision": True},
     "local/qwen3.8-27b": {"supports_vision": True},

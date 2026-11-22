@@ -1,10 +1,7 @@
 import { patternOf } from '@/components/slides/patterns'
 import type { Slide } from '@/types'
 
-/**
- * Changing a web slide's layout: its content carried into the new layout's fields, and what
- * the new layout cannot show kept aside on the slide (`held`), never dropped.
- */
+/* Layout change for web slides: content carried into the new fields, the rest kept in `held`. */
 
 /** Layouts made of [left, right] pairs; see `Slide.bands`. */
 export const PAIRED = ['bands', 'tiles', 'timeline', 'steps', 'cards'] as const
@@ -54,11 +51,7 @@ function contentTexts(slide: Slide): string[] {
   ].map((text) => (text ?? '').trim()).filter(Boolean)
 }
 
-/**
- * Re-shape one slide into another layout, carrying its content over. Nothing is dropped: what
- * the new layout cannot show (a chart on a text layout, text the conversion left out) is kept
- * in `held`, shown as a notice under the slide, and taken back by a later layout change.
- */
+/** Re-shape a slide into another layout; content the layout cannot show is kept in `held`, never dropped. */
 export function relayout(slide: Slide, layout: Slide['layout']): Slide {
   if (layout === slide.layout) return slide
   // What an earlier change set aside comes back first.

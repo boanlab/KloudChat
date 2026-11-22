@@ -1,17 +1,14 @@
 """Published agents open to people without an account: by link, or listed on the public page.
 
-Widening a bot's audience beyond members waits for an administrator, and so does a new
-version on a bot already open outside; the approved version answers meanwhile.
+Widening the audience beyond members, or publishing a new version of a bot already open outside,
+waits for an administrator; the approved version answers meanwhile.
 
-- `publications`: the requested audience and its review (`requested_visibility`,
-  `review_state`, `review_note`, `reviewed_at`, `reviewed_by`), the version waiting for review
-  (`pending_version_id`), and `attention_at`/`owner_seen_at` for the owner's badge.
-- `publication_versions.approved_at`/`approved_by`: approved for people without an account.
-- `publication_visitors.anon_id`: a visitor without an account, by their signed cookie's id;
-  `blocked_at`.
+- `publications`: requested audience and review (`requested_visibility`, `review_state`,
+  `review_note`, `reviewed_at`, `reviewed_by`), `pending_version_id`, `attention_at`/`owner_seen_at`.
+- `publication_versions.approved_at`/`approved_by`.
+- `publication_visitors.anon_id` (signed cookie id), `blocked_at`.
 
-No existing row changes: every bot stays open to members only. Downgrade closes the outside
-audiences (every bot back to members only) and drops what this adds.
+Every bot stays members-only. Downgrade closes outside audiences and drops what this adds.
 
 Revision ID: 0065
 Revises: 0064
@@ -58,7 +55,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # The code before this revision serves members only, and members only on `internal`.
+    # Earlier code serves members only, and members only on `internal`.
     op.execute("UPDATE publications SET visibility = 'internal'")
     op.drop_index("ux_publication_visitors_anon", table_name="publication_visitors")
     op.drop_column("publication_visitors", "blocked_at")

@@ -1,14 +1,10 @@
 """Agent output language, web-search default and memory opt-out.
 
-- `agents.output_language`: the language every turn and document of the agent's conversations
-  is written in (`auto` = the request's language, as before).
-- `agents.web_search_default`: the web search setting a new conversation with the agent starts
-  with (`auto`, `on`, `off`); the person still changes it per turn.
-- `agents.use_memory`: whether account memories are read into the agent's turns and written
-  from them.
+- `agents.output_language`: language of the agent's turns and documents (`auto` = the request's language).
+- `agents.web_search_default`: starting web search setting (`auto`, `on`, `off`).
+- `agents.use_memory`: whether account memories are read into and written from the agent's turns.
 
-Every existing agent gets the values that keep today's behaviour (`auto`, `auto`, true).
-Downgrade drops the three columns.
+Existing agents get `auto`, `auto`, true. Downgrade drops the columns.
 
 Revision ID: 0074
 Revises: 0073

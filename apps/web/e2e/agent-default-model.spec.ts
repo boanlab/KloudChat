@@ -1,11 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { hubFixture } from './customize-fixture'
 
-/**
- * A new agent is not pinned to a model: it follows its surface's default, the admin's, and the
- * form names it. Price decides nothing: on a self-hosted install every model costs 0 and the
- * coding model is listed first, yet neither the agent nor the chat screen lands on it.
- */
+/** A new agent follows its surface's default model (the admin's), not price or list order. */
 
 test.use({ serviceWorkers: 'block' })
 

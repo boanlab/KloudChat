@@ -1,9 +1,4 @@
-/** `steps` fence: numbered procedure, text through every export.
- *     ```steps
- *     자료 수집 | 공개 데이터와 내부 로그를 모은다
- *     정제 | 중복과 결측을 걸러낸다
- *     ```
- */
+/** `steps` fence (`title | description` lines): numbered procedure. */
 export function StepList({ source }: { source: string }) {
   const steps = parse(source, 8)
   if (!steps.length) return null

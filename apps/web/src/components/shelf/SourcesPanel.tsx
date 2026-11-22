@@ -13,12 +13,7 @@ import { AddTextModal } from './AddTextModal'
 import { SourceGuide } from './SourceGuide'
 import { SOURCE_ICONS, SOURCE_KIND_LABELS } from './sourceKinds'
 
-/**
- * The conversation's 자료 panel: the project's sources with a switch each that decides what
- * this conversation's next questions may use (all on by default; kept per conversation),
- * select all/none, search and counts, each source's guide, and the project's suggested
- * questions. A question is dropped into the composer, never sent on the person's behalf.
- */
+/** The conversation's 자료 panel: per-source switches, select all/none, search, guides and suggested questions (dropped into the composer, never sent). */
 export function SourcesPanel({
   sessionId,
   projectId,
@@ -41,7 +36,7 @@ export function SourcesPanel({
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [adding, setAdding] = useState(false)
-  // The latest selection to store; a save in flight stores what was asked last.
+  // Latest selection to store; a save in flight stores the last request.
   const pending = useRef<string[] | null>(null)
 
   const load = useCallback(async () => {

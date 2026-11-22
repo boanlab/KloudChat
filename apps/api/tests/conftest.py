@@ -91,11 +91,11 @@ exec(_MEASURE, _measure)
 
 
 def _growth(script: str, n: int, *, hang_sec: float = 300.0) -> float:
-    """How a scan's CPU time grows when its input grows fourfold: `script` defines `run(n)`;
-    a child process times `run(n)` and `run(4 * n)` (best of two each, CPU time) and this
-    returns the ratio, about 4 for a linear scan and about 16 for a quadratic one. Wall time
-    on a busy runner (and even CPU time across runners) is not the scan's cost, so the bound
-    is on the growth; the child's `hang_sec` timeout still stops a scan that never ends."""
+    """CPU-time growth ratio of `script`'s `run(n)` from n to 4n (about 4 if linear, 16 if
+    quadratic).
+
+    Measured in a child process (best of two, CPU time), since wall time on a busy runner is not the
+    scan's cost; `hang_sec` stops a scan that never ends."""
     wrapped = f"{script}\n{_MEASURE}\nprint(_least_ratio(run, {n}))\n"
     done = subprocess.run(
         [sys.executable, "-c", wrapped], check=True, capture_output=True, text=True,
@@ -105,9 +105,8 @@ def _growth(script: str, n: int, *, hang_sec: float = 300.0) -> float:
 
 
 def _growth_of(run: Callable[[int], object], n: int, *, hang_sec: float = 120.0) -> float:
-    """`_growth` for a function of this process: a forked copy measures it (CPU time is then
-    the scan's alone, and an import costs nothing), and a copy that has not answered within
-    `hang_sec` is killed, so a scan that never ends fails instead of stalling the suite.
+    """`_growth` for an in-process function, timed in a forked copy killed after `hang_sec`.
+
     Without `fork` (Windows) it is measured here, unguarded."""
     if not hasattr(os, "fork"):
         return _measure["_least_ratio"](run, n)
@@ -148,10 +147,8 @@ LINEAR_GROWTH = 8.0
 
 @pytest.fixture
 def linear_scan():
-    """`linear_scan(run, n)`: fails unless `run` grows linearly from n to 4n (`_growth` under
-    `LINEAR_GROWTH`). `run` is a function of the input size, or a script that defines one
-    (`def run(n): ...`) for a child process of its own. A bound on CPU-time growth, not on
-    seconds: a slow or busy runner stretches both runs alike."""
+    """`linear_scan(run, n)`: fails unless `run` (a function of size, or a script defining
+    `run(n)`) grows linearly from n to 4n."""
 
     def check(run: str | Callable[[int], object], n: int) -> None:
         ratio = _growth(run, n) if isinstance(run, str) else _growth_of(run, n)

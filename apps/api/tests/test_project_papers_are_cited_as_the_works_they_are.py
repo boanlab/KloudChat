@@ -1,7 +1,5 @@
-"""「프로젝트 논문 중 해당되는 것들을 인용하고 참고문헌도 달아 줘. 분량은 A4 2~3쪽」: the
-project's papers are the sources (no web search), each listed as the work it is — title,
-authors, year, arXiv link read from its first page, never 「2309.06180.pdf. 프로젝트 파일」 —
-one reference list numbered as the text cites it, and the length held to the pages asked."""
+"""Project papers are cited as the works they are (title, authors, year, arXiv link) in one
+numbered reference list, within the pages asked."""
 
 from app.services import citations, paper_meta, report, report_export
 

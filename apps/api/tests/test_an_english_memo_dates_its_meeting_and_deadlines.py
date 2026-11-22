@@ -1,7 +1,5 @@
-"""An English memo dates its meeting and deadlines as a Korean one does: 「Oct 19 … weekly
-sync」 is the meeting day (the next meeting's 「Oct 26 (Mon)」 is not), a minutes deadline
-「10월 28일」 is the memo's 「Oct 28」, and 「(Mon)」 is a Monday. Shape from the round 16 audit
-(H2)."""
+"""An English memo dates its meeting and deadlines as a Korean one does, including weekday
+abbreviations."""
 
 from __future__ import annotations
 

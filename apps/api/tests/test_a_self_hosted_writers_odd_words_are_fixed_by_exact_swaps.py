@@ -1,7 +1,5 @@
-"""A self-hosted writer's odd Korean words (a gloss-mismatched word, a misspelling, English or
-Chinese fused into Korean) are named by the judge model as {from, to} pairs and swapped by code
-only where they stand verbatim and keep every number, citation, name and acronym; an external
-writer's text gets no such pass, and a strict-local writer's checker stays strict-local."""
+"""A self-hosted writer's odd words are named by the judge as {from, to} pairs and swapped only
+where verbatim; external and strict-local writers get no such pass."""
 
 from __future__ import annotations
 

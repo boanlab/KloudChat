@@ -197,7 +197,6 @@ def test_a_value_printed_once_is_still_set() -> None:
     assert fixes and "3.00" in out
 
 
-# ── 3. copy check: each table measured by its own channel ────────────────────
 
 AD_COPY_REQUEST = ("한빛워크 체험 신청 광고 소재 만들어 줘. 네이버 검색광고, 메타 광고, 링크드인 "
                    "광고 채널별로 3안씩, 채널별 글자 수 제한을 지켜서.")

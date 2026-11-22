@@ -1,17 +1,12 @@
 """Days a document puts an item on that the material never puts it on.
 
-A memo's 「요청사항: 물류팀 출고 SLA 협의 자리 마련」 asks for a meeting and names no day; a plan
-table row 「금요일 | 4분기 목표 초안 작성, 물류팀 출고 SLA 협의(예정)」 reads as a fixed date.
 An item may stand on a weekday only when a stretch of the material on that weekday (a 「- 금:」
 line, the clause around 「금요일」 or 「(금)」) shares one of its words, and a this-week stretch
-holds no next-week plan the material lists on no day and words more closely or in full
-(「- 화: 한솔마트 재고 클레임」 does not put 「한솔마트 재고 점검 방문」, under 「다음주 계획」,
-on a 화요일).
-An item the document places in one week (「이번 주 목요일」, a 「다음 주 업무 계획」 section, the
-report's own 「10월 3주차」) stands only on a stretch of that week, and, when its own words name
-the week, not where the other week's stretch on that day says it more closely (「다음주 계획: …
-(목요일 2차 미팅)」 is no 「이번 주 목요일 2차 미팅」). The item a clause dates may be named in the
-sentence's other clauses (「CRM 병합은 60% 진행되었고, 완료 시점은 다음 주 수요일입니다」).
+holds no next-week plan the material lists on no day and words more closely or in full.
+An item the document places in one week (「이번 주 목요일」, a 「다음 주 업무 계획」 section, 「10월
+3주차」) stands only on a stretch of that week, and, when its own words name the week, not where
+the other week's stretch on that day says it more closely. The item a clause dates may be named in
+the sentence's other clauses.
 """
 
 from __future__ import annotations
@@ -171,8 +166,8 @@ def _held(item: str, day: str, days: dict[str, list[tuple[str, str | None]]],
     if any(_says(item, _MATERIAL_DAY.sub(" ", c)) for c in same):
         return True
     best = max(_overlap(every, c) for c in same)
-    # the other week's stretch on this day says it more closely: the item moved weeks (a week
-    # the item says itself; one a heading gives may hold both weeks' talk of the day)
+    # the other week's stretch says it more closely: the item moved weeks (a week the item names
+    # itself; a heading-given week may hold both weeks' talk of the day)
     if own and other and max(_overlap(every, c) for c in other) > best:
         return False
     if any(w == "next" for c, w in hits if c in same):

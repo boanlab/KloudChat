@@ -356,7 +356,6 @@ async def _answer(monkeypatch, replies: list[list[str]]) -> tuple[str, list[dict
 
 
 async def test_a_numeric_blank_after_run_code_is_computed_once(monkeypatch):
-    # 「2025-0012(187일)를 제외하면 2025년 평균 처리일수는 [수치]일」.
     blank = "2025-0012(187일)를 제외하면 2025년 평균 처리일수는 [수치]일로 더 낮아집니다."
     shown, seen = await _answer(monkeypatch, [
         _RUN, _said(blank), _RUN, _said("2025-0012(187일)를 제외하면 평균은 9.09일입니다.")])

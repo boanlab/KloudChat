@@ -81,8 +81,7 @@ export interface UserPage {
 
 type Modality = 'chat' | 'image' | 'audio' | 'video'
 
-/** Declared run facts of a model (`kchat_*` in the gateway's model_info). Every field is optional:
- *  nothing is shown that was not declared. `quantization: 'unknown'` means the provider does not say. */
+/** Declared run facts of a model (`kchat_*` in model_info); all optional, `quantization: 'unknown'` = not stated. */
 export interface ModelRunInfo {
   /** Weights (self-hosted) or the pinned endpoint's quantization. */
   quantization?: string
@@ -185,11 +184,7 @@ export interface ModelInfo {
 
 /** `av` covers audio and video: one surface, producing an `audio` or `video` artifact by mode. */
 export type SessionKind = 'chat' | 'report' | 'slides' | 'image' | 'av'
-/**
- * `super` picks model, reasoning effort and tools per turn from the task class; `super_strict`
- * does so among strict-local models only. `auto`/`auto_quality` are the earlier lanes, kept for
- * comparison (no longer offered).
- */
+/** `super` picks model, effort and tools per turn; `super_strict` does so among strict-local models; `auto`/`auto_quality` are not offered. */
 export type RoutingMode = 'manual' | 'auto' | 'auto_quality' | 'super' | 'super_strict'
 
 /** The composer's reasoning chip, kept per conversation and sent with each turn: `auto` leaves
@@ -197,9 +192,7 @@ export type RoutingMode = 'manual' | 'auto' | 'auto_quality' | 'super' | 'super_
  *  the most (server `super_agent.REASONING_MODES`). */
 export type ReasoningMode = 'auto' | 'fast' | 'deep'
 
-/** What a turn's reasoning was (`routing.reasoning`): the chip, and the level the writer was
- *  sent — a provider level (`high`, `low`, …), `on` for a thinking switch, `none`, or `default`
- *  (nothing sent: the deployment's own setting). */
+/** A turn's reasoning (`routing.reasoning`): chip and level sent (provider level, `on`, `none`, or `default`). */
 export interface TurnReasoning {
   mode: ReasoningMode
   effort: string
@@ -481,9 +474,8 @@ export interface SearchConsentQuery {
 /** `routing.searchConsent` (`services/search_consent`). */
 export interface SearchConsent {
   /**
-   * `pending`: the card waits. `allowed`: the person allowed it. `auto`: policy or 「이 대화에서는
-   * 계속 허용」 let it run. `declined`, `blocked` (every query withheld), `unavailable` (policy off
-   * or no search backend) and `none` (offered, not needed): nothing was sent.
+   * `pending`: card waits. `allowed`/`auto`: search ran. `declined`, `blocked` (all queries withheld),
+   * `unavailable` (policy off or no backend), `none` (not needed): nothing sent.
    */
   status: 'pending' | 'allowed' | 'auto' | 'declined' | 'blocked' | 'unavailable' | 'none'
   /** A pending card's proposals; afterwards, the queries that were sent. */
@@ -783,7 +775,6 @@ export interface Message {
     [counter: string]: number | boolean | undefined
   }
   liked?: 'up' | 'down' | null
-  /** Retired 시작점 an old turn began from. */
   startedFrom?: { templateId: string; title: string }
   /** Separate from `content`: a turn can fail after writing something. */
   error?: string
@@ -1054,10 +1045,7 @@ export interface Slide {
   factCheck?: FactCheck
   /** Text size as a multiple of the template's; `deck_export` applies the same. */
   textScale?: number
-  /**
-   * Content a layout change could not show, kept rather than dropped: lines of text and a
-   * chart. A later layout change takes it back where the new layout has room for it.
-   */
+  /** Content a layout change could not show (text lines, a chart); restored when a later layout has room. */
   held?: { lines?: string[]; chart?: Slide['chart'] }
   /** Sanitised inline HTML keyed by text slot (`title`, `bullets.0`, `rows.1.2`, …); the plain fields stay canonical. */
   richText?: Record<string, string>
@@ -1111,7 +1099,7 @@ export interface ImageArtifact extends ArtifactBase {
   prompt: string
   /** Ratio asked for. */
   aspect: string
-  /** Ratio measured off the bytes; absent on older rows. */
+  /** Ratio measured off the bytes. */
   actualAspect?: string
   width?: number
   height?: number
@@ -1610,7 +1598,7 @@ export interface AgentDraft {
   files: { id: string; name: string; size: number }[]
   fromAgentId: string | null
   strictLocal: boolean
-  /** Whether 「이 대화에서 정한 것」 was read: `pending` when the draft was asked without it. */
+  /** Whether 「이 대화에서 정한 것」 was read; `pending` when the draft was asked without it. */
   distilled?: DistillState
 }
 

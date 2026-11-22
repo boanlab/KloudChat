@@ -1,7 +1,5 @@
-"""A report asked about every one of 20 project files plans past the usual 12 sections and
-checks its 목차 reaches them all; a material question set is one file's set, not every
-numbered question across 20 lecture notes; an assessment item the judge reads is its
-question, never the lectures up to the next one."""
+"""A report asked about every project file plans past the usual section cap and checks its 목차
+reaches them all; question sets and assessment items are scoped to their own lecture."""
 
 from __future__ import annotations
 
@@ -186,7 +184,7 @@ def test_an_item_stops_short_of_the_next_lecture():
 
 
 def test_a_file_uploaded_again_is_one_item_to_cover():
-    """Walk 11-14 rerun: four copies of lecture10.webm in the project gave four sections."""
+    """Four copies of one uploaded file count as one item to cover."""
     from app.services import coverage
 
     items = [coverage.Item("01강.pdf", "1강", "개요"), coverage.Item("lecture10.webm", "", ""),
@@ -195,7 +193,7 @@ def test_a_file_uploaded_again_is_one_item_to_cover():
 
 
 def test_a_request_scoped_to_some_lectures_is_about_those_only():
-    """Walk 11-14 rerun: 「1~7강을 강별로 … 8강의 문제」 planned all 22 project files."""
+    """A request scoped to some lectures (「1~7강 …」) is about those only."""
     from app.services import coverage
 
     items = [coverage.Item(f"{n:02d}강.pdf", f"{n}강", "") for n in range(1, 21)]
@@ -210,8 +208,8 @@ def test_a_request_scoped_to_some_lectures_is_about_those_only():
 
 
 async def test_a_project_that_fits_whole_still_names_its_files_by_unit(monkeypatch):
-    """Walk 11-14 rerun: 22 short lecture files went whole without their 「N강」 labels, so a
-    request scoped to 1~8강 could not tell which files it meant."""
+    """A project that fits whole still labels its files by unit (「N강」) so a scoped request can
+    pick them."""
     from app.models.workspace import StoredFile
     from app.services import workspace_context
 

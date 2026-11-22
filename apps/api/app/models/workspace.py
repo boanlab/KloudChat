@@ -99,9 +99,8 @@ class StoredFile(SQLModel, table=True):
     #: `form`: a copy saved as a project's or agent's 기본 양식 파일, kept out of the file box and
     #: never read as material; null: any other file
     role: str | None = Field(default=None, max_length=12)
-    #: the artifact this generated file is a copy of — a document's export, the picture of a
-    #: chart or a diagram — so 파일함 › 만든 파일 leaves it to where that artifact is listed;
-    #: null for any other file (a generated picture, sound or video is itself the result)
+    #: the artifact this generated file is a copy of (export, chart or diagram picture), so
+    #: 파일함 › 만든 파일 omits it; null for any other file
     copy_of: str | None = Field(default=None, max_length=36)
     #: what an Office upload offers as a form (`services/form_profile.py`); null: not Office
     form_profile: dict | None = Field(default=None, sa_column=_json(nullable=True))
@@ -126,8 +125,7 @@ class StoredFile(SQLModel, table=True):
     ocr_claimed_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
     #: claim token; stale workers can't write after takeover
     ocr_claim: str | None = Field(default=None, max_length=32)
-    #: short digest of the text (`file_digest.Digest.wire`): label, title, summary, outline,
-    #: terms and the text length it was made from; null = none yet
+    #: short digest of the text (`file_digest.Digest.wire`); null = none yet
     digest: dict | None = Field(default=None, sa_column=_json(nullable=True))
     #: the strict-local model that wrote `digest`
     digest_model: str | None = Field(default=None, max_length=120)
@@ -265,9 +263,8 @@ class Artifact(SQLModel, table=True):
     search_text: str = Field(
         default="", sa_column=Column(Text, nullable=False, server_default="", default="")
     )
-    #: where it is listed (`services/artifact_section.py`): `html`, `code`, `chart`, `diagram`
-    #: (the 아티팩트 page), `document` (파일함 › 작업 문서), `media` (파일함 › 만든 파일, by
-    #: its file) or `snippet` (an old inline code block, listed nowhere); synced below
+    #: where it is listed (`services/artifact_section.py`): `html`, `code`, `chart`, `diagram`,
+    #: `document`, `media` or `snippet` (listed nowhere); synced below
     section: str = Field(default="", max_length=16)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
     updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
@@ -366,7 +363,7 @@ class Skill(SQLModel, table=True):
     body: str = Field(default="")
     #: shipped-skill identity; null if user-authored
     catalog_key: str | None = Field(default=None)
-    #: owner row: content hash at the last package sync; differs once the owner edits it
+    #: owner row: content hash at the last package sync
     package_hash: str | None = Field(default=None, max_length=32)
     source: SkillSource = Field(default=SkillSource.personal)
     #: shared = copyable; runs only from owner's account
@@ -623,7 +620,7 @@ class ConnectorCredential(SQLModel, table=True):
 
 
 class Template(SQLModel, table=True):
-    """Retired 시작점; unread, rows kept."""
+    """Retired 시작점 rows, kept but unread."""
 
     __tablename__ = "templates"
 

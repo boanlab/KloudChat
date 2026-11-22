@@ -1,7 +1,4 @@
-/**
- * What a folded step list names: each kind of step once, in the order first done, a repeat
- * counted (「문서 확인 2회 · 문서 편집 2회」), at most `limit` kinds and then 「외 n개」.
- */
+/** Names of a folded step list: each kind once in first-done order, repeats counted, at most `limit` kinds then 「외 n개」. */
 export function collapsedStepNames(
   labels: string[],
   t: (text: string) => string,

@@ -14,7 +14,7 @@ describe('request protection badge', () => {
     for (const action of ['strict_local', 'route_strict_local', 'internal_strict_local'] as const) {
       expect(requestProtection({ ...base, action })?.base).toBe('strict-local로 보호됨')
     }
-    // a strict-local turn whose tool output was masked afterwards stays strict-local
+    // Masking tool output afterwards keeps the turn strict-local
     expect(requestProtection({ ...base, initialAction: 'internal_strict_local', action: 'strict_local' })?.base)
       .toBe('strict-local로 보호됨')
   })

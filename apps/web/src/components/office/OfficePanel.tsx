@@ -12,12 +12,7 @@ import type { OfficeKind } from '@/lib/api'
 import { useT } from '@/lib/useT'
 import { readOnlyAt, type Doc, type OfficeDocument } from './useOfficeDocument'
 
-/**
- * The panel around an office editor: title, version, unsaved mark, 저장, the download menu,
- * sharing and version history, the notices (with a retry when the editor or the file did not
- * open), the lock while the agent works, and the question over unsaved edits before a turn
- * is sent or the document is left. `children` is the editor's area.
- */
+/** Shared chrome of an office editor (title, versions, save, download, share, agent lock, unsaved-edit prompt); `children` is the editor area. */
 export function OfficePanel({
   kind,
   doc,

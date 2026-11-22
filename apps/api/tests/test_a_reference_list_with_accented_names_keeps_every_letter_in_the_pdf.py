@@ -13,7 +13,7 @@ from app.services import design, fonts, report_export
 
 #: drawn by the Nanum faces or reportlab's Vera
 _COMMON = ("García-Montero", "Münüre Ezgi Altıntaş", "Łukasz Wróbel", "Søren Kierkegaard")
-#: Latin Extended-A/B and Vietnamese letters (ř, ć, ễ) only the wide face draws
+#: Letters only the wide face draws (Latin Extended-A/B, Vietnamese)
 _WIDE = ("Antonín Dvořák", "Đorđe Šćepanović", "Hoàng Nguyễn", "Erdős Pál")
 _DEJAVU = Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
 

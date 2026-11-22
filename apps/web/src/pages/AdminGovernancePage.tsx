@@ -10,11 +10,7 @@ import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 import type { ModelInfo, SearchConsentMode } from '@/types'
 
-/**
- * strict-local safe models as a priority list: checked models in the order used, moved with
- * the arrow buttons or by dragging; unchecked ones below. Ids the admin's own catalogue does
- * not show (another account's models) keep their place at the end.
- */
+/** Ordered strict-local safe model list (arrows or drag); ids missing from the admin's catalogue stay at the end. */
 function SafeModelPriority({
   models,
   selected,
@@ -47,7 +43,7 @@ function SafeModelPriority({
         .replace('{name}', byId.get(id)?.label ?? id)
         .replace('{n}', String(to + 1)),
     )
-    // The button pressed may have moved away under the pointer; keep the keyboard on the row.
+    // The pressed button may move away; keep keyboard focus on the row
     if (focus) {
       window.requestAnimationFrame(() =>
         listRef.current
@@ -93,7 +89,7 @@ function SafeModelPriority({
                     try {
                       e.currentTarget.setPointerCapture(e.pointerId)
                     } catch {
-                      // A pointer the browser no longer tracks: the moves still reach the handle.
+                      // Pointer no longer tracked by the browser
                     }
                     setDragged(id)
                     setOver(id)

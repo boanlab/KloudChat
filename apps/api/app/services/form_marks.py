@@ -1,10 +1,8 @@
-"""What form a written Office file followed, kept inside the file: one custom document property
-(`docProps/custom.xml`, `KloudChatForm`, a JSON string) of a `.pptx` or `.docx`; in an `.hwpx`,
-which has no custom properties, the entry `KloudChat/form.json` (an editor keeps an entry it
-does not know, `hwpx_edit._write`).
+"""Mark of the form a written Office file followed, stored inside the file.
 
-The artifact's description reads it back (`pptx_doc.describe`), so every version says whether
-and how it followed a form, and an edit that keeps the file's parts keeps the mark.
+`.pptx`/`.docx`: custom property `KloudChatForm` (`docProps/custom.xml`, JSON string); `.hwpx`
+has none, so the entry `KloudChat/form.json` (kept by `hwpx_edit._write`). `pptx_doc.describe`
+reads it back.
 """
 
 from __future__ import annotations

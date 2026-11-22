@@ -1,11 +1,9 @@
-"""How an HWP or Word file looks when KloudChat writes it: the project's theme (design tokens)
-and the report template the conversation or the project chose, so 웹 보고서, 한글 and Word
-read as the same template.
+"""Look of an HWP or Word file: the project's theme (design tokens) plus the chosen report template,
+so 웹 보고서, 한글 and Word read as one template.
 
-Word takes the template's own `template.docx` as its base (styles, page, fonts) and the
-theme's accent on headings (`report_export.to_docx`). 한글 has no template file of its own, so
-the template's Word base is read for what HWPX can carry: its page margins, its body face
-(serif or gothic) and its heading colour where the theme gives none.
+Word takes the template's `template.docx` as base (styles, page, fonts) and the theme accent on
+headings (`report_export.to_docx`). 한글 has no template file, so the template's Word base is read
+for page margins, body face (serif or gothic) and heading colour where the theme gives none.
 """
 
 from __future__ import annotations
@@ -131,7 +129,7 @@ async def for_project(db: Any, user: Any, project: Any, template_id: str = "") -
     design = await workspace_context._load_design_system(db, user, project) \
         if project is not None else None
     tokens = design_service.tokens_of(design) if design is not None and design.tokens else None
-    # a project's default template is no longer read; an older conversation's pick still is
+    # only a conversation's own template pick is read, not the project default
     chosen = template_id if design_templates.rendering(template_id) is not None else ""
     if not tokens and not chosen:
         return None

@@ -1,9 +1,8 @@
 """What an answer ran on: provider, quantization, fallback and the call's settings.
 
-Public information shown under an answer (「이번 답」 details) to every user who can read it:
-the model's own declared facts (`ModelInfo.runInfo`), the provider the gateway reported for
-this call, and the sampling settings the app sent. The system prompt appears only as a short
-hash, never as text.
+Public details under an answer (「이번 답」): the model's declared facts (`ModelInfo.runInfo`), the
+provider the gateway reported, and the sampling settings sent. The system prompt appears only as a
+short hash.
 """
 
 from __future__ import annotations

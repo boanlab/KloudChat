@@ -1,6 +1,5 @@
-"""A shared office document (HWP, Word, PowerPoint) reaches its reader as its file, through the
-share only, without the owner's file-box id; a document with no conversation joins a new chat
-to be edited beside, and one in a conversation stays there."""
+"""A shared office document reaches its reader as its file through the share only; one with no
+conversation joins a new chat, one in a conversation stays."""
 
 from __future__ import annotations
 

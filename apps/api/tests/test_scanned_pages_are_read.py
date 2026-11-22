@@ -755,7 +755,7 @@ def test_a_picture_claiming_too_many_pixels_is_not_planned(monkeypatch):
 
 def test_frames_are_counted_only_up_to_the_page_limit():
     found = ocr.plan("a.tif", "image/tiff", _picture("TIFF", 5), 2)
-    # One frame past the limit is counted, so the file shows it was cut short.
+    # one frame past the limit is counted, so the file shows it was cut short
     assert found.pages == (1, 2) and found.total == 3 and found.skipped == 1
 
 
@@ -777,7 +777,7 @@ async def test_a_worker_whose_claim_was_taken_over_writes_nothing(
 
     async def taken_over_then_read(cfg, data, page, *, want_image):
         if page == 1:
-            # Another replica took the job over while this one was reading.
+            # another replica took the job over
             async with db() as s:
                 held = await s.get(StoredFile, row.id)
                 held.ocr_claim = "someone-else"

@@ -248,11 +248,9 @@ def has_tool_call(text: str) -> bool:
     return strip_tool_calls(text) != (text or "")
 
 
-#: a tool call in a model's own call template, written into the text instead of sent as a
-#: call (GLM's 「<tool_call>web_search<arg_key>query</arg_key><arg_value>…」): Qwen·GLM
-#: 「<tool_call>…</tool_call>」, 「<|tool_call|>…」, 「<function_call>…」, DeepSeek's
-#: 「<｜tool▁calls▁begin｜>…<｜tool▁calls▁end｜>」 and 「<function=name>…</function>」; an
-#: unclosed one runs to the end of the text
+#: a tool call written into the text in a model's own call template instead of sent as a call
+#: (Qwen/GLM `<tool_call>…`, `<function_call>`, DeepSeek `<｜tool▁calls▁begin｜>…`,
+#: `<function=name>…</function>`); an unclosed one runs to the end of the text
 _TAGGED_CALL = re.compile(
     r"<(?P<tag>tool_calls?|function_calls?)>(?P<body>[\s\S]*?)(?:</(?P=tag)>|\Z)"
     r"|<\|(?P<ptag>tool_calls?|function_calls?)(?:_begin)?\|>(?P<pbody>[\s\S]*?)"
@@ -740,10 +738,8 @@ _BULLET = re.compile(r"^\s{0,8}(?:[-*•·◦▪]|\d{1,2}[.)])\s")
 
 def strip_plan_blocks(text: str) -> str:
     """`text` without the writer's plan or part-by-part instructions at its top: label lines
-    (「Purpose:」, 「Structure:」, 「Key facts to use:」, 「작성 방향:」) with the items under them,
-    or a run of items telling what each part will hold (「본문: …로 도입」, 「표 후 … 1줄」). A
-    plan is cut only when it is two labels or more (or two part items), and only when prose of
-    the document's own is left below it."""
+    (「Purpose:」, 「작성 방향:」) with their items, or items telling what each part will hold.
+    Cut only with two or more labels (or part items) and prose of the document's own below."""
     if not text or not text.strip():
         return text
     lines = text.split("\n")
@@ -826,9 +822,7 @@ _CHECK_RESULT = re.compile(
     r"[^\n]{0,80}?(?:0\s?건|없습니다|없고|맞습니다|맞고|일치합니다|일치하고|통과)"
     r"|(?:요일|날짜)[^\n.]{0,60}?(?:실제\s?)?달력(?:과|이|와)\s?(?:모두\s?)?일치합니다"
     r"|차단\s?(?:\(block\)\s?)?(?:항목|값|표현|사항)\S{0,2}\s?\d{1,3}\s?건"
-    # a script's coverage told as a sentence (「항목 9개 중 노트 7 · 뺌 2 · 빠짐 0,
-    # 점검 차단 사항 0건…입니다」, 「두 문서 모두 항목 7개 대비 빠짐 0, 차단 0으로 검증을
-    # 마쳤습니다」)
+    # a script's coverage told as a sentence (「항목 9개 중 노트 7 · 뺌 2 · 빠짐 0 …」)
     r"|\d{1,3}\s?개\s?(?:중|대비)[^\n.]{0,60}?(?:빠짐|뺌|누락|차단)\s?\d"
     r"|(?:빠짐|뺌|누락|차단)\s?\d{1,3}\s?(?:건|개)?\s?(?:으로|이고|이며)?\s?(?:검증|점검|검수)"
     r"(?:을|를)?\s?마쳤"
@@ -839,15 +833,13 @@ _CHECK_RESULT = re.compile(
     # a check told as done (「근거 대조 점검을 마쳤고, 메모에 없는 수치·날짜는
     # 없습니다.」)
     r"|(?:근거\s?대조|출처\s?점검|카피\s?점검|자체\s?점검|검산|대조)\s?(?:점검)?\s?(?:을|를)?\s?마쳤"
-    # a length the writer measured on its own copy (「…는 18자로 한도 안입니다.」)
+    # a length the writer measured (「…는 18자로 한도 안입니다.」)
     r"|\d{1,4}\s?자(?:로|라서?)?\s?(?:한도|제한)\s?(?:안|내|이내)(?:입니다|이고|예요)"
     # a weekday the writer checked (「2026-11-04는 수요일로 확인됐습니다.」)
     r"|(?:\d{4}-\d{1,2}-\d{1,2}|\d{1,2}\s?월\s?\d{1,2}\s?일)(?:\s?\([월화수목금토일]\))?(?:은|는)"
     r"\s?[월화수목금토일]요일(?:로|임이|인\s?것으로)\s?확인(?:됐|되었|했)"
     r"|사용자가\s?(?:준|주신|적은|말한)\s?(?:요일|날짜)[^\n.]{0,20}?(?:과|와)\s?(?:모두\s?)?일치합니다")
-#: the writer telling the reader what this turn's own checks said (「The automated check
-#: flagged the "thanks → thank" line as a scope change, but that is just word-level alignment
-#: noise」, 「자동 점검이 「11월 3일」을 확인 필요로 표시했지만」): the steps show the checks
+#: the writer reporting what this turn's own checks said (「자동 점검이 … 표시했지만」)
 _CHECK_TALK_EN = re.compile(
     r"\b(?:the|an?|our)\s(?:automated|automatic|internal)\s(?:checks?|checker|scripts?|scan"
     r"|review|grounding)\b"
@@ -858,10 +850,8 @@ _CHECK_TALK_KO = re.compile(
     r"[^\n.]{0,80}?(?:짚|잡았|잡혔|표시|지적|걸렀)")
 #: an English sentence's end
 _EN_SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z\"“(])")
-#: the writer announcing its next piece of work before the answer starts (「이제 두
-#: 문서를 작성합니다.」, 「두 버전으로 작성합니다.」, 「이제 소재를 정리해
-#: 드리겠습니다.」, 「최종 확정된 25개입니다.」): dropped only ahead of the first
-#: content line
+#: the writer announcing its next work before the answer (「이제 두 문서를 작성합니다.」);
+#: dropped only ahead of the first content line
 _OPENING_NARRATION = re.compile(
     r"^(?:이제|먼저|그럼|그러면|바로|자,)?\s?[^\n.?!]{0,30}?(?:작성합니다|작성하겠습니다|작성해\s?드리겠습니다"
     r"|정리해\s?드리겠습니다|정리하겠습니다|짜\s?드리겠습니다|만들어\s?드리겠습니다|시작하겠습니다)[.!]?\s*$"
@@ -917,9 +907,8 @@ _EN_NOTE_PLAN = re.compile(
     r"\b(?:I'm\s(?:thinking|going\sto|planning|considering)|thinking\sthrough"
     r"|I(?:'ll|\swill)\s(?:start|first|now|then|calculate|compute|check|draft|write|structure)"
     r"|make\ssure\sit|then\s(?:calculat|comput|check|verify|draft|writ)|let\sme)", re.I)
-#: an English answer's opening line narrating a tool step (「Let me re-run with a
-#: fixed reference date so the 90-day window is deterministic and the edge cases actually
-#: show.」): one sentence, ahead of the answer
+#: an English answer's opening sentence narrating a tool step (「Let me re-run with a fixed
+#: reference date…」), ahead of the answer
 _EN_TOOL_STEP = re.compile(
     r"^\s{0,4}(?:Let me|I'll|I will|Now I'll|Now let me|Next, I'll)\s(?:\w+\s){0,3}?"
     r"(?:re-?run|run|search|look\sup|fetch|check|calculate|compute|execute|test|try|retry"
@@ -1030,10 +1019,10 @@ def _stray_fences(text: str) -> str:
 
 
 def strip_work_notes(text: str, *, request: str = "", document: bool = False) -> str:
-    """`text` minus the writer's work notes: plan narration (English or Korean), a worksheet's
-    labels and notes, check verdicts, lone 「check」 lines and 「[질문]」 stubs. Headings,
-    tables and fences stay; an English deliverable is left alone. `document`: a report section
-    or slide, whose reader is not the requester (the writer's account of its work goes too)."""
+    """`text` minus the writer's work notes: plan narration, worksheet labels, check verdicts,
+    lone 「check」 lines and 「[질문]」 stubs. Headings, tables and fences stay; an English
+    deliverable is left alone. `document`: a report section or slide, whose reader is not the
+    requester (the writer's account of its work goes too)."""
     if not text or not text.strip():
         return text
     if document:
@@ -1130,9 +1119,8 @@ def strip_work_notes(text: str, *, request: str = "", document: bool = False) ->
     return re.sub(r"(?:\n\s*(?:-{3,}|\*{3,}|_{3,})\s*)+$", "", cleaned).strip("\n")
 
 
-#: a sentence about the work between tool calls (「…스크립트로 각도별 배분을
-#: 받겠습니다.」「각도별 배분이 나왔습니다.」, 「점검 통과했습니다.」, 「수치를 다시
-#: 확인했습니다.」 「…로 교체해 답을 다시 씁니다.」, 「(검색은 최신 사실 확인용이었고 …)」)
+#: a sentence about the work between tool calls (「점검 통과했습니다.」, 「수치를 다시
+#: 확인했습니다.」)
 _WORK_SENTENCE = re.compile(
     r"(?:하겠습니다|겠습니다|할게요|볼게요|받겠습니다|드릴게요)[.!…]?\)?$"
     r"|(?:확인|점검|검증|검산|계산|재계산|실행|검색|조사|분류|수정|교체|반영|통과|완료|확정|파악|정리)"
@@ -1150,14 +1138,11 @@ _KO_SENTENCE_END = re.compile(r"(?<=[다요죠][.!?…])\)?\s*|\n+")
 
 
 def strip_tool_preamble(text: str) -> str:
-    """`text` minus the work narration a tool turn wrote ahead of its deliverable: the lines
-    before the first heading, table, rule or list, when they are all prose about the work
-    (their first sentence and at least half of them) and the deliverable after them is the
-    longer part. Prose that answers stays: a lead without a work sentence first, or one
-    followed by little, is the answer."""
-    # a first paragraph of nothing but work sentences, glued across the tool calls (「…먼저
-    # 확인해 보겠습니다.바다 조망 명소의 … 확인하겠습니다.」), above prose that answers; one
-    # with a figure may be the finding itself
+    """`text` minus work narration written ahead of the deliverable: the lines before the first
+    heading, table, rule or list, when they are all prose about the work and the deliverable
+    after them is the longer part. A lead that answers stays."""
+    # a first paragraph made only of work sentences glued across tool calls, above answering
+    # prose; one with a figure may be the finding itself
     head, gap, after = (text or "").lstrip("\n").partition("\n\n")
     if gap and not _DELIVERABLE_LINE.match(head) and not re.search(r"\d", head) \
             and len(after.strip()) >= max(300, 2 * len(head)):
@@ -1188,10 +1173,9 @@ _ITEM_MARK = re.compile(r"^\s{0,8}(?:[-*+•·]|\d{1,3}[.)]|[□○◦▪■●�
 
 
 def cut_mid_sentence(text: str, *, min_chars: int = 400) -> bool:
-    """Whether a long answer or section stops in the middle of its last sentence
-    (「○ 2027년 3월」 after items ending 「…배분함」; 「이수진 차장이 온라인 동시 송출」).
-    A table, heading, fence, label line (「출처: …」) or link ends whole; a list item counts as
-    cut only when the items above it end in sentence endings and it does not."""
+    """Whether a long answer or section stops mid-sentence at its last item. A table, heading,
+    fence, label line or link ends whole; a list item counts as cut only when the items above
+    end in sentence endings and it does not."""
     body = (text or "").rstrip()
     if len(body) < min_chars:
         return False
@@ -1259,10 +1243,8 @@ _EN_ANNOUNCE = re.compile(
 
 
 def is_announcement(text: str) -> bool:
-    """Whether a short reply, in any language asked for, only announces work still to do
-    (「I have enough verified data. Let me compute the recipe's calorie and
-    macronutrient totals precisely.」 was the whole answer): no list, table or heading, at
-    most three sentences, the last one an announcement, almost no Hangul."""
+    """Whether a short reply, in any language, only announces work still to do: no list, table or
+    heading, at most three sentences, the last an announcement, almost no Hangul."""
     body = (text or "").strip()
     if not body or len(body) > 300 or len(_HANGUL.findall(body)) >= 10:
         return False
@@ -1274,11 +1256,10 @@ def is_announcement(text: str) -> bool:
 
 
 def is_work_plan(text: str, *, request: str = "") -> bool:
-    """Whether a Korean request's answer is the writer's plan or narration instead of the
-    deliverable: three or more English paragraphs about its own next steps, the last one
-    among them (it stops at 「Let me write the final answer …」), or nothing but notes left
-    once `strip_work_notes` runs; for any request, a short reply that only announces the
-    work (`is_announcement`)."""
+    """Whether a Korean request's answer is the writer's plan or narration, not the deliverable:
+    three or more English paragraphs about its next steps, or nothing left after
+    `strip_work_notes`; for any request, a short reply that only announces work
+    (`is_announcement`)."""
     if not text or not text.strip():
         return False
     if is_announcement(text):

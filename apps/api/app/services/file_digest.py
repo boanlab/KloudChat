@@ -1,9 +1,9 @@
 """Per-file digests of project material: label, title, short summary, outline, key terms.
 
-A digest lets a turn see every file of a project too large to send whole (`workspace_context`'s
-「자료 목록」). The model digest is made by a strict-local self-hosted model only, so a file's
-text never leaves the deployment whatever model the conversation uses; until it is made (or when
-no such model is served) a code digest stands in, read from the text itself.
+Lets a turn see every project file too large to send whole (`workspace_context`'s 「자료 목록」).
+The model digest comes from a strict-local self-hosted model only, so file text never leaves the
+deployment; until it exists (or when no such model is served) a code digest read from the text
+stands in.
 """
 
 from __future__ import annotations

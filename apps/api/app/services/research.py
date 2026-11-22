@@ -843,9 +843,8 @@ _HEADING_TAIL = re.compile(r"(?:의|과|와|별|을|를|에|및)$")
 
 
 def uncovered(headings: list[str], context: str) -> list[str]:
-    """Approved headings the found pages say nothing about: fewer than half of a heading's
-    own words (generic part names like 「현황」·「시사점」 aside) occur in `context`.
-    Spacing is ignored (「디지털 서비스몰」 covers 「디지털서비스몰」)."""
+    """Approved headings the found pages say nothing about: fewer than half of a heading's own
+    words (generic part names aside) occur in `context`. Spacing is ignored."""
     flat = re.sub(r"\s+", "", (context or "").lower())
     gaps: list[str] = []
     for heading in headings:

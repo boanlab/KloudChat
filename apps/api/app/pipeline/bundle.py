@@ -172,7 +172,7 @@ class Plan:
     headings: list[str] = field(default_factory=list)
     frame: bool = False
     unverified: bool = False
-    #: approved figures by section index
+    #: figures by section index
     figures: dict[int, dict] = field(default_factory=dict)
     #: planning offer, pre-approval
     proposal: dict[str, Any] | None = None
@@ -220,7 +220,7 @@ class Document:
     original: list[str] = field(default_factory=list)
     #: revision: figures a slide showed that its rewrite left out (「4장 64%, 91%」)
     dropped: list[str] = field(default_factory=list)
-    #: restructure: the deck's slides before it, for what the new deck no longer shows
+    #: restructure: slides of the deck before the change
     before: list[dict[str, Any]] = field(default_factory=list)
     #: revision: parts shortened to another sentence count than asked (part number, asked,
     #: written)

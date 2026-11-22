@@ -69,19 +69,15 @@ test('그림은 프롬프트 아래, 대화 안에 나온다', async ({ page }) 
   await page.getByLabel('프롬프트 입력').press('Enter')
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 30_000 })
 
-  // The prompt stays in the conversation.
   await expect(page.getByText(PROMPT).first()).toBeVisible({ timeout: 20_000 })
 
-  // The picture is in the transcript, not only the panel.
   const inTranscript = page.locator('img[src*="/api/files/"]').first()
   await expect(inTranscript).toBeVisible({ timeout: 20_000 })
 
-  // The panel does not open by itself.
   await expect(page.getByRole('button', { name: '이미지 열기' })).toBeVisible()
   await inTranscript.click()
   await expect(page.getByRole('button', { name: '이미지 열기' })).toHaveCount(0)
 
-  // After a reload the stored turn is what is drawn.
   await page.reload()
   await expect(page.getByText(PROMPT).first()).toBeVisible({ timeout: 20_000 })
   await expect(page.locator('img[src*="/api/files/"]').first()).toBeVisible({ timeout: 20_000 })

@@ -499,9 +499,8 @@ def _card_style(
 def _column_rows(
     columns: list[tuple[str, list[str]]], font: str | None, scale: float, span: float, height: float
 ) -> float:
-    """Item size when comparison columns draw one row per item, the same row at the same height
-    in every column: the larger of `columnRow`, `columnRowSmall` at which every item is two lines
-    or fewer within its row, else 0 (the dotted list). Measured as `_fit_text` wraps."""
+    """Item size for row-per-item comparison columns: the larger of `columnRow`, `columnRowSmall`
+    at which every item fits two lines (as `_fit_text` wraps), else 0 (dotted list)."""
     if not font or not columns:
         return 0.0
     count = max(len(items) for _, items in columns)
@@ -832,10 +831,10 @@ def _cell_lines(text: str, size: float, bold: bool, width: float) -> int:
 
 
 def table_fit(rows: list[list[str]], width: float, room: float) -> tuple[float, list[float], bool]:
-    """`(cell size pt, row heights pt, fits)` for a table `width` pt wide in `room` pt of
-    height: the house size for its row count, stepped down to the floor while the wrapped rows
-    are taller than the room. Rows grow with their text, so a table set by row count alone ran
-    past the footer once its cells wrapped."""
+    """`(cell size pt, row heights pt, fits)` for a table `width` pt wide in `room` pt of height.
+
+    Starts at the size for its row count and steps down to the floor while wrapped rows exceed
+    the room (rows grow with their text)."""
     if not rows:
         return 0.0, [], True
     count = max(len(row) for row in rows)
@@ -2987,10 +2986,9 @@ def to_pptx(
     template: str = "",
     overflow: list[dict] | None = None,
 ) -> bytes:
-    """Deck as .pptx on the blank layout; `template` supplies master and theme. A body
-    placeholder's plain paragraph takes no master bullet (`pptx_edit.written_bullets_only`).
-    `overflow`, when given, gets each slide whose text did not fit at its floor
-    (`overflowing_slides`)."""
+    """Deck as .pptx on the blank layout; `template` supplies master and theme.
+
+    `overflow`, when given, receives slides whose text does not fit at its floor."""
     found: list[tuple[int, dict, list[str]]] = []
     token = _OVERFLOW.set(None)
     try:
@@ -3033,10 +3031,9 @@ def columns_of(data: dict, bullets: list[str]) -> list[list[str]]:
 def overflowing_slides(
     title: str, slides: list[dict], *, tokens: dict[str, str] | None = None, template: str = ""
 ) -> list[dict]:
-    """The slides whose text does not fit its place even at the type scale's floor, as the
-    `.pptx` export lays them out: `[{slideId, index, what: [the texts]}]`, `index` counting the
-    written slides from 0. The export writes such text whole at the floor and leaves the rest
-    to PowerPoint's shrink-on-overflow; the editor is to hold, move or split these slides."""
+    """Slides whose text does not fit even at the type scale's floor in the .pptx layout.
+
+    Returns `[{slideId, index, what: [texts]}]`, `index` counting written slides from 0."""
     overflow: list[dict] = []
     to_pptx(title, slides, tokens=tokens, template=template, overflow=overflow)
     return overflow
@@ -3890,9 +3887,8 @@ def _build_pptx(
                     crop_left = crop_top = crop_right = crop_bottom = 0.0
                 if not image_caption:
                     break
-                # the caption box is as wide as the figure it sits under (the whole of the
-                # column), measured at that width: a tall figure leaves a narrow caption that
-                # wraps to more lines, which then shrink the figure again until it settles
+                # caption is as wide as its figure; a narrower figure wraps more lines, which
+                # shrink the figure again until it settles
                 caption_width = max(width, region_w)
                 lines = len(_wrap(image_caption, measure, caption_size, caption_width - 8) or [""])
                 needed = lines * caption_size * 1.3 + 8
@@ -3995,7 +3991,7 @@ def _build_pptx(
             run = frame.paragraphs[0].add_run()
             run.text = str(index + 1)
             paint(run, size=_u("pageNumber"), bold=True, colour=_WHITE)
-            # a field, so a copied or moved slide shows its own number
+            # a field: a copied or moved slide shows its own number
             pptx_edit.slide_number_field(run._r, index + 1)
 
         notes = str(data.get("notes") or "").strip()

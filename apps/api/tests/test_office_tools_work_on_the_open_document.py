@@ -1,7 +1,5 @@
-"""The office tools work on the document open beside the chat, never on "the newest of its
-kind": with several and none open they ask which; a write makes a new document unless a
-rewrite of the open one was asked and read first; the person's standing rules come with
-every read."""
+"""The office tools work on the document open beside the chat, never on "the newest of its kind";
+a write makes a new document unless a rewrite of the open one was asked."""
 
 from __future__ import annotations
 

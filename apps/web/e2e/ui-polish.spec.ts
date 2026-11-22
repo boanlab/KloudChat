@@ -3,11 +3,9 @@ import { chatId, composerFixture } from './composer-fixture'
 import { shellRead } from './shell-mocks'
 
 /**
- * Commercial-standard table and admin behaviour against fixture data: every data table sorts
- * by its headings (units understood, asc → desc → unsorted, `aria-sort`, remembered), the
- * audit log and user list export CSV with the screen's filters, strict-local safe models are
- * an ordered priority list, the privacy card lets the person pick one, an unknown address
- * is a 404 page, the tab title names the screen, and an expired sign-in says so.
+ * Table and admin behaviour (fixture data): heading sort (units, asc/desc/none, `aria-sort`,
+ * remembered), CSV export with filters, strict-local model priority list, 404 page, tab titles,
+ * expired sign-in notice.
  */
 
 const at = '2026-11-01T00:00:00.000Z'

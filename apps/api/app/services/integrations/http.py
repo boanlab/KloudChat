@@ -43,7 +43,7 @@ class ProviderError(Exception):
 
 
 class AuthExpired(ProviderError):
-    """The stored grant no longer works; the person connects again."""
+    """The stored grant is rejected; the person must reconnect."""
 
     def __init__(self, detail: str = "") -> None:
         super().__init__("reconnect_required", 401, detail)

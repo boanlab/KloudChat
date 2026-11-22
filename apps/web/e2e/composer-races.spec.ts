@@ -1,11 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { answer, at, chatId, composerFixture } from './composer-fixture'
 
-/**
- * A fast typist must not lose what they typed: a send before the workspace has loaded waits
- * with the text in the box, a new conversation keeps the text until the server takes the turn,
- * and a file attached right after choosing an agent stays attached.
- */
+/** Fast typing loses nothing: early sends wait, new conversations keep the text, early attachments stay. */
 
 function gate() {
   let open: () => void = () => undefined
@@ -176,7 +172,6 @@ test('an agent conversation left before its first send leaves nothing behind', a
   await page.getByRole('menuitem', { name: '에이전트' }).click()
   await page.getByRole('menuitem', { name: '논문 리뷰어' }).click()
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}$/)
-  // A reload keeps the agent it was opened with.
   await page.reload()
   await expect(page.getByTitle('이 대화의 에이전트')).toContainText('논문 리뷰어')
   await page.goto('/new/chat')
@@ -433,7 +428,7 @@ test('a conversation opened by its address stays when the conversation list answ
   }
   const rowServed = gate()
   let rowReads = 0
-  // The list was asked for before the row arrived and does not name it (an older snapshot).
+  // The list snapshot predates the row and does not name it.
   await page.route((url) => url.pathname === '/api/sessions', async (route) => {
     if (route.request().method() !== 'GET') return route.fallback()
     await rowServed.opened
@@ -464,10 +459,7 @@ test('a conversation opened by its address stays when the conversation list answ
   expect(unexpected).toEqual([])
 })
 
-/**
- * A conversation opened by link whose transcript does not arrive at once never poses as an
- * empty chat: it says it is loading, says when loading failed, and tries again on its own.
- */
+/** A slow transcript shows loading, then failure, and retries; never an empty chat. */
 
 test('a transcript that fails to load shows the failure and loads on its own retry', async ({ page }, info) => {
   const { unexpected } = await composerFixture(page, info)

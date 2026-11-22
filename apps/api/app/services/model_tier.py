@@ -1,8 +1,7 @@
 """How much scaffolding a writer model gets.
 
-Small self-hosted models need the guard rails (rules in the prompt, checks that rewrite);
-strong models write better without them, and a weaker judge must not rewrite a stronger
-writer's answer. Strong writers get tools, material, deterministic checks and marks only."""
+Small self-hosted models get guard rails (prompt rules, rewriting checks); strong writers get
+tools, material, deterministic checks and marks only, and a weaker judge never rewrites them."""
 
 from __future__ import annotations
 
@@ -31,8 +30,7 @@ _SMALL_SUFFIXES: tuple[str, ...] = ("-flash", "-nano", "-mini", "-lite", "-luna"
 
 
 #: Model groups each post-writing mechanism decides by (docs/architecture.md, "Mechanisms by
-#: model group"): the self-hosted models (27B, flash), small external models, strong external
-#: models.
+#: model group").
 SELF_HOSTED, SMALL_EXTERNAL, STRONG_EXTERNAL = "self_hosted", "small_external", "strong_external"
 GROUPS: tuple[str, ...] = (SELF_HOSTED, SMALL_EXTERNAL, STRONG_EXTERNAL)
 
@@ -67,10 +65,9 @@ def strong(model: str | None) -> bool:
 
 
 def cache_ordered(model: str | None) -> bool:
-    """True when the system prompt puts the deployment's fixed blocks first
-    (`context.system_prompt(cache_order=…)`): external models, whose providers cache a
-    repeated prompt prefix; self-hosted ones only when `self_hosted_prompt_cache_order` says
-    their server caches prefixes."""
+    """True when the system prompt puts fixed blocks first (`context.system_prompt(cache_order=…)`).
+
+    External models always; self-hosted ones only when `self_hosted_prompt_cache_order` is set."""
     from app.core.config import settings
 
     if self_hosted(model):

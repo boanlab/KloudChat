@@ -66,7 +66,7 @@ def test_a_decision_sentence_naming_who_decided_is_no_table_echo():
 
 
 def test_a_sign_off_ask_reading_back_the_table_s_figures_is_no_echo():
-    """audit-g H3 A/C: the 결재 ask was cut as a read-back of the contract row."""
+    """A 결재 ask reading back the contract row's figures is no echo."""
     body = ("| 항목 | 금액 | 기간 |\n|---|---|---|\n"
             "| 외주 콜센터 계약 | 연 1억 2천만원 | 12월 만료 |\n\n"
             "실장님의 결재가 필요한 사안은 연 1억 2천만원 규모의 외주 콜센터 계약 연장 여부입니다. "

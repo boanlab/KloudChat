@@ -1,6 +1,4 @@
-"""Refresh-token family details for the active-session list, and an idle timeout policy.
-
-The idle timeout is in minutes; 0 disables it.
+"""Refresh-token family details for the active-session list, and an idle timeout policy (minutes; 0 disables).
 
 Revision ID: 0033
 Revises: 0032

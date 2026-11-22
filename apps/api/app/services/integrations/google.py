@@ -1,7 +1,6 @@
-"""Google Drive calls with a person's own grant (`drive.file`: only files they picked in
-Google Picker, or that the app made): a 401 refreshes once, rate limits back off
-(`http.request`), lists follow `nextPageToken` up to a cap, downloads stop at the upload
-limit."""
+"""Google Drive calls with a person's own `drive.file` grant: a 401 refreshes once, rate
+limits back off (`http.request`), lists follow `nextPageToken` up to a cap, downloads stop at
+the upload limit."""
 
 from __future__ import annotations
 

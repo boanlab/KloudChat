@@ -1,8 +1,4 @@
-"""A written sum with a term the reader cannot parse is left as written, never a crash.
-
-11-20: a strict-local report section held 「1만 1000만」-style term inside a sum; `_ko_number`
-raised on it inside `fix_written_sums`, the sections stage failed and the whole report was lost
-(「보고서를 만들지 못했습니다」)."""
+"""A written sum with a term the reader cannot parse is left as written, never a crash."""
 
 from __future__ import annotations
 

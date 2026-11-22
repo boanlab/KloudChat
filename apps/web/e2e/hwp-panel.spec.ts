@@ -2,11 +2,7 @@ import { readFileSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
 import { officeFixture } from './office-fixture'
 
-/**
- * The HWP panel beside a chat, against a stand-in editor (`fixtures/fake-rhwp.html`): it
- * loads the saved version, saves from the version it loaded, gives way to the agent's
- * versions, locks while a turn runs, and asks about unsaved edits before one starts.
- */
+/** The HWP panel beside a chat, against a stand-in editor (`fixtures/fake-rhwp.html`). */
 
 test.use({ serviceWorkers: 'block' })
 
@@ -80,7 +76,7 @@ test('the editor locks while the agent works, then shows its version; the trail 
   const state = await fixture(page, { holdTurn })
   await expect(editor(page).locator('#doc')).toHaveText(`document.hwpx ${hwpx.length}`)
 
-  // a document order, answered here in the editor rather than handed to the report screen
+  // Document order, answered in the editor
   await page.getByRole('textbox').first().fill('직원 연수 참석을 요청하는 공문을 작성해 주세요')
   await page.keyboard.press('Enter')
   await expect(page.getByTestId('hwp-agent-lock')).toBeVisible()
@@ -109,7 +105,7 @@ test('unsaved hand edits are saved before the agent turn when the person says so
   await ask.getByRole('button', { name: '저장하고 보내기' }).click()
   await expect.poll(() => state.sent.length).toBe(1)
   expect(state.saves).toEqual([{ expected: '1', size: expect.any(Number) }])
-  // the agent's version came after the hand save
+  // The agent's version follows the hand save
   await expect(panel(page).locator('header').getByText('v3', { exact: true })).toBeVisible()
   expect(state.unexpected).toEqual([])
 })
@@ -144,11 +140,11 @@ test('on a phone the document opens to read, without a save button @phone', asyn
 
 test('home opens a blank HWP document from the report surface\'s 한글 pick', async ({ page }) => {
   const state = await fixture(page, { fromHome: true })
-  // no document card beside the surfaces: the file is the report's
+  // No document card: the file is the report's
   await expect(page.getByRole('button', { name: '한글 문서', exact: true })).toHaveCount(0)
   await expect(page.getByRole('button', { name: '빈 문서로 시작' })).toHaveCount(0)
   await page.getByRole('group', { name: '만들 것' }).getByRole('button', { name: '보고서' }).click()
-  // the 형식 chip in the prompt box, as the picture options are chips
+  // 형식 is a chip in the prompt box
   await expect(page.getByRole('button', { name: /^형식/ })).toContainText('웹 보고서')
   await page.getByRole('button', { name: /^형식/ }).click()
   await page.getByRole('menuitemcheckbox', { name: '한글', exact: true }).click()
@@ -189,7 +185,7 @@ test('home\'s blank HWP says what it is doing, takes one click, and fetches the 
   await page.getByRole('group', { name: '만들 것' }).getByRole('button', { name: '보고서' }).click()
   await page.getByRole('button', { name: /^형식/ }).click()
   await page.getByRole('menuitemcheckbox', { name: '한글', exact: true }).click()
-  // picking 한글 starts the editor's download, before anything is made
+  // Picking 한글 starts the editor download
   await expect.poll(() => warmed).toContain('/rhwp/assets/rhwp_bg-test.wasm')
 
   await page.getByRole('button', { name: '빈 문서로 시작' }).click()
@@ -201,7 +197,7 @@ test('home\'s blank HWP says what it is doing, takes one click, and fetches the 
   await expect(page).toHaveURL(/\/s\/[0-9a-z_-]+/)
   await expect(editor(page).locator('#doc')).toHaveText(`document.hwpx ${hwpx.length}`)
   expect(state.created).toEqual([{ sessionId: expect.any(String), title: '새 한글 문서' }])
-  // once per page: the pick and the click fetched the files once
+  // Fetched once per page
   expect(warmed.filter((path) => path.endsWith('.wasm'))).toHaveLength(1)
   expect(state.unexpected).toEqual([])
 })
@@ -210,7 +206,7 @@ test('while the editor starts, the panel says so and how long it has waited', as
   test.skip((page.viewportSize()?.width ?? 0) <= 640, 'desktop width')
   let release!: () => void
   const hold = new Promise<void>((resolve) => (release = resolve))
-  // the editor's files come only when released, as a slow first download would
+  // Editor files arrive only on release (slow first download)
   await page.route('**/rhwp/**', async (route) => {
     await hold
     return route.fulfill({ contentType: 'text/html', body: studio })

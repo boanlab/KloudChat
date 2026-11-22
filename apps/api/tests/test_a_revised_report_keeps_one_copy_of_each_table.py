@@ -59,7 +59,7 @@ def test_a_table_edit_goes_to_the_part_holding_that_table():
     assert revise.table_target(wrong, NAMES, _texts(V1), COMPLETION).targets == [2]
     guessed = revise.Plan(scope="parts", targets=[2], note="개선점 표로")
     assert revise.table_target(guessed, NAMES, _texts(V1), INTO_TABLE).targets == [4]
-    # No table named, nothing moved.
+    # no table named: nothing moved
     assert revise.table_target(wrong, NAMES, _texts(V1), "문장을 더 짧게").targets == [0]
 
 

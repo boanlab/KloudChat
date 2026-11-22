@@ -2,12 +2,7 @@ import { readFileSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
 import { officeFixture, type OfficeOptions } from './office-fixture'
 
-/**
- * The PowerPoint panel beside a chat, with the real slide editor (pptx-react-viewer under the
- * app's own chrome): it loads the saved version, saves a `.pptx` from the version it loaded
- * (the header's 저장 or Ctrl+S), gives way to the agent's versions, locks while a turn runs,
- * asks about unsaved edits before one starts, and runs under the app's CSP.
- */
+/** PowerPoint panel with the real editor (pptx-react-viewer): load, save (저장 or Ctrl+S), agent versions, lock during a turn, unsaved-edit prompt, CSP. */
 
 test.use({ serviceWorkers: 'block' })
 
@@ -161,7 +156,7 @@ test('the editor locks while the agent works, then shows its version', async ({ 
 
   await expect(page.getByTestId('pptx-agent-lock')).toBeHidden()
   await expect(panel(page).locator('header').getByText('v2', { exact: true })).toBeVisible()
-  // the version loaded in place: the caret stays in the chat, the slide where it was
+  // loaded in place: caret stays in the chat, slide unchanged
   await expect(page.getByRole('textbox', { name: '프롬프트 입력' }).first()).toBeFocused()
   await expect(thumbs(page).nth(1)).toHaveClass(/\bon\b/)
   await expect(canvas(page).getByText('추진 배경과 목표').first()).toBeVisible()

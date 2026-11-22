@@ -586,10 +586,8 @@ _EDITS_TEXT = re.compile(
 
 
 def edit_ask(request: str, *, has_files: bool = False) -> str:
-    """The ask, when it proofreads or polishes the text that comes with it (the first
-    paragraph over pasted text, or the message over a file) and names nothing to look up;
-    else "". That text is the whole job and nothing in it is a question (「아직」 in a pasted
-    report is no search)."""
+    """The ask when it proofreads or polishes the text that comes with it and names nothing to
+    look up; else "". That text is the whole job (「아직」 in a pasted report is no search)."""
     instruction = instruction_part(request or "")
     head, gap, rest = instruction.strip().partition("\n\n")
     ask = head if gap and rest.strip() else instruction
@@ -790,10 +788,9 @@ def _without_invented_money(text: str, evidence: list[str] | None = None) -> str
 
 def _without_invented_percents(text: str, evidence: list[str] | None = None,
                                worked: str = "") -> str:
-    """Percentages no source gives nor works out from its figures marked 「(확인 필요)」, never
-    blanked; a share of two given figures of one measure (71억 of 128억 → 55.5%) stays, and so
-    does the result of a formula the document writes on given figures (`worked`: the rest of
-    the document)."""
+    """Mark 「(확인 필요)」 on percentages no source gives or derives; never blanks. A share of two
+    given figures (71억 of 128억 → 55.5%) and a formula result on given figures (`worked`: the
+    rest of the document) stay."""
     from app.services import value_guard
 
     if not value_guard.percents_in(text or ""):
@@ -924,9 +921,8 @@ def _cell_sourced(
     cell: str, compact: str, row: str = "", dates: list[dict] | None = None,
     lines: list[str] | None = None,
 ) -> bool:
-    """Owner or due-date cell names something in the request or material (dates bound to their
-    source line). With `lines`, a day counts only on a source line that also names the row
-    (its owner or task): a 12/31 the material gives for something else is no source for it."""
+    """Owner or due-date cell names something in the request or material. With `lines`, a day
+    counts only on a source line that also names the row (owner or task)."""
     flat = re.sub(r"\s+", "", cell)
     days = [(int(m), int(d)) for m, d in _MONTH_DAY.findall(flat)] + [
         (int(m), int(d)) for m, d in _ISO_DAY.findall(flat)
@@ -987,9 +983,7 @@ _DUE_AT = re.compile(r"\s{0,2}(?:까지|마감|완료|제출|전까지|내(?:로
 
 
 def _source_due(owner: str, row: str, lines: list[str]) -> str:
-    """The one day the source gives as this row's deadline, as the source writes it: a line
-    naming the row's owner and one of its task words, with a single day on it; "" when the
-    source gives none or more than one."""
+    """The single deadline the source gives for this row's owner and task, as written; "" if none or several."""
     owner = re.sub(r"\s+", "", owner.strip("*_` "))
     if len(owner) < 2 or placeholders.is_blank(owner):
         return ""
@@ -1012,8 +1006,8 @@ def _source_due(owner: str, row: str, lines: list[str]) -> str:
 
 
 def _unsourced_owner_dates(text: str, source: str, dates: list[dict] | None = None) -> str:
-    """Unmentioned 담당/기한 cells become 「[담당자]」/「[기한]」 blanks; a 기한 left blank (or
-    made up) whose row's owner the source gives one deadline for takes that day."""
+    """Unmentioned 담당/기한 cells become 「[담당자]」/「[기한]」 blanks; a blank or invented 기한 takes
+    the one deadline the source gives the row's owner."""
     compact = re.sub(r"\s+", "", source)
     if not compact or "|" not in text:
         return text
@@ -1058,7 +1052,7 @@ def _unsourced_owner_dates(text: str, source: str, dates: list[dict] | None = No
                                 and placeholders.is_blank(cells[k]) and owner_at is not None
                                 and owner_at < len(cells)):
                             continue
-                        # the deadline the source gives this row's owner for this task
+                        # source deadline for this row's owner and task
                         task = " ".join(c for j, c in enumerate(cells) if j not in guarded)
                         if due := _source_due(cells[owner_at], task, source_lines):
                             cells[k] = due
@@ -1072,7 +1066,7 @@ def _unsourced_owner_dates(text: str, source: str, dates: list[dict] | None = No
     return "\n".join(out)
 
 
-#: 「10월 11일(일)」, 「10/11(일)」, 「2026-10-11」 with the particle after it
+#: Written day (「10월 11일(일)」, 「10/11(일)」, 「2026-10-11」) with its trailing particle.
 _DAY_WRITTEN = re.compile(
     r"(?<![\d./-])(?:(?P<y>20\d{2})\s{0,2}(?:[-./]|년)\s{0,2})?(?P<m>\d{1,2})\s{0,2}(?:월\s{0,2}|/|[-.]\s{0,2})"
     r"(?P<d>\d{1,2})(?![\d/])\s{0,2}일?\.?(?:\s{0,2}[(（][월화수목금토일][)）])?"
@@ -1767,11 +1761,9 @@ def _own_bound(sentence: str, given: str) -> bool:
 
 def grounded_addition(before: str, after: str, evidence: list[str], *, request: str = "",
                       worked: str = "") -> tuple[str, list[str]]:
-    """`(after, cut)`: a lengthened section (`after`, a superset of `before`) with each added
-    sentence whose values the evidence does not back taken out (`value_guard.supported`: a
-    target, day or amount the writer set itself), and an added sentence that leans on one
-    taken out (「이는 …」) with it. What `before` says stays as written; tables and figure
-    lines are left to the document's own checks."""
+    """`(after, cut)`: a lengthened section minus added sentences whose values the evidence
+    does not back (`value_guard.supported`), plus sentences leaning on a cut one (「이는 …」).
+    `before` and tables/figure lines are untouched."""
     from app.services import value_guard
 
     def norm(text: str) -> str:
@@ -1782,7 +1774,7 @@ def grounded_addition(before: str, after: str, evidence: list[str], *, request: 
     given = re.sub(r"(?<=\d),(?=\d{3})", "", " ".join([*evidence, request, before]))
     out: list[str] = []
     cut: list[str] = []
-    # an added sentence was just taken out: the next added one leaning on it goes too
+    # the previous added sentence was cut: a following one leaning on it goes too
     gone = False
     for line in after.split("\n"):
         text = line.strip()
@@ -1930,8 +1922,7 @@ _NAMED_UNDER_FENCE = re.compile(
 
 
 def unglue_blocks(body: str) -> str:
-    """Fence or table row glued to a sentence moved to its own line; a block named on the
-    line under a bare fence (「```」 then 「steps: 자료 전처리 | …」) named on the fence."""
+    """Move a fence or table row glued to a sentence onto its own line; name a block on the fence from the line under a bare fence."""
     body = _NAMED_UNDER_FENCE.sub(lambda m: f"```{m.group(1).lower()}\n", body or "")
     body = re.sub(r"(?m)^([^\n`|]*\S)[ \t]+(```[A-Za-z]*)[ \t]*$", r"\1\n\n\2", body)
     body = re.sub(r"(?m)^(?!```)([^\n`]*[.!?。])[ \t]+```[ \t]*$", r"\1\n```", body)
@@ -3795,7 +3786,7 @@ def _without_own_heading(body: str, heading: str) -> str:
         first = re.sub(r"^\d+[.)]\s+", "", first)
     if first and first == heading.strip():
         return lines[1].lstrip() if len(lines) > 1 else ""
-    # short title-like first line matching the heading is a renamed heading
+    # short title-like first line matching the heading: a renamed heading
     if (
         len(lines) > 1
         and len(first) <= 40
@@ -4387,7 +4378,7 @@ def _keeps_its_tables(body: str, before: str, note: str) -> str:
                for t in kept):
             continue
         if kept and not re.search(r"표", note or ""):
-            # the rewrite drew its own tables: an unlike old one was replaced, not lost
+            # the rewrite redrew its tables; an unlike old one was replaced, not lost
             continue
         head = before[:m.start()].rstrip("\n").split("\n")[-1] if m.start() else ""
         caption = head if _CAPTION.match(head) else ""
@@ -4455,9 +4446,8 @@ def fix_ledger_magnitudes(text: str, request: str) -> str:
             results.append(value)
     if not results:
         return text
-    # an amount the request itself states is never a slip (「월 15만 원 × 10개월」 beside the
-    # ledger's 150만 is the operand, not 150만 a digit short), 원 written or not (「월 4,500만
-    # 원(인건비 3,600만 + 클라우드 900만)」)
+    # an amount the request itself states is never a slip (operands like 「월 15만 원 × 10개월」),
+    # with or without 원
     stated = {v for m in _AMOUNT_MAN.finditer(request or "")
               if (v := _to_man(m.group(1))) is not None}
 
@@ -4920,9 +4910,7 @@ def _stems(text: str) -> set[str]:
     return out
 
 
-#: test lines: never trimmed (wrong choices repeat numbers)
-#: a formula or a numbered step: never a restatement to trim (「연간 시장 규모(원) =
-#: N(명) × 9,900원 × 12개월 × c」, a 「2단계」 paragraph)
+#: Formula or numbered step: never a restatement to trim (「… = N(명) × 9,900원 × 12개월」, 「2단계」).
 _WORKED_LINE = re.compile(r"[=×÷]|\d\s?[x*/]\s?\d|(?:^|\s|\()\d{1,2}\s?단계")
 _ASSESSMENT_LINE = re.compile(
     r"[①-⑩]|^\s*(?:\*\*)?(?:서술형\s?)?\d{1,2}\s?[.)번](?:\*\*)?\s|^\s*\*\*서술형|"
@@ -4937,8 +4925,7 @@ _LEANS_BACK = re.compile(
     r"따라서|그러므로|그래서|그러나|하지만|다만|또한|즉|한편|반면|둘째|셋째|넷째|다섯째|"
     r"마지막으로|나머지)(?=[\s,])"
 )
-#: a decision, who made or asked it, or the sign-off it waits on: 「…의 승인으로 결정되었습니다」,
-#: 「… 연장 여부에 대한 실장님 결재가 필요합니다」
+#: A decision, who made it, or the sign-off it waits on.
 _DECIDED = re.compile(r"결정|승인|결재|합의|제안|요청|지시|확정|하기로|않기로|보류")
 #: one item of a counted run (「첫째, …」 … 「셋째, …」): cutting one breaks the run
 _ENUMERATED = re.compile(r"^(?:[-*+]\s+)?(?:첫째|둘째|셋째|넷째|다섯째|여섯째|마지막으로)(?=[\s,])")

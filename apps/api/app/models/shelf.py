@@ -1,5 +1,4 @@
-"""지식 서가 (knowledge shelf) rows: per-conversation source selection, source guides, the
-project's notes and its studio outputs. Each row is single-owner, like the workspace rows."""
+"""지식 서가 (knowledge shelf) rows: source selection, source guides, notes, studio outputs."""
 
 from __future__ import annotations
 
@@ -39,9 +38,8 @@ class SourceSelection(SQLModel, table=True):
 
 
 class SourceGuide(SQLModel, table=True):
-    """A source's guide (summary, key topics, suggested questions), or the project's own
-    (`subject = "project"`); made by a strict-local model on first look, kept until the
-    material it was made from changes (`signature`)."""
+    """Guide of a source (or of the project, `subject = "project"`), regenerated when `signature`
+    changes."""
 
     __tablename__ = "source_guides"
     __table_args__ = (UniqueConstraint("project_id", "subject", name="uq_source_guides_subject"),)
@@ -51,7 +49,7 @@ class SourceGuide(SQLModel, table=True):
     project_id: str = Field(index=True, max_length=32)
     #: a file id, or "project"
     subject: str = Field(max_length=32)
-    #: what it was made from (file ids and text lengths); differs → made again
+    #: Source ids and text lengths the guide was made from.
     signature: str = Field(default="", max_length=64)
     #: running | done | failed
     state: str = Field(default="running", max_length=12)

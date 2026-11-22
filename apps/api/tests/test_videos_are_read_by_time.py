@@ -455,8 +455,8 @@ async def test_a_video_becomes_a_time_coded_document(db, worker):
     speech = [r for r in ledger if r.reason == video_jobs.REASON_SPEECH]
     vision = [r for r in ledger if r.reason == video_jobs.REASON_VISION]
     assert sum(r.units for r in speech) == 1250 and {r.unit for r in speech} == {"seconds"}
-    # a self-hosted vision model is free: its tokens are recorded, nothing deducted; the
-    # picture shown again was not read again, so it has no row
+    # a self-hosted vision model is free: tokens recorded, nothing deducted; a repeated picture has
+    # no row
     assert len(vision) == 2 and all(r.delta == 0 for r in vision)
     assert sum(r.units for r in vision) == 2 * 940
 
@@ -722,8 +722,8 @@ def test_wire_names_are_what_the_web_reads():
 
 
 def test_a_video_in_the_material_asks_for_bracketed_marks_in_tables_and_ranges():
-    """The web turns only a bracketed mark (or a bare hh:mm:ss) into a chip; a table's time
-    column and a range are where models dropped the brackets (walk 11-14)."""
+    """A table's time column and a range ask for bracketed marks, since the web turns only a
+    bracketed mark (or bare hh:mm:ss) into a chip."""
     from app.services import workspace_context
 
     video = StoredFile(user_id="u", name="lecture10.webm", mime="video/webm", size=1,

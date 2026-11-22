@@ -294,7 +294,7 @@ async def test_a_pending_pipeline_is_approved_or_rejected_with_a_reason(wired):
         assert caught.value.status_code == 409
         assert await up.admin_list(p.admin, db) == []
 
-        # An approved pipeline runs for others; a private one only for its author.
+        # an approved pipeline runs for others; a private one only for its author
         own = await _pipeline(db, p.me, "메모", [{"kind": "agent", "ref": p.memo.id}])
         shared = ChatSession(user_id=p.other.id, kind=SessionKind.report, pipeline_id=made.id)
         private = ChatSession(user_id=p.other.id, kind=SessionKind.chat, pipeline_id=own.id)
@@ -420,7 +420,7 @@ async def test_a_composed_run_hands_each_product_on_and_reviews_the_last(wired, 
     assert name == "비교 보고서" and approved == {"title": "비교", "sections": [{"title": "결론"}]}
     assert "# 앞 단계 결과: 데이터 분석\n분석: A안 총액 9억 원" in material
     assert writers["plan"][0][1].endswith("이 단계에서 할 일:\n결론만 1쪽")
-    # The review ran on its own model and its fix was applied once.
+    # the review runs on its own model and its fix is applied once
     assert writers["complete"][-1][0] == _JUDGE["id"]
     assert records[3]["summary"] == "지적 1개 · 고침 1개"
 

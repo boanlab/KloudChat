@@ -1,8 +1,6 @@
-"""PowerPoint document artifacts: one `.pptx` blob per version, saved by the editor or by the
-agent (the versions themselves: `office_doc`). A legacy `.ppt` is not opened.
+"""PowerPoint document artifacts: one `.pptx` blob per version (`office_doc`); `.ppt` is not opened.
 
-This is the uploaded or company `.pptx` worked as a file beside the chat; a deck KloudChat
-writes itself is the `deck` kind (`deck.py`), which also downloads as `.pptx`."""
+Distinct from the `deck` kind (`deck.py`), which KloudChat writes itself."""
 
 from __future__ import annotations
 
@@ -42,7 +40,7 @@ def describe(data: bytes, fmt: str) -> dict[str, Any]:
         text, slides = "", 0
     out = {"format": fmt, "size": len(data), "text": text, "slides": slides}
     if (form := form_marks.read(data)) is not None:
-        # the form this version was written on (`pptx_form`), for the 「양식을 따름」 line
+        # form this version was written on (`pptx_form`), for the 「양식을 따름」 line
         out["form"] = form
     return out
 
@@ -51,8 +49,8 @@ KIND = office_doc.Kind(ArtifactKind.pptx, "pptx", "PowerPoint 문서", file_form
 
 
 def on_form(form: Any, title: str, slides: list[dict[str, Any]]) -> bytes:
-    """`slides` written on a conversation's PowerPoint form (`form_files.Resolved`), marked
-    with what was followed."""
+    """`slides` written on a PowerPoint form (`form_files.Resolved`), marked with what was
+    followed."""
     from app.services import pptx_form
 
     data, followed = pptx_form.write(form.data, title, slides, profile=form.profile,
@@ -65,10 +63,10 @@ def on_form(form: Any, title: str, slides: list[dict[str, Any]]) -> bytes:
 
 def blank(*, tokens: dict[str, str] | None = None, template: str = "",
           form: Any = None) -> bytes:
-    """A new deck with one empty title slide: python-pptx's default stretched to 16:9
-    (`pptx_edit.blank_deck`), or, given a project's 테마 `tokens` or 서식 `template`, an empty
-    cover in that look (`deck_export.to_pptx`), as a web deck made there would have. On a
-    `form` (`form_files.Resolved`), the form's own cover with its sample slides taken out."""
+    """A new deck with one empty title slide.
+
+    Default is 16:9 (`pptx_edit.blank_deck`); with `tokens` or `template`, an empty cover in that
+    look (`deck_export.to_pptx`); with a `form`, its own cover minus the sample slides."""
     if form is not None:
         return on_form(form, "", [{"layout": "title", "title": "", "body": ""}])
     if not tokens and not template:
@@ -89,11 +87,10 @@ def deck(
     form: Any = None,
     overflow: list[dict] | None = None,
 ) -> bytes:
-    """A new deck in the house look (`deck_export`): a cover, then a slide per entry, as
-    bullets, or a table when it has rows; `closing` adds a last slide with that line. `tokens`
-    (the design system's `{accent, ink, muted, font, …}`) and `template` (a slides 서식's
-    `template.pptx` path, for its masters, layouts and theme) are what a web deck's `.pptx`
-    takes (`deck_export.to_pptx`); `project_look` finds a conversation's."""
+    """A new deck in the house look (`deck_export`): cover, then a bullet or table slide per entry.
+
+    `closing` adds a last slide. `tokens` is the design system's `{accent, ink, muted, font, …}`;
+    `template` is a slides 서식's `template.pptx` path; `project_look` finds both."""
     made: list[dict[str, Any]] = [{"layout": "title", "title": title, "body": subtitle}]
     for slide in slides[:MAX_WRITE]:
         rows = [[str(cell) for cell in row] for row in slide.get("rows") or [] if row]
@@ -112,9 +109,8 @@ def deck(
             picture = {"data": image["data"], "caption": str(image.get("caption") or ""),
                        "size": "large"}
             if bullets and _wide(image["data"]):
-                # a wide figure (a row of plots) beside text shrinks to a strip nobody can
-                # read: it takes the slide's width, and a few short lines (the results, the
-                # numbers) sit in a strip under it; the rest go to the speaker notes
+                # a wide figure beside text is unreadable: it takes the full width, a few
+                # short lines sit under it, the rest go to the speaker notes
                 kept, moved = strip_split(bullets)
                 notes = "\n".join([entry["notes"], *moved]).strip()
                 entry.update(layout="bullets", bullets=kept,
@@ -142,9 +138,8 @@ _DIGIT = re.compile(r"\d")
 
 
 def strip_split(bullets: list[str]) -> tuple[list[str], list[str]]:
-    """`(kept, moved)`: of a wide figure's lines, up to `STRIP_LINES` stay on the slide
-    (those with a number first, in their order) and the rest go to the speaker notes, so a
-    result's numbers are never only in the notes while a plainer line stays on the slide."""
+    """`(kept, moved)`: up to `STRIP_LINES` lines stay on the slide (numeric ones first), the
+    rest go to the notes."""
     ranked = sorted(range(len(bullets)), key=lambda i: (not _DIGIT.search(bullets[i]), i))
     keep = set(ranked[:STRIP_LINES])
     return ([b for i, b in enumerate(bullets) if i in keep],
@@ -173,11 +168,11 @@ async def project_look(
     project_id: str | None = None,
     template_id: str | None = None,
 ) -> tuple[dict[str, str] | None, str]:
-    """`(tokens, template)` a PowerPoint deck made here takes, as the web decks do: the design
-    system (테마) of the conversation's agent or project (`workspace_context.design_for`), else
-    of `project_id`'s project, and the `template.pptx` of `template_id` (a 서식 the person
-    picked) else of the project's default slides 서식 (`Project.render_templates`). `(None, "")`
-    is the house look."""
+    """`(tokens, template)` a PowerPoint deck takes, as web decks do.
+
+    Tokens: the design system (테마) of the conversation's agent or project
+    (`workspace_context.design_for`), else of `project_id`. Template: the `template.pptx` of
+    `template_id`. `(None, "")` is the house look."""
     from app.services import design, design_templates, workspace_context
 
     pid = (session.project_id if session is not None else None) or project_id
@@ -193,8 +188,7 @@ async def project_look(
     except workspace_context.WorkspaceContextError:
         chosen = None
     tokens = design.tokens_of(chosen) if chosen is not None and chosen.tokens else None
-    # a project's default template is no longer read (2026-11-15: forms instead); a template an
-    # older conversation picked still gives its base
+    # only an explicitly picked template gives its base
     picked = template_id
     found = design_templates.rendering(picked) if picked else None
     template = (found.pptx_template or "") if found is not None else ""

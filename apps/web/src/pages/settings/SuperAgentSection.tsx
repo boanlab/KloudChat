@@ -89,7 +89,7 @@ export function SuperAgentSection() {
       ))}
     </>
   )
-  /** The chosen model's price, under its select; nothing for 「그대로」 or a model no longer served. */
+  /** The chosen model's price under its select; nothing for 「그대로」 or an unserved model. */
   const rate = (pool: ModelInfo[], id: string) => {
     const model = pool.find((m) => m.id === id)
     return model ? <p className="mt-0.5 truncate text-xs text-faint" data-testid="model-rate">{tokenRate(model, t)}</p> : null

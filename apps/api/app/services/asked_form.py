@@ -1,7 +1,6 @@
-"""The form a request sets for its own answer: parts, counts, table columns.
+"""The form a request sets for its own answer (parts, counts, table columns).
 
-An always-on skill's frame (개조식 보고, a content plan) yields to a form the request names;
-the skill's text is the person's, so the writer is told, not the skill rewritten.
+It overrides an always-on skill's frame; the writer is told, the skill text is not rewritten.
 """
 
 from __future__ import annotations

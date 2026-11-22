@@ -1,13 +1,11 @@
 """What an uploaded Office file offers as a form (양식): read once, on upload, by code.
 
-A form is a file whose look and slots the answer is written into, not material to read. The
-profile tells the writers what the form holds (a PowerPoint's layouts, theme fonts and
-colours; a Word file's heading styles, header and footer, fields; a 한글 file's label and
-value cells) and how likely the file is a form at all (`score`, `verdict`).
+Profile of what a form holds (PowerPoint layouts, theme fonts, colours; Word heading styles,
+header/footer, fields; 한글 label and value cells) and how likely the file is a form (`score`,
+`verdict`).
 
-`.potx` and `.dotx` are forms by kind. `.hwp` (the binary HWP 5 format) is never followed as a
-form: it is read as material, and when it looks like a form the person is asked to save it as
-HWPX (`HWP_FORM_ADVICE`).
+`.potx` and `.dotx` are forms by kind. Binary `.hwp` is never followed as a form: it is read as
+material, and a form-looking one prompts the user to save as HWPX (`HWP_FORM_ADVICE`).
 """
 
 from __future__ import annotations

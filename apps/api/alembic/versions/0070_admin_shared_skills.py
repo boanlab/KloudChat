@@ -1,13 +1,9 @@
-"""Shipped skills are the administrator's own skills, shared; no `built-in` rows remain.
+"""Shipped skills are the administrator's own shared skills; no `built-in` rows remain.
 
-- `skills.package_hash`: the owner row's content as last synced from its package. The
-  startup sync follows the package while the hash still matches and leaves an edited row
-  alone; copies equal to the owner row's previous content follow with it.
-- `source = built_in` is rewritten: the catalogue owner's (oldest admin's) keyed rows become
-  `personal` (authored by that admin), everyone else's become `workspace` (copies of a shared
-  skill). The owner's unkeyed `built_in` rows (per-account seeds of old) become `workspace`
-  with no origin, which the sync adopts by name as before.
-- Copies seeded before `origin_id` are linked to the owner row by key on the next sync.
+- `skills.package_hash`: the owner row's content as last synced from its package. The startup sync
+  follows the package while the hash matches and leaves an edited row alone.
+- `source = built_in` is rewritten: the catalogue owner's keyed rows become `personal`, others'
+  become `workspace`; the owner's unkeyed rows become `workspace` with no origin.
 
 Downgrade drops the column and marks keyed rows `built_in` again.
 

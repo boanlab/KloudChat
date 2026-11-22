@@ -14,10 +14,7 @@ const DOCUMENT_FORMATS: { id: 'web' | 'hwp' | 'docx'; label: string }[] = [
   { id: 'docx', label: 'Word' },
 ]
 
-/**
- * One studio output's options and its estimate (sources read, model, tokens, credits) before
- * anything is generated; 만들기 starts it.
- */
+/** Options and estimate (sources, model, tokens, credits) for one studio output before generation. */
 export function StudioDialog({
   projectId,
   kind,

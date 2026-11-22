@@ -1,10 +1,8 @@
 """Figures and tables of a paper PDF, found by their captions and cut out as pictures.
 
-A slide about a paper shows the paper's own figure (「Figure 2. …」) as the paper drew it,
-captioned and credited, instead of a redrawn guess. PDFium (pypdfium2, Apache-2.0 /
-BSD-3-Clause) reads the caption lines with their positions and the page's drawing objects;
-a figure is the drawing above its caption in the caption's column, a table the ruled block
-below its caption. What cannot be placed with confidence is left out rather than cut wrong."""
+PDFium (pypdfium2) reads caption lines with positions and the page's drawing objects; a figure
+is the drawing above its caption in the caption's column, a table the ruled block below it.
+What cannot be placed with confidence is left out rather than cut wrong."""
 
 from __future__ import annotations
 

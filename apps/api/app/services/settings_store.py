@@ -86,10 +86,8 @@ MODEL_TITLE = "models.title"
 #: `run_code` Python writer; fallback gets one more try
 MODEL_CODE = "models.code"
 MODEL_CODE_FALLBACK = "models.code_fallback"
-#: How a new chat, report or slides conversation starts: `super` or `super_strict` (Super Agent
-#: picks per turn) or `manual` (the surface's model above). Report and slides may store "" to
-#: follow chat. Unset: `super` (owner decision 2026-11-14: Super Agent is the default).
-#: The surface's model stays the fallback when Super Agent has nothing usable.
+#: How a new chat, report or slides conversation starts: `super`, `super_strict` or `manual`
+#: (the surface's model). Report and slides may store "" to follow chat. Unset: `super`.
 ROUTING_CHAT = "routing.chat"
 ROUTING_REPORT = "routing.report"
 ROUTING_SLIDES = "routing.slides"

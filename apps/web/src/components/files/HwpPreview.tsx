@@ -5,11 +5,7 @@ import { lazyPages, type LazyPages } from '@/components/hwp/lazyPages'
 import { useT } from '@/lib/useT'
 import { reasonOf, safePage, type OfficePreviewProps } from './officePreview'
 
-/**
- * An HWP/HWPX file's pages as the HWP editor (rhwp-studio) draws them: the editor runs unseen
- * and hands over each page as SVG, so the preview reads like the document and cannot be edited.
- * Every page is there; each is drawn as the reader scrolls to it (`lazyPages`).
- */
+/** HWP/HWPX pages as SVG from a hidden editor, read only; each page is drawn when scrolled to (`lazyPages`). */
 export default function HwpPreview({ bytes, label, onReady, onFail }: OfficePreviewProps) {
   const t = useT()
   const host = useRef<HTMLDivElement>(null)

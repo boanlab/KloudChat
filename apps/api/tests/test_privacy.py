@@ -911,7 +911,6 @@ async def test_raw_external_still_carries_what_the_record_was_masked_by(monkeypa
     assert raw.routing["findingCounts"] == [
         {"category": "email", "source": "current_input", "count": 1}
     ]
-    # What replaces the person's sentence.
     assert governance.mask(sources["current_input"])[0] == "send [이메일]"
 
 
@@ -1537,9 +1536,8 @@ async def test_auto_routed_economy_turn_strips_exposed_tools_and_fallback(
         **_external_model("external/economy"),
         "inputCreditCost": 1,
         "creditCost": 2,
-        # 24k: the context-fit gate measures UTF-8 bytes and the chat system turn and
-        # tool definitions grow with the prompt; a small window would fail before the
-        # classifier, which is not what this test is about.
+        # Large enough for the UTF-8 context-fit gate, which would otherwise fail before the
+        # classifier.
         "contextWindow": 24_000,
         "supportsTools": False,
     }

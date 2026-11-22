@@ -12,11 +12,7 @@ export type SortField<F extends string> = { id: F; label: string; first: SortDir
 
 export type ListSortState<F extends string> = { field: F; dir: SortDir }
 
-/**
- * A list's sort kept in the address (`?sort=…&dir=…`), so a reload or Back keeps it; the
- * default sort leaves the address bare. Clicking the sorted column turns it round, another
- * column starts in its own first direction.
- */
+/** List sort kept in the URL (`?sort=…&dir=…`); the default sort leaves the URL bare. */
 export function useUrlSort<F extends string>(fields: SortField<F>[], fallback: ListSortState<F>) {
   const [params, setParams] = useSearchParams()
   const asked = params.get('sort')

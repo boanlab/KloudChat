@@ -25,12 +25,8 @@ const COALESCE_MS = 1200
 const snapshot = (content: DeckContent) => JSON.stringify(content)
 
 /**
- * The web slides as the office documents work (`useOfficeDocument`): hand edits stay in the
- * browser until 저장, which saves the whole deck as a new version conditional on the version
- * the edits started from; a lost race shows the conflict notice; the agent's version comes in
- * when nothing is unsaved (else the 'behind' notice); leaving or sending a turn with unsaved
- * edits asks through the shared guard (`lib/officeGuard`). Undo covers the whole deck and
- * belongs to the version it opened: another version coming in starts it afresh.
+ * Web slides as an office document (`useOfficeDocument`): edits stay local until 저장, which saves a new version
+ * conditional on the base version. Undo covers the whole deck and resets when another version comes in.
  */
 export function useDeckDocument(deck: DeckArtifact) {
   const t = useT()
@@ -127,10 +123,7 @@ export function useDeckDocument(deck: DeckArtifact) {
     setWork(next)
   }, [future])
 
-  /**
-   * Saves the deck as a new version, conditional on the one the edits started from. True when
-   * saved (or nothing to save).
-   */
+  /** Saves the deck as a new version conditional on the one the edits started from; true when saved or nothing to save. */
   const save = useCallback(async (): Promise<boolean> => {
     if (busy.current) return false
     // a box being typed in commits its text as it is left
@@ -196,10 +189,7 @@ export function useDeckDocument(deck: DeckArtifact) {
     }
   }, [deck, refreshArtifact, reset, t])
 
-  /**
-   * A version this panel added without the editor (a review note): the edits that started
-   * from the version before still apply on top of it.
-   */
+  /** Adopts a version added without the editor (review note); earlier edits still apply on top. */
   const adopt = useCallback((from: number, to: number) => {
     own.current.add(to)
     seenVersion.current = to

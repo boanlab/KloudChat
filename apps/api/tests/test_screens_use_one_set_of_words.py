@@ -15,8 +15,7 @@ _REPO = Path(__file__).resolve().parents[3]
 _WEB = _REPO / "apps/web/src"
 _APP = Path(__file__).resolve().parents[1] / "app"
 
-#: 「양식」 (a form file to write on) and 「디자인 지침」 are the words again since the 2026-11-15
-#: decision to replace templates and themes with form files and a design brief.
+#: 「양식」 and 「디자인 지침」 are the current words; the old terms must not reappear.
 _OLD = re.compile(r"워크플로|작동 단계|결과물|추천|서식 보정|새로 만들기")
 
 #: (file suffix, text the line carries) → why the word may stand there.

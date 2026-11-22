@@ -1,9 +1,5 @@
 """A quiz whose answers the request puts in the speaker notes is rewritten once when its notes
-give fewer answers than it has questions.
-
-Rounds 2-3 r2d02, r3d02 (lesson decks):
-「마지막 장은 퀴즈 3문제, 퀴즈 정답과 해설은 발표자 노트에」 — the quiz slide's notes only led into
-the quiz (「첫 번째는 …입니다. 답을 생각해 보세요.」)."""
+give fewer answers than questions."""
 
 from __future__ import annotations
 

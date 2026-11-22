@@ -1,19 +1,16 @@
-"""Staged model routing of a report or a deck: no one model writes the whole document.
+"""Staged model routing of a report or deck: the upper model handles three stages.
 
-The `document` row's model (the self-hosted 27B by default) writes the ordinary sections and
-slides. Three stages go to the upper model of the Super Agent table (`document_plan`,
-`document_hard`, `document_repair`; strict-local in the strict column):
+The `document` row's model (self-hosted 27B by default) writes ordinary sections and slides.
+The upper model of the Super Agent table (`document_plan`, `document_hard`, `document_repair`;
+strict-local in the strict column) takes:
 
-- plan: the outline of a report, the storyline of a deck (and its slide-count retries);
-- hard: the sections or slides the objective signals below mark as hard;
-- repair: only what the document's existing checks (error text, an unfinished or empty
-  section, table gaps, odd words, a language slip, an unwritten or empty slide, a slide
-  count that differs from the request) send back to be written again.
+- plan: report outline, deck storyline (and slide-count retries);
+- hard: sections or slides the objective signals below mark as hard;
+- repair: only what the document's existing checks send back to be rewritten.
 
-A stage whose row names no usable model stays with the writer, and a call to the upper model
-that fails is made again on the writer: a document turn never fails for a missing upper model.
-Every call's tokens are kept per stage (`usage["stageUsage"]`), billed at their own model's
-price, and shown under the answer as the turn's self-hosted share (`run_info`).
+A stage with no usable model stays with the writer, and a failed upper-model call is redone on
+the writer. Per-stage tokens are kept in `usage["stageUsage"]`, billed at their own model's
+price and shown as the turn's self-hosted share (`run_info`).
 """
 
 from __future__ import annotations
@@ -62,10 +59,9 @@ _FIGURE = re.compile(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?")
 
 @dataclass(slots=True)
 class StageModels:
-    """The models of one turn's stages: `ids` maps a stage to the model that runs it (a stage
-    that stays with the writer is absent); `rows` holds those models' catalogue rows, for
-    pricing and the data boundary. `down` collects models that failed this turn: later calls
-    go straight to the writer."""
+    """Models of one turn's stages: `ids` maps a stage to its model (absent: writer); `rows` are
+    those models' catalogue rows (pricing, data boundary); `down` collects models that failed
+    this turn, whose later calls go straight to the writer."""
 
     ids: dict[str, str] = field(default_factory=dict)
     rows: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -267,13 +263,12 @@ async def staged(
     *,
     limit: int | None = None,
 ) -> tuple[str, dict]:
-    """`(text, spent)` of one call of `stage`. `limit`: the most upper-model calls the hard and
-    repair stages may make this turn (a deck's cap); past it the writer does the call.
-    On the stage's upper model its tokens go to
-    `usage["stageUsage"]` and `spent` comes back empty (the caller's own count adds nothing);
-    when that model fails or answers nothing, the writer is asked in its place and its tokens
-    are the caller's to count as usual. `build(model)` makes the messages for the model
-    asked (the prompt setup follows the model's tier)."""
+    """`(text, spent)` of one call of `stage`.
+
+    `limit`: most upper-model calls the hard and repair stages may make this turn. On the upper
+    model its tokens go to `usage["stageUsage"]` and `spent` is empty; if it fails or answers
+    nothing, the writer is asked instead and its tokens are the caller's to count.
+    `build(model)` makes the messages for that model."""
     from app.services.super_agent import applied_effort
 
     stages = CURRENT.get()
@@ -340,11 +335,9 @@ def _cap(count: int, share: float | None = None) -> int:
 
 
 def hard_report_sections(headings: list[str], material: str) -> dict[int, str]:
-    """Sections the upper model writes, by index with the reason (`HARD_REASONS`), read from
-    their roles and the material alone: the summary that opens the document, the conclusion
-    that closes it, sections that analyse or compare, and sections that carry figures
-    (a comparison, results or trend role) when the material holds figures to trace. At most
-    `HARD_MAX_SHARE` of the sections, strongest reason first."""
+    """Sections the upper model writes, by index with the reason (`HARD_REASONS`): opening
+    summary, closing conclusion, analysis/comparison sections, and figure-carrying roles when the
+    material has figures. At most `HARD_MAX_SHARE` of the sections, strongest reason first."""
     from app.services import report
 
     total = len(headings)
@@ -373,9 +366,8 @@ def hard_report_sections(headings: list[str], material: str) -> dict[int, str]:
 
 
 def hard_slides(slides: list[dict[str, Any]], material: str) -> dict[int, str]:
-    """Slides the upper model writes, by index with the reason: data slides (a chart,
-    metrics, a big number or a table) when the material holds figures, and the summary or
-    decision slide (by its title's words). Structural slides take no model call. At most
+    """Slides the upper model writes, by index with the reason: data slides when the material
+    holds figures, and the summary or decision slide. Structural slides take no call. At most
     `HARD_MAX_SHARE` of the content slides."""
     from app.services import report
 

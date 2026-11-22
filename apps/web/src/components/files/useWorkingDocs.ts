@@ -12,10 +12,7 @@ export const WORKING_KINDS: { kind: WorkingKind; label: string }[] = [
 
 type Counts = Partial<Record<WorkingKind, number>>
 
-/**
- * The account's working documents, a page at a time: one row per document, filtered by kind,
- * searched by title and sorted on the server, so every filter reaches every document.
- */
+/** Paged working documents; kind filter, title search and sort run on the server. */
 export function useWorkingDocs(enabled: boolean, kind: WorkingKind | null, query: string, sort: WorkingSort, dir: SortDir) {
   const q = query.trim()
   const list = useServerPages<WorkingDocRow, Counts>({
@@ -45,7 +42,7 @@ export function useWorkingDocs(enabled: boolean, kind: WorkingKind | null, query
     void load(true)
   }
 
-  /** A renamed document, in place. */
+  /** Replace a renamed row in place. */
   const updateRow = (row: WorkingDocRow) => setRows((held) => held.map((h) => (h.id === row.id ? row : h)))
 
   // every kind over the search: the tab's badge once this list has answered

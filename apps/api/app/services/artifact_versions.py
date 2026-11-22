@@ -1,11 +1,8 @@
-"""One version move at a time for a document whose body is JSON (the web report, the web
-deck): a hand save, a restore and a chat revision each move the document only from the
-version they read (`advance`), so the second of two writers is told instead of overwriting
-the first. When a chat revision loses that race, the parts it changed are put onto the newer
-version if nobody else touched them (`merge`); otherwise its result is kept apart, as a draft
-beside the document (`draft`).
+"""Optimistic version moves for JSON-body documents (web report, web deck).
 
-The office kinds (HWP, Word, PowerPoint) keep one file per version and move the same way in
+`advance` moves a document only from the version a writer read, so the second of two writers is
+told instead of overwriting. A chat revision that loses is `merge`d onto the newer version when
+nobody touched the same parts, else kept as a `draft`. Office kinds do the same in
 `office_doc.save`.
 """
 
@@ -29,10 +26,9 @@ _TITLE = "__title__"
 
 
 async def advance(db: AsyncSession, artifact: Artifact, expected: int, summary: str) -> bool:
-    """Move `artifact` from `expected` to the next version in one conditional UPDATE, and keep
-    the superseded body as a version row; False (nothing changed) when another writer moved
-    it first. The check is the UPDATE itself (`WHERE id = … AND version = expected`): of two
-    writers that both read `expected`, exactly one matches the row."""
+    """Move `artifact` from `expected` to the next version in one conditional UPDATE
+    (`WHERE id = … AND version = expected`), keeping the old body as a version row;
+    False when another writer moved it first."""
     moved = await db.exec(
         update(Artifact)
         .where(col(Artifact.id) == artifact.id, col(Artifact.version) == expected)
@@ -118,10 +114,10 @@ def _parts(base: list, ours: list, theirs: list) -> list | None:
 
 def merge(base: dict, ours: dict, theirs: dict, *, parts: str, title: tuple[str, str, str]
           ) -> tuple[dict, str] | None:
-    """`ours` (a revision of `base`) put onto `theirs` (a later version of `base`): the parts
-    under `parts` (`sections`, `slides`) by id, every other key and the title as a whole;
-    `(body, title)`, or None when both changed the same thing. Derived keys come from
-    `theirs` and are the caller's to recompute."""
+    """`ours` (a revision of `base`) put onto `theirs` (a later version): parts under `parts`
+    (`sections`, `slides`) by id, every other key and the title as a whole; `(body, title)`, or
+    None when both changed the same thing. Derived keys come from `theirs`; the caller recomputes
+    them."""
     merged_parts = _parts(list(base.get(parts) or []), list(ours.get(parts) or []),
                           list(theirs.get(parts) or []))
     if merged_parts is None:

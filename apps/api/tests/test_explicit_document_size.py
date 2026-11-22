@@ -344,8 +344,7 @@ async def test_explicit_total_preserves_retold_slots_through_writing_and_export(
         )
     ]
     slides = next(event["slides"] for event in events if event["type"] == "deck")
-    # Every approved slide ships, with or without a stated total: the retold one is
-    # written again on its own, shown what the rest of the deck already says.
+    # every approved slide ships, with or without a stated total
     assert expected_count == approved_count
     assert [slide["title"] for slide in slides] == [row["title"] for row in plan]
     assert slides[1]["steps"][0][0] == "Fill in"
@@ -414,7 +413,6 @@ def test_a_report_keeps_its_section_count_over_numbers_in_material():
 
 
 async def test_a_range_s_top_is_a_ceiling_the_outline_is_asked_back_to(monkeypatch):
-    # round-1 r1d01 (11-20): 「8장 안팎」 (6~10) came back as 13 and 15 slides on both arms
     shorter = _outline(deck, 9)
     shorter["title"] = "줄인 구성"
     calls = _planner(monkeypatch, deck, [_outline(deck, 14), shorter])

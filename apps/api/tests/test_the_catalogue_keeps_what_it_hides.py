@@ -151,8 +151,7 @@ def test_the_presentation_theme_is_hidden_and_kept():
 
 @pytest.mark.asyncio
 async def test_a_persons_own_theme_stays_listed_and_no_account_is_given_one(db):
-    """A member's own theme row stays theirs (hidden, not deleted); themes are retired, so a new
-    account is not given any (2026-11-15)."""
+    """A member's own theme row stays theirs (hidden, not deleted); a new account is given none."""
     old = User(email="old@example.com", name="Old", password_hash="x")
     db.add(old)
     await db.commit()
@@ -355,7 +354,6 @@ def test_an_unknown_id_is_still_refused():
         sessions_router._resolved_template_id("deck-nope", SessionKind.slides)
 
 
-# ── the catalogue syncs at startup, not only at the owner's sign-in ──
 
 
 @pytest.mark.asyncio
@@ -369,7 +367,7 @@ async def test_the_startup_sync_applies_renames_and_retirements_without_a_login(
     await starter.seed_designs(db, owner.id)
     await starter.seed_catalog(db, owner.id)
     await db.commit()
-    # The state an earlier release left: old names, a retired agent still offered.
+    # an earlier release's state: old names, a retired agent still offered
     gaejo = (await db.exec(select(Agent).where(Agent.catalog_key == "gaejo-report",
                                                Agent.owner_id == owner.id))).one()
     gaejo.name = "개조식 보고서"

@@ -1,8 +1,5 @@
-"""A run of a script neither Korean nor the material's (「결정이 نشده 미결된」) goes back to the
-writer with its paragraph and is taken out by code wherever it stands (reports, chat, decks);
-minutes flag a weekday the calendar disagrees with once, drop a 「확인 필요:」 line a row
-already marks, and no action row the memo gives no one. Shapes from the round 16 re-verify
-(reverify-z tc, tc_b, tc2)."""
+"""A foreign-script run goes back to the writer and is cut by code; minutes flag a
+calendar-mismatched weekday once and drop duplicate 확인 필요 and ownerless action rows."""
 
 from __future__ import annotations
 

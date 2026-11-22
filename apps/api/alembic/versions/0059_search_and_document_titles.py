@@ -1,18 +1,11 @@
-"""Search over conversations and results; report and slides conversations named after their
-document.
+"""Search over conversations and results; report and slides conversations named after their document.
 
-- `artifacts.search_text`: what a result says as plain words, filled here for every row and
-  kept in step by the model on each write.
-- `sessions.title_set_by_user`: the person renamed the conversation; no document title
-  replaces theirs. Every existing row starts false: there is no record of who typed a title,
-  and the backfill below only touches titles that are still the automatic prompt prefix.
-- Trigram indexes (`pg_trgm`, a trusted contrib extension since PostgreSQL 13) on message
-  text, conversation and result titles and result text, so `ILIKE '%…%'` of three or more
-  characters, Korean included, is answered from an index. Where the extension cannot be
-  created the indexes are skipped and search still works by scanning the caller's rows.
-- Backfill: a report or slides conversation whose title is still the first 40 characters
-  of its first request, and whose document has a title, takes the document's title.
-  Downgrade drops the columns and indexes but does not restore those titles.
+- `artifacts.search_text`: plain-text body of a result, backfilled here and kept current by the model.
+- `sessions.title_set_by_user`: a renamed conversation keeps its title. Existing rows start false.
+- Trigram indexes (`pg_trgm`) on message text and conversation/result titles and text, so
+  `ILIKE '%...%'` of three or more characters is index-served; skipped where the extension cannot be created.
+- Backfill: a report or slides conversation still titled with the first 40 characters of its first
+  request takes its document's title. Downgrade does not restore those titles.
 
 Revision ID: 0059
 Revises: 0058

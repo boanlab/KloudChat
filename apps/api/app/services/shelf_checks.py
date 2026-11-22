@@ -1,16 +1,13 @@
-"""Checks a studio output's text before it is kept (`studio`), item by item, then asks the
-writer once to redo what failed:
+"""Item-by-item checks of a studio output's text before it is kept (`studio`).
 
-- script: Japanese kana, Chinese outside a gloss, other scripts, a Hangul word glued to Latin
-  letters (「사용the」), an English word in Korean prose that the sources never use;
-- grounding: a sentence citing 「[n]」 (or an item citing `cite`) whose numbers or most of whose
-  content words its cited sources do not hold (`claim_support`);
-- fluency: one call to the guide model marks garbled sentences (misspelt or made-up words,
-  broken grammar, self-contradiction, notes to the writer), quiz stems included.
+- script: kana, Chinese outside a gloss, other scripts, a Hangul word glued to Latin letters
+  (「사용the」), an English word in Korean prose that the sources never use;
+- grounding: a sentence citing 「[n]」 (or an item citing `cite`) whose numbers or most content
+  words its cited sources lack (`claim_support`);
+- fluency: one guide-model call marks garbled sentences, quiz stems included.
 
-What fails goes back to the writer in one call with its problem and the cited passages; what
-still fails after that is mended in code (a script slip read or removed) or dropped (an
-unbacked sentence, or an item left without its answer).
+Failures go back to the writer once with the problem and cited passages; remaining failures are
+mended in code (script slip) or dropped (unbacked sentence, item without its answer).
 """
 
 from __future__ import annotations
@@ -252,9 +249,9 @@ def renamed(text: str, sources: str) -> list[tuple[str, str]]:
         known = names.get(english.strip().lower())
         if not known or squeeze(known) == squeeze(korean):
             continue
-        # the same name with a word more or less before it (「상태」, 「원하는상태」) is no
-        # misspelling; a misspelling keeps a letter of the name (「레이트」 for 「래프트」),
-        # another word before the gloss (「리더 선출(Raft)」) shares none
+        # a name with a word added or dropped before it (「상태」, 「원하는상태」) is no
+        # misspelling;
+        # a misspelling keeps a letter of the name (「레이트」 for 「래프트」)
         if korean.endswith(known) or known.endswith(korean):
             continue
         if set(korean) & set(known):

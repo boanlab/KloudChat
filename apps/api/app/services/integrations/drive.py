@@ -1,9 +1,7 @@
-"""Google Drive: files the person picked in Google Picker brought in as project material or
-an attachment (with their Drive link, and synced again on request), read by the agent, and a
-document the app made saved to their Drive once they confirm the card.
+"""Google Drive: files picked in Google Picker become project material or attachments, and
+an app-made document is saved to Drive once the card is confirmed.
 
-With `drive.file` the app sees only files the person picked (or that it made), never the
-rest of their Drive."""
+With `drive.file` the app sees only files the person picked or that it made."""
 
 from __future__ import annotations
 

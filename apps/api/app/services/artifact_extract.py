@@ -1,7 +1,6 @@
 """`create_artifact` requests stored as Artifact rows.
 
-An answer's inline code blocks are not stored: they are part of the answer (copied and run in
-the chat), not files of their own (`services/artifact_section.py`)."""
+An answer's inline code blocks are not stored: they stay part of the answer."""
 
 from __future__ import annotations
 

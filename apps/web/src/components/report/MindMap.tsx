@@ -13,11 +13,7 @@ function paths(node: MindNode, at = '0', depth = 0, upTo = Infinity): string[] {
   return [at, ...node.children.flatMap((child, i) => paths(child, `${at}.${i}`, depth + 1, upTo))]
 }
 
-/**
- * A mermaid `mindmap` read as a tree rather than drawn as a radial picture: a hundred labels
- * in one fitted picture shrink below reading size, a tree keeps every label at text size.
- * Wide screens lay it left to right; a phone indents it. Branches open and close.
- */
+/** Mermaid `mindmap` as a collapsible tree (left to right on wide screens, indented on a phone) so labels stay at text size. */
 export function MindMap({ source }: { source: string }) {
   const t = useT()
   const root = useMemo(() => parseMindmap(source), [source])

@@ -88,7 +88,7 @@ async def test_a_project_belonging_to_somebody_else_is_not_named():
 
 @pytest.mark.asyncio
 async def test_a_shape_an_upgrade_removed_degrades_to_no_format():
-    """A `render_template_id` no longer in the catalogue degrades to no format."""
+    """A `render_template_id` not in the catalogue degrades to no format."""
     session = _session()
     session.render_template_id = "doc-withdrawn"
     db = _Db(session=session, messages=[_asked()])

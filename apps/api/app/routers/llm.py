@@ -94,8 +94,7 @@ async def _with_reasoning(raw: bytes) -> bytes:
 
 
 async def _with_super_agent(raw: bytes, clean: str, secret: str) -> bytes:
-    """A model listing plus the Super Agent ids this key's owner may call; unchanged where
-    there is none."""
+    """Model listing plus the Super Agent ids the key's owner may call."""
     if not clean.rstrip("/").endswith("models"):
         return raw
     try:

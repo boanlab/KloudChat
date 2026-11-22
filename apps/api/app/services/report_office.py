@@ -1,11 +1,9 @@
-"""A report asked for as an HWP or Word file: the report pipeline writes it, and the file is
-what the person gets and works on (`office_doc`), not the HTML report.
+"""A report asked for as an HWP or Word file: the pipeline writes it and the file is the result
+(`office_doc`), not the HTML report.
 
-The format comes from the person's own words (「한글 문서로」, 「Word 파일로」, and on a report
-request 「한글로」). At the save the finished sections become the file through the exporters
-(`report_export.to_hwpx` / `to_docx`), with what the browser would draw first drawn here: each
-chart and mermaid figure as a picture, through the printer sidecar. A figure the printer could
-not draw keeps the exporters' own fallback (a chart as its numbers' table).
+The format comes from the person's words. At save, finished sections become the file through
+the exporters (`report_export.to_hwpx` / `to_docx`), with charts and mermaid figures drawn first
+as pictures by the printer sidecar; a figure it cannot draw keeps the exporters' fallback.
 """
 
 from __future__ import annotations

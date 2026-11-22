@@ -8,7 +8,7 @@ import { openSearch } from '@/components/layout/SearchDialog'
 import { claimPageTitle } from '@/lib/pageTitle'
 import { useT } from '@/lib/useT'
 
-/** An address no screen owns (a mistyped or retired link): say so, and offer a way on. */
+/** Fallback for an address no screen owns. */
 export function NotFoundPage() {
   const navigate = useNavigate()
   const { pathname } = useLocation()

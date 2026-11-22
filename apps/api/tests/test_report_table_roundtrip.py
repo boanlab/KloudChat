@@ -1,8 +1,5 @@
-"""Real table save, read and export routes over an in-memory workspace.
-
-A table an older client saved as HTML is stored as a Markdown table (cell merges have no
-Markdown and are flattened); the exporters' grid matching is still checked with grids read
-from HTML directly."""
+"""Real table save, read and export routes over an in-memory workspace; HTML tables are stored as
+Markdown (merges flattened)."""
 
 from __future__ import annotations
 

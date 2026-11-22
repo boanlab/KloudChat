@@ -96,11 +96,8 @@ def _latin_names(text: str) -> list[str]:
 
 
 def key_entities(request: str, proposed: Iterable[object] = ()) -> list[str]:
-    """Named things the request is about, in Latin form.
-
-    From the request's own Latin names, the small Hangul lookup, and planner proposals
-    `{"name", "as_written"}` kept only when the name or its quoted span is in the request.
-    """
+    """Named things the request is about, in Latin form: its own Latin names, the Hangul
+    lookup, and planner proposals `{"name", "as_written"}` found in the request."""
     text = request or ""
     folded = norm(text)
     out: list[str] = []
@@ -136,11 +133,8 @@ def mentions(query: str, entity: str) -> bool:
 
 
 def on_request(queries: Iterable[str], request: str, entities: list[str]) -> list[str]:
-    """Usable queries on the request's subject.
-
-    With entities, each query must name one; otherwise it must share a non-generic
-    Latin term with the request when the request has any (Korean-only requests pass).
-    """
+    """Queries on the request's subject: each must name an entity, else share a non-generic
+    Latin term with the request (Korean-only requests pass)."""
     kept: list[str] = []
     anchors = {norm(t) for t in _latin_names(request) if t.lower() not in _GENERIC}
     for query in queries:

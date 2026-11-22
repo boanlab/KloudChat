@@ -1,7 +1,5 @@
-"""A PowerPoint write a small model cannot get right (cut-off or refused again and again)
-ends with a file anyway: the server saves the fullest arguments it was sent as a draft, and
-the reply is told, and held to saying, that it is a draft. A strong model keeps its own
-retries; a call cut off mid-array is read back as far as it is whole."""
+"""A PowerPoint write a small model cannot finish is saved as a draft from the fullest arguments
+sent, and the reply says so."""
 
 from __future__ import annotations
 

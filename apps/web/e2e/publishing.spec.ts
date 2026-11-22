@@ -3,16 +3,7 @@ import { agentRow, hubFixture, myAgents } from './customize-fixture'
 import { viewport } from './project'
 import type { BotChannels, Publication } from '../src/lib/api'
 
-/**
- * 공개 챗봇 against fixture data: the publish dialog with its audience (members at once; a link
- * or the public listing asked of an administrator), the bot's page for a member and for a
- * visitor without an account (notice, streaming, 👍👎, 만든 사람에게 보내기, paused, blocked),
- * the owner's dashboard (audience, review, blocking), the members' and the public list, the
- * administrator's review, and the same screens in English. Also the channels: asking for one,
- * keys and the API tab, the page framed on another site and the loader that frames it, and an
- * administrator reading conversations with a reason. Screenshots go to PUBLISHING_SHOTS when it
- * is set.
- */
+/** 공개 챗봇 against fixture data: publish dialog, bot page, owner dashboard, lists, admin review, channels, English. Screenshots go to PUBLISHING_SHOTS when set. */
 
 const shots = process.env.PUBLISHING_SHOTS ?? ''
 const at = '2026-10-10T07:00:00.000Z'
@@ -284,7 +275,7 @@ async function botRoutes(
         visitor: { id: 'vk', label: 'VK1234', member: false, blocked: false, blockedAt: null, byKey: true } })
       const old = row('s'.padEnd(32, '9'), '지난해 주차 문의', '2025-03-02T01:00:00.000Z')
       if (url.searchParams.get('date_to') === '2025-03-31') return json({ items: [old], total: 1, next: null })
-      // 26 conversations; the old one is the last, so it is on a later page at any page size
+      // 26 conversations; the old one is last, so on a later page at any page size
       const filler = Array.from({ length: 24 }, (_, i) => row(`f${i}`.padEnd(32, '0'), `주차 문의 ${i + 1}`, at))
       const all = [row(SID, '휴학 신청 기한', at), ...filler, old]
       const start = Number(url.searchParams.get('offset') ?? 0)
@@ -327,13 +318,13 @@ test('the owner publishes a chat agent to members and gets its address', async (
   const { writes } = await botRoutes(page)
   await page.goto(`/customize/agents/${AGENT}`)
   await expect(page.getByTestId('item-detail-header')).toBeVisible({ timeout: 15_000 })
-  // The detail's main action on one's own chat agent, not hidden under 더 보기.
+  // Main action on one's own chat agent, not under 더 보기.
   await page.getByRole('button', { name: '챗봇으로 공개' }).filter({ visible: true }).first().click()
   const dialog = page.getByRole('dialog', { name: '챗봇으로 공개' })
   await expect(dialog.getByTestId('publish-model')).toContainText('내부 Qwen')
-  // Members by default, at once; nothing asks for a credit cap.
+  // Members by default, at once; no credit cap asked.
   await expect(dialog.getByRole('radio', { name: /구성원 공개/ })).toHaveAttribute('aria-checked', 'true')
-  // Members find it among the shared agents; there is no 챗봇 list for them.
+  // Members find it among shared agents.
   await expect(dialog.getByTestId('scope-picker')).toContainText('「공유된 에이전트」에서 찾아 씁니다')
   await expect(dialog).not.toContainText(/(?<!공개 )챗봇 목록/)
   await expect(dialog.getByTestId('scope-credits')).toHaveCount(0)
@@ -356,7 +347,7 @@ test('opening a bot by link asks an administrator and needs a daily credit cap',
   const { writes } = await botRoutes(page)
   await page.goto(`/customize/agents/${AGENT}`)
   await expect(page.getByTestId('item-detail-header')).toBeVisible({ timeout: 15_000 })
-  // The detail's main action on one's own chat agent, not hidden under 더 보기.
+  // Main action on one's own chat agent, not under 더 보기.
   await page.getByRole('button', { name: '챗봇으로 공개' }).filter({ visible: true }).first().click()
   const dialog = page.getByRole('dialog', { name: '챗봇으로 공개' })
   await dialog.getByRole('radio', { name: /링크 공개/ }).click()
@@ -526,7 +517,7 @@ test('without an internal model the dialog says why and publishes nothing', asyn
   await page.route('**/api/publications/preflight', (route) => route.fulfill({ json: preflight({ ok: false, model: null, problems: ['no_local_model'] }) }))
   await page.goto(`/customize/agents/${AGENT}`)
   await expect(page.getByTestId('item-detail-header')).toBeVisible({ timeout: 15_000 })
-  // The detail's main action on one's own chat agent, not hidden under 더 보기.
+  // Main action on one's own chat agent, not under 더 보기.
   await page.getByRole('button', { name: '챗봇으로 공개' }).filter({ visible: true }).first().click()
   const dialog = page.getByRole('dialog', { name: '챗봇으로 공개' })
   await expect(dialog.getByTestId('publish-problem')).toContainText('내부 모델이 없어')
@@ -816,7 +807,7 @@ test('members find published agents among the shared agents, open one and copy i
   await expect(group.locator('[data-item="agent:a5555555555555555555555555555555"]')).toBeVisible()
   await expect(group.getByRole('button', { name: '예산 검토', exact: true })).toHaveCount(1)
   await expect(group).not.toContainText('내 안내 챗봇')
-  // No separate 챗봇 menu; the owner's bot news sits on 사용자 지정.
+  // Owner's bot news sits on 사용자 지정.
   await expect(page.getByRole('link', { name: '챗봇', exact: true })).toHaveCount(0)
   await shot(page, 'shared-agents', viewport(testInfo))
 

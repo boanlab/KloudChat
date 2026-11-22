@@ -1,9 +1,4 @@
-"""A deck asked for 「OX 퀴즈 3문제」 shows three questions, and no speaker note stops mid-way.
-
-From the 11-25 benchmark: a quiz slide held Q1 and Q3 (Q2 gone), and passed the check that
-only asked for some question on the screen; a note ended 「…돌파한 결과임을」; the cover's
-note ran on into its subtitle phrase (「…발표하겠습니다. 경영진 보고용 … 개요」), which the
-sentence-end reading took for an ending because 「개요」 ends in 「요」."""
+"""A deck asked for 「OX 퀴즈 3문제」 shows three questions, and no speaker note stops mid-way."""
 
 from __future__ import annotations
 

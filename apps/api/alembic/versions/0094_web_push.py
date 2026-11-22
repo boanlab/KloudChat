@@ -1,10 +1,10 @@
 """Web push: subscribed devices and the sent-notice log.
 
 - `push_subscriptions`: one row per browser subscription (endpoint unique).
-- `push_sent`: one row per notice, read for the per-user rate limit and for notices sent at most
-  once (`once_key`, e.g. the credit warning of one cycle). Rows older than a day are pruned.
+- `push_sent`: one row per notice, for the per-user rate limit and send-once notices (`once_key`).
+  Rows older than a day are pruned.
 
-The VAPID key pair is not here: it is generated on first start into `system_settings`.
+The VAPID key pair is generated on first start into `system_settings`.
 
 Revision ID: 0094
 Revises: 0093

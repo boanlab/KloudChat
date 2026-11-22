@@ -1,10 +1,9 @@
 """HTML in, PDF out: prints the self-contained documents `design_templates.render` produces.
 Also figure slides (.pptx) to PNG, and figure layouts by ELK (`/layout`).
 
-**Nothing here reaches the network.** Every request is aborted except the
-`about:blank` the page starts on; seeds embed pictures as `data:` URIs. The
-markup is model-authored, so an `<img src="http://…">` in it must not become
-a request from inside the deployment.
+**Nothing here reaches the network.** Every request is aborted except the starting `about:blank`;
+seeds embed pictures as `data:` URIs. The markup is model-authored, so an `<img src="http://...">`
+must not become a request from inside the deployment.
 """
 
 from __future__ import annotations
@@ -145,9 +144,8 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="KloudChat printer", lifespan=lifespan)
 
 
-#: Defunct processes this container may hold before /health fails. A healthy one holds a
-#: handful; the leak this guards against (no init to reap soffice's orphans) filled the
-#: pid limit at ~38,000 and soffice then exited 0 without writing anything.
+#: Defunct processes tolerated before /health fails: with no init to reap soffice's orphans they
+#: exhaust the pid limit, after which soffice exits 0 without writing anything.
 MAX_ZOMBIES = 200
 
 

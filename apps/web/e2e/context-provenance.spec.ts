@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-/** Context provenance: the timeline names each memory, attachment and knowledge file a turn was given. Fully mocked. */
+/** The timeline names each memory, attachment and knowledge file a turn was given. Fully mocked. */
 
 const now = '2026-08-18T00:00:00.000Z'
 const sessionId = 'cccccccccccccccccccccccccccccccc'

@@ -272,7 +272,6 @@ async def test_a_run_follows_only_the_branch_its_rule_picks(wired, writers):
         ("4:review", "done"), ("save", "done")]
     assert records[1]["summary"] == "「아니오」 갈래로"
 
-    # The owner reads each run per step; the stored records say which branch was taken.
     async with wired.local() as db:
         runs = await up.list_runs(yes.id, p.me, db)
         assert len(runs) == 1

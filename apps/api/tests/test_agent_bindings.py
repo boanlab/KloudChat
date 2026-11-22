@@ -148,8 +148,7 @@ async def test_a_session_started_from_an_agent_takes_its_bindings(db):
         design.id,
     )
 
-    # No kind named: the agent's surface; its template no longer starts the conversation
-    # (2026-11-15), its format and 디자인 지침 carry it
+    # No kind named: the agent's surface; its format and 디자인 지침 carry the conversation.
     session = await sessions_router.create_session(SessionCreate(agent_id=out.id), author, db)
     assert session.kind is SessionKind.report
     assert session.render_template_id is None
@@ -219,7 +218,7 @@ async def test_a_kind_the_caller_names_wins_and_a_template_of_another_surface_is
         SessionCreate(agent_id=agent.id, kind=SessionKind.report), author, db
     )
     assert report.kind is SessionKind.report
-    # templates start nothing (2026-11-15): the request's words decide the format
+    # The request's words decide the format.
     assert report.render_template_id is None
     context = await workspace_context.assemble(db, author, await db.get(ChatSession, report.id))
     assert context.doc_format is None

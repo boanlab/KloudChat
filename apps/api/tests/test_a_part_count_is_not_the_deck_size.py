@@ -13,8 +13,6 @@ _ASK = (
 
 
 def test_a_quiz_slide_beside_an_approximate_size_leaves_the_deck_at_that_size():
-    # walk 11-14: 「한 장」 was read as the total, the outline could not be cut to one slide
-    # and the turn ended with no deck
     assert deck.requested_slides(_ASK) is None
     assert deck.slide_range(_ASK) == (8, 12)
     assert deck.about_slides(_ASK) == 10
@@ -48,7 +46,6 @@ def _plan(*titles: str, closing: bool = True) -> list[dict]:
 
 
 def test_an_asked_quiz_the_planner_left_out_gets_its_slide_before_the_closing():
-    # walk 11-14 rerun: two of three 27b plans had no quiz slide although one was asked
     plan = _plan("IAM", "최소 권한", "공유 책임", "데이터 보호", "제로 트러스트", "점검")
     out = deck.keep_asked_quiz(plan, _ASK, 12)
     assert [s["title"] for s in out][-2:] == ["퀴즈", "마무리"]
@@ -85,8 +82,6 @@ _PRINT_ASK = (
 
 
 def test_a_printing_quantity_in_the_brief_is_not_the_deck_size():
-    # round-1 r1d05 (11-20): 「컬러 월 300장」 was read as a 300-slide total, capped at 50,
-    # and both arms wrote a 50-slide deck for 「7~9장」
     assert deck.requested_slides(_PRINT_ASK) is None
     assert deck.slide_range(_PRINT_ASK) == (7, 9)
 

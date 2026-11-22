@@ -1,12 +1,11 @@
-"""Model calls of 지식 서가 (guides, studio outputs, quizzes): which model may
-read the project's sources, the call itself, and its bill.
+"""Model calls of 지식 서가 (guides, studio outputs, quizzes): which model may read the project's
+sources, the call itself, and its bill.
 
-Project sources are internal material. While the administrator keeps internal data on
-strict-local models (`Governance.internal_data_strict_local`, on by default) only a
-strict-local model reads them; otherwise each output kind's outside pick (`shelf_models`) is
-used where served and allowed, its text masked for personal data as the egress guard does
-elsewhere. Every call is a side call: billed at the full rate (no
-cache discount), or written to the ledger as tokens on a self-hosted model.
+Project sources are internal material. While the administrator keeps internal data on strict-local
+models (`Governance.internal_data_strict_local`, on by default) only a strict-local model reads
+them; otherwise each output kind's outside pick (`shelf_models`) is used where served and allowed,
+its text masked for personal data as the egress guard does elsewhere. Every call is a side call:
+billed at the full rate, or written to the ledger as tokens on a self-hosted model.
 """
 
 from __future__ import annotations

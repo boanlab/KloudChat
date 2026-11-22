@@ -1,11 +1,11 @@
 """Guard repairs settled: supported values kept, unsupported ones marked, nothing emptied.
 
 A post-writing guard (grounding trace, skill post-check scripts, copy check, a rewrite) may
-blank a value as 「[수치]」 or drop a sentence. `settle` compares the text before and after
-the guard: a blanked value the evidence supports (or that is an ordinal, a count of the
-answer's own items, a character count, a year the request names) goes back as written; any
-other blanked value goes back with 「(확인 필요)」 after it. A paragraph the guard emptied and a
-table left with only its header are restored, marked when the evidence does not cover them.
+blank a value as 「[수치]」 or drop a sentence. `settle` compares before and after: a blanked
+value the evidence supports (or an ordinal, a count of the answer's own items, a character
+count, a year the request names) goes back as written; any other goes back with 「(확인 필요)」.
+A paragraph the guard emptied and a table left with only its header are restored, marked when
+the evidence does not cover them.
 """
 
 from __future__ import annotations
@@ -655,9 +655,8 @@ def _derived(pool: list[float], *, vat: bool = False,
                 pair = a + b
                 out.update(pair * c for c in counts[:12])
                 out.update((pair + d) * c for d in units_[j + 1:] for c in counts[:12])
-        # a price times a count with the material's discount taken off, then its VAT, then
-        # another priced line added (1,480,000원 × 30대, 5% 할인 → 42,180,000원,
-        # VAT → 46,398,000원; with 5,000원 × 30대 → 46,563,000원)
+        # price x count, minus the material's discount, then VAT, then another priced line
+        # added (1,480,000원 × 30대, 5% 할인, VAT → 46,398,000원)
         kept = [(100 - v) / 100 for v in sorted(rates)[:6] if 0 < v < 100]
         priced = [a for a in units_ if a >= 1000]
         for a in priced:
@@ -1015,9 +1014,8 @@ _TOKEN_TAIL = re.compile(
 
 
 def token_end(text: str, end: int) -> int:
-    """`end` moved past the rest of the token it stops inside, so a mark never splits one:
-    「3.5」 of 「3.5.0」 (「3.5(확인 필요).0」), 「10/15」 of 「10/15(목)」, 「3.5」 of
-    「3.5%」."""
+    """`end` moved past the rest of the token it stops inside, so a mark never splits one
+    (「3.5」 of 「3.5.0」, 「10/15」 of 「10/15(목)」)."""
     if not 0 < end <= len(text) or not text[end - 1].isdigit():
         return end
     while end < len(text):
@@ -1205,10 +1203,9 @@ def settle(before: str, after: str, ev: Evidence, *, keep_out: Iterable[str] = (
            writer: bool = False) -> Settled:
     """`after` (a guard's output for `before`) with blanks and emptied blocks undone.
 
-    `keep_out`: sentences a check took out on purpose (judged invented, work narration): a
-    block holding one is not brought back. `writer`: `after` is the
-    writer's own revision on the checks' evidence (a strong writer): what it took out or
-    reworded stays as it wrote it; only blanks go back to values."""
+    `keep_out`: sentences a check removed on purpose; a block holding one is not restored.
+    `writer`: `after` is a strong writer's own revision on the checks' evidence; what it took
+    out or reworded stays, only blanks go back to values."""
     out = Settled(after)
     if before == after or not before.strip():
         return out
@@ -1577,10 +1574,9 @@ def worked_percents(text: str, basis: Percents) -> list[float]:
 
 
 def worked_results(text: str, basis: Percents) -> tuple[set[float], list[float]]:
-    """Percentages `text` works out in a written formula whose terms the texts give or one
-    step from them (a sum or gap of two given figures), or a result of another such formula:
-    「(1,987 − 1,425) ÷ 1,425 × 100 = 39.4%」, 「324건 / 562건 = 57.65%」 after
-    「1,987건 - 1,425건 = 562건」."""
+    """Percentages `text` works out in a written formula whose terms the texts give or one step
+    from them (a sum or gap of two given figures), or from another such formula's result:
+    「(1,987 − 1,425) ÷ 1,425 × 100 = 39.4%」."""
     formulas = _formulas(text or "")
     if not formulas:
         return set(), []

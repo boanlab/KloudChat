@@ -1,14 +1,11 @@
 """How a new chat, report or slides conversation starts when the caller does not say.
 
-Super Agent is always offered (owner decision 2026-11-14) and is the default start for the
-three routed surfaces. The admin's per-surface default (설정 › 시스템 › 모델,
-`settings_store.ROUTING_CHAT`) may instead be `super_strict` or a fixed model (`manual`).
-A model fixed by the caller or by the conversation's agent keeps the conversation on that
-model. The person's own pick for the surface (설정 › 환경설정 or the home screen) beats the
-admin default: a model id starts `manual` on it, a Super Agent entry starts on that entry.
-A project conversation where internal material stays strict-local starts on `super_strict`.
-When the chosen Super Agent entry has no model this person may use, the conversation starts
-on the surface's model instead (no dead entry); `super_strict` never widens to `super`.
+Super Agent is the default on the three routed surfaces. The admin's per-surface default
+(`settings_store.ROUTING_CHAT`) may instead be `super_strict` or a fixed model (`manual`); a model
+fixed by the caller or the conversation's agent wins, and the person's own pick beats the admin
+default. A project conversation keeping internal material strict-local starts on `super_strict`.
+A chosen entry with no model this person may use starts on the surface's model; `super_strict`
+never widens to `super`.
 """
 
 from __future__ import annotations
@@ -40,10 +37,9 @@ async def surface_start(kind: SessionKind) -> RoutingMode:
 async def usable_super(
     mode: RoutingMode, user: User, *, project_id: str | None = None
 ) -> RoutingMode:
-    """`mode` (a Super Agent entry) as this conversation can run it: a project conversation
-    under the strict-local rule moves `super` to `super_strict`; an entry with no usable model
-    gives way to the other entry (`super` only to `super_strict`, never the reverse), else to
-    `manual`."""
+    """`mode` (a Super Agent entry) as this conversation can run it: strict-local projects move
+    `super` to `super_strict`; an entry with no usable model gives way to the other entry (`super`
+    only to `super_strict`), else to `manual`."""
     policy = await governance.current()
     catalogue = (await model_service.list_models()).get("models") or []
     allowed = set(user.allowed_models or [])

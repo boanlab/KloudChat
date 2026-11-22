@@ -1,18 +1,12 @@
-"""Where an artifact is listed (`artifacts.section`) and which generated files copy one
-(`files.copy_of`).
+"""Where an artifact is listed (`artifacts.section`) and which generated files copy one (`files.copy_of`).
 
-The 아티팩트 page lists HTML pages, code files, charts and diagrams; reports and slide decks
-live in 파일함 › 작업 문서, and generated pictures, sound and video in 만든 파일 by their files.
+- `artifacts.section`: `html`, `code`, `chart`, `diagram`, `document`, `media`, or `snippet`. A
+  `snippet` is a code/HTML artifact with no `kind` key in its body; it opens from its conversation
+  panel and is listed nowhere.
+- `files.copy_of`: the artifact a generated file copies (a chart or diagram picture, or a document
+  export), so 만든 파일 leaves it out.
 
-- `artifacts.section`: `html`, `code`, `chart`, `diagram`, `document`, `media`, or `snippet`.
-  `snippet` is a code or HTML artifact the old extractor stored from an answer's inline code
-  block: its body has no `kind` key, which every file made with `create_artifact` and every
-  designed page has. It is kept (its conversation's panel opens it) and listed nowhere.
-- `files.copy_of`: the artifact a generated file is a copy of — the picture of a chart or a
-  diagram (the file its `src` names), or a document's export (a PDF/HWPX/DOCX/PPTX/Markdown
-  made in a conversation that holds a document of that title) — so 만든 파일 leaves it out.
-
-Nothing is deleted. The downgrade drops both columns.
+Downgrade drops both columns.
 
 Revision ID: 0092
 Revises: 0091

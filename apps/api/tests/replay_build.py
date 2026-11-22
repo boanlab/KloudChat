@@ -265,10 +265,8 @@ class Responder:
 
 
 class LiveResponder(Responder):
-    """Answers from the live models through LiteLLM (`--live`: `REPLAY_LIVE_URL`, the
-    OpenAI-style base such as `http://host.docker.internal:8080/litellm/v1`, and
-    `REPLAY_LIVE_KEY`). A case's scripted extra replies (the planted traps) still answer
-    their kinds. Calls block, so the turn schedules as it does when replayed."""
+    """Answers from the live models through LiteLLM (`--live`: `REPLAY_LIVE_URL`,
+    `REPLAY_LIVE_KEY`); scripted extra replies still answer their kinds."""
 
     def __init__(self, spec: dict, run: Path, url: str, key: str) -> None:
         import httpx

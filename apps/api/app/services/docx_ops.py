@@ -1,8 +1,6 @@
-"""Word edit ops past text: a paragraph's style and alignment, a span's character format,
-moving paragraphs, table columns and merges, pictures, and page setup (`docx_edit.apply`
-resolves and runs them like its own). Each keeps everything it is not asked to change: a span
-is formatted by splitting its runs at the span's ends, a column is added as a copy of its
-neighbour, a picture keeps its paragraph.
+"""Word edit ops past text: paragraph style/alignment, character format of a span, moving
+paragraphs, table columns and merges, pictures, page setup (run by `docx_edit.apply`).
+Each keeps whatever it is not asked to change.
 """
 
 from __future__ import annotations
@@ -369,8 +367,8 @@ def _text_width_mm(doc: de._Doc) -> float:
 
 def _picture_paragraph(doc: de._Doc, like: etree._Element, data: bytes,
                        width_mm: float | None) -> etree._Element:
-    """A paragraph holding the picture, centred, made at the end of the body and handed back
-    to be moved; as wide as asked, never wider than the text column."""
+    """Paragraph holding a centred picture, created at the end of the body for the caller to move;
+    as wide as asked, at most the text column."""
     from PIL import Image
 
     body = doc.document.element.body

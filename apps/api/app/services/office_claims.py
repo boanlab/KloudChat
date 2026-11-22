@@ -1,8 +1,8 @@
-"""What a chat turn said it did to an office document, held to what it saved: a reply that
-says it wrote, filled or changed the document while no version was saved gets a sentence
-saying the document is as it was; a reply that says it could not while versions were saved
-gets the versions and what changed in them. Written from the tools' own record (`ToolContext`
-`hwp`/`docx`/`pptx` `saved`), every model alike."""
+"""A chat turn's claims about an office document, held to what it saved: a reply saying it wrote,
+filled or changed the document while no version was saved gets a sentence saying the document is
+as it was; a reply saying it could not while versions were saved gets those versions and their
+changes. Based on the tools' record (`ToolContext` `hwp`/`docx`/`pptx` `saved`), every model
+alike."""
 
 from __future__ import annotations
 

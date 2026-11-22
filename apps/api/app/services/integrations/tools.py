@@ -1,12 +1,11 @@
-"""Which integration tools a turn gets, and whether the turn is about the person's own
-Drive or Slack at all.
+"""Which integration tools a turn gets, and whether the turn is about the person's own Drive or
+Slack at all.
 
 A tool is offered only when the person connected the provider, granted the scope and the
-administrator turned the feature on. A turn gets them when its words are about that service
-(`wanted`) or its agent lists them; such a turn handles internal material, so where the
-administrator keeps internal material on strict-local models only those models read it
-(`routers/sessions`). Published agents never get them: a visitor must not reach the
-publisher's own accounts."""
+administrator enabled the feature. A turn gets them when its words are about that service
+(`wanted`) or its agent lists them; such a turn handles internal material, so under a strict-local
+policy only those models read it (`routers/sessions`). Published agents never get them: a visitor
+must not reach the publisher's accounts."""
 
 from __future__ import annotations
 

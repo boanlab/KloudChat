@@ -1,11 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { shellRead } from './shell-mocks'
 
-/**
- * A finished web report edited from the chat in place: the turn names the report open beside
- * the chat, the document tools save a new version mid-turn, the panel shows it at once and the
- * reply reads as a chat's. No backend: every call is answered here.
- */
+/** A finished web report edited in place from the chat; every call is mocked. */
 
 test.use({ serviceWorkers: 'block' })
 

@@ -424,7 +424,7 @@ async function download(path: string, fallback: string): Promise<void> {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-/* ── auth: argon2id, short-lived JWT, rotating refresh cookie; signup pending until approved ── */
+/* ── auth ── */
 
 export interface AuthSession {
   accessToken: string
@@ -464,7 +464,7 @@ export const auth = {
     call<void>('/auth/password', body({ currentPassword, newPassword })),
 }
 
-/* ── models & credits ─────────────────────────────────────────────────── */
+/* ── models & credits ── */
 
 export interface ModelCatalogue {
   models: ModelInfo[]
@@ -526,7 +526,7 @@ export const modelsApi = {
   refresh: () => call<ModelCatalogue>('/models/refresh', { method: 'POST' }),
 }
 
-/* ── admin ──────────────────────────────────────────────────────────────*/
+/* ── admin ── */
 
 export interface SystemSettings {
   litellm: {
@@ -895,7 +895,7 @@ export interface UsageReport {
     credits: number
     requests: number
     users: number
-    /** Work a free model did, measured — seconds of speech, chunks embedded. */
+    /** Work a free model did: seconds of speech, chunks embedded. */
     units?: number
     unit?: string
   }[]
@@ -1236,14 +1236,14 @@ export interface MessageRow {
   content: string
   steps: unknown[] | null
   attachments: unknown[] | null
-  /** Stored on turns from the retired model comparison; read only for their text. */
+  /** Present on model-comparison turns; read only for their text. */
   variants?: { content: string }[] | null
   /** Answers a rerun replaced, oldest first. */
   superseded?: EarlierAnswer[] | null
   usage: Message['usage'] | null
   model: string | null
   routing: MessageRouting | null
-  /** Retired 시작점 an old turn began from, title as it read then. */
+  /** Starting point an old turn began from, with its title at that time. */
   startedFrom: { templateId: string; title: string } | null
   /** Null until rated. */
   rating: 'up' | 'down' | null
@@ -1594,11 +1594,7 @@ export const mediaApi = {
   estimate: (seconds: number) => call<MediaEstimate>(`/media/estimate?seconds=${Math.round(seconds)}`),
   get: (fileId: string) => call<MediaInfo>(`/files/${fileId}/media`),
   retry: (fileId: string) => call<FileRow>(`/files/${fileId}/media/retry`, { method: 'POST' }),
-  /**
-   * An audio/video file up in pieces (`routers/media.py`): never the whole file in one request,
-   * each piece retried and the upload resumed from what the server holds; `onProgress` after
-   * every piece. The server then reads it in the background — the tab may close.
-   */
+  /** Chunked audio/video upload (`routers/media.py`): each piece retried, resumable; `onProgress` after every piece. */
   upload: async (
     file: File,
     opts?: { projectId?: string; sessionId?: string; seconds?: number; onProgress?: UploadProgress; signal?: AbortSignal },
@@ -2606,7 +2602,7 @@ export const connectorsApi = {
   uninstall: (id: string) => call<void>(`/connectors/${id}`, { method: 'DELETE' }),
 }
 
-/* ── jobs — video generation ───────────────────────────────────────────── */
+/* ── jobs: video generation ── */
 export interface JobRow {
   id: string
   sessionId: string
@@ -2642,7 +2638,7 @@ export const jobsApi = {
   cancel: (id: string) => call<JobRow>(`/jobs/${id}/cancel`, { method: 'POST' }),
 }
 
-/* ── pipeline runs ─────────────────────────────────────────────────────── */
+/* ── pipeline runs ── */
 
 /** A run as stored: every stage with its evidence. */
 export interface RunRow extends PipelineRun {
@@ -2734,7 +2730,7 @@ export const bundlesApi = {
   share: (id: string, visibility: 'org' | 'private') => call<Bundle>(`/bundles/${id}/share`, body({ visibility })),
 }
 
-/* ── streaming ──────────────────────────────────────────────────────────*/
+/* ── streaming ── */
 
 export type StreamEvent =
   | {
@@ -2976,7 +2972,7 @@ async function* postStream(
   }
 }
 
-/* ── published agents (공개 챗봇) ──────────────────────────────────────── */
+/* ── published agents ── */
 
 export type PublicationStatus = 'draft' | 'pending' | 'approved' | 'paused' | 'rejected' | 'revoked'
 export type ShowProcess = 'none' | 'summary' | 'full'
@@ -3377,7 +3373,7 @@ export async function* streamBot(
   for await (const event of events) yield event as unknown as BotStreamEvent
 }
 
-/* ── issue reports (「문의·신고」) ───────────────────────────────────────── */
+/* ── issue reports ── */
 
 export type IssueKind = 'bug' | 'feature' | 'other'
 export type IssueStatus = 'received' | 'checking' | 'resolved' | 'on_hold'
@@ -3577,7 +3573,7 @@ export const issuesApi = {
     issueBlob(`/admin/issues/${id}/files/${index}${artifact ? '?artifact=true' : ''}`),
 }
 
-/* ── performance monitoring (admin) ───────────────────────────────────── */
+/* ── performance monitoring (admin) ── */
 
 export type PerfRange = '1h' | '24h' | '7d' | '30d'
 export type PerfLevel = 'ok' | 'warn' | 'critical' | 'info'
@@ -3790,7 +3786,7 @@ export const historyApi = {
 }
 
 /** The editor's payload for a person's template. */
-/** A person's own templates (retired 2026-11-15): listed, deleted, or made into an agent. */
+/** A person's own templates: listed, deleted, or made into an agent. */
 export const userTemplatesApi = {
   list: () => call<{ mine: UserTemplate[]; shared: UserTemplate[] }>('/user-templates'),
   catalogue: () => call<TemplateCatalogue>('/user-templates/catalogue'),

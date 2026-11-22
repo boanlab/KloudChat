@@ -158,7 +158,7 @@ def _items(reply: dict, text: str = "", rows: list[dict] | None = None) -> list[
     seen = {i["text"] for i in found}
     for item in reply.get("items") or []:
         piece = str(item.get("text") or "").strip() if isinstance(item, dict) else ""
-        # a clause of a cell already measured whole is not a piece of its own
+        # a clause of a measured cell is not its own piece
         if piece and not any(piece in cell for cell in seen):
             found.append(item)
     return found
@@ -263,9 +263,8 @@ def mark_left(text: str, found: list[dict]) -> str:
 
 
 def _gate(reply: dict, material: str, *, strong: bool) -> tuple[dict, list[dict]]:
-    """The judge's claim notes code may act on (`post_checks.code_reading`, every model
-    group): a note whose figures and names the material all holds is no note; for a small
-    writer one code cannot check (no figure, no name) is only marked, never rewritten or cut.
+    """Claim notes code may act on (`post_checks.code_reading`): drops notes the material
+    supports; for a small writer, marks (never rewrites) notes code cannot check.
     Returns the reply left and the notes to mark."""
     notes = [u for u in reply.get("unsupported") or []
              if isinstance(u, dict) and str(u.get("quote") or "").strip()]
@@ -286,9 +285,8 @@ async def run(answer: str, *, request: str, material: str, complete: Complete, m
               strong: bool = False) -> Outcome:
     """Check, code-fix, rewrite once, recheck.
 
-    `strong`: the writer is a strong model. It reads its own copy for claims (no weaker judge),
-    every finding goes back to it as a note for one revision (code edits nothing but counts),
-    and what is left after it is marked, never cut."""
+    `strong`: the writer reads its own copy; every finding goes back as a note for one
+    revision, and what remains is marked, never cut."""
     claims, length = _claims(), _length()
     material = "\n".join(x for x in (request, material) if x and x.strip())
     rows = length.targets(request)
@@ -400,9 +398,8 @@ def _marked_phrase(before: str, after: str, row: str = "") -> str:
 
 
 def lift_marks(text: str, *, answer: bool = False) -> str:
-    """Copy keeps no 「(확인 필요)」: each mark comes out of the text it sits in, and what it
-    was on is listed once below as 「보내기 전 확인」. `answer`: any answer's end box,
-    「확인 필요: …」 (a small external writer's; docs/architecture.md, "Mechanisms by model
+    """Move each 「(확인 필요)」 mark out of the text into a closing 「보내기 전 확인」 list.
+    `answer`: the answer's end box 「확인 필요: …」 (docs/architecture.md, "Mechanisms by model
     group")."""
     if not text or not _MARK.search(text):
         return text

@@ -1,6 +1,5 @@
-"""A write the tool refused may be sent once more exactly as it was (a tool that asks for one
-change takes the same call the second time); a third identical call is refused as a repeat.
-A read is never repeated."""
+"""A refused write may be sent once more exactly as it was; a third identical call is refused; a
+read is never repeated."""
 
 from __future__ import annotations
 

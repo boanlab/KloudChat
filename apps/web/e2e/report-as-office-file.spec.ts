@@ -2,12 +2,7 @@ import { readFileSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
 import { shellRead } from './shell-mocks'
 
-/**
- * A report asked for as an HWP or Word file, the API mocked: the chat hands it to the report
- * screen, the written report arrives as that file in its editor (no HTML report panel), and a
- * follow-up in that conversation is a chat turn whose tools save the file's next version.
- * A short document in a file (a 공문) stays with the editor beside the chat.
- */
+/** A report requested as HWP or Word (API mocked): handed to the report screen, delivered as that file in its editor, follow-ups save the next version; a short 공문 stays beside the chat. */
 
 test.use({ serviceWorkers: 'block' })
 

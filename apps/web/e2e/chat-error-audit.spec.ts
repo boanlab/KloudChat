@@ -1,9 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
-/** A send the client itself refuses or loses — a 429, a dropped connection — as the person
- *  sees it: said in words beside the composer, with nothing left spinning. Failures inside
- *  the stream are stored by the server and shown from its rows, which this faked stream
- *  cannot provide, so they are not here. Screenshots go to the test's output folder. */
+/** Client-side send failures (429, dropped connection) are worded beside the composer with nothing left spinning.
+ *  In-stream failures come from stored server rows, which the faked stream cannot provide. */
 
 const cases: { name: string; kind: 'chat' | 'report'; reply: (route: import('@playwright/test').Route) => Promise<void> }[] = [
   { name: 'rate-429', kind: 'chat', reply: (r) => r.fulfill({ status: 429, json: { detail: 'rate_limited' } }) },

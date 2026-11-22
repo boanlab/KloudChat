@@ -1,9 +1,6 @@
-"""A clock time stays whole: 「12:00 점심」 is not split into a 「12」 head and 「00 점심」, and the
-writers' figure list carries 「09:30」 and 「12:00~13:00」, not 「09」「30」「00」.
-
-Round-3 r3d08 (11-21, a one-day workshop deck, 09:30–18:00, lunch 12:00–13:00): the checklist
-read 「12 / 00 점심시간 시작 안내」 (KC-SL), and the timeline 「09 / 시작」「30 / 문제 정의 시작」
-(KC-SA) — the writer copied the figures it was told every slide must use."""
+"""A clock time stays whole (「12:00 점심」, 「09:30」, 「12:00~13:00」) on slides and in the
+writers'
+figure list."""
 
 from __future__ import annotations
 

@@ -2,7 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { expect, test, type Page } from '@playwright/test'
 import { signIn } from './helpers'
 
-/** Resilience sweep: slow lists, failed writes, menu keyboard handling. Writes `audit/resilience-audit.json`; never fails. */
+/** Resilience sweep (slow lists, failed writes, menu keyboard); writes `audit/resilience-audit.json`, never fails. */
 
 interface Defect {
   rule: string

@@ -1,11 +1,9 @@
 """지식 서가 studio: one-click outputs grounded in the sources the person picked.
 
-`start` checks the request, writes a `running` row and returns; `_run` reads the sources
-(numbered, within the writer's window), asks the model (`shelf_calls.route`: strict-local by
-default and always for internal data while the administrator says so), turns the answer
-into its kind (`studio_kinds`) and saves it: documents as an artifact in a conversation of
-their own (a web report, or an HWP/Word file through the report path) so they open in the
-document panel, quizzes and flashcards as item sets the player reads.
+`start` checks the request, writes a `running` row and returns; `_run` reads the numbered sources
+(within the writer's window), asks the model (`shelf_calls.route`), turns the answer into its kind
+(`studio_kinds`) and saves it: documents as an artifact in a conversation of their own (web report,
+or HWP/Word through the report path), quizzes and flashcards as item sets the player reads.
 """
 
 from __future__ import annotations
@@ -353,7 +351,7 @@ def _usable(kind: str, data: dict[str, Any], count: int) -> list[dict]:
 def _system(kind: str, language: str, options: dict[str, Any], unspaced: bool) -> str:
     system = studio_kinds.system_prompt(kind, language, options)
     if unspaced:
-        # stored text extracted before word spacing was kept: the writer must not copy it
+        # stored text lacking word spacing: the writer must not copy it
         system = system.replace("Answer with one JSON object only",
                                 studio_kinds.SPACING_RULE + "Answer with one JSON object only",
                                 1)
@@ -364,10 +362,9 @@ async def _top_up(db, user: User, how: shelf_calls.Route, item: StudioItem,
                   data: dict[str, Any], made: shelf_sources.Bundle, language: str,
                   prompt: str, checked: dict[str, Any], options: dict[str, Any],
                   unspaced: bool) -> None:
-    """A set the checks left short of the count asked for gets the missing items once: the
-    writer asked for exactly that many new ones (none like those kept, from the sources not
-    used yet), checked the same way, appended to `data` (in place). The count is trimmed to
-    after, by the caller."""
+    """A set the checks left short of the count asked for gets the missing items once: the writer
+    is asked for exactly that many new ones (none like those kept, from sources not yet used),
+    checked the same way and appended to `data` in place. The caller trims the count after."""
     group, key = _SET_KEY[item.kind]
     wanted = int(options.get("count") or 0)
     count = len(made.sources)

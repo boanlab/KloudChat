@@ -322,7 +322,6 @@ async def test_a_summary_cached_with_protection_off_is_scanned_and_masked_once_i
     _patch_summariser(monkeypatch, calls)
     db = _Db()
     rows = _rows(2)
-    # written while protection was off: stored as said
     session = ChatSession(
         id="s1", user_id="u1", kind=SessionKind.chat,
         summary={"through": rows[-1].id, "text": "홍길동 연락처 010-1234-5678", "turns": 4},
@@ -417,7 +416,6 @@ def test_a_live_marker_still_makes_it_a_current_fact(request_text):
     assert current_fact_required(request_text)
 
 
-# ── a rerun keeps the answer it replaces ─────────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -676,7 +674,6 @@ async def test_project_files_join_the_search_shelf_and_a_shared_agents_vectors_s
     )
     assert key == "k-sess"
 
-    # A shared agent run by someone else: lexical shelf of their own uploads, no owner collection.
     shared = Agent(id="ag", owner_id="author", name="봇", index_key="k-author")
     with_agent = ChatSession(id="sess", user_id="me", kind=SessionKind.chat, agent_id="ag")
     _shelf, key = await sessions_router._knowledge_shelf(Db([]), me, with_agent, shared)
@@ -1044,7 +1041,6 @@ async def test_a_ballpark_answer_streams_live_and_closes_with_the_caveat(monkeyp
     deltas = [e["text"] for e in events if e["type"] == "delta"]
     assert deltas[0] == body  # the answer itself went out as it was spoken, not held
     assert "".join(deltas).endswith(current_evidence.caveat(q))
-    # The model was told to give its best figure and mark it as from training data.
     sent = str(snapshots[0])
     assert "학습" in sent or "training" in sent
 
@@ -1233,7 +1229,6 @@ def test_a_restructure_carries_the_parts_the_person_did_not_touch():
     out, carried = carry_parts(
         new, old, is_deck=True, mentioned="전체를 4장으로 줄여 줘. 지표와 진척은 한 장으로 합쳐."
     )
-    # 진척 was named in the instruction (merged with 지표): written fresh. The rest carried.
     assert carried == 3
     assert out[0]["body"] == "x" and out[0]["id"] == "n1"
     assert out[1]["body"] == "성능 개선 후 오픈"
@@ -1900,7 +1895,6 @@ def test_an_outline_keeps_every_enumerated_part_as_its_own_slide():
     merged = request + " 지표와 진척은 한 장으로 합치고, 이슈·위험도 한 장으로."
     assert keep_enumerated(plan, merged, 6) == plan
     assert keep_enumerated(plan, request, 4) == plan
-    # A part the planner renamed is a body slide covering no item: it takes the name back.
     renamed = [
         {"title": "신규 입사자 온보딩 안내", "layout": "title"},
         {"title": "첫 주 일정", "layout": "steps"},
@@ -1965,7 +1959,6 @@ def test_an_answer_that_echoes_the_previous_one_or_switches_language_is_asked_ag
         "workflow where the buyer prepares the draft and the supplier approves it. " * 3
     )
     assert _answer_anomaly(english, history)[0] == "language"
-    # English was asked for: not an anomaly. Code answers carry Korean prose around them.
     asked_english = history[:2] + [{"role": "user", "content": "이걸 영어로 설명해 줘"}]
     assert _answer_anomaly(english, asked_english) is None
     code = (
@@ -2115,7 +2108,6 @@ def test_a_bold_heading_repeating_the_section_title_is_dropped():
     assert _without_own_heading(body, "위험").startswith("p95 미달 위험은")
     bold_prose = "**굵은 강조는 본문입니다.** 이어지는 글."
     assert _without_own_heading(bold_prose, "위험").startswith("**굵은")
-    # The new name of a renamed section, written plainly over the old heading, goes too.
     renamed = "위험과 대응\n\n```callout\n성능 목표 미달 시 전환 리스크\n```"
     assert _without_own_heading(renamed, "위험").startswith("```callout")
     one_line_paragraph = "검색 시간이 줄었습니다\n\n다음 문단."
@@ -2176,7 +2168,6 @@ def test_the_arithmetic_a_request_implies_is_done_once_in_the_numbers_list():
     assert "연 8,280만 원 vs 연 예산 6,000만 원: 예산보다 2,280만 원 초과" in joined
     assert "연 5,640만 원 vs 연 예산 6,000만 원: 예산보다 360만 원 여유" in joined
     assert _won(16920) == "1억 6,920만 원" and _won(20000) == "2억 원" and _won(45) == "45만 원"
-    # A request with no monthly amounts adds nothing; the plain list stays as it was.
     assert derived_values("문서 4만 2천 건, 임직원 1,850명") == []
     assert "계산된 값" in _facts_line(request, [])
     assert "계산된 값" not in _facts_line("742명 대상", [])

@@ -5,9 +5,8 @@ Run from the API image:
     docker compose run --rm --no-deps -v "$PWD/apps/api:/repo" -w /repo api \
         python scripts/build_pptx_templates.py
 
-Design lives on the master; every line of text goes into a layout placeholder.
-Word counterpart: `build_docx_templates.py`. Fonts must be faces every Hangul
-Windows and Hancom install carries, or PowerPoint substitutes silently.
+Design lives on the master; every line of text goes into a layout placeholder. Word counterpart:
+`build_docx_templates.py`. Fonts must be faces every Hangul Windows and Hancom install carries.
 """
 
 from __future__ import annotations
@@ -328,11 +327,8 @@ def _design(presentation, spec: Spec) -> None:
 
 
 def _sizes(presentation, spec: Spec) -> None:
-    """Sets type sizes on the master's text styles.
-
-    The size must go on `a:defRPr` inside each level; set on `a:lvlNpPr`
-    itself it is silently ignored.
-    """
+    """Sets type sizes on the master's text styles (on `a:defRPr` per level; `a:lvlNpPr` ignores
+    it)."""
     master = presentation.slide_masters[0]
     styles = master.element.find(qn("p:txStyles"))
     if styles is None:
@@ -355,10 +351,8 @@ def _sizes(presentation, spec: Spec) -> None:
 
 
 def _widen(presentation) -> None:
-    """Scales master and layout placeholders horizontally from python-pptx's 4:3 default to `WIDE`.
-
-    Must run before any slide is added: slides clone their layout's geometry.
-    """
+    """Scales master and layout placeholders horizontally from python-pptx's 4:3 default to
+    `WIDE`; run before adding slides."""
     factor = WIDE[0] / Emu(9144000)
 
     # Read all geometry before writing any: a layout placeholder without its

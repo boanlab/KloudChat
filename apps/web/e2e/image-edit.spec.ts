@@ -4,10 +4,8 @@ import { shellRead } from './shell-mocks'
 
 test.use({ serviceWorkers: 'block' })
 
-/** 「이미지 고치기」 against a mocked API: the action puts the picture in the composer, the send
- *  carries it as the edit's source, the result shows 전후 비교 and its versions; a model that only
- *  draws turns the action off with its reason and offers one that edits; a strict-local
- *  conversation keeps the picture inside, where nothing edits. */
+/** 「이미지 고치기」 against a mocked API: the picture is the edit source, the result shows 전후 비교
+ *  and versions, a draw-only model turns the action off, a strict-local conversation keeps it inside. */
 
 const at = '2026-11-15T00:00:00.000Z'
 const later = '2026-11-15T00:05:00.000Z'

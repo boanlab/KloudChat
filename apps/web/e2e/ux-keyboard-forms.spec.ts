@@ -3,10 +3,8 @@ import { shellRead } from './shell-mocks'
 import { viewport } from './project'
 
 /**
- * Keyboard, focus and announcements against fixture data: forms that say
- * what is missing instead of disabling the button, the sign-in errors, the administrator's
- * credit dialog, the phone drawer as a modal, the settings menu, the model menu's radios,
- * the project's web-page error, the skip link and the shortcuts. Every request is mocked.
+ * Keyboard, focus and announcements against mocked requests: forms, sign-in errors, dialogs,
+ * the phone drawer, menus, the skip link and shortcuts.
  */
 
 const at = '2026-10-11T07:00:00.000Z'

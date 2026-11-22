@@ -1,8 +1,4 @@
-"""The media worker against its own ffmpeg, in its own image (CI: `images` job, media).
-
-A 30-second clip is generated here — three scenes of different colours and shapes, a tone —
-so no video is committed. Standard library only, like the server.
-"""
+"""The media worker against its own ffmpeg; generates a 30-second three-scene clip with a tone."""
 
 from __future__ import annotations
 

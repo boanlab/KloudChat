@@ -44,7 +44,7 @@ export const DOC_FORMATS: DocFormatWire[] = /* wire:begin */ [
   {"id": "term", "label": "대학 과제 리포트", "fields": ["과목", "담당교수", "학과", "학번", "이름", "제출일"], "numbering": "decimal", "head": "cover", "abstract": false, "keywords": false, "subtitle": false, "lists": "", "closing": false}
 ] /* wire:end */
 
-/** Retired with their agents; kept for agents that have one (`doc_formats.RETIRED`). */
+/** Formats kept only for agents that already use them (`doc_formats.RETIRED`). */
 export const RETIRED_FORMATS: readonly string[] = ['client_proposal', 'career_history']
 
 /** Blank head field: its own name in brackets (「[작성자]」), never an invented value. */
@@ -494,7 +494,7 @@ export function shapedSection<T extends Pick<ReportSection, 'content'> & { headi
   if (block.lists === 'gaejo') content = gaejoMarkdown(content)
   if (block.closing && last) {
     if (attachment) {
-      // 「끝.」 closes the 붙임 list; a moved full attachment follows.
+      // 「끝.」 closes the 붙임 list
       const [list, ...rest] = content.split(/\n\s*\n/)
       content = rest.some((part) => /^\s*\|/m.test(part))
         ? [closeMarkdown(list), ...rest].join('\n\n')

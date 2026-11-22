@@ -1,16 +1,15 @@
 """Figures a data table in the evidence works out: totals and group sums of its columns.
 
-A person who attaches rows (CSV, TSV, a pipe table) asks for sums by region, month or
-product, shares of the total and gaps between periods. Each such figure is one aggregation of
-the given rows, so the checks read it as given (`value_guard.Evidence`, `percent_basis`): a
-correct 「대구 노트북 순매출 24,645,000원」 is not marked, a wrong regional sum still is.
+Each requested sum, share or period gap is one aggregation of the attached rows (CSV, TSV, pipe
+table), so the checks read it as given (`value_guard.Evidence`, `percent_basis`): a correct 「대구
+노트북 순매출 24,645,000원」 is not marked, a wrong regional sum still is.
 
-What is aggregated, per table: each numeric column, the product of two or three of them, and
-that product with a rate column (a header naming 「%」, 「율」 or 「률」) as 1 − p/100 and as
-p/100; grouped by each label column, the month of a date column, a numeric column of a few
-values (a discount rate), whether a rate is above zero, and by two such keys at once; with
-months also in runs of two to six (a quarter, 「10~11월」). For each group: its sum, row
-count and mean; the gaps between groups of one key; a group's share of the total and the
+Per table: each numeric column, the product of two or three of them, and that product with a rate
+column (header naming 「%」, 「율」 or 「률」) as 1 − p/100 and p/100; grouped by each label column,
+the month of a date column, a numeric column of a few values (a discount rate), whether a rate is
+above zero, and by two such keys at once; months also in runs of two to six (a quarter,
+「10~11월」).
+Per group: sum, row count and mean; gaps between groups of one key; share of the total and the
 total less the group. No model call; pure arithmetic of the given cells."""
 
 from __future__ import annotations

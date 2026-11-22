@@ -2,12 +2,7 @@ import { expect, test, type Page, type Request } from '@playwright/test'
 import { hubFixture, mySkills } from './customize-fixture'
 import { viewport } from './project'
 
-/**
- * 「스킬 업로드」: 추가 ▾ offers it on the 스킬 tab; dropped files get a dry run whose findings
- * show per file; a blocked file keeps 업로드 off until it is taken out; the upload posts the
- * files once more without `dryRun` and opens the new skill. The skill's ⋯ menu exports SKILL.md.
- * Fixture data only; nothing reaches a server.
- */
+/** 「스킬 업로드」: dry run per file, blocked files disable 업로드, real post without `dryRun`, SKILL.md export. Fixture data only. */
 
 test.use({ serviceWorkers: 'block' })
 

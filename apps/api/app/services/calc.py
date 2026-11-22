@@ -582,10 +582,9 @@ def _plain(value: float) -> str:
 
 
 def given_values(request: str, material: list[str] | None = None) -> list[str]:
-    """Arithmetic over figures the person gave, done here: written products and sums
-    (「단가 1,320,000원 × 30대」, 「월 8,000원 × 40명」) and monthly amounts over a year
-    (「월 구독료 9,900원」 → 「× 12개월 = 연 118,800원」). Rates and counts the material doesn't
-    give aren't guessed; `[]` when nothing is computable."""
+    """Arithmetic over figures the person gave: written products and sums, and monthly amounts
+    over a year (「월 구독료 9,900원」 → 「× 12개월 = 연 118,800원」). Rates and counts the material
+    omits are not guessed; `[]` when nothing is computable."""
     from app.services.arithmetic import _evaluate
 
     text = _CITATION.sub(" ", "\n".join([request or "", *(material or [])]))

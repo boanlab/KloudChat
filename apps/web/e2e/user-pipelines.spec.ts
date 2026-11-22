@@ -4,10 +4,8 @@ import { viewport } from './project'
 import type { UserPipeline } from '../src/types'
 
 /**
- * An agent's 직접 구성 (고급) against fixture data: in the agent's own settings, the steps start from
- * the agent itself and are edited as a list (add, reorder, settings, live contract messages), then
- * saved with the agent; an order made before can be brought in; the administrator's 「진행 과정
- * 검토」 queue; a composed run's stages.
+ * An agent's 직접 구성 (고급) (fixture data): step list editing and saving with the agent,
+ * importing an earlier order, the administrator's 「진행 과정 검토」 queue, a composed run's stages.
  */
 
 test.use({ serviceWorkers: 'block' })

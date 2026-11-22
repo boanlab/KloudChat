@@ -1,7 +1,5 @@
-"""A slide asked only into another shape (「4장을 번호 목록으로 바꿔줘」, 「Can you make slide 3
-a table?」) is put into it by code from its own content, title and figures kept; a shape the
-content does not go into is said, the slide left as it was; figures lost in a rewrite are
-read whole on both sides (「3분기」, not 「3분」)."""
+"""A slide asked into another shape is rebuilt by code from its own content; an impossible shape
+is said and the slide left; lost figures are read whole."""
 
 from __future__ import annotations
 
@@ -337,7 +335,7 @@ def test_an_english_shrink_names_each_lost_value_with_what_it_counts(linear_scan
 
 
 def test_an_amount_written_in_two_parts_is_one_figure_lost_or_kept_whole(linear_scan):
-    """audit-g H4 A: 「연간 발급 4만 8천 건」 gone from the cut deck was said lost as
+    """An amount written in two parts (「연간 발급 4만 8천 건」) is lost or kept whole, not as
     「4만, 8천」."""
     old = [{"layout": "bullets", "title": "핵심 운영 지표",
             "bullets": ["연간 발급 4만 8천 건", "전체 증명서 발급의 31% 차지"]},

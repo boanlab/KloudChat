@@ -1,18 +1,11 @@
 """What a document says of a named item, held to what the material says of that item.
 
-The material often lists the options it compares one per line, each with what is known of it:
-
-    A. 글로벌 협업툴 '팀링크': 1인 월 8,000원, … 국내 데이터센터 없음.
-    B. 국산 메신저 '온톡 비즈': 1인 월 5,500원, … 국내 데이터센터, 관리자 기능 강함, …
-    C. 그룹웨어 내장 메신저(… '하이웍스' 추가 모듈): 1인 월 3,000원, … 모바일 앱 평가 낮음, …
-
-A writer comparing them fills every cell of a comparison table, and the cell it has nothing
-for it takes from the neighbouring item: 「C | 국내 데이터센터」. Code can see that: the words
-of the cell are words the material says only of other items. `misbound` finds such cells and
-single-item sentences; `settled` writes 「자료 없음」 in a cell still standing after the repair.
-
-Owner blanks (`owner_blanks`) are the other half of a comparison or plan's empty cells: 「담당 |
-[담당자]」 where the work's department could be named.
+When the material lists compared options one per line, a writer fills every comparison cell and
+takes what it lacks from a neighbouring item (「C | 국내 데이터센터」 from B). `misbound` finds
+cells
+and single-item sentences whose words the material says only of other items; `settled` writes
+「자료 없음」 in a cell still standing after repair. `owner_blanks` finds empty owner cells
+(「담당 | [담당자]」) of a comparison or plan.
 """
 
 from __future__ import annotations
@@ -107,10 +100,9 @@ def _terms(text: str) -> set[str]:
 
 
 def unsaid(label: str, cell: str, item: Item, items: list[Item], outside: str) -> tuple[str, str]:
-    """A row label's attribute the material gives only for other items (「한국어 지원」, said
-    only of A), answered in `item`'s cell with something the material never says of it
-    (「국산으로 자연스러움」); ('', '') when the cell holds `item`'s own words or the label's
-    words are said of it, or in the material at large."""
+    """A row label's attribute the material gives only for other items, answered in `item`'s cell
+    with something the material never says of it; ('', '') when the cell holds `item`'s own
+    words, the label's words are said of it, or they are in the material at large."""
     terms = {t for t in _terms(label) if t not in outside}
     if not terms or any(t in item.body for t in _terms(label)):
         return "", ""

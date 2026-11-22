@@ -330,6 +330,6 @@ async def test_a_comparison_slide_still_without_values_is_reported(monkeypatch):
     slides, step = await _deck(monkeypatch, {"rows": [["알고리즘", "FCFS", "SJF"]],
                                              "bullets": ["알고리즘", "FCFS"]})
     last = next(s for s in slides if s["title"] == "네 알고리즘 비교")
-    # never a table with names and no values: the slide as it was, and the read says so
+    # Never a table with names and no values: the slide stays as it was.
     assert last["layout"] != "table"
     assert step["status"] == "error" and "품질 점검 1건" in step["label"], step

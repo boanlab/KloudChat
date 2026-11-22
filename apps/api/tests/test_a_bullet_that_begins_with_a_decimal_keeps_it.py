@@ -1,7 +1,6 @@
-"""A bullet that begins with a decimal (「1.63년 내 투자비 회수」) keeps it: the list-number strip
-takes 「1. 」 or 「2) 」, never the 「1.」 of a number.
-
-Round-3 r3d05 (11-21, KC-SA): the takeaways slide read 「63년 내 투자비 회수」."""
+"""A bullet that begins with a decimal (「1.63년 내 투자비 회수」) keeps it; the list-number strip
+takes
+only 「1. 」 or 「2) 」."""
 
 from __future__ import annotations
 

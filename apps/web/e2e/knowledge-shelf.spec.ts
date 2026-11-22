@@ -2,10 +2,8 @@ import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { shellRead } from './shell-mocks'
 
 /**
- * 지식 서가: the conversation's 자료 panel (per-source switches kept per conversation, guides
- * with suggested questions), a citation opening the source viewer at the cited passage, the
- * project's 스튜디오 (estimate before generating, a quiz played and retried) and 메모함
- * (a note edited, a lost save race, a note made a source). The API is answered here.
+ * 지식 서가: the conversation's 자료 panel, citation to source viewer, the project's 스튜디오
+ * and 메모함. API answered by fixtures.
  */
 
 test.use({ serviceWorkers: 'block' })

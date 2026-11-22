@@ -1,8 +1,5 @@
-"""What the code tells the minutes writer asks for nothing it would print as a note: the date
-block gives its base date without asking the minutes to state it, and a resolved due the date
-alone (no 「원문」 for 비고); and a value the material changes (「420만원 → 355만원」, 「80만원을
-요청했으나 … 50만원으로 줄이자고 했고 합의」) is no conflict the writer must explain. Shapes from
-the round 16 audit (tc, tc2, H6s)."""
+"""The minutes writer is asked for nothing it would print as a note (base date, resolved due),
+and a value the material changes is no conflict to explain."""
 
 from __future__ import annotations
 

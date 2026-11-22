@@ -8,10 +8,7 @@ import { useStore } from '@/store/useStore'
 /** Longest selection kept as one note. */
 const MAX_SELECTION = 20_000
 
-/**
- * Text selected in a project conversation's transcript gets a 「메모로 저장」 button beside it;
- * the passage goes to the project's 메모함 as a note (origin `selection`).
- */
+/** 「메모로 저장」 button beside selected transcript text; saves the passage as a project note (origin `selection`). */
 export function SelectionNote({
   projectId,
   sessionId,

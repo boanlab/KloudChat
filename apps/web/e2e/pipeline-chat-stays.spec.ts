@@ -2,9 +2,8 @@ import { expect, test, type Page } from '@playwright/test'
 import { shellRead } from './shell-mocks'
 
 /**
- * A conversation that runs a user pipeline (「이 워크플로로 시작」 on a chat flow) answers its
- * first message there: a sentence that reads like a document order is the pipeline's input,
- * not a cue to move to a new report conversation (which would leave the pipeline behind).
+ * A chat running a user pipeline answers its first message there: a document-order-like
+ * sentence is the pipeline input, not a cue to move to a new report conversation.
  */
 
 const id = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'

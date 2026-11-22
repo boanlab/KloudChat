@@ -1,9 +1,7 @@
 """Requests that ask about every item of the material, and which items an answer left out.
 
-「각 강에 대한 한줄 요약」, 「모든 자료를 정리」, 「주차별로」, 「each lecture」, 「21개 강의」
-ask for one entry per file; a turn that answers them from a handful of passages drops the
-rest silently. `asks_each` tells such a request; `missing` names the files an answer never
-reached, so the answer can say so.
+`asks_each` recognises such requests (「각 강에 대한 한줄 요약」, 「each lecture」); `missing` names
+the files an answer never reached.
 """
 
 from __future__ import annotations

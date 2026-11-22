@@ -1,8 +1,4 @@
-/* 결과 보고서 — 개요 표, 수치가 먼저 오는 개조식, 문제점과 개선 사항의 짝.
- *
- * 계획서와 짝이 되는 문서라 모양도 같이 간다: 가운데 제목과 이중선, 색 없는
- * 계단. 다른 점은 숫자다 — 표의 숫자 열을 고정폭 숫자로 맞춰 계획과 실적을
- * 위아래로 견줄 수 있게 한다. */
+/* 결과 보고서 — 계획서와 같은 모양(가운데 제목·이중선). 표의 숫자 열은 고정폭 숫자로 맞춰 계획과 실적을 견준다. */
 
 .page { font-family: 'Malgun Gothic', 'Nanum Gothic', 'NanumGothic', 'Pretendard', sans-serif; }
 .cover { min-height: 0; padding: 0.6rem 0 0; margin: 0 0 1.6rem; text-align: center; align-items: center; }

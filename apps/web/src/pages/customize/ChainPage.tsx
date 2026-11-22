@@ -149,7 +149,7 @@ export function ChainPage() {
     if (parked) {
       let { steps: kept, lines: keptLines } = parked
       const places = { ...parked.places }
-      // Back from a skill's draft: the agent it made (`?added=<id>`, else the new one with that skill) becomes the node.
+      // Back from a skill draft: the new agent (`?added=<id>`, else the new one with that skill) becomes the node.
       const skill = parked.skill
       const made =
         skill &&

@@ -34,7 +34,7 @@ class MessageOut(Wire):
     artifact_ids: list | None = None
     #: version of `artifact_ids[0]` written, from the pipeline run; null if unknown
     artifact_version: int | None = None
-    #: retired 시작점; read only
+    #: Read-only; no longer written.
     started_from: dict | None = None
     rating: MessageRating | None = None
     failure: TurnFailure | None = None
@@ -58,7 +58,7 @@ class ImageRequest(Wire):
     model: str | None = None
     aspect: str = "1:1"
     style: str = ""
-    #: retired 서식 id ignored; others refused
+    #: Retired 서식 ids are ignored; other ids are refused.
     template_id: str | None = Field(default=None, max_length=60)
     #: one picture per request
     count: int = Field(default=1, ge=1, le=1)
@@ -392,10 +392,8 @@ class SendMessage(Wire):
     #: with `route_strict_local`: the safe model picked on the privacy card (one it offered);
     #: None or another id takes the first in the admin's priority order
     privacy_model_id: str | None = Field(default=None, max_length=200)
-    #: a report's file picked on the screen (`web` the HTML report, `hwp`, `docx`); wins over a
-    #: file the request names (`report_office.asked_file`); None: the request decides
-    #: a deck's: `web` the web slides, `pptx` a PowerPoint file written beside the chat (the
-    #: slides conversation gets a blank deck its PowerPoint tools write into)
+    #: File chosen on screen; wins over one the request names (`report_office.asked_file`);
+    #: None: the request decides. `pptx` writes a PowerPoint file beside the chat.
     output_format: Literal["web", "hwp", "docx", "pptx"] | None = None
     #: the document open beside the chat: chat edits and the office tools work on it, never
     #: on "the newest of its kind" (checked to be the person's and this conversation's)

@@ -1,8 +1,7 @@
 """Member-held API key calls enter the credit ledger.
 
-- `credit_ledger.external_ref`: the proxy's request id for a call made with a member's own API
-  key (설정 › API 키). The usage sync writes one ledger row per such request, and the unique
-  index keeps a request from being written twice. Null for every other row.
+`credit_ledger.external_ref`: the proxy's request id for a call made with a member's own API key; the
+unique index keeps the usage sync from writing a request twice. Null for every other row.
 
 Downgrade drops the index and the column.
 

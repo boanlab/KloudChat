@@ -2,11 +2,7 @@ import { expect, test } from '@playwright/test'
 import { conversationRows, hubFixture, installedConnectors, myAgents, mySkills, storeAgents } from './customize-fixture'
 import { viewport } from './project'
 
-/**
- * 「사용자 지정」: one hub for agents (and the 묶음 they tick), skills and connectors. Its tab,
- * view, search, filter and sort live in the address; every old screen's address lands where that
- * screen went (memory in 설정, workflows in the agents' 진행 과정).
- */
+/** 「사용자 지정」 hub: agents, skills, connectors; tab, view, search, filter and sort live in the URL; old addresses redirect. */
 
 test.use({ serviceWorkers: 'block' })
 

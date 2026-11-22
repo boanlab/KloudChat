@@ -1,8 +1,7 @@
 """Reading a video's keyframes with the strict-local vision model (`video_jobs`).
 
-Only a model the catalogue lists as strict-local with vision is ever sent a frame — the one
-the OCR settings choose (`ocr.config`), checked uncached and per deployment before a job's
-first frame. Nothing about a video leaves the deployment whatever the chat model is.
+Only the catalogue's strict-local vision model chosen by the OCR settings (`ocr.config`) is sent
+a frame, checked uncached before a job's first frame.
 """
 
 from __future__ import annotations
@@ -85,11 +84,9 @@ def picture_hash(jpeg: bytes) -> int:
 #: moving mostly soft ones
 _EDGE_SIZE = (640, 360)
 _EDGE_LEVEL = 80
-#: two frames whose difference hashes match are still different pictures when more than this
-#: share of the frame's edge pixels moved (an edge in one with none within a pixel in the
-#: other). Measured on three lectures (61 slide changes) and a talking head: a new slide —
-#: one template, other text — moves ≥ 3.2 %; the same slide 0.07 % (p90 of the template
-#: deck); a speaker over six seconds 0.34 % (p90), 0.77 % (second largest of 99).
+#: frames with matching difference hashes are still different pictures when more than this
+#: share of edge pixels moved (an edge with none within a pixel in the other frame); a new
+#: slide on the same template moves far more than a speaker's gestures.
 SAME_PIXELS = 0.015
 
 
@@ -103,8 +100,8 @@ def small(jpeg: bytes):
 
 
 def changed(a, b) -> float:
-    """Share of the frame whose edges moved: edge pixels in either map with no edge within a
-    pixel in the other."""
+    """Share of the frame whose edges moved (edge pixels with no edge within a pixel in the
+    other)."""
     from PIL import ImageChops, ImageFilter
 
     near_a, near_b = a.filter(ImageFilter.MaxFilter(3)), b.filter(ImageFilter.MaxFilter(3))
@@ -114,8 +111,8 @@ def changed(a, b) -> float:
 
 
 def same_picture(hash_a: int, small_a, hash_b: int, small_b) -> bool:
-    """The same picture: hashes close (cheap) and, to be sure, few edges moved — so template
-    slides with different text stay apart while a speaker's gestures do not count."""
+    """Same picture: close hashes (cheap) and few edges moved, so template slides with different
+    text stay apart."""
     if dhash_distance(hash_a, hash_b) > SAME_HASH:
         return False
     return changed(small_a, small_b) <= SAME_PIXELS

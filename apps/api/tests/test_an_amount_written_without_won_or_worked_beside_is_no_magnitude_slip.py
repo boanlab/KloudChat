@@ -1,12 +1,5 @@
-"""An amount the request states without 「원」, or one whose own product stands beside it, is no
-power-of-ten slip of a ledger result.
-
-Round-3 r3r04 (11-21, both arms): the request gave
-「고정비: 월 4,500만 원(인건비 3,600만 + 클라우드·사무실 900만)」 and
-「구독 운영 원가 대당 월 3만 원」. The ledger read 3만 원 × 12개월 = 36만 원; 3,600만 is a
-hundred times that, and 「3,600만」 was not counted as stated because no 「원」 followed it,
-so every 「인건비 3,600만 원」 became 「인건비 36만 원」, and 「3,600만 원(300대 × 12만 원)」
-became 「36만 원(300대 × 12만 원)」."""
+"""An amount stated without 「원」, or one whose own product stands beside it, is no power-of-ten
+slip of a ledger result."""
 
 from __future__ import annotations
 

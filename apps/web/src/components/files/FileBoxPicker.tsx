@@ -24,7 +24,7 @@ export function FileBoxPicker({
   const [origin, setOrigin] = useState<FileOrigin>('upload')
   const [query, setQuery] = useState('')
   const box = useFileBox(open, origin, query)
-  // Picked rows are kept whole: a search or another tab may no longer list them.
+  // kept whole: a search or another tab may no longer list them
   const [picked, setPicked] = useState<Map<string, FileRow>>(new Map())
   const shown = box.rows
   const close = () => {

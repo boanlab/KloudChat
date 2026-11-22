@@ -175,11 +175,8 @@ def _usage(bundle: Bundle) -> dict[str, Any]:
     return {"type": "usage", **bundle.usage}
 
 
-#: a report from the person's own material written in one pass — the whole document in one call,
-#: no separate hard sections, no assumption or premise section the request does not ask for, no
-#: lengthening pass. On for the self-hosted writers (11-22 A/B on strict-local, 4 runs x 10 tasks:
-#: overall 4.67 -> 5.49, answers with a fatal error 29 -> 18 of 39); other writers keep the staged
-#: path. `REPORT_ONE_PASS=1` forces it for every writer, `0` turns it off.
+#: one-pass report from the person's own material: whole document in one call, no hard sections,
+#: no unasked assumption section, no lengthening pass. Default for self-hosted writers; `REPORT_ONE_PASS=1` forces it for all, `0` disables.
 ONE_PASS_ENV = "REPORT_ONE_PASS"
 _UNASKED_FRAME = (
     "\n- Use only the sections the request names or the document type needs. Do not add a "
@@ -232,8 +229,7 @@ class Research(Base):
         if web_search and req.project_sources and report.uses_project_material(req.text):
             # 「프로젝트 논문 중 해당되는 것들을 인용」: the project's files are the sources
             web_search = False
-        # writing an approved outline: the outline pass's pages carry over (a fresh search
-        # loses sources and blanks their sections); only headings they miss are searched again
+        # approved outline: carry over its research pages; search again only the headings they miss
         kept = (research.from_carried(req.approved_plan.get(PLAN_RESEARCH))
                 if req.approved_plan is not None and (
                     web_search or not report.uses_project_material(req.text)) else None)
@@ -855,10 +851,8 @@ def _meeting_material(bundle: Bundle) -> str:
 
 
 def _head_material(bundle: Bundle) -> str:
-    """What a document's head fields are read from. A minutes head is its meeting's
-    (`_meeting_material`); any other document's head is its own — the request, the turn's
-    files and code output — never the head of a project file it draws on (a weekly report
-    built from minutes has no 회의명 or 참석자, and the minutes' 작성자 is not its 보고자)."""
+    """Source of a document's head fields: the meeting for minutes, else the request, turn files
+    and code output, never the head of a project file it draws on."""
     if _records_meeting(bundle):
         return _meeting_material(bundle)
     req = bundle.request
@@ -1514,8 +1508,7 @@ class Sections(Base):
             raise Stop("every section failed")
         if (hard or long_form) and sections and _SUMMARY_HEADING.search(
                 str(sections[0].get("heading") or "")) and 0 not in failed:
-            # the summary was written before the sections written apart (the upper model's
-            # recommendation, a long document's parts): said again from the finished body
+            # summary was written before the apart-written sections: redo from the finished body
             await _summary_last(bundle, sections)
         if not long_form and not one_pass(bundle):
             # a document short of the pages asked: its shortest sections added to once
@@ -1571,9 +1564,8 @@ _LENGTHEN_AT_MOST = 4
 
 async def _lengthened(bundle: Bundle, sections: list[dict], targets: dict[int, int],
                       outline: str) -> AsyncIterator[dict]:
-    """Sections well under the length the request's pages give them (`report.short_sections`),
-    added to once by the writer from the material; an answer that changes what was written,
-    or adds nothing, is not taken."""
+    """Short sections (`report.short_sections`) lengthened once by the writer; an answer that
+    changes what was written, or adds nothing, is rejected."""
     report, req = _report(), bundle.request
     short = [i for i in report.short_sections(sections, targets)
              if sections[i].get("content") != FAILED_SECTION][:_LENGTHEN_AT_MOST]
@@ -1646,8 +1638,8 @@ _SLIPS_SENT_BACK = 6
 
 async def _korean_again(bundle: Bundle, heading: str, body: str,
                         slipped: list[tuple[int, list[str]]]) -> str:
-    """`body` with each paragraph holding Chinese slips written again in Korean by the writer;
-    one the answer does not stand for (a number or citation lost) left as it was."""
+    """`body` with Chinese-slip paragraphs rewritten in Korean; an answer losing a number or
+    citation is rejected."""
     report, req = _report(), bundle.request
     paragraphs = body.split("\n\n")
     given = _slip_vocabulary(bundle)
@@ -1781,10 +1773,8 @@ def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
 
 def _unbacked_marked(text: str, evidence: list[str], *, computed: str, grounded: bool,
                      worked: str = "") -> str:
-    """Percentages the sources state or work out stay, the rest marked, never blanked; money
-    likewise when the material has no figures (with figures the trace settles it); a count of
-    whole things with a fraction no source states is marked. `worked`: the sections before
-    this one, whose written formulas back their results here too."""
+    """Unsourced percentages and money are marked, never blanked; money only when the material
+    has no figures; an unstated fraction of a count is marked. `worked`: earlier sections whose formulas back results here."""
     report = _report()
     if not grounded:
         text = report._without_invented_money(text, evidence)
@@ -2107,10 +2097,8 @@ UNCHECKED_CALC = ("timeout", "partial", "unavailable", "failed", "disputed")
 
 
 def _figures_marked(bundle: Bundle, sections: list[dict]) -> list[dict]:
-    """What code finds in the document's figures but cannot settle, marked where it stands
-    (every writer): a figure ten times a worked result elsewhere in the document, the writer's
-    own results when the code calculation did not finish (「(추정)」), and a company-assumption
-    label on figures the person never gave."""
+    """Marks what code finds in figures but cannot settle (every writer): a figure ten times a
+    worked result, uncalculated own results (「(추정)」), a company-assumption label on ungiven figures."""
     person = "\n".join([bundle.request.text, bundle.material.given])
     known = "\n".join([person, bundle.computed.values or ""])
     unchecked = bundle.computed.calc_status in UNCHECKED_CALC
@@ -2406,10 +2394,8 @@ def mark_unsettled(sections: list[dict], still: list) -> list[dict]:
 
 def mark_policy(sections: list[dict], still: list, doc: verify.Doc | None = None
                 ) -> list[dict]:
-    """Sections with 「(확인 필요)」 on each sentence or table cell still stating a limit,
-    approval or rule (`stated_policy`), or a weekday (`stated_days`), the material does not;
-    with `doc`, read again over the sections as they stand (a finding merged under another
-    check's code, a failed repair)."""
+    """Sections with 「(확인 필요)」 on sentences or cells stating a limit, approval, rule
+    (`stated_policy`) or weekday (`stated_days`) the material does not; with `doc`, re-read over the current sections."""
     out = [dict(sec) for sec in sections]
     standing = [(f.section, f.sentence, stated_policy.untraced(f.sentence, ""))
                 for f in still if getattr(f, "code", "") == "unsourced_policy"]
@@ -2559,8 +2545,7 @@ class Verify(Base):
         bundle.document.sections = mark_policy(bundle.document.sections, still, _doc(bundle))
         pre = bundle.computed.prepass
         if pre is not None and "minutes-rows" in pre.settings.code_checks:
-            # a meeting length, month part, open question or owner-less row the memo never
-            # gives, standing after the writer's repair: marked for a strong writer, else out
+            # unsourced meeting length, month part, open question or ownerless row after repair: marked for a strong writer, else removed
             doc = _doc(bundle)
             bundle.document.sections = report_checks.settle_unsourced(
                 bundle.document.sections, doc.memo or doc.given or doc.material,
@@ -2600,9 +2585,7 @@ class MinutesReground(Base):
             # what the memo never says, written again by a repair after the verify settle
             sections = report_checks.settle_unsourced(sections, _meeting_given(bundle),
                                                       strong=bundle.request.strong)
-        # a day, clock, place or 「다음 회의」 deadline called missing that the memo gives, a
-        # decision given the value the meeting changed, a row written twice, and a count its
-        # list no longer has
+        # false absences (day, clock, place, 「다음 회의」 deadline), changed decision values, duplicate rows, stale counts
         memo = _meeting_given(bundle)
         sections, _ = meeting_memo.false_absences(sections, memo)
         sections, _ = meeting_memo.false_dues(sections, memo)
@@ -2838,10 +2821,9 @@ def _rows_marked(body: str) -> str:
 
 
 def mend_shapes(sections: list[dict], findings: list[dict], *, gaejo: bool = False) -> list[dict]:
-    """Sections with the table and figure shape the quality read found broken mended by code:
-    broken pipe tables rebuilt (`table_mend.rebuild`), uncaptioned tables captioned, a table or
-    figure the text never names pointed at, pipe lines no table takes written as items, and a
-    header with no rows marked. Never a model call; `Quality` reads the result again."""
+    """Code-only mend of broken table/figure shape: rebuild pipe tables (`table_mend.rebuild`),
+    caption tables, point at unnamed tables/figures, turn stray pipe lines into items, mark
+    header-only tables. `Quality` re-reads the result."""
     report = _report()
     codes = {x["code"] for x in findings}
     if not codes & _SHAPE_CODES:
@@ -3081,8 +3063,8 @@ def paper_paragraphs(answer: str, wanted: dict[int, str], sections: int) -> dict
 
 
 async def _stored_texts(ids: dict[int, str]) -> dict[int, str]:
-    """Citation number -> the opening of that project file's stored text (the first pages: title,
-    abstract, introduction), for papers the writer was not given whole."""
+    """Citation number -> opening of that project file's stored text (title, abstract,
+    introduction), for papers the writer was not given whole."""
     if not ids:
         return {}
     from app.core.db import SessionLocal
@@ -3271,8 +3253,7 @@ def bundle_for(*, request: str, model: str, api_key: str, **kwargs: Any) -> Bund
         # own 서식 governs its settings, questions and head
         own_template = design_templates.for_format(format_id)
         req.template_id = own_template.id if own_template is not None else None
-        # the agent's skill was written for the bound format; its rules for that one's parts
-        # (회의록's 「미정」 owners and 확인 필요 line) would empty the asked document's cells
+        # the agent skill's rules for the bound format's parts (회의록 「미정」 owners, 확인 필요 line) would empty the asked document's cells
         req.trusted = [*req.trusted, sibling_note(doc_formats.BY_ID[bound], doc_format)]
     # 서식 settings, then the agent's own; repair stages of one format stay on it
     governing = process_settings.governing_template(req.template_id, format_id)

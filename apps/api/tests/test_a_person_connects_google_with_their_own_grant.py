@@ -1,7 +1,5 @@
-"""Connecting Google and Slack per person, each with their own account (a personal gmail.com
-account too): PKCE authorization with the installation's one client, tokens sealed at rest,
-refresh before expiry, reconnect when the grant is gone, revoke on disconnect, on account
-deletion and when the administrator turns a provider off, and secrets never echoed."""
+"""Per-person Google and Slack connections: PKCE, sealed tokens, refresh, reconnect, revoke,
+admin switch-off, and no secret echoed."""
 
 from __future__ import annotations
 

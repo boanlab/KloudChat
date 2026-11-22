@@ -1,11 +1,9 @@
-"""Read and edit a web report (Markdown sections) or a web deck (slides as JSON) in place, as
-the office editors do their files (`hwpx_edit`, `docx_edit`): a numbered outline for the model,
-and edit ops that change only what they name.
+"""Read and edit a web report (Markdown sections) or web deck (slides as JSON) in place, like
+`hwpx_edit` and `docx_edit`.
 
-Ids are positions in the version read: a report's sections `s1…`, a deck's slides `s1…` (in
-order, never a printed number). Ops that add, take out or move a part renumber what follows,
-so one `apply` resolves every op against the version it was given and the next call reads
-again. Every op or none: a refused op changes nothing.
+Ids are positions in the version read (`s1…`, never a printed number). Ops that add, remove or
+move a part renumber what follows, so one `apply` resolves every op against the given version.
+Every op or none: a refused op changes nothing.
 """
 
 from __future__ import annotations

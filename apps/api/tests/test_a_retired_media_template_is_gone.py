@@ -69,7 +69,6 @@ def test_a_picture_request_that_still_names_a_retired_template_is_accepted():
     assert not dt.is_retired_media("image-nope")
 
 
-# ── what was made still opens ──────────────────────────────────────────
 
 
 def test_a_picture_made_with_a_retired_template_still_opens():

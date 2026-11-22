@@ -2,8 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { expect, test, type Page } from '@playwright/test'
 import { signIn } from './helpers'
 
-/** Mobile sweep at 390px, portrait and landscape: drawer, dialogs, artifact panel, composer.
- *  Writes `audit/mobile-audit.json`; never fails. */
+/** Mobile sweep at 390px, portrait and landscape. Writes `audit/mobile-audit.json`; never fails. */
 
 interface Defect {
   rule: string

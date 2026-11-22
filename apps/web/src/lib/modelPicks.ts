@@ -1,10 +1,6 @@
 import type { ModelInfo, SessionKind } from '@/types'
 
-/**
- * The account's surface picks over the models this browser settled on: a pick saved on another
- * device, or one that arrived after the catalogue, still shows in 설정 › 환경설정 and starts new
- * conversations (`reconcileDefaults` runs only when the catalogue loads).
- */
+/** Overlay the account's saved surface picks on the browser's settled models (`reconcileDefaults` runs only on catalogue load). */
 export function withAccountPicks(
   current: Record<SessionKind, string>,
   available: Pick<ModelInfo, 'id' | 'kinds'>[],

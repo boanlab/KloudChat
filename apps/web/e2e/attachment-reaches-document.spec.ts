@@ -1,5 +1,4 @@
-/** Attachments travel on both the planning and the approved-write request of a document turn.
- *  Planning runs for real; the approved write is stubbed. */
+/** Attachments travel on both the planning and the approved-write request of a document turn. */
 
 import { expect, test } from '@playwright/test'
 import { approveOnce, signIn } from './helpers'

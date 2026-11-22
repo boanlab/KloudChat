@@ -1,9 +1,6 @@
 /**
- * Project-source citations in a chat answer. An answer that cites project material ends with
- * a source list whose items carry no address (「- [2] 03강 논리 시계.pdf · 3쪽」, as
- * `services/agent.py` writes them); its inline 「[2]」 are turned into `#cite-2-k` links the
- * answer body renders as buttons that open the source viewer at the cited passage. `k`
- * indexes `claims`, the sentence each citation closes, which the viewer looks for.
+ * Project-source citations: inline 「[2]」 become `#cite-2-k` links (`k` indexes `claims`) that open the source viewer;
+ * the source list items carry no address, as `services/agent.py` writes them.
  */
 import { createContext } from 'react'
 

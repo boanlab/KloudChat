@@ -51,10 +51,7 @@ function Ring({ percent, tone }: { percent: number; tone: string }) {
   )
 }
 
-/**
- * How much of the model's window the conversation's next turn takes: a ring with the percent,
- * and on hover or tap the breakdown. Chat only; the draft is counted as it is typed.
- */
+/** Ring showing the share of the model window the next turn takes, with a breakdown on hover or tap. */
 export function ContextGauge({
   sessionId,
   kind,

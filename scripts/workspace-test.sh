@@ -6,8 +6,7 @@
 #
 #   ADMIN_EMAIL=you@example.com ADMIN_PASS=… bash scripts/workspace-test.sh
 #
-# Payloads are Korean on purpose: multibyte text through upload extraction,
-# prompt assembly and JSON round-tripping.
+# Payloads are Korean on purpose (multibyte text through upload, prompts and JSON).
 set -u
 
 # shellcheck source=scripts/lib/env.sh

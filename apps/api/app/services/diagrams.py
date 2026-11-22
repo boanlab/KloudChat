@@ -94,7 +94,7 @@ class Planned:
     document: str = ""
     #: steps the request numbers (①…): a flow of that procedure shows every one
     steps: tuple[str, ...] = ()
-    #: the request the document was written from: facts a slide's few words left out
+    #: the document's request, source of facts a slide's few words omit
     request: str = ""
     #: labels and caption language (`ko`, `en`)
     language: str = "ko"

@@ -1,11 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { shellRead } from './shell-mocks'
 
-/**
- * A report whose response drops while the server goes on writing it: the screen says it is
- * still being written, keeps the stop button, and opens the finished report once the
- * transcript says the turn ended. No backend: every call is answered here.
- */
+/** A report whose response drops mid-write: the screen keeps stop, then opens the finished report. Every call is mocked. */
 
 test.use({ serviceWorkers: 'block' })
 
@@ -142,7 +138,7 @@ test('a report whose stream dropped is followed until the server has written it'
   const panel = page.locator('[data-panel="artifact"]')
   await expect(panel.getByRole('heading', { name: headings[0] })).toBeVisible()
 
-  // The server finished: its report replaces the draft (two 3 s polls; room for a slow runner).
+  // The server's report replaces the draft (two 3 s polls, with slack).
   await expect(panel.getByText('완성된 본문 2.')).toBeVisible({ timeout: 30_000 })
   await expect(page.getByText('보고서를 만들었습니다.')).toBeVisible()
   await expect(page.getByLabel('중지')).toBeHidden()

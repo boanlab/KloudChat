@@ -1,11 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { hubFixture, mySkills, storeSkills } from './customize-fixture'
 
-/**
- * A skill kept on in an agent that none of the agent's surfaces run is said so next to the
- * picker, with the way out (add the surface or remove the skill), instead of being dropped
- * without a word at run time.
- */
+/** A skill kept on in an agent whose surfaces cannot run it is flagged next to the picker, with the way out. */
 
 test.use({ serviceWorkers: 'block' })
 
@@ -70,7 +66,7 @@ test('a report-only skill makes the agent open on the report screen', async ({ p
   await expect(form.getByRole('combobox', { name: '처음 여는 화면' })).toHaveValue('report')
   const report = form.getByRole('button', { name: '보고서', exact: true })
   await expect(report).toHaveAttribute('aria-pressed', 'true')
-  // Clicked again by someone who did not see it was added: the skill needs it, so it stays on.
+  // The skill needs the surface, so it stays on.
   await report.click()
   await expect(report).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByTestId('screen-held')).toHaveText(
@@ -123,7 +119,7 @@ test('a new account keeps on a store skill without adding it first', async ({ pa
   await expect(row).toBeVisible()
   await expect(row.getByRole('radio', { name: '항상 적용' })).toHaveAttribute('aria-checked', 'true')
   await expect.poll(() => state.calls.some((c) => c.method === 'POST' && c.path === `/skills/${storeSkills[0].id}/install`)).toBe(true)
-  // Now one of the person's skills: no longer offered from the store.
+  // Now the person's own skill: not offered from the store.
   await page.getByTestId('agent-skill-list').getByRole('button', { name: '+ 스킬 추가 (스토어 포함)' }).click()
   await expect(dialog.getByRole('listitem').filter({ hasText: '견적 계산' })).toHaveCount(0)
   expect(state.problems).toEqual([])

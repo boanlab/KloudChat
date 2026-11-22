@@ -1,7 +1,5 @@
-"""「11월 10일 회의록이랑 매출 실적표 보고 주간 업무 보고서를 만들어」 makes a weekly report: the
-minutes are what it reads. Its head is its own (never another file's 회의명·일시·참석자), the
-finish line names what was made, and a minutes document drawn from one named file among many
-takes that file's meeting — its head, its day and the days its actions count from."""
+"""A weekly report built from minutes has its own head and finish line, and a minutes document
+from one named file takes that file's meeting."""
 
 import datetime as dt
 

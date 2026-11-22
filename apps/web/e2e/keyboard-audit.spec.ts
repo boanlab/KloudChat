@@ -2,8 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { expect, test, type Page } from '@playwright/test'
 import { signIn } from './helpers'
 
-/** Keyboard sweep: focus rings, modal focus handling, term consistency, destructive confirms.
- *  Writes `audit/keyboard-audit.json`; never fails. */
+/** Keyboard sweep: focus rings, modal focus, term consistency, destructive confirms. Writes `audit/keyboard-audit.json`; never fails. */
 
 interface Defect {
   rule: string

@@ -1,23 +1,19 @@
 """Background understanding of audio/video files, per replica, claimed like OCR jobs.
 
-A queued file is claimed (SKIP LOCKED, a claim token, a lease another replica takes over when
-it runs out) and taken through:
+A queued file is claimed (SKIP LOCKED, claim token, lease another replica can take over) and
+taken through:
 
-1. probe — duration and streams, by the media worker (`media_client`, stock ffmpeg);
-2. frames — scene-change times, each frame fetched once, near-duplicates dropped by a
-   difference hash, thinned to `video_frames_per_minute` (at most `video_max_frames`), and
-   stored with a thumbnail beside the video;
+1. probe — duration and streams, by the media worker (`media_client`);
+2. frames — scene changes, near-duplicates dropped by a difference hash, thinned to
+   `video_frames_per_minute` (at most `video_max_frames`), stored with thumbnails;
 3. audio and vision, side by side — ~10-minute FLAC pieces (5 s overlap) to the internal
-   Whisper for timed segments; each kept frame to the strict-local vision model (`video_read`)
-   for its text and a one-line description, a repeated picture read once;
-4. writing — speech and pictures merged into the time-coded document (`video_doc`), stored as
-   the file's text so search, context and digests use it, plus structured segments for
-   citations and the player.
+   Whisper; each kept frame to the strict-local vision model (`video_read`);
+4. writing — the time-coded document (`video_doc`), stored as the file's text, plus structured
+   segments for citations and the player.
 
-Each finished piece or frame is a `MediaPart` row, so a job taken over after a restart resumes
-there. Side calls are billed like others: transcription as seconds (self-hosted Whisper is
-free), vision at the model's full rate (no cache discount) or a zero-credit usage row.
-Nothing is sent outside the deployment whatever the chat model is.
+Each finished piece or frame is a `MediaPart` row, so a taken-over job resumes there. Side
+calls are billed as seconds (Whisper) or the vision model's rate (zero-credit row if
+self-hosted). Nothing leaves the deployment.
 """
 
 from __future__ import annotations
@@ -104,8 +100,8 @@ def mark(stored: StoredFile) -> bool:
 
 
 def estimate(seconds: float, model: dict | None) -> dict:
-    """What reading a video this long takes: frames read, minutes of work (measured on the
-    self-hosted Whisper and flash, see docs/architecture.md), credits (0 for self-hosted)."""
+    """Estimate of reading a video this long: frames read, minutes of work, credits (0 for
+    self-hosted)."""
     seconds = max(0.0, float(seconds or 0))
     frames = video_doc.frame_cap(seconds, settings.video_frames_per_minute,
                                  settings.video_max_frames)

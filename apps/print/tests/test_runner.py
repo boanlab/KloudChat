@@ -1,7 +1,4 @@
-"""The printer's subprocess runner and health signal, with stand-in programs for soffice.
-
-Standard library only (plus the app's own dependencies). CI: `images` job, print.
-"""
+"""The printer's subprocess runner and health signal, with stand-in programs for soffice."""
 
 from __future__ import annotations
 

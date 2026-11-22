@@ -1,10 +1,7 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { shellRead } from './shell-mocks'
 
-/**
- * Project 지식: a document the meaning search does not cover yet says 색인 안 됨, and 색인하기
- * sends it again (`POST /projects/{id}/knowledge/reindex`), as an agent's knowledge does.
- */
+/** Project 지식: an unindexed document shows 색인 안 됨; 색인하기 posts `POST /projects/{id}/knowledge/reindex`. */
 
 test.use({ serviceWorkers: 'block' })
 

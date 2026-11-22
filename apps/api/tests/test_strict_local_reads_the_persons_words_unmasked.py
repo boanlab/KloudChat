@@ -1,7 +1,5 @@
-"""Org-wide masking (`pii_masking`) is for what leaves the boundary: a turn that stays on
-strict-local models reads the person's words, files and history as given, and its answer
-keeps the values the person gave. Anything that goes out (an outside model, a web search
-query) is still masked."""
+"""Org-wide masking applies only to what leaves the boundary; strict-local turns read the
+person's words as given."""
 from __future__ import annotations
 
 import json

@@ -1,14 +1,10 @@
-"""Form files (양식) and the 디자인 지침 field, beside templates and themes for now.
+"""Form files (양식) and the 디자인 지침 field.
 
-- `files.role`: `form` for a copy saved as a project's or agent's 기본 양식 파일 (not material,
-  not in the file box); NULL for every other file.
+- `files.role`: `form` for a copy saved as a project's or agent's 기본 양식 파일 (not material, not in the file box); NULL otherwise.
 - `files.form_profile`: what an Office upload offers as a form (`services/form_profile.py`).
-- `projects.form_files`, `agents.form_files`: output kind (`pptx`, `docx`, `hwpx`) → file id.
+- `projects.form_files`, `agents.form_files`: output kind (`pptx`, `docx`, `hwpx`) -> file id.
 - `projects.design_brief`, `agents.design_brief`: the 디자인 지침 text.
-- `sessions.form_files`: output kind → the form attached in this conversation, kept for its
-  later turns; `""` for a kind whose saved form the person took off.
-
-Plain columns only; templates and themes are untouched.
+- `sessions.form_files`: output kind -> form attached in this conversation; `""` for a kind whose saved form was taken off.
 
 Revision ID: 0090
 Revises: 0089

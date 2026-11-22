@@ -1,7 +1,5 @@
-"""PowerPoint edit ops past text (`pptx_edit.apply` resolves and runs them like its own): a
-native table put on a slide (an `a:tbl` PowerPoint edits as a table, never rows of text in a
-box), table columns added or taken away, pictures put in or replaced, and a slide moved to
-another layout with its content kept where it stood.
+"""PowerPoint edit ops past text, run by `pptx_edit.apply`: native tables, table columns,
+pictures, and moving a slide to another layout with its content kept.
 """
 
 from __future__ import annotations
@@ -31,8 +29,8 @@ def _err(message: str) -> pe.PptxError:
 
 
 def _area(deck: pe._Deck, entry: pe._Slide, replace: pe._Item | None) -> tuple[int, ...]:
-    """Where a table or picture goes: the shape it replaces, else under the slide's title,
-    else the slide's middle; (left, top, width, height) in EMU."""
+    """Placement for a table or picture: the replaced shape, else under the title, else the
+    slide's middle; (left, top, width, height) in EMU."""
     prs = deck.prs
     if replace is not None:
         shape = replace.shape

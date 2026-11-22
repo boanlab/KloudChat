@@ -325,8 +325,6 @@ def _laptops_reading(extension: bool, discount_when: str | None) -> dict:
 
 
 async def test_the_laptop_comparison_settles_every_quote_and_judges_lead_times_in_days():
-    # one reading left out 다솜's extension, the other wrote 누리컴's discount as another
-    # condition: no two agree, and before this 다솜시스템·누리컴 were held back
     complete, asked, _ = _replies(_laptops_reading(False, "30대 이상 구매 시"),
                                   _laptops_reading(True, "총액 할인 시"), check=FLASH_READING)
     pre = await report_checks.prepare("comparison", LAPTOPS_TASK,

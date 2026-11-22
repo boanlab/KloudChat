@@ -1,21 +1,15 @@
-"""Which model does what is decided in the admin screen; the environment only seeds it.
+"""Model roles decided in the admin screen; the environment only seeds them.
 
-- `system_settings` gains one row per model role (`models.chat`, `models.report`,
-  `models.slides`, `models.image`, `models.audio`, `models.video`, `models.title`,
-  `models.code`, `models.code_fallback`), the two thinking switches (`thinking.self_hosted`,
-  `thinking.external`) and the new-account allowance (`credits.default_monthly`), written
-  from the environment this migration runs in (`DEFAULT_CHAT_MODEL`, `TITLE_MODEL`, …), so
-  an install behaves as it did. A key already stored is left alone.
-- The title model is the exception: a value that is one of the earlier code defaults (the
-  27B and its predecessors) was never a choice, and becomes `local/qwen3.8-flash`.
-- Governance: an Auto classifier still on the earlier default `strict-local/qwen3.8-27b`,
-  and an outline model still on `local/qwen3.5-122b`, move to Flash unless the audit log
-  shows an administrator saved that field. `qwen3.8-flash-next`, the earlier name of
-  `qwen3.8-flash`, is renamed wherever a model id is stored (classifier, outline, economy
-  and upgrade lists, the OCR vision model).
+- `system_settings` rows per model role (`models.chat`, `models.report`, `models.slides`,
+  `models.image`, `models.audio`, `models.video`, `models.title`, `models.code`,
+  `models.code_fallback`), the thinking switches (`thinking.self_hosted`, `thinking.external`) and
+  `credits.default_monthly`, seeded from the environment (`DEFAULT_CHAT_MODEL`, `TITLE_MODEL`, ...).
+  A stored key is left alone.
+- Defaults that were never a choice move to `local/qwen3.8-flash` (title model; classifier and outline
+  model unless an administrator saved the field); the old `qwen3.8-flash-next` id is renamed wherever
+  a model id is stored.
 
-Downgrade removes the seeded rows (the environment applies again); the governance moves
-and the rename stay.
+Downgrade removes the seeded rows; the governance moves and the rename stay.
 
 Revision ID: 0068
 Revises: 0067

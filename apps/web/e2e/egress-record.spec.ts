@@ -1,10 +1,8 @@
 import { expect, test, type Page } from '@playwright/test'
 
 /**
- * An answer whose turn went to an outside model with personal data masked shows what left,
- * as it left (`routing.egress`): 「외부로 보낸 내용 보기」 opens the masked request and
- * material with each placeholder marked. A strict-local answer shows nothing of the kind.
- * Every API response is a fixture.
+ * 「외부로 보낸 내용 보기」 shows the masked request and material (`routing.egress`) of an answer
+ * sent to an outside model; a strict-local answer shows none. Fixture responses only.
  */
 
 const sessionId = 'egress-record'

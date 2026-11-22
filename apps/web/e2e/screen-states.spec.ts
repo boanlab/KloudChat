@@ -4,13 +4,9 @@ import { openSession, panel, reportSession, resultsFixture } from './results-fix
 import { shellRead } from './shell-mocks'
 
 /**
- * Screens a product walk-through found broken, against a mocked API: a project's 작업 rows
- * read their latest message, its knowledge rows and boxes keep their text at phone width, the
- * template picker fits a phone, a failed answer's reason is not squeezed beside its actions,
- * an admin address shows 접근 제한, an empty 대화 기록 offers no bulk actions, the knowledge
- * guidance names what is accepted, and a mind map reads as a tree.
+ * Screens fixed after a product walk-through, against a mocked API.
  *
- * `SCREEN_SHOTS=<dir>` saves each state as `<name>-<width>.png` for a person to look at.
+ * `SCREEN_SHOTS=<dir>` saves each state as `<name>-<width>.png`.
  */
 
 test.use({ serviceWorkers: 'block' })

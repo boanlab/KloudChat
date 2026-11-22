@@ -4,11 +4,7 @@ import { cn } from '@/lib/utils'
 import type { SessionKind } from '@/types'
 import { fillComposer } from './Composer'
 
-/**
- * What an empty start shows, the same on the home screen and in a conversation with nothing
- * sent yet (a new one, one started from a project or an agent, one reopened from history):
- * a heading and the surface's examples, a click on one filling the prompt box.
- */
+/** Heading and example prompts for a conversation with nothing sent; a click fills the prompt box. */
 
 /** Per-surface examples under the greeting; click fills the composer. */
 const START_EXAMPLES: Record<SessionKind, string[]> = {

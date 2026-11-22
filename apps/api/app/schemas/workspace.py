@@ -472,7 +472,7 @@ class SkillOut(Wire):
     server: SkillServer = Field(default_factory=SkillServer)
     #: own scripts (sandbox); `source` owner-only
     script_files: list[SkillScriptOut] = Field(default_factory=list)
-    #: "" · pending · approved · rejected
+    #: "", pending, approved or rejected
     review: str = ""
     review_note: str = ""
     #: False for part-only shipped skills (`listed: false`) and copies; still runnable by name

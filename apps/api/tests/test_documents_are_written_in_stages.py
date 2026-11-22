@@ -1,7 +1,5 @@
-"""Staged model routing of reports and decks (owner decision 2026-11-18): the `document` row's
-model writes the ordinary parts; the plan, the hard sections and the repairs go to the upper
-model of the `document_plan`, `document_hard` and `document_repair` rows. The strict column
-never leaves the house, and a missing upper model leaves the document written as before."""
+"""Staged model routing of reports and decks: the `document` row writes ordinary parts; plan,
+hard sections and repairs go to the upper-model rows; the strict column stays inside."""
 
 from __future__ import annotations
 
@@ -55,7 +53,6 @@ def test_the_table_has_three_stage_rows_with_the_owners_defaults() -> None:
         assert row in sa.CLASSES and row in sa.OVERRIDE_ROWS
         assert sa.DEFAULT_RULES[row]["model"] == (
             "z-ai/glm-5.3-flash" if row == "document_plan" else "z-ai/glm-5.3")
-        # the strict column stays inside on flash, asked to think briefly (2026-11-20)
         assert sa.DEFAULT_RULES[row]["strictModel"] == "strict-local/qwen3.8-flash"
         assert sa.DEFAULT_RULES[row]["strictEffort"] == "low"
     assert sa.DEFAULT_RULES["document_hard"]["effort"] == "default"

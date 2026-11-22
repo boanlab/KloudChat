@@ -1,9 +1,4 @@
-/**
- * Every user-facing 지식 서가 feature name, in one place: a rename is an edit here and in the
- * English dictionary (`i18n.ts`, 「지식 서가」 section). Strings that mention a name take it
- * through a placeholder (`{studio}`), so they do not change when the name does. The server
- * keeps its own copy for the titles it writes (`services/shelf_names.py`).
- */
+/** User-facing 지식 서가 feature names; strings reference them via placeholders (`{studio}`). Server copy: `services/shelf_names.py`. */
 export const SHELF_NAMES = {
   /** The feature as a whole (working name). */
   shelf: '지식 서가',

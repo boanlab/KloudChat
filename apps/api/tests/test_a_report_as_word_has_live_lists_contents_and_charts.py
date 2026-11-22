@@ -1,7 +1,5 @@
-"""A report written as a Word file has what Word keeps live: numbered lists on a numbering
-definition (each list from its own first number), a contents field Word refreshes with the
-headings listed as its result, and charts as native, editable charts with their picture beside
-them for an editor that draws no chart."""
+"""A report as Word has live numbered lists, a refreshable contents field, and native charts with
+a picture fallback."""
 
 from __future__ import annotations
 

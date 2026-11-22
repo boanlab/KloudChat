@@ -1,14 +1,11 @@
-"""Text from scanned pages: progress on the file row, and what each page was read as.
+"""OCR of scanned pages: progress on the file row, and per-page readings.
 
-- `files.ocr_state` (null: the file needed no OCR), `ocr_total`, `ocr_done`, `ocr_review`,
-  `ocr_attempts`, `ocr_claimed_at`, `ocr_claim`: a background job reads the pages, claimed in
-  the database so two API replicas never read the same file, a stale claim is taken over, and
-  the worker that lost it cannot write again.
-- `file_pages`: one row per page of a file that went through OCR (the reader, its score,
-  whether the two readings disagreed, line boxes for later highlighting).
+- `files.ocr_state` (null: no OCR needed), `ocr_total`, `ocr_done`, `ocr_review`, `ocr_attempts`,
+  `ocr_claimed_at`, `ocr_claim`: a background job claimed in the database so two replicas never read
+  the same file, a stale claim is taken over, and the losing worker cannot write again.
+- `file_pages`: one row per OCR'd page (reader, score, disagreement flag, line boxes).
 
-Existing rows are untouched: every file reads as one that needed no OCR. Downgrade drops
-what this adds.
+Downgrade drops what this adds.
 
 Revision ID: 0067
 Revises: 0066

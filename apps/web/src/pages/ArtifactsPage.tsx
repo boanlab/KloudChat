@@ -64,11 +64,7 @@ function detailOf(artifact: Artifact): string {
   return language && language !== 'text' ? language : ''
 }
 
-/**
- * 「아티팩트」: what conversations made to view or run — HTML pages, code files, charts and
- * diagrams. Reports and decks are in 파일함 › 작업 문서, pictures, sound and video in 만든 파일;
- * an old link to one of those (`?open=<id>`) goes there.
- */
+/** 「아티팩트」: HTML pages, code files, charts and diagrams; old `?open=<id>` links to documents or media redirect. */
 export function ArtifactsPage() {
   const t = useT()
   const navigate = useNavigate()

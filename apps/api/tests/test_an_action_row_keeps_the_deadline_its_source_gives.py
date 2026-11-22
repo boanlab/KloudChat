@@ -1,6 +1,5 @@
-"""An action-item row keeps the deadline the material gives its owner for that task — written
-by the writer, or filled in when the writer left 「[기한]」 — and a day the material gives only
-for something else (a 12/31 in another file) becomes 「[기한]」."""
+"""An action-item row keeps the deadline the material gives its owner for that task; a day given
+only for something else becomes 「[기한]」."""
 
 from app.services.report import _unsourced_owner_dates
 

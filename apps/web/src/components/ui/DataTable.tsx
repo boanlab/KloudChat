@@ -87,11 +87,7 @@ export type DataColumn<R> = {
   phoneHidden?: boolean
 }
 
-/**
- * The app's data table: every column heading sorts (asc → desc → unsorted), the heading
- * row stays in view while the body scrolls, and a narrow screen scrolls the table sideways
- * inside its own box rather than the page.
- */
+/** Data table: sortable headings (asc, desc, none), sticky heading row, sideways scroll in its own box. */
 export function DataTable<R>({
   id,
   rows,

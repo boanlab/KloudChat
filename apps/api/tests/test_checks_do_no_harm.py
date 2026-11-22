@@ -95,7 +95,6 @@ CHANGES = ("(개발팀 변경 목록 — 한빛소프트, 가상, 출시일 2026
 
 
 def test_a_judged_line_made_of_the_material_s_names_is_kept_and_shown():
-    # the v2 switch line, backed by 「(v2 /messages 사용)」, was taken out
     line = "해당 API를 쓰는 서비스는 그 전에 v2의 /messages로 전환해 주세요."
     assert post_checks.names_the_material(line, CHANGES)
     assert not post_checks.names_the_material("결제가 3배 빨라졌습니다.", CHANGES)

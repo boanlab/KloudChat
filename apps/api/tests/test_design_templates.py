@@ -210,8 +210,8 @@ class _Markup(HTMLParser):
     ],
 )
 def test_no_attribute_or_parser_trick_carries_anything_past_the_allow_lists(payload):
-    """The block is parsed as a browser would parse it, and only listed tags with their listed
-    attributes are written back; what was said survives as text."""
+    """The block is parsed as a browser would, only listed tags and attributes are written back,
+    and the text survives."""
     kept = dt.sanitise(payload)
     seen = _Markup()
     seen.feed(kept)
@@ -573,7 +573,7 @@ def test_a_template_is_resolved_for_the_surface_that_can_use_it():
     ("template_id", "kind", "expected"),
     [
         ("nope", SessionKind.slides, 404),
-        # A retired image 서식 is as unknown as any other id.
+        # a retired image 서식 is unknown
         ("image-poster", SessionKind.image, 404),
         ("deck-editorial", SessionKind.report, 422),
         ("doc-comparison", SessionKind.slides, 422),
@@ -815,7 +815,7 @@ def test_a_default_the_catalogue_cannot_place_is_the_built_in_track(defaults):
 
 
 async def test_a_projects_default_template_starts_nothing():
-    """Templates are retired (2026-11-15): a project's stored default starts no conversation."""
+    """A project's stored default template starts no conversation."""
     db = _Rows({"p1": _project(render_templates={"report": "doc-minutes"})})
     assert await sessions_router._project_render_template(db, "p1", SessionKind.report) is None
 

@@ -566,7 +566,7 @@ _SEPARATOR_ROW = re.compile(
 
 
 def detach_tables(text: str) -> str:
-    """Glued table header moved to its own line before a separator row."""
+    """Move a glued table header onto its own line before a separator row."""
     lines = (text or "").split("\n")
     out: list[str] = []
     for index, line in enumerate(lines):

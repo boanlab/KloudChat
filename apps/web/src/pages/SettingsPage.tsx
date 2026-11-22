@@ -86,7 +86,6 @@ export function SettingsPage() {
           <Route path="preferences" element={<PreferencesTab />} />
           <Route path="personalization" element={<PersonalizationTab />} />
           <Route path="memory" element={<MemoryPage embedded />} />
-          {/* themes retired (2026-11-15): a project's or agent's 디자인 지침 instead */}
           <Route path="themes" element={<Navigate to="/settings" replace />} />
           <Route path="connections" element={<ConnectionsTab />} />
           <Route path="keys" element={<KeysTab />} />

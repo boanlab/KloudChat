@@ -415,7 +415,7 @@ async def test_the_catalog_seeds_exactly_the_agents_it_ships_even_none():
     db = _SeedDb([])
     assert await starter.seed_catalog(db, "admin-1") > 0
 
-    # A retired agent is never seeded afresh; a withdrawn one is kept up to date.
+    # a retired agent is never seeded afresh; a withdrawn one is kept current
     assert len(db.agents) == len(starter.offered_agents(drafts=True, withdrawn=True))
     assert db.rows and all(row.visibility is Visibility.org for row in db.rows)
 
@@ -528,12 +528,8 @@ async def test_an_entry_retired_after_setup_stays_retired(monkeypatch):
     ids=["never-shared", "taken-from-the-store"],
 )
 async def test_the_first_run_is_told_apart_without_any_agents(installs, published, monkeypatch):
-    """With no agents to mark the catalogue, a shared or installed skill does.
-
-    Rows seeded per account before the shared catalogue are private and never
-    installed, so they are published once; after that, an entry the
-    administrator made private stays private even when all of them are.
-    """
+    """With no agents to mark the catalogue, a shared or installed skill does; an entry the
+    administrator made private stays private."""
     monkeypatch.setattr(starter, "_AGENTS", [])
     db = _SeedDb([])
     await starter.seed_catalog(db, "admin-1")

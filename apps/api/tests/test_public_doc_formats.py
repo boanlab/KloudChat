@@ -18,7 +18,7 @@ from app.services import design_templates, doc_formats, report, report_export
 @pytest.mark.parametrize(
     ("request_text", "expected"),
     [
-        # A word inside (결과 보고서, 장애인, 계획서) does not pick lab, incident or plan.
+        # a word inside (결과 보고서, 장애인, 계획서) does not pick lab, incident or plan
         ("신입생 환영 행사 결과 보고서를 써 줘", "result_report"),
         ("부산 출장 결과 보고서 정리해 줘", "result_report"),
         ("만족도 설문 결과 보고서를 만들어 줘", "result_report"),

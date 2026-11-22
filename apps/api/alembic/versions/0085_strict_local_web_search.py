@@ -1,12 +1,10 @@
 """Web search in strict-local turns: ask, allow (queries only) or off.
 
-- `governance.strict_local_web_search`: the admin's setting, `ask` by default — a strict-local
-  turn that needs the web shows the queries that would leave and asks first.
-- `projects.strict_local_web_search`: a project's own setting, only as strict as the admin's or
-  stricter; null follows the admin.
+- `governance.strict_local_web_search`: admin setting, `ask` by default (the turn shows the queries
+  that would leave and asks first).
+- `projects.strict_local_web_search`: a project's setting, at most as permissive as the admin's; null follows the admin.
 
-Existing rows: the admin's setting starts at `ask` (before this, such turns never searched);
-projects follow it. Downgrade drops both columns.
+Downgrade drops both columns.
 
 Revision ID: 0085
 Revises: 0084

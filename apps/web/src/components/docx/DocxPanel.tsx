@@ -1,7 +1,7 @@
 import { mountDocxEditor, type DocxEditorApi } from 'open-docx-editor'
 import 'open-docx-editor/style.css'
 import 'open-docx-editor/fonts.css'
-// Nanum Gothic, the stand-in for Korean sans fonts the computer lacks (koreanFonts.ts); Nanum Myeongjo comes with index.css
+// stand-in for Korean sans fonts the computer lacks (koreanFonts.ts)
 import '@fontsource/nanum-gothic/400.css'
 import '@fontsource/nanum-gothic/700.css'
 import { useEffect, useRef, useState } from 'react'
@@ -19,14 +19,7 @@ import { useStore } from '@/store/useStore'
 import type { DocxArtifact } from '@/types'
 import { aliasKoreanFonts } from './koreanFonts'
 
-/**
- * A Word document in open-docx-editor (pages under Word's ribbon: File, Home, Insert, Layout,
- * References, Review, View), beside the chat; versions, saves and the agent's turns as every
- * office document has them (`OfficePanel`). Its own chunk: the editor loads only when a Word
- * document opens. Ctrl+S is the header's 저장; File > Export and Print print the pages (a PDF
- * through the print dialog). On a phone it is read only (unless edits made at a wider width are
- * still unsaved: they stay editable until saved or dropped).
- */
+/** A Word document in open-docx-editor beside the chat; read only on a phone unless unsaved edits exist. Own chunk. */
 export function DocxPanel({
   doc,
   onClose,
@@ -38,7 +31,7 @@ export function DocxPanel({
 }) {
   const t = useT()
   const author = useStore((s) => s.user?.name ?? '')
-  // The ribbon's own words in the app's language (open-docx-editor's `locale`, our patch); set as the editor mounts.
+  // ribbon language (open-docx-editor `locale`, patched); set on mount
   const lang = useStore((s) => s.lang)
   const phone = useMediaQuery('(max-width: 40rem)')
   const host = useRef<HTMLDivElement>(null)
@@ -84,9 +77,7 @@ export function DocxPanel({
       if (!now.readOnly && !now.agentWorking && dirtyRef.current) void now.save()
     }
     el.addEventListener('keydown', saveKey)
-    // File > Export and Print open the print dialog, which prints the pages: the app tree is not
-    // printed (index.css), so the pages laid out for print are copied beside it until it closes.
-    // (A document of mixed page sizes prints the editor's own copies.)
+    // File > Export / Print: the app tree is not printed (index.css), so print-laid-out pages are copied beside it until the dialog closes.
     let printed: HTMLElement | null = null
     const afterPrint = () => {
       printed?.remove()
@@ -117,11 +108,10 @@ export function DocxPanel({
         armPrint()
         api.markSaved()
         if (focused instanceof HTMLElement && focused.isConnected && !el.contains(focused)) {
-          // the agent's version came in while the person was in the chat: keep their focus there
+          // keep the focus in the chat when the agent's version arrives
           focused.focus()
         } else if (opened) {
-          // a new version replaced the one the person was in: the editor puts the caret at the
-          // top, where keys still being typed would land; they click where they mean to go on
+          // a new version reset the caret to the top, where pending keystrokes would land
           const active = document.activeElement
           if (active instanceof HTMLElement && el.contains(active)) active.blur()
         }

@@ -177,8 +177,7 @@ function turnFailureNotice(
   }
   if (message.failure === 'interrupted') {
     if (message.role === 'user') {
-      // On the question: the turn was cut before any answer (a server restart, or a dropped
-      // answer the browser stopped waiting for).
+      // Turn cut before any answer (server restart or dropped connection)
       return media ? t('요청한 만큼 만들어지지 않았습니다.') : t('중단됨 — 답변이 끝나기 전에 끊겼습니다.')
     }
     return media
@@ -199,7 +198,7 @@ const LENGTH_UNIT: Record<LengthCheck['rows'][number]['unit'], [string, string]>
   bytes_ko2: ['한글 2바이트', '바이트'],
 }
 
-/** 「답안 1: 공백 포함 692자 / 700자」 per submit block, as the server measured it. */
+/** 「답안 1: 공백 포함 692자 / 700자」 per submit block, as measured by the server. */
 function LengthLine({ check }: { check: LengthCheck }) {
   const t = useT()
   return (
@@ -271,7 +270,7 @@ function MessageItemInner({
   })
   const editMessage = useStore((s) => s.editMessage)
   const editBlocked = useStore((s) => !!s.running[sessionId] || s.messageEditBusy)
-  // The user row this answer was for; the retry needs its id.
+  // User row this answer replied to (retry needs its id)
   const askedAbove = useStore((s) => {
     const list = s.sessions.find((c) => c.id === sessionId)?.messages ?? []
     const at = list.findIndex((m) => m.id === message.id)
@@ -318,10 +317,7 @@ function MessageItemInner({
   }, [sessionMessages, projectFiles])
   /** The copy opened in this chat earlier, reopened from the attachment: a new one only on request. */
   const [reopened, setReopened] = useState<{ kind: OfficeKind; id: string } | null>(null)
-  /**
-   * Opens an attached `.hwp`/`.hwpx`, `.docx` or `.pptx` in its editor beside this chat: the
-   * copy already opened in this chat when there is one (`fresh`: a new copy regardless).
-   */
+  /** Opens an attached HWP/Word/PowerPoint file in its editor; reuses the copy already opened unless `fresh`. */
   const openInEditor = async (kind: OfficeKind, id: string, fresh = false) => {
     setFileError(null)
     setOpening(`${kind}:${id}`)
@@ -383,7 +379,7 @@ function MessageItemInner({
     'egress' in message.routing)
     ? message.routing as PrivacyRouting
     : null
-  // The reasoning chip and the level the writer was sent (「깊게 · high」), on the usage line.
+  // Reasoning chip text on the usage line (「깊게 · high」)
   const turnReasoning = message.routing && 'reasoning' in message.routing
     ? message.routing.reasoning
     : undefined
@@ -549,7 +545,7 @@ function MessageItemInner({
             <div
               role="status"
               className={cn(
-                // A narrow screen puts the actions under the reason, never the reason in a sliver beside them.
+                // Wrap so a narrow screen puts actions under the reason
                 'flex flex-wrap items-center justify-end gap-2 text-base',
                 // A stop the reader chose is not an error.
                 message.failure === 'stopped' && !message.error ? 'text-muted' : 'text-danger',

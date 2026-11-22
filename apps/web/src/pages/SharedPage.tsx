@@ -226,11 +226,7 @@ function SharedSlide({ slide, design, index, total, title }: { slide: Slide; des
 
 const OFFICE_KINDS: readonly string[] = ['hwp', 'docx', 'pptx']
 
-/**
- * A shared office document (HWP, Word, PowerPoint): its file, drawn read only by its editor as
- * the file box previews one, and a download of the shared version. When the file cannot be
- * fetched or drawn, the text the server read from it.
- */
+/** Shared office document drawn read only by its editor with a download; falls back to server-read text. */
 function SharedOffice({
   token, kind, title, text, format,
 }: {

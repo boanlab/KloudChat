@@ -1,10 +1,9 @@
-"""What the skills on a turn bring besides their instructions: a 템플릿, check skills, trace
-strictness, 빠진 정보 질문 and 진행 과정 설정 (`skill_specs.DOCUMENT_FIELDS`).
+"""What the turn's skills bring besides instructions: 템플릿, checks, trace strictness, questions,
+process settings (`skill_specs.DOCUMENT_FIELDS`).
 
-The skills are the person's picks for the turn (or the conversation's standing set) and the
-agent's always-on ones. What they bring sits under what the agent and the picked 템플릿 set:
-a template only when none is picked, checks and questions added, settings under the agent's
-(their pre-pass steps and code checks join the 서식's).
+Skills are the turn's picks (or the standing set) plus the agent's always-on ones. They sit under
+the agent's and the picked 템플릿's settings: a template only when none is picked, checks and
+questions added, pre-pass steps and code checks joining the 서식's.
 """
 
 from __future__ import annotations

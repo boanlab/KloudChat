@@ -215,7 +215,7 @@ async def test_any_other_shape_is_written_as_mermaid(monkeypatch):
         description="웹 서버와 DB, 캐시로 이루어진 구성", figure="flow", model="m", api_key="k"
     )
     assert figure_kinds.from_source(source) is None and source.startswith("flowchart LR")
-    # The mermaid prompt is the one it always was.
+    # the mermaid prompt is unchanged
     assert calls[1] == diagram._messages("웹 서버와 DB, 캐시로 이루어진 구성", "flow", "ko")
     assert usage == {"inputTokens": 6, "outputTokens": 4}
 

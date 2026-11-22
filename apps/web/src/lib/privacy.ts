@@ -57,11 +57,7 @@ export function isStrictAction(action: string | null | undefined): boolean {
   return !!action && STRICT_ACTIONS.has(action)
 }
 
-/**
- * The request-protection badge, read from what the routing record says happened:
- * `base` names how the request was protected, `search` what a strict-local turn did about the
- * web (`n` searches). Untranslated; null when the record claims nothing.
- */
+/** Request-protection badge from the routing record (`base`: how protected; `search`: strict-local web handling, `n` searches); untranslated, null when nothing is claimed. */
 export function requestProtection(routing: Partial<PrivacyRouting> | null | undefined): {
   base: string
   search: string | null

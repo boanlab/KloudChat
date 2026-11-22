@@ -39,10 +39,7 @@ const sharedState: Record<Scope, { label: string; title: string; tone: 'accent' 
   },
 }
 
-/**
- * Read-only session sharing; shared state shown beside the button. With `artifact`, one
- * result alone (「이 아티팩트만 공유」): no button, the caller's menu opens it with `open`.
- */
+/** Read-only session sharing; with `artifact`, shares that one result only and the caller's menu opens it via `open`. */
 export function ShareButton({
   session,
   artifact,

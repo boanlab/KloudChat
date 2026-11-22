@@ -8,10 +8,8 @@ import { useT } from '@/lib/useT'
 import './slides.css'
 
 /**
- * The slides family's chrome, shared by the PowerPoint editor (`SlidesEditor`) and the web
- * slides editor (`DeckPanel`): toolbar buttons and drop-down menus, the thumbnail rail with its
- * slide menu and drag to reorder, and the speaker-notes pane. Light on purpose: no editor
- * library comes with it, so the web slides do not load the PowerPoint editor's chunk.
+ * Chrome shared by `SlidesEditor` and `DeckPanel`: toolbar, thumbnail rail, notes pane.
+ * Kept light so the web slides do not load the PowerPoint editor chunk.
  */
 
 /** Keeps toolbar clicks from taking the text editor's selection. */
@@ -129,12 +127,7 @@ export interface RailProps {
   onAddAfter: (index: number) => void
 }
 
-/**
- * Numbered thumbnails; a slide's menu (⋮ or right-click): 새 슬라이드, 슬라이드 복제, 위로 이동,
- * 아래로 이동, 슬라이드 삭제; drag to reorder; Delete removes the slide, the arrows, Page Up/Down,
- * Home and End step; and
- * 「+ 새 슬라이드」 under the list.
- */
+/** Numbered thumbnails with a slide menu (⋮ or right-click), drag to reorder, and keyboard stepping (Delete, arrows, Page Up/Down, Home/End). */
 export function SlideRail({
   count, active, keyOf, thumb, hidden, badge, lead, canEdit, compact, row, onSelect, onMove,
   onDuplicate, onDelete, onAddAfter,
@@ -262,10 +255,7 @@ export function SlideRail({
 
 // ── notes ──
 
-/**
- * The speaker notes under the slide, folded open by default. Typing commits after a pause and
- * on leaving the box; a new slide (`slideKey`) shows its own notes.
- */
+/** Speaker notes under the slide, open by default; commits after a pause and on blur; `slideKey` switches notes. */
 export function NotesPane({
   slideKey, value, canEdit, onCommit, children,
 }: {

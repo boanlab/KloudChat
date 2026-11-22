@@ -1,17 +1,15 @@
-"""Read and edit a `.pptx` in place: a numbered outline for the model, and edit ops that keep
-each paragraph's level and bullets, each run's character format and each cell's own fill.
+"""Read and edit a `.pptx` in place: a numbered outline for the model and edit ops that keep
+paragraph levels/bullets, run formats and cell fills.
 
-Ids are positions in the current version: slides `s1…`, and in each slide the shapes worth
-naming (text, tables, charts, pictures) `s2.1, s2.2…` in drawing order, a group's shapes
-where the group stands. Hidden shapes are not listed: decks exported from KloudChat carry the
-slide title twice, in a visible box and in a 1 pt hidden title placeholder for the outline
-view; an edit of the visible title takes the hidden copy along. Slide ops renumber, so one
-`apply` call resolves every op against the version it was given, and the next call reads
-again.
+Ids are positions in the current version: slides `s1…`, and per slide the shapes worth naming
+(text, tables, charts, pictures) `s2.1, s2.2…` in drawing order. Hidden shapes are not listed:
+exported decks carry the slide title twice (visible box and a 1 pt hidden title placeholder for
+the outline view); editing the visible title takes the hidden copy along. Slide ops renumber, so
+one `apply` resolves every op against the version it was given.
 
-A shape's text is one line per paragraph. A rewrite touches only what changed: lines that
-stay keep their runs, a changed line keeps the text it shares at the start and the end in its
-own runs (a bold label stays bold), and a new line takes the format of its neighbour.
+A shape's text is one line per paragraph; a rewrite touches only what changed: unchanged lines
+keep their runs, shared leading/trailing text stays in its runs, a new line takes its neighbour's
+format.
 """
 
 from __future__ import annotations
@@ -287,9 +285,8 @@ def set_bullet(
     numbered: str | None = None,
 ) -> None:
     """A real bullet on the paragraph: `char` (or `numbered`, an `a:buAutoNum` scheme such as
-    `arabicPeriod`) in `colour` (an `RRGGBB` or a colour element), drawn in the text's own font
-    and size, the text hanging `hang` EMU right of it so a wrapped line starts under the text
-    rather than under the bullet."""
+    `arabicPeriod`) in `colour` (`RRGGBB` or a colour element), in the text's own font and size,
+    the text hanging `hang` EMU right of it so wrapped lines start under the text."""
     props = _ppr(paragraph)
     for child in list(props):
         if child.tag in _BU_KINDS or child.tag in _BU_COLOURS or child.tag in _BU_FONTS:
@@ -378,11 +375,9 @@ _RAW_BREAK = re.compile(r"_x000D_\n|_x000D_|_x000B_|\r\n|[\r\n\v]")
 
 
 def breaks_in_runs(root: etree._Element) -> int:
-    """Every line break written as a character inside a run's text made an `a:br` between
-    two runs of that format; how many runs were split. PowerPoint draws a raw LF in `a:t` as
-    nothing or a box, and the editor's text model reads it as a paragraph end that borrows
-    the paragraph before's runs by character offset (a wrapped line unindented, its first
-    letters in the bullet's colour)."""
+    """Turn every line break written as a character inside a run's text into an `a:br` between
+    two runs of that format; returns how many runs were split. PowerPoint draws a raw LF in `a:t`
+    as nothing or a box, and the editor reads it as a paragraph end borrowing the previous runs."""
     split = 0
     for run in list(root.iter(_A_R)):
         leaf = run.find(_A_T)
@@ -499,9 +494,8 @@ def _run_props(paragraph: etree._Element) -> etree._Element | None:
 
 
 def _set_text(paragraph: etree._Element, text: str) -> None:
-    """Paragraph text replaced in one run in the format the text was mostly in; fields and
-    breaks go, a 「↵」 is a break. A written bullet before the text stays, unless the new
-    text brings its own."""
+    """Paragraph text replaced in one run in the text's dominant format; fields and breaks go, a
+    「↵」 is a break. A written bullet before the text stays unless the new text brings its own."""
     text = _without_sign(paragraph, text)
     marker = _marker(paragraph)
     if marker is not None:
@@ -1339,11 +1333,9 @@ def apply(data: bytes, ops: list[dict],
 
 
 def written_bullets_only(data: bytes) -> bytes:
-    """No automatic bullet the deck did not ask for. The house exporter marks a slide's body
-    box as the body placeholder (for the outline view) and sets each bullet itself (`a:buChar`);
-    on its blank layout a placeholder paragraph that sets none falls back to the master's
-    bulleted body style, so PowerPoint and the editor would draw a bullet before a plain line.
-    Each paragraph of a body placeholder that sets no bullet of its own gets `a:buNone`."""
+    """Add `a:buNone` to body-placeholder paragraphs that set no bullet: the exporter sets each
+    bullet itself, and on the blank layout an unset one would fall back to the master's bulleted
+    body style."""
     prs = _load(data)
     changed = False
     for slide in prs.slides:
@@ -1392,9 +1384,8 @@ def blank_deck() -> bytes:
         for ext in root.iter(qn("a:ext")):
             if ext.get("cx") is not None:
                 ext.set("cx", str(int(int(ext.get("cx", "0")) * factor)))
-    # The default template's text places shrink their text to fit (`a:normAutofit`): the
-    # editor would then shrink a whole box as soon as a line is added. Fixed boxes here; the
-    # house writer's own overflow fallback (`deck_export._autofit`) is the only shrink.
+    # master/layout text places shrink to fit (`a:normAutofit`), so the editor would shrink a whole
+    # box when a line is added; fixed boxes here, `deck_export._autofit` is the only shrink
     for root in [prs.slide_master._element, *(lay._element for lay in prs.slide_layouts)]:
         _no_shrink(root)
     theme = prs.slide_master.part.part_related_by(RT.THEME)

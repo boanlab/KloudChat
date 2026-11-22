@@ -3,10 +3,8 @@ import { shellRead } from './shell-mocks'
 import { viewport } from './project'
 
 /**
- * Pipeline phase 2 screens against fixture data: the stage list in a report transcript and on the
- * 검토 tab, 「이 단계부터 다시」 streaming a new version, the question card as a waiting stage,
- * blanks and findings marked in the document (filled in place), the chat's compact stage list,
- * and an agent's pipeline on its card and in the editor's 「워크플로」 tab.
+ * Pipeline screens against fixture data: stage lists, 「이 단계부터 다시」, the question card,
+ * blanks and findings marked in the document, and an agent's pipeline in its 「워크플로」 tab.
  */
 
 test.use({ serviceWorkers: 'block' })
@@ -268,9 +266,8 @@ test('report: stage list, evidence, marks, fill, rerun', { tag: '@phone' }, asyn
   await expect(page.getByText('회의록을 만들었습니다.')).toBeVisible({ timeout: 15_000 })
   const timeline = page.getByRole('button', { name: /보고서를 썼습니다/ }).first()
   if (phone) {
-    // The panel (opened by `?artifact=`) covers the transcript on a phone; the transcript is
-    // read first. Wait for the panel to open before closing it: a check made before it opens
-    // finds nothing to close, and the panel then covers the timeline.
+    // On a phone the panel covers the transcript; wait for it to open before closing it,
+    // or the close finds nothing and the panel stays.
     await expect(panel(page)).toBeVisible({ timeout: 15_000 })
     await panel(page).getByRole('button', { name: /닫기/ }).first().click()
     await expect(panel(page)).toBeHidden()

@@ -1,12 +1,8 @@
 """Which model writes each 지식 서가 output — the one place to change it.
 
-Per output kind: `strictModel` where internal material must stay inside (the administrator's
-rule, on by default) or no outside model is allowed; `model` where it may leave; `effort`
-the reasoning effort (`none`, `high`). Defaults come from the 2026-11-13 evaluations: the
-Super Agent's (flash with thinking on scored 8.5 on long and complex tasks against the 27B's
-6-7; DeepSeek V4.1 Flash with reasoning on is its escalation pick, used here where material
-may leave) and the knowledge shelf's own comparison below.
-`KNOWLEDGE_MODELS` (JSON, the same shape, per kind) overrides any of it.
+Per output kind: `strictModel` where internal material must stay inside (administrator rule, on by
+default) or no outside model is allowed; `model` where it may leave; `effort` the reasoning effort
+(`none`, `high`). `KNOWLEDGE_MODELS` (JSON, same shape, per kind) overrides any of it.
 """
 
 from __future__ import annotations
@@ -23,11 +19,8 @@ _FLASH = {"strictModel": "strict-local/qwen3.8-flash", "effort": "none",
           "model": "deepseek/deepseek-v4.1-flash"}
 _FLASH_THINKING = {**_FLASH, "effort": "high"}
 
-#: 2026-11-13, ten lecture notes, Sonnet judge, 27B against flash: flash won the briefing
-#: (7 vs 6), the glossary (7 vs 5) and the quiz (8 vs 7). With thinking on, flash ran past a
-#: 14k-token room on every long document attempt (briefing, glossary) and answered only
-#: without it, so documents are written without thinking; a quiz finished thinking in about
-#: 70 s and is the better for it. Thinking that runs out is answered again without it.
+#: Long documents are written without thinking (thinking overruns the token room); the quiz benefits
+#: from it. Thinking that runs out is retried without it.
 DEFAULTS: dict[str, dict[str, str]] = {
     "study_guide": dict(_FLASH),
     "faq": dict(_FLASH),

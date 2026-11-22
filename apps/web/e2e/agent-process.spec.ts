@@ -2,11 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { hubFixture, myAgents } from './customize-fixture'
 import { viewport } from './project'
 
-/**
- * An agent's 진행 과정 and 추가로 할 일: 바로 답하기, a base the official agents work by with its
- * 묶음 ticked as the official agent ticks them, or 직접 구성. Items that are the report flow's own
- * are shown as always on; what a surface cannot run is not shown. Fixture data only.
- */
+/** An agent's 진행 과정 and 추가로 할 일 (바로 답하기, official base, 직접 구성), on fixture data. */
 
 test.use({ serviceWorkers: 'block' })
 

@@ -1,9 +1,8 @@
-"""A structure (a cluster's nodes, a service's tiers, a short figure that forks and joins) is laid
-out by ELK in the printer and drawn as shapes: each group's frame holds its own members, the link
-back is the one the writer drew back, and without the printer the built-in layouts draw it.
+"""A structure is laid out by ELK in the printer and drawn as shapes; without the printer the
+built-in layouts draw it.
 
 The printer's answers are recorded in tests/fixtures/elk (regenerate by posting
-`elk_layout._requests` of these figures to the printer's /layout)."""
+`elk_layout._requests` to /layout)."""
 
 from __future__ import annotations
 

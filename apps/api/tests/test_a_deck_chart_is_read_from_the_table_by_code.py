@@ -1,6 +1,5 @@
-"""A chart slide's figures come from the pasted table, read by code (the quarterly revenue deck
-of the 2026-11-17 benchmark never got a right chart from any model); a request for a chart
-with none drawn gets one; an explicit slide count is held; the planner reads a digest."""
+"""A chart slide's figures are read from the pasted table by code; an explicit slide count is
+held; the planner reads a digest."""
 
 from __future__ import annotations
 

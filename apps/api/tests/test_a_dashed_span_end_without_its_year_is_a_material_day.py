@@ -1,9 +1,5 @@
 """The end of a dashed span written without its year (「2026-11-03~11-10」) is a day of the
-material, so the grounding check leaves it unmarked.
-
-Round-3 r3r03 (11-21, KC-SA): the memo said 「설문(2026-11-03~11-10, …)」; the check read the start
-day but not the end, and the report's 「11월 3일부터 11월 10일까지」 came out as 「11월 10일(확인
-필요)」."""
+material, so it stays unmarked."""
 
 from __future__ import annotations
 

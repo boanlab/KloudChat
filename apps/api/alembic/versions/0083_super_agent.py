@@ -1,11 +1,8 @@
 """Super Agent: picker entries that pick model and effort per turn.
 
-- `governance.super_agent_enabled`: the entries offered; on for every installation (owner
-  decision 2026-11-14: Super Agent is the default), the admin can turn it off.
-- `governance.super_agent_rules`: the admin's changes to the built-in class table
-  (`super_agent.DEFAULT_RULES`). Old lists an admin changed carry over (the first economy
-  model answers simple turns, the first quality model hard ones); lists still at the old
-  defaults leave the evaluated table as it is.
+- `governance.super_agent_enabled`: whether the entries are offered; on by default.
+- `governance.super_agent_rules`: admin changes to the built-in class table (`super_agent.DEFAULT_RULES`);
+  lists an admin changed carry over, lists at the old defaults leave the table as is.
 - `sessions.routing_mode`: conversations on either Auto lane move to `super`.
 
 Downgrade drops both columns and moves Super Agent conversations back to `auto`.

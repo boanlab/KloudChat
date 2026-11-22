@@ -1,6 +1,4 @@
-"""Themes retire into 디자인 지침 (2026-11-15): a project's or agent's look is words, read by the
-writers as a design; the theme rows stay but nothing reads them, and the move writes each theme
-out as text."""
+"""A project's or agent's look is design-brief text read by the writers; theme rows are not read."""
 
 from __future__ import annotations
 

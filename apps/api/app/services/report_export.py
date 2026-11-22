@@ -1525,10 +1525,8 @@ _DOCX_CHART_DRAWING = (
 )
 
 
-#: a namespace no Office application knows: the picture of a chart sits in an
-#: `mc:Choice` that requires it, so Word and LibreOffice take the `mc:Fallback` (the native,
-#: editable chart) while an editor that draws no chart (the in-app Word editor reads the
-#: Choice first) shows the picture
+#: Namespace no Office app knows: a chart's picture sits in an `mc:Choice` requiring it, so Word and
+#: LibreOffice take the native `mc:Fallback` chart while the in-app editor (reads Choice first) shows the picture
 _EDITOR_PICTURE_NS = "urn:kloudchat:editor-picture"
 _MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
 
@@ -2216,11 +2214,13 @@ def to_docx(
     static_toc: bool = False,
     form_mode: bool = False,
 ) -> bytes:
-    """Word file of the report. For a file edited in an editor that runs no fields and draws
-    no DrawingML chart: `charts_as_pictures` places a chart's stored raster (as the HWPX does),
-    `static_toc` writes the 목차 as the section headings instead of a TOC field. `form_mode`
-    (`docx_form`): the body only, in the `template` form's own styles, page and type: no title
-    or head, no accent, no type scale of the house."""
+    """Word file of the report.
+
+    For editors without fields or DrawingML charts: `charts_as_pictures` places a chart's stored
+    raster, `static_toc` writes the 목차 as headings instead of a TOC field. `form_mode`
+    (`docx_form`): body only, in the `template` form's own styles, page and type (no title, head,
+    accent or house type scale).
+    """
     from docx import Document
     from docx.shared import Inches, Pt, RGBColor
 

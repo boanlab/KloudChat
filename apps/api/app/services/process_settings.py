@@ -86,7 +86,7 @@ KEYS = ("prepass", "date_base", "stages", "checks", "judged", "amend", "head", "
         "structure", "search", "deep_search", "code_calc", "fixed_outline", "draws",
         "prepass_always",
         "prepass_quiet", "conflict_rule")
-#: list settings a turned-on skill adds to (never replaces) the 서식's
+#: list settings a skill extends, never replaces
 LIST_KEYS = ("prepass", "stages", "checks", "judged", "amend", "head", "rules")
 #: key in an agent's settings carrying its skills' list additions (`skill_turn.Brought`)
 ADDED = "added_by_skills"

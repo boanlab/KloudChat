@@ -1,10 +1,6 @@
-"""What the administrator set up for each provider: the one OAuth client this installation
-uses, whether it is on, and which features (and so which scopes) people may grant.
-
-Every person connects their own account with that client (a personal gmail.com account as
-well as a Workspace one; any Slack workspace where the app is installed). Stored as system
-settings; the client secret and Slack's signing secret are sealed
-(`settings_store.SECRET_KEYS`) and never returned to the browser."""
+"""Administrator settings per provider: the installation's OAuth client, on/off, and the
+features (scopes) people may grant. Every person connects their own account with it. Stored as
+system settings; secrets are sealed (`settings_store.SECRET_KEYS`) and never sent to the browser."""
 
 from __future__ import annotations
 
@@ -19,10 +15,8 @@ PROVIDERS = (GOOGLE, SLACK)
 
 DRIVE_FILE = "https://www.googleapis.com/auth/drive.file"
 
-#: feature → OAuth scopes a person grants (Google). Drive uses `drive.file` only (files
-#: the person picks in Google Picker, or files the app made): a non-sensitive scope, so a
-#: personal gmail.com account works without Google's verification or security assessment.
-#: (Calendar is on hold, owner decision 2026-11-15: its scopes are sensitive.)
+#: feature → OAuth scopes a person grants (Google). Drive uses only the non-sensitive
+#: `drive.file`, so personal accounts work without Google's verification.
 GOOGLE_FEATURES: dict[str, tuple[str, ...]] = {
     "drive": (DRIVE_FILE,),
     "drive_export": (DRIVE_FILE,),

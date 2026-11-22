@@ -118,9 +118,7 @@ def test_a_budget_s_basis_is_not_the_prices_basis():
                                      "- PM 7MM × 10,500,000원\n") == ""
 
 
-# ── an excluded line without a price: no 「quote-calc: 견적 계산 실패」 ─────────────────
-# The extraction marks the API line excluded and leaves its price out; the script must not
-# need `item["unit_price"]` for it.
+# An excluded line without a price: the script must not need `item["unit_price"]`.
 
 UNPRICED_EXCLUSION = {
     "vat_basis": "excl",

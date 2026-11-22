@@ -1,9 +1,4 @@
-/**
- * The length of a local audio/video file, read from its container header in the page (no media
- * element, nothing played): MP4/MOV/M4A from the movie header (`moov` › `mvhd`), WebM/Matroska
- * from the segment's `Info` (`TimecodeScale`, `Duration`). Anything else, or a header that does
- * not say (a live recording without a duration), is undefined: the server probes it after upload.
- */
+/** Duration of a local audio/video file from its container header (MP4/MOV/M4A `mvhd`, WebM `Info`); undefined when absent. */
 
 /** A part of the file read as bytes. */
 export type ReadRange = (start: number, end: number) => Promise<Uint8Array>

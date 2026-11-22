@@ -1,9 +1,8 @@
-"""Report/deck/page versions: a save, a rewrite or a restore moves the version in one
-conditional UPDATE, so of two writers that read the same version (two API replicas) exactly
-one lands and the other is told to reload (409) instead of overwriting it.
+"""A save, rewrite or restore moves a report/deck/page version in one conditional UPDATE; the losing
+writer gets 409.
 
-Runs on SQLite; set KC_TEST_POSTGRES_URL (postgresql+asyncpg://…, a throwaway database that
-`alembic upgrade head` has migrated) to run the same cases against Postgres as well."""
+Runs on SQLite; set KC_TEST_POSTGRES_URL (postgresql+asyncpg://…, a migrated throwaway database)
+to also run on Postgres."""
 
 from __future__ import annotations
 

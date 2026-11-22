@@ -271,7 +271,7 @@ function PrintDocument({ report }: { report: ReportArtifact }) {
           {/* The 개조식 붙임 closes the body: its lines carry the 붙임 label. */}
           {/* A one-section body with no heading (a 공문's items) prints no chapter title. */}
           {!isAttachment(s, block?.lists) && (s.heading || '').trim() !== '' && <h2>{numbers[index].label && `${numbers[index].label} `}{s.heading}</h2>}
-          {/* No owner: printing must not store diagrams. */}
+          {/* no owner: printing must not store diagrams */}
           {block ? <div className="tb-counted"><SectionBody section={shapedSection(s, block, index === closingAt)} /></div> : <SectionBody section={s} />}
         </section>
       ))}
@@ -1811,9 +1811,7 @@ export function ReportPanel({
                 onSourceMode={setSourceMode}
                 settingsSlot={editMode && ribbon === 'layout' ? settingsSlot : null}
                 onDirty={(sections, title, pageSettings, reviewComments, titleBlock) => {
-                  // Back to what is stored (an undo, a view toggled there and back, the editor
-                  // re-reading a drawn block or a table): nothing to save. Each part counts only
-                  // when it differs from the stored document the editor shows.
+                  // nothing to save when each part equals the stored document
                   const base = held ?? report
                   setPageEdits(sameSections(sections, base.sections) || sameSectionsAsStored(sections, base.sections) ? null : sections)
                   const retitled = changedFrom(title?.trim(), base.title.trim())

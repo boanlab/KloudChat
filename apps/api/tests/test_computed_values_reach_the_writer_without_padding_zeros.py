@@ -1,9 +1,4 @@
-"""Computed values reach the writer as people write them, not as `:.4f` or `:.4g` prints them.
-
-The calculation pass was told 「유효숫자 4자리」, so its programs printed
-「평균 만족도 = 3.2600 점」 and 「1년 총매출 = 1.369e+04만원」, and writers copied both into
-reports (round-1 r1r03, r1r04 on both arms: 「12개월 누적 매출은 1.369e+04만 원」,
-a month table of 「7.744e+06원」)."""
+"""Computed values reach the writer as people write them, not as `:.4f` or `:.4g` prints them."""
 
 from __future__ import annotations
 
@@ -34,9 +29,6 @@ def test_the_calculation_prompt_asks_for_plain_numbers() -> None:
 
 
 def test_the_document_s_size_and_setting_are_no_data_to_calculate() -> None:
-    # round-1 r1d02 (11-20): 「1학년 … 3주차 … 12장 … 예제 1개 … 퀴즈 3문항」 read as four
-    # figures; the calculation pass made up its own demand and supply lines and both arms
-    # showed an equilibrium (16원, 68개) no slide's equations give
     lecture = ("대학교 1학년 경제학원론 3주차 강의 「수요와 공급」 슬라이드를 "
                "12장 정도로 만들어 줘. 간단한 계산 예제 1개(수요식·공급식으로 균형 "
                "가격·수량 구하기), 마지막에 퀴즈 3문항.")
@@ -47,8 +39,6 @@ def test_the_document_s_size_and_setting_are_no_data_to_calculate() -> None:
 
 
 def test_an_english_request_asking_to_compute_gets_the_calculation_pass() -> None:
-    # round-1 r1r11·r1d11 (11-20): 「compute weighted scores correctly」 and 「compute growth
-    # correctly」 named no Korean calculation word, so the writer did the arithmetic alone
     ask = ("Use only these facts and compute weighted scores correctly. Weights: cost 30%, "
            "compliance 30%, integration 20%, service 20%. Vendor P scores 4, 4, 3, 4.")
     assert calc.needed(ask, [])

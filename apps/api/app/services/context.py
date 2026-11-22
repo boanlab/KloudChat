@@ -398,12 +398,9 @@ def system_prompt(
     light: bool = False,
     cache_order: bool = False,
 ) -> str:
-    """System turn; `extra` = caller-ordered workspace blocks; `light` = the strong-writer
-    setup (`model_tier.strong`): date, tools, structure, the person's settings, one line
-    against invention — no writing rules. `cache_order` (`model_tier.cache_ordered`): the
-    deployment's fixed blocks first, so a provider or vLLM prefix cache can reuse them across
-    turns and sessions; then the date, then `extra`, then one line keeping the contracts
-    above the blocks that now follow them."""
+    """System turn. `extra`: caller-ordered workspace blocks; `light`: strong-writer setup
+    (`model_tier.strong`, no writing rules); `cache_order` (`model_tier.cache_ordered`): fixed
+    blocks first so prefix caches hit, then date, then `extra`."""
     if light:
         return _light_prompt(
             kind, with_tools=with_tools, web_search=web_search,
@@ -564,9 +561,7 @@ def build_messages(
         standing = []
     elif standing is None:
         standing = standing_directives(history)
-    #: an English answer was asked for: the acknowledgements the envelope puts in the
-    #: assistant's mouth speak it too — a Korean 「네, …」 right before the question pulls an
-    #: English-only conversation back to Korean
+    #: English requested: the envelope's acknowledgements must also be English.
     english = standing_english = False
     if _agent_language(rules):
         # the agent's language holds; a standing request for another one still wins
@@ -635,10 +630,8 @@ def build_messages(
     return _alternating(messages)
 
 
-# A standing directive is read as two parts: a *scope* that reaches past this answer and,
-# for the weaker scope words, an *aspect* of the answer it sets. 「앞으로 …」 alone is
-# standing; 「계속 …」 or "keep …" is standing only when it names a language, a tone, a
-# format or a length (「계속 영어로」, "keep it in English") — 「계속 진행해 줘」 is a task.
+# Standing directive = scope past this answer + (for weak scope words) an aspect: 「앞으로 …」
+# alone stands; 「계속 …」/"keep …" stands only with a language, tone, format or length.
 
 #: Scope that holds for the rest of the conversation whatever it sets.
 _STANDING_RE = re.compile(
@@ -730,9 +723,8 @@ def _directives_in(message: str) -> list[tuple[str, frozenset[str]]]:
 
 
 def standing_directives(history: list[dict[str, str]]) -> list[str]:
-    """Earlier rule-setting user messages (or sentences), oldest first, until withdrawn. A
-    later directive replaces an earlier one that set nothing it does not set again (a new
-    answer language replaces the old one; 「앞으로 존댓말로」 does not replace 「항상 표로」)."""
+    """Rule-setting user messages, oldest first, until withdrawn; a later directive replaces an
+    earlier one whose aspects it fully re-sets."""
     found: list[tuple[str, frozenset[str]]] = []
     users = [i for i, m in enumerate(history) if m.get("role") == "user"]
     for i in users[:-1]:
@@ -752,10 +744,9 @@ _PINNED_RULES = 20
 
 
 def standing_rules(history: list[dict[str, str]], pinned: list[dict] | None = None) -> list[str]:
-    """What the person set for the whole conversation, for a step that reads only part of it
-    (a document revision, an office tool): their standing directives over every user turn,
-    the latest included (`standing_directives`), then the running memory's pinned facts and
-    rules (`conversation_summary.pinned_lines`) once older turns were folded into it."""
+    """Conversation-wide rules for steps that see only part of it: standing directives
+    (`standing_directives`), then the summary's pinned lines
+    (`conversation_summary.pinned_lines`)."""
     from app.services.conversation_summary import pinned_lines
 
     found = standing_directives([*history, {"role": "user", "content": ""}])
@@ -843,18 +834,14 @@ _MAX_ANSWER_RESERVE = 8_192
 _TRIM_TO = 0.6
 
 
-#: How far a model's own token count can run above `estimate_tokens` when its tokenizer is
-#: not the self-hosted one the estimate was calibrated on: GLM counts a Korean paste 1.4×
-#: higher than the estimate, Qwen about the same.
+#: Worst-case ratio of a foreign tokenizer's count to `estimate_tokens` (calibrated on the
+#: self-hosted one).
 _FOREIGN_TOKENIZER = 1.5
 
 
 def effective_window(model: dict | None) -> int:
-    """The window a conversation is fitted to, in `estimate_tokens` units: the model's own
-    (catalogue metadata or a `MODEL_OVERRIDES` `context_window`), else
-    `DEFAULT_CONTEXT_WINDOW` — a model whose window nobody stated is not sent an unbounded
-    conversation. A model outside the self-hosted group counts with another tokenizer, so
-    its window is taken as `_FOREIGN_TOKENIZER` times smaller in the estimate's units."""
+    """Context window in `estimate_tokens` units: catalogue or `MODEL_OVERRIDES` value, else
+    `DEFAULT_CONTEXT_WINDOW`; divided by `_FOREIGN_TOKENIZER` outside the self-hosted group."""
     from app.services import model_tier
 
     try:

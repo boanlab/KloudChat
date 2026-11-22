@@ -1,10 +1,8 @@
 """Token counts read from a provider's `usage` object, cached prompt tokens included.
 
-Providers name the cached part of the prompt differently: OpenAI-style (LiteLLM, vLLM,
-OpenRouter) `prompt_tokens_details.cached_tokens`, DeepSeek `prompt_cache_hit_tokens`,
-Anthropic through LiteLLM `cache_read_input_tokens`. Cached tokens are part of
-`prompt_tokens`, not on top of it. `cachedInputTokens` is kept only when non-zero, so a
-provider that reports none leaves usage dicts as they were."""
+Cached-part names differ: OpenAI-style `prompt_tokens_details.cached_tokens`, DeepSeek
+`prompt_cache_hit_tokens`, Anthropic via LiteLLM `cache_read_input_tokens`. Cached tokens are part
+of `prompt_tokens`. `cachedInputTokens` is kept only when non-zero."""
 
 from __future__ import annotations
 

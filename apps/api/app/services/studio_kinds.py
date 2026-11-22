@@ -1,9 +1,9 @@
-"""What each 지식 서가 studio output asks the model for, and how its answer becomes the
-document, quiz or card set it is. Pure functions: the calls are in `studio`.
+"""What each 지식 서가 studio output asks the model for, and how its answer becomes the document,
+quiz or card set it is. Pure functions: the calls are in `studio`.
 
-Every output is written from numbered sources (「[n] name」) and cites them as 「[n]」; a
-citation of a number not in the list is taken out. Documents become report sections (saved
-as a web report, or an HWP/Word file through the report path), a mind map a mermaid
+Every output is written from numbered sources (「[n] name」) and cites them as 「[n]」; a citation
+of
+a number not in the list is removed. Documents become report sections, a mind map a mermaid
 `mindmap` block, quizzes and flashcards item lists.
 """
 

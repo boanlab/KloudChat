@@ -1,11 +1,9 @@
 """Limits, approvals and rules a document states as settled that the material never states.
 
-A memo that asks 「최대 4%까지 허용 여부 결재 필요」 holds a request, not a limit: 「내부 허용
-한도는 최대 4%」, 「팀 내에서 검토한 최대 허용 인하 폭」, 「안 1은 결재권 한도 초과」, 「승인 없이는
-견적서를 발송하지 않습니다」 read as facts the reader will act on. Each kind below is traced as a
-whole: a sentence may state a limit only when the material (request, files, sources) states one,
-an approval only when the material says it was given, a rule only when the material names it, a
-review done within the team only when the material says one was.
+A request (「최대 4%까지 허용 여부 결재 필요」) is not a limit (「내부 허용 한도는 최대 4%」). A
+sentence may
+state a limit only when the material states one, an approval only when it says it was given, a
+rule only when it names it, a team review only when it says one was done.
 """
 
 from __future__ import annotations
@@ -75,8 +73,7 @@ def untraced(sentence: str, material: str, quotes: str = "") -> list[str]:
 
 
 def _korean(material: str) -> bool:
-    """Whether the material is written in Korean: the kinds are read in Korean words, so an
-    English memo's 「approved」 would read as no approval at all."""
+    """Whether the material is mostly Korean: the kinds are read in Korean words."""
     hangul = len(re.findall(r"[가-힣]", material or ""))
     return hangul * 4 >= len(re.findall(r"[A-Za-z]", material or ""))
 
@@ -91,8 +88,8 @@ def _clauses(sentence: str) -> list[tuple[int, int]]:
 
 
 def _asked(sentence: str, at: int) -> bool:
-    """The clause holding `at` asks about the point: 「…허용 한도를 둘지」, not 「현재 허용 한도인
-    최대 4% 사이에 차이가 있으므로, 어느 범위까지 승인할지」 (the ask is the next clause's)."""
+    """The clause holding `at` asks about the point (「…허용 한도를 둘지」), not a later clause's
+    ask."""
     if sentence.lstrip().startswith("|"):
         return bool(_ASKS.search(sentence))
     start, end = next((s, e) for s, e in _clauses(sentence) if s <= at < e)

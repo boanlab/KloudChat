@@ -1,8 +1,7 @@
 """Builds `app/help/docs.json` from the user guide (`website/docs`, KO, and its EN translation).
 
-The API image carries only `apps/api`, so the guide the chat reads when a question is about
-KloudChat itself (`services/app_help.py`) is kept here as sections: one per `##` heading, with
-its page title and path. Run after editing the guide:
+Sections (one per `##` heading, with page title and path) for `services/app_help.py`; the API image
+carries only `apps/api`. Run after editing the guide:
 
     python apps/api/scripts/build_help.py
 

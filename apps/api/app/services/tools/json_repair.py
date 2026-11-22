@@ -1,9 +1,7 @@
-"""Tool-call arguments cut off mid-way (a long `pptx_write` call that hit the model's output
-limit, a streamed call that stopped early) read back as far as they are whole.
+"""Truncated tool-call arguments (output limit, early stop) read back as far as they are whole.
 
-`repair` keeps everything up to the last value that is complete at a shallow depth (a whole
-slide of a `slides` array, not half of one) and closes the open brackets; a tail that is only
-cut inside a string is closed too. Nothing is invented: what was cut is dropped."""
+`repair` keeps everything up to the last complete value at a shallow depth (a whole slide, not
+half) and closes open brackets; a tail cut inside a string is closed too. Nothing is invented."""
 
 from __future__ import annotations
 

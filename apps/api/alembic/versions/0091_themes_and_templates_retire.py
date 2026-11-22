@@ -1,18 +1,13 @@
-"""Templates and themes retire into 디자인 지침 and the agent's own fields (2026-11-15).
+"""Templates and themes fold into 디자인 지침 and the agent's own fields.
 
-Data only; nothing is deleted, and the template and theme columns stay (old conversations and
-artifacts still read their template).
+Data only; template and theme columns stay (old conversations and artifacts still read their template).
 
-- `projects.design_brief`, `agents.design_brief`: a project or agent with a theme
-  (`design_system_id`) and no 지침 gets the theme written as one (`design_brief.render`, frozen
-  here): its colours, face, look, voice rules, craft rules and picture style.
-- `agents.doc_format`: an agent bound to a shipped document template and with no format of its
-  own takes the template's format (the pattern now brings its questions and checks).
-- An agent bound to a person's template (`ut-…`) takes that template's questions, process
-  settings and check skills where it has none of its own.
+- `projects.design_brief`, `agents.design_brief`: an owner with a theme (`design_system_id`) and no 지침
+  gets the theme rendered as one (`design_brief.render`, frozen here).
+- `agents.doc_format`: an agent bound to a shipped document template and with no format takes the template's.
+- An agent bound to a person's template (`ut-...`) takes its questions, process settings and check skills where it has none.
 
-Downgrade empties the 지침 this upgrade wrote (marked 「(테마에서 옮김)」); the formats and fields
-it gave agents stay, as they are what those agents already did.
+Downgrade empties the 지침 marked 「(테마에서 옮김)」; formats and fields given to agents stay.
 
 Revision ID: 0091
 Revises: 0090
@@ -33,7 +28,7 @@ down_revision: str | None = "0090"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-#: shipped document template → its format, as the templates said on 2026-11-15
+#: Shipped document template -> its format.
 TEMPLATE_FORMATS = {
     "doc-agenda": "agenda", "doc-career-history": "career_history",
     "doc-client-proposal": "client_proposal", "doc-comparison": "comparison",

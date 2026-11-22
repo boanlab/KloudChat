@@ -165,7 +165,6 @@ export const EN_UI: Record<string, string> = {
   '제공자: {name}': 'Provider: {name}',
   '{name} 실행 정보': '{name} run details',
   '이번 답 실행 정보': 'Run details of this answer',
-  // What an outside model was sent, masked (an answer's 「외부로 보낸 내용 보기」)
   '외부로 보낸 내용 보기': 'View what was sent out',
   '외부로 보낸 내용': 'What was sent out',
   '{list} 가림': '{list} masked',

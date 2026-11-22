@@ -1,7 +1,5 @@
-"""As reverify-za found them: 「6장 단계를 두 개로 나눠줘」 on a slide whose steps are only a drawn
-flow is that slide's edit (never the deck made anew) and is said and changes nothing; a deck cut
-to fewer slides counts a table cell under its row's unit as kept and names a chart's value it left
-out by its category."""
+"""Splitting one slide's steps edits only that slide; a cut deck counts table cells under their
+row as kept and names a dropped chart value."""
 
 from __future__ import annotations
 

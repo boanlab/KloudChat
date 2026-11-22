@@ -59,10 +59,8 @@ def test_a_memo_person_gets_no_task_the_memo_never_gives_them():
 
 
 def test_an_unowned_row_whose_task_no_memo_clause_gives_is_unassigned():
-    # with no owner, a task no memo clause gives anyone goes as unassigned
     rows = report_checks.unassigned_rows([_sec("실행 계획", ACTIONS.format(owner="미정"))], TUTOR)
     assert [task for _, _, task in rows] == [["간식비 50만원 집행 계획 수립"]]
-    # a memo task left without its owner is still a memo task
     poster = ACTIONS.format(owner="미정").replace("| 이수연 |", "| 미정 |")
     rows = report_checks.unassigned_rows([_sec("실행 계획", poster)], TUTOR)
     assert ["튜터링 포스터 시안 준비"] not in [task for _, _, task in rows]

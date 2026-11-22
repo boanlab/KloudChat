@@ -1,8 +1,5 @@
-"""이미지 고치기: a picture changed as told by a model that edits. The source goes to the model as
-an image content part, the result is a new version linked to it (the source kept as it was),
-billed like a picture; models that only draw are refused, and strict-local or internal material
-keeps the picture inside, refused here where no strict-local model edits (with one:
-test_a_strict_local_picture_is_edited_inside)."""
+"""이미지 고치기 sends the source as an image part, saves the result as a new linked version billed
+like a picture, and refuses draw-only models."""
 
 from __future__ import annotations
 

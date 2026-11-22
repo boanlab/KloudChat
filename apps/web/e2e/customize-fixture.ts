@@ -9,11 +9,7 @@ const templateFixture = JSON.parse(readFileSync(new URL('./template-fixture.json
   startMinutes: Record<string, unknown>
 }
 
-/**
- * The 「사용자 지정」 hub against fixture data only: one account with its own agents, skills and
- * 묶음, a store of shared ones, the bases an agent starts from, and a tool catalogue with one
- * connector. Every write is recorded in `calls`; anything unmocked lands in `unexpected`.
- */
+/** Fixture data for the 「사용자 지정」 hub. Writes are recorded in `calls`; anything unmocked lands in `unexpected`. */
 
 export const at = '2026-10-08T07:00:00.000Z'
 const older = '2026-09-01T07:00:00.000Z'

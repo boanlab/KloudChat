@@ -30,11 +30,7 @@ const ICONS: Record<StudioKind, typeof FileText> = {
   flashcards: GalleryVerticalEnd,
 }
 
-/**
- * A project's 스튜디오: pick the sources, then one click for a study guide, FAQ, briefing,
- * timeline, glossary, mind map, quiz or flashcards, each grounded in those
- * sources with citations. Outputs list below; documents open in the document panel.
- */
+/** A project's 스튜디오: generate study guide, FAQ, briefing, timeline, glossary, mind map, quiz or flashcards from picked sources. */
 export function StudioTab({ projectId }: { projectId: string }) {
   const t = useT()
   const navigate = useNavigate()

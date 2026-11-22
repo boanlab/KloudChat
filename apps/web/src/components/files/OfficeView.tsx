@@ -19,11 +19,7 @@ export const PREVIEW_LABEL: Record<OfficeKind, string> = {
   pptx: 'PowerPoint 미리보기',
 }
 
-/**
- * An office file (HWP, Word, PowerPoint) drawn read only by its editor, as the file box
- * previews one: for a shared document and the artifacts page. `onFail` when the editor
- * cannot draw it (the caller shows its text instead). Fills its parent, which is positioned.
- */
+/** Read-only office file (HWP, Word, PowerPoint) preview; `onFail` when the editor cannot draw it. Fills its positioned parent. */
 export function OfficeView({
   kind, bytes, name, onFail,
 }: {

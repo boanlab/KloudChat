@@ -176,7 +176,7 @@ class GeneratedImage:
     mime: str
     input_tokens: int
     output_tokens: int
-    #: measured; 0 when unreadable
+    #: 0 when unreadable
     width: int = 0
     height: int = 0
     #: upstream charge when reported (OpenRouter `usage.cost`)
@@ -227,13 +227,10 @@ def modalities_for(model_id: str) -> list[str]:
     return ["image"]
 
 
-#: Picture models that change a given picture as told, checked on 2026-11-15 with one edit call
-#: each through the gateway (a red square with a white disc, "make only the background blue").
-#: OpenRouter lists image input for all five external models; Recraft V4.1 took the picture but
-#: kept the background red and refuses `image_config` on edits, so it is left out. Of the
-#: self-hosted shims, Z-Image and Qwen-Image draw from the text alone (Z-Image drew an unrelated
-#: icon); Qwen-Image-Edit 2511 is the one that edits (its shim sends the picture of the last
-#: user message to vLLM-Omni's `/v1/images/edits`; one edit through the gateway, 2026-11-20).
+#: Picture models that change a given picture as told. Recraft V4.1 is left out (keeps the
+#: background and refuses `image_config` on edits); Z-Image and Qwen-Image draw from text alone;
+#: Qwen-Image-Edit 2511 edits (its shim sends the last user message's picture to
+#: `/v1/images/edits`).
 #: Read only when the gateway's `model_info` does not say (`kchat_edits_images`).
 EDITING_MODELS = frozenset(
     {

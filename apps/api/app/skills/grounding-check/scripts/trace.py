@@ -243,9 +243,8 @@ PUBLIC_LINES = frozenset({
     "182", "109", "1301", "1332", "1333", "1339", "1345", "1350", "1366", "1388",
     "1577-0199", "1588-9191",
 })
-#: Statutory figures an answer may state without a source, each with the words it goes with:
-#: interest and dividend tax 15.4% (14% + local 1.4%), the 2,000만 원 financial income line
-#: business income withholding 3.3%, VAT 10%.
+#: Statutory figures an answer may state without a source, with the words each goes with
+#: (interest/dividend tax 15.4%, 2,000만 원 financial income line, withholding 3.3%, VAT 10%)
 STATUTORY = (
     (15.4, "%", re.compile(r"이자|배당|금융\s?소득|원천")),
     (14.0, "%", re.compile(r"이자|배당|금융\s?소득|원천")),
@@ -324,8 +323,8 @@ _DATE_FORMULA = re.compile(r"DATE\(\s{0,2}(\d{4})\s{0,2},\s{0,2}(\d{1,3})\s{0,2}
 
 
 def _worked_dates(line: str) -> set[tuple[int, int, int]]:
-    """Dates the line's DATE(y, m, d) formulas give, months and days rolled over as a
-    spreadsheet does (DATE(2026,13,1) → 2027-01-01)."""
+    """Dates the line's DATE(y, m, d) formulas give, months/days rolled over as a spreadsheet
+    does (DATE(2026,13,1) is 2027-01-01)."""
     out = set()
     for m in _DATE_FORMULA.finditer(line):
         y, mo, d = (int(g) for g in m.groups())
@@ -1768,9 +1767,8 @@ def _fix_line(line: str, items: list[dict]) -> str | None:
         rest = part
         for f in sorted(mine, key=lambda f: -f["start"]):
             rest = rest[: f["start"] - start] + rest[f["end"] - start:]
-        # Invented values carrying the sentence alone: two or more, and no number left. A
-        # heading or bold list title (「**2. 등록금 납부 — …**」) keeps its words; so does a
-        # strong writer's sentence, its values blanked and settled back marked.
+        # Invented values carrying the sentence alone: two or more, no number left. A heading or
+        # bold list title keeps its words, as does a strong writer's sentence (blanked, settled back)
         if len(mine) >= 2 and not re.search(r"\d", rest) and not _TITLE_LINE.match(line) and all(
                 f["placeholder"] in PLACEHOLDER.values() and not _marks(f) and not f.get("keep")
                 for f in mine):

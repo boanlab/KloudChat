@@ -186,10 +186,8 @@ class _Accumulator:
 
 
 def _passes_reasoning(model: str) -> bool:
-    """Whether a tool step's reasoning goes back with its call: self-hosted DeepSeek V4, whose
-    template reads it within a tool loop. Without it the model worked figures out again at
-    every step. 2026-11-14, Sonnet-judged: 「다시」 turns 7.7 vs 6.6 with ~20% fewer output
-    tokens and first text at 85 s vs 143 s (p50); turns over attached documents 8.2 vs 7.6."""
+    """Whether a tool step's reasoning goes back with its call (self-hosted DeepSeek V4, whose
+    template reads it within a tool loop)."""
     return model.startswith(("local/", "strict-local/")) and "deepseek" in model
 
 
@@ -369,10 +367,11 @@ _PREAMBLE_SENTENCE = re.compile(
 
 
 def _pure_narration(text: str, *, request: str, korean: bool = False) -> bool:
-    """Whether short text written beside a tool call only narrates the work (「검색해
-    보겠습니다.」): no table, list or heading, and no figure outside a line about the work.
-    Text with content stays. Beside a Korean answer, a line with no Korean at all is the
-    model thinking aloud (「I need to figure out what date next Monday falls on…」)."""
+    """Whether short text beside a tool call only narrates the work (「검색해 보겠습니다.」).
+
+    No table, list or heading, and no figure outside a line about the work. Beside a Korean answer,
+    a
+    line with no Korean at all is the model thinking aloud."""
     body = (text or "").strip()
     if not body:
         return True
@@ -390,9 +389,8 @@ def _pure_narration(text: str, *, request: str, korean: bool = False) -> bool:
 
 
 def _preamble_only(text: str, *, request: str, wanted_tools: bool) -> bool:
-    """Whether a closing reply is only a line about the work (what was checked, what is
-    still to check) and not the asked-for answer; a short reply beside a further tool
-    call always is."""
+    """Whether a closing reply is only a line about the work, not the asked-for answer; a short
+    reply beside a further tool call always is."""
     body = (text or "").strip()
     if not body or len(body) > _PREAMBLE_CHARS:
         return False
@@ -421,15 +419,13 @@ def _starved(hop: Any) -> bool:
             or getattr(hop, "reasoning_chars", 0) >= _STARVED_REASONING_CHARS)
 
 
-#: seconds the other model may take on a rewrite before the turn's own model is not tried
-#: after it (a stalled stream already cost the person minutes); above `_FALLBACK_PATIENCE`, so
-#: a rescuer that thinks long (DeepSeek V4 Flash: first text ~50 s, up to ~180 s on a hard
-#: prompt) and then fails still leaves the turn's own model a try
+#: Seconds the other model may take on a rewrite before the turn's own model is no longer tried;
+#: above `_FALLBACK_PATIENCE` so a slow-thinking rescuer that fails still leaves the own model a
+#: try.
 _RESCUE_PATIENCE = 300.0
-#: seconds a writer with a fallback (`run_turn(fallback_model=…)`) may take on one call before
-#: it shows answer text or finishes the call (a tool call); then the fallback carries the turn
-#: on. DeepSeek V4 Flash took at most 180 s on one call in the 2026-11-14 evaluation; a stalled
-#: stream ran 20 minutes.
+#: Seconds a writer with a fallback (`run_turn(fallback_model=…)`) may take on one call before it
+#: shows
+#: answer text or finishes the call (a tool call); then the fallback carries the turn on.
 _FALLBACK_PATIENCE = 240.0
 
 
@@ -621,8 +617,8 @@ def _asks_again(earlier: str, later: str) -> bool:
 
 
 def _other_language_set(messages: list[dict[str, Any]]) -> bool:
-    """Whether the conversation set a non-Korean output: asked in any user turn (「언어: 영어」
-    in the first message, then 「좀 더 친근하게」), or the previous answer was written in it."""
+    """Whether the conversation set a non-Korean output: asked in any user turn, or the previous
+    answer was written in it."""
     if any(m.get("role") == "user" and _OTHER_LANGUAGE_ASK.search(_text_of(m))
            for m in messages):
         return True
@@ -744,7 +740,6 @@ def _answer_anomaly(text: str, messages: list[dict[str, Any]],
                 "방금 쓴 답은 앞 답을 그대로 반복한 것입니다. 이번 질문에 맞게 새로 답하세요.",
                 _ECHO_EN, korean)
         if _asks_again(previous["content"], text):
-            # 「100달러가 상품가인지 … 알려 주세요」 twice: the person moved on instead.
             return "reask", _note(
                 "같은 질문을 다시 했습니다. 사용자는 그 질문에 답하지 않고 이어서 말했습니다. "
                 "되묻지 말고, 정해지지 않은 점은 흔한 경우로 가정해 한 문장으로 밝힌 뒤 "
@@ -861,7 +856,7 @@ def printed_text(content: str) -> str:
 
 
 def reverted_answer(code_outputs: list[str], *, korean: bool = True) -> str:
-    """The answer when a hand-worked override was not backed by a new run: what code printed."""
+    """Answer when a hand-worked override was not backed by a new run: what code printed."""
     printed: list[str] = []
     used = 0
     for output in reversed(code_outputs):
@@ -888,9 +883,10 @@ def _values_step(step_id: str, label: str, count: int, *, korean: bool = True,
 
 def code_checked(answer: str, code_outputs: list[str], *,
                  mark: bool = False) -> tuple[str, list[str]]:
-    """`answer` with numbers naming a value the code printed set to that value (the latest
-    run's value for a quantity printed twice): `(answer, corrections)`. A value the code
-    printed for the same row under another label is left as written. `mark`: a clash is
+    """`answer` with numbers naming a value the code printed set to that value (latest run's value
+    for a quantity printed twice): `(answer, corrections)`.
+
+    A value printed for the same row under another label is left as written. `mark`: a clash is
     marked 「(확인 필요)」, never rewritten."""
     printed = [printed_text(o) for o in code_outputs]
     return calc_check.check_markdown(answer, calc_check.printed_values(printed), printed,
@@ -986,11 +982,10 @@ _WORDISH = re.compile(r"\w")
 
 
 def _line_loop(pieces: list[str]) -> bool:
-    """The last whole lines are one short cycle of wordy lines, again and again.
+    """The last whole lines are one short cycle of wordy lines, repeated.
 
-    Catches the list loop (「- 두부 2모: 1,000원」 × 40) at a few lines instead of after the
-    `_is_looping` window, which short lines take long to fill.
-    """
+    Catches the list loop (「- 두부 2모: 1,000원」 × 40) in a few lines, before the `_is_looping`
+    window fills."""
     lines = _tail(pieces, 4_000).split("\n")[:-1]  # the last piece of a line is still coming
     for size, times in _LINE_LOOP_TIMES.items():
         span = size * times
@@ -1255,8 +1250,8 @@ def _link_citations(answer: str, sources: list[str],
                     seen: dict[str, str] | None = None) -> tuple[str, list[int]]:
     """Link `[n]` citations to sources (code blocks untouched); returns answer and cited numbers.
 
-    `seen`: what the writer read under each URL; a number whose page shares no word with the
-    sentence citing it is taken out, not linked to a page that does not say it."""
+    `seen`: what the writer read under each URL; a number whose page shares no word with the citing
+    sentence is taken out, not linked."""
     cited: list[int] = []
 
     def numbers(spec: str) -> list[int]:
@@ -1311,11 +1306,8 @@ def _link_citations(answer: str, sources: list[str],
 
 def _renumber_citations(answer: str, cited: list[int],
                         sources: list[str]) -> tuple[str, list[int], list[str]]:
-    """Cited numbers renumbered 1, 2, … in the order the reader meets them (code blocks
-    untouched); returns the answer, the new numbers and the sources under them.
-
-    The list under the answer otherwise starts at whatever the searches numbered first
-    (「[5] [7] [8]」 with nothing above 5)."""
+    """Cited numbers renumbered 1, 2, … in reading order (code blocks untouched); returns the
+    answer, the new numbers and the sources under them."""
     order: list[int] = []
     marker = re.compile(r"\[\[(\d{1,2})\]\]\((https?://[^)\s]{1,500})\)|(?<!\[)\[(\d{1,2})\](?!\()")
     pieces = answer.split("```")
@@ -1377,9 +1369,11 @@ def _with_material_numbers(messages: list[dict[str, Any]], sources: list[str],
 
 def _earlier_sources(messages: list[dict[str, Any]]) -> tuple[list[str], dict[str, str]]:
     """`(sources, titles)` as earlier answers numbered them (their 「### 출처」 lists and
-    `[[n]](url)` links, a later answer's number winning), "" for a number not known; so this
-    turn's search results go on numbering after them and a 「[6]」 the writer carries over
-    still means the source it meant, not this turn's sixth result."""
+    `[[n]](url)`
+    links, a later answer's number winning), "" for an unknown number.
+
+    This turn's search results continue the numbering, so a carried-over 「[6]」 keeps its
+    source."""
     by_number: dict[int, str] = {}
     titles: dict[str, str] = {}
     for message in messages:
@@ -1542,7 +1536,7 @@ _LINE_DATE = re.compile(r"(?<!\d)(20\d{2})[-./]\s?(\d{1,2})(?:[-./]\s?(\d{1,2}))
 
 def _own_list_dates(listed: str, sources: list[str]) -> dict[str, str]:
     """「 · 2026-03-12」 by source URL for each line of the writer's own list that dates its
-    source, so the dates survive the server's list replacing the writer's."""
+    source, so dates survive the server list replacing it."""
     out: dict[str, str] = {}
     for line in listed.split("\n"):
         item = _OWN_LIST_ITEM.match(line)
@@ -1567,8 +1561,8 @@ def _checked_on() -> dt.date:
 
 
 def _published_of(url: str, seen: dict[str, str]) -> str:
-    """「 · 2026-03-12」 after a listed source whose search result gave its date, outside the
-    link so a later turn reads the label back unchanged; "" when none."""
+    """「 · 2026-03-12」 after a listed source whose search result gave its date, outside the link
+    so a later turn reads the label back; "" when none."""
     found = _PUBLISHED.search(seen.get(url, ""))
     return f" · {found.group(1)}" if found else ""
 
@@ -1646,8 +1640,8 @@ def _answer_from_results(
     conversation: list[dict[str, Any]], messages: list[dict[str, Any]], gathered: str,
     *, after_plan: bool = False,
 ) -> list[dict[str, Any]]:
-    """The asked-for turn with the tool results (if any) as plain reference text, no tool
-    transcript; `after_plan`: the last reply was a work plan, not the answer."""
+    """The asked-for turn with tool results (if any) as plain reference text, no tool transcript;
+    `after_plan`: the last reply was a work plan, not the answer."""
     # leading system as amended this turn; the rest is the caller's history
     system = [conversation[0]] if conversation and conversation[0].get("role") == "system" else []
     history = [m for m in messages if m.get("role") != "system"]
@@ -1766,8 +1760,7 @@ async def _run_tool(tool: Tool, arguments: str, ctx: ToolContext) -> ToolResult:
     try:
         parsed = json.loads(arguments or "{}")
     except json.JSONDecodeError:
-        # a long write call cut off before its end (the model's output limit): a tool that
-        # can save a draft reads back what is whole of it, never what was cut
+        # write call cut off by the output limit: a draft-saving tool reads back only what is whole
         salvaged = json_repair.repair(arguments) if tool.draft is not None else None
         if salvaged is None:
             cut = len(arguments or "") > 1500 and not (arguments or "").rstrip().endswith(
@@ -1856,21 +1849,22 @@ async def run_turn(
     hop_bonus: int = 0,
     #: The turn carries the person's own material (pasted, attached or project files).
     material_given: bool = False,
-    #: Other self-hosted model that writes the answer once more when this one left it empty,
-    #: cut short or only announced (the same model asked again tends to stall too); billed as
-    #: `model:<id>:*Tokens`.
+    #: Other self-hosted model that rewrites the answer when this one left it empty, cut short or
+    #: only announced;
+    #: billed as `model:<id>:*Tokens`.
     rescue_model: str | None = None,
-    #: Strict-local model that carries the turn on, in the same turn, when `model` fails: the
-    #: gateway refuses it, the server is unreachable, the stream breaks, or a call shows nothing
-    #: within `_FALLBACK_PATIENCE`. Announced as a `writer_fallback` event; the tokens `model`
-    #: spent until then move to `model:<id>:*Tokens`.
+    #: Strict-local model that carries the turn on when `model` fails (gateway refusal, unreachable,
+    #: broken
+    #: stream, or silent past `_FALLBACK_PATIENCE`); announced as a `writer_fallback` event, earlier
+    #: tokens
+    #: move to `model:<id>:*Tokens`.
     fallback_model: str | None = None,
     #: A turned-on skill searches deep (`process.deep_search`): twice the searches, as a
     #: document's research does.
     deep_search: bool = False,
-    #: Project files the context gave whole or in part, name → text: numbered as material
-    #: sources before any search, so the answer cites them 「[n]」 and lists them by name
-    #: under it; a citation of one the claim's words are not in is taken out.
+    #: Project files the context gave whole or in part, name → text: numbered as sources before any
+    #: search so
+    #: the answer cites and lists them; a citation whose claim words are not in the file is removed.
     cited_material: dict[str, str] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """One assistant turn to a final answer; exactly one `usage`, `done` left to caller."""
@@ -2022,9 +2016,8 @@ async def run_turn(
     write_saved: set[str] = set()
     # Arithmetic gate evidence only; futures coalesce duplicates, results detached before masking.
     arithmetic_evidence: dict[tuple[str, str], asyncio.Future[ToolResult | None]] = {}
-    #: Tool URLs in numbering order, after the numbers earlier answers gave theirs (a later
-    #: turn that cites 「[6]」 again means the same source); "" where an
-    #: earlier number is unknown.
+    #: Tool URLs in numbering order, after the numbers earlier answers gave; "" where an earlier
+    #: number is unknown.
     sources, source_titles = _earlier_sources(messages)
     if cited_material:
         messages = _with_material_numbers(messages, sources, list(cited_material))
@@ -2202,9 +2195,10 @@ async def run_turn(
                         acc = value
             except (ChatStreamError, TimeoutError) as exc:
                 if watched:
-                    # The writer failed (refused, unreachable, broken, or silent too long): the
-                    # fallback carries the turn on from here, never a model outside it; the
-                    # writer is left out of picks for a while (`model_health`).
+                    # Writer failed (refused, unreachable, broken, or silent too long): the fallback
+                    # carries the turn on,
+                    # never a model outside it; the writer is left out of picks for a while
+                    # (`model_health`).
                     reason = _fallback_reason(exc)
                     skipped_for = model_health.mark_failed(model, str(exc))
                     log.warning("%s failed (%s: %s); %s carries the turn on, %s skipped %ds",
@@ -2284,9 +2278,10 @@ async def run_turn(
 
         if (not running_preset and not acc.calls and hop_text
                 and internal_words.has_tool_call(spoken := "".join(hop_text))):
-            # A tool call written into the text in the model's own template
-            # (「<tool_call>web_search<arg_key>query</arg_key>…」): one naming an offered tool
-            # is made the call it meant, any other dropped; the markup is never shown.
+            # Tool call written into the text in the model's own template
+            # (「<tool_call>web_search<arg_key>…」):
+            # one naming an offered tool becomes the call, any other is dropped; the markup is never
+            # shown.
             offered = set() if closing else {tool.name for tool in hop_tools}
             kept, written = internal_words.written_tool_calls(spoken, offered)
             if not _WORDISH.search(kept):
@@ -2478,9 +2473,10 @@ async def run_turn(
             else:
                 held.append(spoken)
         if acc.looped:
-            # Looped again: the hop is taken back whole (a retract removes the first match, and
-            # copies match too early) and given again up to one copy of the cycle. Nothing
-            # left is no answer, reported as an error by the turn, not a note posing as one.
+            # Looped again: the hop is retracted whole (a retract removes the first match, copies
+            # match too early)
+            # and re-given up to one copy of the cycle; nothing left is reported as an error, not as
+            # an answer.
             spoken = "".join(hop_text) if not freshness_request else ""
             kept = _trim_loop(spoken)
             if not kept.strip():
@@ -2574,8 +2570,9 @@ async def run_turn(
                 closing = False
                 continue
         if cut_partial is not None:
-            # the continuation of a cut answer: a whole rewrite replaces the cut copy, a bare
-            # 「(끝)」 (it was complete after all) is taken back
+            # continuation of a cut answer: a whole rewrite replaces the cut copy, a bare 「(끝)」
+            # is
+            # taken back
             again = "".join(hop_text)
             squeezed = " ".join(again.split())
             if squeezed in _CUT_DONE:
@@ -2754,9 +2751,10 @@ async def run_turn(
             try:
                 result = await _run_tool(tool, call["arguments"], ctx)
                 if result.failed and not tool.read_only:
-                    # a write the tool refused may be sent once more as it was: a tool that
-                    # asks for a change once (a slide count) takes the same call the second
-                    # time, and a model that repeats itself gets the refusal, not a dead end
+                    # a refused write may be sent once more as is: a tool that asks for a change
+                    # once (slide count)
+                    # accepts the same call the second time, and a repeating model gets the refusal,
+                    # not a dead end
                     failed_writes[key] = failed_writes.get(key, 0) + 1
                 if pending is not None and not result.failed and not result.empty:
                     try:
@@ -3029,9 +3027,10 @@ async def run_turn(
             break
 
         if not closing:
-            # a write the model cannot get right is saved from its own arguments as a draft
-            # when the calls are about to run out (any model), or after two refusals in a row
-            # (self-hosted and small models: a strong model's retries are its own to spend)
+            # a write the model cannot get right is saved from its own arguments as a draft when
+            # calls are about
+            # to run out (any model) or after two refusals in a row (self-hosted and small models
+            # only)
             for name, best in list(draft_pool.items()):
                 tool = by_name.get(name)
                 refused = write_refused.get(name, 0)
@@ -3145,9 +3144,8 @@ async def run_turn(
 
     asked = ctx.request or next(
         (_text_of(m) for m in reversed(messages) if m.get("role") == "user"), "")
-    #: who writes a missing answer once more: the other self-hosted model when there is one
-    #: (the same model asked again tends to stall too), then the turn's own
-    #: model unless the other one took long
+    #: who rewrites a missing answer: the other self-hosted model if any, then the turn's own model
+    #: unless the other one took long
     rescuers = [model]
     if rescue_model and not model_health.healthy(rescue_model):
         # it failed lately (perhaps as this turn's writer): not waited on again
@@ -3182,8 +3180,9 @@ async def run_turn(
             and last_hop is not None and not freshness_request
             and _preamble_only(spoken := "".join(answer_text), request=ctx.request or "",
                                wanted_tools=bool(last_hop.calls))):
-        # The closing hop gave a line of intent (「네이버웍스 요금을 확인해야 합니다.」) and
-        # maybe one more call, not the answer: written once more from what was gathered.
+        # Closing hop gave only a line of intent (「네이버웍스 요금을 확인해야 합니다.」) and maybe
+        # one more call:
+        # rewritten from what was gathered.
         log.warning("closing hop gave a preamble only (%d chars); writing from the results",
                     len(spoken))
         written = await write_rescued(_answer_from_results(conversation, messages, gathered),
@@ -3227,8 +3226,8 @@ async def run_turn(
             yield {"type": "delta", "text": spoken}
     if (markup_dropped and not gathered and not preflight_tool and not ended_by_tool
             and not "".join(answer_text).strip()):
-        # The reply was only a tool call written out, for no tool there is: the answer
-        # written once more without tools, never an empty turn.
+        # Reply was only a tool call written out for no tool there is: rewritten without tools,
+        # never empty.
         log.warning("reply was only a written-out tool call; writing the answer once more")
         spoken = await write_rescued(_answer_from_results(conversation, messages, ""), "")
         if spoken:
@@ -3237,8 +3236,8 @@ async def run_turn(
 
     said_missing = False
     if source_tools and not source_ok and not ended_by_tool and not preflight_tool:
-        # The answer was to be made of a source that never came (not called, or failed):
-        # said plainly, never written from the title or from memory.
+        # Answer was to rest on a source that never came (not called, or failed): said plainly,
+        # never written from title or memory.
         log.warning("source tool %s gave no usable result (called %s); answer withheld",
                     sorted(source_tools), source_called)
         name = sorted(source_tools)[0]
@@ -3371,8 +3370,9 @@ async def run_turn(
             yield {"type": "retract", "text": answer}
             yield {"type": "delta", "text": attributed}
             answer = attributed
-    # the writer's own source list at the end: the server's list replaces it when every
-    # number in it is known, else it stays as written and no second list is added
+    # writer's own source list at the end: replaced by the server's when every number in it is
+    # known,
+    # else kept as written with no second list
     own_list = ""
     #: dates the writer gave its own list lines, by URL (kept when the server's list replaces it)
     own_dates: dict[str, str] = {}

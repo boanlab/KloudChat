@@ -5,11 +5,9 @@ import { contextUsage } from './shell-mocks'
 import type { IssueRow } from '../src/lib/api'
 
 /**
- * 「문의·신고」 against fixture data: a 👎 answer reported with the answer pinned, the session
- * shared only when ticked (and a strict-local one confirmed again), a screenshot sent along;
- * the account menu's 「문의·신고」 page with the reply badge and its 「새 신고」·「새 문의」, which keep
- * the conversation the user came from; the administrator's queue, status flow, reply, and the
- * read-only session copy with the reported answer highlighted.
+ * 「문의·신고」 against fixture data: reporting a 👎 answer, session sharing only when ticked,
+ * the account menu page and its new-report/inquiry forms, and the administrator queue,
+ * status flow, reply and read-only session copy.
  */
 
 test.use({ serviceWorkers: 'block' })

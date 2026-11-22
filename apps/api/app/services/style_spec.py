@@ -1,12 +1,11 @@
-"""Design wishes in words → the style parameters every writer reads.
+"""Design wishes in words to the style parameters every writer reads.
 
-A project's or agent's 「디자인 지침」 and this turn's request are read by the same code: colour
-words and hex codes, font names, table manners, density, page and numbering. What code does not
-read stays in the text, which still reaches the model as guidance. Tone sentences (「공문체」,
-「존댓말」) are not style: `tone` collects them for the prompt.
+A 「디자인 지침」 and this turn's request are read by the same code (colours, fonts, table
+manners, density, page, numbering); the rest stays in the text as guidance. Tone sentences
+are not style: `tone` collects them.
 
-Precedence (`merged`): this turn's wishes, the agent's 디자인 지침, the project's, the pattern's
-default. A form file decides before all of these where it says something (`design.md` §2.0).
+Precedence (`merged`): this turn's wishes, agent 지침, project 지침, pattern default; a form
+file decides first where it says something (`design.md` 2.0).
 """
 
 from __future__ import annotations

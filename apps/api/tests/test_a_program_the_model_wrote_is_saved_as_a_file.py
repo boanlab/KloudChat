@@ -122,7 +122,7 @@ def test_the_title_names_the_program_not_its_helpers_or_tests():
 
 
 def test_a_program_run_then_described_is_recovered_from_the_run():
-    """The model ran the script, then said it had put it beside the chat; nothing was saved."""
+    """A script run then described as put beside the chat is recovered from the run and saved."""
     answer = (
         "스크립트를 아티팩트로 만들어 두었습니다. 위에서 실제로 돌려 본 결과는 노트북 2,400,000원, "
         "마우스 250,000원입니다.\n\n```\n== 상품별 총매출 ==\n노트북: 2,400,000원\n```"

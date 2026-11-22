@@ -1,10 +1,8 @@
 """A paper's title, authors, year and arXiv id read from its extracted first page.
 
-A project PDF reaches the report as its file name (「2309.06180.pdf」); a reference entry needs
-the work itself. The stored text begins 「[페이지 1]」 (`files._from_pdf`) with the title lines,
-then the author line(s), affiliations and e-mails, then 「Abstract」; arXiv stamps its margin
-「arXiv:2309.06180v1 [cs.LG] 12 Sep 2023」 somewhere on that page. Pure text reading: nothing
-here guesses — a field it cannot read stays empty.
+The stored text begins 「[페이지 1]」 (`files._from_pdf`) with title lines, then authors,
+affiliations and e-mails, then 「Abstract」; arXiv stamps its margin 「arXiv:2309.06180v1 [cs.LG] 12
+Sep 2023」. Pure text reading: a field it cannot read stays empty.
 """
 
 from __future__ import annotations

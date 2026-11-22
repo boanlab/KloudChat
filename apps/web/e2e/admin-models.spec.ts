@@ -2,11 +2,7 @@ import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { at } from './composer-fixture'
 import { shellRead } from './shell-mocks'
 
-/**
- * System › 모델 against fixture data: the administrator decides which model does which job —
- * each screen's default and the side work that reads conversations (self-hosted models only) —
- * and whether models think. System › 회원 가입 holds a new account's monthly credits.
- */
+/** System › 모델 (per-job model defaults, thinking) and 회원 가입 (monthly credits), on fixture data. */
 
 const admin = {
   id: 'fixture-admin', email: 'admin@example.test', name: '관리자', role: 'admin', status: 'active',

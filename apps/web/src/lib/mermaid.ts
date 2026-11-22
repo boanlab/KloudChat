@@ -105,11 +105,7 @@ export async function rasterise(svg: string, scale = 2): Promise<string | null> 
   }
 }
 
-/**
- * Mermaid 12 draws with ELK, the `neo` look (drop shadows, gradient borders) and boxes at
- * least 120px wide, wrapping labels at 120px — a Korean word is then cut mid-word. These keep
- * the 11 drawing: dagre, classic shapes, no shadow, boxes as wide as their label.
- */
+/** Config keeping the classic look: dagre, no shadow, boxes sized to labels (ELK/neo wrap Korean mid-word at 120px). */
 const CLASSIC = {
   look: 'classic' as const,
   // `useGradient` as in 11: it also hides the mindmap's underline under each node.
@@ -362,7 +358,7 @@ export function frameElement(drawn: SVGSVGElement, frame: Frame): SVGSVGElement 
   return outer
 }
 
-/** `drawInto` with `drawFitting`'s rule: both drawn off-screen, the closer moved into `node`. */
+/** `drawInto` with `drawFitting`'s rule: drawn off-screen, closer result moved into `node`. */
 export async function drawIntoFitting(
   node: HTMLElement,
   drawn: string,

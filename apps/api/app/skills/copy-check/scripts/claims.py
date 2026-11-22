@@ -198,7 +198,7 @@ def _found(text: str, material: str = "", category: str = "general") -> list[dic
             end = start + len(number["text"])
             if _in_placeholder(text, start, end) or _is_list_marker(text, start) or _PROPOSAL.match(text, end):
                 continue
-            # Ordinals: 「2주차」「3번째」「1회차」 number things, they claim nothing.
+            # ordinals (「2주차」「3번째」) number things; they claim nothing
             if re.match(r"\s?(?:차|번째|회차)", text[end:end + 4]):
                 continue
             key = (round(number["value"], 4), number["unit"])

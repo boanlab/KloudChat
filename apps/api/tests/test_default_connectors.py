@@ -175,7 +175,7 @@ async def test_a_person_switches_it_off_but_cannot_remove_it(db, monkeypatch):
     # Installing it again returns the same copy.
     assert (await connectors.install("time", member, db)).id == mine.id
 
-    # No longer 기본 제공: the copy stays and is the person's to remove.
+    # Not 기본 제공 any more: the copy stays and is the person's to remove.
     entry = (await connectors.admin_catalog(admin, db))["entries"][0]
     await connectors.admin_edit_entry(entry["id"], _time(by_default=False), admin, db,
                                       _request())
@@ -230,7 +230,6 @@ async def test_a_disabled_entry_is_not_provided_and_startup_fills_the_gaps(db, m
     await db.commit()
     assert await connector_defaults.provide_at_startup(Factory()) == 2
     assert await connector_defaults.provide_at_startup(Factory()) == 0
-    # A shipped row no one saved is the catalogue owner's.
     shipped = (await db.exec(select(ConnectorCatalogEntry).where(
         ConnectorCatalogEntry.slug == "shipped"))).one()
     assert shipped.updated_by == admin.id

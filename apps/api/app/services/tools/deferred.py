@@ -1,17 +1,15 @@
 """Connector tools sent by name until the model asks for them (`load_tools`).
 
-A connector with many tools (a GitHub or Notion server lists dozens) costs every agent hop
-its full JSON schemas. When deferral applies, such a connector's tools go out only as a name
-and one line inside the `load_tools` tool's description; the model calls `load_tools` with
-the names it needs, gets their full definitions back as the tool result, and from the next
-hop on those tools are offered with their schemas. A connector with few tools
-(`connector_tools_eager_max`) is sent whole, as are the tools a turn must be able to call
-at once (a forced or preset tool, a skill's source tool). A direct call to a deferred tool
-still runs and loads it.
+A connector with many tools would cost every agent hop its full JSON schemas, so when deferral
+applies its tools go out as a name and one line in `load_tools`' description; the model calls
+`load_tools` with the names it needs, gets full definitions back, and sees them with schemas from
+the next hop. Connectors with few tools (`connector_tools_eager_max`) and tools a turn must call
+at once (forced or preset tool, a skill's source tool) are sent whole; a direct call to a
+deferred tool still runs and loads it.
 
-Everything sent comes from the turn's tool-definition snapshot, so deferral never puts a
-byte on the wire that the privacy scan did not see (`routers/sessions._tool_definition_source`).
-Who gets deferral is decided by model group (`applies`).
+Everything sent comes from the turn's tool-definition snapshot, so the privacy scan sees every
+byte on the wire (`routers/sessions._tool_definition_source`). Model group decides who gets deferral
+(`applies`).
 """
 
 from __future__ import annotations

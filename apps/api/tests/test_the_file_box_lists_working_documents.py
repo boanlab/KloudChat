@@ -1,7 +1,6 @@
-"""파일함 「작업 문서」: the person's HWP, Word and PowerPoint files and web reports and web slides,
-one row per document (its versions counted), a page at a time in any of its orders; only their
-own, named by the conversation and project they belong to; the tab's badge on the files page;
-and deleting one takes its version files with it."""
+"""파일함 「작업 문서」 lists the person's own office files and web documents one row each, paged
+and
+ordered, and deleting one removes its version files."""
 
 from __future__ import annotations
 

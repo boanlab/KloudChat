@@ -1,8 +1,5 @@
-"""An office document (HWP, Word, PowerPoint) keeps a file per version. Deleting the conversation
-that holds it, singly or in bulk, removes those files after the commit, and nothing else: the
-conversation's uploads (kept unless asked), its other documents' rows, other conversations'
-documents. Deleting the account with its files takes them with the account's directory; an
-administrator who keeps the files (`purgeFiles=false`) leaves them to the storage sweep."""
+"""Deleting a conversation or account removes its office-document version files after the commit
+and nothing else; `purgeFiles=false` leaves them to the storage sweep."""
 
 from __future__ import annotations
 

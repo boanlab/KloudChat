@@ -1,8 +1,7 @@
 """Notes the server adds under an answer, and taking them back off.
 
-A stored answer keeps the server's notes (the reader saw them), but the next turn's model must
-not read them as its own words: sent back as history, they are copied into the next answer and
-then added again — every note twice.
+A stored answer keeps the notes, but the next turn's model must not read them as its own words:
+sent back as history they would be copied into the next answer and added again.
 """
 
 from __future__ import annotations

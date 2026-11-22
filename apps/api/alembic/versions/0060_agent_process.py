@@ -1,30 +1,17 @@
-"""Agents carry their process: the official base they run, a retired flag, and their own
-pipeline (진행 과정).
+"""Agents carry their process: base agent, retired flag, checks, bundles and their own pipeline.
 
-- `agents.base_key`: the official agent (catalogue key) whose checks, question card and
-  pipeline a person's own agent runs (`services/bases.py`). Backfilled for agents of no
-  catalogue entry whose 문서 형식 is the format of an official agent still offered
-  (gaejo → gaejo-report, minutes → minutes, comparison → comparison-report).
-- `agents.retired`: the catalogue took the agent out (자기소개서·경력기술서 `career-docs`,
-  고객 맞춤 제안서 `client-proposal`). Set on the catalogue rows and on every copy of them
-  (a copy carries the key; a copy of a copy names its original). Nothing is deleted: the
-  rows are hidden from every list and start no new conversation, and the conversations and
-  documents made with them still open and export.
-- `agents.check_skills`, `agents.check_options`: the check skills the server runs around an
-  agent's writing and how strict the trace is, on the row, so a person's own agent holds
-  them the way a catalogue agent does (they were read by catalogue key before). Backfilled
-  for catalogue rows and their copies from the agent files' `checks` / `check_options`, and
-  for the agents given a base above from that base's.
-- `agents.bundles`: the 묶음 ticked in the agent form (`services/bundles.py`); the two
-  columns above and the agent's own pipeline are compiled from them. Left null for rows made
-  before: their view is read off their checks, and the seeder fills the catalogue's.
+- `agents.base_key`: catalogue key of the official agent whose checks, question card and pipeline
+  the agent runs (`services/bases.py`); backfilled from 문서 형식.
+- `agents.retired`: hidden from lists and new conversations; existing conversations and documents still open.
+- `agents.check_skills`, `agents.check_options`: server-run checks and trace strictness, backfilled
+  from the agent files and from each agent's base.
+- `agents.bundles`: 묶음 ticked in the agent form (`services/bundles.py`); null for older rows.
 - `user_pipelines.agent_id`: the agent whose own process a pipeline is (`@self` steps).
 - `user_pipelines.kind`: `bundle` for a person's own 묶음, "" for a pipeline.
-- Retired 서식 `doc-career-history`, `doc-client-proposal`: cleared from agents that are not
-  retired themselves, from starting points and from project defaults, as 0055 did.
-  Conversations keep the id: their documents are still drawn in those 서식.
+- Retired 서식 `doc-career-history`, `doc-client-proposal` are cleared from non-retired agents,
+  starting points and project defaults, as in 0055.
 
-Downgrade drops the columns; the cleared 서식 choices are not restored.
+Downgrade drops the columns; cleared 서식 choices are not restored.
 
 Revision ID: 0060
 Revises: 0059

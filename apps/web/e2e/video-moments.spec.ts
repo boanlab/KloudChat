@@ -2,11 +2,7 @@ import { readFileSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
 import { at, chatId, composerFixture } from './composer-fixture'
 
-/**
- * Videos against fixture data: a video goes up in pieces with its progress shown, its chip
- * follows the server reading what is said and shown, and an answer's time marks open the player
- * at that moment.
- */
+/** Video on fixture data: chunked upload progress, chip following server reading, time marks opening the player. */
 
 const videoId = 'v0000000000000000000000000000001'
 /** A 13-minute 64×36 clip, a frame a second (made with ffmpeg; a few KB). */
@@ -150,8 +146,7 @@ test('an answer\'s time marks open the player at that moment', async ({ page }, 
 })
 
 test('bare hh:mm:ss marks in a table and a range open the player too', async ({ page }, info) => {
-  // walk 11-14: the model wrote the video's own form without brackets, in a table's time column
-  // and as a range, and no chip was drawn
+  // time marks without brackets, in a table's time column and as a range, still draw a chip
   const reply = [
     '보상 회로를 설명합니다 [[1]](/files?open=' + videoId + '&t=750).',
     '',

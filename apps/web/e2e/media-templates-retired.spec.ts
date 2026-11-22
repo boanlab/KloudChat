@@ -5,9 +5,7 @@ test.use({ serviceWorkers: 'block' })
 // A phone folds ▦ and the option chips behind 「더보기」; the desktop composer is what is checked.
 test.skip(({ viewport }) => (viewport?.width ?? 1440) < 800, 'desktop composer')
 
-/** Image, audio and video 서식 are retired: ▦ is offered on the writing surfaces only, and the
- *  image surface's 구조도 · 흐름도 · 개념도 chips draw through the server's shapes, never the
- *  image model. No backend: every call is answered here. */
+/** ▦ is offered on writing surfaces only; the image surface's 구조도 · 흐름도 · 개념도 chips use server shapes, not the image model. No backend. */
 
 const at = '2026-10-09T00:00:00.000Z'
 const sessionId = '33333333333333333333333333333333'

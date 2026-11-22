@@ -1,12 +1,9 @@
-"""A document's action and plan rows held to the action items its source files give.
+"""Align a document's action and plan rows (「다음 주 계획」, 「실행 항목」) with the source action
+items.
 
-A weekly report's 「다음 주 계획」 and 「실행 항목」 rows come from the meeting records it reads:
-a task, who owns it, and when it is due. The writer drops the owner column, puts a team nobody
-named in a cell, or dates a task on a day of its own. This reads the sources' action items (a
-pipe table, or a table flattened to one cell per line), matches each document row to the item
-it restates by the words of its task, and makes the row say what that item says: the owner
-(a 「[담당자]」 blank where the source names none), the due day (「[기한]」 where it gives none),
-and an owner column where the document's table has none.
+Reads the sources' action items (pipe table, or a table flattened to one cell per line), matches
+each document row to the item it restates by task words, and sets the owner (「[담당자]」 if the
+source names none), the due day (「[기한]」 if none), and adds an owner column where missing.
 """
 
 from __future__ import annotations
@@ -85,8 +82,7 @@ def _pipe_items(name: str, lines: list[str]) -> list[Item]:
 
 
 def _flat_items(name: str, lines: list[str]) -> list[Item]:
-    """A table flattened to one cell per line: a run of header labels, then rows of as many
-    lines (an owner of a few characters, a due that is a day or 「미정」)."""
+    """Table flattened to one cell per line: header labels, then rows of as many lines."""
     out: list[Item] = []
     i = 0
     while i < len(lines):
@@ -162,9 +158,8 @@ def _name(cell: str) -> str:
 
 
 def _owner_cell(cell: str, found: list[Item], given: str) -> str:
-    """The owner cell a matched row should hold. An empty cell takes the one owner the items
-    name (「[담당자]」 when they name none or disagree); a name no item gives is replaced by
-    the item's owner; a 「미정」 stays where the items name no one."""
+    """Owner cell for a matched row: empty takes the items' single owner (「[담당자]」 if none or
+    disagreeing); an unsourced name is replaced; 「미정」 stays if no item names one."""
     named = {_name(i.owner): i.owner for i in found if i.owner}
     sole = next(iter(named.values())) if len(named) == 1 else ""
     written = _name(cell)
@@ -209,8 +204,8 @@ def _is_day_cell(cell: str) -> bool:
 
 
 def fix(text: str, items: list[Item], given: str = "") -> str:
-    """`text` with each table row that restates a source action item holding that item's
-    owner and due day, and an owner column added to a table of such rows that has none."""
+    """`text` with rows restating a source item given its owner and due day; adds an owner column
+    where missing."""
     if not items or "|" not in text:
         return text
     lines = text.split("\n")

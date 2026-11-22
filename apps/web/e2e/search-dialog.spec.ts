@@ -3,9 +3,8 @@ import { conversationRows, hubFixture } from './customize-fixture'
 import { viewport } from './project'
 
 /**
- * ⌘K search: one dialog over conversations and results, by title and by what they say. The
- * sidebar's 검색 box opens the same dialog, and 대화 기록 searches through the same endpoint.
- * Fixture data only; `/api/search` is answered here from the rows below.
+ * ⌘K search dialog over conversations by title and content; the sidebar 검색 box and 대화 기록
+ * use the same dialog and endpoint. `/api/search` is answered from fixture rows.
  */
 
 test.use({ serviceWorkers: 'block' })

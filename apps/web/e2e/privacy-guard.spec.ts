@@ -270,7 +270,7 @@ test('a privacy checker outage hands back the draft and its file, like any refus
   await composer.fill(original)
   await composer.press('Enter')
 
-  // Refused before the turn was written, like any refusal: the draft and its file go back.
+  // Refused before the turn is written: the draft and its file return to the composer.
   await expect(composer).toHaveValue(original)
   await expect(page.getByRole('button', { name: 'outage-notes.txt 제거' })).toBeVisible()
   await expect(page.getByRole('alert')).toBeVisible()
@@ -314,6 +314,5 @@ test('가려진 채 저장된다는 사실을 그 턴 안에서 말한다', asyn
   await expect(
     page.getByText('기록에는 가려진 채 저장됩니다. 이 대화를 다시 열면 여기에도 자리표시자만 남습니다.'),
   ).toBeVisible()
-  // The bubble keeps the original: that is what was sent.
   await expect(page.getByText(typed)).toBeVisible()
 })

@@ -36,9 +36,9 @@ _CHINESE_WORD = re.compile("|".join(sorted(map(re.escape, _CHINESE_WORDS), key=l
 
 
 def _read_run(run: str, before: str) -> str:
-    """A Hanja run in Hangul; a Chinese word as its Korean word; a run of three or more set off
-    by a space from the Korean it was glued to (Chinese writes none: 「한국어形态分析器」), a
-    shorter one read as the word's end (「대학生」)."""
+    """A Hanja run in Hangul; a Chinese word as its Korean word; a run of 3+ is spaced off the
+    Korean it was glued to (「한국어形态分析器」), a shorter one read as the word's end
+    (「대학生」)."""
     glued = len(run) >= 3 and re.match(r"[가-힣]", before[-1:]) is not None
     if not _CHINESE_WORD.search(run):
         read = hanja.translate(run, "substitution")
@@ -233,10 +233,9 @@ _SENTENCE = re.compile(r"[^.!?。\n]*[.!?。]?")
 
 def repair_kana(text: str, vocabulary: str = "", *,
                 keep_sentences: bool = False) -> tuple[str, list[str]]:
-    """(text, changed): Japanese kana slipped into Korean prose read as Korean, or its
-    sentence dropped. Text or vocabulary written in Japanese is left alone. `keep_sentences`
-    (a chat answer, where a dropped sentence may be the step the person asked for): an
-    unknown kana run goes, its sentence stays."""
+    """(text, changed): kana slipped into Korean prose read as Korean, or its sentence dropped.
+
+    Japanese text or vocabulary is left alone. `keep_sentences`: only the unknown kana run goes."""
     if not _KANA.search(text or "") or _KANA.search(vocabulary or ""):
         return text, []
     if len(re.findall(r"[가-힣]", text)) < len(re.findall(r"[\u3040-\u30ff]", text)):
@@ -293,11 +292,11 @@ def _lone_cyrillic(text: str, vocabulary: str) -> tuple[str, list[str]]:
 
 def repair_mixed_script(text: str, vocabulary: str = "", *,
                         keep_sentences: bool = False) -> tuple[str, list[str]]:
-    """(text, changed): Cyrillic-tainted Korean words fixed or stripped; Greek kept;
-    Japanese kana slips read as Korean or dropped (`keep_sentences`: only the kana run goes);
-    a run of a script neither Korean nor the vocabulary's (Arabic, Thai, ...) taken out.
+    """(text, changed): Cyrillic-tainted Korean words fixed or stripped; Greek kept; kana slips
+    read as Korean or dropped (`keep_sentences`: only the kana run); other foreign scripts removed.
+
     A tainted word with one Korean syllable left and no clean match goes whole
-    (「턱 인тягивание(chin tuck)」 → 「턱(chin tuck)」, not 「턱 인(chin tuck)」)."""
+    (「턱 인тягивание(chin tuck)」 → 「턱(chin tuck)」)."""
     import difflib
 
     text, kana = repair_kana(text, vocabulary, keep_sentences=keep_sentences)
@@ -336,7 +335,7 @@ def repair_mixed_script(text: str, vocabulary: str = "", *,
     return _closed(_MIXED_WORD.sub(mend, text)), kana + changed
 
 
-#: where a word was taken out whole
+#: marker for a word taken out whole
 _GONE = "\x00"
 
 

@@ -91,7 +91,7 @@ function channelWords(set: BotChannels | null | undefined, t: (s: string) => str
     .join(' · ')
 }
 
-/** Each reason is read by the owner and the audit log. */
+/** Every decision carries a reason, shown to the owner and in the audit log. */
 type Decision = 'approve' | 'reject' | 'withdraw' | 'paused' | 'approved' | 'revoked'
 
 const DECISION: Record<Decision, { title: string; hint: string; required: boolean; danger?: boolean }> = {
@@ -521,7 +521,7 @@ function ReviewView({ id }: { id: string }) {
 }
 
 
-/** Abuse review: reason first (audit log, shown to the owner); personal details masked. */
+/** Abuse review: reason required (audit log, shown to owner); personal details masked. */
 function ConversationsCard({ id }: { id: string }) {
   const t = useT()
   const [asking, setAsking] = useState(false)

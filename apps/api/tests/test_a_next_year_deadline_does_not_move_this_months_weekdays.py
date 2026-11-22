@@ -1,10 +1,5 @@
-"""A full date of next year near today (「2027년 1월 2일까지」) does not carry its year onto the
-bare dates written after it: near today a bare 「12월 21일(월)」 is this year's.
-
-Round-3 r3c09 (11-21, KC-SA and KC-SL, a moving checklist for 12월 19일): after 「전입신고는 이사
-후 14일 이내(2027년 1월 2일까지)」 the weekday fixer read every later bare date in 2027, so the
-right 「12월 21일(월)」 became 「(화)」 and 2027 weekdays the writer had slipped into
-(「12월 18일(토)」, 「11월 23일(화)」) stood."""
+"""A next-year date near today (「2027년 1월 2일까지」) does not carry its year onto the bare dates
+written after it."""
 
 from __future__ import annotations
 

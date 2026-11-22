@@ -1,6 +1,6 @@
 """Per-surface rendering templates for a project's new sessions.
 
-No foreign key: the catalogue ships in the image, and the router validates ids on write.
+No foreign key: the catalogue ships in the image; the router validates ids on write.
 
 Revision ID: 0024
 Revises: 0023

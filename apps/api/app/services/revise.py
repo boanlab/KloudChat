@@ -560,10 +560,9 @@ def _blocks(text: str) -> tuple[int, int]:
 
 
 def shortening_loss(before: str, after: str, ask: str) -> str | None:
-    """Why a shortening edit takes too much, or None: asked to shorten (「절반으로」, 「줄여」),
-    it may not keep less than half of the share asked (a third of the text for 「절반」, a
-    quarter when no share is named), nor drop every table or every list item the part had —
-    shortening shortens, it never deletes whole blocks. Not a shortening ask: None."""
+    """Why a shortening edit takes too much, or None: it may not keep less than half of the share
+    asked (a third for 「절반」, a quarter when no share is named), nor drop every table or every
+    list item the part had. Not a shortening ask: None."""
     if not _SHORTEN.search(ask or "") or not before.strip():
         return None
     kept = len(" ".join(after.split())) / max(1, len(" ".join(before.split())))
@@ -1782,8 +1781,9 @@ def _figure_keys(text: str) -> set[tuple[str, str]]:
 
 def keep_ask(new: list[dict], old: list[dict], *, mentioned: str) -> list[dict]:
     """The old deck's ask (「결재 요청: … 1.5억 승인」) put back when no slide of the new one asks
-    any more: as the title of the slide holding its figures when it was a title, else as a
-    point on that slide or the last one; left alone when the person spoke of it."""
+    any
+    more: as the title of the slide holding its figures, else a point on that slide or the last;
+    left alone when the person spoke of it."""
     if _DECK_ASK.search(mentioned or "") or not new or any(
             _DECK_ASK.search(t.strip()) for s in new for t in _shown_texts(s)):
         return new
@@ -1822,10 +1822,9 @@ _SUMMARY_TITLE = re.compile(r"요약|정리|\b(?:summary|recap|takeaways?|key\s+
 
 
 def keep_order(new: list[dict], old: list[dict], *, mentioned: str) -> list[dict]:
-    """A summary slide the new deck put after slides whose figures the old deck showed later
-    than its own (「3분기 핵심 요약」 after the 4분기 plan) moved up before them, each placed by
-    the old body slide it shares the most figures with (two at least); left as written when
-    the person asked for an order."""
+    """A summary slide the new deck put after slides whose figures the old deck showed later is
+    moved up before them, each placed by the old body slide it shares the most figures with (two
+    at least); left as written when the person asked for an order."""
     from app.services import deck
 
     if _ORDER_ASK.search(mentioned or ""):
@@ -1915,10 +1914,9 @@ def _values_of(text: str) -> set[tuple[str, str]]:
 
 
 def keep_phrasing(new: list[dict], old: list[dict]) -> list[dict]:
-    """A short new point restating two or more values that one old point alone gave (with at
-    most one more), mostly in words that point does not use (「Blend $4 and $38 costs」 for
-    「Local wins on cost: $4 vs $38 per 1,000」), takes the old point back as written; a cut of
-    the old point's own words stays."""
+    """A short new point restating two or more values that one old point alone gave, in mostly new
+    words (「Blend $4 and $38 costs」 for 「Local wins on cost: $4 vs $38」), takes the old point
+    back as written; a cut of the old point's own words stays."""
     from app.services import deck
 
     points = list(dict.fromkeys(p for s in old for p in deck.points_of(s)))
@@ -2030,9 +2028,8 @@ def _phrase_holders(clause: str, texts: list[str]) -> list[int]:
 def section_asks(instruction: str, parts: list[str], texts: list[str]
                  ) -> tuple[dict[int, list[str]], int] | None:
     """`({part: its asks}, summary lines)` when every ask of a report edit names its part: by
-    number (「2절의 표 2는 빼고」), by its name, as a summary at the start (「맨 앞에 3줄 요약」,
-    part 0) or by wording only some parts state (「…4%라는 표현은 … 고쳐줘」). None when an ask
-    names no part (the planner decides)."""
+    number (「2절의 표 2는 빼고」), by name, as a start summary (part 0) or by wording only some
+    parts state. None when an ask names no part (the planner decides)."""
     clauses = [c.strip(" ,") for c in _CLAUSE_BREAK.split(instruction or "") if c and c.strip(" ,")]
     if not clauses or not parts:
         return None
@@ -2300,9 +2297,9 @@ def _drop_pointers(text: str, kind: str) -> str:
 
 def drop_numbered(parts: list[dict], asked: list[tuple[str, int]]
                   ) -> tuple[list[dict], list[str], list[str]]:
-    """`(parts, taken, absent)`: the asked tables and figures removed by hand, with their
-    captions and the prose that cites them; numbered as the reader sees them (the caption, else
-    the order in the document). `taken` says where each was (「2절의 표 2」)."""
+    """`(parts, taken, absent)`: the asked tables and figures removed by hand with their captions
+    and citing prose, numbered as the reader sees them. `taken` says where each was (「2절의 표
+    2」)."""
     captioned: dict[tuple[str, int], tuple[int, int, int]] = {}
     ordinal: dict[tuple[str, int], tuple[int, int, int]] = {}
     counts = {"표": 0, "그림": 0}
@@ -2365,9 +2362,8 @@ def _block_rows(text: str, start: int, end: int) -> set[str]:
 
 
 def drop_added(old: str, new: str, removed: list[str], asked: str = "") -> str:
-    """`new` without the tables or figures its rewrite added to a part a numbered one was just
-    taken out of (`removed`: 「표 2」): the removal holds through the same edit's rewrite, unless
-    `asked` asks for a new one."""
+    """`new` without tables or figures its rewrite added to a part a numbered one (`removed`:
+    「표 2」) was just taken out of, unless `asked` asks for a new one."""
     kinds = {name.split(" ", 1)[0] for name in removed}
     kinds = {k for k in kinds if k in _ASKS_BLOCK and not _ASKS_BLOCK[k].search(asked or "")}
     if not kinds:
@@ -3076,8 +3072,8 @@ _CALLOUT = re.compile(r"```callout\n([^\n`]{1,80})\n")
 
 
 def removed_blocks(old: str, new: str, part: int) -> list[str]:
-    """Numbered figures and boxes `old` showed that `new` no longer does (「2절의 그림 1」,
-    「2절의 「단가 승인 지연 시 협상 교착」 상자」), for the reply."""
+    """Numbered figures and boxes `old` showed that `new` no longer does (「2절의 그림 1」), for the
+    reply."""
     kept = {(k, n) for k, _, _, n in _blocks_in(new)}
     out = [f"{part}절의 {k} {n}" for k, _, _, n in _blocks_in(old)
            if k == "그림" and n is not None and (k, n) not in kept]

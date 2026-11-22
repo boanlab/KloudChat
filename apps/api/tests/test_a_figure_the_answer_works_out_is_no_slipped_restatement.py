@@ -1,9 +1,4 @@
-"""A figure the answer works out itself is its own value, never a restatement slipped by ten.
-
-Round-1 r1c11 (11-20, both arms): 「1,650만 원(부가세 포함)」 → 공급가액 15,000,000원,
-부가세 16,500,000 − 15,000,000 = 1,500,000원. The restatement alignment saw 1,500,000 beside the
-result 15,000,000 in one sentence, read it as that result a digit short and wrote 「부가세
-15,000,000원」; 13,500,000 beside 1,350,000 went the same way."""
+"""A figure the answer works out itself is its own value, never a restatement slipped by a digit."""
 
 from __future__ import annotations
 

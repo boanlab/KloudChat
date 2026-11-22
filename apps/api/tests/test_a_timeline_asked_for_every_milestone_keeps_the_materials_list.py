@@ -1,8 +1,5 @@
-"""A deck asked for its whole schedule (「일정(마일스톤 전부)」) keeps every dated item the attached
-memo lists on its timeline, in order — not the few the writer picked.
-
-Rounds 2-3 r2d04, r3d04 (KC-SA): kickoff decks from a memo listing 8 milestones showed 2–5 of
-them on the timeline slide (「11/26, 12/18, 01/22, 03/19」 of eight)."""
+"""A deck asked for its whole schedule keeps every dated item of the attached memo on its
+timeline, in order."""
 
 from __future__ import annotations
 

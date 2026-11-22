@@ -21,10 +21,7 @@ export interface SourceTarget {
   n?: number
 }
 
-/**
- * The source viewer: the cited passage highlighted in the source's text, with the PDF open at
- * its page beside it, or the time code a video's transcript gives and a link to its player.
- */
+/** Cited passage highlighted in the source text, with the PDF at its page, or a video time code and player link. */
 export function SourceViewer({ target, onClose }: { target: SourceTarget | null; onClose: () => void }) {
   const t = useT()
   const phone = useMediaQuery('(max-width: 40rem)')

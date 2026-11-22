@@ -507,9 +507,8 @@ def _open_rows(lines: list[str]) -> dict[str, bool]:
 
 
 def opportunities_on_unknowns(lines: list[str]) -> list[dict]:
-    """Opportunities resting on what was not found: every row they cite is open, or an unknown
-    is their reason (「확인되지 않으므로 자사만 충족」). One already
-    labelled 「가설」 is a guess the skill allows."""
+    """Opportunities resting on what was not found: every cited row is open, or an unknown is
+    their reason (「확인되지 않으므로 자사만 충족」); one labelled 「가설」 is allowed."""
     rows = _open_rows(lines)
     out = []
     inside = False

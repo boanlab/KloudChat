@@ -3,10 +3,8 @@ import { hubFixture, myAgents, mySkills } from './customize-fixture'
 import { viewport } from './project'
 
 /**
- * A person can set up what built-ins have: the skill form names shipped scripts and checks for
- * the server to run (「서버가 돌리는 점검」) and lists the skill's own scripts, which run only in
- * the sandbox; an upload shows its scripts with their scan; the agent form edits its
- * 「빠진 정보 질문」 beside the ones its 템플릿 asks. Fixture data only; nothing reaches a server.
+ * Skill form: server-run checks (「서버가 돌리는 점검」), sandbox-only own scripts, upload script
+ * scan; agent form: 「빠진 정보 질문」 beside its 템플릿's. Fixture data only.
  * With GAPS_SHOTS set to a directory, each screen is saved there.
  */
 

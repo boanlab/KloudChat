@@ -57,7 +57,7 @@ def test_the_gap_card_does_not_ask_who_attended_a_memo_that_names_them():
     found = check_skills.gaps(("gap-check",), questions=_MINUTES_Q, request=_MEMO, material="")
     asked = [f["fact"] for f in found]
     assert "attendees" not in asked and "meeting_date" in asked
-    # One owner is not a list of attendees: still asked.
+    # one owner is not a list of attendees
     assert gaps._attendees("- 포스터 → 지민, 금요일까지", "", {})[0] is False
 
 

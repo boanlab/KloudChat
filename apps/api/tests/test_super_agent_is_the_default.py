@@ -1,8 +1,5 @@
-"""Super Agent is always offered and is how chat, report and slides conversations start.
-
-No switch: the governance row has no `super_agent_enabled`, the admin API neither takes nor
-returns it. The admin's per-surface default (설정 › 시스템 › 모델) may be Super Agent,
-Super Agent (strict-local) or a fixed model; unset means Super Agent."""
+"""Super Agent is always offered and starts chat, report and slides conversations; the admin's
+per-surface default may be it, its strict-local variant or a fixed model."""
 
 from __future__ import annotations
 

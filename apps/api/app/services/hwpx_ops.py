@@ -1,8 +1,8 @@
-"""HWP edit ops past text: a paragraph's style and alignment, a span's character format,
-moving paragraphs, table columns and merges, pictures, and page setup (`hwpx_edit.apply`
-resolves and runs them like its own). A shape (글자 모양, 문단 모양) is never changed in place,
-since other paragraphs share its id: the changed copy is defined in the file's header under
-an id of its own (`hwpx_edit._define`), or an equal one already there is reused.
+"""HWP edit ops past text (paragraph style/alignment, character format, moves, table columns
+and merges, pictures, page setup), run by `hwpx_edit.apply`.
+
+Shapes (글자 모양, 문단 모양) are shared by id, so a change defines a copy in the header under a
+new id (`hwpx_edit._define`) or reuses an equal one.
 """
 
 from __future__ import annotations

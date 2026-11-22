@@ -231,7 +231,7 @@ async def test_the_person_picks_which_strict_local_model_draws(policy) -> None:
     catalogue = {"models": models, "defaultModelByKind": {"image": EXTERNAL_IMAGE["id"]}}
     assert sessions._document_image_model(chose_qwen, catalogue, strict_local=True) is QWEN_IMAGE
     assert sessions._document_image_model(unset, catalogue, strict_local=True) is STRICT_IMAGE
-    # A pick no longer served: the default.
+    # A pick no longer served falls back to the default.
     gone = _user()
     gone.preferences = {"strictImageModel": "strict-local/retired"}
     assert sessions._media_model(

@@ -599,10 +599,12 @@ async def page_files(
     limit: int = paging.Limit,
     offset: int = paging.Offset,
 ):
-    """`/files` a page at a time, newest first unless `sort` (a column) and `dir` say
-    otherwise, ties broken by id; `box` leaves agents' knowledge out (the file
-    box), `q` matches the name. `total` counts the whole filter, `counts` each origin, and in
-    the whole box also `working`, the 「작업 문서」 tab's documents whose title matches."""
+    """Paged `/files`: newest first unless `sort`/`dir`, ties by id; `box` excludes agents'
+    knowledge, `q` matches the name.
+
+    `total` counts the whole filter, `counts` each origin; the whole box also returns `working`
+    (「작업 문서」 documents matching the title).
+    """
     copies = select(Agent.id).where(col(Agent.snapshot_of).is_not(None),
                                     Agent.owner_id == user.id)
     conds = [
@@ -916,9 +918,7 @@ async def file_documents(file_id: str, user: CurrentUser, db: DbSession):
 
 @router.post("/files/{file_id}/open-as-document", status_code=status.HTTP_410_GONE)
 async def open_file_as_document(file_id: str, user: CurrentUser, db: DbSession):
-    """Gone: an `.hwpx` no longer becomes a web report (HTML sections, no template). It opens
-    as itself in the HWP editor: `POST /artifacts/hwp` with `fileId` (a copy the file box keeps
-    pointing at), as the file box and an attachment's 「HWP로 열기」 do."""
+    """410: an `.hwpx` opens in the HWP editor via `POST /artifacts/hwp` with `fileId`."""
     await _own(db, StoredFile, "user_id", user, file_id)
     raise HTTPException(
         status_code=status.HTTP_410_GONE,
@@ -1165,11 +1165,14 @@ async def page_gallery(
     limit: int = paging.Limit,
     offset: int = paging.Offset,
 ):
-    """The 아티팩트 page a page at a time: HTML pages, code files, charts and diagrams
-    (`section`, one or a comma list), newest edit first by default; `q` matches the title,
-    `sort` a column and `dir` its direction, ties broken by id. Reports and decks are listed
-    in 파일함 › 작업 문서, pictures, sound and video in 만든 파일, and an old inline code block
-    nowhere. `counts` has each section over the search, the section filter aside."""
+    """Paged 아티팩트 list: HTML pages, code files, charts and diagrams (`section`: one or comma
+    list).
+
+    Newest edit first unless `sort`/`dir`, ties by id; `q` matches the title. Reports and decks
+    belong to 작업 문서, media to 만든 파일. `counts` has each section over the search, ignoring the
+    section
+    filter.
+    """
     conds = [Artifact.user_id == user.id, col(Artifact.section).in_(list(GALLERY))]
     if q and q.strip():
         conds.append(col(Artifact.title).ilike(f"%{_like(q.strip()[:80])}%", escape="\\"))
@@ -1209,11 +1212,12 @@ async def page_working_documents(
     limit: int = paging.Limit,
     offset: int = paging.Offset,
 ):
-    """The person's working documents a page at a time: one row per document (its versions
-    counted, not listed), newest edit first by default. `kind` is one kind or a comma list,
-    `q` matches the title; `sort` a column and `dir` its direction, ties broken by id.
-    `total` counts the filter, `counts` each kind over the search. A cursor belongs to its
-    sort and direction."""
+    """Paged working documents, one row per document (versions counted, not listed).
+
+    Newest edit first unless `sort`/`dir`, ties by id; `kind` is one kind or a comma list, `q`
+    matches the title. `total` counts the filter, `counts` each kind over the search. A cursor is
+    valid only for its sort and direction.
+    """
     conds = _working_conds(user.id, q)
     by_kind = dict((await db.exec(
         select(Artifact.kind, func.count()).where(*conds).group_by(col(Artifact.kind))
@@ -3410,27 +3414,27 @@ async def list_designs(user: CurrentUser, db: DbSession):
 
 
 def _themes_retired() -> HTTPException:
-    """Themes are retired (2026-11-15): their look is a project's or agent's 디자인 지침."""
+    """410: a look is a project's or agent's 디자인 지침, not a theme."""
     return HTTPException(status_code=status.HTTP_410_GONE, detail="themes_retired")
 
 
 @router.post("/designs/extract", response_model=DesignExtractOut)
 async def extract_design(payload: DesignExtractIn, user: CurrentUser):
-    """Retired: a document's look is followed by attaching it as a form."""
+    """410: attach a document as a form instead."""
     del payload, user
     raise _themes_retired()
 
 
 @router.post("/designs", response_model=DesignSystemOut, status_code=status.HTTP_201_CREATED)
 async def create_design(payload: DesignSystemIn, user: CurrentUser):
-    """Retired: write the look as 디자인 지침 on the project or agent."""
+    """410: write the look as 디자인 지침 on the project or agent."""
     del payload, user
     raise _themes_retired()
 
 
 @router.patch("/designs/{design_id}", response_model=DesignSystemOut)
 async def patch_design(design_id: str, payload: DesignSystemIn, user: CurrentUser):
-    """Retired: write the look as 디자인 지침 on the project or agent."""
+    """410: write the look as 디자인 지침 on the project or agent."""
     del design_id, payload, user
     raise _themes_retired()
 

@@ -2,10 +2,9 @@ import { expect, test, type Page } from '@playwright/test'
 import { chatId, composerFixture } from './composer-fixture'
 
 /**
- * What the edge adds around the app: the production headers (served by `vite preview` from
- * security-headers.conf) leave the main screens free of CSP violations, a newer build on the
- * server is offered as a reload, a file over the upload limit is refused with the limit named
- * (before sending, and when a proxy answers 413), and an uncaught error reaches the server log.
+ * What the edge adds: production headers (`vite preview` with security-headers.conf) cause no
+ * CSP violations, a newer build is offered as a reload, an over-limit upload is refused
+ * (client-side and on a proxy 413), and an uncaught error reaches the server log.
  */
 
 test.use({ serviceWorkers: 'block' })

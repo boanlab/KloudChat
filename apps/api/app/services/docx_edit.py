@@ -1,11 +1,9 @@
-"""Read and edit a `.docx` in place: a numbered outline for the model, and edit ops that keep
-each paragraph's style and numbering, each run's character format and each cell's own
-properties.
+"""Read and edit a `.docx` in place: a numbered outline for the model and edit ops that keep
+paragraph styles/numbering, run formats and cell properties.
 
-Ids are positions in the current version: body paragraphs `p1…` and body tables `t1…`, in
-reading order. An insert or delete renumbers what follows, so one `apply` call resolves every
-op against the version it was given, and the next call reads again. Word splits one line of
-text across runs freely (spell check, revisions), so text is matched across runs and a
+Ids are positions in the current version (body paragraphs `p1…`, body tables `t1…`, reading
+order); inserts and deletes renumber, so one `apply` resolves every op against the version it
+was given. Word splits text across runs freely, so text is matched across runs and a
 replacement takes the format of the run its first character was in.
 """
 
@@ -213,10 +211,9 @@ def _keep_marker(before: str, text: str) -> str:
 
 
 def _rewrite(paragraph: etree._Element, text: str) -> None:
-    """The paragraph's text made `text`, touching only what changed: the text both share at
-    the start and at the end stays in its own runs (a bold 「수신」 label stays bold), and the
-    changed middle takes the format of the run it begins in. A change with nowhere to sit
-    (or with its own tabs or line breaks) rewrites the paragraph (`_set_text`)."""
+    """Paragraph text made `text`, touching only what changed: shared leading/trailing text stays
+    in its runs, the changed middle takes the format of the run it begins in. A change with nowhere
+    to sit (or with its own tabs/line breaks) rewrites the paragraph (`_set_text`)."""
     pieces = _pieces(paragraph)
     old = "".join(t for _, t in pieces)
     if old == text:
@@ -368,12 +365,12 @@ def _pictured(paragraph: etree._Element) -> bool:
 
 
 def _set_cell(cell: etree._Element, text: str, *, whole: bool = False) -> None:
-    """The cell's text made `text`, one line per text paragraph in order: a line that stays
-    keeps its runs, a changed one keeps the format around its change (`_rewrite`); lines past
-    the cell's paragraphs become new paragraphs like its last, and text paragraphs past the
-    lines go. Nested tables and paragraphs holding a picture are not among them and stay.
-    `whole`: the cell emptied to one paragraph with `text` (nested tables too), its cell
-    properties kept, asked for in so many words."""
+    """Cell text made `text`, one line per text paragraph: unchanged lines keep their runs, changed
+    ones keep the format around the change (`_rewrite`); extra lines become paragraphs like the
+    last,
+    surplus text paragraphs go. Nested tables and picture paragraphs stay.
+    `whole`: empty the cell to one paragraph with `text` (nested tables too), cell properties
+    kept."""
     paragraphs = _cell_paragraphs(cell)
     if not paragraphs:
         raise DocxError("문단 없는 칸입니다.")
@@ -699,9 +696,8 @@ def apply(data: bytes, ops: list[dict],
 
 
 def _new_table(doc: _Doc, rows: list[list[str]]) -> list[etree._Element]:
-    """A table as the Word export draws one (head row repeated, width shares), made at the end
-    of the body and handed back to be moved; plain bordered cells in a file whose styles lack
-    the table style."""
+    """Table as the Word export draws it (repeated head row, width shares), made at the end of the
+    body for the caller to move; plain bordered cells when the file lacks the table style."""
     from app.services import report_export
 
     body = doc.document.element.body

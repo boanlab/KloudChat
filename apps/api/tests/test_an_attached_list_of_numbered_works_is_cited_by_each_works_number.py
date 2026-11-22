@@ -1,9 +1,4 @@
-"""An attached file that is a numbered list of works (abstracts, a bibliography) is one source
-per work, so the report cites each by its own number instead of the whole file as 「[1]」.
-
-Rounds 1-3 r1r09, r2r09, r3r09 (both arms): a research-trend report from an attached abstract
-collection 「[1] … [6] …」 cited every sentence 「[1]」 — the file was one source — although the
-request asked for the material's own numbers, and the reference list held one entry."""
+"""An attached numbered list of works is one source per work, cited by each work's own number."""
 
 from __future__ import annotations
 

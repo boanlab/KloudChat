@@ -339,10 +339,8 @@ _SURFACE_KINDS = {
 async def _opened_document(
     db: AsyncSession, user: User, session: ChatSession, opened: Any
 ) -> Artifact | None:
-    """The document the turn says is open beside the chat (`SendMessage.open_artifact`), when
-    it is this person's and this conversation's; anything else is not trusted and ignored.
-    A report or slides conversation then works on that document: it becomes the conversation's
-    document (`session.artifact_id`), so a revision never lands on another one."""
+    """The document open beside the chat (`SendMessage.open_artifact`) if it is this person's and
+    conversation's, else None; it becomes the conversation's document (`session.artifact_id`)."""
     if opened is None or not getattr(opened, "id", ""):
         return None
     found = await db.get(Artifact, opened.id)
@@ -358,9 +356,8 @@ async def _opened_document(
 
 
 async def _office_report(db: AsyncSession, session: ChatSession) -> Artifact | None:
-    """The office file a document conversation works on beside it, or None: the HWP or Word
-    file a report conversation wrote (`report_office`), the PowerPoint file a slides one
-    was asked to make (`_pptx_surface`)."""
+    """The office file (HWP, Word or PowerPoint) a report or slides conversation works on, or
+    None."""
     if session.kind not in (SessionKind.report, SessionKind.slides) or not session.artifact_id:
         return None
     found = await db.get(Artifact, session.artifact_id)
@@ -380,10 +377,10 @@ _WHOLE_REWRITE = re.compile(
 
 async def _web_edit_target(db: AsyncSession, session: ChatSession,
                            payload: SendMessage) -> Artifact | None:
-    """The web report or deck an edit turn works on in place (`report_*`/`deck_*` tools), or
-    None for a turn the document writers keep: a waiting card, an approval or answers, a new
-    document, a new structure or a whole rewrite asked in so many words, a file hand-over, an
-    undo (a version restore)."""
+    """The web report or deck an edit turn works on in place (`report_*`/`deck_*` tools).
+
+    None for turns the document writers keep: card answers, a new document or structure, a
+    whole rewrite, a file hand-over, an undo."""
     if session.kind not in (SessionKind.report, SessionKind.slides) or not session.artifact_id:
         return None
     if session.pending or payload.approve or payload.answers is not None:
@@ -455,10 +452,8 @@ async def _hwpx_form_surface(db: AsyncSession, user: User, session: ChatSession)
 
 
 async def _pptx_surface(db: AsyncSession, user: User, session: ChatSession) -> None:
-    """A slides conversation asked for a PowerPoint file (`output_format` `pptx`) and holding
-    no document yet gets a blank deck as its document: the turn then runs as the office chat
-    (`_office_report`) whose PowerPoint tools write into it. One flow on the server, so the
-    client sends the request with the pick and nothing else."""
+    """Give a slides conversation that asked for `pptx` and has no document a blank deck, so the
+    turn runs as the office chat (`_office_report`)."""
     if session.kind is not SessionKind.slides or session.artifact_id:
         return
     blank = pptx_doc.blank()
@@ -480,11 +475,9 @@ async def _pptx_surface(db: AsyncSession, user: User, session: ChatSession) -> N
 
 
 async def _drop_unwritten_blank(db: AsyncSession, session: ChatSession, ctx: Any) -> bool:
-    """The blank deck `_pptx_surface` opened for this turn, when every `pptx_write` failed:
-    removed, and the conversation holds no document again, so what the turn offers to open or
-    download is never an empty 「PowerPoint 문서」 standing in for the deck that was not made
-    (the reply says it was not). A deck someone wrote into, or a turn that never tried to
-    write, keeps it."""
+    """Remove the blank deck `_pptx_surface` opened when every `pptx_write` failed, so no empty
+    「PowerPoint 문서」 is offered. A deck written into, or a turn that never tried to write,
+    keeps it."""
     if session.kind is not SessionKind.slides or not session.artifact_id:
         return False
     if not (getattr(ctx, "tool_calls", None) or {}).get("pptx_write"):
@@ -780,9 +773,8 @@ async def _skill_shelf(
     return shelf
 
 
-#: Claim not renewed for this long = crash leftover (four missed renewals). A replica that
-#: restarts frees its own earlier boot's claims at once (`free_claims_of_earlier_boots`);
-#: this bounds the rest, such as a crashed container that was replaced rather than restarted.
+#: Claim not renewed for this long (four missed renewals) is a crash leftover; a restarted
+#: replica frees its own earlier claims at once (`free_claims_of_earlier_boots`).
 _CLAIM_TTL_SEC = 240
 #: How often a running turn renews its claim (`_keep_claim`); well inside the TTL.
 _CLAIM_REFRESH_SEC = 60.0
@@ -790,13 +782,13 @@ _CLAIM_REFRESH_SEC = 60.0
 _CLAIMS: dict[str, str] = {}
 #: This request's claim `(session id, token)` until a turn stream takes it over.
 _TURN_CLAIM: ContextVar[tuple[str, str] | None] = ContextVar("turn_claim", default=None)
-#: Who holds a claim: `<replica>:<boot>:<random>`. The replica name is the container's host
-#: name, which survives a restart of the same container, so the next boot can tell its own
-#: dead claims from a live replica's. Two processes must not share it (`REPLICA_ID`).
+#: Who holds a claim: `<replica>:<boot>:<random>`. The replica name is the container host
+#: name (stable across restarts), so a boot can tell its own dead claims; unique per process
+#: (`REPLICA_ID`).
 _REPLICA = (os.environ.get("REPLICA_ID") or socket.gethostname() or "api").replace(":", "-")[:64]
 _BOOT = uuid.uuid4().hex[:12]
-#: Set when this process starts going down (`shutdown_started`) and while it drains: a turn
-#: stopped from then on was cut by the restart, not by its reader, and is stored interrupted.
+#: Set once shutdown starts (`shutdown_started`): a turn stopped from then on was cut by the
+#: restart, not its reader, and is stored interrupted.
 _SHUTDOWN: dict[str, float | bool] = {"since": 0.0, "stopping": False}
 
 
@@ -938,7 +930,7 @@ async def _keep_claim(session_id: str, token: str) -> None:
                         logs.safe(exc))
             continue
         if getattr(result, "rowcount", None) == 0:
-            # stopped or released: no longer ours to keep
+            # stopped or released
             return
 
 
@@ -1164,12 +1156,12 @@ def _media_model(
     default: str | None = None,
     defaults: tuple[str, ...] = (),
 ) -> dict | None:
-    """Asked model, else the admin's `defaults` (`configured_defaults`); allowed only,
-    strict-local only when required. Never the cheapest: past the defaults a chat surface takes
-    the first allowed model, and a picture only when its default is outside the allowlist.
+    """Asked model, else the admin's `defaults` (`configured_defaults`); allowed only, strict-local
+    when required.
 
-    Kept strict-local, a picture asked on an outside model goes to `strict_image_model`, the rule
-    the settings screen shows.
+    Never the cheapest: past the defaults a chat surface takes the first allowed model, a
+    picture only when its default is outside the allowlist. A strict-local picture asked on an
+    outside model goes to `strict_image_model`.
     """
     if default:
         defaults = (default, *defaults)
@@ -1326,10 +1318,10 @@ async def _rescue_model(
     *, user: User, catalogue: list[dict], writer: dict, strict_local: bool,
     outline: dict | None,
 ) -> dict | None:
-    """Rescue writer for an empty or announced-only answer: the other self-hosted model.
+    """Rescue writer for an empty or announced-only answer: the other self-hosted model, else None.
 
     Read from the model roles (chat, report, slides, code fallback), else the outline model;
-    `None` when there is none. An external writer gets the chat model."""
+    an external writer gets the chat model."""
     roles = await settings_store.model_roles()
     if not str(writer.get("id") or "").startswith(("local/", "strict-local/")):
         if strict_local or not roles.chat or roles.chat == writer.get("id"):
@@ -1598,11 +1590,11 @@ def _turn_reasoning_fields(
     fallback: dict | None = None,
     fallback_effort: str | None = None,
 ) -> tuple[dict[str, dict[str, Any]] | None, dict[str, Any]]:
-    """`(fields by model, note)`: the writer's reasoning fields for `thinking.TURN_REASONING`
-    (None leaves the deployment's) and what the answer's line says (`routing.reasoning`).
-    Super Agent's effort comes from its route (the chip already steered it); a model picked by
-    hand takes the chip's effort where its reasoning can be steered. Either way, a 빠르게 or
-    깊게 the writer cannot act on is marked `unsupported` rather than shown as a level."""
+    """`(fields by model, note)`: reasoning fields for `thinking.TURN_REASONING` (None keeps the
+    deployment's) and the answer line's note (`routing.reasoning`).
+
+    Super Agent's effort comes from its route; a hand-picked model takes the chip's effort where
+    steerable. A 빠르게 or 깊게 the writer cannot act on is marked `unsupported`."""
     if super_route is not None:
         fields = _super_reasoning(model, str(super_route.get("effort") or "default"), rescue,
                                   rescue_effort, fallback, fallback_effort)
@@ -1637,10 +1629,9 @@ def _super_reasoning(
     model: dict, effort: str, rescue: dict | None, rescue_effort: str,
     fallback: dict | None = None, fallback_effort: str | None = None,
 ) -> dict[str, dict[str, Any]] | None:
-    """Effort fields by model for `agent.TURN_REASONING`; None leaves the deployment's. The
-    writer's fallback (`_super_fallback`) carries on at the writer's effort, or at
-    `fallback_effort` (a complex document's fallback is the `document` row's model, which
-    thinks as that row says)."""
+    """Effort fields by model for `agent.TURN_REASONING`; None keeps the deployment's.
+
+    The writer's fallback (`_super_fallback`) uses the writer's effort, or `fallback_effort`."""
     fields: dict[str, dict[str, Any]] = {}
     for row, level in ((fallback, fallback_effort or effort), (rescue, rescue_effort),
                        (model, effort)):
@@ -1705,10 +1696,8 @@ def _super_fallback(
 async def _material_present(
     db: AsyncSession, user: User, session: ChatSession, attachments: list[str] | None
 ) -> bool:
-    """Whether a turn works over internal material: a file attached to it (not a picture), or
-    what `search_knowledge` searches in this conversation (`_knowledge_shelf`): files with
-    text attached earlier, the project's knowledge sources still switched on, the agent's own
-    files."""
+    """Whether a turn works over internal material: a non-picture attachment, or what
+    `search_knowledge` searches here (`_knowledge_shelf`)."""
     if attachments:
         found = (
             await db.exec(
@@ -1762,12 +1751,11 @@ async def _super_route(
 ) -> tuple[dict, dict[str, Any], str]:
     """Super Agent turn: `(model, route note, effort)`.
 
-    Rules first; the short-payload classifier only when they cannot tell (and never with
-    personal data in the turn). `super_strict`, internal material and personal data pick from
-    the strict-local column, so privacy routing has nothing left to move. The reasoning chip
-    (`reasoning_mode`) steers the row and effort (`super_agent.steer`). `doc`: what a document
-    turn's signals say (`super_agent.complexity`); a complex one moves to the
-    `complex_document` row, and a document's revisions keep the first version's row."""
+    Rules first; the short-payload classifier only when they cannot tell, never with personal
+    data. `super_strict`, internal material and personal data pick from the strict-local
+    column. The reasoning chip (`reasoning_mode`) steers row and effort (`super_agent.steer`).
+    `doc`: a document turn's signals (`super_agent.complexity`); a complex one moves to the
+    `complex_document` row, and revisions keep the first version's row."""
     mode = str(getattr(session.routing_mode, "value", session.routing_mode))
     rules = super_agent.normalise_rules(policy.super_agent_rules)
     allowed = set(user.allowed_models or [])
@@ -1921,8 +1909,7 @@ async def _super_route(
     if reasoning_mode != super_agent.AUTO:
         route["reasoningMode"] = reasoning_mode
     if row_class != decision.task_class:
-        # the row the chip or the material moved the turn to (the class stays what the
-        # request is)
+        # row the chip or material moved the turn to (the class stays the request's)
         route["row"] = row_class
     wanted = complex_wanted if (complex_wanted and not complex_row) else (
         rules.get(row_class) or {}).get("strictModel" if strict else "model")
@@ -1986,10 +1973,10 @@ def _document_stays_inside(
     session: ChatSession, model: dict, policy, blocks, attachments: list[str] | None,
     history: list[Message],
 ) -> bool:
-    """A report or deck that runs on strict-local models only (`_document_route`): the model
-    the person picked, a Super Agent strict-local conversation, or internal material the admin
-    keeps inside. Nothing leaves, so nothing is masked. A Super Agent conversation's writer
-    is the table's pick, not the picked model: only its strict entry counts."""
+    """Whether a report or deck runs on strict-local models only (`_document_route`), so nothing is
+    masked.
+
+    A Super Agent writer is the table's pick, not the picked model: only its strict entry counts."""
     return bool(
         (session.routing_mode not in _SUPER_MODES and _strict_model(model))
         or session.routing_mode == RoutingMode.super_strict
@@ -2494,10 +2481,10 @@ _EGRESS_ALWAYS = frozenset({"prompt", "attachments"})
 def _egress_record(
     findings: list[governance.Finding], parts: list[tuple[str, list[str]]],
 ) -> dict[str, Any] | None:
-    """What an outside model was sent once masked, for its owner to read on the answer
-    (`routing.egress`): per-category counts and the masked text of each part, cut to
-    `_EGRESS_PART_CHARS` (and `_EGRESS_TOTAL_CHARS` in all). `parts` must already be masked:
-    the record never holds an original value. `None` when nothing was masked."""
+    """Masked text an outside model was sent, for the answer's owner (`routing.egress`), or None.
+
+    Per-category counts and each part cut to `_EGRESS_PART_CHARS` (`_EGRESS_TOTAL_CHARS` in
+    all). `parts` must already be masked: the record never holds an original value."""
     counts: dict[str, int] = {}
     for row in findings:
         if row.source in ("tool_output", "assistant_output") or row.count <= 0:
@@ -2867,8 +2854,8 @@ _PROFILE_HEAD = re.compile(
 def _profile(rest: str) -> bool:
     """Whether the pasted part is a profile of the person (or their client), not a memo.
 
-    A short labelled list most of whose lines describe the person; tracing it as material
-    would turn advice built on it into values to source."""
+    A short labelled list mostly describing the person; tracing it as material would turn
+    advice built on it into values to source."""
     lines = [line for line in (rest or "").splitlines() if line.strip()]
     if not 3 <= len(lines) <= 30 or len(rest) > 2000:
         return False
@@ -2884,10 +2871,8 @@ _WORKS_ON_TEXT = re.compile(
 
 
 def _ask_of(content: str) -> str:
-    """The ask that decides a turn's forced search and advice reading: the instruction alone
-    when it works on text the person pasted under it (a 「재정 진단」 in a pasted press release
-    asked to be summarised makes no medical question); else the whole message
-    (lab results pasted under 「봐 줘」 stay a medical question)."""
+    """The ask that decides forced search and advice reading: the instruction alone when it works
+    on pasted text, else the whole message."""
     from app.services.context import lead_instruction, pasted_material
 
     if edited := report_service.edit_ask(content):
@@ -3075,7 +3060,7 @@ async def _conversation_summary(
         )
     covered = next((i for i, row in enumerate(rows) if row.id == through), None)
     if previous is None or covered is None:
-        # nothing usable, or its anchor was edited away: the memory starts over
+        # nothing usable, or its anchor was edited away: restart the memory
         previous, fresh, pinned = None, turns, []
     else:
         fresh = turns[covered + 1 :]
@@ -3337,8 +3322,7 @@ async def get_session(session_id: str, user: CurrentUser, db: DbSession):
     links = await message_links.run_links(db, session_id)
     out = SessionOut.of(session, history, made=made.get(session_id), links=links)
     if out.artifact_id is None and session.kind == SessionKind.chat:
-        # a chat whose HWP, Word or PowerPoint document was saved before the turn recorded it
-        # (or whose record was cleared) reopens on its newest one
+        # reopen on the newest office document when the record is missing
         out.artifact_id = await _newest_office_document(db, session_id)
     return out
 
@@ -3380,7 +3364,7 @@ async def create_session(payload: SessionCreate, user: CurrentUser, db: DbSessio
         agent_id=payload.agent_id,
     )
     if agent is not None and agent.retired:
-        # retired: old conversations open, no new ones
+        # retired agents keep old conversations, no new ones
         raise HTTPException(status_code=status.HTTP_410_GONE, detail="agent_retired")
     if agent is not None and user.role is not UserRole.admin and (
             agent.catalog_key or "") in starter.draft_agents():
@@ -3722,7 +3706,7 @@ async def _template_skills(
             select(Skill)
             .where(
                 col(Skill.catalog_key).in_(list(template.skills)),
-                # the catalogue owner's shared rows, not someone's shared copy
+                # the catalogue owner's rows, not a shared copy
                 Skill.owner_id == starter.catalog_owner_query().scalar_subquery(),
                 Skill.visibility == SkillVisibility.org,
             )
@@ -3765,16 +3749,15 @@ async def _template_skills(
 async def _project_render_template(
     db: DbSession, project_id: str | None, kind: SessionKind
 ) -> str | None:
-    """A project's default template no longer starts a conversation (2026-11-15: templates
-    retired; a project gives its 기본 양식 파일 and 디자인 지침 instead)."""
+    """No template starts a conversation; a project gives 기본 양식 파일 and 디자인 지침 instead."""
     del db, project_id, kind
     return None
 
 
 async def _agent_template_loaded(db: DbSession, user: User, agent: WorkspaceAgent | None,
                                  kind: SessionKind) -> str | None:
-    """An agent's template no longer starts a conversation (2026-11-15: templates retired;
-    the agent's format, questions and checks are its own fields, migration 0091)."""
+    """No template starts a conversation; an agent's format, questions and checks are its own
+    fields."""
     del db, user, agent, kind
     return None
 
@@ -3903,7 +3886,7 @@ async def agent_draft(session_id: str, user: CurrentUser, db: DbSession, distill
         base = bases.get(guess, drafts=is_admin) if guess else None
     await user_templates.load(db, user.id, [session.render_template_id])
     template = design_templates.choosable(session.render_template_id)
-    # the look travels as words: the agent's 디자인 지침, else the project's (themes are retired)
+    # the look travels as words: the agent's 디자인 지침, else the project's
     brief = (agent.design_brief or "").strip() if readable and agent is not None else ""
     if not brief and session.project_id:
         project = await db.get(Project, session.project_id)
@@ -4188,7 +4171,7 @@ async def generate_images(
         db.add(user)
         await db.commit()
     base_url, api_key = await litellm_service.credentials_for(user)
-    # retired image 서식 → plain picture; other ids refused
+    # a retired image 서식 gives a plain picture; other ids refused
     if payload.template_id and not design_templates.is_retired_media(payload.template_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="design_template_not_found"
@@ -4373,15 +4356,12 @@ async def _edit_image(
     catalogue: dict,
     request: Request,
 ) -> list[ArtifactOut]:
-    """Changes a given picture as told: a new image artifact linked to its source (`editOf`,
-    `lineage`, `editVersion`); the source is kept. Only models that edit (`editsImages`) draw it.
+    """Edit a given picture as told: a new image artifact linked to its source (`editOf`, `lineage`,
+    `editVersion`); the source is kept. Only models that edit (`editsImages`) are used.
 
-    The source picture leaves for the model as an attachment would: a picture the person gave
-    (an upload, or one made from it) is internal material, kept inside under the
-    internal-material rule; a strict-local conversation (a Super Agent strict one included)
-    keeps it inside too. Kept inside, the edit goes to a strict-local model that edits, picked
-    for the turn whatever picture model the person draws with; with none it is refused
-    (`image_edit_strict_local`).
+    The source leaves like an attachment: a person's own picture is internal material, and a
+    strict-local conversation keeps it inside too. Kept inside, a strict-local editing model is
+    picked for the turn; with none the edit is refused (`image_edit_strict_local`).
     """
     stored, source = await _edit_source(db, user, payload)
     boundary = await _media_gate(db, user, request, session, catalogue["models"],
@@ -4485,7 +4465,7 @@ async def _edit_image(
             "seed": 0,
             "model": model["id"],
             "src": f"{settings.api_prefix}/files/{file_id}/content",
-            # the picture it was made from, kept as it was
+            # source picture, unchanged
             "editOf": {
                 "artifactId": source.id if source is not None else None,
                 "fileId": stored.id,
@@ -4984,10 +4964,11 @@ async def _store_document(
     base: dict | None = None,
     drafted: list[str] | None = None,
 ) -> str:
-    """Same-kind regeneration → version; new kind → new row. `base` (`_document_base`) is the
-    document and version the turn started from: a version moves only from it, so a hand save
-    made while the turn wrote is not overwritten; the result is then kept apart as a draft
-    beside the document (`artifact_versions.draft`), and `drafted` gets the reply's sentence."""
+    """Same-kind regeneration becomes a version; a new kind a new row.
+
+    `base` (`_document_base`) is the document and version the turn started from: if a manual
+    save moved past it, the result is kept as a draft (`artifact_versions.draft`) and `drafted`
+    gets the reply's sentence."""
     existing = await db.get(Artifact, session.artifact_id) if session.artifact_id else None
     if (
         existing is not None
@@ -5094,10 +5075,11 @@ async def _store_office_report(
     base: dict | None = None,
     drafted: list[str] | None = None,
 ) -> str:
-    """The report's sections as an HWP or Word file: a new office artifact, or the next
-    version of the one this conversation has (its hand edits kept in the history). A hand
-    save made while the turn wrote (the version moved past `base`) is not overwritten: the
-    file is kept apart as a new document and `drafted` says so."""
+    """The report's sections as an HWP or Word file: a new office artifact, or the next version of
+    the conversation's.
+
+    If a manual save moved the version past `base`, the file is kept as a new document and
+    `drafted` says so."""
     service = hwp_doc if kind is ArtifactKind.hwp else docx_doc
     # a Word report follows the conversation's Word form (`docx_form`)
     form = await form_files.for_session(db, session, "docx") \
@@ -5573,10 +5555,11 @@ def _agent_web_search(agent: WorkspaceAgent | None) -> bool | str:
 
 def _sets_card_aside(session: ChatSession, payload: SendMessage,
                      kind: SessionKind | None = None) -> bool:
-    """Whether a typed message while a card is open on a finished document is not the card's
-    answer: a question about the document (「4장 수치는 어디서 나온 거야?」), or an edit that
-    names its part by number (「4장을 번호 목록으로 바꿔줘」) — on a proposed outline only one
-    that leaves the structure as it is (「4장은 빼고 진행해 줘」 is a note on the outline)."""
+    """Whether a message typed while a card is open on a finished document is not the card's answer.
+
+    A question about the document (「4장 수치는 어디서 나온 거야?」) or an edit naming its part
+    by number (「4장을 번호 목록으로 바꿔줘」); on a proposed outline only one that keeps the
+    structure."""
     pending = session.pending or {}
     if (not pending or not session.artifact_id or payload.approve
             or payload.answers is not None or not _plans_first(kind or session.kind)):
@@ -5696,7 +5679,7 @@ async def _send_message(
                     turn_options.get("outputFormat")
                     if turn_options.get("outputFormat") in ("web", "hwp", "docx", "pptx")
                     else None),
-                # the reasoning chip the question was asked under
+                # reasoning chip in force when asked
                 "reasoning": turn_options.get("reasoning")
                 if turn_options.get("reasoning") in super_agent.REASONING_MODES
                 else payload.reasoning,
@@ -5809,11 +5792,8 @@ async def _send_message(
     if published is None and payload.reasoning is not None:
         # kept on the conversation like its model: the next turn and a reload start from it
         session.reasoning_mode = _stored_reasoning(payload.reasoning)
-    #: Super Agent picks this turn's model (`_super_route`); a turn-level model pick wins
-    #: A report or deck conversation always sends the model its screen shows (`streamReport`,
-    #: `streamDeck`), so for it the conversation's mode decides, not that field: a model
-    #: picked by hand has already made the conversation `manual`. (Before this, a form or other
-    #: office-file turn on Super Agent never reached the router.)
+    #: Super Agent picks this turn's model (`_super_route`). A report or deck screen always
+    #: sends its model (`streamReport`, `streamDeck`), so the conversation's mode decides there.
     super_turn = bool(
         kind is SessionKind.chat
         and session.routing_mode in _SUPER_MODES
@@ -5821,8 +5801,7 @@ async def _send_message(
         and published is None
     )
 
-    # templates are retired (2026-11-15): a pick starts nothing; `""` still clears an older
-    # conversation's
+    # a template pick starts nothing; `""` still clears a stored one
     if payload.render_template_id == "":
         session.render_template_id = None
     await user_templates.load(db, user.id, [session.render_template_id])
@@ -5968,7 +5947,7 @@ async def _send_message(
         # the forms followed and what the person is told about a file, on the question
         attachment_meta = form_files.turn_meta(turn_forms, attachment_meta)
 
-    #: picked skills, else the standing set; a pick replaces the standing set
+    #: picked skills replace the standing set
     active_skill_ids = list(payload.activated_skill_ids)
 
     stored_content = content
@@ -6574,7 +6553,7 @@ async def _send_message(
         **({"reasoning": payload.reasoning} if payload.reasoning and published is None else {}),
     }
     if egress is not None:
-        # what left, as it left: read by the answer's owner (「외부로 보낸 내용 보기」)
+        # what left, as it left (「외부로 보낸 내용 보기」)
         if privacy_resolution is not None:
             privacy_resolution.routing = {**privacy_resolution.routing, "egress": egress}
         else:
@@ -6761,7 +6740,7 @@ async def _send_message(
 
     if super_route is not None and privacy_resolution is not None:
         if model["id"] != super_route["selectedModel"]:
-            # privacy routing moved the turn (strict twin, safe model): the note says so
+            # privacy routing moved the turn (strict twin, safe model)
             super_route = {**super_route, "boundaryModel": model["id"]}
         privacy_resolution.routing = {**privacy_resolution.routing, "superAgent": super_route}
         if super_route.get("tools") == "none" and not calculation_required:
@@ -6810,7 +6789,7 @@ async def _send_message(
                                            strict=strict_local)
         stage_rules = super_agent.normalise_rules(policy.super_agent_rules)
         for stage, model_id in stage_models.ids.items():
-            # the stage's column: a strict-local model was picked from the strict column
+            # a strict-local model comes from the strict column
             level = super_agent.stage_effort(
                 stage_rules, stage, reasoning_mode,
                 stage_models.rows[model_id].get("strictLocal") is True)
@@ -6832,7 +6811,7 @@ async def _send_message(
     else:
         complex_turn.PLAN.set(None)
     if reasoning_note != {"mode": super_agent.AUTO, "effort": "default"}:
-        # 자동 with nothing sent is the behaviour before the chip: no note to show
+        # 자동 with nothing sent: no note to show
         if privacy_resolution is not None:
             privacy_resolution.routing = {**privacy_resolution.routing,
                                           "reasoning": reasoning_note}
@@ -7215,9 +7194,8 @@ async def _send_message(
     #: the stop button's signal for this report or deck (`_stoppable`)
     stopping = asyncio.Event()
     if kind is SessionKind.report:
-        # the file picked on the screen, else the one decided when the outline was offered,
-        # else 「한글 문서로」, 「Word 파일로」 in the request (`report_office`); a conversation
-        # that already has its document keeps it
+        # screen pick, else the outline's decision, else 「한글 문서로」 in the request
+        # (`report_office`); an existing document is kept
         office_file = "" if session.artifact_id else _report_output(
             payload.output_format or str(pending.get("output") or ""),
             str(pending.get("request") or "") or typed_content)
@@ -7553,7 +7531,7 @@ async def _send_message(
                 reasoning=turn_reasoning,
                 user_id=user.id,
                 api_key=api_key,
-                # visitor's words never remembered on the owner's account
+                # visitors' words are never remembered on the owner's account
                 auto_memory=Preferences.of(user).auto_memory and published is None
                 and uses_memory(agent_row),
                 published=published,
@@ -7782,8 +7760,8 @@ async def _until_stopped(
     """Races stream delivery against cancellation and closes the upstream generator."""
     iterator = events.__aiter__()
     loop = asyncio.get_running_loop()
-    # one context for every step and the close: a stage's context-variable token is reset
-    # in the context it was set in (a pipeline runner's stage name)
+    # one context for all steps and the close: a stage's context-variable token must be
+    # reset in the context it was set in
     steps = copy_context()
     waiting = asyncio.ensure_future(stopping.wait())
     try:
@@ -7825,8 +7803,8 @@ async def _stoppable(session_id: str, stopping: asyncio.Event,
 async def _settle_stopped_document(*, session_id: str, user_id: str, model: dict,
                                    outline_model: dict | None, usage: dict,
                                    reason: str) -> AsyncIterator[str]:
-    """A report or deck stopped before it was stored: no artifact, the question marked stopped
-    (like a chat turn stopped before its first word), the tokens spent so far billed."""
+    """A report or deck stopped before storing: no artifact, the question marked stopped, tokens
+    so far billed."""
     # each model's tokens at its price; a part that spent nothing costs nothing
     doc_stages.whole_turn(usage)
     spent = [(model, usage.get("inputTokens", 0), usage.get("outputTokens", 0)),
@@ -8443,7 +8421,7 @@ async def _answer_turn(
                 joined = "".join(text_parts).replace(event["text"], "", 1)
                 text_parts[:] = [joined]
             elif event["type"] == "step":
-                # stored without `type`; one row per step id, done replaces running
+                # one row per step id, stored without `type`
                 row = {k: v for k, v in event.items() if k != "type"}
                 at = next((i for i, s in enumerate(steps) if s.get("id") == row.get("id")), None)
                 if at is None:
@@ -8600,8 +8578,7 @@ async def _answer_turn(
         yield chat_service.sse({"type": "delta", "text": said})
     if form_card and content.strip() and not failed and not office_claims.saved_by(ctx):
         # a 한글 form turn that saved nothing says so, in so many words, and asks for what is
-        # missing; the form's own card stays beside it (a reply telling the person to type it
-        # in is the failure this replaces)
+        # missing; the form's own card stays beside it
         said = hwpx_form.nothing_saved(content, (ctx.hwp or {}).get("refused") or "")
         if said:
             yield chat_service.sse({"type": "retract", "text": content})
@@ -8645,7 +8622,7 @@ async def _answer_turn(
         else content
     )
     protect_persistence = mask_at_rest or bool(tool_output_findings)
-    # tell the browser what was masked; it holds the streamed original
+    # the browser holds the streamed original, so tell it what was masked
     answer_findings = (
         governance.findings(
             {"assistant_output": content},
@@ -9514,9 +9491,10 @@ async def _make_pass(work: PipelineBundle, pipe: Any, *, crashed: str,
                      parent: Any = None,
                      straight: Callable[[dict], bool] | None = None,
                      stopping: asyncio.Event | None = None) -> AsyncIterator[str]:
-    """One-pass writer's `make` flow (deck, page): plan turn, or write approved outline and save.
+    """One-pass writer's `make` flow (deck, page): plan turn, or write the approved outline and
+    save.
 
-    A plan `straight` accepts is neither shown nor stored: the caller writes it at once.
+    A plan `straight` accepts is neither shown nor stored.
     """
     turn, user_id, session_id = work.request.turn, work.request.turn["user_id"], \
         work.request.session_id
@@ -9691,9 +9669,9 @@ async def _deck_carry(work: PipelineBundle) -> AsyncIterator[dict]:
 
 
 def _restructured_said(before: list[dict], slides: list[dict], *, english: bool) -> str:
-    """「6장짜리 슬라이드를 만들었습니다. 고치면서 4일, 3곳과 「…」 차트가 빠졌습니다. …」: the
-    deck made and what of the old deck its slides no longer show (notes do not count), in the
-    deck's or the request's language."""
+    """Reply 「6장짜리 슬라이드를 만들었습니다. 고치면서 … 빠졌습니다. …」: the deck made and what
+    of
+    the old deck its slides no longer show (notes excluded), in the deck's or request's language."""
     count = len(deck_service.filled(slides))
     plotted = deck_service.charted_only(before, slides)
     lost = [f for f in deck_service.lost_across(before, slides, plotted) if f not in plotted]
@@ -9819,7 +9797,7 @@ async def _deck_save(work: PipelineBundle) -> AsyncIterator[dict]:
                     content=" ".join(x for x in [
                         *drafted, rerun_note(turn) or _restructured_said(
                             work.document.before if carry_from else [], slides,
-                            # in the deck's language, or the language the reshape was asked in
+                            # deck's language, or the reshape request's
                             english=deck_service.deck_language(slides) == "en" or bool(
                                 carry_from) and output_language.typed_in_english(carry_note)),
                         # the count asked, held to the count written
@@ -9924,7 +9902,7 @@ async def _revision_plan(
     rename = (revise.title_rename(instruction, skeleton)
               if getattr(artifact, "kind", None) != ArtifactKind.deck else None)
     if rename is not None and rename[1] is None:
-        # the document's title is renamed by hand; the rest is planned without it
+        # the title is renamed by hand; plan the rest without it
         instruction = revise.without_title_clause(instruction)
         if not instruction:
             return revise.Plan(scope="parts", targets=[], note=f"제목 → {rename[0]}"), skeleton
@@ -9942,7 +9920,7 @@ async def _revision_plan(
         # the head's fields (작성일, 작성자 …), filled by hand in the revise route
         return revise.Plan(scope="parts", targets=[], note=instruction), skeleton
     if (move := revise.part_move(instruction, skeleton)) is not None:
-        # a part moved in place, never the document planned and written again
+        # move the part in place instead of replanning the document
         where = "맨 앞" if move[1] < 0 else f"{skeleton[move[1]]} 뒤"
         return revise.Plan(scope="parts", targets=[],
                            note=f"{skeleton[move[0]]} → {where}"), skeleton
@@ -10028,8 +10006,8 @@ async def _revise_document(
                     "title": loaded.get("title")}
     turn["standing"] = list(loaded.get("standing") or [])
     turn["history"] = list(loaded.get("history") or [])
-    # every part as read: one the edit was not asked to touch is saved as it was if a rewrite
-    # dropped its figures (`revise-save`)
+    # every part as read: an untouched part is saved as it was if a rewrite dropped its figures
+    # (`revise-save`)
     turn["before_parts"] = copy.deepcopy(
         list(loaded["data"].get("slides") if is_deck else loaded["data"].get("sections") or []))
     data = dict(loaded["data"])

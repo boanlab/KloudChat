@@ -82,6 +82,6 @@ def test_a_repeating_figure_is_left_out_unless_figures_were_asked_for():
 def test_a_table_is_dropped_alone():
     assert report.drop_table("앞\n\n" + TABLE, "없는 표") == "앞\n\n" + TABLE
     assert report.drop_table("앞\n\n" + TABLE, TABLE) == "앞"
-    # prose that pointed at the table points at the figure that replaces it
+    # prose pointing at the table points at the figure replacing it
     assert report.drop_table("위 표에 따라 바뀝니다.\n\n" + TABLE, TABLE) == "그림에 따라 바뀝니다."
     assert report.drop_table("표지 다음 표준안\n\n" + TABLE, TABLE) == "표지 다음 표준안"

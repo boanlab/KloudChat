@@ -1,8 +1,5 @@
-"""A summary written before sections written apart (an upper model's recommendation) is said
-again from the finished body; kept only when its figures are the document's.
-
-Rounds 2-3 r2r03, r3r03, r3r06, r3r11 (KC-SL): the summary recommended B (or no option, or only
-restated the request) while the recommendation section chose A."""
+"""A summary written before the sections is said again from the finished body, kept only when its
+figures are the document's."""
 
 from __future__ import annotations
 

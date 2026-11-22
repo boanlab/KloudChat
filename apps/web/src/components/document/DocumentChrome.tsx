@@ -8,13 +8,8 @@ import type { AskReason } from '@/lib/officeGuard'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/useT'
 
-/*
- * The chrome every document panel shares (웹 보고서, 한글, Word; the web slides next):
- * one header in one order — title · vN · 「저장 안 됨」 · 저장 · 내려받기 · 공유 · 더보기
- * (버전 기록) · expand · close — the conflict notice, the lock while the agent works,
- * the phone's read-only note and the question over unsaved edits. Editors bring their
- * own body; the state (dirty, saving, version, notice) is theirs and passed in.
- */
+/* Chrome shared by every document panel: header, conflict notice, agent lock, read-only note, unsaved-edits prompt.
+   Editors supply the body and own the state. */
 
 /** What the unsaved-edits question says, by why it is asked. */
 export const ASK = {
@@ -38,12 +33,7 @@ export const ASK = {
 /** `conflict`: a save lost to a newer version; `behind`: a newer version came in under edits. */
 export type DocumentNoticeKind = 'conflict' | 'behind'
 
-/**
- * The document header. Required: `icon`, `title`, `version`, `dirty`, `onSave`, `artifact`
- * (sharing and version history). `download` replaces the plain menu built from `downloads`;
- * `extra` sits after the unsaved mark (view switches, an 편집 toggle); `more` adds items to
- * 더보기 above 버전 기록; `children` (a ribbon) goes under the row.
- */
+/** Document header; `download` replaces the menu built from `downloads`, `extra` follows the unsaved mark, `more` precedes 버전 기록, `children` sits under the row. */
 export function DocumentHeader({
   icon,
   title,

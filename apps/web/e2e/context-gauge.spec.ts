@@ -3,11 +3,7 @@ import { chatId, composerFixture } from './composer-fixture'
 import { viewport } from './project'
 import { contextUsage } from './shell-mocks'
 
-/**
- * The composer's context gauge: a ring with the percent of the model's window the next turn
- * takes, and on hover or tap the breakdown. The server's numbers come from
- * `POST /sessions/context-usage`; the draft is counted as it is typed.
- */
+/** Composer context gauge: percent ring and hover/tap breakdown, from `POST /sessions/context-usage`. */
 
 const phoneProject = () => viewport(test.info()) === 'phone'
 const shotPath = (name: string) => `${process.env.SHOT_DIR ?? 'test-results/shots'}/${name}.png`
@@ -34,7 +30,7 @@ async function gaugeServer(page: Page, sends: () => number) {
         window,
         used,
         parts: { system: 3_000, instructions: 0, memory: 0, files: 1_200, history, draft: 0, tools: 0 },
-        // the second turn's question no longer fits whole: older turns run on a summary
+        // the second question no longer fits whole, so older turns are summarized
         summarised: sends() >= 2,
         summarisedMessages: sends() >= 2 ? 4 : 0,
         lastTurn: history ? { inputTokens: 11_500, model: 'fixture/model' } : null,

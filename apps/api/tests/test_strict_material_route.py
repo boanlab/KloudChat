@@ -1,9 +1,6 @@
-"""「다시」 turns in strict-local go to Qwen3.8 Flash thinking at effort high (2026-11-20; the
-self-hosted DeepSeek V4 Flash the row named from 2026-11-14 scored 6.11 to flash's 6.89); turns
-over internal material keep their class's row unless the admin fills the `material` row
-(2026-11-15). When a strict writer other than flash (an admin's pick, here a self-hosted
-DeepSeek) fails mid-turn Qwen3.8 Flash carries the same turn on, and a model that failed lately
-is not picked."""
+"""「다시」 turns in strict-local go to Qwen3.8 Flash thinking at high; material turns keep their
+class's row unless the admin fills `material`; a failed non-flash strict writer falls back to
+flash."""
 
 from __future__ import annotations
 
@@ -52,7 +49,7 @@ def _material(monkeypatch, present: bool = True) -> None:
 def test_the_table_sends_strict_escalation_to_flash_thinking_high_and_keeps_material_rows(
 ) -> None:
     rules = sa.DEFAULT_RULES
-    # both columns empty: a turn over material keeps its class's row (owner decision 11-15)
+    # Both columns empty: a turn over material keeps its class's row.
     assert rules["material"] == {"model": "", "strictModel": "", "effort": "high"}
     assert rules["escalation"]["strictModel"] == STRICT_FLASH["id"]
     assert rules["escalation"]["effort"] == "high"

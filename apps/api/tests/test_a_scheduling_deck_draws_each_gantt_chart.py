@@ -81,7 +81,7 @@ def test_each_algorithm_s_result_slide_becomes_its_gantt_chart():
         ["선점", "P1 0–2 → P2 2–6 → P4 6–10 → P1 10–15 → P3 15–16", "5"]]
     assert chart["notes"] == ("비선점 방식의 평균 대기시간은 5.5입니다. "
                               "선점 방식의 평균 대기시간은 5입니다.")
-    # nothing else moved: the comparison table and the quiz stand
+    # the comparison table and the quiz stand
     assert titles[-2:] == ["네 가지 알고리즘의 평균 대기시간 비교", "확인 퀴즈"]
     assert slides[-2]["rows"][1] == ["FCFS", "4.75", "8.75"]
 

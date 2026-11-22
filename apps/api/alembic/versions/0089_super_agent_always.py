@@ -1,18 +1,12 @@
 """Super Agent is always offered and is the default start of chat, report and slides.
 
-- `governance.super_agent_enabled` is dropped: the picker always lists both Super Agent
-  entries (owner decision 2026-11-14). The routing table and allowed models still bound them.
-- `system_settings` `routing.chat`, `routing.report`, `routing.slides`: how a new conversation
-  of that surface starts (`super`, `super_strict`, `manual`, or "" for report and slides to
-  follow chat). Unset means `super`, so nothing is written for a surface whose stored model is
-  still the shipped default (`local/qwen3.8-flash` for chat, `local/qwen3.8-27b` for report
-  and slides) or that no administrator saved: those move to Super Agent. A surface an
-  administrator saved (audit `settings.update` with that field) to something else keeps its
-  fixed model (`manual`, or "" when report or slides were set to follow chat). The stored
-  models themselves are left as they are; they stay the fallback.
-- Existing conversations keep their stored mode and model.
+- `governance.super_agent_enabled` is dropped; the routing table and allowed models still bound it.
+- `system_settings` `routing.chat`, `routing.report`, `routing.slides`: how a new conversation starts
+  (`super`, `super_strict`, `manual`, or "" for report/slides to follow chat). Unset means `super`, so
+  rows are written only for surfaces an administrator moved off the shipped default (audit
+  `settings.update`): `manual`, or "" when report or slides followed chat. Stored models stay as fallback.
 
-Downgrade removes the three rows and restores the column (on).
+Existing conversations keep their mode and model. Downgrade removes the three rows and restores the column (on).
 
 Revision ID: 0089
 Revises: 0088

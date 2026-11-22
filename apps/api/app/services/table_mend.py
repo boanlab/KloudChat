@@ -1,11 +1,9 @@
 """Broken Markdown tables rebuilt by code, and tables the text never names pointed at.
 
-A writer's table often comes out half-formed: a header and rule with no leading pipe
-(「할 일 | 담당 | 기한」 / 「---|---|---」), a row ending in a bare 「|」, rows split off by a
-blank line or a caption. Later code reads only whole tables (leading pipe, header, rule), so
-such a table would be taken apart further — its first row made a header, the rest left as
-text. The cells are all there; `rebuild` puts them back under one header. `flatten` is the
-fallback for pipe lines no table can take, `cite` points the text at a table it never names.
+A writer's table often comes out half-formed (header and rule with no leading pipe, a row ending in
+a bare 「|」, rows split off by a blank line or caption), while later code reads only whole tables.
+`rebuild` puts the cells back under one header; `flatten` is the fallback for pipe lines no table
+can take; `cite` points the text at a table it never names.
 """
 
 from __future__ import annotations
@@ -139,10 +137,10 @@ def _joins(lines: list[str], group: list[_Block], block: _Block) -> bool:
 
 
 def rebuild(body: str) -> str:
-    """`body` with its broken pipe tables rebuilt: a bare header/rule made a table, a header
-    with no rows given the same-width rows that follow it (across a caption or blank lines), a
-    table's split-off rows put back under it, every row padded to the header's width. Whole
-    tables stay as written; a loose run with no header is left to `flatten`."""
+    """`body` with its broken pipe tables rebuilt: a bare header/rule made a table, a header with no
+    rows given the same-width rows after it (across a caption or blank lines), split-off rows put
+    back, every row padded to the header's width. Whole tables stay; a headerless loose run is
+    left to `flatten`."""
     lines = (body or "").split("\n")
     groups: list[list[_Block]] = []
     for block in _blocks(lines):
@@ -268,10 +266,13 @@ def _anchor(lines: list[str], name: str) -> tuple[int, str] | None:
 
 
 def cite(body: str, name: str, heading: str = "", *, gaejo: bool = False) -> str:
-    """`body` naming `name` (「표 2」, 「그림 1」, 「Table 2」): 「(표 2)」 at the end of the line
-    right above the block when that is a sentence or list item, else a short lead line before
-    it (「할 일 목록은 표 2와 같습니다.」; 「…같음」 in a 개조식 document; 「See Table 2 for Action
-    Items.」 for an English name). Unchanged when the block is not in `body`."""
+    """`body` naming `name` (「표 2」, 「Table 2」): 「(표 2)」 at the end of the line above the
+    block when
+    that is a sentence or list item, else a short lead line before it (「할 일 목록은 표 2와
+    같습니다.」;
+    「…같음」 in a 개조식 document; 「See Table 2 for Action Items.」 in English). Unchanged when
+    the
+    block is not in `body`."""
     lines = (body or "").split("\n")
     found = _anchor(lines, name)
     if found is None:

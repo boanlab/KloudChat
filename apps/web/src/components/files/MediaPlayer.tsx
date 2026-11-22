@@ -9,11 +9,7 @@ import { cn } from '@/lib/utils'
 /** How often a player asks after a video still being read. */
 const POLL_MS = 4000
 
-/**
- * A video (or recording) with what was read from it: the player, streamed from the server with
- * seeking (never downloaded whole), and the time-coded outline — each stretch's picture, what
- * was on screen and what was said; a click on one plays from there.
- */
+/** A video or recording streamed with seeking, plus its time-coded outline (picture, on-screen text, speech); click plays from there. */
 export function MediaPlayer({ fileId, start, audio = false }: { fileId: string; start?: number; audio?: boolean }) {
   const t = useT()
   const [info, setInfo] = useState<MediaInfo | null>(null)

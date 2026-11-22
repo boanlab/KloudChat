@@ -18,10 +18,7 @@ const DROPPED = new Set([
   'animatetransform', 'set', 'handler', 'listener',
 ])
 
-/**
- * One page's SVG, as rhwp draws it, made safe to put into the page: no scripts, handlers,
- * embedded documents or animation, and links only to its own parts or to pictures it carries.
- */
+/** Sanitizes an rhwp page SVG: no scripts, handlers, embedded documents or animation; links only to its own parts or carried pictures. */
 export function safePage(markup: string): SVGSVGElement | null {
   const parsed = new DOMParser().parseFromString(markup, 'image/svg+xml')
   const root = parsed.documentElement

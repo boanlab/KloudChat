@@ -3716,7 +3716,7 @@ const EN: Record<string, string> = {
   '열람 기록을 불러오지 못했습니다.': 'Could not load the visits.',
   '아직 아무도 열지 않았습니다.': 'Nobody has opened it yet.',
   '계정 없는 방문자': 'Visitor without an account',
-  // Written by the server (`services/geoip.py`) for RFC 1918 addresses; reaches the screen as data and goes through `t()`.
+  // Server-provided label for RFC 1918 addresses, translated via `t()`.
   '내부망': 'Private network',
   '주소 없음': 'No address',
   '이 인스턴스에 로그인하면 누구나 열 수 있습니다.':

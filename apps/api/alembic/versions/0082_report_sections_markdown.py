@@ -1,15 +1,10 @@
 """Web reports are Markdown only: sections stored as HTML become Markdown.
 
-Reports used to keep a hand-formatted section as `format: "html"` (fonts, colours, sizes,
-alignment, line spacing, merged cells). The web report is now one Markdown document; precise
-formatting is what the HWP/Word outputs are for. For every `report` artifact with an HTML
-section, the current data is first kept as an `artifact_versions` row (「Markdown 전환 전」),
-then each HTML section is sanitised and converted with `richtext.to_markdown` (headings,
-lists, tables, bold, italic, strikethrough, pictures, diagrams and drawn blocks kept; styling
-and cell merges dropped) and the artifact's version moves on by one.
+For every `report` artifact with an HTML section, the current data is first kept as an
+`artifact_versions` row (「Markdown 전환 전」), then each HTML section is sanitised and converted with
+`richtext.to_markdown` (styling and cell merges dropped) and the artifact's version advances by one.
 
-Downgrade changes nothing: the pre-conversion data stays in the version history, from which a
-person can restore it.
+Downgrade changes nothing; the pre-conversion data stays in the version history.
 
 Revision ID: 0082
 Revises: 0081

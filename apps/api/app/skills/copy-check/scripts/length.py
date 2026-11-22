@@ -384,8 +384,7 @@ def _channels_named(heading: str) -> set[str]:
 
 def table_items(text: str, rows: list[dict]) -> list[dict]:
     """Copy pieces from answer tables: cells under a header naming a field of `rows`, of the
-    channel the heading over the table names when it names one (Meta titles not measured
-    against Naver's 15)."""
+    channel the heading names when it does (Meta titles not measured against Naver's 15)."""
     if not rows:
         return []
     ranked = sorted(rows, key=lambda r: (not r.get("hard", True), r["key"] != "stated.item"))

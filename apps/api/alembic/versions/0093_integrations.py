@@ -1,17 +1,12 @@
-"""Google and Slack connections, the writes that wait for the person's confirmation, and
-Drive files brought in as material.
+"""Google and Slack connections, writes awaiting confirmation, and Drive files brought in as material.
 
-- `integration_accounts`: one row per person and provider: sealed access and refresh tokens,
-  granted scopes, the authorization in progress (hashed state, sealed PKCE verifier), choices.
-- `slack_workspaces`: a Slack workspace where the app is installed, with its sealed bot token
-  (installed by the first person who connects there, when the workspace allows it).
-- `integration_imports`: a Drive file copied in as a stored file (project material or an
-  attachment), with its Drive id and modified time, so it can be synced again.
-- `integration_actions`: a write the agent proposed (a calendar event, a Drive file, a Slack
-  message); nothing reaches the provider until the person confirms it.
+- `integration_accounts`: per person and provider: sealed tokens, granted scopes, in-progress
+  authorization (hashed state, sealed PKCE verifier), choices.
+- `slack_workspaces`: installed Slack workspace with its sealed bot token.
+- `integration_imports`: a Drive file copied in as a stored file, with Drive id and modified time for re-sync.
+- `integration_actions`: a write the agent proposed; nothing reaches the provider until the person confirms.
 
-No existing rows change. Downgrade drops the four tables (connections are forgotten; the
-providers keep the grants until people revoke them there).
+Downgrade drops the four tables.
 
 Revision ID: 0093
 Revises: 0092

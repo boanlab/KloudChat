@@ -1,18 +1,14 @@
-"""Guide echoes: what the writer copied from its own guidance into the answer.
+"""Guide echoes: what the writer copied from its own guidance (skill bodies, template instructions,
+genre and checklist) into the answer. Dropped unless the person's input or sources give them too:
 
-The guidance is what the turn's skills and template told the writer (each skill's body, a
-template's instructions, genre and checklist) — the same for a shipped skill and one a person
-wrote. Two things from it may not reach the reader unless the person's input or sources also
-give them:
+- example values: a person's name used as an example (「김현수 드림」) becomes 「[이름]」; a full
+date
+  from the examples (「2026. 12. 31.」) becomes 「[날짜]」;
+- rule lines: a sentence repeating the guidance's own wording (outside its quoted 「…」 examples,
+  tables and fenced formats) that reads as a rule for the writer (「자료에 없는 규모·비율은
+  지어내지 않습니다」).
 
-- example values: a person's name the guidance uses as an example (「김현수 드림」 in an
-  output format) becomes 「[이름]」; a full date from the guidance's examples
-  (「2026. 12. 31.」) becomes 「[날짜]」;
-- rule lines: a sentence that repeats a stretch of the guidance's own wording (outside its
-  quoted 「…」 examples, tables and fenced formats, which are there to be copied) and reads as a
-  rule for the writer (「자료에 없는 규모·비율은 지어내지 않습니다」) is dropped.
-
-Deterministic, every model group: neither is ever right in an answer.
+Deterministic, every model group.
 """
 
 from __future__ import annotations

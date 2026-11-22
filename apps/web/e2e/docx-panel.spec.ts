@@ -3,12 +3,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { strFromU8, unzipSync } from 'fflate'
 import { artifactId, officeFixture, type OfficeOptions } from './office-fixture'
 
-/**
- * The Word panel beside a chat, with the real open-docx-editor: it loads the saved version,
- * saves a `.docx` from the version it loaded (the header's 저장 or Ctrl+S), gives way to the
- * agent's versions, locks while a turn runs, asks about unsaved edits before one starts, and
- * runs under the app's CSP.
- */
+/** The Word panel beside a chat, with the real open-docx-editor, under the app's CSP. */
 
 test.use({ serviceWorkers: 'block' })
 

@@ -59,7 +59,7 @@ def _payload(**over) -> router.TemplateIn:
 
 
 async def _stored(db, owner: User, **over) -> UserTemplate:
-    """A template as people made them before the editor was retired."""
+    """A template as stored by the retired editor."""
     row = UserTemplate(owner_id=owner.id, **{
         **user_templates.clean(_payload(name="우리 회의록").model_dump()), **over})
     db.add(row)

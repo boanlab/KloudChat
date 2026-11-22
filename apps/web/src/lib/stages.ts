@@ -21,7 +21,7 @@ export const TONE_LABEL: Record<StageTone, string> = {
   failed: '실패',
 }
 
-/** Stage names whose stored label was renamed; older records read with today's word. */
+/** Stored stage labels mapped to current names. */
 const RENAMED: Record<string, string> = {
   route: '요청 살피기',
 }
@@ -31,7 +31,7 @@ export function stageLabel(stage: Pick<PipelineStage, 'name' | 'label'>): string
   return RENAMED[stage.name] ?? stage.label
 }
 
-/** Summaries of a renamed stage, said as today's words. */
+/** Stored stage summaries mapped to current wording. */
 const RENAMED_SUMMARY: Record<string, Record<string, string>> = {
   route: { '대화 답': '대화로 답하기' },
 }

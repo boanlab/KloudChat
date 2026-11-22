@@ -9,11 +9,7 @@ import type { ReasoningMode } from '@/types'
 const CHIP =
   'flex h-9 shrink-0 items-center gap-1.5 rounded-control px-2.5 text-base font-medium transition-colors'
 
-/**
- * The composer's reasoning chip (자동 / 빠르게 / 깊게), in the style of the composer's other
- * chips. A model whose reasoning cannot be steered shows it switched off with the reason in its
- * tooltip, rather than offering a choice that would change nothing.
- */
+/** Composer chip for reasoning effort (자동 / 빠르게 / 깊게); disabled with a tooltip reason when the model cannot be steered. */
 export function ReasoningChip({
   value,
   onChange,

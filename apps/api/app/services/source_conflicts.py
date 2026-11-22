@@ -1,10 +1,8 @@
-"""The same labelled quantity two source files give differently, and a document stating one.
+"""A labelled quantity two source files give differently, and a document stating only one.
 
-A proposal says 「총 사업비 3.5억 원」 and the minutes 「총사업비는 3.2억 원」; a report that
-writes 「3.2억 원 … 이 금액을 기준으로 진행합니다」 has settled what its sources leave open. The
-check reads every labelled, unit-bearing quantity of each source file, finds the labels two files
-give different values for, and marks the document that states one of them without the other:
-both values, where each comes from, and a named blank for the decision.
+Reads every labelled, unit-bearing quantity per source file, finds labels with differing
+values, and marks a document that states one without the other: both values, their sources,
+and a named blank for the decision.
 """
 
 from __future__ import annotations

@@ -107,7 +107,6 @@ async function mock(page: Page, { saved = true }: { saved?: boolean } = {}) {
       posts.push(body)
       const consent = body.searchConsent as { decision: Answer; queries?: string[] } | undefined
       if (!consent) {
-        // the first turn: the model asked, the server paused
         row.messages = [questionRow, pausedRow]
         row.messageCount = 2
         return route.fulfill(sse([

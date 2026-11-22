@@ -14,10 +14,7 @@ const LABEL: Record<SearchConsentMode, string> = {
   off: '사용 안 함',
 }
 
-/**
- * This project's web search in strict-local turns (its files make every turn strict-local):
- * the admin's setting, or a stricter one (`services/search_consent`).
- */
+/** Project web search setting for strict-local turns (admin setting or stricter; `services/search_consent`). */
 export function ProjectSearchConsent({ project }: { project: Project }) {
   const t = useT()
   const updateProject = useStore((s) => s.updateProject)

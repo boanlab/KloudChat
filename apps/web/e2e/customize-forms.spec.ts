@@ -1,10 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { hubFixture } from './customize-fixture'
 
-/**
- * The short forms: a skill is a name, a description and its steps; an agent is four essentials
- * with the rest folded away. Tools are named in words, grouped, and raw names stay hidden.
- */
+/** Short skill and agent forms; tools are named in words and grouped, raw names hidden. */
 
 test.use({ serviceWorkers: 'block' })
 
@@ -93,7 +90,6 @@ test('agent form: essentials and 진행 과정 in view, folded groups, tools by 
   // A new agent's 진행 과정 is saved with it.
   expect((state.calls.find((c) => c.method === 'POST' && c.path === '/agents')?.body as { process?: unknown } | undefined)?.process).toMatchObject({ mode: 'direct', bundles: [] })
   expect(state.calls.some((c) => c.method === 'PUT' && c.path.endsWith('/process'))).toBe(false)
-  // The detail screen shows what it does and, for its owner, its settings.
   await expect(page.getByRole('heading', { level: 1, name: '이슈 정리 도우미' })).toBeVisible()
   await expect(page.getByRole('region', { name: '설정' })).toBeVisible()
   expect(state.problems).toEqual([])

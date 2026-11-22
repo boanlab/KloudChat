@@ -1,28 +1,16 @@
-"""A requested program or page the model wrote but never saved as an artifact.
+"""Detect a requested program or page the model wrote but never saved as an artifact.
 
-An artifact exists only when the model calls `create_artifact`. Two things go wrong without an
-error, whatever the model:
+Covers a program left in a fenced block without `create_artifact`, or run via `execute_code` and
+then described in prose. After the turn, a file is owed only when all hold:
 
-- the model puts the program in a fenced block of its answer and never calls the tool
-  (the code stays in the chat);
-- the model first runs the program with `execute_code` (so the code sits in a tool call, not in
-  the answer), then answers in prose, often saying it "put the script beside the chat" while it
-  never did (the code is gone: no artifact, no block).
+1. the user asked to make something (creation verb) and pasted no code of their own;
+2. the text is file-shaped: a full HTML document, or code in a known language of at least
+   `MIN_CODE_LINES` lines with an entry point, tests or several top-level definitions, or at least
+   `MIN_NAMED_LINES` lines when the request itself names code, script, program, file, class or app;
+3. the turn made no artifact, document or chart.
 
-This module decides, in code and after the turn, whether the turn owed the person a file and
-which text is that file. The product rule is unchanged: a standalone code file or page is an
-artifact, a snippet shown to explain something stays in the chat. So all of these must hold:
-
-1. the person asked to make something (a creation verb), and did not paste code of their own;
-2. the text is file-shaped: a full HTML document, or code in a known programming language of at
-   least `MIN_CODE_LINES` lines that also has an entry point, tests or several top-level
-   definitions, or of at least `MIN_NAMED_LINES` lines when the request itself calls what it
-   wants code, a script, a program, a file, a class or an app;
-3. the turn made no artifact, document or chart already.
-
-The source is the largest such fenced block of the answer; when the answer holds none, the
-largest such program a successful `execute_code` run used this turn. The answer text is never
-rewritten."""
+The source is the largest such fenced block of the answer, else the largest program a successful
+`execute_code` run used this turn. The answer text is never rewritten."""
 
 from __future__ import annotations
 

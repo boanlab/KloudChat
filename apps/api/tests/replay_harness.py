@@ -156,9 +156,7 @@ def pin_recorded_defaults(patch: Patch) -> None:
 
     patch(settings_store, "model_roles", model_roles)
     patch(settings_store, "cached_model_roles", lambda: settings_store.model_roles_from({}))
-    # The records read the genre from the whole instruction, memo lines included (a minutes
-    # memo's 「캡스톤디자인」 line names the project-proposal genre); the code reads the ask's
-    # first paragraph first, which would change those prompts.
+    # Genre is read from the whole instruction, memo lines included, as when recorded.
     patch(report, "lead_instruction", context.instruction_part)
     # The records predate the Korean-output rule for a Korean ask over English material.
     patch(context, "korean_over_foreign_material", lambda request, material: "")
@@ -211,8 +209,8 @@ def pin_recorded_prompts(patch: Patch) -> None:
           "자료에 있는 값으로 채우고, 없으면 그 자리 이름을 「[담당자]」 「[금액]」처럼 "
           "대괄호로 남겨라.")
     patch(report_checks, "EMPTY_OWNER", "담당 칸이 비었다 — 이름, 자료에 없으면 「[담당자]」")
-    # The records predate the per-section length (`report.section_targets`), the page rule's
-    # floor, and the item-attribute and owner-blank checks, whose repair calls they lack.
+    # The records lack the repair calls of section_targets and the item-attribute / owner-blank
+    # checks.
     patch(report, "section_targets", lambda request, headings: {})
     patch(report, "page_length_rule", _recorded_page_rule)
     patch(checks, "CODE_CHECKS", [c for c in checks.CODE_CHECKS
@@ -230,9 +228,8 @@ def pin_recorded_prompts(patch: Patch) -> None:
     patch(report_checks, "EMPTY_DUE", "기한 칸이 비었다 — 날짜, 자료에 없으면 「[기한]」")
 
 
-#: Shipped templates as they were when the records were made (`_pinned_templates/<id>/`):
-#: their instructions, genre, checklist, questions and 진행 과정 reach the prompts, so a later
-#: edit of the shipped text would find no recorded reply. Only the folders kept there are pinned.
+#: Shipped templates pinned as recorded (`_pinned_templates/<id>/`); only folders kept there are
+#: pinned.
 PINNED_TEMPLATES = FIXTURES / "_pinned_templates"
 
 

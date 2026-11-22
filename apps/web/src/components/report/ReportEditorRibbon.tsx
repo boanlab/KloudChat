@@ -185,7 +185,7 @@ export function ReportEditorRibbon({
                   if (!row.level) chain().setParagraph().run()
                   else chain().setHeading({ level: row.level }).run()
                 }}
-                // A Word style tile: the sample on white paper, its name under it (inline: the group's button rules are a row).
+                // Inline because the group's button rules assume a row
                 style={{
                   display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', gap: 3,
                   height: 48, minWidth: 72, padding: '0 8px', background: '#fff', color: '#222',

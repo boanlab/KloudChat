@@ -1,10 +1,9 @@
-"""Words that caption and point at a document's tables and figures, per document language:
-「**표 1. 실행 항목**」 「*그림 2. 처리 흐름*」 and 「표 1과 같습니다」 in a Korean document,
-「**Table 1. Action Items**」 「*Figure 2. Flow*」 and 「See Table 1」 in an English one.
+"""Captions and references for a document's tables and figures, per document language
+(「**표 1. 실행 항목**」 / 「표 1과 같습니다」 in Korean; 「**Table 1. Action Items**」 / 「See
+Table 1」 in English).
 
-Code that writes a caption or a reference takes its words from here; code that reads one
-takes `TABLE`/`FIGURE`/`EITHER`, which match both languages, so an English document's
-captions are read the same as a Korean one's."""
+Writers take their words from here; readers use `TABLE`/`FIGURE`/`EITHER`, which match both
+languages."""
 
 from __future__ import annotations
 

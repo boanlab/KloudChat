@@ -1,8 +1,6 @@
-"""이미지 고치기 inside: a self-hosted model that edits (Qwen-Image-Edit 2511) changes a picture
-that has to stay inside — a strict-local conversation, a Super Agent strict one, a picture a
-strict-local model drew, internal material under the internal-material rule — picked for the turn
-whatever picture model the person draws with. It only edits, so nothing asks it for a new picture;
-with no strict-local editor the edit is still refused."""
+"""이미지 고치기 for a picture that must stay inside is done by a self-hosted editing model; with
+none,
+the edit is refused."""
 
 from __future__ import annotations
 

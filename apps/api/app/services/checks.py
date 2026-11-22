@@ -181,8 +181,7 @@ async def item_attributes(doc: Doc):
 
 
 async def owner_cells(doc: Doc):
-    """A task's owner left as a bracket blank (「[담당자]」) where a department could be named,
-    and its deadline (「[기한]」) where the material's schedule could place it."""
+    """Task owner and deadline cells filled with bracket blanks (「[담당자]」, 「[기한]」)."""
     owner, due = item_claims.OWNER_BLANK, item_claims.DUE_BLANK
     lines = dict.fromkeys(item_claims.owner_blanks(doc.sections)
                           + item_claims.owner_blanks(doc.sections, due))

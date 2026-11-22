@@ -111,8 +111,7 @@ def test_a_chart_under_a_mixed_unit_reads_each_point_in_its_own_unit():
 
 
 def test_a_chart_whose_series_name_their_units_reads_each_point_in_the_unit_named():
-    """audit-g H4 C: 「분·점」 over 「평균 대기 시간(분)」 and 「민원인 만족도(점)」 read 78 as
-    78분·점, so the given 78점 was marked and the chart broken into 「78분·점 (확인 필요)」."""
+    """A chart whose series name their units reads each point in the unit named, not 「78분·점」."""
     memo = "무인발급기 도입 1년. 평균 대기 시간 14분에서 9분, 민원인 만족도 78점에서 86점."
     chart = {"kind": "line", "unit": "분·점", "categories": ["도입 전", "1년 후"],
              "series": [{"name": "평균 대기 시간(분)", "values": [14.0, 9.0]},
@@ -176,7 +175,7 @@ async def test_slides_with_untraced_values_go_back_to_the_writer_once(monkeypatc
     assert {a["target_id"] for a in asked} == {"p1", "p2", "p3"}
     assert all(a["keep_layout"] and "38ms" in a["note"] for a in asked if a["target_id"] == "p1")
     assert slides[1]["bullets"] == ["예약 취소가 잦음", "주차 공간 부족"]
-    # the rewrite holding more invented values was not kept; its figures are marked
+    # the rewrite holding more invented values is not kept; its figures are marked
     assert "90%" not in json.dumps(slides, ensure_ascii=False)
     assert "확인 필요" in slides[0]["body"]
     assert bundle.usage["inputTokens"] == 30
@@ -316,7 +315,7 @@ async def test_a_picture_asked_away_goes_and_an_unmet_ask_is_reported(monkeypatc
     # the picture went by hand, with no rewrite and no layout change
     assert [c["target_id"] for c in calls] == ["s2"] and calls[0]["typed"] == "3장을 표로 바꿔줘."
     assert "image" not in parts[7] and parts[7]["layout"] == "bullets"
-    # 3장 still draws bullets: said, not passed off, the slide as it was
+    # 3장 still draws bullets: said, not passed off
     assert bundle.document.unmet == ["3장 표로 바꾸기"] and "notes" not in parts[2]
 
 

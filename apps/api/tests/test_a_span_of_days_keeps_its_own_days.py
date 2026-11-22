@@ -1,9 +1,4 @@
-"""A span of days the person wrote (「12/14~12/18」, 「3월 9~12일」) is theirs, day by day.
-
-The grounding check took a day it could not find among the person's days, followed by 「까지」
-within a few characters, for a garbled copy of their one day that month and wrote that day in
-its place: 「12월 14일부터 12월 18일까지」 became 「2026-12-02부터 2026-12-02까지」 (the memo's own
-date), 「3월 9일부터 12일까지」 「3월 26일부터 12일까지」."""
+"""A span of days the person wrote (「12/14~12/18」, 「3월 9~12일」) is kept day by day."""
 
 from __future__ import annotations
 

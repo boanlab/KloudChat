@@ -1,13 +1,4 @@
-/**
- * The web report as one Markdown document.
- *
- * The editor holds the whole report as one ProseMirror document: each section is
- * a heading (`##`, or `###` for a level-2 section) carrying the section id as a
- * node attribute, followed by its body. Storage stays `sections[]` of Markdown;
- * this module converts both ways and serialises the editor document back to
- * Markdown. Only Markdown-expressible structure exists here; precise formatting
- * is what the HWP/Word outputs are for.
- */
+/** The web report as one Markdown document: one heading per section (carrying its id), converted both ways with `sections[]`. */
 
 import type { JSONContent } from '@tiptap/core'
 import type {
@@ -466,11 +457,8 @@ export function canonicalBody(section: ReportSection): string {
 const canonical = new WeakMap<ReportSection, { content: string; markdown: string }>()
 
 /**
- * Editor document back to stored sections. Ids ride on the heading nodes, so an
- * edited or moved section keeps its id and fields; a new heading is a new
- * section; a deleted heading's body joins the section above. A section whose
- * text the editor did not change keeps its stored Markdown byte for byte; one
- * whose text changed loses its fact-check (its verdicts point at old sentences).
+ * Editor document back to stored sections. Ids ride on heading nodes; unchanged sections keep their Markdown byte for byte,
+ * changed ones lose their fact-check; a deleted heading's body joins the section above.
  */
 export function docToSections(doc: JSONContent, previous: ReportSection[]): ReportSection[] {
   const known = new Map(previous.map((section) => [section.id, section]))
@@ -522,11 +510,7 @@ export function docToMarkdown(title: string, doc: JSONContent): string {
   return `# ${title.replace(/\s+/g, ' ').trim()}\n\n${body}${body ? '\n' : ''}`
 }
 
-/**
- * Markdown text back to a title and an editor document. The first `#` is the
- * title; `##` starts a section. Section ids come from `previous` (the editor's
- * sections before the text was edited): same heading first, then same place.
- */
+/** Markdown back to title and editor document: first `#` is the title, `##` starts a section; ids come from `previous` (same heading, then same place). */
 export function markdownToDoc(
   markdown: string,
   previous: { id: string; heading: string; level: 1 | 2 }[],
@@ -552,7 +536,6 @@ export function markdownToDoc(
 function assignSectionIds(nodes: JSONContent[], previous: { id: string; heading: string; level: 1 | 2 }[]): void {
   const used = new Set<string>()
   const headings = nodes.filter((node) => node.type === 'heading' && Number(node.attrs?.level) <= 3)
-  // A `###` is a section only where a level-2 section of that name was.
   const sections = headings.filter((node) =>
     Number(node.attrs?.level) === 2 ||
     previous.some((row) => row.level === 2 && row.heading === headingText(node)))
@@ -567,7 +550,7 @@ function assignSectionIds(nodes: JSONContent[], previous: { id: string; heading:
       used.add(previous[at].id)
     }
   }
-  // Then the same place, for a renamed section.
+  // Fallback: same place, for a renamed section.
   sections.forEach((node, index) => {
     if (matched.has(node)) return
     const row = previous[index]
@@ -596,11 +579,7 @@ export function reportToMarkdown(title: string, sections: ReportSection[]): stri
   return docToMarkdown(title, sectionsToDoc(sections))
 }
 
-/**
- * Whether the editor's sections say the same as the stored ones once both are read the way
- * the editor writes them (`canonicalBody`): a load, a view toggled there and back, a drawn
- * block re-rendered or a table normalised by the editor is no edit to save.
- */
+/** Whether edited and stored sections match once both are canonicalised (`canonicalBody`), so non-edits are not saved. */
 export function sameSectionsAsStored(edited: ReportSection[], stored: ReportSection[]): boolean {
   return edited.length === stored.length && edited.every((row, at) => {
     const was = stored[at]

@@ -72,7 +72,7 @@ def test_the_skill_carries_what_the_agent_did(agent, key):
 def test_a_packages_document_fields_name_real_things(key):
     package = skill_packages.package_for(key)
     made = skill_specs.of_package(package)
-    # no shipped skill writes into a template (2026-11-15: patterns by format instead)
+    # no shipped skill writes into a template
     assert not made.template
     assert set(made.checks) <= set(skill_specs.check_keys())
     assert len(made.questions) == len(package.questions)

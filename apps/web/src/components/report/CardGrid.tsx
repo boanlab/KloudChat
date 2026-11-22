@@ -1,9 +1,4 @@
 // `cards` and `callout` fences, also read by `report_export`.
-//
-//     ```cards
-//     ## 산출물
-//     - 네트워크 전면 교체
-//     ```
 
 interface Card {
   title: string

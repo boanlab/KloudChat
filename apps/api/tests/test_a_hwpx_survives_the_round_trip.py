@@ -1,7 +1,5 @@
-"""A .hwpx keeps its structure (title, headings, tables, lists) across import/export round trips.
-
-An imported document is stored as Markdown like every web report: merged cells are flattened
-(their text kept) on the way in; after that, trips change nothing."""
+"""A .hwpx keeps its structure (title, headings, tables, lists) across import/export round trips;
+merged cells are flattened on import."""
 
 from __future__ import annotations
 

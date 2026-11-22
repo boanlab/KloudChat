@@ -1,9 +1,6 @@
-"""Published bots are locked by default: members copy one only when its publisher allows it.
+"""Published bots are locked by default: `publications.allow_copy` (「복사 허용」) lets members copy one.
 
-- `publications.allow_copy` (「복사 허용」): off unless the publisher turns it on. Existing
-  bots read as off.
-
-Downgrade drops the column.
+Existing bots read as off. Downgrade drops the column.
 
 Revision ID: 0071
 Revises: 0070

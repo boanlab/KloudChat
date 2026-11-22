@@ -1,11 +1,9 @@
 """Branching user pipelines: stable step ids and edges between steps.
 
-- `user_pipelines.edges`: `[{from, to, branch?}]` by step id; null keeps the steps running in
-  their stored order (every pipeline so far).
-- Steps stored without an id get the one they were already shown under (`s1`, `s2` … by
-  position, a repeat suffixed `x`), so order and run records stay as they were.
+- `user_pipelines.edges`: `[{from, to, branch?}]` by step id; null runs steps in stored order.
+- Steps without an id get `s1`, `s2`, ... by position (a repeat suffixed `x`).
 
-Downgrade drops the column; the ids stay (an id was always accepted).
+Downgrade drops the column; the ids stay.
 
 Revision ID: 0077
 Revises: 0076

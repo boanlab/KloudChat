@@ -25,9 +25,8 @@ export function dropFormMarks() {
 }
 
 /**
- * Marks `key` as holding unsaved changes while `dirty` holds; unmarked when it unmounts. A tab
- * close or reload asks first, unless `still` (read as the page goes) says the changes were
- * saved or dropped meanwhile: a state update lands after the reload that follows the answer.
+ * Marks `key` as unsaved while `dirty`; a tab close or reload asks first.
+ * `still` is read at unload time because a state update would land after the reload.
  */
 export function useMarkUnsaved(key: string, dirty: boolean, still?: () => boolean) {
   const mark = useUnsaved((s) => s.mark)

@@ -1,8 +1,4 @@
-"""A Korean deck's notes re-ask keeps only Korean sentences.
-
-The model answered the notes re-ask by thinking aloud in English first, and the whole reply went
-into the speaker notes: 「PSQI 점수가 5를 초과하면 … We need to respond to user's specific request:
-They want two sentences …」."""
+"""A Korean deck's notes re-ask keeps only Korean sentences, dropping English thinking aloud."""
 
 from __future__ import annotations
 

@@ -1,7 +1,5 @@
-"""A numbered table asked away stays away through the same edit's rewrite, an approval the
-material only asks for is not stated as a condition, a slide drawn as a diagram keeps a
-description of the figure (not the ask) and whole marker labels, and a question on a document's
-screen is told how to ask it, not called a new-document request."""
+"""A table asked away stays away through the edit's rewrite; an approval the material only asks
+for is no condition; a diagram slide keeps its figure description; a question is not an edit."""
 
 from __future__ import annotations
 

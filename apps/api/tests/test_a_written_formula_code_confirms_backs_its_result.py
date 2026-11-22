@@ -1,11 +1,5 @@
-"""The result of a formula the answer writes, whose arithmetic code confirms on grounded operands,
-is backed wherever the answer repeats it — not marked 「(확인 필요)」.
-
-Round-3 r3c07 (11-21, KC-SA, deepseek-v4.1-flash): a correct savings comparison wrote
-「500,000 × 3.5% × (78/12) = 113,750원」, 「55,000 + 113,750 = 168,750원」 and
-「168,750 × (1 − 0.154) = 142,762.5원」, then the same figures in a table; the grounding check
-read none of the formulas, so the answer ended with 「확인 필요: 「… = 113,750원」, 「168,750원」,
-「차이 · 23,250원」」 on figures that were all right."""
+"""The result of a written formula whose arithmetic code confirms is backed wherever the answer
+repeats it, not marked 「(확인 필요)」."""
 
 from __future__ import annotations
 

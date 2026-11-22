@@ -1,7 +1,5 @@
-"""Minutes state the value a meeting decided, not the one it changed (「80만원을 요청했으나 50만원
-으로 줄이자고 했고 합의」 → 50만원), print a paragraph the writer fenced as their own text, fill a
-blank where it stands instead of saying the sentence twice, and keep the memo's bare clock when
-the writer put 오전 before it. Shapes from the round 16 re-verify (reverify-za tc, tc_b)."""
+"""Minutes state the value a meeting decided, print writer-fenced text, fill a blank once, and
+keep the memo's bare clock."""
 
 from __future__ import annotations
 

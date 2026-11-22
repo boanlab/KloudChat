@@ -164,7 +164,7 @@ async def _admin(db) -> User:
 @pytest.mark.asyncio
 async def test_the_seeder_makes_the_six_agents_for_the_catalogue_owner(db):
     admin = await _admin(db)
-    # An agent of the owner's own with a shipped name keeps its handle.
+    # an owner's own agent with a shipped name keeps its handle
     own = Agent(owner_id=admin.id, name="회의록", slug="회의록", system_prompt="내 회의록")
     db.add(own)
     await db.commit()
@@ -175,7 +175,7 @@ async def test_the_seeder_makes_the_six_agents_for_the_catalogue_owner(db):
         row.catalog_key: row
         for row in (await db.exec(select(Agent).where(Agent.catalog_key.is_not(None)))).all()
     }
-    # A retired agent is never seeded afresh.
+    # a retired agent is never seeded afresh
     assert set(rows) == set(_OFFERED)
     skills = {row.id: row.catalog_key for row in (await db.exec(select(Skill))).all()}
     for key, agent in rows.items():
@@ -206,7 +206,7 @@ async def test_the_seeder_makes_the_six_agents_for_the_catalogue_owner(db):
 
 @pytest.mark.asyncio
 async def test_a_career_docs_report_session_gets_the_report_part_of_the_prompt(db):
-    """Retired, the agent's old conversations still run on its prompt parts."""
+    """A retired agent's old conversations still run on its prompt parts."""
     admin = await _admin(db)
     spec = _BY_KEY["career-docs"]
     agent = Agent(owner_id=admin.id, name=spec["name"], slug="career", catalog_key="career-docs",
@@ -235,7 +235,7 @@ async def test_a_user_running_a_seeded_agent_takes_its_design_brief(db, monkeypa
     db.add(user)
     await db.commit()
     agent = (await db.exec(select(Agent).where(Agent.catalog_key == "gaejo-report"))).one()
-    # the shared original and a copy installed before it was withdrawn read the same 지침
+    # the shared original and an earlier installed copy read the same 지침
     with monkeypatch.context() as before:
         before.setattr(starter, "withdrawn_agents", frozenset)
         copy = await ws.install_agent(agent.id, user, db)
@@ -256,7 +256,7 @@ async def test_retiring_hides_the_agent_and_its_copies_without_deleting_them(db)
     user = User(email="lineup-taker@example.com", name="Taker", password_hash="x")
     db.add(user)
     await db.commit()
-    # The catalogue as it was before the retirement: the agent offered and taken.
+    # the catalogue before the retirement: the agent offered and taken
     spec = {**_BY_KEY["client-proposal"], "retired": False}
     import app.services.starter as module
 

@@ -50,7 +50,7 @@ async def test_orphans_go_oldest_first_and_only_past_the_mark(monkeypatch, tmp_p
     monkeypatch.setattr(storage.file_service, "storage_root", lambda: tmp_path)
     db = _Db(living=["alive"])
 
-    # Under the mark: measured, nothing removed.
+    # under the mark: measured, nothing removed
     monkeypatch.setattr(storage, "fill", lambda _root: 0.5)
     result = await storage.reclaim(db, threshold=0.8)
     assert result.orphan_files == 2 and result.freed_files == 0

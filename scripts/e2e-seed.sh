@@ -68,9 +68,7 @@ if [ -n "$xid" ]; then
   echo "  activated $extra (admin)"
 fi
 
-# ── workspace seed ──────────────────────────────────────────────────────
-# Each screen needs one item to assert on; inserted through the API, checked
-# by name so leftovers from other suites cannot mask a missing one.
+# workspace seed: one item per screen, matched by name
 tok=$(curl -s -X POST "$API/auth/login" -H "$JSON" \
   -d "{\"email\":\"$E2E_EMAIL\",\"password\":\"$E2E_PASS\"}" \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["accessToken"])')

@@ -171,7 +171,7 @@ async def test_a_conversation_with_an_official_agent_saves_as_a_draft_post_agent
     db.add(session)
     await db.commit()
     draft = await sessions.agent_draft(session.id, me, db)
-    # themes are retired: the draft carries the format and the agent's 디자인 지침, no theme
+    # The draft carries the format and the agent's 디자인 지침, no theme.
     assert draft["designSystemId"] is None and draft["renderTemplateId"] is None
     assert draft["docFormat"] == "minutes" and draft["designBrief"] == ""
     assert "official" not in draft["systemPrompt"]

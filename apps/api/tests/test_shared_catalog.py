@@ -10,9 +10,7 @@ from app.models.user import User, UserRole
 from app.models.workspace import Agent, Skill, SkillSource, StoredFile, Visibility
 from app.routers import workspace as ws
 
-# ── an in-memory database that reads the query it is given ──────────────
-#
-# Tables are lists; `where` clauses are evaluated rather than answered by call order.
+# In-memory database evaluating `where` clauses (tables are lists).
 
 
 def _bound(element):

@@ -349,9 +349,8 @@ _TERM = re.compile(r"(?<![A-Za-z0-9])(?:[A-Za-z][A-Za-z0-9]{2,}(?:-[A-Za-z0-9]+)
                    r"|\d{1,3}[BM](?![A-Za-z]))(?![A-Za-z0-9])")
 #: terms only the attachment has, for a sentence to move to it
 _TERMS_TO_MOVE = 3
-#: a web result standing in for the attached file: at least this many sentences cite it alone
-#: for the file's own terms or figures (this many of them at least), three times as many as
-#: cite it for its page's own
+#: a web result standing in for an attached file: at least this many sentences cite it alone for the
+#: file's terms or figures, and three times as many as cite it for its page's own
 _STAND_IN_CITES = 3
 _STAND_IN_TERMS = 4
 
@@ -389,11 +388,9 @@ def _work_name(source: dict) -> str:
 
 def credit_attachments(sections: list[dict], sources: list[dict] | None,
                        texts: dict[int, str]) -> list[dict]:
-    """A sentence citing a source that is not the work it names (「Kim & Park(2025)…[1]」 with
-    [1] another paper, or 「Face4RAG…[11]」 with [11] not Face4Rag) cites the source that is;
-    one citing a web result for figures, or for technical terms, only an attached file holds
-    cites that file; one citing a page without its decimal figures cites the one other page
-    with them. `texts`: what each source number gave the writer (attachment text, page
+    """Re-point sentences citing the wrong source: a named work cited as another paper, a web
+    result cited for figures or terms only an attached file holds, a page cited without its
+    decimal figures. `texts`: what each source number gave the writer (attachment text, page
     excerpt)."""
     by_number = {int(s.get("ordinal") or i): s for i, s in enumerate(sources or [], 1)}
     attached = [n for n, s in by_number.items() if s.get("attached") and texts.get(n)]
@@ -658,10 +655,9 @@ def _entry_source(entry: str, sources: list[dict]) -> int | None:
 
 
 def one_reference_list(sections: list[dict], sources: list[dict] | None) -> list[dict]:
-    """With server sources, the document keeps one reference list — the one built from them
-    at export — so the writer's own 「참고문헌」 goes, and each 「[n]」 in the text that
-    numbered the writer's list is set to the source that entry names (an entry naming none
-    keeps its number)."""
+    """With server sources, drop the writer's own 「참고문헌」 (export builds the one list) and set
+    each 「[n]」 numbered by that list to the source its entry names (an entry naming none keeps
+    its number)."""
     sources = list(sources or [])
     lists = [k for k, s in enumerate(sections)
              if _REFERENCE_HEADING.search(str(s.get("heading") or ""))

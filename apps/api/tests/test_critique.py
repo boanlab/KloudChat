@@ -130,8 +130,6 @@ async def test_a_reply_with_no_score_is_refused(monkeypatch):
         await _review(monkeypatch, '{"findings": [{"severity": "P0", "message": "가."}]}')
 
 
-# ── a reply that stops early ───────────────────────────────────────────
-#
 # Truncated JSON: what the model finished is kept, what it stopped inside is dropped.
 
 

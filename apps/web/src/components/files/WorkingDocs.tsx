@@ -87,11 +87,7 @@ function DocPlace({ row }: { row: WorkingDocRow }) {
   )
 }
 
-/**
- * 「작업 문서」: the HWP, Word and PowerPoint files and the web reports and web slides the person
- * works on, one row per document (not per version), newest edit first. Each opens in the editor
- * it has in chat; the rows point at the documents themselves, so an edit there shows here.
- */
+/** 「작업 문서」: one row per HWP, Word, PowerPoint, web report or web slide document, newest edit first. */
 export function WorkingDocs({ query, onCount }: { query: string; onCount: (n: number) => void }) {
   const t = useT()
   const navigate = useNavigate()

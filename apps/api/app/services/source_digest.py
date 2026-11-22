@@ -1,10 +1,8 @@
 """A short digest of long source material, for a call that plans and does not write.
 
-The outline or storyline of a deck needs to know what the sources are about and what they hold
-(their titles, the tables and figures they carry, the figures they report), not every
-sentence. A digest keeps each source's opening, its captions and table heads, and the
-sentences that carry figures, up to a budget, so the planning call (the upper model in
-staged routing) reads a fraction of the text. Code only: no model call, no phrase list.
+Keeps each source's opening, captions, table heads and figure-bearing sentences up to a budget, so
+the planning call (the upper model in staged routing) reads a fraction of the text. Code only: no
+model call, no phrase list.
 """
 
 from __future__ import annotations

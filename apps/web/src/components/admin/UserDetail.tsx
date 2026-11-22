@@ -34,11 +34,7 @@ export function CreditBar({ user, className }: { user: User; className?: string 
 /** Rows of the trail shown here; the rest are a link away. */
 const RECENT = 8
 
-/**
- * 관리자 › 사용자 detail: one account's profile, role and status, credits this cycle, what it
- * holds, and its latest audit entries (as actor or as target), with the row's own actions.
- * `row` is the list's copy when it is on this page, so an action's result shows at once.
- */
+/** 관리자 › 사용자 detail. `row` is the list's copy when on this page, so an action's result shows at once. */
 export function UserDetail({
   userId,
   row,

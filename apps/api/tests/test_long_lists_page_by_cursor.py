@@ -1,5 +1,5 @@
-"""Long lists reach their end: the file box, the sidebar and a bot's conversations page by
-cursor (or limit) with a total, past what the plain lists used to cap (real HTTP, SQLite)."""
+"""Long lists (file box, sidebar, a bot's conversations) page by cursor or limit with a total
+(real HTTP, SQLite)."""
 
 from __future__ import annotations
 

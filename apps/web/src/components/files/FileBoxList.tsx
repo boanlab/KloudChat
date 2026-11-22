@@ -85,7 +85,7 @@ function FilePlace({ row }: { row: FileRow }) {
   return <span className="truncate">{row.sessionId ? t('지운 대화') : t('대화 밖에서 올림')}</span>
 }
 
-/** How far a scan or a video is read (「읽는 중」), or how it was read; nothing for others. */
+/** Read progress or result of a scan or video (「읽는 중」); nothing for other files. */
 function FileReading({ row }: { row: FileRow }) {
   const t = useT()
   const note = ocrNote(row, t)
@@ -107,11 +107,7 @@ function FileReading({ row }: { row: FileRow }) {
  *  (`FileColumns`) uses the same tracks. */
 export const FILE_GRID = 'sm:grid sm:grid-cols-[1.75rem_minmax(0,1fr)_6rem_8rem_7.5rem] sm:gap-x-3'
 
-/**
- * One file: icon, name, size · when · where, and the caller's controls. `onOpen` makes the name
- * open it. `columns`: a row of the file box's grid (`role="row"`), its size and time in their
- * own columns on a wide screen; a phone keeps them under the name.
- */
+/** One file row: icon, name, size · when · where, and caller controls. `columns` lays it out as a grid row. */
 export function FileLine({
   row,
   lead,

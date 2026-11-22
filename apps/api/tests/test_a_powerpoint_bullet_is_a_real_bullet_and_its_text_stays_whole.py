@@ -1,8 +1,5 @@
-"""A `.pptx` KloudChat writes has real bullets: `a:buChar` in the accent, the text hanging
-after it (a wrapped line starts under the text, not under the bullet), and the text in its own
-colour, with no 「• 」 run before it. A deck written the old way, its bullet a run of its own,
-heals when it is read or edited. A pattern slide's text too long for its box is written whole,
-shrunk to fit, never cut with the `.pdf`'s ellipsis."""
+"""A `.pptx` has real bullets (`a:buChar`, hanging text, no 「• 」 run), a run-bullet deck heals on
+read, and over-long pattern text is shrunk, not cut."""
 
 from __future__ import annotations
 
@@ -301,7 +298,7 @@ async def test_a_deck_written_in_a_project_takes_its_design_brief_and_a_picked_t
     template_id = "deck-editorial"
     assert design_templates.default_for({"slides": template_id}, SessionKind.slides) == template_id
     rows = {
-        # its theme row and default template are no longer read (2026-11-15)
+        # its theme row and default template are not read
         Project: Project(id="p1", user_id="u1", name="사업", design_system_id="d1",
                          render_templates={"slides": template_id},
                          design_brief="강조색 #C0392B. 본문은 명조."),
@@ -482,8 +479,8 @@ async def test_the_deck_overflow_route_reports_the_editors_slides(monkeypatch):
 
 
 def test_a_blank_deck_never_shrinks_a_box_when_a_line_is_added():
-    # python-pptx's default places carry `a:normAutofit`: the editor shrank a whole box as
-    # soon as a line was typed into it. The blank deck's places are fixed boxes instead.
+    # python-pptx's default places carry `a:normAutofit`, which shrinks a box as a line is typed;
+    # the blank deck uses fixed boxes
     blank = pptx_edit.blank_deck()
     prs = Presentation(io.BytesIO(blank))
     for root in [prs.slide_master._element, *(lay._element for lay in prs.slide_layouts)]:

@@ -1,12 +1,7 @@
 import { expect, test, type Page, type Route } from '@playwright/test'
 import { shellRead } from './shell-mocks'
 
-/**
- * Google Drive and Slack connected per person: 설정 › 연결 (the OAuth round trip mocked as a
- * redirect straight back), the card a Drive save waits on, and Drive files picked into a
- * project (Google Picker stubbed in the page). Every API response is a fixture; no request
- * reaches Google.
- */
+/** Per-person Google Drive and Slack connections: OAuth mocked as an immediate redirect, Google Picker stubbed. */
 
 const now = '2026-11-15T03:00:00.000Z'
 const sessionId = 'drive-save'

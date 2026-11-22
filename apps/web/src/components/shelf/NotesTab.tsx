@@ -20,11 +20,7 @@ const ORIGINS: Record<Note['origin'], { label: string; icon: typeof NotebookPen 
 
 type Draft = { id: string | null; title: string; body: string; expected: string | null }
 
-/**
- * A note open for editing. Edits stay here until 저장 (or Ctrl+S); closing with unsaved edits
- * asks 저장 / 버리기 / 취소, and leaving the page asks too. A save is conditional on the version
- * the edit started from: a lost race offers the person's own text and the latest version.
- */
+/** A note open for editing: edits stay local until 저장 (or Ctrl+S); the save is conditional on the starting version and a lost race offers both texts. */
 function NoteEditor({
   projectId,
   draft,

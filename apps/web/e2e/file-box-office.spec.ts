@@ -2,11 +2,7 @@ import { readFileSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
 import { artifactId, officeFixture, sessionId, type OfficeOptions } from './office-fixture'
 
-/**
- * HWP, Word and PowerPoint files in the file box: the preview draws them as their editor does
- * (read only), and 「편집」 opens a copy in that editor beside a new chat, the file itself never
- * written; a file opened before offers its document again rather than another copy.
- */
+/** HWP, Word and PowerPoint in the file box: read-only preview, and 「편집」 opens a copy beside a new chat (a reopened file offers its existing document). */
 
 test.use({ serviceWorkers: 'block' })
 
@@ -87,7 +83,7 @@ for (const kind of ['hwp', 'docx', 'pptx'] as const) {
     await expect(panelOf(page, kind)).toHaveAttribute(`data-${kind}-panel`, artifactId)
     await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
     expect(state.created).toEqual([{ sessionId: expect.any(String), fileId: boxId }])
-    // the copy is titled from the file; the file itself was never written
+    // the copy is titled from the file
     await expect(panelOf(page, kind).locator('header')).toContainText(KINDS[kind].name.replace(/\.[^.]+$/, ''))
     expect(state.fileWrites).toEqual([])
     expect(state.saves).toEqual([])
@@ -145,7 +141,7 @@ for (const kind of ['hwp', 'docx', 'pptx'] as const) {
 
 test('a long HWP file previews every page, each drawn as it is scrolled to @phone', async ({ page }) => {
   const state = await fixture(page, 'hwp')
-  // a 45-page document: past the 30 pages a preview used to stop at
+  // a 45-page document, beyond a 30-page preview cap
   await page.route('**/rhwp/**', (route) => route.fulfill({
     contentType: 'text/html', body: studio.replace('const PAGES = 1', 'const PAGES = 45'),
   }))

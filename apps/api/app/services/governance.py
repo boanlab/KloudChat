@@ -644,7 +644,7 @@ def _legacy_detections(text: str) -> list[_Detection]:
 def mask_legacy(
     text: str, *, scope: str = "egress", protected: set[str] | None = None
 ) -> tuple[str, int]:
-    """Broader legacy masking (pii_masking on)."""
+    """Broader masking applied when pii_masking is on."""
     hits = _in_scope(_legacy_detections(text), text, scope, protected or frozenset())
     return _render_masked(text, hits), len(hits)
 

@@ -1,9 +1,8 @@
 """Super Agent as a model on the /llm proxy: `kloudchat/super-agent` and its strict-local twin.
 
-One chat turn per request: the conversation (`messages`) is routed by the same table, picks,
-efforts and model health as a Super Agent turn in the app (`super_agent`), and the request goes
-on to the gateway under the caller's own key, so budget, allowlist and credits apply as for any
-model. Reports and slides are not offered here: they are long jobs, not one request and answer.
+One chat turn per request, routed like a Super Agent turn in the app (`super_agent`) and sent
+to the gateway under the caller's own key, so budget, allowlist and credits apply. Reports and
+slides are not offered: they are long jobs, not one request and answer.
 """
 
 from __future__ import annotations
@@ -81,9 +80,8 @@ async def _user_of(user_id: str) -> User | None:
 async def caller_of(secret: str) -> User | None:
     """The account a gateway key belongs to, or None for an unknown or unusable key.
 
-    The gateway is the authority on keys, so its `/key/info` answers (owner in the key's
-    metadata, else its user id) instead of anything decrypted here; the answer is kept for
-    `_CALLER_TTL` under the key's hash, so a busy client costs one lookup a minute."""
+    The gateway's `/key/info` is the authority (owner in the key's metadata, else its user id);
+    the answer is cached for `_CALLER_TTL` under the key's hash."""
     if not secret:
         return None
     hashed = _digest(secret)

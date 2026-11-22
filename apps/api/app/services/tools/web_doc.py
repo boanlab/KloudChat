@@ -1,7 +1,6 @@
-"""Web report and web deck tools: read the document open beside the chat, and edit it in place
-with targeted ops (`services/web_doc_edit.py`), as the office tools do their files. Only what
-an op names changes; a whole rewrite is the report or deck writer's, when asked for. No
-network: strict-local safe."""
+"""Web report and web deck tools: read the document open beside the chat and edit it in place with
+targeted ops (`services/web_doc_edit.py`); a whole rewrite is the writer's. No network:
+strict-local safe."""
 
 from __future__ import annotations
 

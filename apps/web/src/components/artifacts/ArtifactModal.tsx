@@ -32,10 +32,7 @@ const KIND_LABEL: Record<ArtifactKind, string> = {
 const isOffice = (artifact: Artifact): artifact is Extract<Artifact, { kind: OfficeKind }> =>
   artifact.kind === 'hwp' || artifact.kind === 'docx' || artifact.kind === 'pptx'
 
-/**
- * An office document (HWP, Word, PowerPoint) as its editor draws it, read only, with 「편집기에서
- * 열기」: beside its conversation, or beside a new chat when it has none (it joins that chat).
- */
+/** Office document (HWP, Word, PowerPoint) read only, with 「편집기에서 열기」. */
 function OfficeArtifactView({ artifact }: { artifact: Extract<Artifact, { kind: OfficeKind }> }) {
   const t = useT()
   const navigate = useNavigate()
@@ -112,11 +109,7 @@ function OfficeArtifactView({ artifact }: { artifact: Extract<Artifact, { kind: 
   )
 }
 
-/**
- * One artifact in a modal, in the panel it has beside a chat: the 아티팩트 page's HTML, code,
- * charts and diagrams, and a web report or web slides with no conversation (파일함 › 작업 문서).
- * `id` null: closed. It is fetched whole on open; the store holds the copy the panel edits.
- */
+/** One artifact in a modal: HTML, code, chart, diagram, or a web report/slides without a conversation. `id` null: closed. */
 export function ArtifactModal({ id, onClose }: { id: string | null; onClose: () => void }) {
   const t = useT()
   const artifacts = useStore((s) => s.artifacts)
