@@ -3391,12 +3391,6 @@ async def _shelf_key(db: DbSession, agent: Agent) -> str:
     return agent.index_key
 
 
-def _may_share(user: User, requested: bool) -> None:
-    """403 on `shared` for non-admins."""
-    if requested and user.role is not UserRole.admin:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="admin_required")
-
-
 # ══ design systems ══
 
 

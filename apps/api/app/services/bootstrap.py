@@ -62,7 +62,6 @@ async def seed_admin() -> None:
 
         grant_initial_allowance(db, user, await settings_store.default_monthly_credits())
         await provision_user(user)
-        await starter.seed_designs(db, user.id)
         await starter.seed_catalog(db, user.id)
         db.add(user)
         await db.commit()

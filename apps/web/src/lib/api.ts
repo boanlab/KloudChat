@@ -2114,32 +2114,11 @@ export interface DesignRow {
   updatedAt: string
 }
 
-/** A theme read out of a document: a proposal, not a row. */
-interface DesignDraftRow {
-  name: string
-  description: string
-  tokens: DesignTokens
-  body: string
-  imageStyle: string
-  craft: string[]
-  /** What it was read from, so the draft can say so. */
-  source: string
-  credits: number
-}
-
 export const designsApi = {
   /** Several at once. Ids this account does not own are skipped. */
   removeMany: (ids: string[]) =>
     call<{ deleted: number }>('/designs/delete', body({ ids })),
   list: () => call<DesignRow[]>('/designs'),
-  /** Reads a design out of a file or page. Costs a model call; stores nothing. */
-  extract: (payload: { fileId?: string; url?: string }) =>
-    call<DesignDraftRow>('/designs/extract', body(payload)),
-  create: (payload: Partial<DesignRow> & { name: string }) =>
-    call<DesignRow>('/designs', body(payload)),
-  update: (id: string, patch: Partial<DesignRow>) =>
-    call<DesignRow>(`/designs/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
-  remove: (id: string) => call<void>(`/designs/${id}`, { method: 'DELETE' }),
 }
 
 /** A rendering template; read-only, shipped in the API image. */
@@ -3790,7 +3769,6 @@ export const historyApi = {
 export const userTemplatesApi = {
   list: () => call<{ mine: UserTemplate[]; shared: UserTemplate[] }>('/user-templates'),
   catalogue: () => call<TemplateCatalogue>('/user-templates/catalogue'),
-  remove: (id: string) => call<void>(`/user-templates/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   /** A new agent of the person's from their template: format, questions, checks and process kept. */
   toAgent: (id: string) => call<AgentRow>(`/user-templates/${encodeURIComponent(id)}/to-agent`, { method: 'POST' }),
 }

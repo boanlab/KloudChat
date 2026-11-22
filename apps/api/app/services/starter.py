@@ -198,12 +198,6 @@ def estimate_tokens(when_to_use: str, body: str, description: str = "") -> int:
 _LEGACY_CATALOG_KEYS = {_slug(spec["name"]): spec["key"] for spec in _SKILLS}
 
 
-async def seed_designs(db: AsyncSession, user_id: str) -> int:
-    """Themes are retired (디자인 지침 instead): a new account gets none."""
-    del db, user_id
-    return 0
-
-
 def catalog_owner_query():
     """Catalogue owner: the oldest administrator."""
     return (select(User.id).where(User.role == UserRole.admin)
@@ -526,7 +520,6 @@ __all__ = [
     "withdrawn_agents",
     "runtime_metadata",
     "seed_catalog",
-    "seed_designs",
     "skill_name",
     "sync_catalog",
     "sync_catalog_at_startup",

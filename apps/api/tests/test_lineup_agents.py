@@ -156,7 +156,6 @@ async def _admin(db) -> User:
                  role=UserRole.admin)
     db.add(admin)
     await db.commit()
-    await starter.seed_designs(db, admin.id)
     await db.commit()
     return admin
 

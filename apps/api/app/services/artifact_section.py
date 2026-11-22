@@ -14,7 +14,6 @@ from typing import Any
 #: the 아티팩트 page's tabs, in order
 GALLERY = ("html", "code", "chart", "diagram")
 DOCUMENT_KINDS = ("report", "deck", "hwp", "docx", "pptx")
-MEDIA_KINDS = ("image", "audio", "video")
 
 
 def section_of(kind: str, data: dict[str, Any] | None) -> str:

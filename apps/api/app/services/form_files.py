@@ -12,7 +12,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from sqlmodel import col, select
+from sqlmodel import select
 
 from app.models.workspace import StoredFile
 from app.services import form_profile
@@ -147,18 +147,6 @@ def choose(
                 continue
             out.forms[kind] = FormChoice(kind, row.id, row.name, source, found)
     return out
-
-
-async def saved_forms(db, user_id: str, slots: dict[str, str] | None) -> dict[str, StoredFile]:
-    """A project's or agent's form slots (`kind → file id`) as the person's own file rows."""
-    ids = {kind: file_id for kind, file_id in (slots or {}).items()
-           if kind in KINDS and isinstance(file_id, str) and file_id}
-    if not ids:
-        return {}
-    rows = (await db.exec(select(StoredFile).where(
-        col(StoredFile.id).in_(list(ids.values())), StoredFile.user_id == user_id))).all()
-    by_id = {row.id: row for row in rows}
-    return {kind: by_id[file_id] for kind, file_id in ids.items() if file_id in by_id}
 
 
 # ── saved forms (기본 양식 파일) ────────────────────────────────────────────

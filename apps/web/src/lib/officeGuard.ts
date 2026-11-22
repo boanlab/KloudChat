@@ -32,10 +32,6 @@ export function hasOfficeEditor(sessionId: string | null | undefined): boolean {
   return !!sessionId && guards.has(sessionId)
 }
 
-export function hasUnsavedEdits(sessionId: string | null | undefined): boolean {
-  return !!sessionId && !!guards.get(sessionId)?.dirty()
-}
-
 /** True to go on with the turn. */
 export async function askAboutEdits(sessionId: string): Promise<boolean> {
   const guard = guards.get(sessionId)

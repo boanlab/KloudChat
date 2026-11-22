@@ -162,7 +162,6 @@ async def test_a_persons_own_theme_stays_listed_and_no_account_is_given_one(db):
     new = User(email="new@example.com", name="New", password_hash="x")
     db.add(new)
     await db.commit()
-    assert await starter.seed_designs(db, new.id) == 0
     await db.commit()
     assert await ws.list_designs(new, db) == []
 
@@ -199,7 +198,6 @@ async def test_the_store_hides_unlisted_skills_from_members_and_marks_them_for_a
     member = User(email="member@example.com", name="Member", password_hash="x")
     db.add_all([owner, other_admin, member])
     await db.commit()
-    await starter.seed_designs(db, owner.id)
     await starter.sync_catalog(db, owner)
     await db.commit()
     seen = {row.catalog_key: row.listed for row in await ws.list_skill_store(member, db)}
@@ -364,7 +362,6 @@ async def test_the_startup_sync_applies_renames_and_retirements_without_a_login(
     member = User(email="member@example.com", name="Member", password_hash="x")
     db.add_all([owner, member])
     await db.commit()
-    await starter.seed_designs(db, owner.id)
     await starter.seed_catalog(db, owner.id)
     await db.commit()
     # an earlier release's state: old names, a retired agent still offered

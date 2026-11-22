@@ -1568,11 +1568,6 @@ def _percent_column_cells(text: str) -> list[float]:
     return out
 
 
-def worked_percents(text: str, basis: Percents) -> list[float]:
-    """The percentages of `worked_results`."""
-    return worked_results(text, basis)[1]
-
-
 def worked_results(text: str, basis: Percents) -> tuple[set[float], list[float]]:
     """Percentages `text` works out in a written formula whose terms the texts give or one step
     from them (a sum or gap of two given figures), or from another such formula's result:

@@ -68,7 +68,6 @@ from app.services import (
     digest_jobs,
     ocr,
     settings_store,
-    starter,
     tools_gateway,
 )
 from app.services import files as file_service
@@ -880,7 +879,6 @@ async def approve(
     user.email_verified_at = user.email_verified_at or utcnow()
     grant_initial_allowance(db, user, allowance)
     await provision_user(user)
-    await starter.seed_designs(db, user.id)
     await connector_defaults.provide(db, user)
     db.add(user)
 

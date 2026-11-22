@@ -57,7 +57,6 @@ GAVE_UP = "영상을 읽지 못했습니다. 잠시 뒤 다시 올려 주세요.
 NO_WORKER = "영상 처리 서버가 연결되지 않아 영상을 읽지 못했습니다."
 NOTHING = "영상에서 소리도 화면도 찾지 못했습니다."
 UNREADABLE = "영상 파일을 열 수 없습니다. 다른 형식(mp4, webm)으로 바꿔 올려 주세요."
-NO_CREDITS = "크레딧이 모자라 영상의 화면을 읽지 못했습니다."
 
 
 def too_long(minutes: int) -> str:
