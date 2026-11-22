@@ -863,7 +863,7 @@ export function ResourceStatus({
 }
 
 /** Stale-list notice with a retry. */
-export function ReloadNotice({ onRetry }: { onRetry: () => void }) {
+export function ReloadNotice({ onRetry, empty = false }: { onRetry: () => void; empty?: boolean }) {
   const t = useT()
   return (
     <div
@@ -871,7 +871,13 @@ export function ReloadNotice({ onRetry }: { onRetry: () => void }) {
       className="mb-3 flex flex-wrap items-center gap-2 rounded-control border border-warn/30 bg-warn/5 px-3 py-2 text-base text-warn"
     >
       <span className="min-w-0 flex-1 max-sm:basis-32">
-        <Sentences text={t('목록을 새로 불러오지 못했습니다. 화면에 보이는 것은 마지막으로 받은 내용입니다.')} />
+        <Sentences
+          text={
+            empty
+              ? t('목록을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')
+              : t('목록을 새로 불러오지 못했습니다. 화면에 보이는 것은 마지막으로 받은 내용입니다.')
+          }
+        />
       </span>
       <Button size="sm" onClick={onRetry}>
         {t('다시 시도')}

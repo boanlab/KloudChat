@@ -603,7 +603,6 @@ export function SessionPage() {
           <p className="text-balance text-base text-muted">
             <Sentences text={t('최신 내용을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.')} />
           </p>
-          {retrying && <p className="text-sm text-faint">{t('잠시 후 다시 불러옵니다.')}</p>}
           <Button onClick={retryLoad}>
             <RotateCw size={14} />
             {t('다시 시도')}
@@ -616,7 +615,7 @@ export function SessionPage() {
   if (!session) {
     return (
       <>
-        <TopBar left={<span className="text-base font-medium">{t('작업')}</span>} />
+        <TopBar left={<h1 className="text-base font-medium">{t('작업')}</h1>} />
         {loadingTranscript}
       </>
     )
@@ -630,9 +629,9 @@ export function SessionPage() {
         left={
           <div className="flex min-w-0 items-center gap-2">
             {plainStart ? null : <Icon size={14} className="shrink-0" style={{ color: meta.color }} />}
-            <span className="truncate text-base font-medium">
+            <h1 className="truncate text-base font-medium">
               {plainStart ? t('홈') : (session?.title ?? t('새 {kind}').replace('{kind}', t(meta.label)))}
-            </span>
+            </h1>
             {project && (
               <Badge tone="accent" className="max-sm:hidden">
                 <Boxes size={11} />

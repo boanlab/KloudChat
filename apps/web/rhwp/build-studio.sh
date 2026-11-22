@@ -39,6 +39,16 @@ tar -xzf "$work/rhwp-core-$RHWP_VERSION.tgz" -C "$work/core"
 cp "$work/core/package/rhwp.js" "$work/core/package/rhwp_bg.wasm" pkg/
 
 cd rhwp-studio
+# The status bar's "document.hwpx — 1페이지 (118.0ms)": the panel opens one file under a fixed
+# internal name and the load time is not for the reader, so only the page count stays.
+sed -i -e 's#^\(  "ui.sbMessage.filePages": \).*#\1"{p2}페이지",#' \
+  -e 's#^\(  "ui.sbMessage.filePagesTimed": \).*#\1"{p2}페이지",#' src/i18n/locales/ko.ts
+sed -i -e 's#^\(  "ui.sbMessage.filePages": \).*#\1"Pages: {p2}",#' \
+  -e 's#^\(  "ui.sbMessage.filePagesTimed": \).*#\1"Pages: {p2}",#' src/i18n/locales/en.ts
+if grep -q 'p3}ms' src/i18n/locales/ko.ts src/i18n/locales/en.ts; then
+  echo 'rhwp-studio status bar text was not patched' >&2
+  exit 1
+fi
 npm ci --no-audit --no-fund --ignore-scripts >/dev/null
 RHWP_WITHOUT_AI=1 RHWP_WITHOUT_HWPCTRL=1 RHWP_DISABLE_EXTERNAL_WEBFONTS=1 \
   node node_modules/vite/bin/vite.js build --base=/rhwp/ --logLevel warn
