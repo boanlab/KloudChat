@@ -287,6 +287,8 @@ export function NotesPane({
     if (!now.onCommit || text === now.value) return
     now.onCommit(text)
   }
+  // Read only (a phone) with nothing written: no empty box that looks typeable.
+  if ((!canEdit || !onCommit) && !value && !children) return null
   return (
     <section className="kc-notes" aria-label={t('발표자 노트')}>
       <button type="button" className="kc-notes-bar" aria-expanded={open} onClick={() => setOpen((was) => !was)}>
