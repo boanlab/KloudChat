@@ -19,8 +19,8 @@ Skills the administrator shares with everyone. They show under **Official skills
 | Slide deck (슬라이드 구성) | Slides | One claim per slide, the conclusion first. |
 | Extract and tally (자료 추출·집계) | Chat | Reads Excel and CSV with code, pulls columns, totals by item into tables and charts, and records the rows it removed or changed. |
 | Answers from regulations (규정 근거 답변) | Chat | Answers from regulations and guidelines with the article cited as [n], and points what the material does not cover to the department. |
-| YouTube transcript and summary (YouTube 영상 전사·요약) | Chat | Gets the captions (or a transcription of the audio) through the **YouTube 전사** connector and summarises from that alone. |
-| Deep research (심층 조사) | Chat | Searches the web and papers many times through the **심층 리서치** connector and sums up the sourced findings. Takes a few minutes. Saying 「심층 리서치로」 in the request runs the detailed mode (5–15 minutes), and the step shows which mode ran (quick or detailed). |
+| YouTube transcript and summary (YouTube 영상 전사·요약) | Chat | Gets the captions (or a transcription of the audio) through the **YouTube 전사** MCP server and summarises from that alone. |
+| Deep research (심층 조사) | Chat | Searches the web and papers many times through the **심층 리서치** MCP server and sums up the sourced findings. Takes a few minutes. Saying 「심층 리서치로」 in the request runs the detailed mode (5–15 minutes), and the step shows which mode ran (quick or detailed). |
 | Translation (번역) | Chat, Report | Translates between Korean and English (other languages on request) without leaving anything out. Names, numbers, units, tables, lists and code stay as they are; one term stays one term throughout; only genuinely ambiguous spots get a 「번역 메모」 (translator's note). Ask for 「직역」 (literal) or 「의역」 (free), 「격식체」 (formal) or 「평어체」 (plain) and it follows. |
 | Press release (보도자료) | Chat, Report | A press release with headline, subheadline, a who-what-when-where-why lead, the body most important first, the organisation's boilerplate and contact. Quotes only words the material gives to a named person (a name alone gets a quote draft marked 「가안」), and no figures the material does not give. Only the release date, embargo and contact are left as brackets for you to fill. Give a length (「A4 1장」, 「800자 이내」) and it keeps to it. |
 | Make an Excel file (엑셀 파일 만들기) | Chat | Turns a pasted table, an attached CSV or Excel file, or a computed table into a downloadable Excel (.xlsx) file. Total rows and columns such as totals or rates go in as formulas; on request it adds an Excel chart too. |
@@ -28,7 +28,7 @@ Skills the administrator shares with everyone. They show under **Official skills
 
 ## Other skills, and what a skill brings
 
-There are also Date calculation (with the **시간** (time) connector it reads today's date from there), Quote calculation, Excel cleanup, PDF table → Excel, Grounding check, Ask for missing information, Calculation and unit check and Mask personal information.
+There are also Date calculation (with the **시간** (time) MCP server it reads today's date from there), Quote calculation, Excel cleanup, PDF table → Excel, Grounding check, Ask for missing information, Calculation and unit check and Mask personal information.
 
 A skill brings its document format, checks and missing-information questions. Turn on **Meeting minutes** on the report screen, for instance, and it writes in the **회의록** format, asks for the meeting date and attendees before writing, and checks sources and format afterwards. A skill you turn on stays on for the rest of the conversation, approving the outline included.
 
@@ -89,8 +89,8 @@ In **Customize** → **Agents** → **Add** → **Create an agent**, skills you 
 
 ## Video and research agents
 
-- **Lecture video notes**: **YouTube 영상 전사·요약** set to Always, screen **Chat**. Write the shape you want in the instructions (「핵심 다섯 줄과 용어 풀이 표」). The **YouTube 전사** connector must be on.
-- **Trend research**: **심층 조사** + **근거 대조** set to Always, screen **Chat**. The **심층 리서치** connector must be on, and one run takes a few minutes.
+- **Lecture video notes**: **YouTube 영상 전사·요약** set to Always, screen **Chat**. Write the shape you want in the instructions (「핵심 다섯 줄과 용어 풀이 표」). The **YouTube 전사** MCP server must be on.
+- **Trend research**: **심층 조사** + **근거 대조** set to Always, screen **Chat**. The **심층 리서치** MCP server must be on, and one run takes a few minutes.
 
 ## Making the same as your own skill
 

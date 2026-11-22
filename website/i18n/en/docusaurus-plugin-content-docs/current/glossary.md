@@ -19,8 +19,8 @@ title: Glossary
 | Bundle (묶음) | A group of things an agent does before and after writing. Ticked under Extra work in the agent settings |
 | Skill (스킬) | A way of working you keep on in a conversation. Up to 3 in the composer, up to 6 set to Always on an agent; skills not picked are pulled in by the model when needed. Brings its document format, checks and missing-information questions |
 | Official skill (공식 스킬) | A skill the administrator shares with everyone, for jobs such as minutes or a bullet-style briefing. Picking it in the composer adds it to your skills |
-| Hidden (숨김) | A built-in skill or connector kept but not shown in the lists, the store or the pickers. It still works in bundles and earlier conversations; administrators see it with Show hidden |
-| Connector (커넥터) | An external tool the model uses (MCP). Turned on and off for the whole account |
+| Hidden (숨김) | A built-in skill or MCP server kept but not shown in the lists, the store or the pickers. It still works in bundles and earlier conversations; administrators see it with Show hidden |
+| MCP | An external tool (an MCP server) the model uses. Turned on and off for the whole account |
 | Memory (메모리) | A fact remembered beyond one conversation. Settings › Memory |
 | strict-local | A mark on a model confirmed not to send anything outside |
 | Super Agent | A conversation mode that picks the model and reasoning effort for each request by its task type (with a strict-local-only entry) |

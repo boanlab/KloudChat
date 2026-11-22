@@ -1,8 +1,7 @@
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
-import { Badge, Button, ConfirmDialog, Field, Input, Modal, Select, Textarea } from '@/components/ui'
+import { Badge, Button, ConfirmDialog, Field, Input, Modal, Select } from '@/components/ui'
 import { connectorCatalogApi, errorCode, errorMessage, type CatalogAdmin, type CatalogEntryIn } from '@/lib/api'
-import { useMarkUnsaved } from '@/lib/unsaved'
 import { useT } from '@/lib/useT'
 import type { CatalogEntryAdmin } from '@/types'
 
@@ -15,7 +14,7 @@ const BLANK: CatalogEntryIn = {
 const ERRORS: Record<string, string> = {
   catalog_slug: '슬러그는 영문 소문자·숫자·하이픈으로 적으세요.',
   catalog_slug_taken: '이미 있는 슬러그입니다.',
-  catalog_slug_fixed: '설치된 커넥터가 슬러그로 찾으므로 슬러그는 바꿀 수 없습니다.',
+  catalog_slug_fixed: '설치된 MCP 서버가 슬러그로 찾으므로 슬러그는 바꿀 수 없습니다.',
   catalog_endpoint: 'stdio는 명령 한 줄, http·sse는 https:// 주소나 ${TOOLS_*_URL} 자리표시로 적으세요.',
   catalog_placeholder: '모르는 자리표시입니다.',
   catalog_env: '환경 변수 이름은 영문 대문자로, 값은 한 줄로 적으세요. TOOLS_GATEWAY_KEY는 직접 넣을 수 없습니다.',
@@ -81,7 +80,7 @@ function EntryForm({
           <Field label={t('이름')}>
             <Input value={value.name} maxLength={80} onChange={(e) => set('name', e.target.value)} />
           </Field>
-          <Field label={t('슬러그')} hint={t('설치된 커넥터가 이 이름으로 항목을 찾습니다.')}>
+          <Field label={t('슬러그')} hint={t('설치된 MCP 서버가 이 이름으로 항목을 찾습니다.')}>
             <Input value={value.slug} maxLength={60} disabled={!!initial} className="font-mono"
               onChange={(e) => set('slug', e.target.value.toLowerCase())} />
           </Field>
@@ -175,42 +174,6 @@ function EntryForm({
   )
 }
 
-/** Command lines members may run as stdio connectors of their own, matched whole. */
-function StdioAllowForm({ initial, onSaved }: { initial: string[]; onSaved: (lines: string[]) => void }) {
-  const t = useT()
-  const [text, setText] = useState(initial.join('\n'))
-  const [note, setNote] = useState<string | null>(null)
-  useMarkUnsaved('system.stdio-allow', text !== initial.join('\n'))
-  return (
-    <div className="space-y-2" data-testid="stdio-allow">
-      <Field
-        label={t('사용자가 직접 등록할 수 있는 실행 명령')}
-        hint={t('한 줄에 명령 하나. 사용자가 적은 명령이 인자까지 똑같은 줄만 실행되고, 환경 변수는 넣을 수 없습니다.')}
-      >
-        <Textarea rows={3} value={text} onChange={(e) => setText(e.target.value)} className="font-mono" />
-      </Field>
-      <div className="flex items-center justify-end gap-2">
-        {note && <span className="text-sm text-muted">{note}</span>}
-        <Button
-          size="sm"
-          onClick={async () => {
-            try {
-              const out = await connectorCatalogApi.stdioAllow(text.split('\n'))
-              setText(out.stdioAllow.join('\n'))
-              onSaved(out.stdioAllow)
-              setNote(t('저장했습니다.'))
-            } catch (err) {
-              setNote(errorMessage(err, t('저장하지 못했습니다.')))
-            }
-          }}
-        >
-          {t('저장')}
-        </Button>
-      </div>
-    </div>
-  )
-}
-
 /** What members can install; stored values never come back. */
 export function ConnectorCatalogSection() {
   const t = useT()
@@ -261,7 +224,6 @@ export function ConnectorCatalogSection() {
           </li>
         ))}
       </ul>
-      <StdioAllowForm initial={meta.stdioAllow ?? []} onSaved={(stdioAllow) => setMeta({ ...meta, stdioAllow })} />
       {editing && (
         <EntryForm
           initial={editing === 'new' ? null : editing}
@@ -282,7 +244,7 @@ export function ConnectorCatalogSection() {
           setMeta({ ...meta, entries: out.entries })
         }}
         title={t('{name} 삭제').replace('{name}', removing?.name ?? '')}
-        description={t('카탈로그에서 빠져 새로 설치할 수 없습니다. 이미 설치한 사람의 커넥터는 남지만 게이트웨이 키는 더 이상 들어가지 않습니다.')}
+        description={t('카탈로그에서 빠져 새로 설치할 수 없습니다. 이미 설치한 사람의 MCP 서버는 남지만 게이트웨이 키는 더 이상 들어가지 않습니다.')}
       />
     </div>
   )

@@ -136,7 +136,7 @@ async def test_a_turn_loads_then_calls_a_deferred_tool(monkeypatch):
     ], seen)
     tools = _tools(ran)
     events = [e async for e in agent.run_turn(
-        EXTERNAL, [{"role": "user", "content": "큰 커넥터로 찾아 줘"}], tools,
+        EXTERNAL, [{"role": "user", "content": "큰 MCP 서버로 찾아 줘"}], tools,
         ToolContext(user_id="u", session_id="s", allowed={t.name for t in tools}),
         tool_definitions=to_openai(tools))]
     assert "load_tools" in seen[0]["defs"] and "mcp__big__t4" not in seen[0]["defs"]

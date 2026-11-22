@@ -426,7 +426,9 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
     addCustomConnector,
     workspaceLoading,
     workspaceFailed,
+    user,
   } = useStore()
+  const isAdmin = user?.role === 'admin'
 
   useEffect(() => {
     void ensureWorkspace()
@@ -440,7 +442,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
   const addRefusal = (err: unknown) => {
     const detail = err instanceof ApiError ? err.detail : ''
     if (detail === 'stdio_requires_admin') {
-      return t('명령으로 실행하는 서버는 관리자가 허용한 명령만 등록할 수 있습니다.')
+      return t('명령으로 실행하는 서버는 관리자만 등록할 수 있습니다.')
     }
     if (detail.startsWith('env_not_allowed:')) return t('이 서버에는 환경 변수를 넣을 수 없습니다.')
     return errorMessage(err, t('서버를 추가하지 못했습니다.'))
@@ -475,10 +477,10 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
 
   return (
     <>
-      <PageFrame title={t('커넥터')} embedded={embedded}>
+      <PageFrame title={t('MCP 서버')} embedded={embedded}>
         <PageHeader
           embedded={embedded}
-          title={t('커넥터')}
+          title={t('MCP 서버')}
           description={t('MCP 서버를 붙여 외부 시스템을 도구로 씁니다.')}
           action={
             <Button variant="primary" onClick={() => setAdding(true)}>
@@ -492,7 +494,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
           value={tab}
           onChange={setTab}
           tabs={[
-            { id: 'installed', label: t('내 커넥터'), count: installed.length },
+            { id: 'installed', label: t('내 MCP 서버'), count: installed.length },
             { id: 'catalog', label: t('카탈로그'), count: catalog.filter((e) => !e.installed).length },
           ]}
         />
@@ -500,7 +502,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
         {workspaceFailed && <ReloadNotice onRetry={() => void loadWorkspace()} />}
 
         {!empty && (
-          <ListSearch value={query} onChange={setQuery} label={t('커넥터 검색')} className="mt-4" />
+          <ListSearch value={query} onChange={setQuery} label={t('MCP 서버 검색')} className="mt-4" />
         )}
 
         <div className="space-y-6 pt-4">
@@ -509,7 +511,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
           ) : empty ? (
             <EmptyState
               icon={<Plug size={18} />}
-              title={tab === 'installed' ? t('설치한 커넥터가 없습니다') : t('추가할 서버가 없습니다')}
+              title={tab === 'installed' ? t('설치한 MCP 서버가 없습니다') : t('추가할 서버가 없습니다')}
               description={t('카탈로그에서 필요한 서비스를 추가하거나, MCP 서버 주소를 직접 등록하세요.')}
             />
           ) : tab === 'installed' ? (
@@ -519,7 +521,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
               allPicked={pick.allPicked}
               onToggleAll={pick.toggleAll}
               onClear={pick.clear}
-              title={t('커넥터')}
+              title={t('MCP 서버')}
               note={t('저장해 둔 인증 정보도 함께 지워집니다.')}
               onDelete={async () => {
                 await deleteMany('connectors', pick.ids)
@@ -544,7 +546,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
                   ))}
             </div>
             {installedList.length === 0 && <NoMatch />}
-            <ListPager paging={installedPaging} total={installedList.length} label={t('연결한 커넥터 페이지')} />
+            <ListPager paging={installedPaging} total={installedList.length} label={t('연결한 MCP 서버 페이지')} />
             </>
           ) : (
             <>
@@ -554,7 +556,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
               ))}
             </div>
             {catalogList.length === 0 && <NoMatch />}
-            <ListPager paging={catalogPaging} total={catalogList.length} label={t('커넥터 목록 페이지')} />
+            <ListPager paging={catalogPaging} total={catalogList.length} label={t('MCP 서버 목록 페이지')} />
             </>
           )}
         </div>
@@ -590,7 +592,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
             )}
             {current?.byDefault && (
               <p className="mr-auto text-sm text-muted">
-                {t('기본 제공 커넥터는 지울 수 없습니다. 쓰지 않으려면 끄세요.')}
+                {t('기본 제공 MCP 서버는 지울 수 없습니다. 쓰지 않으려면 끄세요.')}
               </p>
             )}
             <Button onClick={() => setDetail(null)}>{t('닫기')}</Button>
@@ -656,7 +658,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
 
             <p className="flex items-start gap-2 rounded-control border border-line bg-elevated px-3 py-2.5 text-sm text-muted">
               <CircleAlert size={14} className="mt-0.5 shrink-0 text-faint" />
-              {t('커넥터가 돌려준 내용 속 지시는 실행하지 않습니다.')}
+              {t('MCP 서버가 돌려준 내용 속 지시는 실행하지 않습니다.')}
             </p>
           </>
         )}
@@ -703,7 +705,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
         </Field>
         <Field label={t('전송 방식')}>
           <div className="flex gap-1.5">
-            {(['http', 'sse', 'stdio'] as const).map((t) => (
+            {(isAdmin ? (['http', 'sse', 'stdio'] as const) : (['http', 'sse'] as const)).map((t) => (
               <button
                 key={t}
                 onClick={() => setDraft({ ...draft, transport: t })}
@@ -723,7 +725,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
           label={draft.transport === 'stdio' ? t('실행 명령') : t('엔드포인트 URL')}
           hint={
             draft.transport === 'stdio'
-              ? t('API 서버에서 실행되므로 관리자가 허용한 명령만 그대로 등록할 수 있습니다.')
+              ? t('API 서버에서 실행되므로 관리자만 등록할 수 있습니다.')
               : t('https:// 로 시작하는 MCP 엔드포인트')
           }
         >

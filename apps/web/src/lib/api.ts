@@ -3770,7 +3770,7 @@ export const userTemplatesApi = {
   toAgent: (id: string) => call<AgentRow>(`/user-templates/${encodeURIComponent(id)}/to-agent`, { method: 'POST' }),
 }
 
-/** The connector catalogue administrators keep (관리 › MCP). */
+/** The connector catalogue administrators keep (관리 › MCP 서버). */
 export type CatalogEntryIn = Omit<CatalogEntryAdmin, 'id' | 'updatedAt'>
 export interface CatalogAdmin {
   entries: CatalogEntryAdmin[]
@@ -3778,8 +3778,6 @@ export interface CatalogAdmin {
   transports: string[]
   features: string[]
   placeholders: string[]
-  /** stdio command lines members may register as their own */
-  stdioAllow: string[]
 }
 export const connectorCatalogApi = {
   list: () => call<CatalogAdmin>('/admin/connector-catalog'),
@@ -3787,8 +3785,6 @@ export const connectorCatalogApi = {
   edit: (id: string, entry: CatalogEntryIn) =>
     call<{ entries: CatalogEntryAdmin[] }>(`/admin/connector-catalog/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(entry) }),
   remove: (id: string) => call<{ entries: CatalogEntryAdmin[] }>(`/admin/connector-catalog/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  stdioAllow: (commands: string[]) =>
-    call<{ stdioAllow: string[] }>('/admin/connector-catalog/stdio-allow', { method: 'PUT', body: JSON.stringify({ commands }) }),
 }
 
 /** An uncaught browser error, for the server log only (`lib/clientErrors.ts`). */

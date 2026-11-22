@@ -54,7 +54,7 @@ Document edits (rewriting a section, slide or block, a review) follow the same r
 
 ## strict-local models
 
-These are models confirmed not to send anything outside. Selecting one disables web search, page reading, and connectors. A model whose name starts with `local/` runs on the organization's servers first but may fall back to an external model, so it is not strict-local. Check the label in the list.
+These are models confirmed not to send anything outside. Selecting one disables web search, page reading, and MCP servers. A model whose name starts with `local/` runs on the organization's servers first but may fall back to an external model, so it is not strict-local. Check the label in the list.
 
 ## Share links
 

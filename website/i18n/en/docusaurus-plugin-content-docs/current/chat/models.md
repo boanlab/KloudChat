@@ -12,7 +12,7 @@ Select the model name to the right of the composer to open the list. When more t
 
 | Label | Meaning |
 |---|---|
-| **strict-local** | The model is confirmed to run only on organization servers and to send nothing outside. Selecting it disables web search, page reading, and connectors. |
+| **strict-local** | The model is confirmed to run only on organization servers and to send nothing outside. Selecting it disables web search, page reading, and MCP servers. |
 | **self-hosted · strict unverified** | The model runs on organization servers, but it is not confirmed that there is no external fallback path. |
 | **May switch to an external provider** | The model normally runs on organization servers, but it may switch to an external service during an outage. |
 | **External provider** | The model is supplied by an external service, so requests are sent outside the organization. |

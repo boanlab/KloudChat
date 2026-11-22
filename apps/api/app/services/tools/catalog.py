@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import re
-import shlex
 import time
 from typing import Any
 
@@ -149,31 +148,12 @@ async def resolve_env(env: dict[str, str] | None) -> dict[str, str]:
     return out
 
 
-async def stdio_allowlist() -> list[str]:
-    """Commands an administrator lets members run as stdio connectors of their own."""
-    raw = (await settings_store.all_values()).get(settings_store.CONNECTOR_STDIO_ALLOW, "")
-    return [line.strip() for line in raw.splitlines() if line.strip()]
-
-
-def _argv(command: str) -> list[str]:
-    try:
-        return shlex.split(command)
-    except ValueError:
-        return []
-
-
-async def stdio_allowed(command: str) -> bool:
-    """The whole command line on the allowlist (argument for argument), not only its program."""
-    argv = _argv(command)
-    return bool(argv) and any(_argv(line) == argv for line in await stdio_allowlist())
-
-
 class NotRunnable(RuntimeError):
     pass
 
 
 #: Member's own remote connector aimed at the deployment's network.
-INTERNAL_ENDPOINT = "내부 네트워크 주소의 커넥터는 관리자만 등록할 수 있습니다."
+INTERNAL_ENDPOINT = "내부 네트워크 주소의 MCP 서버는 관리자만 등록할 수 있습니다."
 
 
 def public_only(connector: Any, *, owner_is_admin: bool) -> bool:
@@ -209,8 +189,7 @@ async def check_runnable(connector: Any, *, owner_is_admin: bool) -> None:
         return
     if getattr(connector, "official", False) or owner_is_admin:
         return
-    if connector.env or not await stdio_allowed(connector.endpoint or ""):
-        raise NotRunnable("관리자가 허용하지 않은 실행 명령이라 실행하지 않았습니다.")
+    raise NotRunnable("명령으로 실행하는 서버는 관리자만 등록할 수 있어 실행하지 않았습니다.")
 
 
 #: Tool-name words that mark a write tool (off until opted in).
@@ -342,4 +321,4 @@ __all__ = ["INTERNAL_ENDPOINT", "KINDS", "TRANSPORTS", "EntryError", "NotRunnabl
            "catalog_entry", "check_runnable", "clean", "connector_env", "effective_endpoint",
            "endpoint_refusal", "entries", "entry", "looks_like_write", "provided",
            "public_only", "refresh", "resolve_env", "resolve_urls",
-           "stdio_allowed", "stdio_allowlist", "use"]
+           "use"]

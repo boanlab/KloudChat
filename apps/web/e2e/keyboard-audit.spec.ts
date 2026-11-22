@@ -23,7 +23,7 @@ const ROUTES: [string, string][] = [
   ['/memory', '메모리'],
   ['/history', '대화 기록'],
   ['/usage', '내 사용량'],
-  ['/connectors', '커넥터'],
+  ['/connectors', 'MCP 서버'],
   ['/designs', '디자인'],
   ['/settings', '설정'],
   ['/settings/preferences', '설정 · 환경'],

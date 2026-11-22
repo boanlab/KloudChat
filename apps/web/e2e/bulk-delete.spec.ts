@@ -65,7 +65,7 @@ test('프로젝트를 여러 개 골라 한 번에 지운다', async ({ page }) 
   console.log('보낸 ids:', sent[0].length, '개 · 서버에 남은 것:', left)
 })
 
-test('아티팩트·스킬·에이전트·커넥터 화면에도 같은 선택 막대가 있다', async ({ page }) => {
+test('아티팩트·스킬·에이전트·MCP 서버 화면에도 같은 선택 막대가 있다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
 
@@ -88,7 +88,7 @@ test('아티팩트·스킬·에이전트·커넥터 화면에도 같은 선택 �
     ['/artifacts', '아티팩트'],
     ['/skills', '스킬'],
     ['/agents', '에이전트'],
-    ['/connectors', '커넥터'],
+    ['/connectors', 'MCP 서버'],
   ] as const) {
     await page.goto(path)
     const boxes = page.getByRole('checkbox', { name: /선택$/ })

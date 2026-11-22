@@ -36,6 +36,6 @@ Models that support tool calling, marked 🔧 in the list, use the following too
 | Find in files | Searches inside attached files and agent material. |
 | Artifacts · Chart creation | Produces an artifact: a document or a chart in the right panel. |
 | Shared notes | Leaves a note for other conversations in the same project to reference. |
-| Connectors | External tools that you installed. [Connectors](connectors) |
+| MCP servers | External tools that you installed. [MCP](connectors) |
 
 Where the administrator has not connected a search server or a code execution server, those tools are not available.

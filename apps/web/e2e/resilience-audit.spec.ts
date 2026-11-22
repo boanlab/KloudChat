@@ -19,7 +19,7 @@ const LISTS: [route: string, api: RegExp, where: string][] = [
   ['/agents', /\/api\/agents(\?|$)/, '에이전트'],
   ['/skills', /\/api\/skills(\?|$)/, '스킬'],
   ['/history', /\/api\/sessions(\?|$)/, '대화 기록'],
-  ['/connectors', /\/api\/connectors(\?|$)/, '커넥터'],
+  ['/connectors', /\/api\/connectors(\?|$)/, 'MCP 서버'],
 ]
 
 /** Anything that reads as "there is nothing here". */

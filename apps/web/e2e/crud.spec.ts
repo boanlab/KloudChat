@@ -189,7 +189,7 @@ test('아티팩트를 카드에서 지운다', async ({ page }) => {
   await expect(all).toHaveText(new RegExp(`전체\\s*${before - 1}(\\D|$)`), { timeout: 15_000 })
 })
 
-test('직접 등록한 커넥터의 자격증명을 다시 넣는다', async ({ page }) => {
+test('직접 등록한 MCP 서버의 자격증명을 다시 넣는다', async ({ page }) => {
   // A self-registered server: catalogue servers need no credential.
   const name = `커스텀 ${Date.now().toString(36)}`
   // Wait for the workspace fetch before clicking through.

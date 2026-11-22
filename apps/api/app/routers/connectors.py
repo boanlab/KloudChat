@@ -162,11 +162,9 @@ async def install(
 
 
 
-async def _stdio_settable(endpoint: str | None, env: dict[str, str] | None) -> None:
-    """A member's own stdio command: exactly an allowed line, and no env (a preload or an
-    index URL would run other code)."""
-    if env or endpoint is None or not await catalog.stdio_allowed(endpoint):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="stdio_requires_admin")
+def _stdio_refused() -> None:
+    """A command runs on the API server: only an administrator registers one."""
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="stdio_requires_admin")
 
 
 async def _remote_settable(endpoint: str | None) -> None:
@@ -190,8 +188,7 @@ def _settable_env(entry: dict | None, supplied: dict[str, str] | None, user: Use
 @router.post("", response_model=ConnectorOut, status_code=status.HTTP_201_CREATED)
 async def add_custom(payload: ConnectorIn, user: CurrentUser, db: DbSession):
     if payload.transport is Transport.stdio and user.role is not UserRole.admin:
-        # stdio = command on API server → admin, or an allowed command line without env
-        await _stdio_settable(payload.endpoint, payload.env)
+        _stdio_refused()
     if payload.transport is not Transport.stdio and user.role is not UserRole.admin:
         await _remote_settable(payload.endpoint)
     connector = Connector(
@@ -287,9 +284,7 @@ async def patch(connector_id: str, payload: ConnectorPatch, user: CurrentUser, d
     if user.role is not UserRole.admin and (
             "endpoint" in patch_fields or "env" in patch_fields):
         if connector.transport is Transport.stdio and not connector.official:
-            # as when adding one
-            await _stdio_settable(patch_fields.get("endpoint", connector.endpoint),
-                                  patch_fields.get("env"))
+            _stdio_refused()
         if connector.transport is not Transport.stdio and not connector.official \
                 and "endpoint" in patch_fields:
             await _remote_settable(patch_fields["endpoint"])
@@ -420,27 +415,9 @@ async def _saved(db: DbSession, slug: str) -> dict[str, Any]:
 async def admin_catalog(admin: AdminUser, db: DbSession):
     """All entries incl. disabled; env keys only."""
     return {"entries": await _admin_list(db), "kinds": list(catalog.KINDS),
-            "stdioAllow": await catalog.stdio_allowlist(),
             "transports": list(catalog.TRANSPORTS),
             "features": list(catalog.tools_gateway.FEATURES),
             "placeholders": [f"${{{name}}}" for name in catalog._URL_VARS]}
-
-
-class StdioAllowIn(Wire):
-    #: whole command lines, matched argument for argument
-    commands: list[str] = Field(default_factory=list, max_length=50)
-
-
-@admin_router.put("/stdio-allow")
-async def admin_stdio_allow(payload: StdioAllowIn, admin: AdminUser, db: DbSession,
-                            request: Request):
-    """Commands members may register as stdio connectors of their own."""
-    lines = [" ".join(line.split())[:500] for line in payload.commands if line.strip()]
-    await settings_store.put(db, settings_store.CONNECTOR_STDIO_ALLOW, "\n".join(lines), admin.id)
-    _audit(db, request, admin, "connector.stdio_allow.save", "stdio-allow")
-    await db.commit()
-    settings_store.invalidate()
-    return {"stdioAllow": await catalog.stdio_allowlist()}
 
 
 @admin_router.post("", status_code=status.HTTP_201_CREATED)

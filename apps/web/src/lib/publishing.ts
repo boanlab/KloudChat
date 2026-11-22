@@ -24,7 +24,7 @@ export const DISABLED_LABEL: Record<string, string> = {
   memory: '내 메모리',
   personal: '개인 맞춤 설정',
   files: '내 다른 파일·프로젝트',
-  connectors: '커넥터',
+  connectors: 'MCP 서버',
   web: '웹 검색',
   documents: '문서·발표 만들기',
   tools: '자료 찾기·계산 외 도구',
