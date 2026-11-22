@@ -2,7 +2,7 @@ import { Bot, GitFork, Play, Settings2, type LucideIcon } from 'lucide-react'
 import { KIND_ICON, STEP_KIND_LABEL, stepTitle } from '@/components/agents/PipelineEditor'
 import { SELF } from '@/lib/process'
 import { userPipelinesApi } from '@/lib/api'
-import { isCondition, readConditionValues, START } from '@/lib/pipelineGraph'
+import { isCondition, readConditionValues } from '@/lib/pipelineGraph'
 import type { Agent, PipelineCatalogue, PipelineStep } from '@/types'
 import type {
   GraphCatalogue,
@@ -51,8 +51,6 @@ export function stepName(step: GraphStep | null | undefined, self: Agent, agents
   if (agent) return agent.name || '이 에이전트'
   return stepTitle(step as PipelineStep, agents, cat)
 }
-
-export const isStart = (id: string) => id === START
 
 export const RUN_LABEL: Record<RunStepStatus, string> = {
   done: '끝',

@@ -37,12 +37,6 @@ JsonList = Annotated[list[str], BeforeValidator(lambda v: v or [])]
 JsonMap = Annotated[dict[str, str], BeforeValidator(lambda v: v or {})]
 
 
-class OpenedDocument(Wire):
-    """Id of the document the file was read into."""
-
-    id: str
-
-
 class FileTextOut(Wire):
     """A file's extracted text for the file box preview; cut at a limit."""
 

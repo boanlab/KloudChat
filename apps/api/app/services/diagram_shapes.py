@@ -431,54 +431,6 @@ def icon_for(label: str) -> str | None:
     return None
 
 
-def _icon_blobs(name: str, rgb: tuple[int, int, int]) -> tuple[bytes, bytes]:
-    """`(svg, png)` of a solid-colour icon; PNG is PowerPoint's required fallback."""
-    import io
-
-    import PIL.Image
-
-    colour = "#{:02X}{:02X}{:02X}".format(*rgb)
-    svg = (_ICONS_DIR / f"{name}.svg").read_text()
-    svg = svg.replace("<svg ", f'<svg fill="{colour}" ', 1).encode()
-    with PIL.Image.open(_ICONS_DIR / f"{name}.png") as raw:
-        alpha = raw.convert("RGBA").getchannel("A")
-    tinted = PIL.Image.new("RGBA", alpha.size, (*rgb, 255))
-    tinted.putalpha(alpha)
-    buffer = io.BytesIO()
-    tinted.save(buffer, format="PNG")
-    return svg, buffer.getvalue()
-
-
-def _add_svg_picture(slide, svg: bytes, png: bytes, left, top, size) -> None:
-    """Picture with PNG blip plus `asvg:svgBlip`, as PowerPoint writes inserted SVGs."""
-    import io
-
-    from pptx.opc.constants import RELATIONSHIP_TYPE as RT
-    from pptx.opc.package import Part
-    from pptx.opc.packuri import PackURI
-    from pptx.oxml.ns import qn
-
-    picture = slide.shapes.add_picture(io.BytesIO(png), left, top, size, size)
-    package = slide.part.package
-    existing = {str(part.partname) for part in package.iter_parts()}
-    index = 1
-    while f"/ppt/media/icon{index}.svg" in existing:
-        index += 1
-    svg_part = Part(PackURI(f"/ppt/media/icon{index}.svg"), "image/svg+xml", package, svg)
-    rid = slide.part.relate_to(svg_part, RT.IMAGE)
-    blip = picture._element.find(".//" + qn("a:blip"))
-    ext_list = blip.makeelement(qn("a:extLst"), {})
-    ext = ext_list.makeelement(qn("a:ext"), {"uri": "{96DAC541-7B7A-43D3-8B79-37D633B846F1}"})
-    svg_blip = ext.makeelement(
-        "{http://schemas.microsoft.com/office/drawing/2016/SVG/main}svgBlip",
-        {qn("r:embed"): rid},
-        nsmap={"asvg": "http://schemas.microsoft.com/office/drawing/2016/SVG/main"},
-    )
-    ext.append(svg_blip)
-    ext_list.append(ext)
-    blip.append(ext_list)
-
-
 def _sides(a: Placed, b: Placed, lr: bool) -> tuple[str, str]:
     """Exit/entry sides: along the flow between layers, across within a layer."""
     if lr:

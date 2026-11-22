@@ -185,8 +185,6 @@ async def _create(monkeypatch, payload: SessionCreate, user: User, agent=None) -
 
     monkeypatch.setattr(sessions_router.settings_store, "enabled_kinds", enabled_kinds)
     monkeypatch.setattr(sessions_router, "_validate_session_links", nothing)
-    monkeypatch.setattr(sessions_router, "_project_render_template", nothing)
-    monkeypatch.setattr(sessions_router, "_agent_template_loaded", nothing)
     db = _SessionWriteDb()
 
     async def get(_model, _id):

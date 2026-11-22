@@ -241,32 +241,6 @@ async def _load_design_system(
     return design_brief.of(agent.design_brief if agent is not None else "", project_brief)
 
 
-async def _load_theme(
-    db: AsyncSession, user: User, project: Project | None, agent: Agent | None = None
-) -> DesignSystem | None:
-    """Agent's bound theme, else project's (kept for old rows; no writer reads it)."""
-    if agent is not None and agent.design_system_id:
-        row = await db.get(DesignSystem, agent.design_system_id)
-        if row is not None and (row.owner_id == user.id or row.shared):
-            return row
-        if row is not None:
-            own = (
-                await db.exec(
-                    select(DesignSystem)
-                    .where(DesignSystem.owner_id == user.id, DesignSystem.name == row.name)
-                    .order_by(col(DesignSystem.created_at))
-                    .limit(1)
-                )
-            ).first()
-            if own is not None:
-                return own
-    if project is not None and project.design_system_id:
-        row = await db.get(DesignSystem, project.design_system_id)
-        if row is not None and (row.owner_id == user.id or row.shared):
-            return row
-    return None
-
-
 async def _load_project(db: AsyncSession, user: User, session: ChatSession) -> Project | None:
     if not session.project_id:
         return None

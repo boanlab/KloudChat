@@ -236,5 +236,3 @@ export function useDeckDocument(deck: DeckArtifact) {
     settle, asking, answer, agentWorking,
   }
 }
-
-export type DeckDocument = ReturnType<typeof useDeckDocument>

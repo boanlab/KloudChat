@@ -51,7 +51,6 @@ from app.models.workspace import (
     Artifact,
     ArtifactKind,
     ArtifactVersion,
-    DesignSystem,
     Job,
     Memory,
     MemoryType,
@@ -3404,8 +3403,6 @@ async def create_session(payload: SessionCreate, user: CurrentUser, db: DbSessio
         model=model,
         routing_mode=routing_mode,
         reasoning_mode=_stored_reasoning(payload.reasoning_mode),
-        render_template_id=(await _agent_template_loaded(db, user, agent, payload.kind))
-        or await _project_render_template(db, payload.project_id, payload.kind),
     )
     db.add(session)
     await db.commit()
@@ -3653,8 +3650,6 @@ async def handoff_session(
         agent_id=source.agent_id,
         model=handoff_model,
         routing_mode=handoff_mode,
-        render_template_id=(await _agent_template_loaded(db, user, agent, kind))
-        or await _project_render_template(db, source.project_id, kind),
     )
     files: list[StoredFile] = []
     key = ""
@@ -3746,22 +3741,6 @@ async def _template_skills(
     return blocks, event
 
 
-async def _project_render_template(
-    db: DbSession, project_id: str | None, kind: SessionKind
-) -> str | None:
-    """No template starts a conversation; a project gives 기본 양식 파일 and 디자인 지침 instead."""
-    del db, project_id, kind
-    return None
-
-
-async def _agent_template_loaded(db: DbSession, user: User, agent: WorkspaceAgent | None,
-                                 kind: SessionKind) -> str | None:
-    """No template starts a conversation; an agent's format, questions and checks are its own
-    fields."""
-    del db, user, agent, kind
-    return None
-
-
 def agent_template(agent: WorkspaceAgent | None, kind: SessionKind) -> str | None:
     """Agent's bound 서식 for this surface, else `None`; beats the project default."""
     if agent is None or not agent.render_template_id:
@@ -3795,20 +3774,6 @@ def _english(text: str) -> bool:
     """Whether a message is English (more Latin letters than Hangul)."""
     latin = len(re.findall(r"[A-Za-z]", text or ""))
     return latin > 3 * len(re.findall(r"[가-힣]", text or ""))
-
-
-async def _usable_design(db: DbSession, user: User, design_id: str | None) -> str | None:
-    """Bindable design: the named one if own/shared, else own design of same name, else None."""
-    if not design_id:
-        return None
-    row = await db.get(DesignSystem, design_id)
-    if row is None:
-        return None
-    if row.owner_id == user.id or row.shared:
-        return row.id
-    own = (await db.exec(select(DesignSystem).where(
-        DesignSystem.owner_id == user.id, DesignSystem.name == row.name))).first()
-    return own.id if own is not None else None
 
 
 async def _draft_decided(db: AsyncSession, user: User, session: ChatSession, *,

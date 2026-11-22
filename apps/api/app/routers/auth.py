@@ -196,7 +196,6 @@ async def signup(payload: SignupRequest, request: Request, response: Response, d
     if user_status is UserStatus.active:
         grant_initial_allowance(db, user, await settings_store.default_monthly_credits())
         await provision_user(user)
-        await starter.seed_designs(db, user.id)
         # shared catalogue: admin only
         if user.role is UserRole.admin:
             await starter.seed_catalog(db, user.id)
@@ -253,7 +252,6 @@ async def _activate(db: AsyncSession, user: User) -> None:
     user.status = UserStatus.active
     grant_initial_allowance(db, user, await settings_store.default_monthly_credits())
     await provision_user(user)
-    await starter.seed_designs(db, user.id)
     await connector_defaults.provide(db, user)
     db.add(user)
 

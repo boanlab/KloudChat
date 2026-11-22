@@ -91,10 +91,6 @@ def moment(text: Any, *, end_of_day: bool = False) -> datetime:
     return at if at.tzinfo else at.replace(tzinfo=zone())
 
 
-def rfc3339(at: datetime) -> str:
-    return at.isoformat()
-
-
 _WEEKDAYS = "월화수목금토일"
 
 
@@ -107,23 +103,6 @@ def say(at: datetime, *, with_day: bool = True) -> str:
     at = local(at)
     clock = at.strftime("%H:%M")
     return f"{at.month}/{at.day}({_WEEKDAYS[at.weekday()]}) {clock}" if with_day else clock
-
-
-def event_time(value: dict[str, Any] | None) -> tuple[datetime | None, bool]:
-    """(start or end, all-day) of a Calendar `start`/`end` object."""
-    value = value or {}
-    if value.get("dateTime"):
-        try:
-            return datetime.fromisoformat(str(value["dateTime"]).replace("Z", "+00:00")), False
-        except ValueError:
-            return None, False
-    if value.get("date"):
-        try:
-            return datetime.combine(date.fromisoformat(str(value["date"])), time(0),
-                                    tzinfo=zone()), True
-        except ValueError:
-            return None, True
-    return None, False
 
 
 _EMAIL = re.compile(r"^[^@\s,;<>]{1,64}@[^@\s,;<>]{1,255}\.[A-Za-z]{2,}$")

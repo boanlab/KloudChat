@@ -148,9 +148,3 @@ export function ArtifactRibbon<T extends string>({
     </div>
   )
 }
-
-/** Permanent actions beside the title; labels collapse before icons. */
-export function QuickAccess({ children, label }: { children: ReactNode; label: string }) {
-  // Phone: icon squares, except buttons marked `data-labelled` that keep their words.
-  return <div aria-label={label} className="ml-auto flex shrink-0 items-center gap-0.5 [&_button]:h-8 max-sm:[&_button]:h-10 max-sm:[&_button:not([data-labelled])]:w-10 max-sm:[&_button:not([data-labelled])]:px-0 max-sm:[&_button:not([data-labelled])]:text-[0px]">{children}</div>
-}

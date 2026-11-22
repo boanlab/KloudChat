@@ -30,7 +30,6 @@ NAMES: dict[str, tuple[str, ...]] = {
     config.GOOGLE: (drive.SEARCH, drive.READ, drive.IMPORT, drive.EXPORT),
     config.SLACK: (slack.LIST, slack.READ, slack.POST),
 }
-ALL_NAMES = frozenset(name for names in NAMES.values() for name in names)
 #: provider → its cue
 _CUES: dict[str, tuple[re.Pattern[str], ...]] = {
     config.GOOGLE: (_DRIVE,),
