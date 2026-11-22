@@ -3,8 +3,9 @@
 import { useEffect, useMemo } from 'react'
 import { create } from 'zustand'
 import { ApiError, BASE_URL, botsApi, publicationsApi } from '@/lib/api'
-import type { BotChannel, BotListItem, BotLimits, BotVisibility, Publication, PublicationSettings, PublicationStatus, ShowProcess } from '@/lib/api'
+import type { BotChannel, BotListItem, BotLimits, BotPage as BotPageData, BotVisibility, Publication, PublicationSettings, PublicationStatus, ShowProcess } from '@/lib/api'
 import { useStore } from '@/store/useStore'
+import type { AgentPublication } from '@/types'
 import type { Translator } from '@/lib/useT'
 
 /** Why an agent cannot be published as it stands. */
@@ -97,6 +98,18 @@ export function scopeState(
   return 'none'
 }
 
+const SCOPE_SHORT: Record<BotVisibility, string> = { internal: '우리 조직', link: '링크', external: '누구나' }
+
+/** The one badge a shared agent wears: where it is open and, when asked, where it waits. */
+export function shareBadge(pub: AgentPublication, t: Translator): string {
+  if (pub.status === 'paused') return t('일시 중지')
+  const open = t(VISIBILITY_LABEL[pub.visibility])
+  if (pub.reviewState === 'pending' && pub.requestedVisibility) {
+    return `${open} · ${t('{scope} 승인 대기').replace('{scope}', t(SCOPE_SHORT[pub.requestedVisibility]))}`
+  }
+  return open
+}
+
 /** The owner's view of a request: what is waiting, or why it was refused. */
 export function reviewLine(pub: Publication, t: Translator): string {
   const asked = pub.requestedVisibility ? t(VISIBILITY_LABEL[pub.requestedVisibility]) : ''
@@ -128,6 +141,29 @@ export function noticeLines(view: 'off' | 'on', days: number, t: Translator, sig
   }
   lines.push(t('개인정보를 입력하지 마세요.'))
   return lines
+}
+
+/** The one line above the question box, in place of the whole notice; 「자세히」 opens `noticeLines`. */
+export function consentLine(view: 'off' | 'on', days: number, t: Translator): string {
+  return view === 'on'
+    ? t.n('대화는 만든 사람의 계정으로 처리되고, 만든 사람이 볼 수 있으며, {n}일 뒤 삭제됩니다. 개인정보는 입력하지 마세요.', days)
+    : t.n('대화는 만든 사람의 계정으로 처리되고 {n}일 뒤 삭제됩니다. 개인정보는 입력하지 마세요.', days)
+}
+
+/** On the owner's preview: why the address is not open to people outside yet; empty once it is. */
+export function previewReason(
+  bot: Pick<BotPageData, 'visibility' | 'requestedVisibility' | 'reviewState'>,
+  t: Translator,
+): string {
+  if (bot.visibility !== 'internal') return ''
+  const asked = bot.requestedVisibility ? t(VISIBILITY_LABEL[bot.requestedVisibility]) : ''
+  if (asked && bot.reviewState === 'pending') {
+    return t('「{scope}」 범위가 승인 대기 중입니다. 승인되기 전에는 우리 조직 구성원만 열 수 있습니다.').replace('{scope}', asked)
+  }
+  if (asked && bot.reviewState === 'rejected') {
+    return t('「{scope}」 요청이 반려되었습니다. 지금은 우리 조직 구성원만 열 수 있습니다.').replace('{scope}', asked)
+  }
+  return t('우리 조직 구성원만 열 수 있습니다. 로그인하지 않은 사람에게는 열리지 않습니다.')
 }
 
 /** A refused question, in words a visitor can act on. */

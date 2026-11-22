@@ -508,7 +508,7 @@
 "path": "chat/bots",
 "title": "챗봇 공유",
 "heading": "공유하기",
-"text": "내 에이전트 화면 위쪽의 **공유하기** 버튼. 공유 전에 다음을 확인합니다.\n\n- 답할 strict-local 모델. 쓸 수 있는 strict-local 모델이 없으면 공유할 수 없습니다.\n- 챗봇에서는 쓰지 않는 것: 내 메모리, 개인 맞춤 설정, 다른 파일·프로젝트, MCP 서버, 웹 검색, 문서·발표 만들기, 스킬. 챗봇은 **자료 찾기**와 **계산**만 씁니다.\n- 자료에서 개인정보로 보이는 값(휴대전화 번호, 이메일 등). 공유하기 전에 지우거나 확인합니다.\n- 자료가 없다는 경고. **자료 추가**를 누르면 에이전트의 **자료** 칸으로 이동합니다. 자료 없이도 공유할 수 있지만 지시문에 있는 내용만 답합니다.\n\n창이 묻는 것은 누구와 공유할지 하나입니다. 「링크를 아는 사람」이나 「누구나」를 고르면 **하루 최대 크레딧**도 묻고, 처음 값은 3,000입니다. 이름, 첫 인사, 추천 질문, 보관 기간 같은 나머지는 기본값으로 시작하며 공유한 뒤 관리 화면의 **설정**에서 바꿉니다.\n\n공유하면 범위마다 **열림** 또는 **승인 대기**가 따로 보입니다. 승인 전에는 우리 조직 구성원에게만 주소를 보내세요. 승인되면 알려 드립니다."
+"text": "내 에이전트 화면 위쪽의 **공유하기** 버튼. 공유 전에 다음을 확인합니다.\n\n- 답할 strict-local 모델. 쓸 수 있는 strict-local 모델이 없으면 공유할 수 없습니다.\n- 챗봇에서는 쓰지 않는 것: 내 메모리, 개인 맞춤 설정, 다른 파일·프로젝트, MCP 서버, 웹 검색, 문서·발표 만들기, 스킬. 챗봇은 **자료 찾기**와 **계산**만 씁니다.\n- 자료에서 개인정보로 보이는 값(휴대전화 번호, 이메일 등). 공유하기 전에 지우거나 확인합니다.\n- 자료가 없다는 경고. **자료 추가**를 누르면 에이전트의 **자료** 칸으로 이동합니다. 자료 없이도 공유할 수 있지만 지시문에 있는 내용만 답합니다.\n\n창이 묻는 것은 누구와 공유할지 하나입니다. 「링크를 아는 사람」이나 「누구나」를 고르면 **하루 최대 크레딧**도 묻고, 처음 값은 3,000입니다. 이름, 첫 인사, 질문 예시, 보관 기간 같은 나머지는 기본값으로 시작하며 공유한 뒤 관리 화면의 **설정**에서 바꿉니다.\n\n공유하면 범위마다 **열림** 또는 **승인 대기**가 따로 보입니다. 승인 전에는 우리 조직 구성원에게만 주소를 보내세요. 승인되면 알려 드립니다."
 },
 {
 "lang": "ko",
@@ -542,6 +542,13 @@
 "lang": "ko",
 "path": "chat/bots",
 "title": "챗봇 공유",
+"heading": "만든 사람이 직접 열면",
+"text": "만든 사람이 자기 챗봇 주소를 열면 방문자 화면 그대로 나오고, 위쪽에 **미리보기** 띠가 붙습니다. 링크가 아직 조직 밖에 열리지 않았다면 그 이유(승인 대기, 반려)도 띠에 적힙니다. 띠의 **관리 화면으로**로 바로 갑니다.\n\n사용자 지정의 에이전트 카드에는 공유 범위 배지(「우리 조직」, 「우리 조직 · 링크 승인 대기」 등)가 하나 붙고, 누르면 관리 화면으로 갑니다."
+},
+{
+"lang": "ko",
+"path": "chat/bots",
+"title": "챗봇 공유",
 "heading": "구성원 쪽에서",
 "text": "우리 조직에 공유한 챗봇(「누구나」까지 연 것 포함)은 다른 구성원에게 에이전트로 보입니다. 따로 챗봇 메뉴는 없습니다.\n\n- **사용자 지정** → **에이전트** → **탐색**의 **공유된 에이전트**에 만든 사람의 이름과 함께 나옵니다. 모두에게 공개한 에이전트도 같은 곳에 있고, 둘 다 해당하는 에이전트는 한 번만 나옵니다.\n- 입력창 **+** → **에이전트**에서도 내 에이전트 아래 **공유된 에이전트**로 고릅니다.\n- **바로 쓰기**나 이름을 누르면 챗봇 페이지에서 대화합니다. 답하는 데 드는 크레딧은 공개한 사람의 것입니다.\n- 챗봇은 기본으로 잠겨 있어 **바로 쓰기**만 됩니다. 만든 사람이 **복사 허용**을 켠 챗봇에만 **추가**가 보이고, 누르면 공개된 판의 지시와 설정이 내 에이전트로 복사됩니다. 자료(지식 파일)는 오지 않습니다. 복사를 허용해도 에이전트의 지시를 비공개로 두었으면 복사되지 않습니다. 잠긴 챗봇에는 **추가** 대신 자물쇠가 보입니다."
 },
@@ -550,7 +557,7 @@
 "path": "chat/bots",
 "title": "챗봇 공유",
 "heading": "방문자 쪽에서",
-"text": "- 첫 질문 전에 이용 안내를 읽고 시작합니다. 안내에는 대화 보관 기간과 대화 열람 여부가 적혀 있습니다.\n- 로그인하지 않은 방문자는 이 브라우저의 쿠키로만 자기 대화를 이어 봅니다. 쿠키를 지우면 지난 대화를 다시 열 수 없습니다. 파일을 올리거나 아티팩트를 내려받을 수 없습니다.\n- 질문 수는 한 사람당, 같은 주소(로그인하지 않은 방문자)당, 챗봇 전체로 분·하루 단위 한도가 있습니다. 한도는 관리 화면의 **설정** → **한도**에서 낮출 수 있습니다.\n- 대화는 마지막 질문 뒤 보관 기간(기본 30일)이 지나면 지워집니다.\n- 답을 쓰는 동안 **내 대화**의 다른 대화로 옮겨도 답은 계속 쓰이고, 그 대화로 돌아가면 보입니다. 연결이 끊기면 질문은 그대로 두고 서버가 마친 답을 이어 받습니다.\n- **내 대화**는 최근 50개를 먼저 보이고, 그보다 많으면 **더 보기**로 이어서 봅니다."
+"text": "- 첫 화면에서 첫 인사와 질문 예시를 먼저 봅니다. 질문하려면 입력칸 위의 한 줄 안내(「대화는 만든 사람의 계정으로 처리되고 N일 뒤 삭제됩니다. 개인정보는 입력하지 마세요.」)에 체크합니다. **자세히**를 누르면 보관 기간과 대화 열람 여부를 포함한 전체 안내가 펼쳐집니다.\n- 아직 열리지 않은 주소(승인 대기 중인 링크 포함)는 로그인하지 않은 사람에게 「지금은 열려 있지 않습니다」로만 보입니다. 승인을 기다리는 중이라는 사실은 알려 주지 않습니다.\n- 로그인하지 않은 방문자는 이 브라우저의 쿠키로만 자기 대화를 이어 봅니다. 쿠키를 지우면 지난 대화를 다시 열 수 없습니다. 파일을 올리거나 아티팩트를 내려받을 수 없습니다.\n- 질문 수는 한 사람당, 같은 주소(로그인하지 않은 방문자)당, 챗봇 전체로 분·하루 단위 한도가 있습니다. 한도는 관리 화면의 **설정** → **한도**에서 낮출 수 있습니다.\n- 대화는 마지막 질문 뒤 보관 기간(기본 30일)이 지나면 지워집니다.\n- 답을 쓰는 동안 **내 대화**의 다른 대화로 옮겨도 답은 계속 쓰이고, 그 대화로 돌아가면 보입니다. 연결이 끊기면 질문은 그대로 두고 서버가 마친 답을 이어 받습니다.\n- **내 대화**는 최근 50개를 먼저 보이고, 그보다 많으면 **더 보기**로 이어서 봅니다."
 },
 {
 "lang": "ko",
@@ -2285,6 +2292,13 @@
 "lang": "en",
 "path": "chat/bots",
 "title": "Sharing a chatbot",
+"heading": "When the maker opens it",
+"text": "When the maker opens their own chatbot's address, it looks as a visitor sees it, with a **Preview** strip on top. If the link is not open outside the organization yet, the strip says why (waiting for approval, or declined). **Go to the dashboard** in the strip takes you to the management page.\n\nAn agent's card under Customize wears one sharing badge (\"Your organization\", \"Your organization · Link: pending approval\" and so on); it opens the management page."
+},
+{
+"lang": "en",
+"path": "chat/bots",
+"title": "Sharing a chatbot",
 "heading": "On a member's side",
 "text": "A chatbot shared with your organization (or wider) shows to other members as an agent. There is no separate chatbot menu.\n\n- It is listed under **Shared agents** in **Customize** → **Agents** → **Explore**, with its publisher's name. Agents shared with everyone sit in the same place, and an agent that is both shows once.\n- In the composer, **+** → **Agents** lists it under **Shared agents**, below your own agents.\n- **Use now** or its name opens a conversation on the chatbot page. Answers spend the publisher's credits.\n- Chatbots are locked by default: members can only **Use now**. **Add** shows only on chatbots whose publisher turned on **Allow copies**; it copies the published version's instructions and settings as your own agent. Material (knowledge files) does not come along. Even with copies allowed, an agent whose maker keeps the instructions private cannot be copied. A locked chatbot shows a lock instead of **Add**."
 },
@@ -2293,7 +2307,7 @@
 "path": "chat/bots",
 "title": "Sharing a chatbot",
 "heading": "On the visitor's side",
-"text": "- Visitors read the notice before their first question. It states how long conversations are kept and whether the publisher can read them.\n- A visitor without an account continues their conversations only through this browser's cookie. Clearing cookies loses past conversations. They cannot upload files or download artifacts.\n- Questions are limited per person, per address (visitors without an account) and per chatbot, per minute and per day. Lower the limits under **Settings** → **Limits** on the management page.\n- Conversations are deleted once the retention period (30 days by default) passes after the last question.\n- Moving to another conversation under **My conversations** while an answer is being written does not stop it; it is there when you go back. If the connection drops, the question stays and the answer the server finished is picked up.\n- **My conversations** shows the latest 50 first; **Show more** opens the rest."
+"text": "- The first screen shows the greeting and suggested questions. To ask, tick the one-line notice above the box (\"Conversations are handled under the maker's account and deleted after N days. Do not enter personal information.\"). **Details** opens the full notice, including the retention period and whether the publisher can read conversations.\n- An address that is not open yet (including a link waiting for approval) shows a visitor without an account only \"It is not open right now\". It never says that an approval is pending.\n- A visitor without an account continues their conversations only through this browser's cookie. Clearing cookies loses past conversations. They cannot upload files or download artifacts.\n- Questions are limited per person, per address (visitors without an account) and per chatbot, per minute and per day. Lower the limits under **Settings** → **Limits** on the management page.\n- Conversations are deleted once the retention period (30 days by default) passes after the last question.\n- Moving to another conversation under **My conversations** while an answer is being written does not stop it; it is there when you go back. If the connection drops, the question stays and the answer the server finished is picked up.\n- **My conversations** shows the latest 50 first; **Show more** opens the rest."
 },
 {
 "lang": "en",

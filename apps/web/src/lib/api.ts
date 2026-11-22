@@ -1,6 +1,7 @@
 /** Single backend seam; the browser never reaches LiteLLM and keys stay server-side. */
 
 import type {
+  AgentPublication,
   AgentDraft,
   AgentDraftDecided,
   CatalogEntryAdmin,
@@ -2458,7 +2459,7 @@ export interface AgentRow {
   /** 담당 부서·연락처, said as written when the material does not answer. */
   contact?: string
   /** The owner's published bot of this agent. */
-  publication?: { id: string; slug: string; status: string } | null
+  publication?: AgentPublication | null
   /** First messages offered as buttons there. */
   starters: string[]
   /** How a shared original may be taken. */
@@ -3189,6 +3190,10 @@ export interface BotPage {
   consented: boolean
   color: string
   maxInputChars: number
+  /** The owner's own page only: what the preview strip needs. */
+  publicationId?: string
+  requestedVisibility?: '' | BotVisibility
+  reviewState?: ReviewState
 }
 
 /** What a visitor's turn streams: the answer and, as the owner chose, its working. */

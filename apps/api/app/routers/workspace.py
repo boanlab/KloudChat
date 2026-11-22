@@ -2733,7 +2733,10 @@ async def _published(db: DbSession, user: User, mine: list[Agent]) -> dict[str, 
     rows = (await db.exec(select(Publication).where(
         Publication.owner_id == user.id, col(Publication.agent_id).in_([a.id for a in mine]),
         Publication.status != PublicationStatus.revoked.value))).all()
-    return {p.agent_id: {"id": p.id, "slug": p.slug, "status": p.status} for p in rows}
+    return {p.agent_id: {"id": p.id, "slug": p.slug, "status": p.status,
+                         "visibility": p.visibility,
+                         "requestedVisibility": p.requested_visibility,
+                         "reviewState": p.review_state} for p in rows}
 
 
 async def _processes(db: DbSession, rows: list[Agent], *, viewer_id: str) -> dict[str, dict]:

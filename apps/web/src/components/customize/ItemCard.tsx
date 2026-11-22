@@ -1,8 +1,9 @@
 import { Bot, Check, Globe, Loader2, Lock, MessageCircle, Plus } from 'lucide-react'
 import { createElement, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { PickBox } from '@/components/ui/BulkSelect'
 import { kindMeta } from '@/lib/kinds'
+import { shareBadge } from '@/lib/publishing'
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 import { STATUS_LABEL, itemMeta, type HubItem } from './hubItems'
@@ -131,6 +132,20 @@ export function ItemCard({
             <span className="rounded-full border border-line px-1.5 text-xs text-muted" data-testid="item-hidden">
               {t('숨김')}
             </span>
+          )}
+          {view === 'mine' && item.agent?.publication && (
+            <Link
+              to={`/customize/publications/${item.agent.publication.id}`}
+              onClick={(e) => e.stopPropagation()}
+              data-testid="item-share-badge"
+              title={t('공유 관리 화면으로')}
+              className={cn(
+                'inline-flex items-center rounded-full border px-1.5 text-xs hover:underline',
+                item.agent.publication.reviewState === 'pending' ? pillTone.review : pillTone.on,
+              )}
+            >
+              {shareBadge(item.agent.publication, t)}
+            </Link>
           )}
           {item.shared && view === 'mine' && (
             <span className="inline-flex items-center gap-0.5 text-success">

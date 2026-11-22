@@ -69,6 +69,12 @@ When an administrator reads conversations to check abuse, the date and reason ap
 
 When a chatbot stops (credits used up, paused by an administrator and so on) or an administrator decides a request, a number appears next to **Customize** in the sidebar.
 
+## When the maker opens it
+
+When the maker opens their own chatbot's address, it looks as a visitor sees it, with a **Preview** strip on top. If the link is not open outside the organization yet, the strip says why (waiting for approval, or declined). **Go to the dashboard** in the strip takes you to the management page.
+
+An agent's card under Customize wears one sharing badge ("Your organization", "Your organization · Link: pending approval" and so on); it opens the management page.
+
 ## On a member's side
 
 A chatbot shared with your organization (or wider) shows to other members as an agent. There is no separate chatbot menu.
@@ -80,7 +86,8 @@ A chatbot shared with your organization (or wider) shows to other members as an 
 
 ## On the visitor's side
 
-- Visitors read the notice before their first question. It states how long conversations are kept and whether the publisher can read them.
+- The first screen shows the greeting and suggested questions. To ask, tick the one-line notice above the box ("Conversations are handled under the maker's account and deleted after N days. Do not enter personal information."). **Details** opens the full notice, including the retention period and whether the publisher can read conversations.
+- An address that is not open yet (including a link waiting for approval) shows a visitor without an account only "It is not open right now". It never says that an approval is pending.
 - A visitor without an account continues their conversations only through this browser's cookie. Clearing cookies loses past conversations. They cannot upload files or download artifacts.
 - Questions are limited per person, per address (visitors without an account) and per chatbot, per minute and per day. Lower the limits under **Settings** → **Limits** on the management page.
 - Conversations are deleted once the retention period (30 days by default) passes after the last question.

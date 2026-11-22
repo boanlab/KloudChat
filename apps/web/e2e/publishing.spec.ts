@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test'
-import { agentRow, hubFixture, myAgents } from './customize-fixture'
+import { agentRow, hubFixture, myAgents, storeAgents } from './customize-fixture'
 import { viewport } from './project'
 import type { BotChannels, Publication } from '../src/lib/api'
 
@@ -69,6 +69,8 @@ async function botRoutes(
     listFails?: number
     /** Questions refused at the bot's daily credit cap. */
     capped?: boolean
+    /** Fields of the bot page the signed-in maker gets (mine, the request in flight). */
+    page?: Record<string, unknown>
   } = {},
 ) {
   const writes: { method: string; path: string; body: unknown }[] = []
@@ -87,6 +89,7 @@ async function botRoutes(
   const bot = () => page_({
     consented, status: options.paused ? 'paused' : 'approved', blocked: options.blocked ?? false,
     ...(options.anonymous ? { signedIn: false, ownerName: '', visibility: 'link' } : {}),
+    ...(options.page ?? {}),
     ...(english ? { title: 'Campus Help', description: 'Answers from the campus rules.', ownerName: 'Jane',
       branding: { greeting: 'Ask about the rules.', suggestedPrompts: ['When is the leave deadline?'], placeholder: '' } } : {}),
   })
@@ -313,6 +316,13 @@ async function shot(page: Page, name: string, project: string) {
 
 test.use({ serviceWorkers: 'block' })
 
+/** Ticks the one-line notice above the question box; the box opens once the server has the consent. */
+async function agree(page: Page) {
+  const tick = page.getByTestId('bot-notice').getByRole('checkbox')
+  await tick.click({ timeout: 15_000 })
+  await expect(tick).toBeChecked()
+}
+
 test('the owner publishes a chat agent to members and gets its address', async ({ page }, testInfo) => {
   const state = await hubFixture(page, testInfo)
   const { writes } = await botRoutes(page)
@@ -499,14 +509,18 @@ test('a visitor without an account opens a link, reads the notice and asks', asy
   const { writes } = await botRoutes(page, { anonymous: true })
   await page.goto(`/b/${SLUG}`)
   const notice = page.getByTestId('bot-notice')
-  await expect(notice).toContainText('로그인하지 않으면 이 브라우저에서만 대화를 이어 볼 수 있습니다', { timeout: 15_000 })
-  await expect(notice).toContainText('30일이 지나면 삭제됩니다')
+  await expect(notice).toContainText('대화는 만든 사람의 계정으로 처리되고 30일 뒤 삭제됩니다. 개인정보는 입력하지 마세요.', { timeout: 15_000 })
+  // The greeting and the suggested questions are there before anything is ticked.
+  await expect(page.getByTestId('bot-prompts')).toBeVisible()
+  await notice.getByRole('button', { name: '자세히' }).click()
+  await expect(page.getByTestId('bot-notice-detail')).toContainText('로그인하지 않으면 이 브라우저에서만 대화를 이어 볼 수 있습니다')
+  await expect(page.getByTestId('bot-notice-detail')).toContainText('30일이 지나면 삭제됩니다')
   // No app around it, no way back into the app, no name of the person behind it.
   await expect(page.getByRole('link', { name: '챗봇 목록으로' })).toHaveCount(0)
   await expect(page.getByText('만든 사람:')).toHaveCount(0)
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', /noindex/)
   await shot(page, 'anon-notice', viewport(testInfo))
-  await notice.getByRole('button', { name: '확인하고 시작' }).click()
+  await agree(page)
   await page.getByLabel('질문 입력').fill('휴학은 언제까지 신청하나요?')
   await page.getByRole('button', { name: '보내기', exact: true }).click()
   await expect(page.getByText('휴학은 학기 개시일 전까지 신청합니다')).toBeVisible()
@@ -522,9 +536,49 @@ test('an address that does not open without an account offers to sign in', async
   await page.route(`**/api/b/members-only-1`, (route) => route.fulfill({ status: 404, json: { detail: 'bot_not_found' } }))
   await page.route(`**/api/b/members-only-1/conversations`, (route) => route.fulfill({ status: 404, json: { detail: 'bot_not_found' } }))
   await page.goto('/b/members-only-1')
-  await expect(page.getByText('구성원에게만 열린 챗봇이면 로그인해야 합니다')).toBeVisible({ timeout: 15_000 })
+  // Not open and unknown read the same: nothing says an approval is waiting.
+  await expect(page.getByRole('heading', { name: '지금은 열려 있지 않습니다' })).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByText('이 챗봇은 아직 공개되지 않았습니다. 링크를 보낸 사람에게 문의하세요.')).toBeVisible()
+  await expect(page.getByText('승인')).toHaveCount(0)
   await page.getByRole('button', { name: '로그인' }).click()
   await expect(page.getByLabel('이메일')).toBeVisible()
+  expect(state.unexpected).toEqual([])
+})
+
+test('a visitor with a link that is not open yet is told so, whatever the reason', async ({ page }, testInfo) => {
+  const state = await noAccount(page, testInfo)
+  await page.route(`**/api/b/pending-link-1`, (route) => route.fulfill({ status: 404, json: { detail: 'bot_not_found' } }))
+  await page.route(`**/api/b/pending-link-1/conversations`, (route) => route.fulfill({ status: 404, json: { detail: 'bot_not_found' } }))
+  await page.goto('/b/pending-link-1')
+  await expect(page.getByRole('heading', { name: '지금은 열려 있지 않습니다' })).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByText('이 챗봇은 아직 공개되지 않았습니다. 링크를 보낸 사람에게 문의하세요.')).toBeVisible()
+  await expect(page.getByRole('link', { name: '공개 챗봇 목록' })).toBeVisible()
+  await shot(page, 'bot-not-open', viewport(testInfo))
+  expect(state.unexpected).toEqual([])
+})
+
+test('the maker opening their own bot sees a preview strip and why it is not open outside', async ({ page }, testInfo) => {
+  const state = await hubFixture(page, testInfo)
+  await botRoutes(page, { page: { mine: true, publicationId: PUB, requestedVisibility: 'link', reviewState: 'pending' } })
+  await page.goto(`/b/${SLUG}`)
+  const strip = page.getByTestId('bot-preview')
+  await expect(strip).toContainText('미리보기', { timeout: 15_000 })
+  await expect(strip).toContainText('방문자에게 보이는 화면입니다.')
+  await expect(page.getByTestId('bot-preview-reason')).toContainText('「링크를 아는 사람」 범위가 승인 대기 중입니다. 승인되기 전에는 우리 조직 구성원만 열 수 있습니다.')
+  // Nothing claims the maker's questions are left out of the visitors' numbers.
+  await expect(strip).not.toContainText('통계')
+  await expect(strip.getByRole('link', { name: '관리 화면으로' })).toHaveAttribute('href', `/customize/publications/${PUB}`)
+  await expect(page.getByText('학칙을 찾아 근거 조항과 함께 답합니다.')).toBeVisible()
+  await shot(page, 'bot-preview', viewport(testInfo))
+  expect(state.unexpected).toEqual([])
+})
+
+test('the preview strip has no reason once the link is open outside', async ({ page }, testInfo) => {
+  const state = await hubFixture(page, testInfo)
+  await botRoutes(page, { page: { mine: true, publicationId: PUB, visibility: 'link', requestedVisibility: '', reviewState: '' } })
+  await page.goto(`/b/${SLUG}`)
+  await expect(page.getByTestId('bot-preview')).toContainText('미리보기', { timeout: 15_000 })
+  await expect(page.getByTestId('bot-preview-reason')).toHaveCount(0)
   expect(state.unexpected).toEqual([])
 })
 
@@ -533,7 +587,7 @@ test('a blocked visitor is told and cannot ask', async ({ page }, testInfo) => {
   await botRoutes(page, { anonymous: true, blocked: true })
   await page.goto(`/b/${SLUG}`)
   await expect(page.getByTestId('bot-blocked')).toContainText('이 챗봇을 쓸 수 없습니다.', { timeout: 15_000 })
-  await expect(page.getByRole('button', { name: '확인하고 시작' })).toHaveCount(0)
+  await expect(page.getByTestId('bot-notice')).toHaveCount(0)
   await expect(page.getByLabel('질문 입력')).toHaveCount(0)
   await expect(page.getByTestId('bot-paused')).toHaveCount(0)
 })
@@ -593,6 +647,25 @@ test('without an internal model the dialog says why and publishes nothing', asyn
   await expect(dialog.getByRole('button', { name: '공유하기' })).toBeDisabled()
 })
 
+test('an agent card wears one badge for where it is shared and opens the dashboard', async ({ page }, testInfo) => {
+  const state = await hubFixture(page, testInfo)
+  await botRoutes(page)
+  const shared = { id: PUB, slug: SLUG, status: 'approved', visibility: 'internal', requestedVisibility: 'link', reviewState: 'pending' }
+  await page.route('**/api/agents', (route) =>
+    route.request().method() === 'GET'
+      ? route.fulfill({ json: [{ ...myAgents[0], publication: shared }, myAgents[1], ...storeAgents] })
+      : route.fallback())
+  await page.goto('/customize?tab=agents')
+  const badge = page.locator(`[data-item="agent:${AGENT}"]`).getByTestId('item-share-badge')
+  await expect(badge).toHaveText('우리 조직 · 링크 승인 대기', { timeout: 15_000 })
+  // An agent that is not shared has none.
+  await expect(page.getByTestId('item-share-badge')).toHaveCount(1)
+  await shot(page, 'agent-card-badge', viewport(testInfo))
+  await badge.click()
+  await expect(page).toHaveURL(new RegExp(`/customize/publications/${PUB}$`))
+  expect(state.unexpected).toEqual([])
+})
+
 test('with no material the dialog warns and 자료 추가 leads to the agent’s material', async ({ page }, testInfo) => {
   await hubFixture(page, testInfo)
   await page.route('**/api/publications/preflight', (route) => route.fulfill({ json: preflight({ knowledge: [] }) }))
@@ -614,12 +687,17 @@ test('a member reads the notice, asks, rates and sends the conversation to the m
   const { writes } = await botRoutes(page)
   await page.goto(`/b/${SLUG}`)
   const notice = page.getByTestId('bot-notice')
-  await expect(notice).toContainText('입력 내용은 이 챗봇을 만든 사람 계정으로 처리·기록됩니다(개선을 위해 개인정보를 가린 통계로만 보입니다).')
-  await expect(notice).toContainText('개인정보를 입력하지 마세요.')
+  await expect(notice).toContainText('대화는 만든 사람의 계정으로 처리되고 30일 뒤 삭제됩니다. 개인정보는 입력하지 마세요.')
+  await notice.getByRole('button', { name: '자세히' }).click()
+  await expect(page.getByTestId('bot-notice-detail')).toContainText('입력 내용은 이 챗봇을 만든 사람 계정으로 처리·기록됩니다(개선을 위해 개인정보를 가린 통계로만 보입니다).')
+  // The greeting and the questions to try are shown first; they wait for the tick.
+  await expect(page.getByText('학칙을 찾아 근거 조항과 함께 답합니다.')).toBeVisible()
+  await expect(page.getByTestId('bot-prompts').getByRole('button').first()).toBeDisabled()
   await expect(page.getByLabel('질문 입력')).toBeDisabled()
   await shot(page, 'bot-notice', viewport(testInfo))
-  await notice.getByRole('button', { name: '확인하고 시작' }).click()
-  await expect(page.getByTestId('bot-prompts')).toBeVisible()
+  await agree(page)
+  await expect(page.getByTestId('bot-prompts').getByRole('button').first()).toBeEnabled()
+  await expect(page.getByTestId('bot-preview')).toHaveCount(0)
   await shot(page, 'bot-empty', viewport(testInfo))
   await page.getByLabel('질문 입력').fill('휴학은 언제까지 신청하나요?')
   await page.getByRole('button', { name: '보내기', exact: true }).click()
@@ -651,21 +729,21 @@ test('a first look at 「내 대화」 that fails says so and loads on 다시 �
   expect(state.unexpected).toEqual([])
 })
 
-test('after 확인하고 시작 the question box has the focus', async ({ page }, testInfo) => {
+test('after the notice is ticked the question box has the focus', async ({ page }, testInfo) => {
   await noAccount(page, testInfo)
   await botRoutes(page, { anonymous: true })
   await page.goto(`/b/${SLUG}`)
-  await page.getByRole('button', { name: '확인하고 시작' }).click({ timeout: 15_000 })
+  await agree(page)
   await expect(page.getByLabel('질문 입력')).toBeFocused()
 })
 
-test('at 200% zoom the list is a drawer and 확인하고 시작 is in view', async ({ page }, testInfo) => {
+test('at 200% zoom the list is a drawer and the notice tick is in view', async ({ page }, testInfo) => {
   await hubFixture(page, testInfo)
   await botRoutes(page)
   // 1280×900 at 200%.
   await page.setViewportSize({ width: 640, height: 450 })
   await page.goto(`/b/${SLUG}`)
-  const start = page.getByRole('button', { name: '확인하고 시작' })
+  const start = page.getByTestId('bot-notice').getByRole('checkbox')
   await expect(start).toBeInViewport({ ratio: 1, timeout: 15_000 })
   await expect(page.getByRole('navigation', { name: '내 대화' })).toBeHidden()
   await page.getByRole('button', { name: '내 대화' }).click()
@@ -676,7 +754,7 @@ test('a question refused at the daily cap goes back in the box and leaves no 새
   const state = await hubFixture(page, testInfo)
   const { writes } = await botRoutes(page, { capped: true })
   await page.goto(`/b/${SLUG}`)
-  await page.getByRole('button', { name: '확인하고 시작' }).click({ timeout: 15_000 })
+  await agree(page)
   const box = page.getByLabel('질문 입력')
   await box.fill('휴학은 언제까지 신청하나요?')
   await page.getByRole('button', { name: '보내기', exact: true }).click()
@@ -722,7 +800,7 @@ test('moving to another conversation while the bot answers keeps each reply in i
     await route.fallback()
   })
   await page.goto(`/b/${SLUG}`)
-  await page.getByRole('button', { name: '확인하고 시작' }).click({ timeout: 15_000 })
+  await agree(page)
   await page.getByLabel('질문 입력').fill('휴학은 언제까지 신청하나요?')
   await page.getByRole('button', { name: '보내기', exact: true }).click()
   await expect(page.getByText('답을 쓰는 중…')).toBeVisible()
@@ -751,7 +829,7 @@ test('a conversation that could not be deleted stays, and the page says so', asy
   await page.route(`**/api/b/${SLUG}/conversations/${SID}`, (route) =>
     route.request().method() === 'DELETE' ? route.fulfill({ status: 500, json: { detail: 'Internal Server Error' } }) : route.fallback())
   await page.goto(`/b/${SLUG}`)
-  await page.getByRole('button', { name: '확인하고 시작' }).click({ timeout: 15_000 })
+  await agree(page)
   await page.getByLabel('질문 입력').fill('휴학은 언제까지 신청하나요?')
   await page.getByRole('button', { name: '보내기', exact: true }).click()
   await expect(page.getByText('휴학은 학기 개시일 전까지 신청합니다')).toBeVisible()
@@ -779,7 +857,7 @@ test('a dropped answer stream keeps the question and shows the answer the server
         ] } })
       : route.fallback())
   await page.goto(`/b/${SLUG}`)
-  await page.getByRole('button', { name: '확인하고 시작' }).click({ timeout: 15_000 })
+  await agree(page)
   const box = page.getByLabel('질문 입력')
   await box.fill('휴학은 언제까지 신청하나요?')
   await page.getByRole('button', { name: '보내기', exact: true }).click()
@@ -818,7 +896,6 @@ test('a paused bot says so and takes no question', async ({ page }, testInfo) =>
   await expect(page.getByTestId('bot-paused')).toContainText('지금은 이 챗봇을 쓸 수 없습니다.')
   // Nothing to agree to or type into while it cannot answer: the notice alone.
   await expect(page.getByTestId('bot-notice')).toHaveCount(0)
-  await expect(page.getByRole('button', { name: '확인하고 시작' })).toHaveCount(0)
   await expect(page.getByLabel('질문 입력')).toHaveCount(0)
   await expect(page.getByTestId('bot-prompts')).toHaveCount(0)
   await shot(page, 'bot-paused', viewport(testInfo))
@@ -962,7 +1039,7 @@ test('the publishing screens read in English', async ({ page }, testInfo) => {
   await page.goto(`/b/${SLUG}`)
   await expect(page.getByTestId('bot-notice')).toBeVisible({ timeout: 15_000 })
   expect(await korean(page, data)).toEqual([])
-  await page.getByRole('button', { name: 'Got it, start' }).click()
+  await agree(page)
   await expect(page.getByTestId('bot-prompts')).toBeVisible()
   expect(await korean(page, data)).toEqual([])
   await shot(page, 'en-bot', viewport(testInfo))
@@ -1091,7 +1168,7 @@ test('the framed page asks without an account and marks every call', async ({ pa
   const notice = page.getByTestId('bot-notice')
   await expect(notice).toBeVisible({ timeout: 15_000 })
   await expect(page.getByRole('link', { name: '챗봇 목록으로' })).toHaveCount(0)
-  await notice.getByRole('button', { name: '확인하고 시작' }).click()
+  await agree(page)
   await page.getByLabel('질문 입력').fill('휴학은 언제까지 신청하나요?')
   await page.getByRole('button', { name: '보내기', exact: true }).click()
   await expect(page.getByText('휴학은 학기 개시일 전까지 신청합니다')).toBeVisible()
@@ -1125,7 +1202,7 @@ test('the loader on another page opens the bot in a frame, the whole screen on a
   } else expect(Math.round(box?.width ?? 0)).toBe(400)
   await shot(page, 'widget-open', viewport(testInfo))
   // Esc pressed inside the frame closes it too.
-  await page.frameLocator('iframe[title="챗봇에게 묻기"]').getByTestId('bot-notice').click()
+  await page.frameLocator('iframe[title="챗봇에게 묻기"]').getByRole('heading', { level: 1 }).click()
   await page.keyboard.press('Escape')
   await expect(frame).toBeHidden()
   await expect(launcher).toHaveAttribute('aria-expanded', 'false')

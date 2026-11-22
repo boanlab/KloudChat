@@ -3,12 +3,13 @@ import {
   ArrowUp,
   Ban,
   Bot,
+  ChevronDown,
+  Eye,
   Loader2,
   Menu,
   MessageSquarePlus,
   PauseCircle,
   Send,
-  ShieldCheck,
   Square,
   ThumbsDown,
   ThumbsUp,
@@ -27,7 +28,7 @@ import {
   type BotPage as BotPageData,
   type BotTranscriptMessage,
 } from '@/lib/api'
-import { botErrorMessage, noticeLines, PAUSE_LABEL, SHARED_AGENTS_PATH } from '@/lib/publishing'
+import { botErrorMessage, consentLine, noticeLines, PAUSE_LABEL, previewReason, SHARED_AGENTS_PATH } from '@/lib/publishing'
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -87,6 +88,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
   const [listOpen, setListOpen] = useState(false)
   const [offerShare, setOfferShare] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [detail, setDetail] = useState(false)
   const seq = useRef(0)
   // id of the conversation on screen (or a key for an unstarted one); late replies go to their own conversation
   const shown = useRef('new-0')
@@ -416,12 +418,9 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
     return (
       <div className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6 text-center">
         <Bot size={22} className="mx-auto mb-3 text-faint" aria-hidden />
-        <h1 className="text-lg font-semibold">{t('열 수 없는 챗봇입니다')}</h1>
-        <p className="mt-1.5 text-base text-muted">
-          {authenticated || embedded
-            ? t('닫혔거나 주소가 올바르지 않습니다.')
-            : t('닫혔거나 주소가 올바르지 않습니다. 구성원에게만 열린 챗봇이면 로그인해야 합니다.')}
-        </p>
+        <h1 className="text-lg font-semibold">{t('지금은 열려 있지 않습니다')}</h1>
+        {/* The same words for an address not yet open and one that does not exist: nothing says an approval is waiting. */}
+        <p className="mt-1.5 text-base text-muted">{t('이 챗봇은 아직 공개되지 않았습니다. 링크를 보낸 사람에게 문의하세요.')}</p>
         {embedded ? null : authenticated ? (
           <Link to={SHARED_AGENTS_PATH} className="mt-4 text-base text-accent hover:underline">
             {t('공유된 에이전트로')}
@@ -456,6 +455,9 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
   // Back: member → shared agents; visitor → public list if listed; link-only or framed → nowhere.
   const backTo = embedded ? null : bot.signedIn ? SHARED_AGENTS_PATH : bot.visibility === 'external' ? '/b' : null
   const prompts = bot.branding.suggestedPrompts
+  // The maker looking at their own bot: the same screen a visitor gets, marked as a preview.
+  const preview = bot.mine && authenticated
+  const previewWhy = preview ? previewReason(bot, t) : ''
   const list = (
     <nav aria-label={t('내 대화')} className="flex h-full flex-col gap-2">
       <Button variant="secondary" onClick={fresh} className="w-full justify-start" disabled={!bot.consented}>
@@ -512,9 +514,26 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
 
   return (
     <div className="flex h-dvh flex-col bg-bg text-fg">
+      {preview && (
+        <div className="border-b border-accent/25 bg-accent-soft px-4 py-2 text-sm" data-testid="bot-preview" style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="flex items-center gap-1.5 font-medium text-accent">
+              <Eye size={14} aria-hidden />
+              {t('미리보기')}
+            </span>
+            <span className="min-w-0 flex-1 max-sm:basis-48">{t('방문자에게 보이는 화면입니다.')}</span>
+            {bot.publicationId && (
+              <Link to={`/customize/publications/${bot.publicationId}`} className="text-accent hover:underline">
+                {t('관리 화면으로')}
+              </Link>
+            )}
+          </div>
+          {previewWhy && <p className="mt-0.5 text-muted" data-testid="bot-preview-reason">{previewWhy}</p>}
+        </div>
+      )}
       <header
         className="flex items-center gap-3 border-b border-line px-4 py-3"
-        style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
+        style={{ paddingTop: preview ? '0.75rem' : 'max(0.75rem, env(safe-area-inset-top))' }}
       >
         {backTo && (
           <Link to={backTo} className="grid size-9 place-items-center rounded-control text-muted hover:bg-elevated hover:text-fg" aria-label={t(bot.signedIn ? '공유된 에이전트로' : '챗봇 목록으로')}>
@@ -546,8 +565,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
           </div>
         )}
 
-        {/* Before consent the notice and the box scroll as one page, so 「확인하고 시작」 is never squeezed under the box. */}
-        <main className={cn('flex min-w-0 flex-1 flex-col', !bot.consented && 'overflow-y-auto')}>
+        <main className="flex min-w-0 flex-1 flex-col">
           {current && turns.length > 0 && (
             <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2 text-sm">
               <span className="min-w-0 flex-1 truncate font-medium">{current.title || t('새 대화')}</span>
@@ -570,7 +588,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
             </div>
           )}
 
-          <div className={cn('px-4 py-6', bot.consented ? 'min-h-0 flex-1 overflow-y-auto' : 'flex-none')}>
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6">
             <div className="mx-auto max-w-3xl space-y-6">
               {bot.blocked && (
                 <p role="status" className="flex items-start gap-2 rounded-card border border-danger/30 bg-danger/5 px-4 py-3 text-base text-danger" data-testid="bot-blocked">
@@ -587,22 +605,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
                   </span>
                 </p>
               )}
-              {!bot.consented && closed ? null : !bot.consented ? (
-                <section aria-label={t('이용 안내')} className="rounded-card border border-line bg-panel px-5 py-4" data-testid="bot-notice">
-                  <p className="mb-2 flex items-center gap-2 text-base font-medium">
-                    <ShieldCheck size={16} className="text-accent" aria-hidden />
-                    {t('이용 안내')}
-                  </p>
-                  <ul className="list-disc space-y-1 pl-5 text-base text-muted">
-                    {noticeLines(bot.conversationView, bot.retentionDays, t, bot.signedIn).map((line) => (
-                      <li key={line}>{line}</li>
-                    ))}
-                  </ul>
-                  <Button variant="primary" className="mt-4" onClick={() => void consent()}>
-                    {bot.conversationView === 'on' ? t('동의하고 시작') : t('확인하고 시작')}
-                  </Button>
-                </section>
-              ) : turns.length === 0 ? (
+              {turns.length === 0 ? (
                 <section className="space-y-4 pt-6 text-center">
                   <p className="text-lg font-semibold">{bot.title}</p>
                   {bot.branding.greeting && <p className="mx-auto max-w-xl whitespace-pre-wrap text-base text-muted">{bot.branding.greeting}</p>}
@@ -612,8 +615,9 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
                         <button
                           key={line}
                           type="button"
+                          disabled={!bot.consented}
                           onClick={() => void ask(line)}
-                          className="max-w-full rounded-full border border-line bg-panel px-3.5 py-1.5 text-left text-sm transition-colors hover:border-accent/40 hover:bg-accent-soft"
+                          className="max-w-full rounded-full border border-line bg-panel px-3.5 py-1.5 text-left text-sm transition-colors hover:border-accent/40 hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-line disabled:hover:bg-panel"
                         >
                           {line}
                         </button>
@@ -700,6 +704,34 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
                   {error}
                 </p>
               )}
+              <div className="mb-2 text-sm text-muted" data-testid="bot-notice">
+                <label className="flex items-start gap-2">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 size-4 shrink-0 accent-[var(--accent)]"
+                    checked={bot.consented}
+                    disabled={bot.consented}
+                    onChange={() => void consent()}
+                  />
+                  <span>{consentLine(bot.conversationView, bot.retentionDays, t)}</span>
+                </label>
+                <button
+                  type="button"
+                  className="ml-6 mt-0.5 inline-flex items-center gap-0.5 text-accent hover:underline"
+                  aria-expanded={detail}
+                  onClick={() => setDetail((v) => !v)}
+                >
+                  {t('자세히')}
+                  <ChevronDown size={13} className={cn('transition-transform', detail && 'rotate-180')} aria-hidden />
+                </button>
+                {detail && (
+                  <ul className="mt-1 list-disc space-y-1 pl-10 text-sm" data-testid="bot-notice-detail">
+                    {noticeLines(bot.conversationView, bot.retentionDays, t, bot.signedIn).map((line) => (
+                      <li key={line}>{line}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
               <div className="flex items-end gap-2">
                 <Textarea
                   ref={input}
@@ -711,7 +743,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
                   aria-label={t('질문 입력')}
                   placeholder={
                     !bot.consented
-                      ? t('위 안내를 확인하면 질문할 수 있습니다')
+                      ? t('위 안내에 체크하면 질문할 수 있습니다')
                       : bot.branding.placeholder || t('질문을 입력하세요')
                   }
                   className="max-h-48 min-h-11"
@@ -733,8 +765,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
                   </Button>
                 )}
               </div>
-              <p className="mt-1.5 flex flex-wrap justify-between gap-2 text-xs text-faint">
-                <span>{t('입력 내용은 만든 사람 계정으로 처리·기록됩니다. 개인정보를 입력하지 마세요.')}</span>
+              <p className="mt-1.5 flex justify-end text-xs text-faint">
                 <span className={cn(text.length > bot.maxInputChars && 'text-danger')}>
                   {text.length.toLocaleString()} / {bot.maxInputChars.toLocaleString()}
                 </span>
