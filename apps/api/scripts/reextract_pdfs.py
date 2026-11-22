@@ -1,7 +1,8 @@
 """Re-read the text of stored PDFs whose Korean came out without word spacing.
 
 Reads each such PDF again from its blob (`services/pdf_text.py`), keeps the new text when it has
-spacing, queues a fresh digest and re-indexes. Files with fine text, OCR scans and other kinds are skipped.
+spacing, queues a fresh digest and re-indexes. Files with fine text, OCR scans and other kinds are
+skipped.
 
     python scripts/reextract_pdfs.py            # report only
     python scripts/reextract_pdfs.py --apply    # rewrite the text

@@ -327,7 +327,8 @@ def _design(presentation, spec: Spec) -> None:
 
 
 def _sizes(presentation, spec: Spec) -> None:
-    """Sets type sizes on the master's text styles (on `a:defRPr` per level; `a:lvlNpPr` ignores it)."""
+    """Sets type sizes on the master's text styles (on `a:defRPr` per level; `a:lvlNpPr` ignores
+    it)."""
     master = presentation.slide_masters[0]
     styles = master.element.find(qn("p:txStyles"))
     if styles is None:
@@ -350,7 +351,8 @@ def _sizes(presentation, spec: Spec) -> None:
 
 
 def _widen(presentation) -> None:
-    """Scales master and layout placeholders horizontally from python-pptx's 4:3 default to `WIDE`; run before adding slides."""
+    """Scales master and layout placeholders horizontally from python-pptx's 4:3 default to
+    `WIDE`; run before adding slides."""
     factor = WIDE[0] / Emu(9144000)
 
     # Read all geometry before writing any: a layout placeholder without its

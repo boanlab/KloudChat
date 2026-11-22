@@ -1,6 +1,7 @@
 """Builds `app/help/docs.json` from the user guide (`website/docs`, KO, and its EN translation).
 
-Sections (one per `##` heading, with page title and path) for `services/app_help.py`; the API image carries only `apps/api`. Run after editing the guide:
+Sections (one per `##` heading, with page title and path) for `services/app_help.py`; the API image
+carries only `apps/api`. Run after editing the guide:
 
     python apps/api/scripts/build_help.py
 

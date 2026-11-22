@@ -7,7 +7,8 @@ Run from the API image:
 Named folders only, when given; otherwise every 서식 and the shared `_document` seed.
 
 `_SPECS` mirrors each 서식's `seed.html` type scale. Fonts must be faces every Hangul Windows Word
-carries (맑은 고딕, 바탕); styles name faces directly because a theme font (`asciiTheme`) wins in Word.
+carries (맑은 고딕, 바탕); styles name faces directly because a theme font (`asciiTheme`) wins in
+Word.
 """
 
 from __future__ import annotations
@@ -374,7 +375,8 @@ def _ink(style, colour: RGBColor) -> None:
             found.attrib.pop(qn(name), None)
 
 
-#: Table style for export and form; the export also writes the head row look on cells for viewers that ignore `tblStylePr`.
+#: Table style for export and form; the export also writes the head row look on cells for viewers
+#: that ignore `tblStylePr`.
 _TABLE_STYLE = (
     '<w:style xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
     ' w:type="table" w:customStyle="1" w:styleId="ReportTable">'
