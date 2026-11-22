@@ -26,7 +26,7 @@ const tabs = [
   { to: '/admin/system/branding', label: '브랜딩', end: false },
   { to: '/admin/system/mail', label: '메일', end: false },
   { to: '/admin/system/signup', label: '회원 가입', end: false },
-  { to: '/admin/system/connectors', label: 'MCP', end: false },
+  { to: '/admin/system/connectors', label: 'MCP 서버', end: false },
 ]
 
 function Group({
@@ -182,7 +182,7 @@ export function AdminSystemPage() {
             path="connectors"
             element={
               <Group
-                title={t('MCP')}
+                title={t('MCP 서버')}
                 description={t('사용자가 설치할 수 있는 MCP 서버입니다. stdio 서버는 여기서만 추가합니다.')}
               >
                 <ConnectorCatalogSection />

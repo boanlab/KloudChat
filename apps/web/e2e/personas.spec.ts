@@ -31,14 +31,14 @@ const KNOWN_OPEN: Record<string, string> = {
   'grad-knowledge': 'persona-journeys의 프로젝트 업로드·검색 실사용 검증으로 대체',
   'res-agent-share': '에이전트 조직 공유 UI 미구현',
   // Connectors left out of the catalogue until verified against real credentials.
-  'hum-citation': 'Zotero MCP 미검증 — 카탈로그에서 제외',
-  'grad-zotero': 'Zotero MCP 미검증 — 카탈로그에서 제외',
-  'soc-citation': '문헌 MCP 미검증 — 카탈로그에서 제외',
-  'soc-stats-db': 'PostgreSQL MCP 미검증 — 카탈로그에서 제외',
-  'dev-db': 'PostgreSQL MCP 미검증 — 카탈로그에서 제외',
-  'eng-arxiv': 'arXiv MCP 제외 — 도구 14개, 대상 사용자 대비 과함',
-  'dev-github': 'GitHub MCP 미검증 — 카탈로그에서 제외',
-  'off-drive': 'Google Drive MCP 미검증 — 카탈로그에서 제외',
+  'hum-citation': 'Zotero MCP 서버 미검증 — 카탈로그에서 제외',
+  'grad-zotero': 'Zotero MCP 서버 미검증 — 카탈로그에서 제외',
+  'soc-citation': '문헌 MCP 서버 미검증 — 카탈로그에서 제외',
+  'soc-stats-db': 'PostgreSQL MCP 서버 미검증 — 카탈로그에서 제외',
+  'dev-db': 'PostgreSQL MCP 서버 미검증 — 카탈로그에서 제외',
+  'eng-arxiv': 'arXiv MCP 서버 제외 — 도구 14개, 대상 사용자 대비 과함',
+  'dev-github': 'GitHub MCP 서버 미검증 — 카탈로그에서 제외',
+  'off-drive': 'Google Drive MCP 서버 미검증 — 카탈로그에서 제외',
 }
 
 // One shared account and workspace: parallel runs would see each other's state.

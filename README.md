@@ -233,7 +233,7 @@ The account menu's **Manage** (관리) section:
 | Branding | Name and logo for the sidebar and the sign-in screen |
 | Mail | SMTP for password reset and email verification |
 | Signup | Signup mode, allowed mail domains, email verification, a new account's monthly credits |
-| MCP | The MCP connectors users can install |
+| MCP servers | The MCP servers users can install |
 
 Chat is always on. Reports and slides are on by default. Images and
 audio/video cost credits per generation, so they default to off; a disabled surface disappears from the UI *and* the server

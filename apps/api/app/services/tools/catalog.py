@@ -153,7 +153,7 @@ class NotRunnable(RuntimeError):
 
 
 #: Member's own remote connector aimed at the deployment's network.
-INTERNAL_ENDPOINT = "내부 네트워크 주소의 MCP는 관리자만 등록할 수 있습니다."
+INTERNAL_ENDPOINT = "내부 네트워크 주소의 MCP 서버는 관리자만 등록할 수 있습니다."
 
 
 def public_only(connector: Any, *, owner_is_admin: bool) -> bool:

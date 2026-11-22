@@ -18,7 +18,7 @@ _BLOCK_CHARS = 4500
 
 #: app-only nouns; "how" plus one of these, even words apart, is an app question
 _APP_THINGS = (
-    r"에이전트|스킬|템플릿|테마|메모리|MCP|묶음|진행\s{0,2}과정|워크플로|내보내기|"
+    r"에이전트|스킬|템플릿|테마|메모리|MCP 서버|묶음|진행\s{0,2}과정|워크플로|내보내기|"
     r"사용자\s{0,2}지정|크레딧|단축키|확인\s{0,2}질문|아티팩트|"
     # the screen itself
     r"기능|메뉴|버튼|글씨|글자\s{0,2}크기|화면\s{0,2}(?:크게|확대|글자)"
@@ -142,7 +142,7 @@ def page_link(path: str, *, lang: str = "ko") -> str:
 
 #: guide page names, for questions no section answers
 _PAGES = {
-    "ko": "사용자 지정 › 에이전트 · 스킬 · MCP / 설정 › 메모리 · 테마 / 프로젝트 / 아티팩트",
+    "ko": "사용자 지정 › 에이전트 · 스킬 · MCP 서버 / 설정 › 메모리 · 테마 / 프로젝트 / 아티팩트",
     "en": "Customize › Agents · Skills · Connectors / Settings › Memory · Themes / Projects "
           "/ Artifacts",
 }

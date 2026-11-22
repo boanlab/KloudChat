@@ -1,12 +1,12 @@
 ---
-title: MCP
+title: MCP servers
 ---
 
-# MCP
+# MCP servers
 
-An MCP server is an external tool that the model can call. Install one from **Customize** → **MCP**, and turn it on or off from **+** → **MCP** in the composer. The on or off state applies to your **whole account**.
+An MCP server is an external tool that the model can call. Install one from **Customize** → **MCP servers**, and turn it on or off from **+** → **MCP servers** in the composer. The on or off state applies to your **whole account**.
 
-![The MCP screen](/img/guide/connectors.png)
+![The MCP servers screen](/img/guide/connectors.png)
 
 ## Built-in MCP servers
 
@@ -18,7 +18,7 @@ MCP servers the administrator marks **Built in** are installed for everyone and 
 | YouTube transcription | Fetches a video's captions from its address, or transcribes the audio when there are none. Available in Chat and Reports. |
 | Deep research | Searches and reads the web over several rounds and sums up what it found. It can take minutes. Available in Chat and Reports. |
 
-The catalogue shows only the entries the administrator made visible in the MCP tab. An MCP server hidden from the list keeps working for anyone who already installed it.
+The catalogue shows only the entries the administrator made visible in the MCP servers tab. An MCP server hidden from the list keeps working for anyone who already installed it.
 
 ## Adding a server directly
 

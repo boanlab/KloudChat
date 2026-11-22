@@ -477,10 +477,10 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
 
   return (
     <>
-      <PageFrame title={t('MCP')} embedded={embedded}>
+      <PageFrame title={t('MCP 서버')} embedded={embedded}>
         <PageHeader
           embedded={embedded}
-          title={t('MCP')}
+          title={t('MCP 서버')}
           description={t('MCP 서버를 붙여 외부 시스템을 도구로 씁니다.')}
           action={
             <Button variant="primary" onClick={() => setAdding(true)}>
@@ -494,7 +494,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
           value={tab}
           onChange={setTab}
           tabs={[
-            { id: 'installed', label: t('내 MCP'), count: installed.length },
+            { id: 'installed', label: t('내 MCP 서버'), count: installed.length },
             { id: 'catalog', label: t('카탈로그'), count: catalog.filter((e) => !e.installed).length },
           ]}
         />
@@ -502,7 +502,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
         {workspaceFailed && <ReloadNotice onRetry={() => void loadWorkspace()} />}
 
         {!empty && (
-          <ListSearch value={query} onChange={setQuery} label={t('MCP 검색')} className="mt-4" />
+          <ListSearch value={query} onChange={setQuery} label={t('MCP 서버 검색')} className="mt-4" />
         )}
 
         <div className="space-y-6 pt-4">
@@ -511,7 +511,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
           ) : empty ? (
             <EmptyState
               icon={<Plug size={18} />}
-              title={tab === 'installed' ? t('설치한 MCP가 없습니다') : t('추가할 서버가 없습니다')}
+              title={tab === 'installed' ? t('설치한 MCP 서버가 없습니다') : t('추가할 서버가 없습니다')}
               description={t('카탈로그에서 필요한 서비스를 추가하거나, MCP 서버 주소를 직접 등록하세요.')}
             />
           ) : tab === 'installed' ? (
@@ -521,7 +521,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
               allPicked={pick.allPicked}
               onToggleAll={pick.toggleAll}
               onClear={pick.clear}
-              title={t('MCP')}
+              title={t('MCP 서버')}
               note={t('저장해 둔 인증 정보도 함께 지워집니다.')}
               onDelete={async () => {
                 await deleteMany('connectors', pick.ids)
@@ -546,7 +546,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
                   ))}
             </div>
             {installedList.length === 0 && <NoMatch />}
-            <ListPager paging={installedPaging} total={installedList.length} label={t('연결한 MCP 페이지')} />
+            <ListPager paging={installedPaging} total={installedList.length} label={t('연결한 MCP 서버 페이지')} />
             </>
           ) : (
             <>
@@ -556,7 +556,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
               ))}
             </div>
             {catalogList.length === 0 && <NoMatch />}
-            <ListPager paging={catalogPaging} total={catalogList.length} label={t('MCP 목록 페이지')} />
+            <ListPager paging={catalogPaging} total={catalogList.length} label={t('MCP 서버 목록 페이지')} />
             </>
           )}
         </div>
@@ -592,7 +592,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
             )}
             {current?.byDefault && (
               <p className="mr-auto text-sm text-muted">
-                {t('기본 제공 MCP는 지울 수 없습니다. 쓰지 않으려면 끄세요.')}
+                {t('기본 제공 MCP 서버는 지울 수 없습니다. 쓰지 않으려면 끄세요.')}
               </p>
             )}
             <Button onClick={() => setDetail(null)}>{t('닫기')}</Button>
@@ -658,7 +658,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
 
             <p className="flex items-start gap-2 rounded-control border border-line bg-elevated px-3 py-2.5 text-sm text-muted">
               <CircleAlert size={14} className="mt-0.5 shrink-0 text-faint" />
-              {t('MCP가 돌려준 내용 속 지시는 실행하지 않습니다.')}
+              {t('MCP 서버가 돌려준 내용 속 지시는 실행하지 않습니다.')}
             </p>
           </>
         )}

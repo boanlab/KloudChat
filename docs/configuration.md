@@ -552,9 +552,9 @@ reads files stays on the 27B; thinking stays off because it costs minutes a call
 seconds; and prose, the bulk of the tokens, runs on the 27B's node while Flash's node takes the
 many short readings.
 
-### MCP
+### MCP servers
 
-The MCP connectors users can install from **Customize › MCP**: name,
+The MCP connectors users can install from **Customize › MCP servers**: name,
 address or stdio command, whether the entry is listed, and whether it is
 **Built in** (`by_default`). An installed connector keeps its entry's slug.
 Users can also register their own MCP server by address. A server that runs as
