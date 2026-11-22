@@ -4,8 +4,9 @@ sources. `REPORT_ONE_PASS` forces it on (1) or off (0)."""
 
 from __future__ import annotations
 
-import pytest
 from types import SimpleNamespace
+
+import pytest
 
 from app.pipeline import report_stages
 
