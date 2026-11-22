@@ -610,7 +610,9 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
               {turns.length === 0 ? (
                 <section className="space-y-4 pt-6 text-center">
                   <p className="text-lg font-semibold">{bot.title}</p>
-                  {bot.branding.greeting && <p className="mx-auto max-w-xl whitespace-pre-wrap text-base text-muted">{bot.branding.greeting}</p>}
+                  {(bot.branding.greeting || bot.description) && (
+                    <p className="mx-auto max-w-xl whitespace-pre-wrap text-base text-muted">{bot.branding.greeting || bot.description}</p>
+                  )}
                   {prompts.length > 0 && !closed && (
                     <div className="flex flex-wrap justify-center gap-2" data-testid="bot-prompts">
                       {prompts.map((line) => (
