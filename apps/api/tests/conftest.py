@@ -64,6 +64,13 @@ def _no_ambient_search(monkeypatch):
     monkeypatch.setattr(settings_store, "tools_config", without_search)
 
 
+@pytest.fixture(autouse=True)
+def _staged_reports(monkeypatch):
+    """The suite tests the staged report path; the one-pass default for a self-hosted writer is
+    covered by `test_a_one_pass_report_follows_the_writer`."""
+    monkeypatch.setenv("REPORT_ONE_PASS", "0")
+
+
 #: the least of three ratios: a busy runner only ever adds time, so a spike inflates one
 #: ratio, never all three; a quadratic scan's least ratio is still about 16
 _MEASURE = """
