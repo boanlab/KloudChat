@@ -1,8 +1,7 @@
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
-import { Badge, Button, ConfirmDialog, Field, Input, Modal, Select, Textarea } from '@/components/ui'
+import { Badge, Button, ConfirmDialog, Field, Input, Modal, Select } from '@/components/ui'
 import { connectorCatalogApi, errorCode, errorMessage, type CatalogAdmin, type CatalogEntryIn } from '@/lib/api'
-import { useMarkUnsaved } from '@/lib/unsaved'
 import { useT } from '@/lib/useT'
 import type { CatalogEntryAdmin } from '@/types'
 
