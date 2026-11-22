@@ -202,9 +202,6 @@ Migrations live under `alembic/versions/`. The principal tables:
 - `publications` · `publication_versions` · `publication_visitors` ·
   `publication_counters` · `publication_slots` · `publication_questions` ·
   `publication_keys` — published agents (§6 Publishing agents)
-- `integration_accounts` · `integration_actions` · `integration_imports` ·
-  `slack_workspaces` · `slack_bot_channels` · `slack_threads` — external
-  account integrations and the Slack bot
 - `source_selections` · `source_guides` · `project_notes` · `studio_items` — a
   project's knowledge shelf
 - `push_subscriptions` · `push_sent` — web push
@@ -3179,7 +3176,7 @@ neither the stream nor the stored message shows it twice.
 
 - A `stdio` connector is a command the API server runs. An administrator may
   register any; a member only a command line on the administrator's allowlist
-  (**System › Connector catalogue › Commands members may register themselves**,
+  (**System › MCP › Commands members may register themselves**,
   setting `connectors.stdio_allow`), matched argument for argument, and with no
   environment variables of its own. The rule is checked again before every
   spawn (`catalog.check_runnable`), so a row saved before it is refused with an

@@ -690,20 +690,11 @@ async def upload_file(
 
 async def store_bytes(db: DbSession, user_id: str, name: str, declared: str | None,
                       data: bytes, *, project_id: str | None = None,
-                      session_id: str | None = None, source_url: str | None = None,
-                      stored: StoredFile | None = None) -> StoredFile:
+                      session_id: str | None = None) -> StoredFile:
     """A file stored as an upload is: text read, scanned pages and media queued, project
-    material digested and indexed. `stored`: an existing row whose bytes are replaced (a
-    file synced again from Drive)."""
-    if stored is None:
-        stored = StoredFile(user_id=user_id, project_id=project_id, session_id=session_id,
-                            name=file_service.safe_name(name or "file"), source_url=source_url)
-    else:
-        old_key = stored.storage_key
-        stored.name = file_service.safe_name(name or stored.name)
-        stored.error = None
-        if old_key:
-            file_service.delete_blob(old_key)
+    material digested and indexed."""
+    stored = StoredFile(user_id=user_id, project_id=project_id, session_id=session_id,
+                        name=file_service.safe_name(name or "file"))
     stored.size = len(data)
     # Content-Type is a claim; bytes decide
     stored.mime = file_service.detected_mime(name or "file", declared, data)

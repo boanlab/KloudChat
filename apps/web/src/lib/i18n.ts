@@ -1,5 +1,4 @@
 /** Dictionary keyed on the Korean source string; missing entries render the Korean. */
-import { EN_INTEGRATIONS } from './i18nIntegrations'
 import { EN_UI } from './i18nUi'
 import { EN_CATALOG } from './i18nCatalog'
 
@@ -33,7 +32,16 @@ const EN: Record<string, string> = {
   '이 모델은 이미지를 고칠 수 없습니다. 다른 모델을 고르세요.': 'This model cannot edit images. Pick another model.',
   '고칠 이미지를 찾을 수 없습니다.': 'The image to edit is gone.',
   '고칠 이미지를 읽지 못했습니다.': 'Could not read the image to edit.',
-  ...EN_INTEGRATIONS,
+  // audit log: connection events of earlier records
+  '외부 계정 연결': 'External account connected',
+  '외부 계정 연결 해제': 'External account disconnected',
+  '외부 연동 설정 변경': 'Integration settings changed',
+  'Slack 워크스페이스 설치': 'Slack workspace installed',
+  'Slack 워크스페이스 설치 해제': 'Slack workspace uninstalled',
+  '외부 계정에 쓰기': 'Wrote to an external account',
+  '외부 계정 쓰기 실패': 'External write failed',
+  '드라이브에서 가져오기': 'Import from Drive',
+  'Slack 봇 채널 변경': 'Slack bot channel changed',
   // 양식 (form files)
   '구조: {name} 패턴': 'Structure: {name}',
   '함께 맞은 패턴: {list}': 'also matched: {list}',
@@ -1268,9 +1276,9 @@ const EN: Record<string, string> = {
   '진행 과정이 문서나 답을 남기지 못했습니다.': 'The process left no document or answer.',
   '진행 과정에 에이전트 단계가 하나는 있어야 합니다.': 'The process needs at least one agent step.',
   '진행 과정 승인': 'Process approved',
-  '커넥터 카탈로그 저장': 'Connector catalog saved',
+  'MCP 저장': 'MCP saved',
   '허용 실행 명령 저장': 'Allowed commands saved',
-  '커넥터 카탈로그 삭제': 'Connector catalog entry removed',
+  'MCP 삭제': 'MCP entry removed',
   '진행 과정 반려': 'Process rejected',
   '이 대화에서 정한 것:': 'Settled in this conversation:',
   // Templates and themes
@@ -5174,7 +5182,7 @@ const EN: Record<string, string> = {
   '템플릿 설정을 따름': 'Follows the template',
   '이 에이전트에서 따로 정하기': 'Set for this agent',
   '끄면 템플릿(또는 문서 형식)이 정한 계산·검사·구조를 그대로 씁니다. 켜면 그 값에서 시작해 바꿉니다.': 'Off: the template\'s (or document format\'s) calculations, checks and structure apply as they are. On: start from them and change them.',
-  '커넥터 카탈로그': 'Connector catalog',
+  'MCP': 'MCP',
   '사용자가 설치할 수 있는 MCP 서버입니다. stdio 서버는 여기서만 추가합니다.': 'MCP servers users can install. stdio servers can be added only here.',
   // Answer stage names (Korean keys sent by the server)
   '다른 모델로 답 쓰기': 'Answer written by another model',

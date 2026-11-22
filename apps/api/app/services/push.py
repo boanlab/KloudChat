@@ -283,29 +283,16 @@ class Notice:
 def notify(user_id: str | None, notice: Notice) -> None:
     """Fire and forget from the replica that finished the work; never raises.
 
-    The one fan-out point for notices: other channels hook into `_safe_deliver` with the same
-    `Notice`, not into the call sites.
+    The one fan-out point for notices, so call sites never reach a channel themselves.
     """
     if not user_id or (notice.event not in EVENTS and notice.event != "test"):
         return
     try:
-        task = asyncio.get_running_loop().create_task(_safe_deliver(user_id, notice))
+        task = asyncio.get_running_loop().create_task(_push_only(user_id, notice))
     except RuntimeError:
         return
     _TASKS.add(task)
     task.add_done_callback(_TASKS.discard)
-
-
-async def _safe_deliver(user_id: str, notice: Notice) -> None:
-    """Web push and Slack side by side: a slow or failing one never holds back the other."""
-    jobs = [_push_only(user_id, notice)]
-    if notice.event != "test":
-        # Slack, for people who turned it on; opt-in, `internal` honoured, never raises
-        from app.services.integrations import slack_notify
-
-        jobs.append(slack_notify.deliver(user_id, notice.title, notice.label, notice.url,
-                                         notice.internal))
-    await asyncio.gather(*jobs, return_exceptions=True)
 
 
 async def _push_only(user_id: str, notice: Notice) -> None:

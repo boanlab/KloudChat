@@ -46,7 +46,7 @@
 "path": "admin/index",
 "title": "관리자 가이드",
 "heading": "",
-"text": "관리자 계정으로 로그인하면 계정 메뉴에 **관리** 항목이 생깁니다. 최초로 가입한 계정이 관리자 권한을 갖습니다.\n\n| 화면 | 하는 일 |\n|---|---|\n| 사용자 · 크레딧 | 가입 승인·반려, 정지, 정보 수정, 월 크레딧, 허용 모델, 키 관리, 진행 과정·스킬 공유 검토 |\n| 사용량 | 기간별·모델별·사용자별 사용량, CSV, 저장 공간 |\n| 공개 챗봇 | 링크·외부 공개와 채널(다른 사이트·API·MCP) 승인, 닫기·중지, 남용 확인 열람 |\n| 보안 · 감사 | **정책** 탭(개인정보 보호, 내부 자료 처리, 안전 모델, 차단 주제, 유휴 로그아웃, 보존 기간)과 **감사 로그** 탭 |\n| 문의·신고 | 사용자가 보낸 오류 신고·기능 요청·문의 확인, 담당자·상태 지정, 답변 |\n| 시스템 | **프록시 · 모델 · 라우팅 · 기능 · 브랜딩 · 메일 · 회원 가입 · 커넥터 카탈로그 · 연동** 탭 |\n| 성능 모니터링 | 판정·핵심 수치·GPU 노드·모델 서버를 한 화면에 모은 대시보드, 항목을 누르면 호스트·모델·노드·서버별 추이와 세부 수치 |"
+"text": "관리자 계정으로 로그인하면 계정 메뉴에 **관리** 항목이 생깁니다. 최초로 가입한 계정이 관리자 권한을 갖습니다.\n\n| 화면 | 하는 일 |\n|---|---|\n| 사용자 · 크레딧 | 가입 승인·반려, 정지, 정보 수정, 월 크레딧, 허용 모델, 키 관리, 진행 과정·스킬 공유 검토 |\n| 사용량 | 기간별·모델별·사용자별 사용량, CSV, 저장 공간 |\n| 공개 챗봇 | 링크·외부 공개와 채널(다른 사이트·API·MCP) 승인, 닫기·중지, 남용 확인 열람 |\n| 보안 · 감사 | **정책** 탭(개인정보 보호, 내부 자료 처리, 안전 모델, 차단 주제, 유휴 로그아웃, 보존 기간)과 **감사 로그** 탭 |\n| 문의·신고 | 사용자가 보낸 오류 신고·기능 요청·문의 확인, 담당자·상태 지정, 답변 |\n| 시스템 | **프록시 · 모델 · 라우팅 · 기능 · 브랜딩 · 메일 · 회원 가입 · MCP** 탭 |\n| 성능 모니터링 | 판정·핵심 수치·GPU 노드·모델 서버를 한 화면에 모은 대시보드, 항목을 누르면 호스트·모델·노드·서버별 추이와 세부 수치 |"
 },
 {
 "lang": "ko",
@@ -143,15 +143,8 @@
 "lang": "ko",
 "path": "admin/system",
 "title": "시스템 설정",
-"heading": "커넥터 카탈로그",
+"heading": "MCP",
 "text": "사용자가 **사용자 지정** › **커넥터**에서 설치할 수 있는 MCP 서버 목록입니다. **항목 추가**로 이름, 슬러그, 연결 방식(명령 실행 stdio·HTTP·SSE), 명령이나 주소, 환경 변수, 쓸 화면을 적습니다. 기능 연동 주소는 `${TOOLS_STT_URL}` 같은 자리표시로 적습니다. **게이트웨이 키를 넣을 변수**를 고르면 그 변수가 고른 도구의 주소일 때만 `TOOLS_GATEWAY_KEY`가 들어갑니다(YouTube 전사가 이렇게 음성 전사를 부릅니다). 저장한 값은 다시 보이지 않고, 바꿀 때만 새로 적습니다. 명령으로 실행하는 서버는 여기서 추가합니다. 사용자가 직접 등록해도 되는 명령은 **사용자가 직접 등록할 수 있는 실행 명령**에 한 줄에 하나씩 적습니다. 사용자가 적은 명령이 인자까지 똑같은 줄만 실행되고, 환경 변수는 넣을 수 없습니다. 목록에 없는 명령은 전에 등록해 둔 것이라도 실행하지 않고 오류로 알립니다. **목록에 보이기**를 끄면 사용자 목록에서 빠지지만 설치는 그대로 되고, 이미 설치한 것도 계속 동작합니다(관리자 목록에는 「숨김」으로 표시). **사용**을 끄면 새로 설치할 수 없습니다. **기본 제공**을 켜면 활성 사용자 모두에게 바로 설치되고, 이후 가입하거나 승인되는 사용자에게도 설치됩니다(관리자 목록에는 「기본 제공」으로 표시). 사용자는 기본 제공 커넥터를 끌 수는 있지만 지울 수는 없습니다. 사람마다 자격증명을 받아야 하는 항목은 기본 제공할 수 없습니다. 시간, YouTube 전사, 심층 리서치가 기본 제공 항목입니다."
-},
-{
-"lang": "ko",
-"path": "admin/system",
-"title": "시스템 설정",
-"heading": "연동",
-"text": "Google 드라이브와 Slack을 켭니다. 설치 하나에 제공자마다 OAuth 클라이언트 하나를 관리자가 만들어 넣고, 사람마다 **설정 › 연결**에서 자기 계정을 연결합니다. 화면에 보이는 **리디렉션 URI**를 클라이언트 설정에 그대로 넣습니다(메일 탭의 서비스 주소로 만듭니다). Google은 `drive.file` 범위만 써서 개인 계정도 Google 심사 없이 연결됩니다. Picker API 키와 프로젝트 번호가 있어야 드라이브 가져오기가 켜집니다. 끄면 모든 사람의 연결을 끊습니다. **연결한 사람**에서 누가 연결했는지 볼 수 있고 토큰은 보이지 않습니다. 콘솔 설정 순서는 저장소의 `docs/integrations.md`를 참고하십시오."
 },
 {
 "lang": "ko",
@@ -542,13 +535,6 @@
 "lang": "ko",
 "path": "chat/bots",
 "title": "챗봇 공개",
-"heading": "Slack에서 답하기",
-"text": "관리자가 Slack 봇을 켜 두었다면 공개 화면의 **Slack** 카드에서 내가 속한 채널을 고릅니다. 그 채널에 앱을 초대하고 앱을 부르면(@) 스레드에 답합니다. 공개한 사람의 계정과 크레딧으로 처리되고 처음 답할 때 그렇다고 알립니다. 다른 조직과 공유된 채널은 외부 공개로 보고, 관리자가 외부 공개를 승인한 뒤에만 답합니다."
-},
-{
-"lang": "ko",
-"path": "chat/bots",
-"title": "챗봇 공개",
 "heading": "만든 사람이 보는 것",
 "text": "관리 화면(내 에이전트 화면의 **챗봇** → **관리**)에는 다음이 보입니다.\n\n- **통계**: 질문 수, 대화 수, 방문자 수, 자주 나온 주제, 답하지 못한 질문(개인정보를 가린 문장), 👍👎.\n- **보낸 대화**: 방문자가 **만든 사람에게 보내기**로 보낸 대화만, 개인정보를 가린 채. **대화 열람**을 켠 챗봇은 방문자가 동의한 뒤의 대화도 보입니다. 상담·민원처럼 대화 기록이 업무인 챗봇에만 켭니다.\n- **설정**의 **복사 허용**: 기본은 꺼짐(잠금)입니다. 켜면 구성원이 지시문까지 내 에이전트로 가져갈 수 있습니다. 지시를 보여 주고 싶지 않으면 끈 채로 둡니다.\n- 방문자는 이름 대신 「방문자 ABC123」처럼 보이고, 로그인했는지만 표시됩니다. 보낸 대화에서 **이 방문자 차단**을 누르면 그 방문자는 더 이상 질문할 수 없습니다. **설정**의 **차단한 방문자**에서 풉니다.\n\n관리자가 남용 확인을 위해 대화를 열람하면 **개요**의 **관리자 열람 기록**에 날짜와 사유가 남습니다.\n\n챗봇이 멈추거나(크레딧 소진, 관리자 중지 등) 관리자가 요청을 결정하면 사이드바 **사용자 지정**에 숫자가 붙습니다."
 },
@@ -578,14 +564,14 @@
 "path": "chat/connectors",
 "title": "커넥터",
 "heading": "기본 제공 커넥터",
-"text": "관리자가 **기본 제공**으로 정한 커넥터는 모든 사용자에게 미리 설치되어 **내 커넥터**에 「기본 제공」 배지와 함께 나옵니다. 쓰지 않으려면 스위치로 끄거나 도구별로 끕니다. 기본 제공 커넥터는 지울 수 없고, 끈 커넥터는 다시 켜면 그대로 돌아옵니다.\n\n| 커넥터 | 기능 |\n|---|---|\n| 시간 | 현재 시각과 날짜를 조회합니다. 챗, 보고서, 슬라이드에서 사용할 수 있습니다. |\n| YouTube 전사 | 영상 주소를 주면 자막을 가져오고, 자막이 없으면 음성을 전사합니다. 챗, 보고서에서 사용할 수 있습니다. |\n| 심층 리서치 | 웹을 여러 번 검색하고 읽어 조사 결과를 정리합니다. 수 분이 걸릴 수 있습니다. 챗, 보고서에서 사용할 수 있습니다. |\n\n카탈로그 목록에는 관리자가 커넥터 카탈로그에서 보이게 한 항목만 나옵니다. 목록에서 숨긴 커넥터도 이미 설치한 사람에게는 그대로 동작합니다."
+"text": "관리자가 **기본 제공**으로 정한 커넥터는 모든 사용자에게 미리 설치되어 **내 커넥터**에 「기본 제공」 배지와 함께 나옵니다. 쓰지 않으려면 스위치로 끄거나 도구별로 끕니다. 기본 제공 커넥터는 지울 수 없고, 끈 커넥터는 다시 켜면 그대로 돌아옵니다.\n\n| 커넥터 | 기능 |\n|---|---|\n| 시간 | 현재 시각과 날짜를 조회합니다. 챗, 보고서, 슬라이드에서 사용할 수 있습니다. |\n| YouTube 전사 | 영상 주소를 주면 자막을 가져오고, 자막이 없으면 음성을 전사합니다. 챗, 보고서에서 사용할 수 있습니다. |\n| 심층 리서치 | 웹을 여러 번 검색하고 읽어 조사 결과를 정리합니다. 수 분이 걸릴 수 있습니다. 챗, 보고서에서 사용할 수 있습니다. |\n\n카탈로그 목록에는 관리자가 MCP 탭에서 보이게 한 항목만 나옵니다. 목록에서 숨긴 커넥터도 이미 설치한 사람에게는 그대로 동작합니다."
 },
 {
 "lang": "ko",
 "path": "chat/connectors",
 "title": "커넥터",
 "heading": "서버 직접 추가",
-"text": "사용 중인 MCP 서버가 있으면 **서버 직접 추가**로 연결합니다. 이름, 전송 방식(stdio · http · sse), 실행 명령 또는 엔드포인트 주소, 환경 변수, 인증 방식을 입력합니다. 환경 변수와 자격증명은 저장 후 다시 표시되지 않습니다. 명령 실행(stdio)은 API 서버에서 돌기 때문에 관리자가 허용한 명령만 그대로 등록할 수 있고, 이때 환경 변수는 넣을 수 없습니다. 관리자가 아닌 사람이 직접 추가하는 http · sse 서버는 인터넷에 공개된 주소여야 합니다. `localhost`·`127.0.0.1`, 사설 대역(`10.x`, `172.16~31.x`, `192.168.x`), 클라우드 메타데이터 주소, 배포 내부 서비스 이름처럼 내부 네트워크를 가리키는 주소는 저장할 때와 호출할 때 모두 거절됩니다. 사내 MCP 서버는 관리자에게 커넥터 카탈로그 등록을 요청하세요."
+"text": "사용 중인 MCP 서버가 있으면 **서버 직접 추가**로 연결합니다. 이름, 전송 방식(stdio · http · sse), 실행 명령 또는 엔드포인트 주소, 환경 변수, 인증 방식을 입력합니다. 환경 변수와 자격증명은 저장 후 다시 표시되지 않습니다. 명령 실행(stdio)은 API 서버에서 돌기 때문에 관리자가 허용한 명령만 그대로 등록할 수 있고, 이때 환경 변수는 넣을 수 없습니다. 관리자가 아닌 사람이 직접 추가하는 http · sse 서버는 인터넷에 공개된 주소여야 합니다. `localhost`·`127.0.0.1`, 사설 대역(`10.x`, `172.16~31.x`, `192.168.x`), 클라우드 메타데이터 주소, 배포 내부 서비스 이름처럼 내부 네트워크를 가리키는 주소는 저장할 때와 호출할 때 모두 거절됩니다. 사내 MCP 서버는 관리자에게 MCP 탭 등록을 요청하세요."
 },
 {
 "lang": "ko",
@@ -1103,7 +1089,7 @@
 "path": "personal/settings",
 "title": "설정",
 "heading": "",
-"text": "계정 메뉴 → **설정**에서 아홉 개 탭을 제공합니다: 프로필, 환경설정, 개인 맞춤 설정, 메모리, 연결, API 키, 보안, 알림, 앱."
+"text": "계정 메뉴 → **설정**에서 여덟 개 탭을 제공합니다: 프로필, 환경설정, 개인 맞춤 설정, 메모리, API 키, 보안, 알림, 앱."
 },
 {
 "lang": "ko",
@@ -1146,13 +1132,6 @@
 "title": "설정",
 "heading": "문서 모양",
 "text": "설정에는 문서 모양을 정하는 탭이 없습니다. 보고서와 슬라이드의 색·글꼴·표 모양은 프로젝트나 에이전트의 **디자인 지침**에 말로 적거나, 회사 양식 파일을 첨부해 맞춥니다. 문서 하나의 모양은 보고서·슬라이드 패널의 **모양**에서 바꿉니다."
-},
-{
-"lang": "ko",
-"path": "personal/settings",
-"title": "설정",
-"heading": "연결",
-"text": "내 Google 드라이브와 Slack 계정을 연결합니다. 관리자가 켠 서비스만 보이고, 연결은 내 계정에만 쓰입니다(개인 gmail.com 계정도 됩니다).\n\n- **Google 드라이브**: 입력창의 **+ › 드라이브에서 가져오기**나 프로젝트 **지식 › 드라이브**에서 Google 파일 선택 창으로 고른 파일만 앱이 엽니다. 드라이브의 다른 파일은 보지 않습니다. 가져온 파일의 새로 고침 단추는 드라이브에서 바뀐 내용을 다시 가져옵니다.\n- **드라이브에 저장**처럼 밖으로 쓰는 일은 답 아래 확인 카드에서 **확인**을 눌러야 보냅니다.\n- 드라이브 내용은 내부 자료로 다룹니다. 관리자가 내부 자료를 strict-local로 두면 내부 모델만 읽습니다.\n- **Slack**: 내가 속한 채널만 읽고, 메시지는 확인 카드에서 채널과 내용을 확인한 뒤에만 보냅니다. **긴 작업이 끝나면 Slack으로 알림**을 켜면 나에게 보내는 메시지나 고른 채널로 알립니다. 워크스페이스에 앱을 설치할 수 없다면 Slack 관리자에게 요청하세요.\n- **연결 해제**는 권한을 되돌리고 저장한 토큰을 지웁니다. 가져온 파일은 남습니다."
 },
 {
 "lang": "ko",
@@ -1810,7 +1789,7 @@
 "path": "admin/index",
 "title": "Administrator guide",
 "heading": "",
-"text": "When you sign in with an administrator account, a **Manage** item appears in the account menu. The first account to sign up holds administrator rights.\n\n| Screen | What it does |\n|---|---|\n| Users · Credits | Approve and reject sign-ups, suspend, edit details, monthly credits, allowed models, key management, review of shared processes and skills |\n| Usage | Usage by period, by model, and by user, CSV, storage space |\n| Published chatbots | Approve link and external publishing and channels (other sites, API, MCP), close or pause, abuse-check viewing |\n| Security · Audit | The **Policy** tab (personal data protection, internal material, safe model, blocked topics, idle sign-out, retention period) and the **Audit log** tab |\n| Feedback & issues | Read bug reports, feature requests and questions from users, set the assignee and status, reply |\n| System | The **Proxy · Models · Routing · Features · Branding · Mail · Sign-up · Connector catalogue · Integrations** tabs |\n| Performance | One-screen dashboard of verdicts, key figures, GPU nodes and model servers; each item opens trends and details for the host, models, a node or a server |"
+"text": "When you sign in with an administrator account, a **Manage** item appears in the account menu. The first account to sign up holds administrator rights.\n\n| Screen | What it does |\n|---|---|\n| Users · Credits | Approve and reject sign-ups, suspend, edit details, monthly credits, allowed models, key management, review of shared processes and skills |\n| Usage | Usage by period, by model, and by user, CSV, storage space |\n| Published chatbots | Approve link and external publishing and channels (other sites, API, MCP), close or pause, abuse-check viewing |\n| Security · Audit | The **Policy** tab (personal data protection, internal material, safe model, blocked topics, idle sign-out, retention period) and the **Audit log** tab |\n| Feedback & issues | Read bug reports, feature requests and questions from users, set the assignee and status, reply |\n| System | The **Proxy · Models · Routing · Features · Branding · Mail · Sign-up · MCP** tabs |\n| Performance | One-screen dashboard of verdicts, key figures, GPU nodes and model servers; each item opens trends and details for the host, models, a node or a server |"
 },
 {
 "lang": "en",
@@ -1907,15 +1886,8 @@
 "lang": "en",
 "path": "admin/system",
 "title": "System settings",
-"heading": "Connector catalogue",
+"heading": "MCP",
 "text": "The MCP servers people can install from **Customize** › **Connectors**. **Add entry** takes a name, slug, transport (run a command over stdio, HTTP or SSE), the command or address, environment variables and surfaces. Write tool addresses as placeholders such as `${TOOLS_STT_URL}`. Pick a **variable that gets the gateway key** and `TOOLS_GATEWAY_KEY` is added only while that variable is the chosen tool's address (this is how YouTube transcription calls speech-to-text). Stored values are never shown again; type one only to replace it. Servers that run as a command are added here. List the commands members may register themselves under **Commands members may register themselves** (사용자가 직접 등록할 수 있는 실행 명령), one per line: a member's command runs only when it matches a line argument for argument, and it cannot take environment variables. A command not on the list is not run, even one registered earlier; it reports an error instead. Turn off **Show in the list** (목록에 보이기) and the entry leaves the members' list but can still be installed, and what is installed keeps working (the admin list marks it Hidden). Turn off **Enabled** and nobody can install it anew. Turn on **Built in** (기본 제공) and the entry is installed at once for every active member, and for everyone who signs up or is approved later (the admin list marks it Built in). Members can switch a built-in connector off but cannot remove it. An entry that needs each person's credentials cannot be built in. Time, YouTube transcription and Deep research are built in."
-},
-{
-"lang": "en",
-"path": "admin/system",
-"title": "System settings",
-"heading": "Integrations",
-"text": "Turns on Google Drive and Slack. The administrator creates one OAuth client per provider for the installation and enters it here; each person connects their own account under **Settings › Connections**. Put the **Redirect URI** shown here into the client settings as it is (it is built from the service address on the Mail tab). Google uses only the `drive.file` scope, so personal accounts connect without a Google review. Drive import needs the Picker API key and the project number. Turning a provider off disconnects everyone. **People connected** shows who connected, never a token. For the console steps see `docs/integrations.md` in the repository."
 },
 {
 "lang": "en",
@@ -2306,13 +2278,6 @@
 "lang": "en",
 "path": "chat/bots",
 "title": "Publishing a chatbot",
-"heading": "Answering in Slack",
-"text": "When the administrator has turned on the Slack bot, pick a channel you are in on the **Slack** card of the publication screen. Invite the app to that channel; mention it (@) and it answers in the thread. Answers run on the publisher's account and credits, and the first answer says so. A channel shared with another organisation counts as an outside audience and is answered only after an administrator approves outside publication."
-},
-{
-"lang": "en",
-"path": "chat/bots",
-"title": "Publishing a chatbot",
 "heading": "What the publisher sees",
 "text": "The management page (**Chatbot** → **Manage** on your agent's page) shows:\n\n- **Statistics**: questions, conversations, visitors, frequent topics, unanswered questions (sentences with personal details masked), 👍👎.\n- **Sent conversations**: only conversations a visitor sent with **Send to the maker**, personal details masked. With **Conversation access** on, conversations after the visitor's consent show too. Turn it on only for chatbots whose conversations are the work itself, such as counselling or complaints.\n- **Allow copies** under **Settings**: off (locked) by default. Turn it on and members can take the chatbot, instructions included, as their own agent. Leave it off to keep the instructions to yourself.\n- Visitors show as \"Visitor ABC123\" with only whether they signed in. **Block this visitor** on a sent conversation stops them from asking; unblock them under **Settings** → **Blocked visitors**.\n\nWhen an administrator reads conversations to check abuse, the date and reason appear under **Administrator reads** on **Overview**.\n\nWhen a chatbot stops (credits used up, paused by an administrator and so on) or an administrator decides a request, a number appears next to **Customize** in the sidebar."
 },
@@ -2342,7 +2307,7 @@
 "path": "chat/connectors",
 "title": "Connectors",
 "heading": "Built-in connectors",
-"text": "Connectors the administrator marks **Built in** are installed for everyone and appear under **My connectors** with a Built in badge. If you do not use one, switch it off, or switch off single tools. A built-in connector cannot be removed; one you switched off comes back as it was when you switch it on again.\n\n| Connector | What it does |\n|---|---|\n| Time | Looks up the current time and date. Available in Chat, Reports, and Slides. |\n| YouTube transcription | Fetches a video's captions from its address, or transcribes the audio when there are none. Available in Chat and Reports. |\n| Deep research | Searches and reads the web over several rounds and sums up what it found. It can take minutes. Available in Chat and Reports. |\n\nThe catalogue shows only the entries the administrator made visible in the connector catalogue. A connector hidden from the list keeps working for anyone who already installed it."
+"text": "Connectors the administrator marks **Built in** are installed for everyone and appear under **My connectors** with a Built in badge. If you do not use one, switch it off, or switch off single tools. A built-in connector cannot be removed; one you switched off comes back as it was when you switch it on again.\n\n| Connector | What it does |\n|---|---|\n| Time | Looks up the current time and date. Available in Chat, Reports, and Slides. |\n| YouTube transcription | Fetches a video's captions from its address, or transcribes the audio when there are none. Available in Chat and Reports. |\n| Deep research | Searches and reads the web over several rounds and sums up what it found. It can take minutes. Available in Chat and Reports. |\n\nThe catalogue shows only the entries the administrator made visible in the MCP tab. A connector hidden from the list keeps working for anyone who already installed it."
 },
 {
 "lang": "en",
@@ -2867,7 +2832,7 @@
 "path": "personal/settings",
 "title": "Settings",
 "heading": "",
-"text": "**Settings**, in the account menu, has nine tabs: Profile, Preferences, Personalization, Memory, Connections, API keys, Security, Notifications and App."
+"text": "**Settings**, in the account menu, has eight tabs: Profile, Preferences, Personalization, Memory, API keys, Security, Notifications and App."
 },
 {
 "lang": "en",
@@ -2910,13 +2875,6 @@
 "title": "Settings",
 "heading": "Document look",
 "text": "Settings has no tab for the look of documents. Set the colours, fonts and table style of reports and slides in words in the **design brief** of a project or an agent, or attach a company form file. The look of a single document is changed with **Look** in the report or slides panel."
-},
-{
-"lang": "en",
-"path": "personal/settings",
-"title": "Settings",
-"heading": "Connections",
-"text": "Connect your own Google Drive and Slack accounts. Only services the administrator turned on appear, and a connection is used for your account only (a personal gmail.com account works too).\n\n- **Google Drive**: the app opens only the files you pick in Google's file picker, from **+ › Import from Drive** in the composer or **Knowledge › Drive** in a project. It never sees the rest of your Drive. The refresh button on an imported file brings in what changed in Drive.\n- Anything written outside, such as **Save to Drive**, is sent only after you press **Confirm** on the card under the answer.\n- Drive content is internal material: where the administrator keeps internal material strict-local, only internal models read it.\n- **Slack**: the app reads only channels you are in, and sends a message only after you check the channel and text on the card. Turn on **Notify me in Slack when a long job finishes** to get a message to yourself or in a channel you pick. If you can't install the app in your workspace, ask your Slack admin.\n- **Disconnect** revokes the grant and deletes the stored tokens. Imported files stay."
 },
 {
 "lang": "en",

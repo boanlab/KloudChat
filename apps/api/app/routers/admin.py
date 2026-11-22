@@ -75,7 +75,6 @@ from app.services import litellm as litellm_service
 from app.services import mail as mail_service
 from app.services import models as model_service
 from app.services.credits import grant_initial_allowance, next_cycle_reset, set_allowance
-from app.services.integrations import accounts as integration_accounts
 from app.services.litellm import provision_user
 
 log = logging.getLogger(__name__)
@@ -1211,8 +1210,6 @@ async def delete_user(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="last_admin")
 
     await litellm_service.revoke_key(user)
-    # Google and Slack grants revoked at the provider before the account goes
-    await integration_accounts.revoke_all(db, user.id, actor_id=admin.id)
     email = user.email
 
     # messages/jobs reference sessions: delete first
