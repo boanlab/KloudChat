@@ -170,7 +170,7 @@ test('a new account stays signed in across a reload', async ({ page }, testInfo)
   await page.getByLabel('이름').fill(member.name)
   await page.getByLabel('이메일').fill(member.email)
   await page.getByLabel('비밀번호').fill('long-enough-password-1!')
-  await page.getByRole('button', { name: /^(가입하기|가입 요청)$/ }).click()
+  await page.locator('button[type="submit"]').click()
   await expect(accountMenu(page)).toBeVisible()
   expect(await page.evaluate(() => localStorage.getItem('kchat-signed-out'))).toBeNull()
 

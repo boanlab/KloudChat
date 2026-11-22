@@ -361,7 +361,7 @@ test('opening a bot by link asks an administrator and needs a daily credit cap',
   await expect(dialog.getByTestId('scope-credits-error')).toHaveCount(0)
   await shot(page, 'publish-dialog-link', viewport(testInfo))
   await dialog.getByRole('button', { name: '공개하기' }).click()
-  await expect(dialog.getByTestId('publish-requested')).toContainText('링크 공개는 관리자가 승인하면 열립니다')
+  await expect(dialog.getByTestId('publish-requested')).toContainText('요청한 공개 범위(링크 공개)는 관리자가 승인하면 열립니다')
   const sent = writes.find((w) => w.method === 'POST' && w.path === '/publications')?.body as Record<string, unknown>
   expect(sent).toMatchObject({ visibility: 'link', limits: { creditsPerDay: 3000 } })
   expect(state.unexpected).toEqual([])
@@ -377,7 +377,7 @@ test('the owner widens the audience from the dashboard and can take the request 
   await expect(scope.getByRole('button', { name: '승인 요청' })).toBeDisabled()
   await scope.getByTestId('scope-credits').fill('5000')
   await scope.getByRole('button', { name: '승인 요청' }).click()
-  await expect(page.getByTestId('publication-review')).toContainText('외부 공개를 관리자가 확인하고 있습니다')
+  await expect(page.getByTestId('publication-review')).toContainText('관리자가 공개 범위(외부 공개)를 확인하고 있습니다')
   await shot(page, 'dashboard-requested', viewport(testInfo))
   expect(writes.find((w) => w.path === `/publications/${PUB}/scope`)?.body).toEqual({ visibility: 'external', creditsPerDay: 5000 })
   await page.getByTestId('publication-review').getByRole('button', { name: '요청 취소' }).click()

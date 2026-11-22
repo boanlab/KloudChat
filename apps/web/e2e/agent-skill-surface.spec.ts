@@ -34,7 +34,7 @@ test('a kept-on skill outside the agent surfaces is named with why, and clears w
   // a new agent runs on chat only: the report-only skill would never apply
   const warning = page.getByTestId('skill-surface-warning')
   await expect(warning).toHaveText(
-    '「개조식 보고」 스킬은 보고서 화면에서만 쓰여 이 에이전트의 화면(챗)에서는 적용되지 않습니다. 고급 › 사용할 화면에서 보고서 화면을 더하거나 스킬을 빼세요.',
+    '「개조식 보고」 스킬은 보고서 화면 전용이라 이 에이전트(챗)에서는 쓰이지 않습니다. 고급 › 사용할 화면에 보고서 화면을 더하거나 스킬을 빼세요.',
   )
 
   await form.getByRole('button', { name: '보고서', exact: true }).click()
