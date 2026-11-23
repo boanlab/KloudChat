@@ -51,6 +51,9 @@ FIGURE = (410.0, 680.0)
 PAPER = (720.0, 340.0)
 RATIO = (1.3, 3.5)
 IDEAL = 2.2
+#: a plain (unwrapped) layout this wide is kept over a wrapped one, if its text stays at least
+#: FLAT_TEXT pt: a longer figure with short links beats a folded one whose links circle it
+FLAT_RATIO, FLAT_TEXT = 5.0, 8.0
 #: the first layouts of `_requests` are the plain ones, the rest wrapped
 _PLAIN = 4
 _DIRECTION = {"LR": "RIGHT", "TB": "DOWN"}
@@ -389,6 +392,17 @@ def _off_range(laid: dict) -> float:
     return max(0.0, math.log(RATIO[0] / ratio), math.log(ratio / RATIO[1]))
 
 
+def _link_length(laid: dict) -> float:
+    """Total length of a layout's links (pt, before scaling) per node."""
+    total = 0.0
+    for edge in laid.get("edges", []):
+        for sec in edge.get("sections", []):
+            run = [sec["startPoint"], *sec.get("bendPoints", []), sec["endPoint"]]
+            total += sum(abs(b["x"] - a["x"]) + abs(b["y"] - a["y"])
+                         for a, b in zip(run, run[1:], strict=False))
+    return total / max(1, len(laid.get("children", [])))
+
+
 def _chosen(graph: Graph, box: tuple[float, float],
             wide: bool = False) -> tuple[dict, float] | None:
     """The cached layout whose text comes out largest in `box` (the writer's direction on a
@@ -399,6 +413,15 @@ def _chosen(graph: Graph, box: tuple[float, float],
     if laid is None:
         return None
     found = None
+    if wide:
+        flat = [(rank, out) for rank, out in enumerate(laid[:_PLAIN])
+                if RATIO[0] <= out["width"] / max(1.0, out["height"]) <= FLAT_RATIO
+                and TEXT_PT * _fit(out, box) >= FLAT_TEXT]
+        if flat:
+            # the plain layout whose links are shortest, then the larger text
+            rank, out = max(flat, key=lambda f: (-round(_link_length(f[1]) / 25.0),
+                                                 round(TEXT_PT * _fit(f[1], box), 1), -f[0]))
+            return out, _fit(out, box)
     for rank, out in enumerate(laid):
         scale = _fit(out, box)
         text = TEXT_PT * scale

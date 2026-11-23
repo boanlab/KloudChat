@@ -54,9 +54,10 @@ def test_a_figure_on_its_own_takes_the_landscape_layout_the_column_takes_the_tal
     _fake_layouts(graph, True, [*narrow, (709.0, 296.0), (507.0, 306.0)])
     laid, scale = elk_layout._chosen(graph, elk_layout.PAPER, True)
     ratio = laid["width"] / laid["height"]
-    assert elk_layout.RATIO[0] <= ratio <= elk_layout.RATIO[1]
+    assert elk_layout.RATIO[0] <= ratio <= elk_layout.FLAT_RATIO
+    assert (laid["width"], laid["height"]) == (747.0, 190.0)  # flat, not the wrapped 709x296
     width, height = elk_layout.frame_size(graph, wide=True)
-    assert elk_layout.RATIO[0] <= width / height <= elk_layout.RATIO[1]
+    assert elk_layout.RATIO[0] <= width / height <= elk_layout.FLAT_RATIO
 
 
 def test_without_any_landscape_layout_of_elks_the_folded_rows_draw_the_figure():
@@ -142,3 +143,18 @@ def test_no_label_or_note_is_drawn_outside_the_figure():
         if shape.has_text_frame and shape.text_frame.text.strip():
             assert shape.left >= Pt(20) - 2 and shape.left + shape.width <= Pt(720) + 2, \
                 shape.text_frame.text
+
+
+def test_a_flat_layout_with_shorter_links_beats_a_longer_one_and_a_folded_one():
+    graph = ds.parse(_METHOD)
+
+    def laid(w, h, length):
+        sec = [{"startPoint": {"x": 0, "y": 0}, "endPoint": {"x": length, "y": 0}}]
+        return {"width": w, "height": h, "children": [{}] * 2, "edges": [{"sections": sec}]}
+
+    flat_long, flat_short = laid(800.0, 200.0, 900.0), laid(850.0, 200.0, 100.0)
+    folded = laid(500.0, 300.0, 50.0)
+    elk_layout._CACHE[elk_layout._key(elk_layout._requests(graph, True))] = [
+        flat_long, laid(200.0, 700.0, 1.0), flat_short, laid(190.0, 600.0, 1.0), folded, folded]
+    got, _scale = elk_layout._chosen(graph, elk_layout.PAPER, True)
+    assert got is flat_short
