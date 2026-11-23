@@ -298,6 +298,25 @@ def frame_size(graph: Graph) -> tuple[float, float] | None:
     return max(made.width, 160.0), made.height
 
 
+#: widths tried for a figure of its own, and the width:height it should come out at
+_WIDE_WIDTHS = (720.0, 620.0, 540.0, 470.0, 410.0)
+_WIDE_RATIO = (1.3, 3.5)
+
+
+def wide_frame(graph: Graph) -> tuple[float, float] | None:
+    """Size of the widest rows plan whose width:height is landscape (1.3-3.5), or None."""
+    if not applies(graph):
+        return None
+    for width in _WIDE_WIDTHS:
+        made = plan(graph, width)
+        if made is None or made.min_font < 0:
+            continue
+        w, h = max(made.width, 160.0), made.height
+        if _WIDE_RATIO[0] <= w / h <= _WIDE_RATIO[1]:
+            return w, h
+    return None
+
+
 def place(graph: Graph, width: float, height: float) -> dict[str, Placed] | None:
     """Node boxes for `graph` in `width` × `height`, or None when not laid out here."""
     if not applies(graph):
@@ -381,5 +400,5 @@ def frames(graph: Graph, placed: dict[str, Placed]) -> list[tuple[str, list[str]
 
 __all__ = [
     "BOX_PT", "DOCUMENT_WIDTH", "EDGE_PT", "Plan", "applies", "frame_size", "frames", "kind",
-    "marker_text", "marker_width", "place", "plan", "sides",
+    "marker_text", "marker_width", "place", "plan", "sides", "wide_frame",
 ]

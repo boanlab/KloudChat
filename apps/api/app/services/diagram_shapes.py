@@ -98,12 +98,22 @@ _ARROW = re.compile(
 )
 
 
+_FROZEN = ("frozen", "frozen_", "fixed", "freeze", "ice")
+_CAPTION_NODE = re.compile(r"^\s*(?:그림|Figure|Fig\.?)\s*\d{0,2}\s*[:：.]", re.I)
+
+
+def nid_is_caption(nid: str) -> bool:
+    return nid.lower() in ("caption", "cap", "figcaption", "title")
+
+
 @dataclass
 class Node:
     id: str
     label: str
     shape: str = "box"  # box, round, diamond, circle
     hot: bool = False
+    #: not trained: drawn cold grey with a frost mark
+    frozen: bool = False
 
 
 @dataclass
@@ -130,7 +140,7 @@ class Graph:
 def _shape_of(opener: str | None) -> str:
     return {
         "(": "round", "([": "round", "((": "circle", "{": "diamond", "{{": "diamond",
-        "[(": "round", ">": "box", "[[": "box",
+        "[(": "cylinder", ">": "box", "[[": "box",
     }.get(opener or "", "box")
 
 
@@ -151,8 +161,15 @@ def parse(source: str) -> Graph | None:
     graph = Graph(direction="LR" if head.group(1).upper() in ("LR", "RL") else "TB")
     stack: list[str] = []
     hot: set[str] = set()
+    frozen: set[str] = set()
     # the group a node is in, and whether it got there by a bare mention (an edge's end)
     owner: dict[str, tuple[str, bool]] = {}
+
+    def tag(nid: str, cls: str | None) -> None:
+        if cls == "hot":
+            hot.add(nid)
+        elif cls in _FROZEN:
+            frozen.add(nid)
 
     def node(match: re.Match) -> str:
         nid = match.group("id")
@@ -163,8 +180,7 @@ def parse(source: str) -> Graph | None:
         elif label:
             existing.label = label
             existing.shape = _shape_of(match.group("shape"))
-        if match.group("cls") == "hot":
-            hot.add(nid)
+        tag(nid, match.group("cls"))
         if stack and nid not in graph.groups:
             # a node belongs to the group that defines it, not to one that only links it later
             group, bare = stack[-1], not label
@@ -182,8 +198,10 @@ def parse(source: str) -> Graph | None:
             continue
         if line.startswith("%%") or re.match(r"^(classDef|style|linkStyle|direction)\b", line):
             continue
-        if m := re.match(r"^class\s{1,4}([\w,가-힣][\w,가-힣 ]{0,200}?)\s{1,4}hot\b", line):
-            hot.update(x.strip() for x in m.group(1).split(","))
+        if m := re.match(
+                r"^class\s{1,4}([\w,가-힣][\w,가-힣 ]{0,200}?)\s{1,4}(\w+)\s{0,3};?$", line):
+            for x in m.group(1).split(","):
+                tag(x.strip(), m.group(2))
             continue
         if m := _SUBGRAPH.match(line):
             gid, label = m.group(1), (m.group(2) or m.group(1)).strip()
@@ -195,8 +213,7 @@ def parse(source: str) -> Graph | None:
                 stack.pop()
             continue
         if m := re.match(r"^([A-Za-z0-9_가-힣]+):::(\w+)$", line):
-            if m.group(2) == "hot":
-                hot.add(m.group(1))
+            tag(m.group(1), m.group(2))
             continue
         # chain: node (arrow node)*
         pos = 0
@@ -223,6 +240,16 @@ def parse(source: str) -> Graph | None:
     for nid in hot:
         if nid in graph.nodes:
             graph.nodes[nid].hot = True
+    for nid in frozen:
+        if nid in graph.nodes and nid not in hot:
+            graph.nodes[nid].frozen = True
+    # the writer's figure caption is not a part of the figure (the caption is taken apart)
+    for nid in [n for n, v in graph.nodes.items() if _CAPTION_NODE.match(v.label)
+                or (nid_is_caption(n) and not any(e.b == n for e in graph.edges))]:
+        graph.nodes.pop(nid)
+        for g in graph.groups.values():
+            if nid in g[1]:
+                g[1].remove(nid)
     # edge to a group: first member receives, last sends
     for edge in graph.edges:
         if edge.a in graph.groups and graph.groups[edge.a][1]:
@@ -611,6 +638,9 @@ def text_area(
         text_w, text_h = text_w - 2 * inset, text_h - 2 * inset
     elif node.shape == "diamond":
         text_w = w * 0.5  # diamond: inner half across
+    if node.shape == "cylinder":
+        # the lid takes the top: the label sits in the body
+        text_w, text_h = w * 0.92, h * 0.7
     icon = icon_for(node.label) if icons and node.shape in ("box", "round") else None
     icon_size = min(h * 0.42, 22.0)
     if icon and w - icon_size - 16 >= 48:
@@ -652,6 +682,60 @@ def _font_size(label: str, width: float, height: float) -> int:
     return 8
 
 
+def _hex_str(rgb: tuple[int, int, int]) -> str:
+    return f"{rgb[0]:02X}{rgb[1]:02X}{rgb[2]:02X}"
+
+
+def _crosses(path: list[tuple[float, float]], rect: tuple[float, float, float, float]) -> bool:
+    """Whether a square-cornered path runs through `rect` (x0, y0, x1, y1)."""
+    x0, y0, x1, y1 = rect
+    for (ax, ay), (bx, by) in zip(path, path[1:], strict=False):
+        if max(ax, bx) >= x0 and min(ax, bx) <= x1 and max(ay, by) >= y0 and min(ay, by) <= y1:
+            return True
+    return False
+
+
+def _clip_diamond(path: list[tuple[float, float]], box: tuple[float, float, float, float],
+                  end: bool) -> list[tuple[float, float]]:
+    """A path's end moved from the box's side onto the diamond drawn in it: the run's own axis
+    keeps its line, the tip lands on the outline."""
+    x0, y0, x1, y1 = box
+    cx, cy, hw, hh = (x0 + x1) / 2, (y0 + y1) / 2, (x1 - x0) / 2, (y1 - y0) / 2
+    pts = list(path)
+    i, j = (-1, -2) if end else (0, 1)
+    (px, py), (qx, qy) = pts[i], pts[j]
+    if abs(py - qy) < 0.5:  # a horizontal run: its tip slides along y
+        k = max(0.0, 1 - abs(py - cy) / hh)
+        tip = cx - hw * k if px < cx else cx + hw * k
+        pts[i] = (tip, py)
+    elif abs(px - qx) < 0.5:  # vertical
+        k = max(0.0, 1 - abs(px - cx) / hw)
+        tip = cy - hh * k if py < cy else cy + hh * k
+        pts[i] = (px, tip)
+    return pts
+
+
+def _to_outline(path, graph: Graph, boxes: dict, edge: Edge) -> list[tuple[float, float]]:
+    """`path` with its ends on the outline of a diamond node (ELK stops at the box's side)."""
+    for nid, end in ((edge.a, False), (edge.b, True)):
+        node = graph.nodes.get(nid)
+        if node is not None and node.shape == "diamond" and nid in boxes and len(path) >= 2:
+            path = _clip_diamond(path, boxes[nid], end)
+    return path
+
+
+#: zone tints, cycled over the groups: (panel, panel edge, node fill, node edge)
+_ZONES = (
+    ("FFF7E3", "E3CE8E", "FBE6AA", "B8962F"),  # cream
+    ("EAF3FC", "A6C8E8", "CDE3F6", "4F8FC7"),  # sky
+    ("E8F6EE", "A0D3B4", "C6EBD3", "3F9B6B"),  # mint
+    ("F1ECFA", "C0B0E4", "DCD1F2", "7C5FBF"),  # lilac
+)
+_HOT, _LOSS, _STROKE = "C2410C", "B42318", "6B7684"
+_FROZEN_FILL, _FROZEN_LINE, _FROZEN_INK = "E3EDF4", "7D9DB4", "3B4E5E"
+_LOSS_WORDS = re.compile(r"손실|loss|오차|penalty|페널티", re.I)
+
+
 def draw_pptx(
     slide,
     graph: Graph,
@@ -663,6 +747,7 @@ def draw_pptx(
     accent: tuple[float, float, float] | str,
     font: str = "",
     pt=None,
+    wide: bool = False,
 ) -> None:
     """Native shapes and routed lines for `graph`, in points (960 × 540 slide)."""
     from pptx.dml.color import RGBColor
@@ -677,7 +762,6 @@ def draw_pptx(
     primary_rgb = _hex(accent)
     # primary for emphasis, pale tint for boxes, neutrals for groups/lines/text
     primary = RGBColor(*primary_rgb)
-    panel = RGBColor(*_tint(primary_rgb, 0.92))
     text_dark = RGBColor(0x1F, 0x29, 0x37)
     text_light = RGBColor(0xFF, 0xFF, 0xFF)
     line_grey = RGBColor(0x94, 0xA3, 0xB8)
@@ -726,13 +810,25 @@ def draw_pptx(
 
     from app.services import elk_layout
 
+    paper = wide  # a figure on its own: the paper palette; else the deck's/report's accent
+    zone_of = {m: k % len(_ZONES) for k, (_l, members) in enumerate(graph.groups.values())
+               for m in members} if paper else {}
+    group_title = {m: label for label, members in graph.groups.values() for m in members}
+
+    def is_loss(edge: Edge) -> bool:
+        """A dashed line into a loss: red."""
+        return edge.dashed and bool(_LOSS_WORDS.search(" ".join((
+            edge.label, graph.nodes[edge.b].label if edge.b in graph.nodes else "",
+            group_title.get(edge.b, "")))))
+
     def polyline(path: list[tuple[float, float]], edge: Edge) -> None:
         builder = slide.shapes.build_freeform(pt(path[0][0]), pt(path[0][1]), scale=1.0)
         builder.add_line_segments([(pt(x), pt(y)) for x, y in path[1:]], close=False)
         line = builder.convert_to_shape()
         line.fill.background()
-        line.line.color.rgb = line_grey
-        line.line.width = pt(1.25)
+        line.line.color.rgb = RGBColor.from_string(
+            _LOSS if paper and is_loss(edge) else _STROKE if paper else "94A3B8")
+        line.line.width = pt(1.5 if paper else 1.25)
         flat(line)
         if edge.dashed:
             line.line.dash_style = MSO_LINE_DASH_STYLE.DASH
@@ -742,56 +838,116 @@ def draw_pptx(
             ln.append(ln.makeelement(qn("a:tailEnd"), head))
 
     kinds = {
-        "box": MSO_SHAPE.ROUNDED_RECTANGLE, "round": MSO_SHAPE.ROUNDED_RECTANGLE,
-        "diamond": MSO_SHAPE.DIAMOND, "circle": MSO_SHAPE.OVAL,
+        "box": MSO_SHAPE.RECTANGLE, "round": MSO_SHAPE.ROUNDED_RECTANGLE,
+        "diamond": MSO_SHAPE.DIAMOND, "circle": MSO_SHAPE.OVAL, "cylinder": MSO_SHAPE.CAN,
     }
 
     def node_shape(node: Node, x: float, y: float, w: float, h: float, size: float,
                    least: float = 8) -> None:
         s = slide.shapes.add_shape(
-            kinds.get(node.shape, MSO_SHAPE.ROUNDED_RECTANGLE), pt(x), pt(y), pt(w), pt(h)
+            kinds.get(node.shape, MSO_SHAPE.RECTANGLE), pt(x), pt(y), pt(w), pt(h)
         )
-        if node.shape in ("box", "round"):
-            s.adjustments[0] = 0.08 if node.shape == "box" else 0.18
-        # white with an accent edge, the emphasised one filled: the fixed-shape figures' tone
+        if node.shape == "round":
+            s.adjustments[0] = 0.3
+        elif node.shape == "cylinder":
+            s.adjustments[0] = min(0.3, 12.0 / max(1.0, h))
+        zone = _ZONES[zone_of[node.id]] if node.id in zone_of else None
+        # a step deeper than the zone's panel; a node outside any zone takes the accent
+        fill, edge_colour, ink = (
+            (RGBColor.from_string(zone[2]), RGBColor.from_string(zone[3]), text_dark) if zone
+            else (RGBColor(*_tint(primary_rgb, 0.85)), primary, text_dark))
+        if not paper:
+            fill, edge_colour = RGBColor(0xFF, 0xFF, 0xFF), primary
+        if node.hot and paper:
+            fill, edge_colour, ink = RGBColor.from_string(_HOT), RGBColor.from_string(_HOT), \
+                text_light
+        elif node.hot:
+            fill, edge_colour, ink = primary, primary, text_light
+        elif node.frozen:
+            fill, edge_colour, ink = (RGBColor.from_string(_FROZEN_FILL),
+                                      RGBColor.from_string(_FROZEN_LINE),
+                                      RGBColor.from_string(_FROZEN_INK))
         s.fill.solid()
-        s.fill.fore_color.rgb = primary if node.hot else RGBColor(0xFF, 0xFF, 0xFF)
-        if node.hot:
-            s.line.fill.background()
-        else:
-            s.line.color.rgb = primary
-            s.line.width = pt(1.25)
+        s.fill.fore_color.rgb = fill
+        s.line.color.rgb = edge_colour
+        s.line.width = pt(1.5)
+        if node.frozen:
+            s.line.dash_style = MSO_LINE_DASH_STYLE.SQUARE_DOT
         flat(s)
         text_w, text_h, _icon = text_area(node, w, h, False)
         lines, size = figure_text.fit(node.label, text_w, text_h, size, node.hot,
                                       min_size=least, pad=4)
-        set_text(
-            s, "\n".join(lines), size,
-            text_light if node.hot else text_dark, bold=node.hot,
-        )
+        set_text(s, "\n".join(lines), size, ink, bold=node.hot)
+        if node.frozen:
+            # a six-armed star on the corner: ice
+            d = min(14.0, max(9.0, h * 0.3))
+            star = slide.shapes.add_shape(MSO_SHAPE.STAR_6_POINT, pt(x + w - d * 0.8),
+                                          pt(y - d * 0.35), pt(d), pt(d))
+            star.fill.solid()
+            star.fill.fore_color.rgb = RGBColor.from_string("5BB5E8")
+            star.line.color.rgb = RGBColor.from_string(_FROZEN_LINE)
+            star.line.width = pt(0.75)
+            flat(star)
 
-    if (laid := elk_layout.place(graph, width, height)) is not None:
-        # laid out by ELK: frames, then boxes, then its square routes
-        for title, (x0, y0, x1, y1) in laid.frames:
-            g = slide.shapes.add_shape(
-                MSO_SHAPE.ROUNDED_RECTANGLE, pt(left + x0), pt(top + y0), pt(x1 - x0),
-                pt(y1 - y0),
-            )
-            g.adjustments[0] = min(0.12, 10.0 / max(1.0, min(x1 - x0, y1 - y0)))
-            g.fill.solid()
-            g.fill.fore_color.rgb = panel
+    def panel(shape_x0: float, y0: float, x1: float, y1: float, gid: str | None):
+        """A group's pale zone, its edge a step deeper."""
+        z = zone(gid)
+        g = slide.shapes.add_shape(
+            MSO_SHAPE.ROUNDED_RECTANGLE, pt(shape_x0), pt(y0), pt(x1 - shape_x0), pt(y1 - y0))
+        g.adjustments[0] = min(0.12, 10.0 / max(1.0, min(x1 - shape_x0, y1 - y0)))
+        g.fill.solid()
+        g.fill.fore_color.rgb = RGBColor.from_string(z[0])
+        if paper:
+            g.line.color.rgb = RGBColor.from_string(z[1])
+            g.line.width = pt(1.0)
+            g.line.dash_style = MSO_LINE_DASH_STYLE.DASH
+        else:
             g.line.fill.background()
-            flat(g)
-            set_text(g, title, max(8, round(elk_layout.TITLE_PT * min(laid.scale, 1.0))),
-                     primary, bold=True, anchor=MSO_ANCHOR.TOP)
-            g.text_frame.margin_top = pt(4 * laid.scale)
+        flat(g)
+
+    def title_over(title: str, gid: str | None, x: float, y: float, size: float,
+                   paths: list[list[tuple[float, float]]]) -> None:
+        """A zone's title at its top left, after the lines: a line that would run through its
+        words is cut behind a patch of the zone's own colour."""
+        w = figure_text.width(title, size, True) + 8
+        h = size * figure_text.LINE + 2
+        tb = slide.shapes.add_textbox(pt(x), pt(y), pt(w), pt(h))
+        crossed = any(
+            _crosses(path, (x, y, x + w, y + h)) for path in paths)
+        if crossed:
+            tb.fill.solid()
+            tb.fill.fore_color.rgb = RGBColor.from_string(zone(gid)[0])
+        set_text(tb, title, size, RGBColor.from_string(zone(gid)[3]), bold=True,
+                 anchor=MSO_ANCHOR.TOP)
+        tb.text_frame.word_wrap = False
+        tb.text_frame.margin_top = tb.text_frame.margin_bottom = pt(0)
+        for para in tb.text_frame.paragraphs:
+            para.alignment = PP_ALIGN.LEFT
+
+    zone_of_group = {gid: k for k, gid in enumerate(graph.groups)}
+    accent_zone = (_hex_str(_tint(primary_rgb, 0.92)), "", "", _hex_str(primary_rgb))
+
+    def zone(gid: str | None) -> tuple[str, str, str, str]:
+        """A group's colours: panel, panel edge, node fill, node edge/title."""
+        if not paper:
+            return accent_zone
+        return _ZONES[zone_of_group.get(gid or "", 0) % len(_ZONES)]
+
+    if (laid := elk_layout.place(graph, width, height, wide)) is not None:
+        # laid out by ELK: zones, then boxes, then its square routes, then the zone titles
+        for (_t, (x0, y0, x1, y1)), gid in zip(laid.frames, laid.frame_ids, strict=True):
+            panel(left + x0, top + y0, left + x1, top + y1, gid)
         size = min(14.0, laid.text_pt)
         for nid, (x0, y0, x1, y1) in laid.boxes.items():
             node_shape(graph.nodes[nid], left + x0, top + y0, x1 - x0, y1 - y0, size,
                        least=min(8.0, size))
         label_pt = max(7, round(elk_layout.EDGE_PT * min(laid.scale, 1.0)))
+        paths = []
         for edge, path, _label in laid.links:
-            polyline([(left + x, top + y) for x, y in path], edge)
+            path = _to_outline(path, graph, laid.boxes, edge)
+            path = [(left + x, top + y) for x, y in path]
+            paths.append(path)
+            polyline(path, edge)
         for edge, _path, label in laid.links:
             if label is None:
                 continue
@@ -804,12 +960,18 @@ def draw_pptx(
             set_text(tb, edge.label, label_pt, label_grey)
             tb.text_frame.margin_top = tb.text_frame.margin_bottom = pt(0)
             tb.text_frame.margin_left = tb.text_frame.margin_right = pt(1)
+        title_pt = max(8, round(elk_layout.TITLE_PT * min(laid.scale, 1.0)))
+        for (title, (x0, y0, _x1, _y1)), gid in zip(laid.frames, laid.frame_ids, strict=True):
+            title_over(title, gid, left + x0 + 8 * laid.scale, top + y0 + 4 * laid.scale,
+                       title_pt, paths)
         return
 
     placed = layout(graph, width, height)
     # group backgrounds first (under members)
     pad, title_room = 8.0, 16.0
     frames: list[tuple[float, float, float, float]] = []
+    titles: list[tuple[str, str | None, float, float, float]] = []
+    drawn: list[list[tuple[float, float]]] = []
     for label, members in flow_layout.frames(graph, placed):
         inside = [placed[m] for m in members if m in placed]
         if not inside:
@@ -827,18 +989,12 @@ def draw_pptx(
             continue  # would cover an outside shape: skip
         x0, y0 = max(x0, left - pad), max(y0, top - pad - title_room)
         frames.append((x0, y0, x1, y1))
-        g = slide.shapes.add_shape(
-            MSO_SHAPE.ROUNDED_RECTANGLE, pt(x0), pt(y0), pt(x1 - x0), pt(y1 - y0)
-        )
-        g.adjustments[0] = 0.06
-        # a pale panel of the accent, as the fixed-shape figures draw a group (`figure_kinds`)
-        g.fill.solid()
-        g.fill.fore_color.rgb = panel
-        g.line.fill.background()
-        flat(g)
+        gid = next((g for g, (_l, mem) in graph.groups.items() if members and members[0] in mem),
+                   None)
+        panel(x0, y0, x1, y1, gid)
         # rows printed at own size: 10 pt title
-        title_pt = 10 if any(p.row >= 0 for p in placed.values()) else 9
-        set_text(g, label, title_pt, primary, bold=True, anchor=MSO_ANCHOR.TOP)
+        titles.append((label, gid, x0 + 8, y0 + 4,
+                       10.0 if any(p.row >= 0 for p in placed.values()) else 9.0))
 
     for nid, node in graph.nodes.items():
         p = placed[nid]
@@ -875,6 +1031,7 @@ def draw_pptx(
             bounds=(left - 30, top - 40, left + width + 30, top + height + 40),
         )
         polyline(path, edge)
+        drawn.append(path)
         if edge.label:
             # beside a run, first free spot; long labels wrap to two lines
             two = len(edge.label) > 8
@@ -921,3 +1078,5 @@ def draw_pptx(
         flat(note)
         set_text(note, text, 8, label_grey)
         note.text_frame.margin_top = note.text_frame.margin_bottom = pt(0)
+    for label, gid, tx, ty, size in titles:
+        title_over(label, gid, tx, ty, size, drawn)

@@ -20,12 +20,14 @@ _TIMEOUT = httpx.Timeout(90.0, connect=5.0)
 _MARGIN = 18.0
 
 
-def figure_size(graph: diagram_shapes.Graph,
-                box: tuple[float, float] | None = None) -> tuple[float, float]:
+def figure_size(graph: diagram_shapes.Graph, box: tuple[float, float] | None = None,
+                wide: bool = False) -> tuple[float, float]:
     """Figure box in points within a 16:9 slide; flows sized in rows for the text column, and a
     structure ELK laid out fitted to `box` (the text column by default)."""
-    if (laid := elk_layout.frame_size(graph, box)) is not None:
+    if (laid := elk_layout.frame_size(graph, box, wide)) is not None:
         return laid
+    if wide and (rows := flow_layout.wide_frame(graph)) is not None:
+        return rows
     if (rows := flow_layout.frame_size(graph)) is not None:
         return rows
     placed = diagram_shapes.layout(graph, 100, 100)
@@ -48,7 +50,7 @@ def figure_size(graph: diagram_shapes.Graph,
 
 
 def figure_deck(source: str, accent: str = "#2563EB",
-                box: tuple[float, float] | None = None) -> bytes | None:
+                box: tuple[float, float] | None = None, wide: bool = False) -> bytes | None:
     """One-slide .pptx of the figure, or None if not drawable; `box`, the slide box it will
     fill, picks the layout (rows for a tall one)."""
     from pptx import Presentation
@@ -63,7 +65,7 @@ def figure_deck(source: str, accent: str = "#2563EB",
         width, height = figure_kinds.size(slots, box)
         lead = 0.0
     else:
-        width, height = figure_size(graph, box)
+        width, height = figure_size(graph, box, wide)
         lead = 8.0 if graph.groups else 0.0
     deck = Presentation()
     deck.slide_width = Pt(width + 2 * _MARGIN)
@@ -79,7 +81,7 @@ def figure_deck(source: str, accent: str = "#2563EB",
         diagram_shapes.draw_pptx(
             slide, graph,
             left=_MARGIN, top=_MARGIN + lead,
-            width=width, height=height, accent=accent,
+            width=width, height=height, accent=accent, wide=wide,
         )
     out = io.BytesIO()
     deck.save(out)
@@ -87,13 +89,14 @@ def figure_deck(source: str, accent: str = "#2563EB",
 
 
 async def render_png(source: str, accent: str = "#2563EB",
-                     box: tuple[float, float] | None = None) -> bytes | None:
-    """Figure PNG from its python-pptx slide, or None; `box` as in `figure_deck`."""
+                     box: tuple[float, float] | None = None, wide: bool = False) -> bytes | None:
+    """Figure PNG from its python-pptx slide, or None; `box` as in `figure_deck`; `wide`, a
+    figure on its own, takes a landscape layout."""
     base = settings.print_base_url.strip().rstrip("/")
     if not base:
         return None
-    await elk_layout.prepare([source])
-    blob = figure_deck(source, accent, box)
+    await elk_layout.prepare([source], wide)
+    blob = figure_deck(source, accent, box, wide)
     if blob is None:
         return None
     try:

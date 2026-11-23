@@ -26,7 +26,7 @@ WHITE = "#FFFFFF"
 
 #: shape labels for the choice; only KINDS are drawn here, the rest stay mermaid
 CHOICES = {
-    "steps": "one line of 3-7 phases, one after another, with no branches, no second flow, "
+    "steps": "one line of 3-6 phases, one after another, with no branches, no second flow, "
              "nothing looping back and no list of tasks under each phase",
     "cycle": "3-6 stages that repeat in a loop (PDCA, a feedback cycle, a life cycle)",
     "house": "a framework: one goal on top, 2-5 parallel areas under it, and 1-3 foundations "
@@ -37,7 +37,8 @@ CHOICES = {
                 "a protocol)",
     "options": "three or more options compared",
     "axes": "two axes crossing (a positioning map, a 2×2 matrix)",
-    "stages": "3-5 phases one after another where the description lists two or more tasks "
+    "stages": "3-5 phases (never more) one after another where the description lists two or "
+              "more tasks "
               "under most phases; a later result may feed back to an earlier phase",
     "lanes": "two flows side by side (indexing and querying, ordering and delivery), each a "
              "line of steps, optionally sharing one store",
@@ -175,13 +176,24 @@ def _repeats(text: str, said: str) -> bool:
     return bool(words) and all(word in said for word in words)
 
 
+#: a step's own number written into its name (「1단계 수집」, 「2. 정제」, 「Step 3: Train」): the
+#: figure numbers its steps itself
+_ORDINAL = re.compile(r"^\s*(?:(?:step|phase|단계)\s*\d{1,2}|\d{1,2}\s*(?:단계|\)|\.|:))"
+                      r"\s*[:.\-–)]?\s*", re.I)
+
+
+def _unnumbered(text: str) -> str:
+    stripped = _ORDINAL.sub("", text, count=1)
+    return stripped if len(stripped) >= 2 else text
+
+
 def _named(value: Any, limit: int = 24) -> dict[str, str] | None:
     """`{"name", "note"?, "en"?}` from a dict or a bare name."""
     if isinstance(value, str):
         value = {"name": value}
     if not isinstance(value, dict):
         return None
-    name = _text(value.get("name"), limit)
+    name = _text(_unnumbered(str(value.get("name") or "")), limit)
     if not name:
         return None
     out = {"name": name}
@@ -291,8 +303,11 @@ def _spec(data: Any, language: str = "ko") -> dict[str, Any] | None:
     lang = "en" if language == "en" else "ko"
     if kind in ("steps", "cycle"):
         key = "steps" if kind == "steps" else "stages"
-        items = [n for v in (data.get(key) or [])[: 7 if kind == "steps" else 6]
-                 if (n := _named(v))]
+        said = data.get(key) or []
+        if len(said) > 6:
+            # more parts than the figure holds: a longer flow is drawn as a flowchart, not cut
+            return None
+        items = [n for v in said if (n := _named(v))]
         if len(items) < 3:
             return None
         out: dict[str, Any] = {"kind": kind, "lang": lang, key: items}
@@ -448,12 +463,14 @@ def _messages(data: dict, lang: str) -> dict[str, Any] | None:
 
 def _stages(data: dict, lang: str) -> dict[str, Any] | None:
     stages = []
-    for value in (data.get("stages") or [])[:5]:
+    if len(data.get("stages") or []) > 5:
+        return None  # more phases than the figure holds: a flowchart, not a cut one
+    for value in (data.get("stages") or []):
         named = _named(value, 16)
         if named is None:
             continue
         items = [t for v in ((value.get("items") or []) if isinstance(value, dict) else [])[:4]
-                 if (t := _text(v, 24))]
+                 if (t := _text(_unnumbered(str(v)), 24))]
         named.pop("en", None)
         stages.append({**named, "items": items})
     if len(stages) < 3:

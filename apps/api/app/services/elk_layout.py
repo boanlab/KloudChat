@@ -12,6 +12,7 @@ import hashlib
 import itertools
 import json
 import logging
+import math
 from collections import OrderedDict
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -45,6 +46,10 @@ GROW = 1.15
 SHORT, LEGIBLE = 6, 10.0
 #: the document figure box: the printed column, and a page's room
 FIGURE = (410.0, 680.0)
+#: a figure on its own (a paper's two-column width, a page's third) takes the landscape box and
+#: prefers a layout 1.3-3.5 times wider than tall; those that wrap their layers are tried too
+PAPER = (720.0, 340.0)
+RATIO = (1.3, 3.5)
 _DIRECTION = {"LR": "RIGHT", "TB": "DOWN"}
 _SPACING = {
     "elk.layered.spacing.nodeNodeBetweenLayers": 44,
@@ -184,7 +189,7 @@ def _owners(graph: Graph) -> dict[str, str]:
     return {n: owner.get(n, n) for n in graph.nodes}
 
 
-def applies(graph: Graph) -> bool:
+def applies(graph: Graph, wide: bool = False) -> bool:
     """A structure with groups: not a comparison, and not a flow of phases (the groups and the
     lone nodes one after another, each group a line of its own); or a short figure without
     groups that forks and joins. Longer figures without groups fold into rows instead."""
@@ -192,6 +197,8 @@ def applies(graph: Graph) -> bool:
 
     if _compares(graph):
         return False
+    if wide and graph.groups:
+        return True  # a figure of its own: every zoned figure is laid out here
     edges, weak = _edges(graph)
     if not graph.groups:
         return (len(graph.nodes) >= 5 and _branchy(graph)
@@ -240,7 +247,7 @@ def _label(text: str, size: float, bold: bool = False) -> dict:
             "height": len(parts) * size * figure_text.LINE + 2}
 
 
-def _requests(graph: Graph) -> list[dict]:
+def _requests(graph: Graph, wide: bool = False) -> list[dict]:
     """ELK graphs for `graph`, one per flow direction, roomy and compact (group `direction` is
     not sent); links against the flow are sent reversed so the cycle is cut where
     `feedback` says."""
@@ -257,7 +264,11 @@ def _requests(graph: Graph) -> list[dict]:
     own = _DIRECTION.get(graph.direction, "DOWN")
     other = "DOWN" if own == "RIGHT" else "RIGHT"
     out = []
-    for (line_w, factor), flow in itertools.product(((LINE_W, 1.0), COMPACT), (own, other)):
+    plans = [(c, flow, {}) for c, flow in itertools.product(((LINE_W, 1.0), COMPACT), (own, other))]
+    if wide:  # layers wrapped into rows
+        plans += [(c, "RIGHT", {"elk.layered.wrapping.strategy": "MULTI_EDGE",
+                                "elk.aspectRatio": "2.2"}) for c in ((LINE_W, 1.0), COMPACT)]
+    for (line_w, factor), flow, extra in plans:
         height = _height(graph, line_w)
         spacing = _spacing(factor)
 
@@ -276,7 +287,7 @@ def _requests(graph: Graph) -> list[dict]:
                 "layoutOptions": {
                     "elk.padding": f"[top={TITLE},left={FRAME_PAD},bottom={FRAME_PAD},"
                                    f"right={FRAME_PAD}]",
-                    "elk.nodeLabels.placement": "[H_CENTER, V_TOP, INSIDE]",
+                    "elk.nodeLabels.placement": "[H_LEFT, V_TOP, INSIDE]",
                     "elk.nodeSize.constraints": "[NODE_LABELS]",
                     **spacing,
                 },
@@ -293,6 +304,7 @@ def _requests(graph: Graph) -> list[dict]:
                 "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
                 "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
                 **spacing,
+                **extra,
             },
             "children": children,
             "edges": edges,
@@ -305,7 +317,7 @@ def _key(requests: list[dict]) -> str:
                           .encode()).hexdigest()
 
 
-async def prepare(sources: Iterable[str]) -> None:
+async def prepare(sources: Iterable[str], wide: bool = False) -> None:
     """Lay out ahead, through the printer, each figure source here that ELK draws; a failure
     leaves those figures to the built-in layouts."""
     from app.services import diagram_shapes, figure_kinds
@@ -318,9 +330,9 @@ async def prepare(sources: Iterable[str]) -> None:
         if not source or figure_kinds.from_source(source) is not None:
             continue
         graph = diagram_shapes.parse(source)
-        if graph is None or not applies(graph):
+        if graph is None or not applies(graph, wide):
             continue
-        requests = _requests(graph)
+        requests = _requests(graph, wide)
         key = _key(requests)
         if key in _CACHE:
             _CACHE.move_to_end(key)
@@ -355,6 +367,7 @@ class Laid:
 
     boxes: dict[str, tuple[float, float, float, float]]
     frames: list[tuple[str, tuple[float, float, float, float]]]
+    frame_ids: list[str]
     links: list[tuple[Edge, list[tuple[float, float]], tuple[float, float, float, float] | None]]
     scale: float
 
@@ -367,12 +380,19 @@ def _fit(laid: dict, box: tuple[float, float]) -> float:
     return min(box[0] / laid["width"], box[1] / laid["height"], GROW)
 
 
-def _chosen(graph: Graph, box: tuple[float, float]) -> tuple[dict, float] | None:
+def _off_range(laid: dict) -> float:
+    """How far a layout's width:height is outside RATIO (0 inside), as a log distance."""
+    ratio = laid["width"] / max(1.0, laid["height"])
+    return max(0.0, math.log(RATIO[0] / ratio), math.log(ratio / RATIO[1]))
+
+
+def _chosen(graph: Graph, box: tuple[float, float],
+            wide: bool = False) -> tuple[dict, float] | None:
     """The cached layout whose text comes out largest in `box` (the writer's direction on a
     tie), with its scale; None when there is none, or a figure without groups would read small."""
-    if not applies(graph):
+    if not applies(graph, wide):
         return None
-    laid = _CACHE.get(_key(_requests(graph)))
+    laid = _CACHE.get(_key(_requests(graph, wide)))
     if laid is None:
         return None
     found = None
@@ -380,18 +400,26 @@ def _chosen(graph: Graph, box: tuple[float, float]) -> tuple[dict, float] | None
         scale = _fit(out, box)
         text = TEXT_PT * scale
         score = (min(text, LEGIBLE), round(text, 1), -rank)
+        if wide:
+            # a paper figure: a landscape layout first, then the largest text
+            score = (-round(_off_range(out), 2), *score)
         if found is None or score > found[0]:
             found = (score, out, scale)
     assert found is not None
+    if wide and _off_range(found[1]) > 0:
+        from app.services import flow_layout
+
+        if flow_layout.wide_frame(graph) is not None:
+            return None  # no layout of ELK's is landscape enough; rows are
     if not graph.groups and found[2] * TEXT_PT < LEGIBLE:
         return None
     return found[1], found[2]
 
 
-def place(graph: Graph, width: float, height: float) -> Laid | None:
+def place(graph: Graph, width: float, height: float, wide: bool = False) -> Laid | None:
     """`graph` laid out by ELK and fitted to `width` x `height`, centred; None when not drawn this
     way or its layout was not fetched (`prepare`)."""
-    chosen = _chosen(graph, (width, height))
+    chosen = _chosen(graph, (width, height), wide)
     if chosen is None:
         return None
     out, scale = chosen
@@ -404,6 +432,7 @@ def place(graph: Graph, width: float, height: float) -> Laid | None:
 
     boxes: dict[str, tuple[float, float, float, float]] = {}
     frames: list[tuple[str, tuple[float, float, float, float]]] = []
+    frame_ids: list[str] = []
     # positions are from the parent's corner; edges from their container's
     offsets: dict[str, tuple[float, float]] = {"root": (0.0, 0.0)}
 
@@ -414,6 +443,7 @@ def place(graph: Graph, width: float, height: float) -> Laid | None:
             if child["id"].startswith("g:"):
                 gid = child["id"][2:]
                 frames.append((graph.groups[gid][0], rect(x, y, child["width"], child["height"])))
+                frame_ids.append(gid)
                 walk(child, x, y)
             else:
                 boxes[child["id"]] = rect(x, y, child["width"], child["height"])
@@ -446,18 +476,19 @@ def place(graph: Graph, width: float, height: float) -> Laid | None:
             lb = laid["labels"][0]
             label = rect(ox + lb["x"], oy + lb["y"], lb["width"], lb["height"])
         links.append((edge, points, label))
-    return Laid(boxes, frames, links, scale)
+    return Laid(boxes, frames, frame_ids, links, scale)
 
 
-def frame_size(graph: Graph, box: tuple[float, float] | None = None) -> tuple[float, float] | None:
+def frame_size(graph: Graph, box: tuple[float, float] | None = None,
+               wide: bool = False) -> tuple[float, float] | None:
     """The figure's size in points fitted to `box` (the document figure box by default), or None
     when it is not drawn this way."""
-    box = box or FIGURE
-    chosen = _chosen(graph, box)
+    box = box or (PAPER if wide else FIGURE)
+    chosen = _chosen(graph, box, wide)
     if chosen is None:
         return None
     out, scale = chosen
     return out["width"] * scale, out["height"] * scale
 
 
-__all__ = ["FIGURE", "Laid", "applies", "feedback", "frame_size", "place", "prepare"]
+__all__ = ["FIGURE", "PAPER", "Laid", "applies", "feedback", "frame_size", "place", "prepare"]
