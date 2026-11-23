@@ -687,7 +687,7 @@ export function ConnectorsPage({
                 {current.originGone
                   ? t('공유가 끝나 쓸 수 없습니다')
                   : current.official
-                    ? t('공식')
+                    ? t('관리자가 공유한 공식 서버입니다')
                     : t('{name}님이 공유한 서버').replace('{name}', current.originOwnerName)}
               </p>
             )}

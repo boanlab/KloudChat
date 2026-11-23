@@ -5396,6 +5396,7 @@ const EN: Record<string, string> = {
   '공유가 끝나 쓸 수 없습니다': 'Sharing ended, so it cannot be used',
   '{name}님이 공유': 'Shared by {name}',
   '{name}님이 공유한 서버': 'Server shared by {name}',
+  '관리자가 공유한 공식 서버입니다': 'An official server shared by an administrator.',
   '스토어에서 필요한 서버를 가져오거나, MCP 서버 주소를 직접 등록하세요.': 'Get a server you need from the store, or register an MCP server address yourself.',
   '공개 주소의 MCP 서버를 등록합니다. 등록한 뒤 서버를 열면 우리 조직과 공유할 수 있습니다.': 'Register an MCP server at a public address. Once added, open it to share it with our organization.',
   '빠진 자격이 있습니다. 모두 입력해 주세요.': 'Some credentials are missing. Please fill in all of them.',
