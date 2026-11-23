@@ -81,6 +81,7 @@ _RULES = """
 ## 강조
 - 학습되는 부분이나 최종 출력 **하나**에만 `:::hot` 을 붙여라.
   예: `out[결과]:::hot`. 둘 이상에 붙이면 강조가 아니다.
+- 설명이 「학습하지 않고 고정」한다고 말한 모듈에만 `:::frozen` 을 붙인다(`:::hot` 과 겹치지 않게).
 - `style`, `classDef`, `linkStyle` 을 쓰지 마라. 색은 서식이 정한다.
 
 ## 캡션
@@ -195,6 +196,9 @@ def _mend(source: str) -> str:
 
 #: kinds a method figure (a model's or system's structure) is never drawn as
 _NOT_METHOD = ("steps", "messages")
+#: figures that are structures (a concept's parts and relations too): never a line of phases or
+#: a talk between parties
+_STRUCTURE = ("method", "concept")
 
 
 async def _fixed_kind(
@@ -207,7 +211,7 @@ async def _fixed_kind(
         model, figure_kinds.choose_messages(description, what), api_key, max_tokens=16
     )
     kind = figure_kinds.chosen(text)
-    if kind is None or (kind in _NOT_METHOD and figure == "method"):
+    if kind is None or (kind in _NOT_METHOD and figure in _STRUCTURE):
         # a method figure is a structure, never a line of phases or a talk between parties
         return None, usage
     text, more = await _complete(
@@ -219,7 +223,7 @@ async def _fixed_kind(
     got = (figure_kinds.from_source(drawn[0]) or {}).get("kind") if drawn else None
     # stages written without their tasks come back as a line of steps
     if got is None or (got != kind and (kind, got) != ("stages", "steps")) or (
-            got in _NOT_METHOD and figure == "method"):
+            got in _NOT_METHOD and figure in _STRUCTURE):
         log.info("figure slots for %s did not make the figure; drawing it as mermaid", kind)
         return None, usage
     return drawn, usage
@@ -310,8 +314,10 @@ async def draw_native(
     accent: str = ACCENT,
     material: str = "",
     relation: bool = False,
+    wide: bool = False,
 ) -> tuple[str, str, dict[str, Any], bytes]:
-    """One figure drawn natively to PNG: (source, caption, usage, png); no fallback."""
+    """One figure drawn natively to PNG: (source, caption, usage, png); no fallback; `wide`, a
+    figure on its own page, is laid out landscape."""
     source, caption, usage = await draw(
         description=description, figure=figure, model=model, api_key=api_key,
         language=language, slide=slide, material=material, relation=relation,
@@ -330,7 +336,9 @@ async def draw_native(
         caption = again or caption
         if diagram_shapes.parse(source) is None:
             raise Undrawable("not_drawable", usage)
-    png = await diagram_render.render_png(source, accent or ACCENT)
+    # `wide` only when asked: the deck and report callers draw to their own boxes
+    png = await diagram_render.render_png(
+        source, accent or ACCENT, **({"wide": True} if wide else {}))
     if not png:
         log.warning("figure not drawn: the picture renderer did not answer")
         raise Undrawable("renderer_unavailable", usage)

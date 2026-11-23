@@ -4639,6 +4639,7 @@ async def write_diagram(
             model=model["id"],
             api_key=api_key,
             language=payload.language,
+            wide=True,
         )
     except diagram_service.Undrawable as exc:
         # undrawable or no renderer: no picture, no browser fallback; writer tokens still charged

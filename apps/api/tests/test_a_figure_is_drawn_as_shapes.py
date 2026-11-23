@@ -32,7 +32,7 @@ def _writer(monkeypatch, answers: list[str]) -> list[dict]:
 def _renderer(monkeypatch, png: bytes | None) -> list[str]:
     seen: list[str] = []
 
-    async def render_png(source, accent="#2563EB"):
+    async def render_png(source, accent="#2563EB", box=None, wide=False):
         seen.append(accent)
         return png
 
@@ -247,7 +247,7 @@ async def test_a_figure_placed_on_a_slide_keeps_its_source_and_the_slide_s_accen
 
     accents: list[str] = []
 
-    async def render_png(source, accent="#2563EB"):
+    async def render_png(source, accent="#2563EB", box=None, wide=False):
         accents.append(accent)
         return _PNG
 
