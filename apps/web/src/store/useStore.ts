@@ -107,6 +107,7 @@ import { counters } from '@/lib/usage'
 import { setMaxUploadMb, setMediaUpload } from '@/lib/uploadLimit'
 import { LeaveCancelled, leaveOffice, officeDirty, saveOpenOffice } from '@/lib/officeGuard'
 import { searchCardOf } from '@/lib/privacy'
+import { FIGURE_STYLES, modelDrawsFigure } from '@/lib/figureRoute'
 import { imageModelId, type ImageEditSource } from '@/lib/imageEdit'
 import { leaveOnSignOut } from '@/lib/push'
 
@@ -2379,8 +2380,13 @@ export const useStore = create<State>((set, get) => ({
     const { promptId, answerId } = beginMediaTurn(set, id, prompt, true)
     beginRun(set, id)
     try {
-      // Figure chips go to a language model as a flowchart drawn with the deck-export shapes; never the image model.
-      const figure = opts.raw ? undefined : FIGURE_STYLES[imageOptions.style]
+      // Figure chips go to a language model as a flowchart drawn with the deck-export shapes, unless the picked
+      // picture model is an outside one: that model draws the figure itself (the server checks its labels).
+      const imageModel = pickedModel(get(), id, 'image')
+      const figure =
+        opts.raw || modelDrawsFigure(get().models.find((m) => m.id === imageModel))
+          ? undefined
+          : FIGURE_STYLES[imageOptions.style]
       if (figure) {
         try {
           const rows = [await drawFigure(id, prompt, figure, modelByKind.chat || undefined)]
@@ -2400,7 +2406,6 @@ export const useStore = create<State>((set, get) => ({
         }
         return
       }
-      const imageModel = pickedModel(get(), id, 'image')
       const rows = await sessionsApi.images(id, {
         prompt,
         model: imageModel,
@@ -5119,12 +5124,7 @@ function chargeCredits(set: Set, credits: number) {
   }))
 }
 
-/** Image-surface style chips that draw a figure instead of a picture, by figure kind. */
-export const FIGURE_STYLES: Record<string, 'method' | 'flow' | 'concept' | undefined> = {
-  구조도: 'method',
-  흐름도: 'flow',
-  개념도: 'concept',
-}
+export { FIGURE_STYLES }
 
 /** Why a figure came back undrawn, in the person's words. */
 const FIGURE_UNDRAWABLE = '이 도식은 그릴 수 없습니다. 단계를 줄여 다시 시도해 주세요.'
