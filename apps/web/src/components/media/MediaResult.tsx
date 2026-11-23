@@ -4,6 +4,7 @@ import { Button, ButtonLink } from '@/components/ui'
 import { fileUrl } from '@/lib/api'
 import { copyText } from '@/lib/clipboard'
 import { cn } from '@/lib/utils'
+import { VOICE_TONE } from '@/lib/voices'
 import { useStore } from '@/store/useStore'
 import type { AudioArtifact, ImageArtifact, VideoArtifact } from '@/types'
 import { useT } from '@/lib/useT'
@@ -35,6 +36,35 @@ function Waveform({ peaks }: { peaks: number[] }) {
         />
       ))}
     </div>
+  )
+}
+
+/** What the narration says: the model's own transcript, else the text it was asked to read. */
+function spokenText(a: AudioArtifact): string {
+  return (a.transcript || (a.audioKind === 'narration' ? a.prompt : '')).trim()
+}
+
+/** The spoken text, folded away until asked for, with a copy button. */
+function SpokenText({ text }: { text: string }) {
+  const t = useT()
+  const [copied, setCopied] = useState(false)
+  return (
+    <details className="mt-2 max-w-md rounded-control border border-line bg-panel px-3 py-2 text-sm" data-testid="spoken-text">
+      <summary className="cursor-pointer text-xs font-medium text-muted">{t('읽은 글 보기')}</summary>
+      <p className="mt-2 whitespace-pre-wrap leading-relaxed">{text}</p>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="mt-1.5"
+        onClick={async () => {
+          if (!(await copyText(text))) return
+          setCopied(true)
+          setTimeout(() => setCopied(false), 1400)
+        }}
+      >
+        {copied ? t('복사됨') : t('읽은 글 복사')}
+      </Button>
+    </details>
   )
 }
 
@@ -334,8 +364,10 @@ export function MediaResult({
           {caption([
             t(audioKindLabel[a.audioKind]),
             a.durationSec > 0 ? t.n('{n}초', a.durationSec) : '',
+            a.voice ? `${a.voice}${VOICE_TONE[a.voice] ? ` (${t(VOICE_TONE[a.voice])})` : ''}` : '',
             modelLabel(a.model),
           ].filter(Boolean))}
+          {spokenText(a) && <SpokenText text={spokenText(a)} />}
         </div>
       ))}
     </div>

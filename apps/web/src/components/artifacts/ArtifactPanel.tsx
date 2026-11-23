@@ -647,6 +647,9 @@ export function MediaPanel({
   artifact: Extract<Artifact, { kind: 'image' | 'audio' | 'video' }>
 }) {
   const t = useT()
+  const models = useStore((s) => s.models)
+  // Same friendly name the chat shows (「Google · Veo 3.1 Lite」), not the gateway id.
+  const model = models.find((m) => m.id === artifact.model)?.label ?? artifact.model
   const meta =
     artifact.kind === 'image'
       ? [
@@ -663,20 +666,20 @@ export function MediaPanel({
             : []),
           [t('스타일'), artifact.style],
           // No seed row: upstream ignores the seed.
-          [t('모델'), artifact.model],
+          [t('모델'), model],
         ]
       : artifact.kind === 'audio'
         ? [
             [t('프롬프트'), artifact.prompt],
             [t('유형'), t(audioKindLabel[artifact.audioKind])],
             [t('길이'), t.n('{n}초', artifact.durationSec)],
-            [t('모델'), artifact.model],
+            [t('모델'), model],
           ]
         : [
             [t('프롬프트'), artifact.prompt],
             [t('길이'), t.n('{n}초', artifact.durationSec)],
             [t('비율'), artifact.aspect],
-            [t('모델'), artifact.model],
+            [t('모델'), model],
           ]
 
   // Frame follows actual aspect, not requested.
@@ -899,7 +902,17 @@ export function ArtifactPanel() {
               v{artifact.version} · {t('{when} 수정').replace('{when}', relativeTime(artifact.updatedAt))}
             </p>
           </div>
-          <Badge>{'language' in artifact ? (artifact.language ?? artifact.kind) : artifact.kind}</Badge>
+          <Badge>
+            {artifact.kind === 'video'
+              ? t('동영상')
+              : artifact.kind === 'image'
+                ? t('이미지')
+                : artifact.kind === 'audio'
+                  ? t('오디오')
+                  : 'language' in artifact
+                    ? (artifact.language ?? artifact.kind)
+                    : artifact.kind}
+          </Badge>
           {'content' in artifact && (
             <Button
               variant="ghost"

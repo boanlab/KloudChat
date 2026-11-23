@@ -2269,6 +2269,30 @@ export const useStore = create<State>((set, get) => ({
     }
     if (fresh) opts.onSession?.(id)
     const { promptId } = beginMediaTurn(set, id, prompt, false)
+    // Show the progress card at once; the server row replaces it when the request returns.
+    const pendingId = uid('j')
+    const startedAt = new Date().toISOString()
+    set((s) => ({
+      jobs: [
+        {
+          id: pendingId,
+          sessionId: id,
+          kind: 'av',
+          status: 'running',
+          progress: 0,
+          stage: '동영상을 만드는 중',
+          creditsUsed: 0,
+          creditsEstimated: 0,
+          prompt,
+          model: pickedModel(get(), id, 'av') ?? '',
+          params: null,
+          pending: true,
+          createdAt: startedAt,
+          finishedAt: null,
+        },
+        ...s.jobs,
+      ],
+    }))
     try {
       const job = await jobsApi.create(id, {
         prompt,
@@ -2278,7 +2302,9 @@ export const useStore = create<State>((set, get) => ({
         audio: avOptions.withAudio,
         aspect: avOptions.aspect,
       })
-      set((s) => ({ jobs: [toJob(job), ...s.jobs.filter((j) => j.id !== job.id)] }))
+      set((s) => ({
+        jobs: [toJob(job), ...s.jobs.filter((j) => j.id !== job.id && j.id !== pendingId)],
+      }))
       void get().followJob(id!, job.id)
     } catch (err) {
       dropMediaTurn(set, id!, promptId)
@@ -2304,7 +2330,7 @@ export const useStore = create<State>((set, get) => ({
             createdAt: new Date().toISOString(),
             finishedAt: new Date().toISOString(),
           },
-          ...s.jobs,
+          ...s.jobs.filter((j) => j.id !== pendingId),
         ],
       }))
     }

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Loader2, RotateCcw, TriangleAlert, X } from 'lucide-react'
 import { Button } from '@/components/ui'
 import { cn } from '@/lib/utils'
@@ -6,10 +7,29 @@ import type { Job } from '@/types'
 import { useT } from '@/lib/useT'
 import { RelTime } from '@/components/ui/RelTime'
 
+/** Whole seconds since the job began, ticking once a second while it runs. */
+function useElapsed(iso: string, running: boolean): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!running) return
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [running])
+  return Math.max(0, Math.floor((now - new Date(iso).getTime()) / 1000))
+}
+
+function clock(sec: number): string {
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`
+}
+
 /** Running media job: progress, failure, retry; finished renders nothing (the turn shows the clip). */
 export function JobCard({ job }: { job: Job }) {
   const t = useT()
   const { cancelJob, retryJob } = useStore()
+  const running = job.status === 'running' || job.status === 'queued'
+  const elapsed = useElapsed(job.createdAt, running)
+  // No percent from the provider: say so with elapsed time and a pulsing bar, never a made-up number.
+  const known = job.progress > 0
 
   if (job.status === 'running' || job.status === 'queued') {
     return (
@@ -17,15 +37,22 @@ export function JobCard({ job }: { job: Job }) {
         <div className="flex items-center gap-2.5">
           <Loader2 size={15} className="shrink-0 animate-spin text-accent" />
           <span className="flex-1 text-base font-medium">{t(job.stage)}</span>
-          <span className="text-xs tabular-nums text-faint">{job.progress}%</span>
-          <Button variant="ghost" size="icon" aria-label={t('취소')} onClick={() => void cancelJob(job.id)}>
-            <X size={14} />
-          </Button>
+          <span className="text-xs tabular-nums text-faint" data-testid="job-progress">
+            {known ? `${job.progress}%` : `${t('경과')} ${clock(elapsed)}`}
+          </span>
+          {!job.pending && (
+            <Button variant="ghost" size="icon" aria-label={t('취소')} onClick={() => void cancelJob(job.id)}>
+              <X size={14} />
+            </Button>
+          )}
         </div>
         <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-elevated">
           <div
-            className="h-full rounded-full bg-accent transition-[width] duration-500 ease-out"
-            style={{ width: `${job.progress}%` }}
+            className={cn(
+              'h-full rounded-full bg-accent transition-[width] duration-500 ease-out',
+              !known && 'animate-pulse',
+            )}
+            style={{ width: known ? `${job.progress}%` : '100%', opacity: known ? 1 : 0.35 }}
           />
         </div>
         <p className="mt-2 text-xs text-faint">

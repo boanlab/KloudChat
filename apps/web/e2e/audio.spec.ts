@@ -32,6 +32,10 @@ test('내레이션을 만들면 오디오 아티팩트로 남는다', async ({ p
   await expect(page.getByRole('menuitem', { name: '내레이션' })).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(page.getByText(/Enter로 생성/)).toBeVisible()
+  // Each voice carries a short tone description.
+  await page.getByRole('button', { name: /^목소리/ }).click()
+  await expect(page.getByRole('menuitem', { name: /alloy.*중립적/ })).toBeVisible()
+  await page.keyboard.press('Escape')
 
   await page.getByLabel('프롬프트 입력').fill('다음 문장을 읽어줘: 자동 검증용 음성입니다.')
   await page.getByLabel('프롬프트 입력').press('Enter')
@@ -64,6 +68,9 @@ test('내레이션을 만들면 오디오 아티팩트로 남는다', async ({ p
     .not.toBeNull()
   const stored = await fresh()
 
+  // The spoken text sits folded on the result card.
+  await page.getByText('읽은 글 보기').first().click()
+  await expect(page.getByTestId('spoken-text').first()).toContainText('자동 검증용 음성')
   expect(stored.data.audioKind).toBe('narration')
   expect(stored.data.src).toContain('/api/files/')
   // A duration proves the WAV container was built around the raw PCM.
