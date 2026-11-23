@@ -98,7 +98,7 @@ test('the panel shares the artifact alone, not its conversation', async ({ page 
   await panel.getByRole('button', { name: '이 아티팩트만 공유' }).click()
   const dialog = page.getByRole('dialog', { name: '이 아티팩트만 공유' })
   await expect(dialog).toContainText('대화는 빼고 이 아티팩트만 보입니다.')
-  await dialog.getByRole('button', { name: /링크가 있는 사람/ }).click()
+  await dialog.getByRole('button', { name: /링크를 아는 사람/ }).click()
   await dialog.getByRole('button', { name: '링크 만들기' }).click()
   await expect(dialog.getByRole('textbox', { name: '공유 링크' })).toHaveValue(/\/share\/tok-artifact$/)
   expect(state.created).toEqual([{ artifactId, scope: 'link' }])
