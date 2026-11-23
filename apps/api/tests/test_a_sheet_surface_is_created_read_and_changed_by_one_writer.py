@@ -105,6 +105,21 @@ async def test_a_sheet_cannot_be_made_without_its_file_or_from_a_non_sheet(clien
     assert bad.status_code == 422
 
 
+@pytest.mark.asyncio
+async def test_a_person_who_lost_the_race_can_download_their_edits_without_saving_them(client):
+    sheet_id = (await client.post("/artifacts/xlsx", json={})).json()["id"]
+    first = [{"sheet": "시트1", "r": 0, "c": 0, "v": "다른 사람"}]
+    await client.patch(f"/artifacts/{sheet_id}/xlsx/cells", json={"expectedVersion": 1, "ops": first})
+    mine = [{"sheet": "시트1", "r": 1, "c": 0, "v": "내 편집"}]
+    got = await client.post(
+        f"/artifacts/{sheet_id}/xlsx/edits-file", json={"baseVersion": 1, "ops": mine})
+    assert got.status_code == 200
+    ws = openpyxl.load_workbook(io.BytesIO(got.content)).active
+    # my edits on the version I read: the other person's cell is not in it
+    assert ws["A2"].value == "내 편집" and ws["A1"].value is None
+    assert (await client.get(f"/artifacts/{sheet_id}/xlsx/model")).json()["version"] == 2
+
+
 def test_the_sheet_surface_is_optional_and_off_by_default():
     assert SessionKind.sheet.value in settings_store.OPTIONAL_KINDS
     assert SessionKind.sheet.value not in settings_store.DEFAULT_ENABLED_KINDS

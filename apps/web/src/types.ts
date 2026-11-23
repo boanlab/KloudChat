@@ -1198,6 +1198,17 @@ export interface PptxArtifact extends ArtifactBase {
   form?: FollowedForm
 }
 
+/** An Excel sheet: the file is read as a model (`artifactsApi.sheetModel`) and changed as cells. */
+export interface XlsxArtifact extends ArtifactBase {
+  kind: 'xlsx'
+  format: 'xlsx'
+  size: number
+  /** Sheet names, in order. */
+  sheets?: string[]
+  /** Cell text, for search and cards. */
+  text?: string
+}
+
 export type Artifact =
   | ReportArtifact
   | DeckArtifact
@@ -1209,6 +1220,7 @@ export type Artifact =
   | HwpArtifact
   | DocxArtifact
   | PptxArtifact
+  | XlsxArtifact
 
 /* ── workspace ──────────────────────────────────────────────────────── */
 

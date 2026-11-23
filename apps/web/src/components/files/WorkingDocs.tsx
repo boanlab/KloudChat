@@ -1,4 +1,4 @@
-import { Download, FilePenLine, FileStack, FileText, Loader2, MessageSquare, MoreHorizontal, Pencil, Presentation, Trash2 } from 'lucide-react'
+import { Download, FilePenLine, FileStack, FileText, Loader2, MessageSquare, MoreHorizontal, Pencil, Presentation, Table2, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ReuseItems } from '@/components/artifacts/ResultActions'
@@ -19,6 +19,7 @@ const KIND_LABEL: Record<WorkingKind, string> = {
   hwp: '한글 문서',
   docx: 'Word 문서',
   pptx: 'PowerPoint 문서',
+  xlsx: 'Excel 문서',
   report: '웹 보고서',
   deck: '웹 슬라이드',
 }
@@ -35,7 +36,7 @@ const SORT_FIELDS: SortField<WorkingSort>[] = [
 const GRID = 'sm:grid sm:grid-cols-[1.75rem_minmax(0,1fr)_8.5rem_4rem_8rem_13.5rem] sm:items-center sm:gap-x-3'
 
 function KindGlyph({ kind }: { kind: WorkingKind }) {
-  const Icon = kind === 'pptx' || kind === 'deck' ? Presentation : FileText
+  const Icon = kind === 'pptx' || kind === 'deck' ? Presentation : kind === 'xlsx' ? Table2 : FileText
   return <Icon size={16} className="shrink-0 text-accent" aria-hidden />
 }
 

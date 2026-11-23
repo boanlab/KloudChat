@@ -1049,7 +1049,8 @@ async def artifact_counts(user: CurrentUser, db: DbSession, q: str | None = None
 #: what the file box's 「작업 문서」 tab lists: documents edited as a whole, in an editor or
 #: by chat — HWP, Word and PowerPoint files, web reports and web slides
 WORKING_KINDS = (
-    ArtifactKind.hwp, ArtifactKind.docx, ArtifactKind.pptx, ArtifactKind.report, ArtifactKind.deck,
+    ArtifactKind.hwp, ArtifactKind.docx, ArtifactKind.pptx, ArtifactKind.xlsx, ArtifactKind.report,
+    ArtifactKind.deck,
 )
 
 

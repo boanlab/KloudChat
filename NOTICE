@@ -31,3 +31,14 @@ PaperBanana style guide (diagram prompts) — https://github.com/dwzhu-pku/Paper
   own words, of the NeurIPS 2025 diagram style guide in that project's style_guides/ (pastel
   dashed regions, rounded process boxes, solid main flow, dashed side inputs and losses, one
   accent, no decoration). No PaperBanana code is included.
+
+Univer (the spreadsheet grid of the 「시트」 surface) — https://univer.ai
+-----------------------------------------------------------------------
+
+@univerjs/presets, @univerjs/preset-sheets-core and the @univerjs/* packages they pull in
+  Bundled into the web app (apps/web), pinned to 1.6.1; loaded only when a sheet is opened.
+  Licence: Apache License 2.0 (the packages' own LICENSE files ship in node_modules/@univerjs/*).
+  How it is used: the unmodified npm packages draw and edit a sheet in the browser. The
+  community edition only; no Univer server, collaboration or paid plug-in is used, and the page
+  makes no network call of Univer's (the app's content security policy would block one). The
+  packages' own dependencies are all permissive: MIT, BSD-3-Clause, ISC, 0BSD and Apache-2.0.

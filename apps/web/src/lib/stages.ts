@@ -1,5 +1,5 @@
 /** Stage records as read: one status per row and the waiting card's place. */
-import type { Message, PipelineRun, PipelineStage, Session } from '@/types'
+import type { Message, PipelineRun, PipelineStage, Session, SessionKind } from '@/types'
 
 /** What a row's icon says: ✓ done, ! findings, ? waiting, – skipped, ✕ failed. */
 export type StageTone = 'done' | 'findings' | 'waiting' | 'skipped' | 'failed'
@@ -46,7 +46,7 @@ export function notApplicable(stage: PipelineStage): boolean {
   return stage.status === 'skipped' && !/^stopped at |^cancel/.test(stage.reason ?? '')
 }
 
-type Kind = 'chat' | 'report' | 'slides' | 'image' | 'av'
+type Kind = SessionKind
 
 /** A planning pass: the run ended by offering its outline. */
 function planned(run?: PipelineRun): boolean {

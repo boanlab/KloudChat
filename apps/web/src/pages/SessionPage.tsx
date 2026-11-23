@@ -670,7 +670,9 @@ export function SessionPage() {
                       ? 'Word 문서 열기'
                       : sessionArtifact.kind === 'pptx'
                         ? 'PowerPoint 열기'
-                        : meta.panelLabel,
+                        : sessionArtifact.kind === 'xlsx'
+                          ? '시트 열기'
+                          : meta.panelLabel,
                 )}
               </Button>
             )}

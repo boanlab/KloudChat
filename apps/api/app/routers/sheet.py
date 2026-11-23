@@ -7,7 +7,9 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from fastapi import HTTPException, status
+from urllib.parse import quote
+
+from fastapi import HTTPException, Response, status
 from pydantic import Field
 
 from app.core.deps import CurrentUser, DbSession
@@ -89,3 +91,33 @@ async def change_cells(
             status.HTTP_422_UNPROCESSABLE_ENTITY, detail="not_a_xlsx_file"
         ) from None
     return ArtifactOut.of(saved)
+
+
+class EditsFile(Wire):
+    #: the version the editor read; the edits go onto that one, saved or not
+    base_version: int
+    ops: list[dict[str, Any]] = Field(max_length=MAX_OPS)
+
+
+@router.post("/artifacts/{artifact_id}/xlsx/edits-file")
+async def edits_file(artifact_id: str, payload: EditsFile, user: CurrentUser, db: DbSession):
+    """The workbook of `baseVersion` with the edits applied, for download. Nothing is saved: this
+    is how a person keeps their edits when their save lost to a newer version."""
+    artifact = await _sheet(db, user, artifact_id)
+    try:
+        if payload.base_version == artifact.version:
+            data = office_doc.read(artifact)
+        else:
+            data = await office_doc.read_version(db, artifact, payload.base_version)
+        patched = sheet_patch.apply(data, payload.ops)
+    except (OSError, FileNotFoundError):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="blob_missing") from None
+    except sheet_patch.PatchError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from None
+    name = office_doc.download_name(artifact.title, "xlsx")
+    return Response(
+        content=patched,
+        media_type=sheet_doc.XLSX_MIME,
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name)}",
+                 "Cache-Control": "no-store"},
+    )

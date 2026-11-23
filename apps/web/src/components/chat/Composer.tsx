@@ -18,6 +18,7 @@ import {
   ShieldCheck,
   Sparkles,
   Square,
+  Table2,
   TriangleAlert,
   X,
 } from 'lucide-react'
@@ -65,6 +66,7 @@ import { isReading, ocrNote, useOcrProgress } from '@/lib/ocr'
 import { ATTACH_ACCEPT, attachRefusal } from '@/lib/attachable'
 import { isImeKey } from '@/lib/ime'
 import { useBlankDocument } from '@/lib/useBlankDocument'
+import { useBlankSheet } from '@/lib/useBlankSheet'
 
 /** Shown when a send timed out at the gateway: the turn may be running on the server. */
 /** Whether the conversation's last turn is a failed one the thread itself shows (box and retry). */
@@ -87,6 +89,7 @@ const placeholders: Record<SessionKind, string> = {
   slides: '발표 주제와 시간을 적으세요',
   image: '만들고 싶은 이미지를 설명하세요',
   av: '만들고 싶은 동영상이나 오디오를 설명하세요',
+  sheet: '만들고 싶은 표와 계산을 설명하세요',
 }
 
 // Mirrors `imagegen.STYLE_CHOICES`. The first group is drawn by the picture model; the
@@ -575,6 +578,7 @@ export function Composer({
       if (kind === 'report' || kind === 'slides') setOutputPick(kind, value)
     })
   const ownBlank = useBlankDocument(projectId)
+  const blankSheet = useBlankSheet(projectId)
   const chatEnabled = useStore((s) => s.enabledKinds.includes('chat'))
   const onBlankDocument = onBlankProp ?? (chatEnabled ? (file: OfficeKind) => void ownBlank.start(file) : undefined)
   const openingDocument = onBlankProp ? openingProp : ownBlank.opening
@@ -2736,6 +2740,28 @@ export function Composer({
                 off={savedFormOff}
                 onOff={(off) => setSavedFormsOff(off && savedKind ? [savedKind] : [])}
               />
+            )}
+          </div>
+        )}
+
+        {kind === 'sheet' && fresh && (
+          <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-2.5 py-2">
+            <button
+              type="button"
+              onClick={() => void blankSheet.start()}
+              disabled={blankSheet.opening}
+              aria-busy={blankSheet.opening}
+              data-testid="blank-sheet"
+              title={t('입력 없이 빈 시트를 편집기에 엽니다')}
+              className="flex h-8 items-center gap-1.5 rounded-control border border-line px-2.5 text-sm text-muted transition-colors hover:bg-elevated hover:text-fg disabled:opacity-60"
+            >
+              {blankSheet.opening ? <Loader2 size={13} className="animate-spin" /> : <Table2 size={13} />}
+              {blankSheet.opening ? t('시트 편집기를 여는 중…') : t('빈 시트로 시작')}
+            </button>
+            {blankSheet.opening && blankSheet.stage && (
+              <span role="status" className="flex h-8 items-center text-xs text-muted">
+                {blankSheet.stage}
+              </span>
             )}
           </div>
         )}

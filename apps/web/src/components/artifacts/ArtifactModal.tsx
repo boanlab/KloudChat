@@ -27,6 +27,7 @@ const KIND_LABEL: Record<ArtifactKind, string> = {
   hwp: '한글 문서',
   docx: 'Word 문서',
   pptx: 'PowerPoint 문서',
+  xlsx: 'Excel 문서',
 }
 
 const isOffice = (artifact: Artifact): artifact is Extract<Artifact, { kind: OfficeKind }> =>

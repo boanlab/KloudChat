@@ -1931,10 +1931,10 @@ export const artifactsApi = {
     templateId?: string
   }) => call<ArtifactRow>(`/artifacts/${kind}`, body(payload)),
   /** A document with no conversation joins `sessionId` (a new chat) to be edited beside it. */
-  attachDocument: (kind: OfficeKind, id: string, sessionId: string) =>
+  attachDocument: (kind: OfficeKind | 'xlsx', id: string, sessionId: string) =>
     call<ArtifactRow>(`/artifacts/${id}/${kind}/session`, body({ sessionId })),
   /** A version's file (the current one by default), for the editor. */
-  documentFile: async (kind: OfficeKind, id: string, version?: number) => {
+  documentFile: async (kind: OfficeKind | 'xlsx', id: string, version?: number) => {
     const query = version === undefined ? '' : `?version=${version}`
     const res = await authedFetch(`${BASE_URL}/artifacts/${id}/${kind}${query}`)
     if (!res.ok) {
@@ -1980,6 +1980,20 @@ export const artifactsApi = {
   /** The current version as the grid's model. */
   sheetModel: (id: string) => call<SheetModel>(`/artifacts/${id}/xlsx/model`),
   /** Changed cells as the next version; 409 when anyone saved since `expectedVersion`. */
+  /** The workbook of `baseVersion` with `ops` applied, as a file; nothing is saved. */
+  sheetEditsFile: async (id: string, baseVersion: number, ops: SheetOp[]) => {
+    const res = await authedFetch(`${BASE_URL}/artifacts/${id}/xlsx/edits-file`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ baseVersion, ops }),
+    })
+    if (!res.ok) {
+      const detail = await readDetail(res)
+      if (res.status === 401) throw new UnauthorizedError(detail)
+      throw new ApiError(res.status, detail)
+    }
+    return res.blob()
+  },
   changeSheetCells: (id: string, expectedVersion: number, ops: SheetOp[], summary = '') =>
     call<ArtifactRow>(`/artifacts/${id}/xlsx/cells`, {
       method: 'PATCH',
@@ -2016,17 +2030,30 @@ export interface SheetModel {
   truncated: boolean
 }
 
+/** The part of a cell's style that changed; `null` clears a fill or a border side. */
+export interface SheetStylePatch {
+  font?: { b?: boolean; i?: boolean; u?: boolean; s?: boolean; sz?: number; name?: string; color?: string }
+  fill?: string | null
+  numFmt?: string
+  align?: { h?: string; v?: string; wrap?: boolean }
+  border?: Partial<Record<'t' | 'b' | 'l' | 'r', { style: string; color?: string } | null>>
+}
+
 /** A change sent back: a cell (`v` null clears), a column width, or a merge. */
 export type SheetOp =
-  | { sheet: string; r: number; c: number; v?: string | number | boolean | null; f?: string; s?: Record<string, unknown> }
+  | { sheet: string; r: number; c: number; v?: string | number | boolean | null; f?: string; s?: SheetStylePatch }
   | { sheet: string; op: 'width'; c: number; px: number }
   | { sheet: string; op: 'merge' | 'unmerge'; ref: string }
+  | { sheet: string; op: 'insertRows' | 'deleteRows' | 'insertCols' | 'deleteCols'; at: number; count: number }
+  | { sheet: string; op: 'renameSheet'; name: string }
+  | { sheet: string; op: 'deleteSheet' }
+  | { op: 'addSheet'; name: string; index?: number }
 
 /** Office documents edited beside a chat; each is also its file route (`/artifacts/{id}/hwp`). */
 export type OfficeKind = 'hwp' | 'docx' | 'pptx'
 
 /** What the file box's 「작업 문서」 tab lists: HWP, Word, PowerPoint files and web reports, web slides. */
-export type WorkingKind = OfficeKind | 'report' | 'deck'
+export type WorkingKind = OfficeKind | 'xlsx' | 'report' | 'deck'
 export type WorkingSort = 'updated' | 'title' | 'kind' | 'version'
 export type FileSort = 'created' | 'name' | 'size'
 export type SortDir = 'asc' | 'desc'
@@ -2094,6 +2121,7 @@ export const workingDocsApi = {
 }
 
 /** The editable format each kind is saved in. */
+export const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 export const OFFICE_MIME: Record<OfficeKind, string> = {
   hwp: 'application/hwp+zip',
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',

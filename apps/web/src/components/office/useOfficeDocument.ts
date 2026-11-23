@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
-import { ApiError, artifactsApi, errorMessage, type OfficeKind } from '@/lib/api'
+import { ApiError, artifactsApi, errorMessage, type OfficeKind, type SheetModel, type SheetOp } from '@/lib/api'
 import { guardEdits, type AskReason } from '@/lib/officeGuard'
 import { useMarkUnsaved } from '@/lib/unsaved'
 import { useT } from '@/lib/useT'
@@ -17,6 +17,12 @@ export interface OfficeEditor {
   revision?: () => Promise<number>
   /** Asks the editor whether it holds unsaved edits, where its state is otherwise polled. */
   isDirty?: () => Promise<boolean>
+  /** The sheet grid: it shows the server's model, and its edits go back as cell changes, not as a file. */
+  sheet?: {
+    show: (model: SheetModel) => Promise<void>
+    /** What changed since it was shown or last saved; `commit` makes the state sent the new baseline. */
+    changes: () => { ops: SheetOp[]; commit: () => void }
+  }
 }
 
 export interface Doc {
@@ -30,7 +36,7 @@ type Ask = { resolve: (go: boolean) => void; reason: AskReason }
 
 /** Office document state beside the chat; server-side agent versions are loaded unless that would drop hand edits. */
 export function useOfficeDocument(
-  kind: OfficeKind,
+  kind: OfficeKind | 'xlsx',
   doc: Doc,
   editor: RefObject<OfficeEditor | null>,
   ready: boolean,
@@ -87,10 +93,18 @@ export function useOfficeDocument(
     setLoading(true)
     setError('')
     try {
-      const file = await artifactsApi.documentFile(kind, doc.id)
-      const convert = await instance.load(file.bytes)
-      let version = file.version
-      if (convert) {
+      let version: number
+      let convert = false
+      if (kind === 'xlsx' && instance.sheet) {
+        const model = await artifactsApi.sheetModel(doc.id)
+        await instance.sheet.show(model)
+        version = model.version
+      } else {
+        const file = await artifactsApi.documentFile(kind, doc.id)
+        convert = await instance.load(file.bytes)
+        version = file.version
+      }
+      if (convert && kind !== 'xlsx') {
         // what the tools and the next save work on
         const converted = await instance.export()
         const row = await artifactsApi.saveDocument(
@@ -135,11 +149,23 @@ export function useOfficeDocument(
     setSaving(true)
     setError('')
     try {
-      const bytes = await instance.export()
-      // what the export itself sets off in the editor settles first: it is not an edit
-      await new Promise((resolve) => window.setTimeout(resolve, 0))
-      const exported = await revision()
-      const row = await artifactsApi.saveDocument(kind, doc.id, bytes, loaded, t('편집기에서 저장'))
+      let row
+      let exported: string
+      if (kind === 'xlsx' && instance.sheet) {
+        // the cells that changed since the version shown, not the whole file
+        const change = instance.sheet.changes()
+        exported = await revision()
+        row = change.ops.length
+          ? await artifactsApi.changeSheetCells(doc.id, loaded, change.ops, t('편집기에서 저장'))
+          : { version: loaded }
+        change.commit()
+      } else {
+        const bytes = await instance.export()
+        // what the export itself sets off in the editor settles first: it is not an edit
+        await new Promise((resolve) => window.setTimeout(resolve, 0))
+        exported = await revision()
+        row = await artifactsApi.saveDocument(kind as OfficeKind, doc.id, bytes, loaded, t('편집기에서 저장'))
+      }
       setLoaded(row.version)
       setNotice(null)
       if ((await revision()) === exported) {

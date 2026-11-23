@@ -811,7 +811,7 @@ function reconcileAvModels(
   return next
 }
 
-const initialModelByKind: Record<SessionKind, string> = { chat: '', report: '', slides: '', image: '', av: '' }
+const initialModelByKind: Record<SessionKind, string> = { chat: '', report: '', slides: '', image: '', av: '', sheet: '' }
 
 // `system` is stored as-is, never the resolved colour, so the OS setting keeps applying.
 const darkQuery = window.matchMedia('(prefers-color-scheme: dark)')

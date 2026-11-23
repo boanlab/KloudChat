@@ -1,4 +1,4 @@
-import { Download, FilePenLine, Loader2 } from 'lucide-react'
+import { Download, FilePenLine, Loader2, Table2 } from 'lucide-react'
 import { Suspense, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, LoadingState, Modal } from '@/components/ui'
@@ -53,6 +53,9 @@ export function FilePreview({ row, onClose, start }: { row: FileRow | null; onCl
   const [copies, setCopies] = useState<ArtifactRow[]>([])
   const [opening, setOpening] = useState<'new' | 'reopen' | null>(null)
   const office = row ? officeKindOf(row.name) : null
+  /** An Excel file opens as a sheet when that surface is on: a copy in the grid beside a new chat. */
+  const sheetOn = useStore((s) => s.enabledKinds.includes('sheet'))
+  const sheetFile = !!row && sheetOn && /\.xlsx$/i.test(row.name)
 
   useEffect(() => {
     if (!row) return
@@ -131,6 +134,23 @@ export function FilePreview({ row, onClose, start }: { row: FileRow | null; onCl
     }
   }
 
+  /** A copy of the Excel file in the sheet grid beside a new chat; the file stays as it is. */
+  const openSheet = async () => {
+    if (!row || opening) return
+    setOpening('new')
+    setError(null)
+    try {
+      const fresh = await newSession('sheet', { projectId: row.projectId })
+      await renameSession(fresh, row.name)
+      const id = await ensureSession(fresh)
+      const made = await artifactsApi.createSheet({ sessionId: id, fileId: row.id })
+      navigate(`/s/${id}?artifact=${made.id}`)
+    } catch (err) {
+      setError(errorMessage(err, t('이 파일을 시트로 열지 못했습니다. 잠시 뒤 다시 시도하세요.')))
+      setOpening(null)
+    }
+  }
+
   /** The copy made earlier, beside its own chat. */
   const reopen = (doc: ArtifactRow) => {
     setOpening('reopen')
@@ -169,6 +189,12 @@ export function FilePreview({ row, onClose, start }: { row: FileRow | null; onCl
           >
             <Download size={14} /> {t('내려받기')}
           </Button>
+          {sheetFile && (
+            <Button variant="primary" className="max-sm:w-full" disabled={!!opening} onClick={() => void openSheet()}>
+              {opening === 'new' ? <Loader2 size={14} className="animate-spin" /> : <Table2 size={14} />}
+              {t('시트로 열기')}
+            </Button>
+          )}
           {office && latest && (
             <Button variant="secondary" className="max-sm:w-full" disabled={!!opening} onClick={() => void edit()}>
               {opening === 'new' ? <Loader2 size={14} className="animate-spin" /> : <FilePenLine size={14} />}
