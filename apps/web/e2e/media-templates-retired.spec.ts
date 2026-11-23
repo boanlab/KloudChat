@@ -20,7 +20,13 @@ const minutes = {
 
 type Seen = { diagrams: { figure: string; description: string }[]; images: number; stores: number }
 
-async function fixture(page: Page, testInfo: TestInfo, diagram: 'drawn' | 'undrawable' = 'drawn') {
+/** `inside`: the picked picture model runs inside the institution (figures are drawn by code); `outside`: an outside model draws them. */
+async function fixture(
+  page: Page,
+  testInfo: TestInfo,
+  diagram: 'drawn' | 'undrawable' = 'drawn',
+  where: 'inside' | 'outside' = 'inside',
+) {
   const origin = new URL(String(testInfo.project.use.baseURL)).origin
   const seen: Seen = { diagrams: [], images: 0, stores: 0 }
   const session = {
@@ -33,9 +39,9 @@ async function fixture(page: Page, testInfo: TestInfo, diagram: 'drawn' | 'undra
     status: 'active', monthlyCredits: 1000, creditsUsed: 0, avatarColor: '#168267', allowedModels: [],
     createdAt: at, preferences: { autoMemory: false, showUsage: false, streamResponses: true },
   }
-  const model = (id: string, kinds: string[], modality: string) => ({
+  const model = (id: string, kinds: string[], modality: string, inside = false) => ({
     id, label: id, name: id, vendor: 'Fixture', provider: 'fixture', kinds, modality,
-    dataBoundary: 'external', creditCost: 1, inputCreditCost: 1, creditPerImage: 4,
+    dataBoundary: inside ? 'self_hosted' : 'external', strictLocal: inside, creditCost: 1, inputCreditCost: 1, creditPerImage: 4,
     supportsTools: false, contextWindow: 64000,
   })
   await page.context().routeWebSocket('**/*', (socket) => socket.close())
@@ -54,7 +60,7 @@ async function fixture(page: Page, testInfo: TestInfo, diagram: 'drawn' | 'undra
       privacy: { externalDataGuard: false }, passwordResetEnabled: false, dictationEnabled: false,
     } })
     if (method === 'GET' && path === '/models') return route.fulfill({ json: {
-      models: [model('fixture/chat', ['chat', 'report'], 'chat'), model('fixture/image', ['image'], 'image')],
+      models: [model('fixture/chat', ['chat', 'report'], 'chat'), model('fixture/image', ['image'], 'image', where === 'inside')],
       defaultChatModel: 'fixture/chat',
       defaults: { chat: 'fixture/chat', report: 'fixture/chat', image: 'fixture/image' },
       defaultModelByKind: { report: 'fixture/chat', image: 'fixture/image' },
@@ -147,4 +153,18 @@ test('그릴 수 없는 도식은 그림 없이 안내만 남긴다', async ({ p
   expect(seen.diagrams[0].figure).toBe('concept')
   await expect(page.getByText('이 도식은 그릴 수 없습니다. 단계를 줄여 다시 시도해 주세요.')).toBeVisible()
   expect(seen.images).toBe(0)
+})
+
+test('바깥 이미지 모델을 고르면 그 모델이 그리고 도형 그림 경로는 부르지 않는다', async ({ page }, testInfo) => {
+  const seen = await fixture(page, testInfo, 'drawn', 'outside')
+  await page.goto('/new/image')
+  await page.getByRole('button', { name: /^스타일/ }).click()
+  await page.getByRole('menuitemcheckbox', { name: '구조도', exact: true }).click()
+  await expect(page.getByText('선택한 이미지 모델이 그립니다 · 예상 4 크레딧')).toBeVisible()
+  await expect(page.getByText('도식은 글 모델이 씁니다 · 이미지 요금이 아닙니다')).toHaveCount(0)
+  await page.getByLabel('프롬프트 입력').fill('요청이 게이트웨이를 거쳐 모델로 간다')
+  await page.getByLabel('프롬프트 입력').press('Enter')
+  await expect.poll(() => seen.images).toBe(1)
+  expect(seen.diagrams.length).toBe(0)
+  expect(seen.stores).toBe(0)
 })
