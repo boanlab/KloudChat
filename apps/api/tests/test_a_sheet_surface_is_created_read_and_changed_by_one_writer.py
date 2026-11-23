@@ -109,7 +109,8 @@ async def test_a_sheet_cannot_be_made_without_its_file_or_from_a_non_sheet(clien
 async def test_a_person_who_lost_the_race_can_download_their_edits_without_saving_them(client):
     sheet_id = (await client.post("/artifacts/xlsx", json={})).json()["id"]
     first = [{"sheet": "시트1", "r": 0, "c": 0, "v": "다른 사람"}]
-    await client.patch(f"/artifacts/{sheet_id}/xlsx/cells", json={"expectedVersion": 1, "ops": first})
+    await client.patch(
+        f"/artifacts/{sheet_id}/xlsx/cells", json={"expectedVersion": 1, "ops": first})
     mine = [{"sheet": "시트1", "r": 1, "c": 0, "v": "내 편집"}]
     got = await client.post(
         f"/artifacts/{sheet_id}/xlsx/edits-file", json={"baseVersion": 1, "ops": mine})

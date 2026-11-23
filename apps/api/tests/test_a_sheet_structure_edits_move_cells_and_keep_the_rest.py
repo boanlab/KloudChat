@@ -11,9 +11,9 @@ import openpyxl
 import pytest
 from lxml import etree
 from openpyxl.chart import BarChart, Reference
+from test_a_sheet_edit_keeps_what_the_grid_does_not_draw import SHEET, _parts, _workbook
 
 from app.services import sheet_patch
-from test_a_sheet_edit_keeps_what_the_grid_does_not_draw import SHEET, _parts, _workbook
 
 NS = {"m": sheet_patch.NS}
 
@@ -97,7 +97,7 @@ def test_a_shared_formula_keeps_its_meaning_when_its_cells_move():
     after = sheet_patch.apply(packed.getvalue(), [
         {"sheet": "Sheet", "op": "insertRows", "at": 1, "count": 1}])
     formulas = {c.get("r"): c.find("m:f", NS).text for c in
-                _sheet_xml(after).iter("{%s}c" % sheet_patch.NS) if c.find("m:f", NS) is not None}
+                _sheet_xml(after).iter(f"{{{sheet_patch.NS}}}c") if c.find("m:f", NS) is not None}
     assert formulas == {"B1": "A1*2", "B3": "A2*2", "B4": "A3*2"}
 
 

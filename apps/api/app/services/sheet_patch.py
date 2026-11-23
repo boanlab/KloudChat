@@ -313,7 +313,7 @@ def _reachable(files: dict[str, bytes]) -> set[str]:
 
 
 class _Package:
-    """The workbook as parts: the ones this edit reads are parsed once, and written back at the end."""
+    """The workbook as parts: the ones this edit reads are parsed once, written back at the end."""
 
     def __init__(self, files: dict[str, bytes], order: list[zipfile.ZipInfo]) -> None:
         self.files = files
@@ -381,7 +381,8 @@ class _Package:
         for root in self.all_roots():
             _each_formula(root, rewrite)
         _each_formula(self.book, rewrite)
-        for path in [p for p in self.files if p.startswith("xl/charts/chart") and p.endswith(".xml")]:
+        charts = [p for p in self.files if p.startswith("xl/charts/chart") and p.endswith(".xml")]
+        for path in charts:
             tree = etree.fromstring(self.files[path])
             if _each_formula(tree, rewrite):
                 self.files[path] = _dump(tree)
@@ -462,7 +463,7 @@ def _dump(root: etree._Element) -> bytes:
 
 
 def _each_formula(root: etree._Element, fn) -> bool:
-    """Runs `fn` over the text of every formula (`f`, `definedName`) under `root`; whether any changed."""
+    """Runs `fn` over every formula text (`f`, `definedName`) under `root`; true if one changed."""
     changed = False
     for node in root.iter():
         if not isinstance(node.tag, str):
