@@ -2325,6 +2325,8 @@ export const useStore = create<State>((set, get) => ({
           await get().loadArtifacts()
           // The worker wrote the delivery turn; re-read the transcript. The panel stays shut.
           if (job.artifactId) await get().openSession(sessionId)
+          // The charge settles on completion: the sidebar balance follows.
+          await get().refreshMe().catch(() => {})
           return
         }
       }
@@ -2354,6 +2356,8 @@ export const useStore = create<State>((set, get) => ({
       await get().loadSessions()
       // The server's rows carry the message ids and the settled charge.
       await get().openSession(id)
+      // The sidebar balance is the account's, not a turn's: re-read it after the charge.
+      await get().refreshMe().catch(() => {})
     } catch (err) {
       failMediaTurn(set, id, promptId, answerId, errorMessage(err, tr('오디오를 만들지 못했습니다. 잠시 뒤 다시 시도하세요.')))
     } finally {
@@ -2420,6 +2424,7 @@ export const useStore = create<State>((set, get) => ({
       await get().loadSessions()
       // The server's rows carry the message ids and the settled charge.
       await get().openSession(id)
+      await get().refreshMe().catch(() => {})
     } catch (err) {
       failMediaTurn(set, id, promptId, answerId, mediaFailure(err, tr('이미지를 만들지 못했습니다. 잠시 뒤 다시 시도하세요.'), tr))
     } finally {

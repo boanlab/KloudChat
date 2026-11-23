@@ -37,11 +37,8 @@ function rateLabel(m: ModelInfo, t: Translator): string {
           .replace('{low}', low.toLocaleString())
           .replace('{high}', high.toLocaleString())
   }
-  if (m.modality === 'audio') {
-    return m.creditPerCall
-      ? t.n('{n} 크레딧 / 회', m.creditPerCall)
-      : t.n('{n} 크레딧', m.creditCost)
-  }
+  // Priced by tokens (not per call): quoted like a text model.
+  if (m.modality === 'audio' && m.creditPerCall) return t.n('{n} 크레딧 / 회', m.creditPerCall)
   if (m.creditCost === 0 && m.inputCreditCost === 0) {
     return t('무료')
   }

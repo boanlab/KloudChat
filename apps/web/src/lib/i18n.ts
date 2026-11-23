@@ -10,6 +10,7 @@ const EN: Record<string, string> = {
   // 이미지 고치기
   '이미지 고치기': 'Edit image',
   '모델 바꾸기': 'Switch model',
+  '쓴 만큼 크레딧이 나갑니다': 'Credits are charged for what is used.',
   '이미지를 고칠 수 있는 모델입니다': 'This model can edit images',
   '고치기 가능': 'Edits',
   '{name} 고치기': 'Edit {name}',
