@@ -97,7 +97,7 @@ async def test_a_link_waits_for_an_administrator_and_needs_a_daily_credit_cap(wo
     # Checks by the names people know, the material readable with personal details masked,
     # and what is asked.
     assert review["agent"]["checkNames"] == [
-        "근거 없는 답 보류", "담당 부서 안내", "개인정보 가리기"]
+        "근거 없는 답 보류", "개인정보 가리기"]
     assert review["knowledge"][0]["preview"].startswith(test_publishing._RULES[:20])
     assert review["request"] == "visibility" and review["changes"] == []
 

@@ -33,11 +33,13 @@ def dates() -> ModuleType:
 
 
 def quotes() -> ModuleType:
-    return module("quote-calc", "quote")
+    """Quote sums, a server module of its own (it was a catalogue skill's script)."""
+    return importlib.import_module("app.services.quote_engine")
 
 
 def text_fit() -> ModuleType:
-    return module("text-fit", "fit")
+    """Cover-letter length counts, a server module of its own."""
+    return importlib.import_module("app.services.text_fit")
 
 
 def entry(key: str) -> ModuleType:

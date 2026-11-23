@@ -501,7 +501,7 @@ export interface SearchConsentAnswer {
   remember?: boolean
 }
 
-/** A cover letter's 「[제출용 답안 n]」 blocks as the server measured them (text-fit). */
+/** A cover letter's 「[제출용 답안 n]」 blocks as the server measured them (`services/text_fit.py`). */
 export interface LengthCheck {
   rows: {
     number: number

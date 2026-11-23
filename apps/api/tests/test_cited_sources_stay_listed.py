@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+from app.models.workspace import Skill
 from app.routers import sessions
 from app.services import (
     agent,
     post_checks,
-    skill_packages,
     skill_scripts,
     skill_specs,
     value_guard,
@@ -71,14 +71,14 @@ def test_a_material_named_in_a_cell_is_its_source():
     assert not [f for f in found if f["kind"] == "unsourced_cell"]
 
 
-def test_the_research_skills_search_deep_on_a_chat_turn():
-    for key in ("company-research", "competitor-analysis"):
-        spec = skill_specs.of_package(skill_packages.package_for(key))
-        assert spec is not None and spec.process.get("deep_search") is True
-        assert sessions._deep_search((key,), {key: spec})
+def test_a_skill_that_searches_deep_does_so_on_a_chat_turn():
+    mine = skill_specs.of_row(Skill(id="r1", owner_id="me", name="내 조사",
+                                    server_fields={"process": {"deep_search": True}}))
+    assert mine.process.get("deep_search") is True
+    assert sessions._deep_search((mine.key,), {mine.key: mine})
     assert not sessions._deep_search(("copy-editing",), {})
-    # the test account's copy had no stored fields, so the turn's specs lacked it
-    assert sessions._deep_search(("competitor-analysis",), {})
+    # without its spec the key means nothing
+    assert not sessions._deep_search((mine.key,), {})
 
 
 # ── searched what the request lists, a cell's own source, opportunities on unknowns ──
@@ -225,7 +225,7 @@ def test_a_judged_statement_is_read_against_the_pages_it_cites():
     pages = post_checks.cited_pages("노마디안은 AWS와 2025년 협약했다", answer, computed)
     assert pages.startswith("[1] 한컴 AI 매출")
     out = asyncio.run(post_checks.run(
-        answer, keys=["company-research"], request="한컴 조사해 줘", material="", attached="",
+        answer, keys=["source-check"], request="한컴 조사해 줘", material="", attached="",
         computed=computed, today="2026-10-16", complete=complete, model="w", judge="j",
         api_key="k"))
     sent = [row["text"] for row in out.sent]

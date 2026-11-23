@@ -45,7 +45,7 @@ def test_drafts_stay_out_of_the_catalogue_and_the_tool_unless_enabled(monkeypatc
     monkeypatch.setattr(settings, "skill_drafts", False)
     keys = {spec["key"] for spec in skill_packages.catalog_specs()}
     assert "copy-check" not in keys
-    assert {"xlsx-clean", "text-fit"} <= keys
+    assert {"xlsx-clean", "source-check"} <= keys
     assert skill_packages.find("copy-check") is None
     assert "copy-check" not in {p.key for p in skill_packages.scripted()}
     # The server still imports a draft's script for its own checks and tests.

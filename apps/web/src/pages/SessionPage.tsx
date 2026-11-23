@@ -23,7 +23,7 @@ import { LeaveCancelled } from '@/lib/officeGuard'
 import { useStore } from '@/store/useStore'
 import type { Agent, SessionKind, TurnOutput } from '@/types'
 import { useT } from '@/lib/useT'
-import { StartExamples, StartHeading } from '@/components/chat/EmptyStart'
+import { StartHeading } from '@/components/chat/EmptyStart'
 
 /** Automatic transcript retries before asking the reader. */
 const LOAD_RETRIES = 3
@@ -342,9 +342,6 @@ function Intro({
       </div>
       {agent && <AgentGuide agent={agent} sessionId={sessionId ?? null} kind={kind} />}
       <StartingFrom sessionId={sessionId} kind={kind} withoutAgent={Boolean(agent)} />
-      {/* The same examples as the home screen, unless an agent brings its own starters. */}
-      {/* Not on a phone: the prompt box and its notices keep the room there. */}
-      {!agent && <StartExamples kind={kind} className="mt-2 max-sm:hidden" />}
     </div>
   )
 }

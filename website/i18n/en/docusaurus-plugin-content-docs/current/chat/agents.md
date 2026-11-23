@@ -172,14 +172,14 @@ A skill's own Python scripts (the `scripts/` of an uploaded skill) are stored wi
 
 ## Tool skills on reports and slides
 
-On the Report and Slides screens you can pick a skill that needs tools when the server does its work around the writing: it calculates or checks before or after, such as **Calculation and unit check**, **Date calculation** and **Quote calculation**. The picker shows "The server calculates and checks around the writing". Other skills that need tools can be picked only on the Chat screen.
+On the Report and Slides screens you can pick a skill that needs tools when the server does its work around the writing: it calculates or checks before or after, such as **Calculation and unit check**, **Date calculation**. The picker shows "The server calculates and checks around the writing". Other skills that need tools can be picked only on the Chat screen.
 
 ## Built-in skills
 
 Built-in skills are skills the administrator account made and shared with everyone. They appear under **Explore** in **Customize** › **Skills** as **By: Official**; **Add** puts a copy in your list (**Original: Official**). A copy follows the administrator's newer versions while you leave it unedited, and stays yours once you edit it. The checks agents and document formats use (grounding check, asking for missing information and so on) run without adding anything.
 
-The lists show the thirteen work skills (including Translation, Press release, Make an Excel file and Make a chart) under [Official skills](skill-recipes#official-skills) and **Grounding check** (근거 대조), **Ask for missing information** (빠진 정보 묻기), **Calculation and unit check** (계산·단위 검증), **Date calculation** (날짜 계산), **Quote calculation** (견적 계산), **Excel cleanup** (엑셀 정리), **PDF table → Excel** (PDF 표 → 엑셀) and **Mask personal information** (개인정보 가리기).
+The lists show the twelve work skills (including Translation, Press release, Make an Excel file and Make a chart) under [Official skills](skill-recipes#official-skills) and **Grounding check** (근거 대조), **Ask for missing information** (빠진 정보 묻기), **Calculation and unit check** (계산·단위 검증), **Date calculation** (날짜 계산), **Excel cleanup** (엑셀 정리), **PDF table → Excel** (PDF 표 → 엑셀) and **Mask personal information** (개인정보 가리기).
 
 - **Excel cleanup** strips title, blank, total and note rows and records what it changed on a change-log sheet. Rows whose values are all the same are not removed, only marked 「중복 의심」 (suspected duplicate); ask for them to be removed if you want that.
 - **PDF table → Excel** reads only PDFs whose text can be selected (text PDFs). Scanned PDFs (images) cannot be read.
-- The other skills (copy, market research, proofreading, stock-phrase stripping, character-count fitting and so on) are not shown in the lists, the store and the pickers. They still run in bundles (such as Finish's stock-phrase stripping) and in conversations that used them, and the editors still let you pick them by name. Administrators see them with **Show hidden** (숨김 포함).
+- The other skills (copy, proofreading, stock-phrase stripping and so on) are not shown in the lists, the store and the pickers. They still run in bundles (such as Finish's stock-phrase stripping) and in conversations that used them, and the editors still let you pick them by name. Administrators see them with **Show hidden** (숨김 포함).

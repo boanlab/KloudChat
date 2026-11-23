@@ -512,10 +512,10 @@ export function AdminUsersPage() {
 
   return (
     <>
-      <TopBar left={<span className="text-base font-medium">{t('사용자 · 크레딧')}</span>} />
+      <TopBar left={<span className="text-base font-medium">{t('사용자 관리')}</span>} />
       <PageBody>
         <PageHeader
-          title={t('사용자 · 크레딧')}
+          title={t('사용자 관리')}
           description={t('가입을 승인하고 월 크레딧을 정합니다. 매달 1일에 다시 채워지고 이월되지 않습니다.')}
         />
 

@@ -158,7 +158,7 @@ async def world(monkeypatch, tmp_path):
                   system_prompt="규정에서 찾아 답한다.", tools=["search_knowledge", "calculate",
                                                               "web_search"],
                   contact="학사지원팀 02-760-1234, haksa-desk@example.ac.kr",
-                  check_skills=["answer-hold", "contact-note", "pii-mask"],
+                  check_skills=["answer-hold", "pii-mask"],
                   starters=["휴학은 언제까지 하나요?"])
     rules = StoredFile(id="rules", user_id=owner.id, agent_id=agent.id, name="학사규정.pdf",
                        text=_RULES, size=len(_RULES), mime="application/pdf")

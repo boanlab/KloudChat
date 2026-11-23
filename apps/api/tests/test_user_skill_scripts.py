@@ -48,7 +48,7 @@ def test_the_allowlists_are_what_shipped_skills_use():
     assert skill_specs.entry_refs()["pre"] == ("gap-check/gaps",)
     assert set(skill_specs.entry_refs()["post"]) == {
         "copy-check/claims", "generic-language-killer/scan", "grounding-check/trace",
-        "answer-hold/hold", "contact-note/note", "pii-mask/mask"}
+        "answer-hold/hold", "pii-mask/mask"}
     assert {"claim", "medical", "guarantee"} <= set(skill_specs.copy_kinds())
     catalogue = skill_specs.catalogue()
     assert {r["ref"] for r in catalogue["postChecks"]} == set(skill_specs.post_check_refs())
@@ -85,11 +85,11 @@ def _row(**fields) -> Skill:
 
 
 def test_a_person_s_skill_with_a_shipped_skill_s_fields_is_checked_the_same():
-    shipped = skill_packages.package_for("competitor-analysis")
+    shipped = skill_packages.package_for("source-check")
     mine = skill_specs.of_row(_row(**skill_specs.package_fields(shipped)))
     specs = {mine.key: mine}
     assert mine.key == "skill:u1"
-    assert post_checks.entries(mine.key, specs) == post_checks.entries("competitor-analysis")
+    assert post_checks.entries(mine.key, specs) == post_checks.entries("source-check")
     assert post_checks.on_turn((mine.key,), [], specs) == [mine.key]
     # Without its spec the key means nothing: the server never guesses a person's skill.
     assert post_checks.on_turn((mine.key,)) == []
@@ -103,7 +103,7 @@ def test_a_person_s_skill_with_a_shipped_skill_s_fields_is_checked_the_same():
     answer = "| 항목 | A사 |\n|---|---|\n| 가격 | 월 3만 원 |"
     kwargs = dict(request="비교해 줘", material="A사 가격 자료 없음", attached="", computed=[],
                   today="2026-10-10", complete=complete, model="m", judge="j", api_key="k")
-    theirs = asyncio.run(post_checks.run(answer, keys=["competitor-analysis"], **kwargs))
+    theirs = asyncio.run(post_checks.run(answer, keys=["source-check"], **kwargs))
     shipped_prompts = list(seen)
     seen.clear()
     ours = asyncio.run(post_checks.run(answer, keys=[mine.key], specs=specs, **kwargs))

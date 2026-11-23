@@ -21,8 +21,6 @@ CHECKED = {
     "copy-editing": ["copy-editing/preserve"],
     "generic-language-killer": ["generic-language-killer/scan"],
     "internal-comms": ["internal-comms/check"],
-    "company-research": ["source-check/post"],
-    "competitor-analysis": ["source-check/post"],
     "source-check": ["source-check/post"],
 }
 
@@ -33,7 +31,7 @@ def test_the_skills_name_their_post_check_scripts_and_each_resolves():
         assert list(package.post_checks) == wanted, key
         assert package.post_judge and package.judge_focus, key
         assert [f"{k}/{s}" for k, s in post_checks.entries(key)] == wanted, key
-    assert post_checks.on_turn(("competitor-analysis", "translation")) == ["competitor-analysis"]
+    assert post_checks.on_turn(("source-check", "translation")) == ["source-check"]
     # A skill picked through `use_skill` is on the turn too.
     body = skill_packages.package_for("internal-comms").body
     assert post_checks.on_turn((), ["# 스킬 지침\n\n" + body]) == ["internal-comms"]
@@ -375,7 +373,7 @@ def test_a_comparison_table_keeps_its_own_categories_and_worked_rates_unmarked()
     text = ("| 경쟁사 | 구분 | 고른 이유 |\n|---|---|---|\n"
             "| 다글로 | 직접 | 1인 월 9,900원 [1] |\n\n"
             "## 리스크\n- 매출은 16.5% 늘었다.\n- 점유율은 23%다.")
-    out = source_post.post(text, {"material": material, "skills": ["competitor-analysis"]})
+    out = source_post.post(text, {"material": material, "skills": ["source-check"]})
     assert "| 다글로 | 직접 |" in out["text"]
     assert "- 매출은 16.5% 늘었다.\n" in out["text"]
     assert "점유율은 23%다. 「출처 미확인」" in out["text"]

@@ -36,7 +36,6 @@ from app.services import (
 
 @pytest.mark.parametrize(("key", "surfaces"), [
     ("date-calc", {"chat", "report"}),
-    ("quote-calc", {"chat", "report"}),
     ("calc-check", {"chat", "report", "slides"}),
     ("grounding-check", {"chat", "report", "slides"}),
     ("deep-research", {"chat", "report"}),
@@ -50,7 +49,7 @@ def test_shared_skills_name_every_writing_surface_they_help_on(key, surfaces):
 
 
 def test_a_document_writer_gets_the_server_block_and_a_chat_turn_the_script():
-    for key, block in (("date-calc", "확정 날짜(코드 계산)"), ("quote-calc", "견적 확정 블록")):
+    for key, block in (("date-calc", "확정 날짜(코드 계산)"),):
         package = skill_packages.package_for(key)
         doc = workspace_context.surface_body(package.body, SessionKind.report)
         chat = workspace_context.surface_body(package.body, SessionKind.chat)
@@ -75,13 +74,13 @@ def test_a_chat_answer_types_the_gaejo_marks_and_the_report_draws_them():
 
 def test_skills_add_their_steps_to_the_templates_instead_of_replacing_them():
     specs = [skill_specs.of_package(skill_packages.package_for(k))
-             for k in ("date-calc", "quote-calc", "deep-research")]
+             for k in ("date-calc", "deep-research")]
     own = skill_turn.merge(specs).process_with(None)
     settings = process_settings.resolve(template_id="doc-comparison", format_id="", own=own)
     # the 서식's own steps stay, the skills' join in the shipped order
     assert settings.prepass == ("date-calc", "quote-calc", "staffing", "compare-cost",
                                 "compare-check")
-    assert {"quote-totals", "lead-dates", "compare-cells"} <= set(settings.checks)
+    assert {"lead-dates", "compare-cells"} <= set(settings.checks)
     assert settings.deep_search
     # the agent's own single settings still win over a skill's
     own = skill_turn.merge(specs).process_with({"deep_search": False})
@@ -154,28 +153,27 @@ async def _shipped(db, user: User, *keys: str) -> list[Skill]:
 
 
 @pytest.mark.asyncio
-async def test_a_report_agent_keeps_date_and_quote_calculation_on(db):
+async def test_a_report_agent_keeps_date_calculation_on(db):
     user = await _member(db)
-    dates, quotes = await _shipped(db, user, "date-calc", "quote-calc")
+    (dates,) = await _shipped(db, user, "date-calc")
     agent = Agent(owner_id=user.id, name="구매·도입 검토", kinds=["report"], surface="report",
-                  active_skill_ids=[dates.id, quotes.id])
+                  active_skill_ids=[dates.id])
     session = ChatSession(user_id=user.id, kind=SessionKind.report, agent_id=agent.id)
     db.add_all([agent, session])
     await db.commit()
 
     rows = await workspace_context.agent_skill_rows(db, user.id, agent, "report")
-    assert [r.id for r in rows] == [dates.id, quotes.id]
+    assert [r.id for r in rows] == [dates.id]
     # applied with no tools on the writer: what reaches the prompt is the block to copy from
     applied = await workspace_context._agent_skills(db, user, session, agent, [], set(), False)
-    assert [s.id for s, _ in applied] == [dates.id, quotes.id]
+    assert [s.id for s, _ in applied] == [dates.id]
     text = "\n".join(b.text for b in workspace_context._skill_blocks(applied, session.kind))
-    assert "견적 확정 블록" in text and "run_skill_script" not in text
+    assert "확정 날짜(코드 계산)" in text and "run_skill_script" not in text
     # and they bring the pre-pass and the code check that do the counting
     found = await skill_turn.brought(db, user, session, agent, [])
     settings = process_settings.resolve(template_id=None, format_id="",
                                         own=found.process_with(None))
-    assert {"date-calc", "quote-calc"} <= set(settings.prepass)
-    assert "quote-totals" in settings.checks
+    assert "date-calc" in settings.prepass
 
 
 @pytest.mark.asyncio
@@ -209,6 +207,6 @@ async def test_saving_an_agent_names_the_skills_none_of_its_surfaces_run(db):
 
 def test_every_shipped_skill_still_seeds():
     # the widened packages keep valid front matter (process, kinds) for the catalogue
-    for key in ("date-calc", "quote-calc", "deep-research", "gaejo-briefing"):
+    for key in ("date-calc", "deep-research", "gaejo-briefing"):
         spec = next(s for s in starter._SKILLS if s["key"] == key)
         assert list(spec["kinds"]) == list(skill_packages.package_for(key).kinds)

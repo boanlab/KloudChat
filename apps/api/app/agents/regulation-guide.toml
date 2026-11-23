@@ -1,7 +1,7 @@
 # 규정·업무 안내 — the official starting point for a published bot (공개 챗봇).
 
 key = "regulation-guide"
-# Withdrawn (D21): offered to no one for new use; its abilities are the 「regulation-answer」 skill.
+# Withdrawn (D21): offered to no one for new use.
 # The rows, copies, conversations and published bots built on it keep working.
 withdrawn = true
 order = 0

@@ -427,7 +427,7 @@ carries the day it was read (「· 확인 2026-10-15」, "checked …").
 A turn makes at most `MAX_WEB_SEARCHES` (3) searches that found something, `MAX_SEARCH_CALLS`
 (6) calls in all, and `MAX_FETCHES` (6) page reads (`services/agent.py`); past a cap the model is
 told to answer from what it has. A turned-on skill that sets `process: {deep_search: true}`
-(기업 조사, 경쟁사 분석) doubles the search caps and adds one search for each thing the
+(a person's own research skill, say) doubles the search caps and adds one search for each thing the
 request lists or hands over to check. On such a turn an answer written before every
 listed name (「잔디, 플로우, 네이버웍스를」) appears in some query, or before every memo
 line handed over has two of its words in one query, is held once and the model is asked
@@ -1133,7 +1133,7 @@ ref, settings}`:
 | kind | ref / settings | needs | leaves |
 |---|---|---|---|
 | `agent` | an agent the person may run (own or organisation's), `instruction` | none | a document (report agent) or an answer (chat agent) |
-| `skill` | a script skill run by code (`date-calc`, `quote-calc`: the pre-pass steps) | none | material |
+| `skill` | a calculation run by code (`date-calc`, `quote-calc`: the pre-pass steps; `quote-calc` is the server's own module `services/quote_engine.py`, no longer a catalogue skill) | none | material |
 | `check` | `grounding-check` (document or answer), `copy-check` (answer) | a product | findings, repaired once |
 | `review` | `model` (one the person may use), `repair`, `focus` | a product | findings in the grounding check's shape |
 | `human` | `gaps` (the question card) · `outline` (approval; just before a document agent) | a later agent | answers · an approved plan |
@@ -2068,7 +2068,7 @@ MCP server store — while it still runs by name, in bundles, in the editors tha
 name it, and in the conversations and documents that already use it. Unlike `draft`, it does
 not gate `run_skill_script`. The wire carries `listed`; administrators see hidden rows behind
 **Show hidden**. Unlisted: the skills `copy-check`, `generic-language-killer`,
-`answer-hold`, `contact-note`, `text-fit` and `source-check`; the deck templates `deck-signal`,
+`answer-hold` and `source-check`; the deck templates `deck-signal`,
 `deck-proposal`, `deck-editorial`, `deck-lecture`, `deck-defense` and `deck-case`; the theme
 「발표용 청록」.
 **Finish**'s export item names `by_format`: a document format listed there exports HWPX when
@@ -2183,7 +2183,7 @@ agent would:
 **Tool skills on documents.** A report or deck writer runs no tools. A skill whose work the
 server does around the writing is accepted there (`skill_specs.runs_on_server`: a check skill
 with a `stage`, or `process` with `prepass`, `checks`, `stages` or `code_calc`, like
-`calc-check`, `date-calc` and `quote-calc`); its body reaches the writer without the tool
+`calc-check` and `date-calc`); its body reaches the writer without the tool
 steps, and its pre-pass, checks and code calculation join the turn through `skill_turn`. A
 hand-picked tool skill without such a process is refused (`skill_tools_unavailable`), and the
 composer greys it out with the same rule (`lib/serverSkills.ts`).
@@ -2195,7 +2195,7 @@ composer greys it out with the same rule (`lib/serverSkills.ts`).
 | bullet-style briefing `gaejo-report` | bullet-style briefing `gaejo-briefing` (report) | `doc-gaejo-report` | same | — (the template's: addressee, reporter; fixed outline, one page) | keep on `gaejo-briefing` · theme document serif |
 | official letter and draft `document` (draft) | official document draft `document-drafting` (report) | none (format from the words) | same | `process`: no search, pictures only when asked | keep on `document-drafting` |
 | extract and tally `data-analysis` | extract and tally `data-tabulation` (chat, needs `run_code`) | — | gap-check, grounding-check; `tool_numbers` | deadline basis, period split, denominator | keep on `data-tabulation` · tools file work, chart, calculation |
-| regulations and procedures `regulation-guide` | answers from regulations `regulation-answer` (chat) | — | grounding-check | — | keep on `regulation-answer` + `date-calc` · knowledge (the regulation files) · department and contact · the publish-check bundle (hold ungrounded answers, point to the department, mask PII; the hold reads the shelf's hits and the files attached to the conversation) |
+| regulations and procedures `regulation-guide` | — (withdrawn; its own prompt) | — | grounding-check | — | keep on `date-calc` · knowledge (the regulation files) · department and contact · the publish-check bundle (hold ungrounded answers, mask PII; the hold reads the shelf's hits and the files attached to the conversation) |
 | presentation `slides` (draft) | presentation deck `deck-writing` (slides) | — (deck flow) | — | — | keep on `deck-writing` · screen Slides |
 
 The skill's body is the agent file's prompt; the agent file's bundles compile to the checks

@@ -58,7 +58,7 @@ for (const [name, viewport] of [
   ['200% zoom', { width: 640, height: 450 }],
   ['a phone on its side', { width: 844, height: 390 }],
 ] as const) {
-  test(`at ${name} the first examples sit above the composer dock`, { tag: '@phone' }, async ({ page }, info) => {
+  test(`at ${name} the greeting stays above the composer dock`, { tag: '@phone' }, async ({ page }, info) => {
     await page.setViewportSize(viewport)
     const { unexpected } = await composerFixture(page, info)
     await page.goto('/')
@@ -66,10 +66,9 @@ for (const [name, viewport] of [
     await expect(dock).toBeVisible()
     // The greeting stays the page's heading for screen readers.
     await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
-    const examples = page.getByRole('region', { name: '예시' }).getByRole('button')
     const dockTop = (await dock.boundingBox())!.y
-    const first = (await examples.first().boundingBox())!
-    expect(first.y + first.height).toBeLessThanOrEqual(dockTop)
+    const heading = (await page.getByRole('heading', { level: 1 }).boundingBox())!
+    expect(heading.y + heading.height).toBeLessThanOrEqual(dockTop)
     expect(unexpected).toEqual([])
   })
 }

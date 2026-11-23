@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import sys
 from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP, Decimal, InvalidOperation
 
 _DIGITS = ("", "일", "이", "삼", "사", "오", "육", "칠", "팔", "구")
@@ -250,37 +248,3 @@ def table(result: dict) -> str:
     rows.append(f"| 부가세(10%) |  |  |  | {result['vat']:,} | 원 미만 절사 |")
     rows.append(f"| 합계(VAT 포함) |  |  |  | {result['total']:,} |  |")
     return "\n".join(rows)
-
-
-def main(argv: list[str]) -> int:
-    try:
-        options = json.loads(argv[1]) if len(argv) > 1 else {}
-        result = run(options if isinstance(options, dict) else {})
-    except json.JSONDecodeError as exc:
-        print(json.dumps({"ok": False, "error": f"인자 JSON 오류: {exc}"}, ensure_ascii=False))
-        return 1
-    except (KeyError, ValueError, TypeError, ZeroDivisionError, ArithmeticError) as exc:
-        print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
-        return 1
-    if "table_markdown" in result:
-        print(result["table_markdown"])
-        print(f"합계(VAT 포함) {result['total_official']}")
-        if budget := result.get("budget"):
-            if budget["vat_basis"] == "ambiguous":
-                print(f"예산 {budget['amount']:,}원: 기준 불분명 — 별도로 보면 여유 {budget['if_excl']['headroom']:,}원, "
-                      f"포함으로 보면 여유 {budget['if_incl']['headroom']:,}원")
-            else:
-                print(f"예산 {budget['amount']:,}원({'부가세 별도' if budget['vat_basis'] == 'excl' else '부가세 포함'}) 대비 "
-                      f"{'여유' if budget['within'] else '초과'} {abs(budget['headroom']):,}원")
-    for row in result.get("scenarios") or []:
-        print(f"[시나리오] {row['name']}({row['premise']}): 공급가액(VAT 별도) {row['supply']:,}원, "
-              f"합계(VAT 포함) {row['total']:,}원")
-    for row in result.get("quotes") or []:
-        print(f"[견적] {row['vendor']}: 별도 {row.get('excl', '?'):,}원 / 포함 {row.get('incl', '?'):,}원"
-              if "incl" in row else f"[견적] {row['vendor']}: {row['amount']:,}원(부가세 기준 불분명)")
-    print(json.dumps(result, ensure_ascii=False))
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main(sys.argv))

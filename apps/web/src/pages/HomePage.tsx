@@ -5,7 +5,7 @@ import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import { Button, Card, EmptyState } from '@/components/ui'
 import { Composer } from '@/components/chat/Composer'
-import { StartExamples, StartHeading } from '@/components/chat/EmptyStart'
+import { StartHeading } from '@/components/chat/EmptyStart'
 import { kindMeta, kindOrder } from '@/lib/kinds'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -90,14 +90,11 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
       <TopBar left={<span className="text-base font-medium">{t('홈')}</span>} />
       {/* As a session: content scrolls, composer docked with the surface chips. */}
       <div className="min-h-0 flex-1 overflow-y-auto" data-testid="home-scroll">
-      <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col px-4 py-6 sm:px-6 sm:py-8 short:py-2">
-        {/* Top-aligned; short content leaves space below, over the dock. A short screen keeps the examples instead. */}
-        <div className="mt-[min(8vh,4rem)] mb-5 text-center phone:mt-[min(14vh,7rem)] short:sr-only">
+      <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col justify-center px-4 py-6 sm:px-6 sm:py-8 short:py-2">
+        {/* Centred in the room above the dock; a short screen keeps it for screen readers only. */}
+        <div className="mb-8 text-center short:sr-only">
           <StartHeading title={t('안녕하세요, {name}님').replace('{name}', user?.name ?? '')} subtitle={t('무엇을 만들까요?')} />
         </div>
-
-        {/* Click fills the box, sends nothing. */}
-        <StartExamples kind={active} className="mb-8 sm:px-4 short:mb-2" />
 
         {running.length > 0 && (
           <section className="mb-8">
@@ -141,8 +138,7 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
       <div className="shrink-0 pt-2" data-testid="home-dock">
         <div className="mx-auto mb-2 flex w-full max-w-3xl flex-wrap justify-center gap-1.5 px-4 max-sm:flex-nowrap max-sm:justify-start max-sm:overflow-x-auto max-sm:[scrollbar-width:none] [@media(max-height:30rem)]:flex-nowrap [@media(max-height:30rem)]:justify-start [@media(max-height:30rem)]:overflow-x-auto [@media(max-height:30rem)]:[scrollbar-width:none]">
           {/* The surfaces; an HWP, Word or PowerPoint document beside them is a chat with a
-              file, not a surface. One scrolling row on a short screen too, so the examples keep their
-              place. */}
+              file, not a surface. One scrolling row on a short screen too. */}
           <div role="group" aria-label={t('만들 것')} className="contents">
             {surfaces.map((k) => {
               const meta = kindMeta[k]

@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import math
 import re
-import sys
 
 UNITS = ("chars_with_spaces", "chars_no_spaces", "bytes_utf8", "bytes_ko2")
 LABELS = {"chars_with_spaces": ("공백 포함", "자"), "chars_no_spaces": ("공백 제외", "자"),
@@ -79,32 +77,3 @@ def shown(row: dict) -> str:
     if "limit" in row:
         text += f" / {row['limit']:,}{row['suffix']}"
     return text
-
-
-def main(argv: list[str]) -> int:
-    try:
-        options = json.loads(argv[1]) if len(argv) > 1 else {}
-    except json.JSONDecodeError as exc:
-        print(json.dumps({"ok": False, "error": f"인자 JSON 오류: {exc}"}, ensure_ascii=False))
-        return 1
-    items = options.get("items") if isinstance(options, dict) else None
-    if not isinstance(items, list) or not items:
-        print(json.dumps({"ok": False, "error": "items 목록이 필요합니다"}, ensure_ascii=False))
-        return 1
-    try:
-        rows = [fit(item) for item in items[:50]]
-    except (ValueError, TypeError) as exc:
-        print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
-        return 1
-    for row in rows:
-        status = {"ok": "맞음", "over": f"{row.get('over', 0):,} 초과", "under": f"{row.get('under', 0):,} 모자람"}
-        print(f"{row['label']}: {shown(row)}" + (f" — {status[row['status']]}" if "status" in row else ""))
-    summary = {"ok": True, "items": rows,
-               "over": sum(r.get("status") == "over" for r in rows),
-               "under": sum(r.get("status") == "under" for r in rows)}
-    print(json.dumps(summary, ensure_ascii=False))
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main(sys.argv))

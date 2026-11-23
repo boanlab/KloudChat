@@ -31,6 +31,8 @@ SKILLS: dict[str, str] = {
     "date-calc": "상대 날짜를 기준일로 풀고 기간을 셉니다.",
     "quote-calc": "견적 항목을 원 단위로 합치고 부가세·합계를 계산합니다.",
 }
+#: Names of code-run calculations that are no longer a catalogue skill.
+SKILL_NAMES = {"quote-calc": "견적 계산"}
 #: Check skills and what each needs.
 CHECKS: dict[str, tuple[str, ...]] = {
     "grounding-check": ("document", "answer"),
@@ -249,7 +251,7 @@ def step_title(step: dict[str, Any], agents: dict[str, AgentInfo]) -> str:
         from app.services import skill_packages
 
         package = skill_packages.package_for(ref)
-        return package.name if package else ref
+        return package.name if package else SKILL_NAMES.get(ref, ref)
     if kind == "human":
         return HUMAN.get(ref, "사람 확인")
     if kind == "review":
@@ -724,7 +726,7 @@ def catalogue() -> dict[str, Any]:
 
     def package(key: str) -> dict[str, str]:
         found = skill_packages.package_for(key)
-        return {"ref": key, "name": found.name if found else key,
+        return {"ref": key, "name": found.name if found else SKILL_NAMES.get(key, key),
                 "description": found.description if found else ""}
 
     return {

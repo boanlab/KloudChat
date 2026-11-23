@@ -59,8 +59,6 @@ def test_the_skills_people_judged_carry_the_claude_like_rules():
     assert "× 1.1" in comparison and "추천: ○○, 단 △△ 확인" in comparison
     minutes = skill_packages.package_for("minutes-writing").body
     assert "‘미정’" in minutes and "확인이 필요합니다" in minutes
-    regulation = skill_packages.package_for("regulation-answer").body
-    assert "2박 3일" in regulation and "calculate" in regulation
     slides = skill_packages.package_for("deck-writing").body
     assert "No quiz" in slides and "Every slide carries body text" in slides
     drafting = skill_packages.package_for("document-drafting").body

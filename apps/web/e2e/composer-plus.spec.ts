@@ -156,24 +156,12 @@ test('「@」 typed into an empty box picks an agent, which then shows as a chip
   expect(unexpected).toEqual([])
 })
 
-test('home: example requests per surface fill the box and send nothing', async ({ page }, info) => {
+test('home: no example cards, the greeting and the prompt box remain', async ({ page }, info) => {
   const { unexpected, sends, created } = await composerFixture(page, info)
   await page.goto('/')
-  const input = page.getByLabel('프롬프트 입력')
-  await expect(input).toBeVisible()
-  await expect(page.getByText('에이전트에게 맡기기')).toHaveCount(0)
-  const examples = page.getByRole('region', { name: '예시' }).getByRole('button')
-  await expect(examples.first()).toBeVisible()
-  await examples.first().click()
-  await expect(input).toHaveValue('첨부한 문서를 세 줄로 요약해 줘')
-  await expect(input).toBeFocused()
-
-  await page.getByRole('group', { name: '만들 것' }).getByRole('button', { name: '슬라이드' }).click()
-  await expect(examples.first()).toHaveText('다음 주 회의 전에 돌릴 사내 브리핑 5장')
-  // Only what the one shown deck template (사내 브리핑) makes; no hidden deck's talk.
-  for (const text of await examples.allTextContents()) expect(text).not.toMatch(/세미나|제안|강의|교육|디펜스|심사/)
-  await examples.nth(1).click()
-  await expect(input).toHaveValue('프로젝트 결과 보고 15분 발표')
+  await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+  await expect(page.getByRole('region', { name: '예시' })).toHaveCount(0)
   expect(sends).toEqual([])
   expect(created).toEqual([])
   expect(unexpected).toEqual([])

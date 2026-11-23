@@ -49,13 +49,13 @@ from app.services.tools import catalog
 
 #: the shipped agents' abilities (D21) and the connector companions, shown with the rest
 WORK_SKILLS = {"minutes-writing", "option-comparison", "gaejo-briefing", "data-tabulation",
-               "document-drafting", "deck-writing", "regulation-answer", "youtube-summary",
+               "document-drafting", "deck-writing", "youtube-summary",
                "deep-research"}
 #: what agents built only from shipped skills lacked: translation, press releases, files, charts
 MADE_SKILLS = {"translation", "press-release", "xlsx-build", "chart-make"}
 #: writing and research skills shown in the catalogue
-WRITING_SKILLS = {"internal-comms", "copy-editing", "company-research", "competitor-analysis"}
-SHOWN_SKILLS = {"grounding-check", "gap-check", "calc-check", "date-calc", "quote-calc",
+WRITING_SKILLS = {"internal-comms", "copy-editing"}
+SHOWN_SKILLS = {"grounding-check", "gap-check", "calc-check", "date-calc",
                 "xlsx-clean", "pdf-table", "pii-mask"} | WORK_SKILLS | MADE_SKILLS | WRITING_SKILLS
 SHOWN_DOCUMENTS = {"doc-internal-draft", "doc-event-plan", "doc-result-report",
                    "doc-gaejo-report", "doc-comparison", "doc-minutes", "doc-agenda"}
@@ -73,11 +73,10 @@ def test_the_shown_skills_are_listed_and_the_rest_kept_as_parts():
     assert not any(packages[k].draft for k in SHOWN_SKILLS)
     hidden = set(packages) - SHOWN_SKILLS
     # Nothing is deleted: the drafts stay drafts, the two published ones stay published.
-    assert {"text-fit", "generic-language-killer"} <= hidden
-    # Published but unlisted: text-fit, the 공개 전 점검 bundle's two parts, which run where
-    # the bundle is ticked and are not picked on their own, and the research skills' check.
-    assert {k for k in hidden if not packages[k].draft} == {"text-fit", "answer-hold",
-                                                            "contact-note", "source-check"}
+    assert {"answer-hold", "generic-language-killer"} <= hidden
+    # Published but unlisted: the 공개 전 점검 bundle's hold, which runs where the bundle is
+    # ticked and is not picked on its own, and the research check.
+    assert {k for k in hidden if not packages[k].draft} == {"answer-hold", "source-check"}
     for key in hidden:
         assert packages[key].body and packages[key].description
 
@@ -85,10 +84,10 @@ def test_the_shown_skills_are_listed_and_the_rest_kept_as_parts():
 def test_an_unlisted_skill_runs_by_name_and_in_bundles(monkeypatch):
     monkeypatch.setattr(settings, "skill_drafts", False)
     # Unlike a draft, unlisted does not gate run_skill_script.
-    assert skill_packages.find("text-fit").key == "text-fit"
-    assert skill_packages.find("글자 수 맞춤").key == "text-fit"
-    assert "text-fit" in {p.key for p in skill_packages.scripted()}
-    assert not skill_packages.listed("text-fit") and skill_packages.listed("xlsx-clean")
+    assert skill_packages.find("answer-hold").key == "answer-hold"
+    assert skill_packages.find("근거 없는 답 보류").key == "answer-hold"
+    assert "answer-hold" in {p.key for p in skill_packages.scripted()}
+    assert not skill_packages.listed("answer-hold") and skill_packages.listed("xlsx-clean")
     # A person's own skill (no package) is listed.
     assert skill_packages.listed(None) and skill_packages.listed("my-own")
     # 마무리하기 still runs the unlisted 상투어 check.
@@ -97,7 +96,7 @@ def test_an_unlisted_skill_runs_by_name_and_in_bundles(monkeypatch):
     # Editors that name server parts still offer it.
     from app.services import skill_specs
 
-    assert "text-fit" in json.dumps(skill_specs.catalogue(), ensure_ascii=False)
+    assert "answer-hold" in json.dumps(skill_specs.catalogue(), ensure_ascii=False)
 
 
 def test_the_documents_and_one_deck_are_shown_the_other_decks_kept():
@@ -204,16 +203,16 @@ async def test_the_store_hides_unlisted_skills_from_members_and_marks_them_for_a
     seen = {row.catalog_key: row.listed for row in await ws.list_skill_store(member, db)}
     assert set(seen) == SHOWN_SKILLS and all(seen.values())
     marked = {row.catalog_key: row.listed for row in await ws.list_skill_store(other_admin, db)}
-    assert marked["text-fit"] is False and SHOWN_SKILLS <= set(marked)
+    assert marked["answer-hold"] is False and SHOWN_SKILLS <= set(marked)
     # A copy taken earlier stays the person's and works; its row says it is hidden.
-    text_fit = (await db.exec(select(Skill).where(Skill.catalog_key == "text-fit",
-                                                  Skill.owner_id == owner.id))).one()
-    copy = await ws._install_skill(db, member, text_fit)
+    hold = (await db.exec(select(Skill).where(Skill.catalog_key == "answer-hold",
+                                              Skill.owner_id == owner.id))).one()
+    copy = await ws._install_skill(db, member, hold)
     await db.commit()
     mine = {row.id: row for row in await ws.list_skills(member, db)}
     assert mine[copy.id].listed is False and mine[copy.id].scripts
     owned = {row.catalog_key: row.listed for row in await ws.list_skills(owner, db)}
-    assert owned["text-fit"] is False and owned["xlsx-clean"] is True
+    assert owned["answer-hold"] is False and owned["xlsx-clean"] is True
 
 
 # ── connectors ─────────────────────────────────────────────────────────
