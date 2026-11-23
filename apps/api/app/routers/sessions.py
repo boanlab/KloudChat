@@ -142,6 +142,7 @@ from app.services import (
     office_edit,
     office_look,
     output_language,
+    paper_figure,
     patterns,
     pptx_doc,
     prompt_tier,
@@ -4123,6 +4124,12 @@ async def generate_images(
                 status_code=status.HTTP_409_CONFLICT, detail="default_image_model_unset"
             )
         raise _refuse_outside_boundary(boundary, "image")
+    paper = paper_figure.routes_here(payload.style, model)
+    figure_chip = payload.style in paper_figure.STYLES and not payload.raw and not payload.figure
+    if figure_chip and not paper:
+        # a figure chip on a picture model inside the institution (or the boundary moved the
+        # model there): shapes drawn by code, as before
+        return await _figure_by_code(session, payload, user, db, request)
     await _audit_media_boundary(user, request, session, boundary)
     if not has_headroom(user, model):
         raise HTTPException(
@@ -4134,6 +4141,14 @@ async def generate_images(
         db.add(user)
         await db.commit()
     base_url, api_key = await litellm_service.credentials_for(user)
+    if paper and figure_chip:
+        done = await _draw_paper_figure(
+            session, payload, user, db, catalogue, boundary, model, base_url, api_key, request
+        )
+        if done is not None:
+            return done
+        # no layout could be planned: the usual code-drawn figure
+        return await _figure_by_code(session, payload, user, db, request)
     # a retired image 서식 gives a plain picture; other ids refused
     if payload.template_id and not design_templates.is_retired_media(payload.template_id):
         raise HTTPException(
@@ -4476,6 +4491,159 @@ async def _edit_image(
             user,
             charged,
             reason="image.edit",
+            session_id=session.id,
+            model=model["id"],
+            surface=session.kind.value,
+        )
+    _record_media(db, session, payload.prompt, [artifact], model=model["id"], credits=charged)
+    await db.commit()
+    await db.refresh(artifact)
+    return [ArtifactOut.of(artifact)]
+
+
+async def _figure_by_code(
+    session: ChatSession, payload: ImageRequest, user: User, db: DbSession, request: Request
+) -> list[ArtifactOut]:
+    """A figure chip drawn as shapes by code (`write_diagram`), for a picture model that cannot
+    draw it itself."""
+    language = (
+        "en"
+        if re.search(
+            r"이름표 언어\s*[:：]\s*영어|Label language\s*[:：]\s*English", payload.prompt, re.I
+        )
+        else "ko"
+    )
+    written = await write_diagram(
+        session.id,
+        DiagramRequest(
+            description=payload.prompt, figure=paper_figure.STYLES[payload.style], language=language
+        ),
+        user,
+        db,
+        request,
+    )
+    return [written.artifact] if written.artifact else []
+
+
+async def _draw_paper_figure(
+    session: ChatSession,
+    payload: ImageRequest,
+    user: User,
+    db: DbSession,
+    catalogue: dict,
+    boundary: _MediaBoundary,
+    model: dict,
+    base_url: str,
+    api_key: str,
+    request: Request,
+) -> list[ArtifactOut] | None:
+    """구조도·흐름도·개념도 on an outside picture model: a text model lists the labels and layout,
+    the picture model draws one figure, a picture-reading model lists what it sees and code
+    compares it with the labels; at most one redraw. `None` when no layout could be planned.
+
+    The planner and the reader are billed as the prompt planner is (not at all: a few hundred
+    tokens); every picture drawn is billed, the redraw too."""
+    planner = _media_model(
+        user,
+        catalogue["models"],
+        kind="chat",
+        boundary=boundary,
+        asked=session.model or "",
+        default=catalogue.get("defaultChatModel"),
+    )
+    if planner is None:
+        return None
+    laid_out = await paper_figure.plan(
+        boundary.text, style=payload.style, model=str(planner["id"]), api_key=api_key
+    )
+    if laid_out is None:
+        return None
+    seeing = [
+        m
+        for m in sorted(
+            _allowed_models(user, catalogue["models"], kind="chat"),
+            key=model_service.fallback_order,
+        )
+        if m.get("supportsVision")
+    ]
+    reader = planner if planner.get("supportsVision") else (seeing[0] if seeing else None)
+    # a second pair of eyes for what the first reading calls wrong
+    second = next((m for m in seeing if reader and m["id"] != reader["id"]), None)
+    charged = 0
+    try:
+        result = await paper_figure.draw(
+            laid_out,
+            style=payload.style,
+            aspect=payload.aspect,
+            base_url=base_url,
+            api_key=api_key,
+            model=str(model["id"]),
+            reader=str(reader["id"]) if reader else None,
+            second_reader=str(second["id"]) if second else None,
+        )
+    except imagegen.ImageError as exc:
+        _record_media(db, session, payload.prompt, [], model=model["id"], failed=True)
+        await db.commit()
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    for drawn in result.drawn:
+        charged += charge_for_image(model, drawn.input_tokens, drawn.output_tokens, drawn.cost_usd)
+    image = result.image
+    file_id, key = imagegen.store(user.id, image)
+    artifact_id = uuid.uuid4().hex
+    db.add(
+        StoredFile(
+            id=file_id,
+            user_id=user.id,
+            origin="generated",
+            session_id=session.id,
+            # listed as an artifact, like a chart; its picture is not a file of its own
+            copy_of=artifact_id,
+            name=f"{payload.prompt[:40] or 'figure'}.png",
+            mime=image.mime,
+            size=len(image.data),
+            storage_key=key,
+            tokens=0,
+        )
+    )
+    artifact = Artifact(
+        id=artifact_id,
+        user_id=user.id,
+        session_id=session.id,
+        project_id=session.project_id,
+        kind=ArtifactKind.image,
+        title=payload.prompt[:200] or "도식",
+        data={
+            "kind": "image",
+            "jobId": None,
+            "prompt": payload.prompt,
+            "aspect": payload.aspect,
+            "actualAspect": image.aspect,
+            "width": image.width,
+            "height": image.height,
+            "style": payload.style,
+            "labels": payload.labels,
+            # sent to the picture model; resendable as `raw`
+            "composedPrompt": result.prompt,
+            # the labels the figure was asked to carry, and what the reading check found
+            "paperFigure": {
+                "kind": paper_figure.STYLES[payload.style],
+                "labels": laid_out.labels,
+                "checked": result.checked,
+                "issues": result.issues,
+                "drawn": len(result.drawn),
+            },
+            "seed": 0,
+            "model": model["id"],
+            "src": f"{settings.api_prefix}/files/{file_id}/content",
+        },
+    )
+    db.add(artifact)
+    if charged:
+        settle(
+            db,
+            user,
+            charged,
+            reason="image.generate",
             session_id=session.id,
             model=model["id"],
             surface=session.kind.value,

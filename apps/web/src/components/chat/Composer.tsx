@@ -42,6 +42,7 @@ import { useNavigate } from 'react-router-dom'
 import { agentStartKind, distinctAgents, kindMeta } from '@/lib/kinds'
 import { Badge, Button, Dropdown, MenuItem, MenuLabel, MenuSeparator, Modal, Select } from '@/components/ui'
 import { cn } from '@/lib/utils'
+import { modelDrawsFigure } from '@/lib/figureRoute'
 import { ChatSendRecoveryError, FIGURE_STYLES, composerKey, effectiveModelId, startingRoutingMode, useStore } from '@/store/useStore'
 import { isSuperMode, STRICT_START_HINT, strictStartReason } from '@/lib/superAgent'
 import { offersReasoning, reasoningSteerable } from '@/lib/reasoning'
@@ -2737,11 +2738,13 @@ export function Composer({
             >
               {unsupportedVideo
                 ? t('이 모델은 이 조합을 만들지 않습니다')
-                : kind === 'image' && FIGURE_STYLES[imageOptions.style]
-                  // A figure is drawn by the text model, not priced as a picture.
+                : kind === 'image' && FIGURE_STYLES[imageOptions.style] && !modelDrawsFigure(model)
+                  // Shapes drawn by code from a text model's flowchart, not priced as a picture.
                   ? t('도식은 글 모델이 씁니다 · 이미지 요금이 아닙니다')
-                  : tokenPricedAudio
-                    ? t('쓴 만큼 크레딧이 나갑니다')
+                  : kind === 'image' && FIGURE_STYLES[imageOptions.style]
+                    ? t.n('선택한 이미지 모델이 그립니다 · 예상 {n} 크레딧', estimate)
+                    : tokenPricedAudio
+                      ? t('쓴 만큼 크레딧이 나갑니다')
                     : t.n('예상 {n} 크레딧', estimate)}
             </span>
           </div>

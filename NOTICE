@@ -24,3 +24,10 @@ Black Han Sans, Do Hyeon, Jua, Gaegu, Nanum Brush Script, BM YEONSUNG — Google
   sold on their own). Each family's licence text is stored beside its files as <file>.OFL.txt.
   How it is used: opened by services/image_text.py to draw text onto a picture; nothing is
   modified or renamed.
+
+PaperBanana style guide (diagram prompts) — https://github.com/dwzhu-pku/PaperBanana
+  Licence: Apache License 2.0.
+  How it is used: apps/api/app/services/paper_figure.py carries a short digest, rewritten in our
+  own words, of the NeurIPS 2025 diagram style guide in that project's style_guides/ (pastel
+  dashed regions, rounded process boxes, solid main flow, dashed side inputs and losses, one
+  accent, no decoration). No PaperBanana code is included.

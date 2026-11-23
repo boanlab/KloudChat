@@ -4345,6 +4345,7 @@ const EN: Record<string, string> = {
   '지금은 도식을 그릴 수 없습니다. 잠시 뒤 다시 시도해 주세요.': 'Figures cannot be drawn right now. Try again in a moment.',
   '「{name}」로 그립니다. 고쳐 써도 되며, 만들기를 눌러야 크레딧이 듭니다.': 'Drawn as a {name}. Edit freely; credits are used only when you press Make.',
   '도식은 글 모델이 씁니다 · 이미지 요금이 아닙니다': 'A figure is written by the text model — not priced as an image',
+  '선택한 이미지 모델이 그립니다 · 예상 {n} 크레딧': 'The picture model you chose draws it · ≈{n} credits',
   '도식 소스(mermaid) 복사': 'Copy the figure source (mermaid)',
   '보고서의 mermaid 블록에 붙여 넣거나 직접 고칠 수 있습니다': 'Paste it into a report\'s mermaid block, or edit it by hand',
   '소스 복사': 'Copy source',
