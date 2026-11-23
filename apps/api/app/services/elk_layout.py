@@ -50,6 +50,7 @@ FIGURE = (410.0, 680.0)
 #: prefers a layout 1.3-3.5 times wider than tall; those that wrap their layers are tried too
 PAPER = (720.0, 340.0)
 RATIO = (1.3, 3.5)
+IDEAL = 2.2
 _DIRECTION = {"LR": "RIGHT", "TB": "DOWN"}
 _SPACING = {
     "elk.layered.spacing.nodeNodeBetweenLayers": 44,
@@ -197,8 +198,8 @@ def applies(graph: Graph, wide: bool = False) -> bool:
 
     if _compares(graph):
         return False
-    if wide and graph.groups:
-        return True  # a figure of its own: every zoned figure is laid out here
+    if wide and len(graph.nodes) >= 3:
+        return True  # a figure of its own: laid out here, folded into rows if ELK cannot
     edges, weak = _edges(graph)
     if not graph.groups:
         return (len(graph.nodes) >= 5 and _branchy(graph)
@@ -402,7 +403,8 @@ def _chosen(graph: Graph, box: tuple[float, float],
         score = (min(text, LEGIBLE), round(text, 1), -rank)
         if wide:
             # a paper figure: a landscape layout first, then the largest text
-            score = (-round(_off_range(out), 2), *score)
+            near = abs(math.log(out["width"] / max(1.0, out["height"]) / IDEAL))
+            score = (-round(_off_range(out), 2), score[0], -round(near, 1), *score[1:])
         if found is None or score > found[0]:
             found = (score, out, scale)
     assert found is not None

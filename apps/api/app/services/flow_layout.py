@@ -30,7 +30,7 @@ _ROW_GAP = 26.0
 _TITLE = 24.0  # extra row gap for phase-frame title
 _ARC = 18.0  # extra above a row for back-edge arcs
 _MARK = 22.0  # extra row gap for edge markers
-_SPAN = 3  # max columns a back-edge arcs over; longer → marker
+_SPAN = 8  # max columns a back-edge arcs over; longer → marker
 _MIN_PER_ROW = 3  # min steps per row (no tall column)
 
 

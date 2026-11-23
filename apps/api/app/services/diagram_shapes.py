@@ -263,6 +263,9 @@ def parse(source: str) -> Graph | None:
     ]
     if not graph.nodes or len(graph.nodes) > MAX_NODES:
         return None
+    if len(graph.groups) == 1 and set(next(iter(graph.groups.values()))[1]) >= set(graph.nodes):
+        graph.groups.clear()  # one zone around everything frames nothing
+        graph.group_dirs.clear()
     if _compares(graph):
         graph.direction = "LR"
         # comparison: no arrowheads, links only between same-row counterparts
@@ -548,6 +551,10 @@ def _route(
                 came[(n, nd)] = (c, d)
                 heapq.heappush(frontier, (new + h(n), new, n, nd))
     if found is None:
+        if a_side == b_side and a_side in ("top", "bottom"):
+            # an arc over (or under) the row: out of both sides, along one level clear of them
+            level = (min(sy, gy) - 14.0) if a_side == "top" else (max(sy, gy) + 14.0)
+            return [(sx, sy), (sx, level), (gx, level), (gx, gy)]
         # no route: elbow through the middle
         mxp = (sx + gx) / 2
         return [(sx, sy), (mxp, sy), (mxp, gy), (gx, gy)] if a_side in ("left", "right") else [
@@ -851,7 +858,7 @@ def draw_pptx(
             s.adjustments[0] = 0.3
         elif node.shape == "cylinder":
             s.adjustments[0] = min(0.3, 12.0 / max(1.0, h))
-        zone = _ZONES[zone_of[node.id]] if node.id in zone_of else None
+        zone = _ZONES[zone_of[node.id]] if node.id in zone_of else _ZONES[1] if paper else None
         # a step deeper than the zone's panel; a node outside any zone takes the accent
         fill, edge_colour, ink = (
             (RGBColor.from_string(zone[2]), RGBColor.from_string(zone[3]), text_dark) if zone
