@@ -336,7 +336,7 @@ const EN: Record<string, string> = {
   '검색 색인 서비스에 연결할 수 없습니다. 잠시 후 다시 시도하세요.': 'Cannot reach the search index service. Try again shortly.',
   '이 아티팩트만 공유': 'Share only this artifact',
   '대화는 빼고 이 아티팩트만 보입니다. 공유한 뒤에 고친 내용도 링크에 나타납니다.': 'Only this artifact is shown, not the conversation. Changes made after sharing also appear in the link.',
-  '이 아티팩트만 보입니다 — 대화·프로젝트 파일·메모리는 포함되지 않습니다.': 'Only this artifact is shown — the conversation, project files and memory are not included.',
+  '이 아티팩트만 보입니다. 대화·프로젝트 파일·메모리는 포함되지 않습니다.': 'Only this artifact is shown. The conversation, project files and memory are not included.',
   // Pipeline canvas
   '여기에 넣으면': 'If added here',
   '단계 목록을 불러오는 중…': 'Loading the step list…',
@@ -3349,8 +3349,8 @@ const EN: Record<string, string> = {
   '대화를 시작하면 모델별·화면별 사용량이 여기에 쌓입니다.':
     'Start a conversation and usage by model and by surface builds up here.',
   '저장한 사실 중 관련 있는 것을 다음 대화에서 참고합니다.': 'Saved facts are used in later conversations when relevant.',
-  '대화와 아티팩트만 보입니다 — 프로젝트 파일·메모리는 포함되지 않습니다.':
-    'Only the conversation and its artifacts are visible — project files and memories are not included.',
+  '대화와 아티팩트만 보입니다. 프로젝트 파일·메모리는 포함되지 않습니다.':
+    'Only the conversation and its artifacts are visible. Project files and memories are not included.',
   '도구 {n}': '{n} tools',
   '동기화 이력 없음': 'Never synced',
   '되돌리는 중…': 'Restoring…',
@@ -4302,7 +4302,7 @@ const EN: Record<string, string> = {
 
   // ── share state and hidden records ───────────────────────────────
   '공유 중': 'Shared',
-  '링크 공개 중': 'Public link',
+  '링크로 공유 중': 'Shared by link',
   '링크를 아는 누구나 계정 없이 이 대화를 읽을 수 있습니다.':
     'Anyone with the link can read this conversation without an account.',
   '공유한 뒤에 오가는 대화도 링크에 그대로 나타납니다. 지금까지만 보이게 하려면 링크를 철회하세요.':
@@ -5213,7 +5213,6 @@ const EN: Record<string, string> = {
   'MCP 서버를 켜지 못했습니다. 잠시 뒤 다시 시도하세요.': 'Could not turn the MCP server on. Try again in a moment.',
   'MCP 서버를 끄지 못했습니다. 잠시 뒤 다시 시도하세요.': 'Could not turn the MCP server off. Try again in a moment.',
   '설정을 저장하지 못했습니다. 다시 시도해 주세요.': 'Could not save the setting. Please try again.',
-  '링크가 있는 사람': 'Anyone with the link',
   '계정 없이도 열립니다. 링크를 아는 누구나 읽을 수 있습니다.': 'Opens without an account. Anyone who knows the link can read it.',
   '공유 상태를 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.': 'Could not load the sharing status. Try again in a moment.',
   '링크를 철회하지 못했습니다. 다시 시도해 주세요.': 'Could not revoke the link. Please try again.',

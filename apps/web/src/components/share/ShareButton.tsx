@@ -20,7 +20,7 @@ const options: { id: Scope; label: string; description: string; icon: typeof Use
   },
   {
     id: 'link',
-    label: '링크가 있는 사람',
+    label: '링크를 아는 사람',
     description: '계정 없이도 열립니다. 링크를 아는 누구나 읽을 수 있습니다.',
     icon: Link2,
   },
@@ -33,7 +33,7 @@ const sharedState: Record<Scope, { label: string; title: string; tone: 'accent' 
     tone: 'accent',
   },
   link: {
-    label: '링크 공개 중',
+    label: '링크로 공유 중',
     title: '링크를 아는 누구나 계정 없이 이 대화를 읽을 수 있습니다.',
     tone: 'warn',
   },
@@ -203,8 +203,8 @@ export function ShareButton({
               <span>{t.n('{n}회 열람', share.views)}</span>
               <span className="text-faint">
                 {artifact
-                  ? t('이 아티팩트만 보입니다 — 대화·프로젝트 파일·메모리는 포함되지 않습니다.')
-                  : t('대화와 아티팩트만 보입니다 — 프로젝트 파일·메모리는 포함되지 않습니다.')}
+                  ? t('이 아티팩트만 보입니다. 대화·프로젝트 파일·메모리는 포함되지 않습니다.')
+                  : t('대화와 아티팩트만 보입니다. 프로젝트 파일·메모리는 포함되지 않습니다.')}
               </span>
             </div>
             <ShareViews shareId={share.id} />
@@ -224,6 +224,7 @@ export function ShareButton({
                   <button
                     key={o.id}
                     onClick={() => setScope(o.id)}
+                    aria-pressed={active}
                     className={cn(
                       'flex w-full items-start gap-2.5 rounded-card border p-3 text-left transition-colors',
                       active

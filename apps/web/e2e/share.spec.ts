@@ -14,7 +14,7 @@ test('링크를 만들면 로그인하지 않은 사람도 열 수 있다', asyn
 
   await page.getByRole('button', { name: '공유', exact: true }).click()
   const modal = page.getByRole('dialog')
-  await modal.getByText('링크가 있는 사람').click()
+  await modal.getByText('링크를 아는 사람').click()
   await modal.getByRole('button', { name: '링크 만들기' }).click()
 
   const field = modal.getByLabel('공유 링크')
@@ -24,9 +24,9 @@ test('링크를 만들면 로그인하지 않은 사람도 열 수 있다', asyn
 
   // Said in the top bar, and after a reload.
   await modal.getByRole('button', { name: '완료' }).click()
-  await expect(page.getByText('링크 공개 중')).toBeVisible()
+  await expect(page.getByText('링크로 공유 중')).toBeVisible()
   await page.reload()
-  await expect(page.getByText('링크 공개 중')).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByText('링크로 공유 중')).toBeVisible({ timeout: 20_000 })
 
   // A brand-new context: no cookie, no token.
   const stranger = await browser.newContext()
@@ -43,7 +43,7 @@ test('링크를 만들면 로그인하지 않은 사람도 열 수 있다', asyn
   await page.getByRole('button', { name: '링크 철회' }).click()
   await expect(page.getByRole('button', { name: '링크 만들기' })).toBeVisible({ timeout: 20_000 })
   await modal.getByRole('button', { name: '완료' }).click()
-  await expect(page.getByText('링크 공개 중')).toHaveCount(0)
+  await expect(page.getByText('링크로 공유 중')).toHaveCount(0)
   await guest.goto(url)
   await expect(guest.getByText('열 수 없는 링크입니다')).toBeVisible({ timeout: 20_000 })
   await stranger.close()
