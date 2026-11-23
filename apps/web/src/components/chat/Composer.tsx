@@ -1189,6 +1189,9 @@ export function Composer({
         ? (videoRate ?? 0) * avOptions.durationSec
         : (model?.creditPerCall ?? model?.creditCost ?? 0)
     : 0
+  // A narration model priced by tokens has no figure to show before it has run.
+  const tokenPricedAudio =
+    kind === 'av' && avOptions.mode !== 'video' && !model?.creditPerCall && (model?.creditCost ?? 0) > 0
   const jobRunning = jobs.some(
     (j) => j.sessionId === sessionId && (j.status === 'running' || j.status === 'queued'),
   )
@@ -2737,7 +2740,9 @@ export function Composer({
                 : kind === 'image' && FIGURE_STYLES[imageOptions.style]
                   // A figure is drawn by the text model, not priced as a picture.
                   ? t('도식은 글 모델이 씁니다 · 이미지 요금이 아닙니다')
-                  : t.n('예상 {n} 크레딧', estimate)}
+                  : tokenPricedAudio
+                    ? t('쓴 만큼 크레딧이 나갑니다')
+                    : t.n('예상 {n} 크레딧', estimate)}
             </span>
           </div>
         )}

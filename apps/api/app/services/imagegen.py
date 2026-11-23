@@ -18,7 +18,7 @@ import httpx
 from PIL import Image
 
 from app.services import files as file_service
-from app.services import settings_store, thinking, usage_fields
+from app.services import image_text, settings_store, thinking, usage_fields
 
 log = logging.getLogger(__name__)
 
@@ -63,6 +63,9 @@ _STYLE_PHRASE = {
         "washes, no hard outlines"
     ),
 }
+
+#: styles drawn as shapes or a chart: their labels are the diagram's own
+FIGURE_STYLES = frozenset({"도식", "구조도", "흐름도", "개념도", "차트"})
 
 #: screen chips (mirrored in web's STYLE_GROUPS): the picture model's looks, then the
 #: figures drawn as shapes or a chart, then the prompt as written. 도식, 미니멀 and 3D 렌더
@@ -485,6 +488,45 @@ def _extract(message: dict[str, Any]) -> tuple[bytes, str]:
 
 #: image_config.aspect_ratio values; other models ignore it
 _RATIOS = {"1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "4:5", "5:4", "21:9"}
+
+
+async def plan_text_overlay(
+    request: str,
+    strings: list[str],
+    *,
+    model: str,
+    api_key: str,
+) -> tuple[str, list[image_text.Line]]:
+    """(picture prompt with no text, placed lines) for an in-house picture model; the planner
+    decides only where each quoted string goes. A failed planner gives the request without its
+    quoted words and the default layout."""
+    base, _ = await settings_store.litellm_config()
+    raw = ""
+    try:
+        async with httpx.AsyncClient(
+            base_url=base.rstrip("/"),
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=httpx.Timeout(90.0, connect=10.0),
+        ) as client:
+            response = await client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "user", "content": image_text.layout_request(request, strings)}
+                    ],
+                    "max_tokens": 900,
+                    "temperature": 0.3,
+                    **thinking.switch(model),
+                },
+            )
+            response.raise_for_status()
+            raw = str(
+                (response.json().get("choices") or [{}])[0].get("message", {}).get("content") or ""
+            )
+    except (httpx.HTTPError, ValueError, KeyError) as exc:
+        log.warning("image text layout planner failed, using the default layout: %s", exc)
+    return image_text.parse_plan(raw, strings, request)
 
 
 async def generate(
