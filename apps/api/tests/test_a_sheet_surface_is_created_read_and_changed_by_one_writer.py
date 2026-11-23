@@ -120,6 +120,6 @@ async def test_a_person_who_lost_the_race_can_download_their_edits_without_savin
     assert (await client.get(f"/artifacts/{sheet_id}/xlsx/model")).json()["version"] == 2
 
 
-def test_the_sheet_surface_is_optional_and_off_by_default():
+def test_the_sheet_surface_is_optional_and_on_by_default():
     assert SessionKind.sheet.value in settings_store.OPTIONAL_KINDS
-    assert SessionKind.sheet.value not in settings_store.DEFAULT_ENABLED_KINDS
+    assert SessionKind.sheet.value in settings_store.DEFAULT_ENABLED_KINDS

@@ -60,7 +60,7 @@ ENABLED_KINDS = "kinds.enabled"
 
 #: non-chat surfaces; image/video/sheet default off
 OPTIONAL_KINDS = ("report", "slides", "image", "av", "sheet")
-DEFAULT_ENABLED_KINDS = ("report", "slides")
+DEFAULT_ENABLED_KINDS = ("report", "slides", "sheet")
 
 #: "1"/"0"; unset = on: the `kloudchat/super-agent` model ids on the /llm proxy
 API_SUPER_AGENT_ENABLED = "api_super_agent_enabled"
