@@ -73,6 +73,7 @@ function AccountItems() {
         <>
           <MenuSeparator />
           <MenuLabel>{t('관리')}</MenuLabel>
+          {/* What waits for an administrator first, then the figures, then the settings. */}
           <MenuItem
             icon={<Shield size={14} />}
             onClick={() => navigate('/admin/users')}
@@ -80,27 +81,29 @@ function AccountItems() {
           >
             {t('사용자 · 크레딧')}
           </MenuItem>
-          <MenuItem icon={<ChartColumn size={14} />} onClick={() => navigate('/admin/usage')}>
-            {t('사용량')}
-          </MenuItem>
           <MenuItem
             icon={<Bot size={14} />}
             onClick={() => navigate('/admin/publications')}
             hint={reviews > 0 ? `${t('승인')} ${reviews}` : undefined}
           >
-            {t('공개 챗봇')}
-          </MenuItem>
-          <MenuItem icon={<ShieldCheck size={14} />} onClick={() => navigate('/admin/governance')}>
-            {t('보안 · 감사')}
+            {t('공유 챗봇 관리')}
           </MenuItem>
           <MenuItem icon={<Flag size={14} />} onClick={() => navigate('/admin/issues')}>
-            {t('문의·신고')}
+            {t('문의·신고 관리')}
           </MenuItem>
-          <MenuItem icon={<Server size={14} />} onClick={() => navigate('/admin/system')}>
-            {t('시스템')}
+          <MenuSeparator />
+          <MenuItem icon={<ChartColumn size={14} />} onClick={() => navigate('/admin/usage')}>
+            {t('사용량')}
           </MenuItem>
           <MenuItem icon={<Activity size={14} />} onClick={() => navigate('/admin/performance')}>
             {t('성능 모니터링')}
+          </MenuItem>
+          <MenuSeparator />
+          <MenuItem icon={<ShieldCheck size={14} />} onClick={() => navigate('/admin/governance')}>
+            {t('보안 · 감사')}
+          </MenuItem>
+          <MenuItem icon={<Server size={14} />} onClick={() => navigate('/admin/system')}>
+            {t('시스템')}
           </MenuItem>
         </>
       )}

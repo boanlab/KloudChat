@@ -31,8 +31,8 @@ const ROUTES: [RegExp, string][] = [
   [/^\/admin\/performance/, '성능 모니터링'],
   [/^\/admin\/system/, '시스템'],
   [/^\/admin\/governance/, '보안 · 감사'],
-  [/^\/admin\/issues/, '문의·신고'],
-  [/^\/admin\/publications/, '공개 챗봇'],
+  [/^\/admin\/issues/, '문의·신고 관리'],
+  [/^\/admin\/publications/, '공유 챗봇 관리'],
   [/^\/b\/?$/, '공개 챗봇'],
 ]
 

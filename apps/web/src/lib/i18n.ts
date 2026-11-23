@@ -846,6 +846,8 @@ const EN: Record<string, string> = {
   '자료로 답할 수 없을 때 이대로 안내합니다.': 'Given as written when the material cannot answer.',
   '예: 학사지원팀 02-760-1234, haksa@example.ac.kr': 'e.g. Academic Affairs 02-760-1234, haksa@example.ac.kr',
   '공개 챗봇': 'Published chatbots',
+  '공유 챗봇 관리': 'Manage shared chatbots',
+  '문의·신고 관리': 'Manage reports',
   // Public chatbots: link sharing, external publishing, signed-out visitors, admin approval
   '우리 조직': 'Your organization',
   '링크를 아는 사람': 'Anyone with the link',

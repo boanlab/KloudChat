@@ -2,42 +2,42 @@
 {
 "lang": "ko",
 "path": "admin/bots",
-"title": "공개 챗봇 승인",
+"title": "공유 챗봇 승인",
 "heading": "",
 "text": "구성원이 에이전트를 챗봇으로 공유하면 다른 구성원은 바로 씁니다. 로그인하지 않은 사람에게 여는 **링크를 아는 사람**과 **누구나**는 관리자가 승인해야 열립니다. 계정 메뉴의 **관리** → **공개 챗봇**에서 다룹니다. 승인을 기다리는 요청이 있으면 메뉴에 숫자가 붙습니다."
 },
 {
 "lang": "ko",
 "path": "admin/bots",
-"title": "공개 챗봇 승인",
+"title": "공유 챗봇 승인",
 "heading": "검토하는 것",
 "text": "요청을 열면 승인하면 답하게 될 판의 내용이 보입니다.\n\n- 지시, 담당 부서·연락처, 첫 인사, 쓰는 도구와 검사, 답하는 strict-local 모델\n- 자료 목록과 자료에서 개인정보로 보이는 값의 개수\n- 공개한 사람, 하루 최대 크레딧, 지금까지의 기록(요청, 결정, 새 판)\n\n**승인**하면 요청한 범위와 그 판이 함께 열립니다. **반려**에는 사유를 적어야 하고, 사유는 공개한 사람의 관리 화면에 보입니다. 반려해도 챗봇은 그 전 범위로 계속 답합니다.\n\n로그인하지 않은 사람에게 열린 챗봇에 새 판이 올라오면 같은 방식으로 다시 검토합니다. 승인 전까지는 승인된 판이 답합니다."
 },
 {
 "lang": "ko",
 "path": "admin/bots",
-"title": "공개 챗봇 승인",
+"title": "공유 챗봇 승인",
 "heading": "채널 요청",
 "text": "「누구나」·「링크를 아는 사람」 챗봇의 공유한 사람은 **다른 사이트에 넣기**, **API**, **MCP** 채널을 요청할 수 있습니다. 요청은 같은 승인 대기 목록에 「채널 요청」으로 보이고, 검토 화면에 요청한 채널과 넣을 사이트 주소가 나옵니다.\n\n- **승인**하면 요청한 채널이 열립니다. 다른 사이트에 넣기는 승인한 사이트 주소에서만 대화창이 보입니다. 사이트를 더하는 것도 다시 승인을 거칩니다.\n- **누구나 범위 닫기**는 다른 사이트·API·MCP 채널도 함께 닫습니다. 그 뒤로는 사이트의 대화창, API, MCP 모두 바로 거부됩니다.\n- 열린 채널은 검토 화면 오른쪽 **열린 채널**에서 봅니다."
 },
 {
 "lang": "ko",
 "path": "admin/bots",
-"title": "공개 챗봇 승인",
+"title": "공유 챗봇 승인",
 "heading": "대화 열람",
 "text": "검토 화면의 **대화 열람**은 남용 신고를 확인할 때만 씁니다. 사유를 적어야 대화 목록과 내용이 열리고, 개인정보는 가려서 보입니다. 열람한 날과 사유는 감사 기록과 공개한 사람의 관리 화면(**관리자 열람 기록**)에 남습니다. API·MCP 키로 온 대화는 「API·MCP 키」로 표시됩니다."
 },
 {
 "lang": "ko",
 "path": "admin/bots",
-"title": "공개 챗봇 승인",
+"title": "공유 챗봇 승인",
 "heading": "닫기와 중지",
 "text": "| 동작 | 결과 |\n|---|---|\n| 누구나·링크를 아는 사람 범위 닫기 | 우리 조직으로 돌립니다. 로그인하지 않은 방문자는 다음 요청부터 챗봇을 열 수 없습니다 |\n| 일시 중지 / 다시 열기 | 모든 방문자가 질문할 수 없게 멈추거나 다시 엽니다 |\n| 챗봇 닫기 | 공개한 사람 외에는 아무도 열 수 없습니다 |\n\n모든 동작에는 사유를 적고, 감사 기록에 남습니다. 공개 챗봇의 대화를 남용 확인 목적으로 열람할 때도 사유가 필요하며 기록됩니다."
 },
 {
 "lang": "ko",
 "path": "admin/bots",
-"title": "공개 챗봇 승인",
+"title": "공유 챗봇 승인",
 "heading": "운영 참고",
 "text": "- 로그인하지 않은 방문자는 브라우저 쿠키로 구분하고, 접속 주소별 분·하루 한도와 하루 새 방문자·대화 수 한도로 남용을 막습니다. 주소는 서버 앞단 프록시가 보낸 `X-Forwarded-For`로 판단하므로, 웹 컨테이너의 `KCHAT_TRUSTED_PROXIES`를 실제 프록시 주소로 좁혀 두어야 합니다.\n- 기관 전체에서 동시에 답하는 공개 챗봇 질문은 상한(기본 16개) 안에서 처리하고, 넘치는 질문은 잠시 기다렸다가 차례가 오지 않으면 「질문이 몰려 있습니다」로 돌려보냅니다."
 },
@@ -46,14 +46,14 @@
 "path": "admin/index",
 "title": "관리자 가이드",
 "heading": "",
-"text": "관리자 계정으로 로그인하면 계정 메뉴에 **관리** 항목이 생깁니다. 최초로 가입한 계정이 관리자 권한을 갖습니다.\n\n| 화면 | 하는 일 |\n|---|---|\n| 사용자 · 크레딧 | 가입 승인·반려, 정지, 정보 수정, 월 크레딧, 허용 모델, 키 관리, 진행 과정·스킬 공유 검토 |\n| 사용량 | 기간별·모델별·사용자별 사용량, CSV, 저장 공간 |\n| 공개 챗봇 | 「링크를 아는 사람」·「누구나」 범위와 채널(다른 사이트·API·MCP) 승인, 닫기·중지, 남용 확인 열람 |\n| 보안 · 감사 | **정책** 탭(개인정보 보호, 내부 자료 처리, 안전 모델, 차단 주제, 유휴 로그아웃, 보존 기간)과 **감사 로그** 탭 |\n| 문의·신고 | 사용자가 보낸 오류 신고·기능 요청·문의 확인, 담당자·상태 지정, 답변 |\n| 시스템 | **프록시 · 모델 · 라우팅 · 기능 · 브랜딩 · 메일 · 회원 가입** 탭 |\n| 성능 모니터링 | 판정·핵심 수치·GPU 노드·모델 서버를 한 화면에 모은 대시보드, 항목을 누르면 호스트·모델·노드·서버별 추이와 세부 수치 |"
+"text": "관리자 계정으로 로그인하면 계정 메뉴에 **관리** 항목이 생깁니다. 최초로 가입한 계정이 관리자 권한을 갖습니다.\n\n| 화면 | 하는 일 |\n|---|---|\n| 사용자 · 크레딧 | 가입 승인·반려, 정지, 정보 수정, 월 크레딧, 허용 모델, 키 관리, 진행 과정·스킬 공유 검토 |\n| 사용량 | 기간별·모델별·사용자별 사용량, CSV, 저장 공간 |\n| 공유 챗봇 관리 | 「링크를 아는 사람」·「누구나」 범위와 채널(다른 사이트·API·MCP) 승인, 닫기·중지, 남용 확인 열람 |\n| 보안 · 감사 | **정책** 탭(개인정보 보호, 내부 자료 처리, 안전 모델, 차단 주제, 유휴 로그아웃, 보존 기간)과 **감사 로그** 탭 |\n| 문의·신고 관리 | 사용자가 보낸 오류 신고·기능 요청·문의 확인, 담당자·상태 지정, 답변 |\n| 시스템 | **프록시 · 모델 · 라우팅 · 기능 · 브랜딩 · 메일 · 회원 가입** 탭 |\n| 성능 모니터링 | 판정·핵심 수치·GPU 노드·모델 서버를 한 화면에 모은 대시보드, 항목을 누르면 호스트·모델·노드·서버별 추이와 세부 수치 |"
 },
 {
 "lang": "ko",
 "path": "admin/index",
 "title": "관리자 가이드",
 "heading": "초기 설정 순서",
-"text": "1. **시스템 → 프록시**: 모델 게이트웨이 주소와 마스터 키를 입력하고 연결을 확인합니다. 이 설정이 없으면 사용할 모델이 표시되지 않습니다.\n2. **시스템 → 기능**: 사용할 기능을 켜고 기능 연동 주소의 연결을 확인합니다. 연동 주소는 웹 검색, 문서 가져오기, 코드 실행, 심층 조사, 음성 전사, 자료 검색, 글자 읽기(OCR)에 있습니다.\n3. **시스템 → 회원 가입**: 가입 방식과 허용 이메일 도메인을 설정하고, 메일 서버가 있으면 이메일 인증을 활성화합니다.\n4. **시스템 → 메일**: 비밀번호 재설정과 인증 메일이 필요한 경우 SMTP를 설정합니다.\n5. **시스템 → 브랜딩**: 서비스 이름, 로고, 문의 주소를 설정합니다.\n6. **보안 · 감사 → 정책**: strict-local 안전 모델을 지정하고 개인정보 보호 방식을 결정합니다.\n7. **시스템 → 라우팅**: Super Agent가 질문 종류별로 쓸 모델 표를 확인합니다.\n8. **사용자 · 크레딧**: 승인 대기 계정을 처리합니다.\n\n각 항목의 상세 내용은 사용자와 크레딧, 정책과 라우팅, 공개 챗봇 승인, 시스템 설정을 참고하세요."
+"text": "1. **시스템 → 프록시**: 모델 게이트웨이 주소와 마스터 키를 입력하고 연결을 확인합니다. 이 설정이 없으면 사용할 모델이 표시되지 않습니다.\n2. **시스템 → 기능**: 사용할 기능을 켜고 기능 연동 주소의 연결을 확인합니다. 연동 주소는 웹 검색, 문서 가져오기, 코드 실행, 심층 조사, 음성 전사, 자료 검색, 글자 읽기(OCR)에 있습니다.\n3. **시스템 → 회원 가입**: 가입 방식과 허용 이메일 도메인을 설정하고, 메일 서버가 있으면 이메일 인증을 활성화합니다.\n4. **시스템 → 메일**: 비밀번호 재설정과 인증 메일이 필요한 경우 SMTP를 설정합니다.\n5. **시스템 → 브랜딩**: 서비스 이름, 로고, 문의 주소를 설정합니다.\n6. **보안 · 감사 → 정책**: strict-local 안전 모델을 지정하고 개인정보 보호 방식을 결정합니다.\n7. **시스템 → 라우팅**: Super Agent가 질문 종류별로 쓸 모델 표를 확인합니다.\n8. **사용자 · 크레딧**: 승인 대기 계정을 처리합니다.\n\n각 항목의 상세 내용은 사용자와 크레딧, 정책과 라우팅, 공유 챗봇 승인, 시스템 설정을 참고하세요."
 },
 {
 "lang": "ko",
@@ -1810,7 +1810,7 @@
 "path": "admin/index",
 "title": "Administrator guide",
 "heading": "",
-"text": "When you sign in with an administrator account, a **Manage** item appears in the account menu. The first account to sign up holds administrator rights.\n\n| Screen | What it does |\n|---|---|\n| Users · Credits | Approve and reject sign-ups, suspend, edit details, monthly credits, allowed models, key management, review of shared processes and skills |\n| Usage | Usage by period, by model, and by user, CSV, storage space |\n| Published chatbots | Approve the \"Anyone with the link\" and \"Anyone\" scopes and channels (other sites, API, MCP), close or pause, abuse-check viewing |\n| Security · Audit | The **Policy** tab (personal data protection, internal material, safe model, blocked topics, idle sign-out, retention period) and the **Audit log** tab |\n| Feedback & issues | Read bug reports, feature requests and questions from users, set the assignee and status, reply |\n| System | The **Proxy · Models · Routing · Features · Branding · Mail · Sign-up** tabs |\n| Performance | One-screen dashboard of verdicts, key figures, GPU nodes and model servers; each item opens trends and details for the host, models, a node or a server |"
+"text": "When you sign in with an administrator account, a **Manage** item appears in the account menu. The first account to sign up holds administrator rights.\n\n| Screen | What it does |\n|---|---|\n| Users · Credits | Approve and reject sign-ups, suspend, edit details, monthly credits, allowed models, key management, review of shared processes and skills |\n| Usage | Usage by period, by model, and by user, CSV, storage space |\n| Manage shared chatbots | Approve the \"Anyone with the link\" and \"Anyone\" scopes and channels (other sites, API, MCP), close or pause, abuse-check viewing |\n| Security · Audit | The **Policy** tab (personal data protection, internal material, safe model, blocked topics, idle sign-out, retention period) and the **Audit log** tab |\n| Manage feedback | Read bug reports, feature requests and questions from users, set the assignee and status, reply |\n| System | The **Proxy · Models · Routing · Features · Branding · Mail · Sign-up** tabs |\n| Performance | One-screen dashboard of verdicts, key figures, GPU nodes and model servers; each item opens trends and details for the host, models, a node or a server |"
 },
 {
 "lang": "en",

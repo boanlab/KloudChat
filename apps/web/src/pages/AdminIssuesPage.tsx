@@ -85,9 +85,9 @@ function IssueList() {
 
   return (
     <>
-      <TopBar left={<span className="text-base font-medium">{t('문의·신고')}</span>} />
+      <TopBar left={<span className="text-base font-medium">{t('문의·신고 관리')}</span>} />
       <PageBody>
-        <PageHeader title={t('문의·신고')} description={t('사용자가 보낸 신고·문의에 답합니다.')} />
+        <PageHeader title={t('문의·신고 관리')} description={t('사용자가 보낸 신고·문의에 답합니다.')} />
         {data && (
           <div className="mb-4 flex flex-wrap gap-1.5" aria-label={t('상태별 건수')}>
             {STATUSES.map((s) => (
@@ -236,7 +236,7 @@ function IssueDetailView({ id }: { id: string }) {
   if (failed) {
     return (
       <>
-        <TopBar left={<span className="text-base font-medium">{t('문의·신고')}</span>} />
+        <TopBar left={<span className="text-base font-medium">{t('문의·신고 관리')}</span>} />
         <PageBody><EmptyState icon={<Flag size={18} />} title={t('신고를 찾을 수 없습니다')} action={<Link className="text-accent" to="/admin/issues">{t('목록으로')}</Link>} /></PageBody>
       </>
     )
@@ -244,7 +244,7 @@ function IssueDetailView({ id }: { id: string }) {
   if (!detail) {
     return (
       <>
-        <TopBar left={<span className="text-base font-medium">{t('문의·신고')}</span>} />
+        <TopBar left={<span className="text-base font-medium">{t('문의·신고 관리')}</span>} />
         <PageBody><LoadingState /></PageBody>
       </>
     )
@@ -256,7 +256,7 @@ function IssueDetailView({ id }: { id: string }) {
 
   return (
     <>
-      <TopBar left={<span className="text-base font-medium">{t('문의·신고')}</span>} />
+      <TopBar left={<span className="text-base font-medium">{t('문의·신고 관리')}</span>} />
       <PageBody>
         <Link to="/admin/issues" className="mb-3 inline-flex items-center gap-1 text-sm text-muted hover:text-fg">
           <ArrowLeft size={14} />

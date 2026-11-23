@@ -48,8 +48,8 @@ Korean guide and on Korean screens.
 | 아티팩트 | artifact | The sidebar and screen name is Artifacts |
 | 공유 | sharing / Share | |
 | 사용량 | usage | |
-| 챗봇 | chatbot | Admin screen name is Published chatbots (공개 챗봇) |
-| 문의·신고 | Feedback & issues | Screen name |
+| 챗봇 | chatbot | Admin screen name is Manage shared chatbots (공유 챗봇 관리) |
+| 문의·신고 | Feedback & issues | Screen name; the administrator screen is Manage feedback (문의·신고 관리) |
 | 접속 기록 | sign-in history | |
 | 제한 사항 | limits | |
 | 용어 | glossary | |

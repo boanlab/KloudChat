@@ -137,10 +137,10 @@ function PublicationList() {
 
   return (
     <>
-      <TopBar left={<span className="text-base font-medium">{t('공개 챗봇')}</span>} />
+      <TopBar left={<span className="text-base font-medium">{t('공유 챗봇 관리')}</span>} />
       <PageBody>
         <PageHeader
-          title={t('공개 챗봇')}
+          title={t('공유 챗봇 관리')}
           description={t('구성원이 공유한 챗봇입니다. 「링크를 아는 사람」과 「누구나」는 여기서 승인합니다.')}
         />
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -250,13 +250,13 @@ function ReviewView({ id }: { id: string }) {
   const back = (
     <Link to="/admin/publications" className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-fg">
       <ArrowLeft size={14} aria-hidden />
-      {t('공개 챗봇')}
+      {t('공유 챗봇 관리')}
     </Link>
   )
   if (missing) {
     return (
       <>
-      <TopBar left={<span className="text-base font-medium">{t('공개 챗봇')}</span>} />
+      <TopBar left={<span className="text-base font-medium">{t('공유 챗봇 관리')}</span>} />
       <PageBody>
         <EmptyState
           icon={<Bot size={18} />}
@@ -291,7 +291,7 @@ function ReviewView({ id }: { id: string }) {
 
   return (
     <>
-      <TopBar left={<span className="text-base font-medium">{t('공개 챗봇')}</span>} />
+      <TopBar left={<span className="text-base font-medium">{t('공유 챗봇 관리')}</span>} />
       <PageBody>
         <div className="mb-4">{back}</div>
         <header className="flex flex-wrap items-start gap-3 border-b border-line pb-5">
