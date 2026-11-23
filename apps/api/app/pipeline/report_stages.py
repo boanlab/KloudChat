@@ -57,6 +57,7 @@ from app.services import (
     report_checks,
     research,
     richtext,
+    settings_store,
     source_conflicts,
     source_focus,
     stated_days,
@@ -1793,12 +1794,11 @@ def _figure_says_more(made: dict, sections: list[dict], asked: bool,
     if diagrams.too_thin(made):
         return False
     report = _report()
-    if own is not None and (span := diagrams.repeated_list(made, str(own.get("content") or ""))):
+    if not asked and own is not None and diagrams.repeated_list(
+            made, str(own.get("content") or "")):
         # a flow naming the steps the section lists right beside it: one of them is enough
-        if not asked:
-            return False
-        lines = str(own["content"]).split("\n")
-        own["content"] = re.sub(r"\n{3,}", "\n\n", "\n".join(lines[:span[0]] + lines[span[1]:]))
+        # (asked for figures: both stay, the person wanted the figure)
+        return False
     for section in sections:
         content = str(section.get("content") or "")
         for table in report._TABLE.finditer(content):
@@ -1984,6 +1984,9 @@ async def _chart_tables(bundle: Bundle, sections: list[dict], language: str,
     report, req = _report(), bundle.request
     if table_charts.declined(req.text) or (
             draws_nothing and not re.search(r"차트|그래프|chart|graph", req.text, re.I)):
+        return
+    if not (await settings_store.tools_config()).exec:
+        # no code sandbox: no chart is drawn, so none is announced either
         return
     taken: set[str] = set()
     made = 0

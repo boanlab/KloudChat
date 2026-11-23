@@ -1,8 +1,10 @@
 """Charts from a report's tables: parsed by code, values as the table has them."""
 
+import types
+
 import pytest
 
-from app.services import diagrams, illustrations, table_charts
+from app.services import diagrams, illustrations, settings_store, table_charts
 
 RESULT = """설명 문단.
 
@@ -150,9 +152,9 @@ def test_a_flow_repeating_a_list_is_left_out_unless_figures_were_asked_for():
     section = {"content": STEPS_LIST + "\n뒷 글"}
     made = {"figure": "flow", "source": FLOW}
     assert not report_stages._figure_says_more(made, [section], asked=False, own=section)
-    # asked for: the figure stands and the list it repeats goes
+    # asked for figures: the figure and the list both stay
     assert report_stages._figure_says_more(made, [section], asked=True, own=section)
-    assert "```steps" not in section["content"] and "뒷 글" in section["content"]
+    assert "```steps" in section["content"]
 
 
 @pytest.mark.asyncio
@@ -165,7 +167,11 @@ async def test_a_chart_goes_under_the_table_and_a_plan_without_tables_gets_none(
         assert "2025" in code
         return b"\x89PNG-fake"
 
+    async def backends():
+        return types.SimpleNamespace(exec="http://sandbox")
+
     monkeypatch.setattr(chart_code, "render", render)
+    monkeypatch.setattr(settings_store, "tools_config", backends)
     bundle = Bundle(request=Request(text="보고서 써 줘", model="m", api_key="k"))
     sections = [{"id": "a", "heading": "결과", "content": RESULT},
                 {"id": "b", "heading": "기획", "content": "표 없는 글입니다.\n\n- 하나\n- 둘"}]
@@ -187,3 +193,18 @@ async def test_a_request_without_charts_gets_none(monkeypatch):
     bundle = Bundle(request=Request(text="그래프 없이 써 줘", model="m", api_key="k"))
     sections = [{"id": "a", "heading": "결과", "content": RESULT}]
     assert [e async for e in report_stages._chart_tables(bundle, sections, "ko", False)] == []
+
+
+@pytest.mark.asyncio
+async def test_a_report_without_a_code_sandbox_announces_no_chart(monkeypatch):
+    from app.pipeline import report_stages
+    from app.pipeline.bundle import Bundle, Request
+
+    async def backends():
+        return types.SimpleNamespace(exec="")
+
+    monkeypatch.setattr(settings_store, "tools_config", backends)
+    bundle = Bundle(request=Request(text="보고서 써 줘", model="m", api_key="k"))
+    sections = [{"id": "a", "heading": "결과", "content": RESULT}]
+    assert [e async for e in report_stages._chart_tables(bundle, sections, "ko", False)] == []
+    assert sections[0]["content"] == RESULT
