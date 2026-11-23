@@ -30,6 +30,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends unzip \
     && rm /tmp/pretendard.zip \
     && apt-get purge -y unzip && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
+# Title faces for the words set on pictures from an in-house model (services/image_text.py),
+# beside Nanum above. SIL Open Font License 1.1, from Google Fonts at a pinned commit; the
+# licence text of each family is kept with its files. Listed in NOTICE.
+ARG GOOGLE_FONTS_COMMIT=06bfe0d62a98375cb09c942fa18e68bd32cff057
+RUN set -e; base="https://raw.githubusercontent.com/google/fonts/${GOOGLE_FONTS_COMMIT}/ofl"; \
+    dir=/usr/share/fonts/truetype/kloudchat; mkdir -p "$dir"; \
+    for pair in blackhansans:BlackHanSans-Regular dohyeon:DoHyeon-Regular jua:Jua-Regular \
+                gaegu:Gaegu-Bold nanumbrushscript:NanumBrushScript-Regular \
+                yeonsung:YeonSung-Regular; do \
+      family="${pair%%:*}"; file="${pair##*:}"; \
+      curl -fsSL -o "$dir/$file.ttf" "$base/$family/$file.ttf"; \
+      curl -fsSL -o "$dir/$file.OFL.txt" "$base/$family/OFL.txt"; \
+    done
+
 # MCP stdio servers: PEP 723 scripts and PyPI servers via uv/uvx, the MCP
 # project's reference servers via node/npx.
 COPY --from=ghcr.io/astral-sh/uv:0.5.29 /uv /uvx /usr/local/bin/

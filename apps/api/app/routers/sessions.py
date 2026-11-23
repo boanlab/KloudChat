@@ -130,6 +130,7 @@ from app.services import (
     hwpx_edit,
     hwpx_form,
     illustrations,
+    image_text,
     imagegen,
     index_cleanup,
     lint,
@@ -4138,9 +4139,33 @@ async def generate_images(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="design_template_not_found"
         )
+    # An in-house model draws Hangul with wrong letters: the words in quotes are set on the
+    # picture in a font instead, and the model is asked for a picture with no text.
+    strings = (
+        image_text.quoted_strings(boundary.text)
+        if model.get("strictLocal") and not payload.raw and not payload.figure
+        and payload.labels in ("auto", "ko") and payload.style != "없음"
+        and payload.style not in imagegen.FIGURE_STYLES
+        else []
+    )
+    overlay_lines: list[image_text.Line] = []
     # LM expands the prompt unless an edited one comes back (`raw`)
     planned = boundary.text
-    if not payload.raw and payload.style != "없음":
+    labels = payload.labels
+    if strings:
+        planner = _media_model(
+            user, catalogue["models"], kind="chat", boundary=boundary,
+            asked=session.model or "", default=catalogue.get("defaultChatModel"),
+        )
+        if planner is not None:
+            planned, overlay_lines = await imagegen.plan_text_overlay(
+                boundary.text, strings, model=str(planner["id"]), api_key=api_key
+            )
+        else:
+            planned = image_text.without_quoted(boundary.text)
+            overlay_lines = image_text.default_layout(strings)
+        labels = "none"
+    elif not payload.raw and payload.style != "없음":
         # same boundary as the picture; none inside it = drawn as asked
         planner = _media_model(
             user, catalogue["models"], kind="chat", boundary=boundary,
@@ -4162,7 +4187,7 @@ async def generate_images(
         design=design_service.image_clause(await design_for(db, user, session)),
         figure=payload.figure and planned == boundary.text,
         square_only=not imagegen.honours_aspect(str(model["id"])),
-        labels=payload.labels,
+        labels=labels,
     )
 
     made: list[Artifact] = []
@@ -4181,6 +4206,9 @@ async def generate_images(
             # images made before the failure kept and billed
             failure = str(exc)
             break
+        if overlay_lines:
+            image.data = image_text.overlay(image.data, overlay_lines)
+            image.mime = "image/png"
 
         file_id, key = imagegen.store(user.id, image)
         db.add(

@@ -14,3 +14,13 @@ FFmpeg (ffmpeg, ffprobe) — https://ffmpeg.org
   ship in the image under /usr/share/doc/ffmpeg/ and /usr/share/doc/libav*/ (copyright);
   the corresponding source is available from Debian (`apt-get source ffmpeg`,
   https://sources.debian.org/src/ffmpeg/).
+
+Korean fonts fetched into the API image at build, used to set words on generated pictures
+-------------------------------------------------------------------------------------------
+
+Black Han Sans, Do Hyeon, Jua, Gaegu, Nanum Brush Script, BM YEONSUNG — Google Fonts
+  Image: kloudchat-api (apps/api/Dockerfile), /usr/share/fonts/truetype/kloudchat/
+  Licence: SIL Open Font License 1.1 (commercial use and bundling allowed; the fonts are not
+  sold on their own). Each family's licence text is stored beside its files as <file>.OFL.txt.
+  How it is used: opened by services/image_text.py to draw text onto a picture; nothing is
+  modified or renamed.
