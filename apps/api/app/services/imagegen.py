@@ -83,8 +83,8 @@ STYLE_CHOICES = [
 #: label handling by labels value; else planner decides
 _LABEL_RULE = {
     "ko": "Labels are allowed and must be the exact Korean strings from the request, written "
-    'into the prompt in quotes beside each element — e.g. Intake ("취수") — never translated '
-    "or paraphrased; no other text",
+    "into the prompt in quotes beside each element, never translated or paraphrased; no other "
+    "text",
     "en": "Labels are allowed and must be in English, short, spelled correctly; no other text",
     "none": "No text anywhere: no labels, no captions, no letters, no numbers",
 }
@@ -359,6 +359,29 @@ def compose_prompt(
     return ". ".join(p for p in parts if p)
 
 
+_QUOTED_HANGUL = re.compile(r'["“「]([^"”」\n]*[가-힣][^"”」\n]*)["”」]')
+_SENTENCE_END = re.compile(r"(?<=[.;])\s+")
+
+
+def strip_foreign_labels(prompt: str, request: str) -> str:
+    """The prompt without any sentence that quotes Korean text the request does not contain.
+
+    The planner sometimes copies a word from its own format example (「취수」) onto the picture
+    as a caption; a picture model draws whatever is quoted. Only strings the person wrote are
+    allowed to be quoted.
+    """
+    asked = "".join(request.split())
+    lines = []
+    for line in prompt.split("\n"):
+        kept = [
+            sentence
+            for sentence in _SENTENCE_END.split(line)
+            if all("".join(found.split()) in asked for found in _QUOTED_HANGUL.findall(sentence))
+        ]
+        lines.append(" ".join(kept))
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+
+
 async def plan(
     request: str,
     *,
@@ -373,8 +396,7 @@ async def plan(
     label_rule = _LABEL_RULE.get(labels) or (
         "Decide from the request: a diagram or infographic carries short labels in the "
         "language the request is written in — the request's own words, quoted beside each "
-        'element, e.g. Intake ("취수"), never translated; a photograph, scene or object '
-        "carries no text"
+        "element, never translated; a photograph, scene or object carries no text"
     )
     style_rule = (
         f"프리셋이 있다: 이 줄을 그대로 살려서 마지막 줄로 써라 — {_STYLE_PHRASE[style]}"
@@ -417,7 +439,7 @@ async def plan(
         return request.strip(), {"inputTokens": 0, "outputTokens": 0}
     raw = payload.get("usage") or {}
     text = str((payload.get("choices") or [{}])[0].get("message", {}).get("content") or "")
-    text = _unfenced(text)
+    text = strip_foreign_labels(_unfenced(text), request)
     if len(text) < 40 or "Style:" not in text:
         log.info("image prompt planner answered oddly; sending the request as typed")
         return request.strip(), usage_fields.spent(raw)
