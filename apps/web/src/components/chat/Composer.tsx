@@ -85,7 +85,7 @@ const placeholders: Record<SessionKind, string> = {
   report: '보고서 주제와 넣고 싶은 절을 적으세요',
   slides: '발표 주제와 시간을 적으세요',
   image: '만들고 싶은 이미지를 설명하세요',
-  av: '만들고 싶은 영상이나 오디오를 설명하세요',
+  av: '만들고 싶은 동영상이나 오디오를 설명하세요',
 }
 
 // Mirrors `imagegen.STYLE_CHOICES`. The first group is drawn by the picture model; the
@@ -348,7 +348,7 @@ function AvOptions() {
         value={avOptions.mode}
         options={['video', 'audio'] as const}
         onChange={(v) => setAvOptions({ mode: v, durationSec: v === 'audio' ? 30 : 4 })}
-        format={(v) => (v === 'audio' ? t('오디오') : t('영상'))}
+        format={(v) => (v === 'audio' ? t('오디오') : t('동영상'))}
       />
       {audio ? (
         <>
@@ -528,6 +528,9 @@ export function fillComposer(text: string) {
 export function hasUnsentDraft(sessionId: string) {
   return !!draftStore.get(sessionId)?.trim()
 }
+
+/** A video at or above this estimate asks once before it is made. */
+const VIDEO_CONFIRM_CREDITS = 100_000
 
 export function Composer({
   sessionId,
@@ -1221,6 +1224,8 @@ export function Composer({
   const holdingStart = useRef(false)
   /** A send is on its way and its turn has not shown yet: a second Enter waits for it. */
   const submitting = useRef(false)
+  // A costly video asks once: the estimate the user was shown, then the next send goes.
+  const [costAsk, setCostAsk] = useState<number | null>(null)
   const [secondSend, setSecondSend] = useState(false)
   useEffect(() => {
     if (busy) submitting.current = false
@@ -1594,6 +1599,11 @@ export function Composer({
       return
     }
     if (startPending || !text || busy || composing.current || modelSelectionPending || unsupportedVideo || uploading || editSending.current || pendingPrivacy) return
+    if (kind === 'av' && avOptions.mode === 'video' && estimate >= VIDEO_CONFIRM_CREDITS && costAsk !== estimate) {
+      setCostAsk(estimate)
+      return
+    }
+    if (costAsk !== null) setCostAsk(null)
     if (!editing && (kind === 'chat' || kind === 'report' || kind === 'slides') && !editsChecked && hasOfficeEditor(sessionId)) {
       // the agent edits the saved file (an office document's, or the web slides'): unsaved hand
       // edits (asked of the editor now, not as last polled) are saved or dropped first
@@ -2733,12 +2743,14 @@ export function Composer({
             <span
               className={cn(
                 'ml-auto pr-1 text-xs',
-                unsupportedVideo ? 'text-warn' : 'text-faint',
+                unsupportedVideo || (costAsk === estimate && estimate > 0) ? 'text-warn' : 'text-faint',
               )}
             >
               {unsupportedVideo
                 ? t('이 모델은 이 조합을 만들지 않습니다')
-                : kind === 'image' && FIGURE_STYLES[imageOptions.style] && !modelDrawsFigure(model)
+                : costAsk === estimate && estimate > 0
+                  ? t('예상 {n} 크레딧 · 한 번 더 보내면 만듭니다').replace('{n}', estimate.toLocaleString())
+                  : kind === 'image' && FIGURE_STYLES[imageOptions.style] && !modelDrawsFigure(model)
                   // Shapes drawn by code from a text model's flowchart, not priced as a picture.
                   ? t('도식은 글 모델이 씁니다 · 이미지 요금이 아닙니다')
                   : kind === 'image' && FIGURE_STYLES[imageOptions.style]
@@ -2931,7 +2943,7 @@ export function Composer({
               : kind === 'av' && avOptions.mode === 'audio'
                 ? t('Enter로 생성 · 음성과 음악은 파일함에 쌓입니다')
                 : kind === 'av'
-                  ? t('Enter로 생성 · 영상은 몇 분 걸리고 진행은 카드에 표시됩니다')
+                  ? t('Enter로 생성 · 동영상은 몇 분 걸리고 진행은 카드에 표시됩니다')
                   : kind === 'slides' && outputSurface && (output ?? detectedOutput) === 'pptx'
                     ? t('Enter로 생성 · PowerPoint 편집기가 열리고 대화가 그 파일을 채웁니다')
                     : kind === 'slides'

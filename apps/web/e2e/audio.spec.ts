@@ -87,7 +87,7 @@ test('영상 모드는 만들기 전에 값을 알려 준다', async ({ page }) 
   await signIn(page)
   test.skip(!(await surfaceOn(page, 'av')), 'av 표면이 꺼져 있습니다')
   await page.getByRole('button', { name: /^종류/ }).click()
-  await page.getByRole('menuitemcheckbox', { name: '영상' }).click()
+  await page.getByRole('menuitemcheckbox', { name: '동영상' }).click()
 
   // The quote comes from the same table the pass-through bills from.
   await expect(page.getByText(/예상 [1-9][0-9,]* 크레딧/)).toBeVisible({ timeout: 20_000 })
