@@ -209,7 +209,7 @@ async function fixture(page: Page, testInfo: TestInfo, { admin = false } = {}) {
     if (method === 'GET' && path === '/artifacts/counts') return route.fulfill({ json: { counts: {}, total: 0 } })
     const shell = shellRead(method, path)
     if (shell) return route.fulfill(shell)
-    if (method === 'GET' && ['/projects', '/skills', '/memory', '/tools', '/connectors', '/connectors/catalog',
+    if (method === 'GET' && ['/projects', '/skills', '/memory', '/tools', '/connectors', '/connectors/store',
       '/jobs', '/designs', '/shares', '/design-templates', '/skills/store', '/artifacts'].includes(path)) return route.fulfill({ json: [] })
     unexpected.push(`${method} ${path}`)
     return route.fulfill({ status: 404, json: { detail: 'not_found' } })

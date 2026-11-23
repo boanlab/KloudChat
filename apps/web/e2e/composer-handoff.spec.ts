@@ -78,7 +78,7 @@ async function handoffFixture(page: Page) {
     const shell = shellRead(method, path)
     if (shell) return route.fulfill(shell)
     if (method === 'GET' && ['/projects', '/artifacts', '/skills', '/memory', '/agents',
-      '/tools', '/connectors', '/connectors/catalog', '/jobs',
+      '/tools', '/connectors', '/connectors/store', '/jobs',
       '/designs', '/design-templates'].includes(path)) {
       return route.fulfill({ json: [] })
     }

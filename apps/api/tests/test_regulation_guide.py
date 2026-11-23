@@ -284,8 +284,8 @@ async def local():
                                  connect_args={"check_same_thread": False})
     names = ["users", "agents", "sessions", "messages", "files", "skills", "user_pipelines",
              "design_systems", "audit_events", "pipeline_runs", "artifacts",
-             "artifact_versions", "connectors", "connector_tools", "connector_credentials",
-             "connector_catalog"]
+             "artifact_versions", "connectors", "connector_tools", "connector_credentials"
+             ]
     async with engine.begin() as conn:
         await conn.run_sync(metadata.create_all, tables=[metadata.tables[n] for n in names])
 

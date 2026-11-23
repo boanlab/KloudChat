@@ -886,10 +886,12 @@ class ConnectorOut(Wire):
     description: str
     category: str
     transport: Transport
+    #: empty on a reference row: the address stays with the shared server
     endpoint: str
     auth: str
     kinds: JsonList = Field(default_factory=list)
-    official: bool
+    #: shared by an administrator now (a reference reads the sharer's role at this moment)
+    official: bool = False
     installed: bool
     enabled: bool
     status: ConnectorStatus
@@ -900,11 +902,31 @@ class ConnectorOut(Wire):
     env_keys: list[str] = Field(default_factory=list)
     #: 기본 제공 copy: can be switched off, not removed
     by_default: bool = False
+    #: shared in the store (`org`) or private
+    visibility: str = "private"
+    #: shared server a reference row points at; empty on the person's own rows
+    origin_id: str | None = None
+    origin_owner_name: str = ""
+    #: reference to a server no longer shared: it cannot run
+    origin_gone: bool = False
+    #: credentials each person who installs it enters, and what the sharer's env holds
+    required_env: list[dict[str, Any]] = Field(default_factory=list)
+    listed: bool = True
+    tools_key_var: str = ""
+    tools_key_feature: str = ""
+    #: shared env of the person's own shared server: placeholders in the clear, secrets null
+    shared_env: dict[str, str | None] = Field(default_factory=dict)
+    #: how many other people installed this shared server
+    installs: int = 0
 
     @classmethod
     def of(cls, c: Connector, tools: list[ConnectorTool] | None = None) -> ConnectorOut:
-        out = cls.model_validate({**c.model_dump(), "auth": c.auth_type}, from_attributes=False)
+        out = cls.model_validate(
+            {**c.model_dump(), "auth": c.auth_type, "visibility": c.visibility.value,
+             "required_env": list(c.required_env or [])},
+            from_attributes=False)
         out.kinds = list(c.kinds or [])
+        out.required_env = list(c.required_env or [])
         out.tools = [ConnectorToolOut.of(t, c.slug) for t in (tools or [])]
         # only what the person enters: `{{...}}` identity placeholders and `${VAR}` values the
         # server fills from its own settings at spawn (YouTube's WHISPER_URL) are not theirs
@@ -913,6 +935,13 @@ class ConnectorOut(Wire):
             if not v.startswith("{{") and "${" not in v
         ]
         return out
+
+
+class RequiredEnvIn(Wire):
+    key: str = Field(min_length=1, max_length=60)
+    label: str = Field(default="", max_length=40)
+    hint: str = Field(default="", max_length=120)
+    secret: bool = False
 
 
 class ConnectorIn(Wire):
@@ -929,12 +958,22 @@ class ConnectorIn(Wire):
 class ConnectorPatch(Wire):
     enabled: bool | None = None
     installed: bool | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=300)
     endpoint: str | None = None
     env: dict[str, str] | None = None
+    #: `org` shares the server in the store; `private` withdraws it
+    visibility: str | None = Field(default=None, pattern="^(private|org)$")
+    required_env: list[RequiredEnvIn] | None = None
+    #: administrator-only
+    tools_key_var: str | None = Field(default=None, max_length=60)
+    tools_key_feature: str | None = Field(default=None, max_length=20)
+    by_default: bool | None = None
+    listed: bool | None = None
 
 
 class InstallRequest(Wire):
-    """Catalog-server credentials; stored, never serialised back."""
+    """Credentials the shared server asks for; stored, never serialised back."""
 
     env: dict[str, str] = Field(default_factory=dict)
 

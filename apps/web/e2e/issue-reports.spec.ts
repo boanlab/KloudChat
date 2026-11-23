@@ -183,7 +183,7 @@ async function fixture(page: Page, testInfo: TestInfo, { admin = false } = {}) {
     if (method === 'GET' && path.startsWith('/admin/')) return route.fulfill({ json: path === '/admin/users' ? [] : {} })
     if (method === 'GET' && (path.startsWith('/sessions/') && (path.endsWith('/messages') || path.endsWith('/jobs')))) return route.fulfill({ json: [] })
     if (method === 'GET' && path === '/artifacts/counts') return route.fulfill({ json: { counts: {}, total: 0 } })
-    if (method === 'GET' && ['/projects', '/skills', '/memory', '/tools', '/connectors', '/connectors/catalog', '/agents',
+    if (method === 'GET' && ['/projects', '/skills', '/memory', '/tools', '/connectors', '/connectors/store', '/agents',
       '/jobs', '/designs', '/shares', '/design-templates', '/skills/store', '/artifacts', '/files'].includes(path)) return route.fulfill({ json: [] })
     unexpected.push(`${method} ${path}`)
     return route.fulfill({ status: 404, json: { detail: 'not_found' } })

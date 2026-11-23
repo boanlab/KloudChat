@@ -8,7 +8,6 @@ import { cn } from '@/lib/utils'
 import { useT } from '@/lib/useT'
 import { SuperAgentSection } from './settings/SuperAgentSection'
 import { BrandingSection } from './settings/BrandingSection'
-import { ConnectorCatalogSection } from './settings/ConnectorCatalogSection'
 import { FeaturesSection } from './settings/FeaturesSection'
 import { MailSection } from './settings/MailSection'
 import { ModelRolesSection } from './settings/ModelRolesSection'
@@ -26,7 +25,6 @@ const tabs = [
   { to: '/admin/system/branding', label: '브랜딩', end: false },
   { to: '/admin/system/mail', label: '메일', end: false },
   { to: '/admin/system/signup', label: '회원 가입', end: false },
-  { to: '/admin/system/connectors', label: 'MCP 서버', end: false },
 ]
 
 function Group({
@@ -69,8 +67,8 @@ export function AdminSystemPage() {
   }, [reload])
 
   const here = useLocation().pathname.replace(/\/$/, '')
-  // Proxy says it in its status card; routing and the catalogue do not read these settings.
-  const notice = status.error && !['/admin/system', '/admin/system/routing', '/admin/system/connectors'].includes(here)
+  // Proxy says it in its status card; routing does not read these settings.
+  const notice = status.error && !['/admin/system', '/admin/system/routing'].includes(here)
 
   return (
     <>
@@ -175,17 +173,6 @@ export function AdminSystemPage() {
                 description={t('누가, 어떤 주소로 가입할 수 있는지, 주소를 메일로 확인할지 정합니다.')}
               >
                 <SignupSection settings={settings} onSaved={reload} />
-              </Group>
-            }
-          />
-          <Route
-            path="connectors"
-            element={
-              <Group
-                title={t('MCP 서버')}
-                description={t('사용자가 설치할 수 있는 MCP 서버입니다. stdio 서버는 여기서만 추가합니다.')}
-              >
-                <ConnectorCatalogSection />
               </Group>
             }
           />

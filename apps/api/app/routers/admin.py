@@ -41,6 +41,7 @@ from app.models.workspace import (
     Project,
     Skill,
     StoredFile,
+    Visibility,
 )
 from app.schemas.admin import (
     AdminKeysOut,
@@ -76,6 +77,7 @@ from app.services import mail as mail_service
 from app.services import models as model_service
 from app.services.credits import grant_initial_allowance, next_cycle_reset, set_allowance
 from app.services.litellm import provision_user
+from app.services.tools import catalog
 
 log = logging.getLogger(__name__)
 
@@ -1224,9 +1226,17 @@ async def delete_user(
     if session_ids:
         await db.exec(delete(ChatSession).where(col(ChatSession.id).in_(session_ids)))
 
-    connector_ids = [
-        c.id for c in (await db.exec(select(Connector).where(Connector.owner_id == user.id))).all()
-    ]
+    connector_ids = []
+    for owned in (await db.exec(select(Connector).where(Connector.owner_id == user.id))).all():
+        used = not owned.origin_id and owned.visibility is Visibility.org and (await db.exec(
+            select(func.count()).select_from(Connector).where(
+                Connector.origin_id == owned.id))).one()
+        if used and user.role is UserRole.admin:
+            # the shared server others use passes to the administrator who removes the account
+            owned.owner_id = admin.id
+            db.add(owned)
+        else:
+            connector_ids.append(owned.id)
     if connector_ids:
         await db.exec(
             delete(ConnectorTool).where(col(ConnectorTool.connector_id).in_(connector_ids))
@@ -1237,6 +1247,9 @@ async def delete_user(
             )
         )
         await db.exec(delete(Connector).where(col(Connector.id).in_(connector_ids)))
+    # the shared-server cache here must not keep a server just removed
+    await db.flush()
+    await catalog.refresh(db)
 
     artifact_ids = [
         a.id for a in (await db.exec(select(Artifact).where(Artifact.user_id == user.id))).all()

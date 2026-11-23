@@ -1360,6 +1360,21 @@ export interface Connector {
   official: boolean
   /** 기본 제공: can be switched off, not removed. */
   byDefault: boolean
+  /** `org`: shared in the store. */
+  visibility: 'private' | 'org'
+  /** A reference row points at a server someone shared. */
+  originId: string | null
+  originOwnerName: string
+  /** The sharing ended: the reference cannot run. */
+  originGone: boolean
+  requiredEnv: { key: string; label: string; hint: string; secret: boolean }[]
+  listed: boolean
+  toolsKeyVar: string
+  toolsKeyFeature: string
+  /** Own shared server's env: placeholders in the clear, secrets `null`. */
+  sharedEnv: Record<string, string | null>
+  /** How many other people installed it. */
+  installs: number
   icon: string
   color: string
   lastSyncAt: string | null
@@ -1729,27 +1744,4 @@ export interface TemplateCatalogue {
   detectors: { name: string; label: string }[]
   process: ProcessCatalogue
   starts: { id: string; name: string; description: string }[]
-}
-
-/** Connector catalogue entry; `env` values only as placeholders, else `null` (set, never shown). */
-export interface CatalogEntryAdmin {
-  id: string
-  slug: string
-  name: string
-  description: string
-  category: string
-  transport: 'stdio' | 'http' | 'sse'
-  endpoint: string
-  env: Record<string, string | null>
-  requiredEnv: { key: string; label: string; hint: string; secret: boolean }[]
-  toolsKeyVar: string
-  toolsKeyFeature: string
-  kinds: string[]
-  enabled: boolean
-  /** Shown in the members' catalogue; false keeps it installable and working, not offered. */
-  listed: boolean
-  /** 기본 제공: installed for every active person, who can switch it off but not remove it. */
-  byDefault: boolean
-  position: number
-  updatedAt: string | null
 }

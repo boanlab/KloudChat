@@ -138,7 +138,7 @@ async function fixture(page: Page, testInfo: TestInfo, kind: Kind, agent = false
     const shell = shellRead(method, path)
     if (shell) return route.fulfill(shell)
     if (method === 'GET' && (path.endsWith('/jobs') || ['/projects', '/skills', '/memory', '/tools',
-      '/connectors', '/connectors/catalog', '/designs', '/design-templates',
+      '/connectors', '/connectors/store', '/designs', '/design-templates',
       '/shares', '/artifacts'].includes(path))) return route.fulfill({ json: [] })
     unexpected.push(`${method} ${path}`)
     return route.abort('blockedbyclient')

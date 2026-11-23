@@ -42,7 +42,7 @@ async function savedLegacyAnswer(page: Page, reason: string) {
     if (shell) return route.fulfill(shell)
     if (req.method() === 'GET' && (path.endsWith('/jobs') || [
       '/projects', '/artifacts', '/skills', '/memory', '/agents', '/tools',
-      '/connectors', '/connectors/catalog', '/designs', '/design-templates', '/shares',
+      '/connectors', '/connectors/store', '/designs', '/design-templates', '/shares',
     ].includes(path))) return json([])
     unexpected.push(`${req.method()} ${path}`)
     return route.fulfill({ status: 501, json: { detail: 'Unmocked fixture request' } })

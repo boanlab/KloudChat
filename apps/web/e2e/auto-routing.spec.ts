@@ -176,7 +176,7 @@ async function mockApp(
     /\/api\/tools(?:\?.*)?$/,
     /\/api\/templates(?:\?.*)?$/,
     /\/api\/connectors(?:\?.*)?$/,
-    /\/api\/connectors\/catalog(?:\?.*)?$/,
+    /\/api\/connectors\/store(?:\?.*)?$/,
   ]) {
     await page.route(endpoint, (route) => route.fulfill({ json: [] }))
   }

@@ -238,7 +238,7 @@ async function fixture(page: Page, testInfo: TestInfo) {
     if (method === 'GET' && (path.startsWith('/sessions/') && (path.endsWith('/messages') || path.endsWith('/jobs')))) return route.fulfill({ json: [] })
     const shell = shellRead(method, path)
     if (shell) return route.fulfill(shell)
-    if (method === 'GET' && ['/projects', '/skills', '/memory', '/tools', '/connectors', '/connectors/catalog',
+    if (method === 'GET' && ['/projects', '/skills', '/memory', '/tools', '/connectors', '/connectors/store',
       '/jobs', '/designs', '/shares', '/design-templates', '/skills/store',
       '/user-pipelines'].includes(path)) return route.fulfill({ json: [] })
     unexpected.push(`${method} ${path}`)

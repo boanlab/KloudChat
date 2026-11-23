@@ -278,6 +278,106 @@ test('a built-in connector is marked and can be switched off, not removed', asyn
   expect(state.unexpected).toEqual([])
 })
 
+test('a server from the store is installed as a reference and lands in 내 항목 with its sharer named', async ({ page }, testInfo) => {
+  const state = await hubFixture(page, testInfo, { connectors: installedConnectors })
+  await page.goto('/customize?tab=connectors&view=explore')
+  const store = page.getByTestId('connector-catalog')
+  const arxiv = store.locator('[data-connector="arxiv"]')
+  await expect(arxiv).toContainText('김하나님이 공유', { timeout: 15_000 })
+  // An official server names no person.
+  await expect(store.locator('[data-connector="youtube"]')).not.toContainText('님이 공유')
+  await expect(store.locator('[data-connector="youtube"]')).toContainText('공식')
+  await arxiv.getByRole('button', { name: '추가' }).click()
+  await expect(arxiv.getByRole('button', { name: '설치됨' })).toBeDisabled()
+  expect(state.calls.find((c) => c.method === 'POST' && c.path === '/connectors/install/o-arxiv')?.body).toMatchObject({ env: {} })
+
+  // A server that asks for credentials opens the form first; install is by id with what was typed.
+  await store.locator('[data-connector="notes"]').getByRole('button', { name: '추가' }).click()
+  const form = page.getByRole('dialog', { name: /회의록 검색/ })
+  await expect(form.getByRole('button', { name: '연결', exact: true })).toBeDisabled()
+  await form.getByLabel('회의록 토큰').fill('tok-1')
+  await form.getByRole('button', { name: '연결', exact: true }).click()
+  await expect.poll(() => state.calls.find((c) => c.path === '/connectors/install/o-notes')?.body).toMatchObject({ env: { NOTES_TOKEN: 'tok-1' } })
+
+  await page.getByRole('button', { name: '내 항목', exact: true }).click()
+  const mine = page.getByTestId('connector-list').locator('[data-connector="arxiv"]')
+  await expect(mine).toBeVisible()
+  await mine.getByRole('button', { name: /arXiv/ }).first().click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByTestId('connector-origin')).toHaveText('김하나님이 공유한 서버')
+  // The address stays with the shared server; a reference is not the person's to share.
+  await expect(dialog.getByText('엔드포인트')).toHaveCount(0)
+  await expect(dialog.getByTestId('connector-share')).toHaveCount(0)
+  expect(state.problems).toEqual([])
+  expect(state.unexpected).toEqual([])
+})
+
+test('a server the person added is shared from its detail, and the card then says so', async ({ page }, testInfo) => {
+  const state = await hubFixture(page, testInfo, { connectors: installedConnectors })
+  await page.goto('/customize?tab=connectors&view=mine')
+  const wiki = page.getByTestId('connector-list').locator('[data-connector="wiki"]')
+  await expect(wiki).toBeVisible({ timeout: 15_000 })
+  await expect(wiki).not.toContainText('공유 중')
+  await wiki.getByRole('button', { name: /사내 위키/ }).first().click()
+  const share = page.getByRole('dialog').getByTestId('connector-share')
+  await expect(share.getByRole('button', { name: '공유 안 함' })).toHaveAttribute('aria-pressed', 'true')
+  // Only an administrator sees shared values, the tool-address key and the default switch.
+  await expect(page.getByTestId('connector-admin-share')).toHaveCount(0)
+  await share.getByRole('button', { name: '우리 조직과 공유' }).click()
+  await share.getByRole('button', { name: '자격 추가' }).click()
+  await share.getByLabel('변수 이름').fill('wiki_token')
+  await share.getByLabel('화면에 보일 이름').fill('위키 토큰')
+  await share.getByRole('button', { name: '공유 설정 저장' }).click()
+  await expect.poll(() => state.calls.find((c) => c.method === 'PATCH' && c.path === '/connectors/n2')?.body).toMatchObject({
+    visibility: 'org', requiredEnv: [{ key: 'WIKI_TOKEN', label: '위키 토큰', hint: '', secret: true }],
+  })
+  await page.keyboard.press('Escape')
+  await expect(wiki).toContainText('공유 중')
+  // A shared server is deleted only after the sharing ends.
+  await wiki.getByRole('button', { name: /사내 위키/ }).first().click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toContainText('공유를 끊은 뒤에 삭제할 수 있습니다')
+  await expect(dialog.getByRole('button', { name: '제거' })).toHaveCount(0)
+  expect(state.problems).toEqual([])
+  expect(state.unexpected).toEqual([])
+})
+
+test('stopping the sharing of a server others use asks first, and says how many use it', async ({ page }, testInfo) => {
+  const shared = { ...installedConnectors[1], visibility: 'org', installs: 3, requiredEnv: [] }
+  const state = await hubFixture(page, testInfo, { connectors: [installedConnectors[0], shared], admin: true })
+  await page.goto('/customize?tab=connectors&view=mine')
+  const wiki = page.getByTestId('connector-list').locator('[data-connector="wiki"]')
+  await wiki.getByRole('button', { name: /사내 위키/ }).first().click()
+  const detail = page.getByRole('dialog', { name: '사내 위키' })
+  await expect(detail.getByTestId('connector-installs')).toHaveText('3명이 이 서버를 쓰고 있습니다.')
+  // The administrator's own server also carries the shared values, tool-address key and default switch.
+  await expect(detail.getByTestId('connector-admin-share')).toBeVisible()
+  await expect(detail.getByTestId('connector-default')).toBeEnabled()
+  await detail.getByRole('button', { name: '공유 안 함' }).click()
+  await detail.getByRole('button', { name: '공유 설정 저장' }).click()
+  const confirm = page.getByRole('dialog', { name: '공유를 끊을까요?' })
+  await expect(confirm).toContainText('3명이 쓰고 있어, 끊으면 그분들의 이 서버가 멈춥니다.')
+  expect(state.calls.some((c) => c.method === 'PATCH' && c.path === '/connectors/n2')).toBe(false)
+  await confirm.getByRole('button', { name: '공유 끊기' }).click()
+  await expect.poll(() => state.calls.find((c) => c.method === 'PATCH' && c.path === '/connectors/n2')?.body).toMatchObject({ visibility: 'private' })
+  expect(state.problems).toEqual([])
+  expect(state.unexpected).toEqual([])
+})
+
+test('a reference whose sharing ended cannot run and can only be removed', async ({ page }, testInfo) => {
+  const gone = { ...installedConnectors[1], id: 'g1', name: '옛 서버', slug: 'old', endpoint: '', originId: 'o-old', originGone: true, status: 'error' }
+  const state = await hubFixture(page, testInfo, { connectors: [gone] })
+  await page.goto('/customize?tab=connectors&view=mine')
+  const card = page.getByTestId('connector-list').locator('[data-connector="old"]')
+  await expect(card).toContainText('공유가 끝나 쓸 수 없습니다', { timeout: 15_000 })
+  await expect(card.getByRole('switch')).toHaveCount(0)
+  await expect(card.getByRole('button', { name: '다시 연결' })).toHaveCount(0)
+  await card.getByRole('button', { name: '제거' }).click()
+  await expect(card).toHaveCount(0)
+  expect(state.calls.some((c) => c.method === 'DELETE' && c.path === '/connectors/g1')).toBe(true)
+  expect(state.unexpected).toEqual([])
+})
+
 test('a card keeps 바로 쓰기 in words and inside the screen, a phone included', { tag: '@phone' }, async ({ page }, testInfo) => {
   const state = await hubFixture(page, testInfo)
   await page.goto('/customize?tab=agents&view=explore')

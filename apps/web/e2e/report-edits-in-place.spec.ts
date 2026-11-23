@@ -27,7 +27,7 @@ const model = {
   inputCreditCost: 1, supportsTools: true, contextWindow: 64000,
 }
 const emptyLists = [
-  '/artifacts', '/projects', '/skills', '/memory', '/tools', '/connectors', '/connectors/catalog',
+  '/artifacts', '/projects', '/skills', '/memory', '/tools', '/connectors', '/connectors/store',
   '/jobs', '/designs', '/shares', '/design-templates', '/skills/store', '/agents',
   '/user-pipelines',
 ]

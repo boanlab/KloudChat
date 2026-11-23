@@ -79,7 +79,7 @@ async function mockChat(
     if (shell) return route.fulfill(shell)
     if ([
       '/tools', '/skills', '/projects', '/artifacts', '/memory', '/agents',
-      '/connectors', '/connectors/catalog', '/jobs',
+      '/connectors', '/connectors/store', '/jobs',
       '/designs', '/design-templates', '/shares',
       `/sessions/${sessionId}/jobs`,
     ].includes(path)) return json([])

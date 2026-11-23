@@ -1,24 +1,23 @@
-"""MCP connectors: catalogue install, tool sync, per-tool toggles; `admin_router` = catalogue."""
+"""MCP servers: a person's own, shared ones in the store, tool sync, per-tool toggles."""
 
 from __future__ import annotations
 
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request, status
-from pydantic import Field
+from fastapi import APIRouter, HTTPException, status
+from sqlalchemy import func
 from sqlmodel import col, delete, select
 
-from app.core.deps import AdminUser, CurrentUser, DbSession, client_ip
-from app.models.user import AuditEvent, User, UserRole, utcnow
+from app.core.deps import CurrentUser, DbSession
+from app.models.user import User, UserRole, utcnow
 from app.models.workspace import (
     Connector,
-    ConnectorCatalogEntry,
     ConnectorStatus,
     ConnectorTool,
     Transport,
+    Visibility,
 )
-from app.schemas.auth import Wire
 from app.schemas.workspace import (
     BulkDelete,
     ConnectorIn,
@@ -50,80 +49,111 @@ async def _tools_of(db: DbSession, connector_id: str) -> list[ConnectorTool]:
     return list(rows.all())
 
 
-async def _out(db: DbSession, connector: Connector) -> ConnectorOut:
+async def _installs(db: DbSession, source_id: str) -> int:
+    return (await db.exec(select(func.count()).select_from(Connector).where(
+        Connector.origin_id == source_id))).one()
+
+
+async def _owner_name(db: DbSession, owner_id: str) -> str:
+    owner = await db.get(User, owner_id)
+    return (owner.name or owner.email.split("@")[0]) if owner else ""
+
+
+async def _out(db: DbSession, user: User, connector: Connector) -> ConnectorOut:
     out = ConnectorOut.of(connector, await _tools_of(db, connector.id))
-    out.by_default = await connector_defaults.kept(connector.slug, official=connector.official)
+    out.by_default = await connector_defaults.kept(connector)
+    if connector.origin_id:
+        origin = await catalog.source(connector.origin_id)
+        out.endpoint = ""
+        if origin is None or not origin.get("enabled", True):
+            out.origin_gone = True
+        else:
+            out.name, out.description = origin["name"], origin.get("description", "")
+            out.category, out.kinds = origin.get("category", ""), list(origin.get("kinds") or [])
+            out.transport = Transport(origin["transport"])
+            out.official = bool(origin["owner_is_admin"])
+            out.origin_owner_name = await _owner_name(db, origin["owner_id"])
+    elif connector.visibility is Visibility.org:
+        out.official = user.role is UserRole.admin
+        out.installs = await _installs(db, connector.id)
+        out.shared_env = catalog.share_wire({"env": connector.env or {}})["env"]
     return out
 
 
 async def _removable(connector: Connector) -> None:
-    if await connector_defaults.kept(connector.slug, official=connector.official):
+    if await connector_defaults.kept(connector):
         # 기본 제공: switched off, never removed
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="connector_default")
 
 
-@router.get("/catalog")
-async def get_catalog(user: CurrentUser, db: DbSession):
-    """Admin catalogue with installed marks; unlisted entries only if installed."""
-    installed = {
-        c.slug
-        for c in (await db.exec(select(Connector).where(Connector.owner_id == user.id))).all()
-    }
-    return [
-        {
-            "slug": entry["slug"],
-            "name": entry["name"],
-            "description": entry["description"],
-            "category": entry["category"],
-            "transport": entry["transport"],
-            "auth": entry.get("auth", "none"),
-            "kinds": entry.get("kinds", ["chat"]),
-            "official": True,
-            "installed": entry["slug"] in installed,
-            "byDefault": catalog.provided(entry),
+@router.get("/store")
+async def get_store(user: CurrentUser, db: DbSession):
+    """Servers others share, with whether this person has one; unlisted ones only when installed
+    (an administrator sees all)."""
+    await catalog.refresh(db)
+    mine = {c.origin_id for c in (await db.exec(
+        select(Connector).where(Connector.owner_id == user.id))).all() if c.origin_id}
+    out = []
+    for entry in await catalog.sources():
+        if entry["owner_id"] == user.id:
+            continue
+        installed = entry["id"] in mine
+        if not entry["listed"] and not installed and user.role is not UserRole.admin:
+            continue
+        out.append({
+            "id": entry["id"], "slug": entry["slug"], "name": entry["name"],
+            "description": entry["description"], "category": entry["category"],
+            "transport": entry["transport"], "auth": entry.get("auth", "none"),
+            "kinds": entry.get("kinds", ["chat"]), "official": entry["owner_is_admin"],
+            "ownerName": await _owner_name(db, entry["owner_id"]),
+            "installed": installed, "byDefault": catalog.provided(entry),
+            "listed": entry["listed"],
             "requiredEnv": [
-                {
-                    "key": field["key"],
-                    "label": field.get("label", field["key"]),
-                    "hint": field.get("hint", ""),
-                    "secret": bool(field.get("secret")),
-                }
-                for field in entry.get("required_env", [])
+                {"key": f["key"], "label": f.get("label", f["key"]), "hint": f.get("hint", ""),
+                 "secret": bool(f.get("secret"))}
+                for f in entry.get("required_env", [])
             ],
-        }
-        for entry in await catalog.entries()
-        if entry.get("listed", True) or entry["slug"] in installed
-    ]
+        })
+    return out
 
 
 @router.get("", response_model=list[ConnectorOut])
 async def list_connectors(user: CurrentUser, db: DbSession):
+    await catalog.refresh(db)
     rows = (
         await db.exec(
             select(Connector).where(Connector.owner_id == user.id).order_by(col(Connector.name))
         )
     ).all()
-    return [await _out(db, c) for c in rows]
+    return [await _out(db, user, c) for c in rows]
 
 
-@router.post("/install/{slug}", response_model=ConnectorOut, status_code=status.HTTP_201_CREATED)
+def _supplied(source: dict[str, Any], supplied: dict[str, str]) -> dict[str, str]:
+    """A person sets only the credentials the shared server asks for: any other variable reaches
+    the server process (an index URL for `uvx`, a preload) and runs code on the API host."""
+    asked = {str(f.get("key")) for f in source.get("required_env", [])}
+    if extra := sorted(set(supplied) - asked):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail=f"env_not_allowed:{','.join(extra)}")
+    return {k: v for k, v in supplied.items() if v.strip()}
+
+
+@router.post("/install/{source_id}", response_model=ConnectorOut,
+             status_code=status.HTTP_201_CREATED)
 async def install(
-    slug: str,
+    source_id: str,
     user: CurrentUser,
     db: DbSession,
     payload: InstallRequest | None = None,
 ):
-    entry = await catalog.entry(slug)
-    if entry is None or not entry.get("enabled", True):
+    await catalog.refresh(db)
+    source = await catalog.source(source_id)
+    if source is None or not source.get("enabled", True) or source["owner_id"] == user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="unknown_connector")
 
-    supplied = (payload.env if payload else None) or {}
-    _settable_env(entry, supplied, user)
-    missing = [
-        field["key"]
-        for field in entry.get("required_env", [])
-        if not supplied.get(field["key"], "").strip()
-    ]
+    supplied = _supplied(source, (payload.env if payload else None) or {})
+    missing = [f["key"] for f in source.get("required_env", [])
+               if not supplied.get(f["key"], "").strip()]
     if missing:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -132,34 +162,20 @@ async def install(
 
     existing = (
         await db.exec(
-            select(Connector).where(Connector.owner_id == user.id, Connector.slug == slug)
+            select(Connector).where(Connector.owner_id == user.id,
+                                    Connector.origin_id == source_id)
         )
     ).first()
     if existing:
-        return await _out(db, existing)
+        return await _out(db, user, existing)
 
-    connector = Connector(
-        owner_id=user.id,
-        name=entry["name"],
-        slug=slug,
-        description=entry["description"],
-        category=entry["category"],
-        transport=Transport(entry["transport"]),
-        endpoint=entry["endpoint"],
-        # supplied credential over catalogue placeholder; unsealed then resealed with user's
-        env=settings_store.encrypt_env({**settings_store.decrypt_env(entry.get("env")),
-                                        **supplied}),
-        auth_type=entry.get("auth", "none"),
-        kinds=entry.get("kinds", ["chat"]),
-        official=True,
-    )
-    db.add(connector)
+    connector = connector_defaults.reference(db, user, source, [], supplied)
+    # tools are discovered below; unreachable server still installed, error on row
+    connector.status = ConnectorStatus.disconnected
     await db.commit()
     await db.refresh(connector)
-    # best-effort: unreachable server still installed, error on row
     await _sync(db, user, connector)
-    return await _out(db, connector)
-
+    return await _out(db, user, connector)
 
 
 def _stdio_refused() -> None:
@@ -174,15 +190,8 @@ async def _remote_settable(endpoint: str | None) -> None:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=reason)
 
 
-def _settable_env(entry: dict | None, supplied: dict[str, str] | None, user: User) -> None:
-    """A person sets only the credentials a catalogue entry asks for: any other variable reaches
-    the server process (an index URL for `uvx`, a preload) and runs code on the API host."""
-    if not supplied or user.role is UserRole.admin:
-        return
-    asked = {str(field.get("key")) for field in (entry or {}).get("required_env", [])}
-    if extra := sorted(set(supplied) - asked):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                            detail=f"env_not_allowed:{','.join(extra)}")
+def _entry_error(exc: catalog.EntryError) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=exc.code)
 
 
 @router.post("", response_model=ConnectorOut, status_code=status.HTTP_201_CREATED)
@@ -202,25 +211,27 @@ async def add_custom(payload: ConnectorIn, user: CurrentUser, db: DbSession):
         env=settings_store.encrypt_env(payload.env),
         auth_type=payload.auth,
         kinds=payload.kinds or ["chat"],
-        official=False,
     )
     db.add(connector)
     await db.commit()
     await db.refresh(connector)
     await _sync(db, user, connector)
-    return await _out(db, connector)
+    return await _out(db, user, connector)
 
 
 async def _sync(db: DbSession, user: User, connector: Connector) -> None:
     """Stored tools reconciled with server; `enabled` flags kept (no re-grant of revoked)."""
-    env = mcp.substitute(
-        await catalog.connector_env(connector), user_id=user.id, user_email=user.email
-    )
+    is_admin = user.role is UserRole.admin
     try:
-        await catalog.check_runnable(connector, owner_is_admin=user.role is UserRole.admin)
+        await catalog.check_runnable(connector, owner_is_admin=is_admin)
+        env = mcp.substitute(
+            await catalog.connector_env(connector, owner_is_admin=is_admin),
+            user_id=user.id, user_email=user.email,
+        )
         endpoint = await catalog.effective_endpoint(connector)
-        guarded = catalog.public_only(connector, owner_is_admin=user.role is UserRole.admin)
-        discovered = await mcp.list_tools(connector.transport.value, endpoint, env,
+        transport = await catalog.effective_transport(connector)
+        guarded = await catalog.guarded(connector, owner_is_admin=is_admin)
+        discovered = await mcp.list_tools(transport, endpoint, env,
                                           **({"public_only": True} if guarded else {}))
     except Exception as exc:  # noqa: BLE001 — dead server is a status, not a 500
         log.info("connector %s sync failed: %s", connector.slug, exc)
@@ -272,40 +283,113 @@ async def _sync(db: DbSession, user: User, connector: Connector) -> None:
 @router.post("/{connector_id}/sync", response_model=ConnectorOut)
 async def sync(connector_id: str, user: CurrentUser, db: DbSession):
     connector = await _own(db, user, connector_id)
+    await catalog.refresh(db)
     await _sync(db, user, connector)
     await db.refresh(connector)
-    return await _out(db, connector)
+    return await _out(db, user, connector)
+
+
+def _shares(fields: dict[str, Any]) -> bool:
+    return any(k in fields for k in ("visibility", "required_env", "tools_key_var",
+                                     "tools_key_feature", "by_default", "listed"))
+
+
+async def _patch_reference(connector: Connector, fields: dict[str, Any]) -> None:
+    """A reference row keeps only the person's switches and their own credentials."""
+    if _shares(fields) or {"endpoint", "name", "description"} & set(fields):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="catalogue_endpoint")
+    if fields.get("env") is not None:
+        source = await catalog.source(connector.origin_id)
+        _supplied(source or {}, fields["env"])
+
+
+async def _patch_share(db: DbSession, user: User, connector: Connector,
+                       fields: dict[str, Any]) -> dict[str, Any]:
+    """Sharing settings of the person's own server; returns the columns to set."""
+    is_admin = user.role is UserRole.admin
+    out: dict[str, Any] = {}
+    try:
+        if "required_env" in fields:
+            out["required_env"] = catalog.clean_required(
+                [r.model_dump() if hasattr(r, "model_dump") else r
+                 for r in fields["required_env"] or []])
+        if "visibility" in fields:
+            out["visibility"] = Visibility(fields["visibility"])
+        if not is_admin and any(k in fields for k in
+                                ("tools_key_var", "tools_key_feature", "by_default", "listed")):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                                detail="shared_admin_only")
+        env = {**dict(connector.env or {}), **settings_store.encrypt_env(fields.get("env") or {})}
+        if "tools_key_var" in fields or "tools_key_feature" in fields:
+            out["tools_key_var"], out["tools_key_feature"] = catalog.clean_tools_key(
+                fields.get("tools_key_var", connector.tools_key_var),
+                fields.get("tools_key_feature", connector.tools_key_feature),
+                settings_store.decrypt_env(env))
+        if "listed" in fields:
+            out["listed"] = bool(fields["listed"])
+        if "by_default" in fields:
+            out["by_default"] = bool(fields["by_default"])
+    except catalog.EntryError as exc:
+        raise _entry_error(exc) from exc
+    shared = out.get("visibility", connector.visibility) is Visibility.org
+    required = out.get("required_env", connector.required_env)
+    if out.get("by_default") and (not shared or required):
+        # a default is installed for everyone; nobody is there to type each person's credentials
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="catalog_default_env")
+    if out.get("by_default") is None and connector.by_default and required:
+        # credentials added to a default server: it is no longer installed for everyone
+        out["by_default"] = False
+    if not shared:
+        # withdrawing a server stops the references of others at once; the screen says so first
+        out["by_default"] = False
+    elif connector.transport is Transport.stdio and not is_admin:
+        _stdio_refused()
+    elif not is_admin:
+        await _remote_settable(fields.get("endpoint", connector.endpoint))
+    return out
 
 
 @router.patch("/{connector_id}", response_model=ConnectorOut)
 async def patch(connector_id: str, payload: ConnectorPatch, user: CurrentUser, db: DbSession):
     connector = await _own(db, user, connector_id)
     patch_fields = payload.model_dump(exclude_unset=True)
-    if user.role is not UserRole.admin and (
-            "endpoint" in patch_fields or "env" in patch_fields):
-        if connector.transport is Transport.stdio and not connector.official:
+    is_admin = user.role is UserRole.admin
+    if connector.origin_id:
+        await _patch_reference(connector, patch_fields)
+    elif not is_admin and ("endpoint" in patch_fields or "env" in patch_fields):
+        if connector.transport is Transport.stdio:
             _stdio_refused()
-        if connector.transport is not Transport.stdio and not connector.official \
-                and "endpoint" in patch_fields:
+        if "endpoint" in patch_fields:
             await _remote_settable(patch_fields["endpoint"])
-        if connector.official and "endpoint" in patch_fields:
-            # a catalogue connector runs the catalogue's command, not the person's
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                                detail="catalogue_endpoint")
-        if connector.official:
-            _settable_env(await catalog.entry(connector.slug), patch_fields.get("env"), user)
     if patch_fields.get("installed") is False:
         await _removable(connector)
-    # env merged, not replaced: keeps catalogue defaults
+    changes: dict[str, Any] = {}
+    if not connector.origin_id and _shares(patch_fields):
+        changes = await _patch_share(db, user, connector, patch_fields)
+    if is_admin and not connector.origin_id:
+        shared = changes.get("visibility", connector.visibility) is Visibility.org
+        if shared and ("endpoint" in patch_fields or "visibility" in changes):
+            try:
+                catalog.endpoint_form(connector.transport.value,
+                                      patch_fields.get("endpoint", connector.endpoint))
+            except catalog.EntryError as exc:
+                raise _entry_error(exc) from exc
+    for key in ("visibility", "required_env", "tools_key_var", "tools_key_feature",
+                "by_default", "listed"):
+        patch_fields.pop(key, None)
+    # env merged, not replaced: keeps what is already set
     if (env := patch_fields.pop("env", None)) is not None:
         connector.env = {**(connector.env or {}), **settings_store.encrypt_env(env)}
-    for field, value in patch_fields.items():
+    for field, value in {**patch_fields, **changes}.items():
         setattr(connector, field, value)
     connector.updated_at = utcnow()
     db.add(connector)
     await db.commit()
     await db.refresh(connector)
-    return await _out(db, connector)
+    await catalog.refresh(db)
+    return await _out(db, user, connector)
 
 
 @router.post("/{connector_id}/tools/{tool_name}", response_model=ConnectorOut)
@@ -325,12 +409,18 @@ async def toggle_tool(
     row.enabled = payload.enabled
     db.add(row)
     await db.commit()
-    return await _out(db, connector)
+    return await _out(db, user, connector)
+
+
+async def _in_use(db: DbSession, row: Connector) -> bool:
+    """A shared server others installed: withdrawn first, then removed."""
+    return (not row.origin_id and row.visibility is Visibility.org
+            and await _installs(db, row.id) > 0)
 
 
 @router.post("/delete")
 async def uninstall_many(payload: BulkDelete, user: CurrentUser, db: DbSession):
-    """Bulk uninstall; 기본 제공 copies stay (`kept`)."""
+    """Bulk uninstall; 기본 제공 copies and servers others use stay."""
     if not payload.ids:
         return {"deleted": 0, "kept": 0}
     rows = (
@@ -341,12 +431,13 @@ async def uninstall_many(payload: BulkDelete, user: CurrentUser, db: DbSession):
         )
     ).all()
     ids = [row.id for row in rows
-           if not await connector_defaults.kept(row.slug, official=row.official)]
+           if not await connector_defaults.kept(row) and not await _in_use(db, row)]
     if not ids:
         return {"deleted": 0, "kept": len(rows)}
     await db.exec(delete(ConnectorTool).where(col(ConnectorTool.connector_id).in_(ids)))
     await db.exec(delete(Connector).where(col(Connector.id).in_(ids)))
     await db.commit()
+    await catalog.refresh(db)
     return {"deleted": len(ids), "kept": len(rows) - len(ids)}
 
 
@@ -354,113 +445,9 @@ async def uninstall_many(payload: BulkDelete, user: CurrentUser, db: DbSession):
 async def uninstall(connector_id: str, user: CurrentUser, db: DbSession):
     connector = await _own(db, user, connector_id)
     await _removable(connector)
+    if await _in_use(db, connector):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="connector_in_use")
     await db.exec(delete(ConnectorTool).where(ConnectorTool.connector_id == connector.id))
     await db.delete(connector)
     await db.commit()
-
-
-admin_router = APIRouter(prefix="/admin/connector-catalog", tags=["connectors"])
-
-
-class CatalogEntryIn(Wire):
-    slug: str = Field(min_length=1, max_length=60)
-    name: str = Field(min_length=1, max_length=80)
-    description: str = Field(default="", max_length=300)
-    category: str = Field(default="", max_length=30)
-    transport: str = Field(max_length=10)
-    endpoint: str = Field(min_length=1, max_length=500)
-    #: null keeps stored value (form never sees it)
-    env: dict[str, str | None] = Field(default_factory=dict)
-    required_env: list[dict[str, Any]] = Field(default_factory=list, max_length=8)
-    tools_key_var: str = Field(default="", max_length=60)
-    tools_key_feature: str = Field(default="", max_length=20)
-    kinds: list[str] = Field(default_factory=lambda: ["chat"], max_length=3)
-    enabled: bool = True
-    #: False = installable but not offered
-    listed: bool = True
-    #: 기본 제공: installed for every active person
-    by_default: bool = False
-    position: int = Field(default=0, ge=0, le=999)
-
-
-def _audit(db: DbSession, request: Request, admin: User, action: str, slug: str) -> None:
-    db.add(AuditEvent(actor_id=admin.id, action=action, target=f"connector:{slug[:60]}",
-                      ip=client_ip(request),
-                      user_agent=request.headers.get("User-Agent", "")[:400]))
-
-
-def _fields(payload: CatalogEntryIn, previous: dict[str, str] | None = None) -> dict[str, Any]:
-    try:
-        return catalog.clean(payload.model_dump(), previous_env=previous)
-    except catalog.EntryError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                            detail=exc.code) from exc
-
-
-async def _admin_list(db: DbSession) -> list[dict[str, Any]]:
     await catalog.refresh(db)
-    return [catalog.admin_wire(e) for e in await catalog.entries(enabled_only=False)]
-
-
-async def _saved(db: DbSession, slug: str) -> dict[str, Any]:
-    """Catalogue after a save; a 기본 제공 entry installed for whoever lacks it."""
-    entries = await _admin_list(db)
-    saved = await catalog.entry(slug)
-    provided = (await connector_defaults.provide_everyone(db, [saved])
-                if catalog.provided(saved) else 0)
-    return {"entries": entries, "provided": provided}
-
-
-@admin_router.get("")
-async def admin_catalog(admin: AdminUser, db: DbSession):
-    """All entries incl. disabled; env keys only."""
-    return {"entries": await _admin_list(db), "kinds": list(catalog.KINDS),
-            "transports": list(catalog.TRANSPORTS),
-            "features": list(catalog.tools_gateway.FEATURES),
-            "placeholders": [f"${{{name}}}" for name in catalog._URL_VARS]}
-
-
-@admin_router.post("", status_code=status.HTTP_201_CREATED)
-async def admin_add_entry(payload: CatalogEntryIn, admin: AdminUser, db: DbSession,
-                          request: Request):
-    fields = _fields(payload)
-    taken = (await db.exec(select(ConnectorCatalogEntry).where(
-        ConnectorCatalogEntry.slug == fields["slug"]))).first()
-    if taken is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="catalog_slug_taken")
-    db.add(ConnectorCatalogEntry(**fields, updated_by=admin.id))
-    _audit(db, request, admin, "connector.catalog.save", fields["slug"])
-    await db.commit()
-    return await _saved(db, fields["slug"])
-
-
-@admin_router.put("/{entry_id}")
-async def admin_edit_entry(entry_id: str, payload: CatalogEntryIn, admin: AdminUser,
-                           db: DbSession, request: Request):
-    row = await db.get(ConnectorCatalogEntry, entry_id)
-    if row is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="catalog_entry_missing")
-    fields = _fields(payload, previous=dict(row.env or {}))
-    if fields["slug"] != row.slug:
-        # installed connectors resolve by slug
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                            detail="catalog_slug_fixed")
-    for key, value in fields.items():
-        setattr(row, key, value)
-    row.updated_by, row.updated_at = admin.id, utcnow()
-    db.add(row)
-    _audit(db, request, admin, "connector.catalog.save", row.slug)
-    await db.commit()
-    return await _saved(db, row.slug)
-
-
-@admin_router.delete("/{entry_id}")
-async def admin_remove_entry(entry_id: str, admin: AdminUser, db: DbSession, request: Request):
-    """Catalogue removal; installed copies keep address, lose gateway key."""
-    row = await db.get(ConnectorCatalogEntry, entry_id)
-    if row is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="catalog_entry_missing")
-    _audit(db, request, admin, "connector.catalog.delete", row.slug)
-    await db.delete(row)
-    await db.commit()
-    return {"entries": await _admin_list(db)}

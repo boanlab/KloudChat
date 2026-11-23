@@ -27,16 +27,17 @@ from app.models.user import AuditEvent, User, UserRole
 from app.models.workspace import (
     Agent,
     Connector,
-    ConnectorCatalogEntry,
     ConnectorTool,
     DesignSystem,
     Skill,
     StoredFile,
+    Transport,
+    Visibility,
 )
 from app.routers import connectors
 from app.routers import sessions as sessions_router
 from app.routers import workspace as ws
-from app.schemas.workspace import DesignSystemOut
+from app.schemas.workspace import ConnectorPatch, DesignSystemOut
 from app.services import (
     bundles,
     deck_export,
@@ -183,7 +184,7 @@ async def db():
         await conn.run_sync(metadata.create_all, tables=[
             metadata.tables[m.__tablename__] for m in (
                 User, AuditEvent, Agent, Skill, DesignSystem, StoredFile,
-                ConnectorCatalogEntry, Connector, ConnectorTool)])
+                Connector, ConnectorTool)])
     async with AsyncSession(engine, expire_on_commit=False) as session:
         yield session
     await engine.dispose()
@@ -223,7 +224,7 @@ def _request():
 
 
 @pytest.mark.asyncio
-async def test_an_unlisted_connector_entry_is_kept_for_those_who_installed_it(db, monkeypatch):
+async def test_an_unlisted_shared_server_is_kept_for_those_who_installed_it(db, monkeypatch):
     async def no_server(*_a, **_k):
         raise RuntimeError("offline")
 
@@ -233,21 +234,25 @@ async def test_an_unlisted_connector_entry_is_kept_for_those_who_installed_it(db
                    for n in ("early", "late"))
     db.add_all([admin, early, late])
     await db.commit()
-    entry = connectors.CatalogEntryIn(slug="clock", name="시계", transport="stdio",
-                                      endpoint="uvx mcp-server-time")
-    await connectors.admin_add_entry(entry, admin, db, _request())
-    await connectors.install("clock", early, db)
-    row = (await connectors.admin_catalog(admin, db))["entries"][0]
-    assert row["listed"] is True
-    out = await connectors.admin_edit_entry(row["id"], entry.model_copy(update={"listed": False}),
-                                            admin, db, _request())
-    assert out["entries"][0]["listed"] is False
-    # Not offered to someone new; still there, marked installed, for whoever has it.
-    assert "clock" not in [e["slug"] for e in await connectors.get_catalog(late, db)]
-    assert [e["installed"] for e in await connectors.get_catalog(early, db)
+    shared = Connector(owner_id=admin.id, name="시계", slug="clock", transport=Transport.stdio,
+                       endpoint="uvx mcp-server-time", visibility=Visibility.org)
+    db.add(shared)
+    await db.commit()
+    await catalog.refresh(db)
+    await connectors.install(shared.id, early, db)
+    assert [e["listed"] for e in await connectors.get_store(late, db)] == [True]
+    out = await connectors.patch(shared.id, ConnectorPatch(listed=False), admin, db)
+    assert out.listed is False
+    # Not offered to someone new; still there, marked installed, for whoever has it; an
+    # administrator sees every server, marked.
+    assert "clock" not in [e["slug"] for e in await connectors.get_store(late, db)]
+    assert [e["installed"] for e in await connectors.get_store(early, db)
             if e["slug"] == "clock"] == [True]
-    # Installable by slug all the same (unlike a disabled entry).
-    assert (await connectors.install("clock", late, db)).slug == "clock"
+    # Unlike a server switched off, it is installable all the same (by its id).
+    assert (await connectors.install(shared.id, late, db)).origin_id == shared.id
+    # And its copies run: the shared row is still read.
+    mine = (await db.exec(select(Connector).where(Connector.owner_id == early.id))).one()
+    assert await catalog.effective_endpoint(mine) == "uvx mcp-server-time"
 
 
 def _migration():

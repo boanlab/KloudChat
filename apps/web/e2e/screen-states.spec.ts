@@ -168,7 +168,7 @@ async function fixture(page: Page, info: TestInfo, options: Options = {}) {
     const shell = shellRead(method, path)
     if (shell) return route.fulfill(shell)
     if (method === 'GET' && (/^\/sessions\/[0-9a-f]{32}\/(jobs|runs|sources)$/.test(path) || ['/agents', '/skills',
-      '/memory', '/tools', '/connectors', '/connectors/catalog', '/designs', '/shares', '/artifacts', '/jobs',
+      '/memory', '/tools', '/connectors', '/connectors/store', '/designs', '/shares', '/artifacts', '/jobs',
       '/pipelines', '/user-pipelines', '/files', '/user-templates'].includes(path))) return json([])
     unexpected.push(`${method} ${path}`)
     return json({ detail: 'Unmocked fixture request' }, 501)

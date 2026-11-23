@@ -78,7 +78,7 @@ All under `/api` except `/llm`. The complete list is the OpenAPI document at
 | `GET /pipelines` · `GET /agents/{id}/pipeline` · `GET /agent-bases` · `PUT /agents/{id}/process` | Built-in processes and an agent's process (How it works) |
 | `/user-pipelines…` · `/bundles…` | Composed processes and bundles; sharing ones that export or review goes through administrator approval |
 | `GET /design-templates` · `usage` · `{id}/preview` · `{id}/style` · `{id}/form` · `/user-templates…` | Templates: the shipped catalogue (preview is unauthenticated) and users' own |
-| `GET /connectors` · `/connectors/catalog` · `POST /connectors/install/{slug}` | MCP connectors |
+| `GET /connectors` · `/connectors/store` · `POST /connectors/install/{id}` · `PATCH /connectors/{id}` (sharing: `visibility`, `requiredEnv`) | MCP connectors: a person's own, shared servers in the store, and references to them |
 | `/push/{config,subscriptions,unsubscribe,test}` | Web Push devices (needs the VAPID keys) |
 | `POST /client-errors` | Errors the browser reports about itself |
 | `POST /shares` · `GET /shared/{token}` · `GET /shares/{id}/views` | Read-only sharing. Reading a `link`-scoped share needs no authentication |
@@ -88,7 +88,7 @@ All under `/api` except `/llm`. The complete list is the OpenAPI document at
 | `GET /me/usage` | Own usage |
 | `POST /transcriptions` | Composer microphone → speech-to-text |
 | `/issues…` | Questions and reports sent from the app, and the answers |
-| `/admin/users…` · `settings` · `models` · `usage` · `audit` · `governance` · `storage` · `publications` · `issues` · `skills` · `user-pipelines` · `connector-catalog` · `perf` | Administration; `POST /admin/storage/reclaim` and `POST /credits/refill` are its manual triggers |
+| `/admin/users…` · `settings` · `models` · `usage` · `audit` · `governance` · `storage` · `publications` · `issues` · `skills` · `user-pipelines` · `perf` | Administration; `POST /admin/storage/reclaim` and `POST /credits/refill` are its manual triggers |
 | `POST /admin/branding/logo` · `DELETE` | Logo upload and removal (`GET /branding/logo` is public) |
 | `/llm/*` | LiteLLM passthrough. Authenticates **by API key, not by session** |
 | `GET /health` (also `HEAD`) | Reports KloudChat and LiteLLM status separately |
@@ -204,7 +204,7 @@ app/
     ├── push.py · mail.py · mcp.py                            Web Push, account
     │                       mail, MCP client (stdio and streamable-http)
     ├── perf/ · geoip.py                                      Admin performance figures, offline region lookup
-    ├── tools/              Built-in tools, MCP tools, connector catalogue
+    ├── tools/              Built-in tools, MCP tools, shared connectors (store, references)
     ├── settings_store.py   Database-first settings — swap the proxy without a restart
     └── starter.py · bootstrap.py   Shipped items seeded at approval, first administrator
 ```

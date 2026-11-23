@@ -133,7 +133,7 @@ async function fixture(page: Page, kind: Kind, start = '/new/chat') {
     const shell = shellRead(method, path)
     if (shell) return route.fulfill(shell)
     if (method === 'GET' && ['/projects', '/skills', '/memory', '/agents', '/tools', '/connectors',
-      '/connectors/catalog', '/jobs', '/designs', '/design-templates', '/shares'].includes(path)) {
+      '/connectors/store', '/jobs', '/designs', '/design-templates', '/shares'].includes(path)) {
       return json([])
     }
     if (method === 'GET' && session && path === `/sessions/${session.id}/jobs`) return json([])

@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
-import catalog_seed
 import httpx
 import pytest
 
 from app.core.config import settings
 from app.services import (
     chart_code,
+    connector_defaults,
     factcheck,
     index_client,
     mcp,
@@ -34,10 +35,27 @@ BACKENDS = settings_store.ToolBackends(
 )
 
 
+def _entry(slug: str, *, admin: bool = True, **over) -> dict:
+    """A shared server as `catalog.use` holds it; the shipped ones by their own slug."""
+    spec = next((x for x in connector_defaults.SHIPPED if x["slug"] == slug), {})
+    base = {"id": f"shared-{slug}", "slug": slug, "name": slug, "description": "",
+            "category": "", "transport": spec.get("transport", "http"),
+            "endpoint": spec.get("endpoint", ""),
+            "env": settings_store.encrypt_env(spec.get("env")), "required_env": [],
+            "auth": "none", "kinds": ["chat"], "enabled": True, "listed": True,
+            "by_default": False, "owner_id": "sharer", "owner_is_admin": admin,
+            "updated_at": None,
+            "tools_key_for": (spec["tools_key_var"], spec["tools_key_feature"])
+            if spec.get("tools_key_var") else None}
+    return {**base, **over}
+
+
 @pytest.fixture(autouse=True)
-def _seeded_catalogue():
-    """The catalogue as migration 0062 seeds it."""
-    catalog.use(catalog_seed.entries())
+def _shared_servers():
+    """The shipped servers, shared by an administrator."""
+    catalog.use([_entry(x["slug"]) for x in connector_defaults.SHIPPED])
+    yield
+    catalog.use([])
 
 
 def _answer(request: httpx.Request) -> httpx.Response:
@@ -218,7 +236,7 @@ async def test_transcription_sends_the_key(sent):
 
 @pytest.mark.asyncio
 async def test_the_deep_research_connector_sends_the_key(sent):
-    entry = catalog.catalog_entry("deep-research")
+    entry = await catalog.source("shared-deep-research")
     endpoint = await catalog.resolve_urls(entry["endpoint"])
     assert endpoint == f"{BACKENDS.research}/mcp"
     await mcp.list_tools("http", endpoint)
@@ -265,36 +283,55 @@ async def test_the_admin_connection_test_reports_a_refused_key(monkeypatch, sent
 # ── the youtube connector, a stdio process ─────────────────────────────
 
 
-class _Connector:
-    def __init__(self, slug, env, official=True):
-        self.slug = slug
-        self.env = settings_store.encrypt_env(env)
-        self.official = official
+def _reference(slug: str, env: dict | None = None, *, origin: str | None = None):
+    """A person's reference row to a shared server."""
+    return SimpleNamespace(slug=slug, origin_id=origin or f"shared-{slug}",
+                           env=settings_store.encrypt_env(env), transport="stdio", endpoint="",
+                           tools_key_var="", tools_key_feature="")
 
 
 @pytest.mark.asyncio
 async def test_the_youtube_connector_gets_the_key_for_the_stt_address(sent):
-    env = await catalog.connector_env(_Connector("youtube", {"WHISPER_URL": "${TOOLS_STT_URL}"}))
+    env = await catalog.connector_env(_reference("youtube"))
     assert env == {"WHISPER_URL": BACKENDS.stt, "TOOLS_GATEWAY_KEY": KEY}
 
 
 @pytest.mark.asyncio
-async def test_a_youtube_connector_pointed_elsewhere_gets_no_key(sent):
-    env = await catalog.connector_env(
-        _Connector("youtube", {"WHISPER_URL": "https://whisper.example.com"})
-    )
-    assert "TOOLS_GATEWAY_KEY" not in env
+async def test_a_youtube_server_pointed_elsewhere_gets_no_key(sent):
+    where = {"WHISPER_URL": "https://whisper.example.com"}
+    catalog.use([_entry("youtube", env=settings_store.encrypt_env(where))])
+    env = await catalog.connector_env(_reference("youtube"))
+    assert env == where
 
 
 @pytest.mark.asyncio
-async def test_a_youtube_connector_pointed_at_another_tool_gets_no_key(sent):
-    env = await catalog.connector_env(_Connector("youtube", {"WHISPER_URL": BACKENDS.exec}))
-    assert "TOOLS_GATEWAY_KEY" not in env
+async def test_a_youtube_server_pointed_at_another_tool_gets_no_key(sent):
+    catalog.use([_entry("youtube", env=settings_store.encrypt_env(
+        {"WHISPER_URL": BACKENDS.exec}))])
+    assert "TOOLS_GATEWAY_KEY" not in await catalog.connector_env(_reference("youtube"))
 
 
 @pytest.mark.asyncio
-async def test_a_custom_connector_cannot_ask_for_the_key(sent):
-    connector = _Connector(
-        "youtube", {"WHISPER_URL": "${TOOLS_STT_URL}", "TOOLS_GATEWAY_KEY": "x"}, official=False
-    )
-    assert "TOOLS_GATEWAY_KEY" not in await catalog.connector_env(connector)
+async def test_a_person_cannot_ask_for_the_key_in_their_own_env(sent):
+    # Not by naming the variable, not by pointing a reference's own credential at a tool.
+    catalog.use([_entry("youtube", required_env=[{"key": "WHISPER_URL"}, {
+        "key": "TOOLS_GATEWAY_KEY"}], tools_key_for=None)])
+    mine = _reference("youtube", {"WHISPER_URL": "${TOOLS_STT_URL}", "TOOLS_GATEWAY_KEY": "x"})
+    assert "TOOLS_GATEWAY_KEY" not in await catalog.connector_env(mine)
+    # The shared server's own env never carries one in either.
+    catalog.use([_entry("youtube", env=settings_store.encrypt_env(
+        {"WHISPER_URL": "${TOOLS_STT_URL}", "TOOLS_GATEWAY_KEY": "x"}), tools_key_for=None)])
+    assert "TOOLS_GATEWAY_KEY" not in await catalog.connector_env(_reference("youtube"))
+
+
+@pytest.mark.asyncio
+async def test_a_members_shared_server_never_gets_the_key_or_the_shared_env(sent):
+    catalog.use([_entry("youtube", admin=False)])
+    env = await catalog.connector_env(_reference("youtube"))
+    assert env == {}
+    # The same row owned by a person who is not an administrator: no key either.
+    own = SimpleNamespace(slug="youtube", origin_id=None, transport="stdio", endpoint="x",
+                          env=settings_store.encrypt_env({"WHISPER_URL": "${TOOLS_STT_URL}"}),
+                          tools_key_var="WHISPER_URL", tools_key_feature="stt")
+    assert "TOOLS_GATEWAY_KEY" not in await catalog.connector_env(own, owner_is_admin=False)
+    assert (await catalog.connector_env(own, owner_is_admin=True))["TOOLS_GATEWAY_KEY"] == KEY

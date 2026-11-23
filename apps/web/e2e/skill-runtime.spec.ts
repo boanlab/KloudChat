@@ -159,7 +159,7 @@ async function mockSkillWorkspace(page: Page, initial = catalogue) {
     /\/api\/memory(?:\?.*)?$/,
     /\/api\/agents(?:\?.*)?$/,
     /\/api\/connectors(?:\?.*)?$/,
-    /\/api\/connectors\/catalog(?:\?.*)?$/,
+    /\/api\/connectors\/store(?:\?.*)?$/,
   ]) {
     await page.route(endpoint, (route) => route.fulfill({ json: [] }))
   }

@@ -565,7 +565,7 @@ class ConnectorStatus(StrEnum):
 
 
 class Connector(SQLModel, table=True):
-    """User-installed MCP server; secrets in `ConnectorCredential`."""
+    """MCP server of one person: their own, shared (`visibility`), or a reference to one."""
 
     __tablename__ = "connectors"
 
@@ -582,9 +582,29 @@ class Connector(SQLModel, table=True):
     env: dict | None = Field(default=None, sa_column=_json(nullable=True))
     auth_type: str = Field(default="none")
     kinds: list | None = Field(default=None, sa_column=_json(nullable=True))
-    official: bool = Field(default=False)
     installed: bool = Field(default=True)
     enabled: bool = Field(default=True)
+    #: `org`: offered in the store; a reference row (`origin_id`) reads address and shared env
+    #: from this row at run time
+    visibility: Visibility = Field(
+        default=Visibility.private,
+        sa_column=Column(
+            PgEnum(Visibility, name="agentvisibility", create_type=False),
+            nullable=False,
+            server_default=Visibility.private.value,
+        ),
+    )
+    #: shared server this row refers to; its address, shared env and gateway key are never copied
+    origin_id: str | None = Field(default=None, index=True)
+    #: `[{key, label, hint, secret}]` each person who installs it enters
+    required_env: list | None = Field(default=None, sa_column=_json(nullable=True))
+    #: env variable holding a tool address; the gateway key goes only to that address
+    tools_key_var: str = Field(default="", max_length=60)
+    tools_key_feature: str = Field(default="", max_length=20)
+    #: 기본 제공: installed for every active person, who can switch it off but not remove it
+    by_default: bool = Field(default=False)
+    #: store listing; unlisted stays installable by those who have it
+    listed: bool = Field(default=True)
     status: ConnectorStatus = Field(default=ConnectorStatus.disconnected)
     last_sync_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
     error: str | None = Field(default=None)
@@ -675,36 +695,6 @@ class UserTemplate(SQLModel, table=True):
     form_text: str = Field(default="")
     #: `private` or `org` (owner-only edits)
     visibility: str = Field(default="private", max_length=10)
-    created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
-    updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
-
-
-class ConnectorCatalogEntry(SQLModel, table=True):
-    """Admin-kept installable MCP server; stdio admin-only, `env` encrypted and never returned."""
-
-    __tablename__ = "connector_catalog"
-
-    id: str = Field(default_factory=_uuid, primary_key=True)
-    slug: str = Field(max_length=60, unique=True, index=True)
-    name: str = Field(max_length=80)
-    description: str = Field(default="", max_length=300)
-    category: str = Field(default="", max_length=30)
-    transport: str = Field(default="http", max_length=10)
-    endpoint: str = Field(default="", max_length=500)
-    env: dict | None = Field(default=None, sa_column=_json(nullable=True))
-    #: `[{key, label, hint, secret}]` collected at install
-    required_env: list | None = Field(default=None, sa_column=_json(nullable=True))
-    auth: str = Field(default="none", max_length=20)
-    tools_key_var: str = Field(default="", max_length=60)
-    tools_key_feature: str = Field(default="", max_length=20)
-    kinds: list | None = Field(default=None, sa_column=_json(nullable=True))
-    enabled: bool = Field(default=True)
-    #: members' catalogue; unlisted still installable by slug
-    listed: bool = Field(default=True)
-    #: 기본 제공: installed for every active person, who can switch it off but not remove it
-    by_default: bool = Field(default=False)
-    position: int = Field(default=0)
-    updated_by: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
     updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
 

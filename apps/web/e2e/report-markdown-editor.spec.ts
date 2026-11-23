@@ -95,7 +95,7 @@ async function fixture(page: Page, testInfo: TestInfo, extra: Record<string, unk
     const shell = shellRead(method, path)
     if (shell) return route.fulfill(shell)
     if (method === 'GET' && [`/sessions/${sessionId}/messages`, `/sessions/${sessionId}/jobs`, '/projects',
-      '/skills', '/memory', '/agents', '/tools', '/connectors', '/connectors/catalog', '/jobs',
+      '/skills', '/memory', '/agents', '/tools', '/connectors', '/connectors/store', '/jobs',
       '/designs', '/design-templates', '/shares', '/user-pipelines', '/skills/store'].includes(path)) return route.fulfill({ json: [] })
     // Drawn diagrams are posted back; nothing to store here.
     if (method === 'POST' && path.startsWith(`/artifacts/${artifactId}/sections/`)) return route.fulfill({ json: artifact })

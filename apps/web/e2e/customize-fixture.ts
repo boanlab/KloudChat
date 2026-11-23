@@ -191,23 +191,30 @@ const designs = [
     body: '', imageStyle: '', craft: [], shared: true, mine: false, updatedAt: at },
 ]
 
-/** Two catalogue servers of different categories; the list shows them flat, official first. */
-const connectorCatalog = [
-  { slug: 'youtube', name: 'YouTube', description: '영상 자막과 정보를 읽습니다.', category: '미디어', transport: 'stdio', auth: 'none',
-    kinds: ['chat', 'report', 'slides'], official: true, installed: false, requiredEnv: [] },
-  { slug: 'arxiv', name: 'arXiv', description: '논문을 찾습니다.', category: '연구', transport: 'http', auth: 'none',
-    kinds: ['chat'], official: false, installed: false, requiredEnv: [] },
+/** Two servers others shared, of different categories; the store lists them flat, official first. */
+const connectorStore = [
+  { id: 'o-youtube', slug: 'youtube', name: 'YouTube', description: '영상 자막과 정보를 읽습니다.', category: '미디어', transport: 'stdio', auth: 'none',
+    kinds: ['chat', 'report', 'slides'], official: true, ownerName: '관리자', installed: false, byDefault: false, listed: true, requiredEnv: [] },
+  { id: 'o-arxiv', slug: 'arxiv', name: 'arXiv', description: '논문을 찾습니다.', category: '연구', transport: 'http', auth: 'none',
+    kinds: ['chat'], official: false, ownerName: '김하나', installed: false, byDefault: false, listed: true, requiredEnv: [] },
+  { id: 'o-notes', slug: 'notes', name: '회의록 검색', description: '조직 회의록을 찾습니다.', category: '업무', transport: 'http', auth: 'api_key',
+    kinds: ['chat'], official: false, ownerName: '박둘', installed: false, byDefault: false, listed: true,
+    requiredEnv: [{ key: 'NOTES_TOKEN', label: '회의록 토큰', hint: '회의록 서비스에서 만든 토큰', secret: true }] },
 ]
 
-/** A 기본 제공 copy (switch off, not remove) and a server the person added. */
+/** The fields a row carries for sharing; an own, unshared server by default. */
+const noSharing = { visibility: 'private', originId: null, originOwnerName: '', originGone: false, requiredEnv: [], listed: true,
+  toolsKeyVar: '', toolsKeyFeature: '', sharedEnv: {}, installs: 0 }
+
+/** A 기본 제공 copy (a reference: switch off, not remove) and a server the person added. */
 export const installedConnectors = [
   { id: 'n1', name: '시간', slug: 'time', description: '현재 시각과 타임존 변환.', category: '기본', transport: 'stdio',
     endpoint: 'uvx mcp-server-time', auth: 'none', kinds: ['chat', 'report', 'slides'], official: true, installed: true,
     enabled: true, status: 'connected', tools: [{ name: 'get_current_time', description: '현재 시각', readOnly: true, enabled: true }],
-    lastSyncAt: at, error: null, envKeys: [], byDefault: true },
+    lastSyncAt: at, error: null, envKeys: [], byDefault: true, ...noSharing, originId: 'o-time', originOwnerName: '관리자' },
   { id: 'n2', name: '사내 위키', slug: 'wiki', description: '위키 검색', category: '', transport: 'http',
     endpoint: 'https://wiki.example.com/mcp', auth: 'none', kinds: ['chat'], official: false, installed: true,
-    enabled: true, status: 'connected', tools: [], lastSyncAt: at, error: null, envKeys: [], byDefault: false },
+    enabled: true, status: 'connected', tools: [], lastSyncAt: at, error: null, envKeys: [], byDefault: false, ...noSharing },
 ]
 
 /** `n` conversations, newest first, a minute apart; the first is pinned. */
@@ -235,14 +242,9 @@ export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = f
     .map((s) => ({ ...s }))
   let sessions: Record<string, unknown>[] = conversationRows(conversations)
   let userTemplates: Record<string, unknown>[] = []
-  let catalogRows: Record<string, unknown>[] = [
-    { id: 'e1', slug: 'time', name: '시간', description: "현재 시각과 타임존 변환. '오늘'이 며칠인지 서버 시계로 알려 줍니다.", category: '기본',
-      transport: 'stdio', endpoint: "uvx --with 'mcp<2' mcp-server-time --local-timezone=Asia/Seoul", env: {}, requiredEnv: [],
-      toolsKeyVar: '', toolsKeyFeature: '', kinds: ['chat', 'report', 'slides'], enabled: true, listed: true, byDefault: true, position: 0, updatedAt: at },
-    { id: 'e2', slug: 'youtube', name: 'YouTube 전사', description: '영상의 자막을 가져오고, 없으면 음성을 전사합니다.', category: '미디어',
-      transport: 'stdio', endpoint: 'uv run --script /srv/mcp/youtube.py', env: { WHISPER_URL: '${TOOLS_STT_URL}' }, requiredEnv: [],
-      toolsKeyVar: 'WHISPER_URL', toolsKeyFeature: 'stt', kinds: ['chat', 'report'], enabled: true, listed: false, byDefault: false, position: 1, updatedAt: at },
-  ]
+  // The person's servers, changed by installing, sharing and removing, as the server would.
+  let connectorRows: Record<string, unknown>[] = [...connectors]
+  let storeRows: Record<string, unknown>[] = connectorStore.map((e) => ({ ...e }))
 
   await page.context().route('**/*', async (route) => {
     const request = route.request()
@@ -299,19 +301,6 @@ export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = f
     if (method === 'PUT' && /^\/user-templates\/[^/]+$/.test(path)) {
       userTemplates = userTemplates.map((r) => (path.endsWith(String(r.id)) ? { ...r, ...body } : r))
       return json(userTemplates.find((r) => path.endsWith(String(r.id))))
-    }
-    if (method === 'GET' && path === '/admin/connector-catalog') return json({ entries: catalogRows, kinds: ['chat', 'report', 'slides'],
-      transports: ['stdio', 'http', 'sse'], features: ['search', 'fetch', 'exec', 'research', 'stt', 'index'],
-      placeholders: ['${TOOLS_RESEARCH_URL}', '${TOOLS_STT_URL}', '${TOOLS_SEARCH_URL}', '${TOOLS_FETCH_URL}', '${TOOLS_EXEC_URL}'] })
-    if (method === 'POST' && path === '/admin/connector-catalog') {
-      catalogRows = [...catalogRows, { ...(body as Record<string, unknown>), id: `e${catalogRows.length + 1}`, updatedAt: at,
-        env: Object.fromEntries(Object.entries((body.env ?? {}) as Record<string, string>).map(([k, v]) => [k, v && v.startsWith('${') ? v : null])) }]
-      return json({ entries: catalogRows, provided: 0 }, 201)
-    }
-    if (method === 'PUT' && /^\/admin\/connector-catalog\/[^/]+$/.test(path)) {
-      const id = path.split('/')[3]
-      catalogRows = catalogRows.map((r) => (r.id === id ? { ...r, ...body, id, env: r.env } : r))
-      return json({ entries: catalogRows, provided: body.byDefault ? 2 : 0 })
     }
     if (method === 'GET' && path === '/admin/settings') return json(null, 404)
     if (method === 'GET' && path === '/user-pipelines') return json(emptyMine ? [] : myPipelines)
@@ -417,8 +406,34 @@ export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = f
     if (method === 'GET' && path === '/artifacts/counts') return json({ counts: {}, total: 0 })
     const shell = shellRead(method, path)
     if (shell) return route.fulfill(shell)
-    if (method === 'GET' && path === '/connectors/catalog') return json(connectorCatalog)
-    if (method === 'GET' && path === '/connectors') return json(connectors)
+    if (method === 'GET' && path === '/connectors/store') return json(storeRows)
+    if (method === 'GET' && path === '/connectors') return json(connectorRows)
+    if (method === 'POST' && /^\/connectors\/install\/[^/]+$/.test(path)) {
+      const entry = storeRows.find((e) => e.id === path.split('/')[3])
+      if (!entry) return json({ detail: 'unknown_connector' }, 404)
+      const asked = ((entry.requiredEnv ?? []) as { key: string }[]).map((f) => f.key)
+      const missing = asked.filter((k) => !String(((body.env ?? {}) as Record<string, string>)[k] ?? '').trim())
+      if (missing.length) return json({ detail: `missing_env:${missing.join(',')}` }, 422)
+      const row = { id: `r-${entry.id}`, name: entry.name, slug: entry.slug, description: entry.description, category: entry.category,
+        transport: entry.transport, endpoint: '', auth: entry.auth, kinds: entry.kinds, official: entry.official, installed: true, enabled: true,
+        status: 'connected', tools: [], lastSyncAt: at, error: null, envKeys: asked, byDefault: false, ...noSharing,
+        originId: entry.id, originOwnerName: entry.ownerName, requiredEnv: entry.requiredEnv }
+      connectorRows = [row, ...connectorRows]
+      storeRows = storeRows.map((e) => (e.id === entry.id ? { ...e, installed: true } : e))
+      return json(row, 201)
+    }
+    if (method === 'PATCH' && /^\/connectors\/[^/]+$/.test(path)) {
+      const id = path.split('/')[2]
+      connectorRows = connectorRows.map((r) => (r.id === id ? { ...r, ...body } : r))
+      return json(connectorRows.find((r) => r.id === id))
+    }
+    if (method === 'DELETE' && /^\/connectors\/[^/]+$/.test(path)) {
+      const id = path.split('/')[2]
+      const row = connectorRows.find((r) => r.id === id)
+      if (row && row.visibility === 'org' && Number(row.installs) > 0) return json({ detail: 'connector_in_use' }, 409)
+      connectorRows = connectorRows.filter((r) => r.id !== id)
+      return route.fulfill({ status: 204 })
+    }
     if (method === 'GET' && ['/projects', '/memory', '/jobs', '/shares', '/artifacts',
       '/history'].includes(path)) return json([])
     unexpected.push(`${method} ${path}`)

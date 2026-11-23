@@ -4,7 +4,6 @@ import type {
   AgentPublication,
   AgentDraft,
   AgentDraftDecided,
-  CatalogEntryAdmin,
   ProcessSettings,
   TemplateCatalogue,
   UserTemplate,
@@ -2527,9 +2526,25 @@ export interface ConnectorRow {
   error: string | null
   /** 기본 제공: can be switched off, not removed. */
   byDefault?: boolean
+  /** `org`: shared in the store. */
+  visibility?: 'private' | 'org'
+  /** A reference row: the shared server it points at (empty `endpoint`). */
+  originId?: string | null
+  originOwnerName?: string
+  /** The sharing ended: the reference cannot run. */
+  originGone?: boolean
+  /** Credentials each person who installs a server of theirs enters. */
+  requiredEnv?: RequiredEnvField[]
+  listed?: boolean
+  toolsKeyVar?: string
+  toolsKeyFeature?: string
+  /** Own shared server's env: placeholders in the clear, secrets `null`. */
+  sharedEnv?: Record<string, string | null>
+  /** How many other people installed this shared server. */
+  installs?: number
 }
 
-interface RequiredEnvField {
+export interface RequiredEnvField {
   key: string
   label: string
   hint: string
@@ -2537,7 +2552,9 @@ interface RequiredEnvField {
   secret: boolean
 }
 
-export interface CatalogEntry {
+/** A server someone shared, as the store lists it. */
+export interface StoreEntry {
+  id: string
   slug: string
   name: string
   description: string
@@ -2545,22 +2562,42 @@ export interface CatalogEntry {
   transport: string
   auth: string
   kinds: string[]
+  /** Shared by an administrator. */
   official: boolean
+  ownerName: string
   installed: boolean
   /** 기본 제공: everyone has it installed. */
   byDefault?: boolean
+  listed?: boolean
   /** Credentials the server needs before it can start. */
   requiredEnv: RequiredEnvField[]
+}
+
+/** What a person can change on their own server (administrator-only ones are marked). */
+export interface ConnectorPatch {
+  enabled?: boolean
+  installed?: boolean
+  env?: Record<string, string>
+  name?: string
+  description?: string
+  endpoint?: string
+  visibility?: 'private' | 'org'
+  requiredEnv?: RequiredEnvField[]
+  /** Administrator only. */
+  toolsKeyVar?: string
+  toolsKeyFeature?: string
+  byDefault?: boolean
+  listed?: boolean
 }
 
 export const connectorsApi = {
   /** Several at once. Credentials go with the rows they belong to. */
   removeMany: (ids: string[]) =>
     call<{ deleted: number }>('/connectors/delete', body({ ids })),
-  catalog: () => call<CatalogEntry[]>('/connectors/catalog'),
+  store: () => call<StoreEntry[]>('/connectors/store'),
   list: () => call<ConnectorRow[]>('/connectors'),
-  install: (slug: string, env: Record<string, string> = {}) =>
-    call<ConnectorRow>(`/connectors/install/${slug}`, body({ env })),
+  install: (id: string, env: Record<string, string> = {}) =>
+    call<ConnectorRow>(`/connectors/install/${encodeURIComponent(id)}`, body({ env })),
   addCustom: (payload: {
     name: string
     transport: string
@@ -2572,7 +2609,7 @@ export const connectorsApi = {
   }) => call<ConnectorRow>('/connectors', body(payload)),
   /** Re-asks the server what tools it exposes. */
   sync: (id: string) => call<ConnectorRow>(`/connectors/${id}/sync`, { method: 'POST' }),
-  update: (id: string, patch: { enabled?: boolean; env?: Record<string, string> }) =>
+  update: (id: string, patch: ConnectorPatch) =>
     call<ConnectorRow>(`/connectors/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   toggleTool: (id: string, tool: string, enabled: boolean) =>
     call<ConnectorRow>(`/connectors/${id}/tools/${encodeURIComponent(tool)}`, body({ enabled })),
@@ -3774,23 +3811,6 @@ export const userTemplatesApi = {
   catalogue: () => call<TemplateCatalogue>('/user-templates/catalogue'),
   /** A new agent of the person's from their template: format, questions, checks and process kept. */
   toAgent: (id: string) => call<AgentRow>(`/user-templates/${encodeURIComponent(id)}/to-agent`, { method: 'POST' }),
-}
-
-/** The connector catalogue administrators keep (관리 › MCP 서버). */
-export type CatalogEntryIn = Omit<CatalogEntryAdmin, 'id' | 'updatedAt'>
-export interface CatalogAdmin {
-  entries: CatalogEntryAdmin[]
-  kinds: string[]
-  transports: string[]
-  features: string[]
-  placeholders: string[]
-}
-export const connectorCatalogApi = {
-  list: () => call<CatalogAdmin>('/admin/connector-catalog'),
-  add: (entry: CatalogEntryIn) => call<{ entries: CatalogEntryAdmin[] }>('/admin/connector-catalog', body(entry)),
-  edit: (id: string, entry: CatalogEntryIn) =>
-    call<{ entries: CatalogEntryAdmin[] }>(`/admin/connector-catalog/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(entry) }),
-  remove: (id: string) => call<{ entries: CatalogEntryAdmin[] }>(`/admin/connector-catalog/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 }
 
 /** An uncaught browser error, for the server log only (`lib/clientErrors.ts`). */

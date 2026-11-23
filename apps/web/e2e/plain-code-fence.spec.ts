@@ -73,7 +73,7 @@ test('언어 표시 없는 코드 블록도 줄을 지킨 블록으로 보인다
     if (shell) return route.fulfill(shell)
     if (request.method() === 'GET' && [
       '/projects', '/artifacts', '/skills', '/memory', '/agents', '/tools',
-      '/connectors', '/connectors/catalog', '/jobs', '/designs', '/design-templates',
+      '/connectors', '/connectors/store', '/jobs', '/designs', '/design-templates',
       '/shares', `/sessions/${sessionId}/jobs`,
     ].includes(path)) return json([])
     unexpected.push(`${request.method()} ${path}`)

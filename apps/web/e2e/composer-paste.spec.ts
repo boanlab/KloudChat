@@ -87,7 +87,7 @@ async function fixture(page: Page, reply = '에러 코드는 503입니다.', sen
     const shell = shellRead(method, path)
     if (shell) return route.fulfill(shell)
     if (method === 'GET' && ['/projects', '/artifacts', '/skills', '/memory', '/agents',
-      '/tools', '/connectors', '/connectors/catalog', '/jobs',
+      '/tools', '/connectors', '/connectors/store', '/jobs',
       '/designs', '/design-templates', '/artifacts/counts'].includes(path)) {
       return route.fulfill({ json: path === '/artifacts/counts' ? { counts: {}, total: 0 } : [] })
     }

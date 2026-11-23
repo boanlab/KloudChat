@@ -31,7 +31,6 @@ const PAGES = [
   '/admin/system/branding',
   '/admin/system/mail',
   '/admin/system/signup',
-  '/admin/system/connectors',
   '/admin/publications',
 ]
 
