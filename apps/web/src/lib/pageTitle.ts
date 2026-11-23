@@ -26,7 +26,7 @@ const ROUTES: [RegExp, string][] = [
   [/^\/settings\/notifications/, '알림 설정'],
   [/^\/settings\/app/, '앱 설치'],
   [/^\/settings/, '설정'],
-  [/^\/admin\/users/, '사용자 · 크레딧'],
+  [/^\/admin\/users/, '사용자 관리'],
   [/^\/admin\/usage/, '사용량'],
   [/^\/admin\/performance/, '성능 모니터링'],
   [/^\/admin\/system/, '시스템'],

@@ -73,7 +73,7 @@ test.describe('페르소나 커버리지', () => {
       await page.getByPlaceholder('이름 또는 이메일').fill(pending)
       const row = page.locator('tr', { hasText: pending })
       await probe(row).toBeVisible({ timeout: 15_000 })
-      await probe(page.getByRole('heading', { name: '사용자 · 크레딧' })).toBeVisible()
+      await probe(page.getByRole('heading', { name: '사용자 관리' })).toBeVisible()
       // The account's name is also "승인 대기"; the badge is the status.
       await probe(row.getByText('승인 대기').last()).toBeVisible()
       await probe(row.getByRole('button', { name: '승인', exact: true })).toBeVisible()

@@ -2365,7 +2365,6 @@ const EN: Record<string, string> = {
   '프롬프트 입력': 'Prompt',
   '이번 달 크레딧': 'Credits this month',
   '이번 달 사용량': 'This month',
-  '사용자 · 크레딧': 'Users · credits',
   '보안 · 감사': 'Security · audit',
   '비밀번호 바꾸기': 'Change password',
   // ── lists · settings · administration ───────────────────────────────
@@ -4738,7 +4737,7 @@ const EN: Record<string, string> = {
   '바뀐 값': 'New value',
   '브랜드': 'Branding',
   '사용 중': 'Active',
-  '사용자 관리': 'User management',
+  '사용자 관리': 'Manage users',
   '사용자 원문 외부 전송 허용': 'Allow users to send originals externally',
   '새 키 발급': 'New key issued',
   '시스템 설정 · 정책': 'System settings · policy',

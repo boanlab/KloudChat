@@ -79,7 +79,7 @@ function AccountItems() {
             onClick={() => navigate('/admin/users')}
             hint={pendingUsers > 0 ? `${t('승인')} ${pendingUsers}` : undefined}
           >
-            {t('사용자 · 크레딧')}
+            {t('사용자 관리')}
           </MenuItem>
           <MenuItem
             icon={<Bot size={14} />}

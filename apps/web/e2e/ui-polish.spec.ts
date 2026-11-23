@@ -259,7 +259,7 @@ test('the user list exports CSV under its tab, search and order', async ({ page 
   await page.getByRole('button', { name: 'CSV 내보내기' }).click()
   expect((await download).suggestedFilename()).toBe('kloudchat-users-20261113.csv')
   expect(fx.exports).toEqual(['/admin/users/export.csv?status=active&sort=credits&order=desc'])
-  await expect(page).toHaveTitle('사용자 · 크레딧 · KloudChat')
+  await expect(page).toHaveTitle('사용자 관리 · KloudChat')
   expect(fx.unexpected).toEqual([])
 })
 

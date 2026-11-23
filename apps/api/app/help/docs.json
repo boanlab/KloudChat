@@ -46,14 +46,14 @@
 "path": "admin/index",
 "title": "관리자 가이드",
 "heading": "",
-"text": "관리자 계정으로 로그인하면 계정 메뉴에 **관리** 항목이 생깁니다. 최초로 가입한 계정이 관리자 권한을 갖습니다.\n\n| 화면 | 하는 일 |\n|---|---|\n| 사용자 · 크레딧 | 가입 승인·반려, 정지, 정보 수정, 월 크레딧, 허용 모델, 키 관리, 진행 과정·스킬 공유 검토 |\n| 사용량 | 기간별·모델별·사용자별 사용량, CSV, 저장 공간 |\n| 공유 챗봇 관리 | 「링크를 아는 사람」·「누구나」 범위와 채널(다른 사이트·API·MCP) 승인, 닫기·중지, 남용 확인 열람 |\n| 보안 · 감사 | **정책** 탭(개인정보 보호, 내부 자료 처리, 안전 모델, 차단 주제, 유휴 로그아웃, 보존 기간)과 **감사 로그** 탭 |\n| 문의·신고 관리 | 사용자가 보낸 오류 신고·기능 요청·문의 확인, 담당자·상태 지정, 답변 |\n| 시스템 | **프록시 · 모델 · 라우팅 · 기능 · 브랜딩 · 메일 · 회원 가입** 탭 |\n| 성능 모니터링 | 판정·핵심 수치·GPU 노드·모델 서버를 한 화면에 모은 대시보드, 항목을 누르면 호스트·모델·노드·서버별 추이와 세부 수치 |"
+"text": "관리자 계정으로 로그인하면 계정 메뉴에 **관리** 항목이 생깁니다. 최초로 가입한 계정이 관리자 권한을 갖습니다.\n\n| 화면 | 하는 일 |\n|---|---|\n| 사용자 관리 | 가입 승인·반려, 정지, 정보 수정, 월 크레딧, 허용 모델, 키 관리, 진행 과정·스킬 공유 검토 |\n| 사용량 | 기간별·모델별·사용자별 사용량, CSV, 저장 공간 |\n| 공유 챗봇 관리 | 「링크를 아는 사람」·「누구나」 범위와 채널(다른 사이트·API·MCP) 승인, 닫기·중지, 남용 확인 열람 |\n| 보안 · 감사 | **정책** 탭(개인정보 보호, 내부 자료 처리, 안전 모델, 차단 주제, 유휴 로그아웃, 보존 기간)과 **감사 로그** 탭 |\n| 문의·신고 관리 | 사용자가 보낸 오류 신고·기능 요청·문의 확인, 담당자·상태 지정, 답변 |\n| 시스템 | **프록시 · 모델 · 라우팅 · 기능 · 브랜딩 · 메일 · 회원 가입** 탭 |\n| 성능 모니터링 | 판정·핵심 수치·GPU 노드·모델 서버를 한 화면에 모은 대시보드, 항목을 누르면 호스트·모델·노드·서버별 추이와 세부 수치 |"
 },
 {
 "lang": "ko",
 "path": "admin/index",
 "title": "관리자 가이드",
 "heading": "초기 설정 순서",
-"text": "1. **시스템 → 프록시**: 모델 게이트웨이 주소와 마스터 키를 입력하고 연결을 확인합니다. 이 설정이 없으면 사용할 모델이 표시되지 않습니다.\n2. **시스템 → 기능**: 사용할 기능을 켜고 기능 연동 주소의 연결을 확인합니다. 연동 주소는 웹 검색, 문서 가져오기, 코드 실행, 심층 조사, 음성 전사, 자료 검색, 글자 읽기(OCR)에 있습니다.\n3. **시스템 → 회원 가입**: 가입 방식과 허용 이메일 도메인을 설정하고, 메일 서버가 있으면 이메일 인증을 활성화합니다.\n4. **시스템 → 메일**: 비밀번호 재설정과 인증 메일이 필요한 경우 SMTP를 설정합니다.\n5. **시스템 → 브랜딩**: 서비스 이름, 로고, 문의 주소를 설정합니다.\n6. **보안 · 감사 → 정책**: strict-local 안전 모델을 지정하고 개인정보 보호 방식을 결정합니다.\n7. **시스템 → 라우팅**: Super Agent가 질문 종류별로 쓸 모델 표를 확인합니다.\n8. **사용자 · 크레딧**: 승인 대기 계정을 처리합니다.\n\n각 항목의 상세 내용은 사용자와 크레딧, 정책과 라우팅, 공유 챗봇 승인, 시스템 설정을 참고하세요."
+"text": "1. **시스템 → 프록시**: 모델 게이트웨이 주소와 마스터 키를 입력하고 연결을 확인합니다. 이 설정이 없으면 사용할 모델이 표시되지 않습니다.\n2. **시스템 → 기능**: 사용할 기능을 켜고 기능 연동 주소의 연결을 확인합니다. 연동 주소는 웹 검색, 문서 가져오기, 코드 실행, 심층 조사, 음성 전사, 자료 검색, 글자 읽기(OCR)에 있습니다.\n3. **시스템 → 회원 가입**: 가입 방식과 허용 이메일 도메인을 설정하고, 메일 서버가 있으면 이메일 인증을 활성화합니다.\n4. **시스템 → 메일**: 비밀번호 재설정과 인증 메일이 필요한 경우 SMTP를 설정합니다.\n5. **시스템 → 브랜딩**: 서비스 이름, 로고, 문의 주소를 설정합니다.\n6. **보안 · 감사 → 정책**: strict-local 안전 모델을 지정하고 개인정보 보호 방식을 결정합니다.\n7. **시스템 → 라우팅**: Super Agent가 질문 종류별로 쓸 모델 표를 확인합니다.\n8. **사용자 관리**: 승인 대기 계정을 처리합니다.\n\n각 항목의 상세 내용은 사용자와 크레딧, 정책과 라우팅, 공유 챗봇 승인, 시스템 설정을 참고하세요."
 },
 {
 "lang": "ko",
@@ -158,7 +158,7 @@
 "path": "admin/users",
 "title": "사용자와 크레딧",
 "heading": "",
-"text": "관리 메뉴의 **사용자 · 크레딧** 화면입니다. 상단에 전체 사용자 수, 승인 대기 건수, 이번 달 사용량과 배정량, 다음 리필 일자가 요약됩니다. 하단에는 상태별 탭(전체, 승인 대기, 활성, 정지)과 이름·이메일 검색이 있습니다. 열 머리글을 누르면 그 열로 정렬하고, **CSV 내보내기**는 지금 탭·검색·정렬로 모든 쪽을 이번 달 크레딧과 함께 받습니다(내보낸 일은 감사 로그에 남음)."
+"text": "관리 메뉴의 **사용자 관리** 화면입니다. 상단에 전체 사용자 수, 승인 대기 건수, 이번 달 사용량과 배정량, 다음 리필 일자가 요약됩니다. 하단에는 상태별 탭(전체, 승인 대기, 활성, 정지)과 이름·이메일 검색이 있습니다. 열 머리글을 누르면 그 열로 정렬하고, **CSV 내보내기**는 지금 탭·검색·정렬로 모든 쪽을 이번 달 크레딧과 함께 받습니다(내보낸 일은 감사 로그에 남음)."
 },
 {
 "lang": "ko",
@@ -1810,14 +1810,14 @@
 "path": "admin/index",
 "title": "Administrator guide",
 "heading": "",
-"text": "When you sign in with an administrator account, a **Manage** item appears in the account menu. The first account to sign up holds administrator rights.\n\n| Screen | What it does |\n|---|---|\n| Users · Credits | Approve and reject sign-ups, suspend, edit details, monthly credits, allowed models, key management, review of shared processes and skills |\n| Usage | Usage by period, by model, and by user, CSV, storage space |\n| Manage shared chatbots | Approve the \"Anyone with the link\" and \"Anyone\" scopes and channels (other sites, API, MCP), close or pause, abuse-check viewing |\n| Security · Audit | The **Policy** tab (personal data protection, internal material, safe model, blocked topics, idle sign-out, retention period) and the **Audit log** tab |\n| Manage feedback | Read bug reports, feature requests and questions from users, set the assignee and status, reply |\n| System | The **Proxy · Models · Routing · Features · Branding · Mail · Sign-up** tabs |\n| Performance | One-screen dashboard of verdicts, key figures, GPU nodes and model servers; each item opens trends and details for the host, models, a node or a server |"
+"text": "When you sign in with an administrator account, a **Manage** item appears in the account menu. The first account to sign up holds administrator rights.\n\n| Screen | What it does |\n|---|---|\n| Manage users | Approve and reject sign-ups, suspend, edit details, monthly credits, allowed models, key management, review of shared processes and skills |\n| Usage | Usage by period, by model, and by user, CSV, storage space |\n| Manage shared chatbots | Approve the \"Anyone with the link\" and \"Anyone\" scopes and channels (other sites, API, MCP), close or pause, abuse-check viewing |\n| Security · Audit | The **Policy** tab (personal data protection, internal material, safe model, blocked topics, idle sign-out, retention period) and the **Audit log** tab |\n| Manage feedback | Read bug reports, feature requests and questions from users, set the assignee and status, reply |\n| System | The **Proxy · Models · Routing · Features · Branding · Mail · Sign-up** tabs |\n| Performance | One-screen dashboard of verdicts, key figures, GPU nodes and model servers; each item opens trends and details for the host, models, a node or a server |"
 },
 {
 "lang": "en",
 "path": "admin/index",
 "title": "Administrator guide",
 "heading": "Order of initial setup",
-"text": "1. **System → Proxy**: Enter the model gateway address and master key, then check the connection. Until this is set, no models are available to use.\n2. **System → Features**: Enable the features you will use and test the connection to each feature integration address (web search, document import, code execution, deep research, speech transcription, material search, text from scans (OCR)).\n3. **System → Sign-up**: Set the sign-up method and the allowed email domains, and enable email verification if you have a mail server.\n4. **System → Mail**: Set up SMTP if you need password reset and verification mail.\n5. **System → Branding**: Set the service name, logo, and contact address.\n6. **Security · Audit → Policy**: Designate the strict-local safe model and decide how personal data is protected.\n7. **System → Routing**: Review the table of models Super Agent uses for each kind of question.\n8. **Users · Credits**: Process the accounts waiting for approval.\n\nFor the details of each item, see Users and credits, Policy and routing, Approving published chatbots, and System settings."
+"text": "1. **System → Proxy**: Enter the model gateway address and master key, then check the connection. Until this is set, no models are available to use.\n2. **System → Features**: Enable the features you will use and test the connection to each feature integration address (web search, document import, code execution, deep research, speech transcription, material search, text from scans (OCR)).\n3. **System → Sign-up**: Set the sign-up method and the allowed email domains, and enable email verification if you have a mail server.\n4. **System → Mail**: Set up SMTP if you need password reset and verification mail.\n5. **System → Branding**: Set the service name, logo, and contact address.\n6. **Security · Audit → Policy**: Designate the strict-local safe model and decide how personal data is protected.\n7. **System → Routing**: Review the table of models Super Agent uses for each kind of question.\n8. **Manage users**: Process the accounts waiting for approval.\n\nFor the details of each item, see Users and credits, Policy and routing, Approving published chatbots, and System settings."
 },
 {
 "lang": "en",
@@ -1922,7 +1922,7 @@
 "path": "admin/users",
 "title": "Users and credits",
 "heading": "",
-"text": "This is the **Users · Credits** screen in the Manage menu. The top of the screen summarizes the total number of users, the number waiting for approval, this month's usage and allocation, and the next refill date. Below it are tabs by status (All, Waiting for approval, Active, Suspended) and a search by name and email. A column heading sorts by that column, and **Export CSV** downloads every page under the current tab, search and order with this month's credits (the export is recorded in the audit log)."
+"text": "This is the **Manage users** screen in the Manage menu. The top of the screen summarizes the total number of users, the number waiting for approval, this month's usage and allocation, and the next refill date. Below it are tabs by status (All, Waiting for approval, Active, Suspended) and a search by name and email. A column heading sorts by that column, and **Export CSV** downloads every page under the current tab, search and order with this month's credits (the export is recorded in the audit log)."
 },
 {
 "lang": "en",
