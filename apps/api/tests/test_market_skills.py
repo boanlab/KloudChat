@@ -13,11 +13,7 @@ from app.core.config import settings
 from app.services import skill_packages, skill_scripts
 
 SKILLS = Path(skill_packages.__file__).resolve().parent.parent / "skills"
-MARKET_SKILLS = (
-    "company-research",
-    "competitor-analysis",
-)
-ALL = (*MARKET_SKILLS, "source-check")
+ALL = ("source-check",)
 
 sources = skill_scripts.module("source-check", "sources")
 claims = skill_scripts.module("source-check", "claims")
@@ -41,41 +37,24 @@ def _cli(key: str, script: str, args: dict) -> dict:
 # ── packages ────────────────────────────────────────────────────────────
 
 
-def test_the_market_skills_ship_published_with_their_source():
-    packages = skill_packages.packages()
-    for key in ALL:
-        package = packages[key]
-        assert not package.draft, key
-        # the research skills are listed; the check they call is a helper, not a choice
-        assert package.listed == (key != "source-check"), key
-        # The research skills search when the person did not hand them a material pack.
-        searches = key in ("company-research", "competitor-analysis")
-        assert package.required_tools == (("run_skill_script", "web_search", "fetch_url")
-                                          if searches else ("run_skill_script",)), key
-        # source-check also guides a report writer on sourcing
-        assert package.kinds == (("chat", "report") if key == "source-check" else ("chat",)), key
-        assert "출처:" in package.body, key
-        # Korean front matter, English instructions.
-        assert any("가" <= ch <= "힣" for ch in package.name), key
-    assert set(packages["source-check"].scripts) == {"sources", "claims", "frame", "post"}
+def test_the_source_check_ships_published_as_a_helper():
+    package = skill_packages.packages()["source-check"]
+    assert not package.draft
+    # a helper the research writing leans on, not a choice
+    assert not package.listed
+    assert package.required_tools == ("run_skill_script",)
+    # source-check also guides a report writer on sourcing
+    assert package.kinds == ("chat", "report")
+    assert "출처:" in package.body
+    # Korean front matter, English instructions.
+    assert any("가" <= ch <= "힣" for ch in package.name)
+    assert set(package.scripts) == {"sources", "claims", "frame", "post"}
 
 
-def test_borrowed_text_names_its_licence_and_commit():
-    packages = skill_packages.packages()
-    for key in ("competitor-analysis",):
-        body = packages[key].body
-        assert "phuryn/pm-skills" in body and "MIT" in body, key
-        assert "8607e3b077817f89bf4a9b623246219734ac3be0" in body, key
-    # The CC BY-NC-SA originals are named but not used.
-    assert "CC BY-NC-SA" in packages["company-research"].body
-
-
-def test_the_market_skills_and_their_check_run_with_drafts_off(monkeypatch):
+def test_the_check_runs_with_drafts_off(monkeypatch):
     monkeypatch.setattr(settings, "skill_drafts", False)
     assert {spec["key"] for spec in skill_packages.catalog_specs()} >= set(ALL)
-    # the skills' procedure calls run_skill_script skill source-check
     assert "source-check" in {p.key for p in skill_packages.scripted()}
-    assert skill_packages.find("경쟁사 분석").key == "competitor-analysis"
 
 
 # ── source-check: sources ───────────────────────────────────────────────

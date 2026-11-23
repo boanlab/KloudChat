@@ -50,7 +50,7 @@ _BINDINGS = {
 _TOOLS = {
     "regulation-guide": ["search_knowledge", "calculate", "run_skill_script"],
     "data-analysis": ["run_code", "create_chart", "calculate"],
-    "career-docs": ["run_skill_script", "calculate"],
+    "career-docs": ["calculate"],
 }
 _BY_KEY = {spec["key"]: spec for spec in starter._AGENTS}
 
@@ -103,7 +103,7 @@ def test_each_agents_bindings_agree_with_its_kinds_templates_and_formats(key):
         # A skill the agent's own tools cannot run would be refused when switched on.
         assert set(skill.get("required_tools") or []) <= set(spec["tools"])
         assert set(skill["kinds"]) & set(spec["kinds"])
-    own = {"career-docs": ["text-fit"], "regulation-guide": ["date-calc"]}
+    own = {"regulation-guide": ["date-calc"]}
     assert spec["skills"] == own.get(key, [])
 
 
@@ -113,8 +113,8 @@ def test_career_docs_reads_its_surface_part_only():
     report = workspace_context.surface_prompt(prompt, "report")
     common = "Do not write falsehoods; they work against the applicant"
     assert common in chat and common in report
-    assert "text-fit" in chat and "「[제출용 답안 n]」" in chat
-    assert "text-fit" not in report and "제출용 답안" not in report
+    assert "「[제출용 답안 n]」" in chat
+    assert "제출용 답안" not in report
     assert "‘병행 활동’" in report and "‘병행 활동’" not in chat
     assert "[채팅에서]" not in chat + report and "[보고서에서]" not in chat + report
     # A prompt with no surface parts reads the same everywhere.
@@ -215,8 +215,8 @@ async def test_a_career_docs_report_session_gets_the_report_part_of_the_prompt(d
     await starter.sync_catalog(db, admin)
     await db.commit()
     for kind, present, absent in (
-        (SessionKind.chat, "text-fit", "‘병행 활동’"),
-        (SessionKind.report, "‘병행 활동’", "text-fit"),
+        (SessionKind.chat, "제출용 답안", "‘병행 활동’"),
+        (SessionKind.report, "‘병행 활동’", "제출용 답안"),
     ):
         session = ChatSession(user_id=admin.id, agent_id=agent.id, kind=kind)
         db.add(session)

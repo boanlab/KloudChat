@@ -424,14 +424,14 @@
 "path": "chat/agents",
 "title": "에이전트와 스킬",
 "heading": "보고서·슬라이드의 도구 스킬",
-"text": "보고서·슬라이드 화면에서도 서버가 쓰기 전후에 일을 맡는 스킬은 고를 수 있습니다. **계산·단위 검증**, **날짜 계산**, **견적 계산**처럼 미리 계산하거나 검사하는 스킬입니다. 고르기 창에 「서버가 쓰기 전후에 계산·검사합니다」가 표시됩니다. 그 밖의 도구가 필요한 스킬은 챗 화면에서만 고를 수 있습니다."
+"text": "보고서·슬라이드 화면에서도 서버가 쓰기 전후에 일을 맡는 스킬은 고를 수 있습니다. **계산·단위 검증**, **날짜 계산**처럼 미리 계산하거나 검사하는 스킬입니다. 고르기 창에 「서버가 쓰기 전후에 계산·검사합니다」가 표시됩니다. 그 밖의 도구가 필요한 스킬은 챗 화면에서만 고를 수 있습니다."
 },
 {
 "lang": "ko",
 "path": "chat/agents",
 "title": "에이전트와 스킬",
 "heading": "기본 스킬",
-"text": "기본 스킬은 관리자 계정이 만들어 모두에게 공개한 스킬입니다. **사용자 지정** › **스킬**의 **탐색**에 **제작: 공식**으로 보이고, **추가**하면 내 목록에 사본이 생깁니다. 사본은 **원본: 공식**, 고친 사본은 **내가 수정함 · 원본: 공식**으로 보입니다. 사본은 고치지 않는 동안 관리자 쪽 새 버전을 따라가고, 고치면 내 것으로 남습니다. 에이전트와 문서 형식이 쓰는 검사(근거 대조, 빠진 정보 묻기 등)는 추가하지 않아도 그대로 돕니다.\n\n목록에 보이는 기본 스킬은 공식 스킬의 업무 스킬 열세 가지와 그 밖의 여덟 가지입니다.\n\n- 업무 스킬 열세 가지: 회의록 작성, 개조식 보고, 비교·결정 보고, 공문·기안 초안, 슬라이드 구성, 자료 추출·집계, 규정 근거 답변, YouTube 영상 전사·요약, 심층 조사, 번역, 보도자료, 엑셀 파일 만들기, 차트 만들기\n- 그 밖의 여덟 가지: **근거 대조**, **빠진 정보 묻기**, **계산·단위 검증**, **날짜 계산**, **견적 계산**, **엑셀 정리**, **PDF 표 → 엑셀**, **개인정보 가리기**\n\n- **엑셀 정리**는 제목·빈 행·합계·주석 행을 걷어 내고 바꾼 내용을 변경내역 시트로 남깁니다. 모든 값이 같은 행은 지우지 않고 「중복 의심」으로 표시만 합니다. 지우려면 지워 달라고 요청하세요.\n- **PDF 표 → 엑셀**은 글자를 고를 수 있는 PDF(텍스트 PDF)만 읽습니다. 스캔한 PDF(이미지)는 읽지 못합니다.\n- 그 밖의 스킬(카피·시장 조사·교정, 상투어 걷어내기, 글자 수 맞춤 등)은 목록·스토어·고르기 창에 보이지 않습니다. 묶음(예: 마무리하기의 상투적인 표현 걷어내기)과 그 스킬을 쓰던 대화에서는 그대로 돌고, 편집기에서 이름으로 고를 수 있습니다. 관리자는 **숨김 포함**을 켜면 볼 수 있습니다."
+"text": "기본 스킬은 관리자 계정이 만들어 모두에게 공개한 스킬입니다. **사용자 지정** › **스킬**의 **탐색**에 **제작: 공식**으로 보이고, **추가**하면 내 목록에 사본이 생깁니다. 사본은 **원본: 공식**, 고친 사본은 **내가 수정함 · 원본: 공식**으로 보입니다. 사본은 고치지 않는 동안 관리자 쪽 새 버전을 따라가고, 고치면 내 것으로 남습니다. 에이전트와 문서 형식이 쓰는 검사(근거 대조, 빠진 정보 묻기 등)는 추가하지 않아도 그대로 돕니다.\n\n목록에 보이는 기본 스킬은 공식 스킬의 업무 스킬 열두 가지와 그 밖의 일곱 가지입니다.\n\n- 업무 스킬 열두 가지: 회의록 작성, 개조식 보고, 비교·결정 보고, 공문·기안 초안, 슬라이드 구성, 자료 추출·집계, YouTube 영상 전사·요약, 심층 조사, 번역, 보도자료, 엑셀 파일 만들기, 차트 만들기\n- 그 밖의 일곱 가지: **근거 대조**, **빠진 정보 묻기**, **계산·단위 검증**, **날짜 계산**, **엑셀 정리**, **PDF 표 → 엑셀**, **개인정보 가리기**\n\n- **엑셀 정리**는 제목·빈 행·합계·주석 행을 걷어 내고 바꾼 내용을 변경내역 시트로 남깁니다. 모든 값이 같은 행은 지우지 않고 「중복 의심」으로 표시만 합니다. 지우려면 지워 달라고 요청하세요.\n- **PDF 표 → 엑셀**은 글자를 고를 수 있는 PDF(텍스트 PDF)만 읽습니다. 스캔한 PDF(이미지)는 읽지 못합니다.\n- 그 밖의 스킬(카피·교정, 상투어 걷어내기 등)은 목록·스토어·고르기 창에 보이지 않습니다. 묶음(예: 마무리하기의 상투적인 표현 걷어내기)과 그 스킬을 쓰던 대화에서는 그대로 돌고, 편집기에서 이름으로 고를 수 있습니다. 관리자는 **숨김 포함**을 켜면 볼 수 있습니다."
 },
 {
 "lang": "ko",
@@ -704,14 +704,14 @@
 "path": "chat/skill-recipes",
 "title": "스킬로 일하고 에이전트 짜기",
 "heading": "공식 스킬",
-"text": "관리자가 모두에게 공개한 스킬입니다. 입력창의 **+** → **스킬** 아래 **공식 스킬**에 보이고, 고르면 내 스킬에 추가되면서 바로 켜집니다.\n\n| 스킬 | 쓰는 화면 | 하는 일 |\n|---|---|---|\n| 회의록 작성 | 보고서 | 녹음 전사본·메모·후속 메일로 결정·실행 항목(할 일·담당·기한·출처·비고)·미결을 남깁니다. **회의록** 형식으로 씁니다. 메모에 없는 시간·기한·합의·담당·권고·다음 회의 안건은 쓰지 않고, 빼거나 「(확인 필요)」·「미정」·「[장소]」처럼 표시해 둡니다. 메모가 준 일시·장소·참석자는 그대로 쓰고, 본문을 영어로 쓰면 머리도 영어(Meeting·Date·Location·Attendees·Prepared by)로 둡니다. 같은 행은 하나만 남기고, 메모의 요일이 달력과 다른 날짜는 처음 나온 곳에 「(화, 확인 필요: 달력상 수요일)」처럼 표시합니다. |\n| 개조식 보고 | 보고서 | 메모·메일을 윗사람이 한 장에서 판단할 □ ○ - ㆍ 개조식으로 바꿉니다. **개조식 보고서** 형식, 기본 1쪽. |\n| 비교·결정 보고 | 보고서 | 대안 2~5개를 요청한 기준 그대로 견주고 하나를 권고합니다. **비교·분석 보고서** 형식. |\n| 공문·기안 초안 | 보고서 | 계획서·결과 보고·기안·안내문 초안. 검색하지 않고, 그림은 요청할 때만 넣습니다. |\n| 슬라이드 구성 | 슬라이드 | 한 장에 주장 하나, 결론을 맨 앞에 두는 발표 슬라이드. |\n| 자료 추출·집계 | 대화 | 엑셀·CSV를 코드로 읽어 열을 뽑고 항목별로 집계한 표·차트를 만들고, 지우거나 바꾼 행을 남깁니다. |\n| 규정 근거 답변 | 대화 | 규정·지침에서 근거 조항을 [n]으로 달아 답하고, 자료에 없으면 담당 부서로 안내합니다. |\n| YouTube 영상 전사·요약 | 대화 | **YouTube 전사** MCP 서버로 자막(없으면 음성 전사)을 받아 그 내용만으로 요약합니다. |\n| 심층 조사 | 대화 | **심층 리서치** MCP 서버로 웹·논문을 여러 번 찾아 출처가 달린 결과를 정리합니다. 몇 분 걸립니다. 요청에 「심층 리서치로」라고 적으면 자세한 조사(5~15분)로 돌고, 진행 단계에 빠른 조사·자세한 조사 중 어느 것이 돌았는지 표시됩니다. |\n| 번역 | 대화·보고서 | 한국어↔영어(요청하면 다른 언어도)로 빠짐없이 옮깁니다. 이름·숫자·단위·표·목록·코드는 그대로, 같은 용어는 끝까지 같은 말로, 두 뜻으로 읽히는 곳만 「번역 메모」로 적습니다. 「직역」·「의역」, 「격식체」·「평어체」를 요청에 적으면 그대로 씁니다. |\n| 보도자료 | 대화·보고서 | 제목·부제, 육하원칙 리드, 중요한 것부터 내려가는 본문, 기관 소개와 문의까지 갖춘 보도자료. 인용은 자료에 있는 사람의 발언만 쓰고(이름만 있으면 「가안」으로 표시한 인용문), 자료에 없는 수치는 넣지 않습니다. 배포일·보도 시점·문의처만 대괄호로 남겨 직접 채웁니다. 「A4 1장」·「800자 이내」처럼 분량을 적으면 맞춥니다. |\n| 엑셀 파일 만들기 | 대화 | 붙여 넣은 표, 첨부한 CSV·엑셀, 계산한 표를 내려받을 수 있는 엑셀(.xlsx) 파일로 만듭니다. 합계 행과 합계·비율 같은 열은 수식으로 들어가고, 요청하면 엑셀 차트도 붙습니다. |\n| 차트 만들기 | 대화 | 표의 숫자로 막대·선·누적 막대 차트를 만들어 대화 옆에 띄웁니다. 값은 자료에 있거나 코드로 계산한 것만 씁니다. |"
+"text": "관리자가 모두에게 공개한 스킬입니다. 입력창의 **+** → **스킬** 아래 **공식 스킬**에 보이고, 고르면 내 스킬에 추가되면서 바로 켜집니다.\n\n| 스킬 | 쓰는 화면 | 하는 일 |\n|---|---|---|\n| 회의록 작성 | 보고서 | 녹음 전사본·메모·후속 메일로 결정·실행 항목(할 일·담당·기한·출처·비고)·미결을 남깁니다. **회의록** 형식으로 씁니다. 메모에 없는 시간·기한·합의·담당·권고·다음 회의 안건은 쓰지 않고, 빼거나 「(확인 필요)」·「미정」·「[장소]」처럼 표시해 둡니다. 메모가 준 일시·장소·참석자는 그대로 쓰고, 본문을 영어로 쓰면 머리도 영어(Meeting·Date·Location·Attendees·Prepared by)로 둡니다. 같은 행은 하나만 남기고, 메모의 요일이 달력과 다른 날짜는 처음 나온 곳에 「(화, 확인 필요: 달력상 수요일)」처럼 표시합니다. |\n| 개조식 보고 | 보고서 | 메모·메일을 윗사람이 한 장에서 판단할 □ ○ - ㆍ 개조식으로 바꿉니다. **개조식 보고서** 형식, 기본 1쪽. |\n| 비교·결정 보고 | 보고서 | 대안 2~5개를 요청한 기준 그대로 견주고 하나를 권고합니다. **비교·분석 보고서** 형식. |\n| 공문·기안 초안 | 보고서 | 계획서·결과 보고·기안·안내문 초안. 검색하지 않고, 그림은 요청할 때만 넣습니다. |\n| 슬라이드 구성 | 슬라이드 | 한 장에 주장 하나, 결론을 맨 앞에 두는 발표 슬라이드. |\n| 자료 추출·집계 | 대화 | 엑셀·CSV를 코드로 읽어 열을 뽑고 항목별로 집계한 표·차트를 만들고, 지우거나 바꾼 행을 남깁니다. |\n| YouTube 영상 전사·요약 | 대화 | **YouTube 전사** MCP 서버로 자막(없으면 음성 전사)을 받아 그 내용만으로 요약합니다. |\n| 심층 조사 | 대화 | **심층 리서치** MCP 서버로 웹·논문을 여러 번 찾아 출처가 달린 결과를 정리합니다. 몇 분 걸립니다. 요청에 「심층 리서치로」라고 적으면 자세한 조사(5~15분)로 돌고, 진행 단계에 빠른 조사·자세한 조사 중 어느 것이 돌았는지 표시됩니다. |\n| 번역 | 대화·보고서 | 한국어↔영어(요청하면 다른 언어도)로 빠짐없이 옮깁니다. 이름·숫자·단위·표·목록·코드는 그대로, 같은 용어는 끝까지 같은 말로, 두 뜻으로 읽히는 곳만 「번역 메모」로 적습니다. 「직역」·「의역」, 「격식체」·「평어체」를 요청에 적으면 그대로 씁니다. |\n| 보도자료 | 대화·보고서 | 제목·부제, 육하원칙 리드, 중요한 것부터 내려가는 본문, 기관 소개와 문의까지 갖춘 보도자료. 인용은 자료에 있는 사람의 발언만 쓰고(이름만 있으면 「가안」으로 표시한 인용문), 자료에 없는 수치는 넣지 않습니다. 배포일·보도 시점·문의처만 대괄호로 남겨 직접 채웁니다. 「A4 1장」·「800자 이내」처럼 분량을 적으면 맞춥니다. |\n| 엑셀 파일 만들기 | 대화 | 붙여 넣은 표, 첨부한 CSV·엑셀, 계산한 표를 내려받을 수 있는 엑셀(.xlsx) 파일로 만듭니다. 합계 행과 합계·비율 같은 열은 수식으로 들어가고, 요청하면 엑셀 차트도 붙습니다. |\n| 차트 만들기 | 대화 | 표의 숫자로 막대·선·누적 막대 차트를 만들어 대화 옆에 띄웁니다. 값은 자료에 있거나 코드로 계산한 것만 씁니다. |"
 },
 {
 "lang": "ko",
 "path": "chat/skill-recipes",
 "title": "스킬로 일하고 에이전트 짜기",
 "heading": "그 밖의 스킬과 스킬이 가져오는 것",
-"text": "이 밖에 견적 계산, 엑셀 정리, PDF 표 → 엑셀, 근거 대조, 빠진 정보 묻기, 계산·단위 검증, 개인정보 가리기, 날짜 계산이 있습니다. 날짜 계산은 **시간** MCP 서버가 있으면 오늘 날짜를 거기서 읽습니다.\n\n스킬은 자기 문서 형식·검사·빠진 정보 질문을 함께 가져옵니다. 예를 들어 보고서 화면에서 **회의록 작성**을 켜면 **회의록** 형식으로 쓰고, 쓰기 전에 회의 날짜·참석자를 묻고, 다 쓴 뒤 근거와 형식을 확인합니다. 켠 스킬은 그 대화가 끝날 때까지 켜져 있고, 개요를 승인할 때도 그대로 씁니다."
+"text": "이 밖에 엑셀 정리, PDF 표 → 엑셀, 근거 대조, 빠진 정보 묻기, 계산·단위 검증, 개인정보 가리기, 날짜 계산이 있습니다. 날짜 계산은 **시간** MCP 서버가 있으면 오늘 날짜를 거기서 읽습니다.\n\n스킬은 자기 문서 형식·검사·빠진 정보 질문을 함께 가져옵니다. 예를 들어 보고서 화면에서 **회의록 작성**을 켜면 **회의록** 형식으로 쓰고, 쓰기 전에 회의 날짜·참석자를 묻고, 다 쓴 뒤 근거와 형식을 확인합니다. 켠 스킬은 그 대화가 끝날 때까지 켜져 있고, 개요를 승인할 때도 그대로 씁니다."
 },
 {
 "lang": "ko",
@@ -760,7 +760,7 @@
 "path": "chat/skill-recipes",
 "title": "스킬로 일하고 에이전트 짜기",
 "heading": "구매 검토 에이전트",
-"text": "항상 적용 스킬 **비교·결정 보고** + **견적 계산**, 사용할 화면 **보고서**. 지시에 「판단 기준은 3년 총비용, 유지보수, 도입 일정 순서」처럼 우리 기관의 기준을 적어 두면 요청마다 쓰지 않아도 됩니다."
+"text": "항상 적용 스킬 **비교·결정 보고**, 사용할 화면 **보고서**. 지시에 「판단 기준은 3년 총비용, 유지보수, 도입 일정 순서」처럼 우리 기관의 기준을 적어 두면 요청마다 쓰지 않아도 됩니다."
 },
 {
 "lang": "ko",
@@ -774,7 +774,7 @@
 "path": "chat/skill-recipes",
 "title": "스킬로 일하고 에이전트 짜기",
 "heading": "규정 안내 챗봇",
-"text": "1. 에이전트를 만들고 항상 적용 스킬 **규정 근거 답변** + **날짜 계산**을 고릅니다.\n2. **자료**에 학칙·규정 파일을 올리고, **담당 부서·연락처**를 적습니다.\n3. **추가로 할 일**에서 **공개 전 점검**(근거 없는 답 보류 · 담당 부서 안내 · 개인정보 가리기)을 체크합니다.\n4. 시험해 본 뒤 챗봇으로 공유합니다. 챗봇은 스킬 지시를 공유한 판에 함께 담아 답합니다."
+"text": "1. 에이전트를 만들고 항상 적용 스킬 **날짜 계산**을 고릅니다. 지시에는 「규정에서 찾아 근거 조항을 [n]으로 달고, 시행일 기준을 밝히며, 자료에 없으면 그렇다고 답하고 담당 부서로 안내한다」처럼 늘 같은 것만 적습니다.\n2. **자료**에 학칙·규정 파일을 올리고, **담당 부서·연락처**를 적습니다.\n3. **추가로 할 일**에서 **공개 전 점검**(근거 없는 답 보류 · 개인정보 가리기)을 체크합니다.\n4. 시험해 본 뒤 챗봇으로 공유합니다. 챗봇은 스킬 지시를 공유한 판에 함께 담아 답합니다."
 },
 {
 "lang": "ko",
@@ -2188,14 +2188,14 @@
 "path": "chat/agents",
 "title": "Agents and skills",
 "heading": "Tool skills on reports and slides",
-"text": "On the Report and Slides screens you can pick a skill that needs tools when the server does its work around the writing: it calculates or checks before or after, such as **Calculation and unit check**, **Date calculation** and **Quote calculation**. The picker shows \"The server calculates and checks around the writing\". Other skills that need tools can be picked only on the Chat screen."
+"text": "On the Report and Slides screens you can pick a skill that needs tools when the server does its work around the writing: it calculates or checks before or after, such as **Calculation and unit check**, **Date calculation**. The picker shows \"The server calculates and checks around the writing\". Other skills that need tools can be picked only on the Chat screen."
 },
 {
 "lang": "en",
 "path": "chat/agents",
 "title": "Agents and skills",
 "heading": "Built-in skills",
-"text": "Built-in skills are skills the administrator account made and shared with everyone. They appear under **Explore** in **Customize** › **Skills** as **By: Official**; **Add** puts a copy in your list (**Original: Official**). A copy follows the administrator's newer versions while you leave it unedited, and stays yours once you edit it. The checks agents and document formats use (grounding check, asking for missing information and so on) run without adding anything.\n\nThe lists show the thirteen work skills (including Translation, Press release, Make an Excel file and Make a chart) under Official skills and **Grounding check** (근거 대조), **Ask for missing information** (빠진 정보 묻기), **Calculation and unit check** (계산·단위 검증), **Date calculation** (날짜 계산), **Quote calculation** (견적 계산), **Excel cleanup** (엑셀 정리), **PDF table → Excel** (PDF 표 → 엑셀) and **Mask personal information** (개인정보 가리기).\n\n- **Excel cleanup** strips title, blank, total and note rows and records what it changed on a change-log sheet. Rows whose values are all the same are not removed, only marked 「중복 의심」 (suspected duplicate); ask for them to be removed if you want that.\n- **PDF table → Excel** reads only PDFs whose text can be selected (text PDFs). Scanned PDFs (images) cannot be read.\n- The other skills (copy, market research, proofreading, stock-phrase stripping, character-count fitting and so on) are not shown in the lists, the store and the pickers. They still run in bundles (such as Finish's stock-phrase stripping) and in conversations that used them, and the editors still let you pick them by name. Administrators see them with **Show hidden** (숨김 포함)."
+"text": "Built-in skills are skills the administrator account made and shared with everyone. They appear under **Explore** in **Customize** › **Skills** as **By: Official**; **Add** puts a copy in your list (**Original: Official**). A copy follows the administrator's newer versions while you leave it unedited, and stays yours once you edit it. The checks agents and document formats use (grounding check, asking for missing information and so on) run without adding anything.\n\nThe lists show the twelve work skills (including Translation, Press release, Make an Excel file and Make a chart) under Official skills and **Grounding check** (근거 대조), **Ask for missing information** (빠진 정보 묻기), **Calculation and unit check** (계산·단위 검증), **Date calculation** (날짜 계산), **Excel cleanup** (엑셀 정리), **PDF table → Excel** (PDF 표 → 엑셀) and **Mask personal information** (개인정보 가리기).\n\n- **Excel cleanup** strips title, blank, total and note rows and records what it changed on a change-log sheet. Rows whose values are all the same are not removed, only marked 「중복 의심」 (suspected duplicate); ask for them to be removed if you want that.\n- **PDF table → Excel** reads only PDFs whose text can be selected (text PDFs). Scanned PDFs (images) cannot be read.\n- The other skills (copy, proofreading, stock-phrase stripping and so on) are not shown in the lists, the store and the pickers. They still run in bundles (such as Finish's stock-phrase stripping) and in conversations that used them, and the editors still let you pick them by name. Administrators see them with **Show hidden** (숨김 포함)."
 },
 {
 "lang": "en",
@@ -2468,14 +2468,14 @@
 "path": "chat/skill-recipes",
 "title": "Working with skills and building agents",
 "heading": "Official skills",
-"text": "Skills the administrator shares with everyone. They show under **Official skills** in the composer's **+** → **Skills**; picking one adds it to your skills and turns it on.\n\n| Skill | Screen | What it does |\n|---|---|---|\n| Meeting minutes (회의록 작성) | Report | Keeps decisions, action items (task · owner · due date · source · note) and open items from a transcript, notes and follow-up mails. Writes in the **회의록** format. A time, deadline, agreement, owner, advice or next-meeting agenda the memo does not give is not written; it is taken out or marked, such as 「(확인 필요)」, 「미정」 or 「[장소]」. A date, place and attendees the memo gives are kept as given, and minutes written in English get an English head (Meeting, Date, Location, Attendees, Prepared by). A row written twice is kept once, and a date whose memo weekday the calendar disagrees with is flagged where it first appears (「(화, 확인 필요: 달력상 수요일)」). |\n| Bullet-style briefing (개조식 보고) | Report | Turns notes and mails into a one-page □ ○ - ㆍ briefing a superior can decide from. **개조식 보고서** format, one page by default. |\n| Compare-and-decide report (비교·결정 보고) | Report | Weighs 2–5 options on exactly the criteria asked and recommends one. **비교·분석 보고서** format. |\n| Official document draft (공문·기안 초안) | Report | Drafts plans, result reports, approval drafts and notices. No web search; pictures only when asked. |\n| Slide deck (슬라이드 구성) | Slides | One claim per slide, the conclusion first. |\n| Extract and tally (자료 추출·집계) | Chat | Reads Excel and CSV with code, pulls columns, totals by item into tables and charts, and records the rows it removed or changed. |\n| Answers from regulations (규정 근거 답변) | Chat | Answers from regulations and guidelines with the article cited as [n], and points what the material does not cover to the department."
+"text": "Skills the administrator shares with everyone. They show under **Official skills** in the composer's **+** → **Skills**; picking one adds it to your skills and turns it on.\n\n| Skill | Screen | What it does |\n|---|---|---|\n| Meeting minutes (회의록 작성) | Report | Keeps decisions, action items (task · owner · due date · source · note) and open items from a transcript, notes and follow-up mails. Writes in the **회의록** format. A time, deadline, agreement, owner, advice or next-meeting agenda the memo does not give is not written; it is taken out or marked, such as 「(확인 필요)」, 「미정」 or 「[장소]」. A date, place and attendees the memo gives are kept as given, and minutes written in English get an English head (Meeting, Date, Location, Attendees, Prepared by). A row written twice is kept once, and a date whose memo weekday the calendar disagrees with is flagged where it first appears (「(화, 확인 필요: 달력상 수요일)」). |\n| Bullet-style briefing (개조식 보고) | Report | Turns notes and mails into a one-page □ ○ - ㆍ briefing a superior can decide from. **개조식 보고서** format, one page by default. |\n| Compare-and-decide report (비교·결정 보고) | Report | Weighs 2–5 options on exactly the criteria asked and recommends one. **비교·분석 보고서** format. |\n| Official document draft (공문·기안 초안) | Report | Drafts plans, result reports, approval drafts and notices. No web search; pictures only when asked. |\n| Slide deck (슬라이드 구성) | Slides | One claim per slide, the conclusion first. |\n| Extract and tally (자료 추출·집계) | Chat | Reads Excel and CSV with code, pulls columns, totals by item into tables and charts, and records the rows it removed or changed. |\n| YouTube transcript and summary (YouTube 영상 전사·요약) | Chat | Gets the captions (or a transcription of the audio) through the **YouTube 전사** MCP server and summarises from that alon"
 },
 {
 "lang": "en",
 "path": "chat/skill-recipes",
 "title": "Working with skills and building agents",
 "heading": "Other skills, and what a skill brings",
-"text": "There are also Date calculation (with the **시간** (time) MCP server it reads today's date from there), Quote calculation, Excel cleanup, PDF table → Excel, Grounding check, Ask for missing information, Calculation and unit check and Mask personal information.\n\nA skill brings its document format, checks and missing-information questions. Turn on **Meeting minutes** on the report screen, for instance, and it writes in the **회의록** format, asks for the meeting date and attendees before writing, and checks sources and format afterwards. A skill you turn on stays on for the rest of the conversation, approving the outline included."
+"text": "There are also Date calculation (with the **시간** (time) MCP server it reads today's date from there), Excel cleanup, PDF table → Excel, Grounding check, Ask for missing information, Calculation and unit check and Mask personal information.\n\nA skill brings its document format, checks and missing-information questions. Turn on **Meeting minutes** on the report screen, for instance, and it writes in the **회의록** format, asks for the meeting date and attendees before writing, and checks sources and format afterwards. A skill you turn on stays on for the rest of the conversation, approving the outline included."
 },
 {
 "lang": "en",
@@ -2524,7 +2524,7 @@
 "path": "chat/skill-recipes",
 "title": "Working with skills and building agents",
 "heading": "A purchase review agent",
-"text": "**비교·결정 보고** + **견적 계산** set to Always, screen **Report**. Write your organization's criteria in the instructions (「판단 기준은 3년 총비용, 유지보수, 도입 일정 순서」) so no request has to repeat them."
+"text": "**비교·결정 보고** set to Always, screen **Report**. Write your organization's criteria in the instructions (「판단 기준은 3년 총비용, 유지보수, 도입 일정 순서」) so no request has to repeat them."
 },
 {
 "lang": "en",
@@ -2538,7 +2538,7 @@
 "path": "chat/skill-recipes",
 "title": "Working with skills and building agents",
 "heading": "A regulations chatbot",
-"text": "1. Create an agent with **규정 근거 답변** + **날짜 계산** set to Always.\n2. Upload the regulation files under **Sources** and fill in **Department and contact**.\n3. Under **Extra work**, tick **공개 전 점검** (the pre-publication check: hold answers without grounds · point to the department · mask personal information).\n4. Try it, then share it as a chatbot. The bot answers with the skills' instructions frozen into the published version."
+"text": "1. Create an agent with **날짜 계산** set to Always. Put only what never changes in the instructions, such as 「find the article in the regulations, cite it as [n], say which version's 시행일 you answered from, and say so and point to the department when the material does not cover it」.\n2. Upload the regulation files under **Sources** and fill in **Department and contact**.\n3. Under **Extra work**, tick **공개 전 점검** (the pre-publication check: hold answers without grounds · mask personal information).\n4. Try it, then share it as a chatbot. The bot answers with the skills' instructions frozen into the published version."
 },
 {
 "lang": "en",

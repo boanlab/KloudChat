@@ -69,10 +69,10 @@ def test_the_shipped_bundles_are_data_in_the_users_shape():
     assert [bundles.target(i, "chat") for i in prepare.items] == ["check", "before", "before"]
     finish = shipped["finish"]
     assert [bundles.target(i, "chat") for i in finish.items] == ["check", None]
-    # 공개 전 점검: three checks after writing, attached like any other.
+    # 공개 전 점검: two checks after writing, attached like any other.
     publish = shipped["publish-check"]
-    assert [i.ref for i in publish.items] == ["answer-hold", "contact-note", "pii-mask"]
-    assert [bundles.target(i, "chat") for i in publish.items] == ["check", "check", "check"]
+    assert [i.ref for i in publish.items] == ["answer-hold", "pii-mask"]
+    assert [bundles.target(i, "chat") for i in publish.items] == ["check", "check"]
     assert not publish.risky
     assert all(bundles.target(i, "slides") is None for b in shipped.values() for i in b.items)
     # Shipped bundles never wait for review, whatever they hold.

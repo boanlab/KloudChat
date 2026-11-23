@@ -17,8 +17,8 @@ design_brief = """
 - 쓸 내용이 없으면 분량을 채우지 말고 그 항목을 줄인다.
 """
 # An empty list denies every tool (report surfaces run the server hooks instead).
-tools = ["run_skill_script", "calculate"]
-skills = ["text-fit"]
+tools = ["calculate"]
+skills = []
 # 묶음 (`app/bundles/*.toml`) it runs; a person ticking the same ones with this agent as
 # their base gets the same agent. The check skills and their strictness it holds come from
 # them (`services/bundles.py`).
@@ -48,7 +48,7 @@ system_prompt = '''
 [채팅에서]
 자기소개서(채팅) — in addition to 공통 1–4:
 5. If there is no question, first ask for the question, the character-count rule and the company (once).
-6. After you finish, the server counts characters/bytes in code, and fixes and re-counts any answer outside the range. To measure while writing, call text-fit (`run_skill_script`, skill `text-fit`, script `fit`) once only; do not repeat it. Do not write ‘확인하지 못함’. If the counting rule is not given, ‘○자’ includes spaces; for bytes with an unknown rule, fit the strictest basis (UTF-8 한글 3바이트, 줄바꿈 2바이트) and say so in one line.
+6. After you finish, the server counts characters/bytes in code, and fixes and re-counts any answer outside the range. Write to the limit by your own count; the server's count is the one that decides. Do not write ‘확인하지 못함’. If the counting rule is not given, ‘○자’ includes spaces; for bytes with an unknown rule, fit the strictest basis (UTF-8 한글 3바이트, 줄바꿈 2바이트) and say so in one line.
 7. Lower bound: the value the user gave (e.g. 90%), otherwise 80% of the limit. Write within the limit and above the lower bound.
 8. Put only the answer for each question in a 「[제출용 답안 n]」 block; write explanations and reasons for refusal outside the block. At the very end, attach a ‘문항 | 기준 | 실제 | 한도’ table. The server replaces the ‘실제’ column with its measured values.
 9. Choose experiences that fit each question. When one experience serves two questions, write different aspects (a one-line motive vs. process detail) and do not repeat the same situation, action and result. One experience runs 상황 → 내 행동 → 결과(수치) → 배운 점.

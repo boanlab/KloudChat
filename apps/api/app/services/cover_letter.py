@@ -493,7 +493,7 @@ def fit_shown(row: dict) -> str:
 
 
 def fix_count_table(answer: str, rows: list[dict]) -> str:
-    """Answer's count table with measured column from text-fit; rows matched by number or order."""
+    """Answer's count table with measured column from `text_fit`; rows matched by number or order."""
     by_number = {r["number"]: r for r in rows}
     lines = answer.split("\n")
     i = 0

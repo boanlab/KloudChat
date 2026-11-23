@@ -52,7 +52,7 @@ _MISSING = re.compile(
     re.IGNORECASE,
 )
 _CALCULATE = re.compile(r"계산|검산|산출|\b(?:calculate|compute|evaluate)\b", re.IGNORECASE)
-#: writing length limits (text-fit's job, not arithmetic)
+#: writing length limits (`text_fit`'s job, not arithmetic)
 _LENGTH_LIMIT = re.compile(
     r"\d[\d,]{0,6}\s{0,2}(?:자|글자|바이트|bytes?)\s{0,2}(?:이내|이하|내외|제한|미만|까지|안으로)"
     r"|(?:공백|띄어쓰기)\s{0,2}(?:포함|제외)\s{0,2}\d[\d,]{0,6}\s{0,2}(?:자|글자|바이트)",

@@ -187,34 +187,6 @@ def test_an_answer_resting_on_what_was_found_is_kept():
     assert hold.check(unrelated, "", [], {"surface": "report"}) == []
 
 
-def test_a_partial_answer_gets_the_contact_as_written_once():
-    note = skill_scripts.entry("contact-note")
-    answer = ("휴학 기한은 학기 개시일 전까지입니다 [1]. 수수료는 자료에 나와 있지 않습니다.\n\n"
-              "### 출처\n- [1] 학칙")
-    found = note.check(answer, "", [], _options())
-    fixed = note.fix(answer, found)
-    assert f"나와 있지 않습니다.\n\n담당 부서·연락처: {_CONTACT}\n\n### 출처" in fixed
-    assert note.check(fixed, "", [], _options()) == []
-    assert note.check("휴학 기한은 학기 개시일 전까지입니다 [1].", "", [], _options()) == []
-    # Seen in an answer: a parenthesis between 「자료」 and what it does not hold.
-    worded = "수수료는 제공된 자료 (장학금 지급 규정 및 학칙) 에 명시되어 있지 않아 문의해 주세요."
-    assert note.check(worded, "", [], _options())
-
-
-def test_a_full_answer_does_not_end_by_sending_the_reader_to_a_department():
-    """A complete, cited answer does not end 「담당 부서에 문의해 주세요.」 with no department
-    named; an answer that says the material falls short keeps it."""
-    note = skill_scripts.entry("contact-note")
-    bare = check_skills.options_for(None, {}, surface="chat")
-    answer = ("장학금은 등록금의 50%입니다 [3]. 중복 지급은 하지 않습니다 [5].\n\n"
-              "담당 부서에 문의해 주세요.\n\n### 출처\n- [3] 장학금지급규정")
-    fixed = note.fix(answer, note.check(answer, "", [], bare))
-    assert fixed == ("장학금은 등록금의 50%입니다 [3]. 중복 지급은 하지 않습니다 [5].\n\n"
-                     "### 출처\n- [3] 장학금지급규정")
-    short = "제공된 자료에서 이 질문에 대한 내용을 찾지 못했습니다. 담당 부서에 문의해 주세요."
-    assert note.check(short, "", [], bare) == []
-
-
 def test_personal_details_are_masked_and_the_contact_kept():
     mask = skill_scripts.entry("pii-mask")
     # On the server it is the instance's own detector.
@@ -236,11 +208,11 @@ def test_personal_details_are_masked_and_the_contact_kept():
 
 
 def test_the_bundle_runs_in_order_and_says_what_it_did():
-    keys = ("answer-hold", "contact-note", "pii-mask")
+    keys = ("answer-hold", "pii-mask")
     out = check_skills.ground(keys, "주차 요금은 1,000원이고 문의는 010-1111-2222입니다.",
                               material="", computed=[], options=_options())
     assert out.text.startswith("제공된 자료에서 이 질문에 대한 내용을 찾지 못했습니다.")
-    assert "010-1111-2222" not in out.text and _CONTACT in out.text
+    assert "010-1111-2222" not in out.text
     assert out.traced_only is False and out.summary.startswith("근거 없는 답 보류")
 
 
@@ -261,7 +233,7 @@ def test_the_official_agent_is_a_chat_agent_on_its_material_with_the_publishing_
     # 날짜 계산 works out 「개강 30일 전」 and checks the answer's dates.
     assert spec["tools"] == ["search_knowledge", "calculate", "run_skill_script"]
     assert spec["skills"] == ["date-calc"]
-    assert spec["checks"] == ["grounding-check", "answer-hold", "contact-note", "pii-mask"]
+    assert spec["checks"] == ["grounding-check", "answer-hold", "pii-mask"]
     assert [b["bundle"] for b in spec["bundles"]] == ["review", "publish-check"]
     prompt = spec["system_prompt"]
     assert "제공된 자료에서 이 질문에 대한 내용을 찾지 못했습니다." in prompt

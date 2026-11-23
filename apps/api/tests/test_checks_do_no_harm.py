@@ -21,7 +21,7 @@ comms = skill_scripts.module("internal-comms", "check")
 claims = skill_scripts.module("copy-check", "claims")
 trace = skill_scripts.module("grounding-check", "trace")
 dates = skill_scripts.module("date-calc", "dates")
-quotes = skill_scripts.module("quote-calc", "quote")
+quotes = skill_scripts.quotes()
 
 LANDING = (
     "「한빛워크」 랜딩 페이지 문구 써 줘. 히어로(헤드라인·서브), 기능 3개 블록, "

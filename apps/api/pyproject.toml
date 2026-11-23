@@ -76,6 +76,9 @@ extend-ignore = ["B008"]
 "app/services/report_export.py" = ["E501"]
 # Skill scripts and the code-model prompt: Korean docstrings and prompt text.
 "app/skills/*" = ["E501"]
+# Once skill scripts, now server modules: the same Korean docstrings and messages.
+"app/services/quote_engine.py" = ["E501"]
+"app/services/text_fit.py" = ["E501"]
 "app/services/tools/sandbox_tools.py" = ["E501"]
 # Performance verdicts: Korean findings and recommended actions shown as written.
 "app/services/perf/rules.py" = ["E501"]

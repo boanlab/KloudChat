@@ -18,7 +18,6 @@ Skills the administrator shares with everyone. They show under **Official skills
 | Official document draft (공문·기안 초안) | Report | Drafts plans, result reports, approval drafts and notices. No web search; pictures only when asked. |
 | Slide deck (슬라이드 구성) | Slides | One claim per slide, the conclusion first. |
 | Extract and tally (자료 추출·집계) | Chat | Reads Excel and CSV with code, pulls columns, totals by item into tables and charts, and records the rows it removed or changed. |
-| Answers from regulations (규정 근거 답변) | Chat | Answers from regulations and guidelines with the article cited as [n], and points what the material does not cover to the department. |
 | YouTube transcript and summary (YouTube 영상 전사·요약) | Chat | Gets the captions (or a transcription of the audio) through the **YouTube 전사** MCP server and summarises from that alone. |
 | Deep research (심층 조사) | Chat | Searches the web and papers many times through the **심층 리서치** MCP server and sums up the sourced findings. Takes a few minutes. Saying 「심층 리서치로」 in the request runs the detailed mode (5–15 minutes), and the step shows which mode ran (quick or detailed). |
 | Translation (번역) | Chat, Report | Translates between Korean and English (other languages on request) without leaving anything out. Names, numbers, units, tables, lists and code stay as they are; one term stays one term throughout; only genuinely ambiguous spots get a 「번역 메모」 (translator's note). Ask for 「직역」 (literal) or 「의역」 (free), 「격식체」 (formal) or 「평어체」 (plain) and it follows. |
@@ -28,7 +27,7 @@ Skills the administrator shares with everyone. They show under **Official skills
 
 ## Other skills, and what a skill brings
 
-There are also Date calculation (with the **시간** (time) MCP server it reads today's date from there), Quote calculation, Excel cleanup, PDF table → Excel, Grounding check, Ask for missing information, Calculation and unit check and Mask personal information.
+There are also Date calculation (with the **시간** (time) MCP server it reads today's date from there), Excel cleanup, PDF table → Excel, Grounding check, Ask for missing information, Calculation and unit check and Mask personal information.
 
 A skill brings its document format, checks and missing-information questions. Turn on **Meeting minutes** on the report screen, for instance, and it writes in the **회의록** format, asks for the meeting date and attendees before writing, and checks sources and format afterwards. A skill you turn on stays on for the rest of the conversation, approving the outline included.
 
@@ -74,7 +73,7 @@ In **Customize** → **Agents** → **Add** → **Create an agent**, skills you 
 
 ## A purchase review agent
 
-**비교·결정 보고** + **견적 계산** set to Always, screen **Report**. Write your organization's criteria in the instructions (「판단 기준은 3년 총비용, 유지보수, 도입 일정 순서」) so no request has to repeat them.
+**비교·결정 보고** set to Always, screen **Report**. Write your organization's criteria in the instructions (「판단 기준은 3년 총비용, 유지보수, 도입 일정 순서」) so no request has to repeat them.
 
 ## A tally agent
 
@@ -82,9 +81,9 @@ In **Customize** → **Agents** → **Add** → **Create an agent**, skills you 
 
 ## A regulations chatbot
 
-1. Create an agent with **규정 근거 답변** + **날짜 계산** set to Always.
+1. Create an agent with **날짜 계산** set to Always. Put only what never changes in the instructions, such as 「find the article in the regulations, cite it as [n], say which version's 시행일 you answered from, and say so and point to the department when the material does not cover it」.
 2. Upload the regulation files under **Sources** and fill in **Department and contact**.
-3. Under **Extra work**, tick **공개 전 점검** (the pre-publication check: hold answers without grounds · point to the department · mask personal information).
+3. Under **Extra work**, tick **공개 전 점검** (the pre-publication check: hold answers without grounds · mask personal information).
 4. Try it, then [share it as a chatbot](bots.md). The bot answers with the skills' instructions frozen into the published version.
 
 ## Video and research agents

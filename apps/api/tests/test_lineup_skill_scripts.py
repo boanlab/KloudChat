@@ -1,4 +1,4 @@
-"""date-calc, quote-calc and text-fit acceptance numbers, in the sandbox and imported."""
+"""date-calc (sandbox and imported) and the server's quote and text-fit modules: numbers."""
 
 from __future__ import annotations
 
@@ -28,13 +28,14 @@ def _run(key: str, script: str, args: dict, cwd: Path) -> dict:
     return json.loads(done.stdout.strip().splitlines()[-1])
 
 
-def test_the_three_packages_ship_with_their_scripts():
+def test_date_calc_ships_with_its_script_and_the_others_are_server_modules():
     packages = skill_packages.packages()
     assert packages["date-calc"].scripts.keys() == {"dates"}
-    assert packages["quote-calc"].scripts.keys() == {"quote"}
-    assert packages["text-fit"].scripts.keys() == {"fit"}
-    for key in ("date-calc", "quote-calc", "text-fit"):
-        assert packages[key].required_tools == ("run_skill_script",)
+    assert packages["date-calc"].required_tools == ("run_skill_script",)
+    # quote sums and length counts are no catalogue skills; the server imports them directly
+    assert "quote-calc" not in packages and "text-fit" not in packages
+    assert quotes.__name__ == "app.services.quote_engine"
+    assert fit.__name__ == "app.services.text_fit"
     assert "월력요항" in packages["date-calc"].body
 
 
@@ -252,8 +253,8 @@ def test_vat_rules_discount_and_ambiguous_budget():
     assert budget["if_excl"]["within"] and not budget["if_incl"]["within"]
 
 
-def test_quote_calc_runs_standalone(tmp_path):
-    assert _run("quote-calc", "quote", P1, tmp_path)["total"] == 51_810_000
+def test_quote_sums_the_acceptance_quote():
+    assert quotes.run(P1)["total"] == 51_810_000
 
 
 # ── text-fit ────────────────────────────────────────────────────────────
@@ -303,7 +304,6 @@ def test_limits_floor_and_status():
     assert titled["value"] == 2
 
 
-def test_text_fit_runs_standalone(tmp_path):
-    out = _run("text-fit", "fit", {"items": [{"label": "a", "text": "가나 다", "limit": 100,
-                                              "unit": "chars_no_spaces"}]}, tmp_path)
-    assert out["items"][0]["value"] == 3 and out["under"] == 1
+def test_text_fit_counts_without_spaces():
+    row = fit.fit({"label": "a", "text": "가나 다", "limit": 100, "unit": "chars_no_spaces"})
+    assert row["value"] == 3 and row["status"] == "under"

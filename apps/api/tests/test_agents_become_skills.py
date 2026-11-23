@@ -33,12 +33,13 @@ SKILL_OF = {
     "data-analysis": "data-tabulation",
     "document": "document-drafting",
     "slides": "deck-writing",
-    "regulation-guide": "regulation-answer",
 }
+#: withdrawn, and its work is not a skill any more (a chatbot is built from the agent form)
+WITHOUT_SKILL = {"regulation-guide"}
 
 
 def test_every_withdrawn_agent_has_its_skill():
-    assert starter.withdrawn_agents() == set(SKILL_OF)
+    assert starter.withdrawn_agents() == set(SKILL_OF) | WITHOUT_SKILL
     assert not starter.offered_agents(drafts=True)
 
 
@@ -48,20 +49,15 @@ def test_the_skill_carries_what_the_agent_did(agent, key):
     package = skill_packages.package_for(key)
     made = skill_specs.of_package(package)
     assert package.listed and not package.draft
-    # its instructions (the regulation one also reads attached files with no shelf)
-    if agent == "regulation-guide":
-        assert spec["system_prompt"].split("1.")[0] in package.body
-        assert "search_knowledge" in package.body
-    else:
-        # what the agent's own surface reads (a `[채팅에서]` part is for chat)
-        surface = SessionKind(spec["surface"])
-        assert workspace_context.surface_body(package.body, surface) == spec["system_prompt"]
+    # what the agent's own surface reads (a `[채팅에서]` part is for chat)
+    surface = SessionKind(spec["surface"])
+    assert workspace_context.surface_body(package.body, surface) == spec["system_prompt"]
     # where it writes: the agent's surface first; no template (the format's pattern instead)
     assert package.kinds[0] == spec["surface"]
     assert made.template == ""
     # the checks its 묶음 compiled to (the format's own come with its pattern)
     held = {*made.checks, *patterns.check_skills(spec.get("doc_format"))}
-    assert set(spec["checks"]) - {"answer-hold", "contact-note", "pii-mask"} <= held
+    assert set(spec["checks"]) - {"answer-hold", "pii-mask"} <= held
     assert set(made.check_options) == set(spec["check_options"])
     # its own 빠진 정보 질문 and 진행 설정
     assert [q["id"] for q in made.questions] == [q["id"] for q in spec.get("questions") or []]
