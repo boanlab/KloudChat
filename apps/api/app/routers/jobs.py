@@ -205,7 +205,8 @@ async def _poll_until_done(job_id: str) -> None:
         await _finish(
             job_id,
             status=JobStatus.running,
-            progress=max(1, progress.progress),
+            # 0 = the provider reports no percent; the card shows elapsed time, not a made-up 1%.
+            progress=progress.progress,
             stage="만드는 중",
         )
 
@@ -307,7 +308,7 @@ async def create_job(session_id: str, payload: VideoJobRequest, user: CurrentUse
         provider_job_id=submitted.provider_job_id,
         credits_estimated=estimated,
         stage="만드는 중",
-        progress=1,
+        progress=0,
     )
     db.add(job)
     await db.commit()

@@ -789,7 +789,7 @@ export interface Job {
   sessionId: string
   kind: SessionKind
   status: JobStatus
-  /** 0–100. Providers that report no progress get a coarse stage-based estimate. */
+  /** 0–100; 0 when the provider reports no percent (the card then shows elapsed time). */
   progress: number
   stage: string
   /** Charged on success only; a failed job never deducted anything. */
@@ -801,6 +801,8 @@ export interface Job {
   prompt: string
   model: string
   params: Record<string, unknown> | null
+  /** Shown before the server has answered; it has no server row yet, so it cannot be cancelled. */
+  pending?: boolean
 }
 
 /* ── artifacts ──────────────────────────────────────────────────────── */
@@ -1133,6 +1135,8 @@ export interface AudioArtifact extends ArtifactBase {
   audioKind: 'narration' | 'music'
   /** Empty for music. */
   transcript?: string
+  /** The narration voice; empty for music. */
+  voice?: string
   model: string
   waveform: number[]
   src: string | null

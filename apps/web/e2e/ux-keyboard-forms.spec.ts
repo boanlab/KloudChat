@@ -301,7 +301,7 @@ test('the model menu marks the pick as a radio and offers no Auto the administra
   await page.goto(`/s/${chatId}`)
   const trigger = page.getByRole('button', { name: 'Qwen · Qwen3.8 27b (local)' }).last()
   await expect(trigger).toBeVisible({ timeout: 15_000 })
-  if (phone(testInfo)) await expect(trigger).toContainText('27b · 로컬')
+  if (phone(testInfo)) await expect(trigger).toContainText(/27b\s*· 로컬/)
   await trigger.click()
   const menu = page.getByRole('menu')
   await expect(menu.getByText(/Auto · /)).toHaveCount(0)

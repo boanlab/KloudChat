@@ -1,3 +1,4 @@
+import { phoneModelParts } from '@/lib/phoneModel'
 import type { Translator } from '@/lib/useT'
 import {
   Check,
@@ -66,22 +67,6 @@ function boundary(
   if (m.dataBoundary === 'external') return { text: t('외부 제공'), tone: 'text-warn', hint: t('외부 업체가 운영하는 모델입니다') }
   if (m.dataBoundary === 'unknown') return { text: t('경계 미확인'), tone: 'text-warn', hint: t('자료가 어디서 처리되는지 확인되지 않은 모델입니다') }
   return null
-}
-
-/** Phone chip: the name without family and boundary suffix, then where it runs (「27b · 로컬」). */
-function phoneModelLabel(m: ModelInfo, t: (s: string) => string): string {
-  const bare = (m.name || m.label).replace(/\s*\([^)]*\)\s*$/, '').trim()
-  const words = bare.split(/\s+/)
-  // 「Qwen3.8 27b」 → 「27b」; a single word, or a first word that is not a family name, stays.
-  const core = words.length > 1 && /^[A-Za-z]+[\d.]*$/.test(words[0]) ? words.slice(1).join(' ') : bare
-  const place = m.strictLocal
-    ? t('내부 전용')
-    : m.dataBoundary === 'self_hosted' || m.dataBoundary === 'hybrid'
-      ? t('로컬')
-      : m.dataBoundary === 'external'
-        ? t('외부')
-        : ''
-  return place ? `${core} · ${place}` : core
 }
 
 /** A model row with its ⓘ: the row selects, the ⓘ only opens the run details beneath it. */
@@ -308,14 +293,22 @@ export function ModelPicker({
             <span className={cn('truncate', !field && 'max-w-[220px] phone:hidden')}>{triggerText}</span>
             {!field && (
               // A phone keeps what tells models apart; the menu has the full name.
-              <span className="hidden min-w-[120px] truncate phone:inline">
-                {superLane
-                  ? superLaneTitle(superLane)
-                  : autoActive
-                  ? `Auto · ${unresolvedAgentModel ? modelLabel : phoneModelLabel(active, t)}`
-                  : unresolvedAgentModel || noDefault
-                    ? modelLabel
-                    : phoneModelLabel(active, t)}
+              <span className="hidden min-w-[120px] items-baseline gap-1 phone:flex" data-testid="model-phone-label">
+                {superLane || unresolvedAgentModel || noDefault ? (
+                  <span className="truncate">{superLane ? superLaneTitle(superLane) : modelLabel}</span>
+                ) : (
+                  (() => {
+                    const { core, place } = phoneModelParts(active, t)
+                    return (
+                      <>
+                        {autoActive && <span className="shrink-0">Auto ·</span>}
+                        {/* The name gives way at its end; where it runs stays. */}
+                        <span className="min-w-0 truncate">{core}</span>
+                        {place && <span className="shrink-0 text-faint">· {place}</span>}
+                      </>
+                    )
+                  })()
+                )}
               </span>
             )}
           </span>

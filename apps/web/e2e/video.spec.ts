@@ -51,6 +51,8 @@ test('영상을 만들면 견적대로 걷히고 앱 안에서 재생된다', as
 
   // The job card appears immediately.
   await expect(page.getByText(/만드는 중|대기/).first()).toBeVisible({ timeout: 60_000 })
+  // No made-up percent: either the provider's own number or the elapsed time.
+  await expect(page.getByTestId('job-progress').first()).toHaveText(/^(경과 \d+:\d\d|[2-9]\d?%|100%)$/)
 
   const fresh = async () =>
     await page.evaluate(

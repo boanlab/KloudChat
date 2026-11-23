@@ -24,6 +24,7 @@ import {
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { FileRow, FormKind, FormRole, OfficeKind, PrivacyDecision, WebSearchSetting } from '@/lib/api'
 import { ApiError, fileUrl, transcriptionsApi } from '@/lib/api'
+import { VOICES, VOICE_TONE } from '@/lib/voices'
 import { startWavRecording, type WavRecorder } from '@/lib/wavRecorder'
 import { FormRoleToggle, SavedFormChip, followable, formRoleOf } from '@/components/chat/FormChips'
 import { FileBoxPicker } from '@/components/files/FileBoxPicker'
@@ -113,8 +114,6 @@ const AUDIO_KIND_LABEL: Record<(typeof AUDIO_KINDS)[number], string> = {
   music: '음악',
 }
 
-/** Voices the gateway accepts; anything else falls back to `alloy`. */
-const VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'] as const
 
 type PendingPrivacy = {
   decision: PrivacyDecision
@@ -147,6 +146,7 @@ function OptionGroup<T extends string | number>({
   groups,
   onChange,
   format,
+  describe,
 }: {
   label: string
   value: T
@@ -155,6 +155,8 @@ function OptionGroup<T extends string | number>({
   groups?: readonly { label?: string; options: readonly T[] }[]
   onChange: (v: T) => void
   format?: (v: T) => string
+  /** A short line under each choice in the menu. */
+  describe?: (v: T) => string | undefined
 }) {
   return (
     <Dropdown
@@ -175,7 +177,7 @@ function OptionGroup<T extends string | number>({
           {index > 0 && <MenuSeparator />}
           {group.label && <MenuLabel>{format ? format(group.label as T) : group.label}</MenuLabel>}
           {group.options.map((o) => (
-            <MenuItem key={String(o)} onClick={() => onChange(o)} checked={o === value}>
+            <MenuItem key={String(o)} onClick={() => onChange(o)} checked={o === value} hint={describe?.(o)}>
               {format ? format(o) : String(o)}
             </MenuItem>
           ))}
@@ -365,6 +367,7 @@ function AvOptions() {
               value={avOptions.voice}
               options={VOICES}
               onChange={(v) => setAvOptions({ voice: v })}
+              describe={(v) => (VOICE_TONE[v] ? t(VOICE_TONE[v]) : undefined)}
             />
           )}
         </>
