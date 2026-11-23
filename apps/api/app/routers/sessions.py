@@ -4420,7 +4420,17 @@ async def _edit_image(
         db.add(user)
         await db.commit()
     base_url, api_key = await litellm_service.credentials_for(user)
-    composed = imagegen.edit_prompt(boundary.text)
+    instruction = boundary.text
+    if model.get("strictLocal"):
+        planner = _media_model(
+            user, catalogue["models"], kind="chat", boundary=boundary,
+            asked=session.model or "", default=catalogue.get("defaultChatModel"),
+        )
+        if planner is not None:
+            instruction = await imagegen.plan_edit(
+                boundary.text, model=str(planner["id"]), api_key=api_key
+            )
+    composed = imagegen.edit_prompt(instruction)
     lineage = (
         str((source.data or {}).get("lineage") or source.id) if source is not None
         else f"file:{stored.id}"
