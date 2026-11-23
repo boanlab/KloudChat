@@ -205,7 +205,7 @@ async def _poll_until_done(job_id: str) -> None:
         await _finish(
             job_id,
             status=JobStatus.running,
-            # 0 = the provider reports no percent; the card then shows elapsed time, not a made-up 1%.
+            # 0 = the provider reports no percent; the card shows elapsed time, not a made-up 1%.
             progress=progress.progress,
             stage="만드는 중",
         )
