@@ -124,3 +124,21 @@ def test_an_arc_with_no_free_route_still_rises_clear_of_the_boxes():
     path = ds._route(a, "top", b, "top", obstacles=[], frames=[(0.0, 30.0, 300.0, 33.0)],
                      used={}, bounds=(0.0, 30.0, 40.0, 32.0))  # a grid with no room
     assert max(y for _x, y in path[1:-1]) <= 40.0 - 14.0 + 1e-6
+
+
+def test_no_label_or_note_is_drawn_outside_the_figure():
+    source = """flowchart LR
+  a(Client) -->|Request| b(Gateway) -->|Token| c(Auth Service) -->|Verified| d[(Job Queue)]
+  d -->|Task| e(Worker) -->|Write to cache| f[(Cache)]
+  e -->|Result| g[(Database)]
+  f -.->|read hit| a
+"""
+    prs = Presentation()
+    prs.slide_width, prs.slide_height = Pt(760), Pt(400)
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    ds.draw_pptx(slide, ds.parse(source), left=20, top=20, width=700, height=340,
+                 accent="#2563EB", wide=True)
+    for shape in slide.shapes:
+        if shape.has_text_frame and shape.text_frame.text.strip():
+            assert shape.left >= Pt(20) - 2 and shape.left + shape.width <= Pt(720) + 2, \
+                shape.text_frame.text
