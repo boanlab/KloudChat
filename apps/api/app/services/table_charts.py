@@ -390,15 +390,22 @@ for k, panel in enumerate(panels):
     for side in ("left", "bottom"):
         ax.spines[side].set_color("#cbd5e1")
     ax.tick_params(colors=SUB, labelsize=10.5, length=0)
+    # No title above the panel: the axis that carries the values says what they are and the unit
     if len(series) == 1:
-        ax.set_title(series[0]["name"] + (" (" + unit + ")" if unit else ""), fontsize=12.5,
-                     color=INK, loc="left", pad=10)
+        value_label = series[0]["name"] + (" (" + unit + ")" if unit else "")
     else:
-        if unit:
-            ax.set_title("단위: " + unit, fontsize=10.5, color=SUB, loc="left", pad=8)
+        value_label = "(" + unit + ")" if unit else ""
         ax.legend(frameon=False, fontsize=10.5, loc="best")
-    if spec["x"] and not horizontal:
-        ax.set_xlabel(spec["x"], fontsize=10.5, color=SUB)
+    if horizontal:
+        if value_label:
+            ax.set_xlabel(value_label, fontsize=10.5, color=SUB)
+        if spec["x"]:
+            ax.set_ylabel(spec["x"], fontsize=10.5, color=SUB)
+    else:
+        if value_label:
+            ax.set_ylabel(value_label, fontsize=10.5, color=SUB)
+        if spec["x"]:
+            ax.set_xlabel(spec["x"], fontsize=10.5, color=SUB)
 for k in range(n, rows * cols):
     axes[k // cols][k %% cols].axis("off")
 fig.tight_layout(w_pad=2.5, h_pad=2.0)
