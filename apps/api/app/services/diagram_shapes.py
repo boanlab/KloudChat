@@ -1026,11 +1026,14 @@ def draw_pptx(
         a_box, b_box = boxes[edge.a], boxes[edge.b]
         a, b = placed[edge.a], placed[edge.b]
         rows = a.row >= 0 and b.row >= 0
-        if rows and flow_layout.kind(a, b) == "mark":
+        if rows and flow_layout.kind(a, b) == "mark" and not (paper and edge.dashed):
             # long back/skip edge: stub at source plus target note
             back_marks.append((edge, a))
             continue
         sa, sb = flow_layout.sides(a, b) if rows else _sides(a, b, lr)
+        if paper and rows and edge.dashed and flow_layout.kind(a, b) == "mark":
+            # a loop back to an earlier row is drawn, under its source and its target
+            sa, sb = "bottom", "bottom"
         path = _route(
             a_box, sa, b_box, sb,
             obstacles=[box for nid, box in boxes.items() if nid not in (edge.a, edge.b)],

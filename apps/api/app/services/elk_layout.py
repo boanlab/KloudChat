@@ -51,6 +51,8 @@ FIGURE = (410.0, 680.0)
 PAPER = (720.0, 340.0)
 RATIO = (1.3, 3.5)
 IDEAL = 2.2
+#: the first layouts of `_requests` are the plain ones, the rest wrapped
+_PLAIN = 4
 _DIRECTION = {"LR": "RIGHT", "TB": "DOWN"}
 _SPACING = {
     "elk.layered.spacing.nodeNodeBetweenLayers": 44,
@@ -404,7 +406,10 @@ def _chosen(graph: Graph, box: tuple[float, float],
         if wide:
             # a paper figure: a landscape layout first, then the largest text
             near = abs(math.log(out["width"] / max(1.0, out["height"]) / IDEAL))
-            score = (-round(_off_range(out), 2), score[0], -round(near, 1), *score[1:])
+            # a wrapped layout (rank 4 on) bends its links around the rows: only when no plain
+            # one is landscape
+            score = (-round(_off_range(out), 2), score[0], rank < _PLAIN, -round(near, 1),
+                     *score[1:])
         if found is None or score > found[0]:
             found = (score, out, scale)
     assert found is not None
