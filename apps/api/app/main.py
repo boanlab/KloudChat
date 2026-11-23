@@ -39,6 +39,7 @@ from app.routers import (
     search,
     sessions,
     shares,
+    sheet,
     shelf,
     skill_files,
     transcriptions,
@@ -224,6 +225,7 @@ app.include_router(user_templates.router, prefix=settings.api_prefix)
 app.include_router(forms.router, prefix=settings.api_prefix)
 app.include_router(hwp.router, prefix=settings.api_prefix)
 app.include_router(docx.router, prefix=settings.api_prefix)
+app.include_router(sheet.router, prefix=settings.api_prefix)
 app.include_router(pptx.router, prefix=settings.api_prefix)
 app.include_router(media.router, prefix=settings.api_prefix)
 app.include_router(workspace.router, prefix=settings.api_prefix)

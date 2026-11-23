@@ -333,6 +333,7 @@ _STRICT_LOCAL_TOOL_NAMES = frozenset(
 _SURFACE_KINDS = {
     SessionKind.report: (ArtifactKind.report, ArtifactKind.hwp, ArtifactKind.docx),
     SessionKind.slides: (ArtifactKind.deck, ArtifactKind.pptx),
+    SessionKind.sheet: (ArtifactKind.xlsx,),
 }
 
 

@@ -1260,8 +1260,10 @@ async def page_working_documents(
 
 @router.post("/artifacts", response_model=ArtifactOut, status_code=status.HTTP_201_CREATED)
 async def create_artifact(payload: ArtifactIn, user: CurrentUser, db: DbSession):
-    if payload.kind in (ArtifactKind.hwp, ArtifactKind.docx, ArtifactKind.pptx):
-        # its file comes with it: `POST /artifacts/hwp`, `/artifacts/docx`, `/artifacts/pptx`
+    if payload.kind in (
+        ArtifactKind.hwp, ArtifactKind.docx, ArtifactKind.pptx, ArtifactKind.xlsx
+    ):
+        # its file comes with it: `POST /artifacts/hwp`, `/docx`, `/pptx`, `/xlsx`
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"{payload.kind.value}_needs_its_file",

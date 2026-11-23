@@ -183,7 +183,7 @@ export interface ModelInfo {
 /* ── sessions ───────────────────────────────────────────────────────── */
 
 /** `av` covers audio and video: one surface, producing an `audio` or `video` artifact by mode. */
-export type SessionKind = 'chat' | 'report' | 'slides' | 'image' | 'av'
+export type SessionKind = 'chat' | 'report' | 'slides' | 'image' | 'av' | 'sheet'
 /** `super` picks model, effort and tools per turn; `super_strict` does so among strict-local models; `auto`/`auto_quality` are not offered. */
 export type RoutingMode = 'manual' | 'auto' | 'auto_quality' | 'super' | 'super_strict'
 
@@ -819,6 +819,7 @@ export type ArtifactKind =
   | 'hwp'
   | 'docx'
   | 'pptx'
+  | 'xlsx'
 
 interface ArtifactBase {
   id: string

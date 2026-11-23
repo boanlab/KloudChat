@@ -240,6 +240,8 @@ class ArtifactKind(StrEnum):
     docx = "docx"
     #: `.pptx` file per version in `storage_key` (services/pptx_edit.py)
     pptx = "pptx"
+    #: `.xlsx` file per version in `storage_key` (services/sheet_doc.py)
+    xlsx = "xlsx"
 
 
 class Artifact(SQLModel, table=True):

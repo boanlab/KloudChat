@@ -1970,7 +1970,57 @@ export const artifactsApi = {
     }
     return (await res.json()) as ArtifactRow
   },
+  /** A new sheet (an `.xlsx` artifact): blank, or the uploaded `fileId`. */
+  createSheet: (payload: {
+    sessionId?: string | null
+    projectId?: string | null
+    fileId?: string
+    title?: string
+  }) => call<ArtifactRow>('/artifacts/xlsx', body(payload)),
+  /** The current version as the grid's model. */
+  sheetModel: (id: string) => call<SheetModel>(`/artifacts/${id}/xlsx/model`),
+  /** Changed cells as the next version; 409 when anyone saved since `expectedVersion`. */
+  changeSheetCells: (id: string, expectedVersion: number, ops: SheetOp[], summary = '') =>
+    call<ArtifactRow>(`/artifacts/${id}/xlsx/cells`, {
+      method: 'PATCH',
+      body: JSON.stringify({ expectedVersion, ops, summary }),
+    }),
 }
+
+/** One cell of a sheet model; `r` and `c` are 0-based, `f` a formula, `v` its shown value. */
+export interface SheetCell {
+  r: number
+  c: number
+  v?: string | number | boolean
+  f?: string
+  s?: Record<string, unknown>
+}
+
+export interface SheetModelSheet {
+  name: string
+  rows: number
+  cols: number
+  cells: SheetCell[]
+  merges: string[]
+  colWidths: Record<string, number>
+  rowHeights: Record<string, number>
+  freeze?: { r: number; c: number }
+}
+
+/** `GET /artifacts/{id}/xlsx/model`: what the grid draws, and what the file keeps that it does not. */
+export interface SheetModel {
+  version: number
+  title: string
+  sheets: SheetModelSheet[]
+  kept: string[]
+  truncated: boolean
+}
+
+/** A change sent back: a cell (`v` null clears), a column width, or a merge. */
+export type SheetOp =
+  | { sheet: string; r: number; c: number; v?: string | number | boolean | null; f?: string; s?: Record<string, unknown> }
+  | { sheet: string; op: 'width'; c: number; px: number }
+  | { sheet: string; op: 'merge' | 'unmerge'; ref: string }
 
 /** Office documents edited beside a chat; each is also its file route (`/artifacts/{id}/hwp`). */
 export type OfficeKind = 'hwp' | 'docx' | 'pptx'

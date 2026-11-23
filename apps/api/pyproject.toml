@@ -35,6 +35,9 @@ dependencies = [
     "reportlab>=4.2",
     # Deck export.
     "python-pptx>=1.0",
+    # Sheet surface: reads `.xlsx` into the editor model and writes a starter workbook (MIT).
+    "openpyxl>=3.1",
+    "lxml>=5.0",
     # MaxMind DB reader, local file only. Inert until GEOIP_DATABASE is set.
     "geoip2>=4.8",
 ]
@@ -44,8 +47,6 @@ dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
     "aiosqlite>=0.20",
-    # Skill scripts (app/skills/*/scripts) run under the test suite as they do in the sandbox.
-    "openpyxl>=3.1",
     "ruff>=0.8",
 ]
 
