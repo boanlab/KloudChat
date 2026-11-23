@@ -23,6 +23,7 @@ from app.pipeline.stage import Base, Context, Stop
 from app.services import (
     action_rows,
     calc,
+    chart_code,
     check_skills,
     checks,
     citations,
@@ -30,6 +31,7 @@ from app.services import (
     date_rules,
     design,
     design_templates,
+    diagram_render,
     diagrams,
     doc_formats,
     doc_stages,
@@ -60,6 +62,7 @@ from app.services import (
     stated_days,
     stated_meeting,
     stated_policy,
+    table_charts,
     table_integrity,
     table_mend,
     units,
@@ -1782,13 +1785,20 @@ def _unbacked_marked(text: str, evidence: list[str], *, computed: str, grounded:
     return report._without_invented_percents(text, [*evidence, computed], worked)
 
 
-def _figure_says_more(made: dict, sections: list[dict], asked: bool) -> bool:
+def _figure_says_more(made: dict, sections: list[dict], asked: bool,
+                      own: dict | None = None) -> bool:
     """Whether a drawn figure is kept. A structure of fewer than four boxes is not. A comparison
     that only repeats one of the report's tables is not, unless the request asked for figures:
     then the figure stands and the table it repeats is taken out."""
     if diagrams.too_thin(made):
         return False
     report = _report()
+    if own is not None and (span := diagrams.repeated_list(made, str(own.get("content") or ""))):
+        # a flow naming the steps the section lists right beside it: one of them is enough
+        if not asked:
+            return False
+        lines = str(own["content"]).split("\n")
+        own["content"] = re.sub(r"\n{3,}", "\n\n", "\n".join(lines[:span[0]] + lines[span[1]:]))
     for section in sections:
         content = str(section.get("content") or "")
         for table in report._TABLE.finditer(content):
@@ -1860,7 +1870,7 @@ class Figures(Base):
                            "status": "error", "progress": progress}
                     continue
                 _count(bundle, spent)
-                if not _figure_says_more(made, sections, asked):
+                if not _figure_says_more(made, sections, asked, section):
                     log.info("placed figure %r left out: it repeats the text", name)
                     section["content"] = report.drop_figure(content, mark["mark"])
                     yield {"type": "step", "id": f"dia{index}", "label": name,
@@ -1878,6 +1888,11 @@ class Figures(Base):
                 yield {"type": "section", "sectionId": section["id"],
                        "heading": section["heading"], "content": section["content"],
                        "done": True}
+        charted = 0
+        async for event in _chart_tables(bundle, sections, language, draws_nothing):
+            if event.get("type") == "section":
+                charted += 1
+            yield event
         has_figure = {
             i for i, section in enumerate(sections)
             if re.search(r"data:image/png|```mermaid", str(section.get("content") or ""))
@@ -1901,7 +1916,7 @@ class Figures(Base):
             # ~1 per 2 sections, 3–5, writer's counted
             limit=max(1, figure_cap - drawn),
             # 2 for 5+ sections, else 1
-            at_least=max(0, (2 if len(sections) >= 5 else 1) - drawn),
+            at_least=max(0, (2 if len(sections) >= 5 else 1) - drawn - charted),
             wrap=lambda prompt: _messages(bundle, prompt),
             language=language,
         )
@@ -1936,7 +1951,7 @@ class Figures(Base):
                 }
                 continue
             _count(bundle, spent)
-            if not _figure_says_more(made, sections, asked):
+            if not _figure_says_more(made, sections, asked, section):
                 log.info("report figure %r left out: it repeats the text", name)
                 yield {"type": "step", "id": f"dia{row.index}", "label": name,
                        "status": "done", "progress": progress}
@@ -1960,6 +1975,47 @@ class Figures(Base):
         if req.auto_image_model and not draws_nothing and illustrations.wanted(request):
             async for event in _illustrate(bundle, sections):
                 yield event
+
+
+async def _chart_tables(bundle: Bundle, sections: list[dict], language: str,
+                        draws_nothing: bool) -> AsyncIterator[dict]:
+    """A chart under each table of numbers over time or categories, drawn by code from the
+    table's own values (no model writes a number); a table is charted once per report."""
+    report, req = _report(), bundle.request
+    if table_charts.declined(req.text) or (
+            draws_nothing and not re.search(r"차트|그래프|chart|graph", req.text, re.I)):
+        return
+    taken: set[str] = set()
+    made = 0
+    for index, section in enumerate(sections):
+        if made >= table_charts.MAX_CHARTS:
+            break
+        if report._REFERENCE_HEADING.search(str(section.get("heading") or "")):
+            continue
+        content = str(section.get("content") or "")
+        for chart in table_charts.find(content, request=req.text, english=language == "en",
+                                       taken=taken):
+            if made >= table_charts.MAX_CHARTS:
+                break
+            name, sid = chart.caption, f"chart{index}-{made}"
+            progress = {"current": index + 1, "total": len(sections)}
+            yield {"type": "step", "id": sid, "label": f"{name} 그리는 중",
+                   "status": "running", "progress": progress}
+            try:
+                png = await chart_code.render(table_charts.code_for(chart))
+            except Exception as exc:  # noqa: BLE001 — the table stands without its chart
+                log.warning("table chart %r not drawn: %s", name, exc)
+                yield {"type": "step", "id": sid, "label": name,
+                       "status": "error", "progress": progress}
+                continue
+            markdown = table_charts.figure_markdown(chart, diagram_render.data_uri(png))
+            section["content"] = table_charts.insert(str(section.get("content") or ""),
+                                                     chart, markdown)
+            made += 1
+            yield {"type": "step", "id": sid, "label": name, "status": "done",
+                   "progress": progress}
+            yield {"type": "section", "sectionId": section["id"],
+                   "heading": section["heading"], "content": section["content"], "done": True}
 
 
 async def _illustrate(bundle: Bundle, sections: list[dict]) -> AsyncIterator[dict]:

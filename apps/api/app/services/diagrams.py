@@ -485,6 +485,8 @@ async def make(
             redrawn = await diagram_render.render_png(checked.source, accent or diagram.ACCENT)
             if redrawn:
                 source, png = checked.source, redrawn
+    if not slide:
+        png = await _page_picture(source, png, accent or diagram.ACCENT)
     return {
         "figure": planned.figure,
         "description": planned.description,
@@ -495,6 +497,24 @@ async def make(
         "inputTokens": int(usage.get("inputTokens") or 0),
         "outputTokens": int(usage.get("outputTokens") or 0),
     }, png
+
+
+#: the page box (points) a report figure is laid out for: a line of steps that carries notes
+#: takes its row layout there, and its words stay large when the picture is set at page width
+PAGE_BOX = (480.0, 280.0)
+
+
+async def _page_picture(source: str, png: bytes, accent: str) -> bytes:
+    """`png`, or the figure laid out for the page when its line of steps would print small."""
+    from app.services import figure_kinds  # local: figure_kinds draws, this module plans
+
+    slots = figure_kinds.from_source(source)
+    if slots is None or slots.get("kind") != "steps":
+        return png
+    if figure_kinds.size(slots, None) == figure_kinds.size(slots, PAGE_BOX):
+        return png
+    redrawn = await diagram_render.render_png(source, accent, PAGE_BOX)
+    return redrawn or png
 
 
 def _cell_stems(text: str) -> list[str]:
@@ -533,6 +553,64 @@ def repeats_table(made: dict[str, Any], table: str) -> bool:
     return (bool(compared) and all(any(_in(row["aspect"], line) for line in lines)
                                    for row in compared)
             and sum(same) * 3 >= 2 * len(compared))
+
+
+_LIST_ITEM = re.compile(
+    r"^\s{0,3}(?:\d{1,2}[.)]|[①-⑳]|(?:\d{1,2}\s?단계|Step\s?\d{1,2})[.:)]?)\s+(?P<t>\S.*)$")
+
+
+def listed_steps(content: str) -> list[tuple[int, int, str]]:
+    """Step lists of a section as (first line, line after the last, their text): a ```steps
+    fence, or a run of three or more numbered lines."""
+    lines = (content or "").split("\n")
+    out, i = [], 0
+    while i < len(lines):
+        if lines[i].strip().startswith("```steps"):
+            j = i + 1
+            while j < len(lines) and not lines[j].strip().startswith("```"):
+                j += 1
+            out.append((i, min(j + 1, len(lines)), "\n".join(lines[i + 1:j])))
+            i = j + 1
+            continue
+        j, items = i, []
+        while j < len(lines) and (item := _LIST_ITEM.match(lines[j])):
+            items.append(item.group("t"))
+            j += 1
+        if len(items) >= 3:
+            out.append((i, j, "\n".join(items)))
+        i = max(j, i + 1)
+    return out
+
+
+def _figure_labels(source: str) -> list[str]:
+    """What a drawn flow names: the steps of a line of steps (or phases), else the boxes of a
+    plain flowchart; nothing for other kinds (a cycle, a comparison)."""
+    from app.services import diagram_shapes, figure_kinds  # local: both draw
+
+    slots = figure_kinds.from_source(source or "")
+    if slots is not None:
+        parts = slots.get("steps") if slots.get("kind") == "steps" else (
+            slots.get("stages") if slots.get("kind") == "stages" else None)
+        return [str(p.get("name") or "") for p in parts or [] if p.get("name")]
+    graph = diagram_shapes.parse(source or "")
+    return [n.label.split("\n")[0] for n in graph.nodes.values()] if graph is not None else []
+
+
+def repeated_list(made: dict[str, Any], content: str) -> tuple[int, int] | None:
+    """Lines of the step list in `content` that a drawn flow or line of steps only repeats
+    (three in five of its labels share a word with it, three or more of them, and the list has
+    about as many steps as the figure), else None."""
+    if made.get("figure") != "flow":
+        return None
+    labels = [label for label in _figure_labels(str(made.get("source") or "")) if label.strip()]
+    if len(labels) < 3:
+        return None
+    for start, end, text in listed_steps(content):
+        flat = _flat(text)
+        hit = sum(any(w in flat for w in words) for words in map(_cell_stems, labels))
+        if abs(text.count("\n") + 1 - len(labels)) <= 2 and hit >= 3 and hit * 5 >= len(labels) * 3:
+            return start, end
+    return None
 
 
 def too_thin(made: dict[str, Any]) -> bool:
@@ -583,5 +661,5 @@ def fence(made: dict[str, Any]) -> str:
 
 
 __all__ = ["FIGURES", "MAX_FIGURES", "MAX_MARKED", "Planned", "asked_topics", "fence", "make",
-           "parse", "plan", "repeats_table", "settle_marked", "too_thin", "ungrounded",
-           "wanted_figure"]
+           "parse", "plan", "repeated_list", "repeats_table", "settle_marked", "too_thin",
+           "ungrounded", "wanted_figure"]
