@@ -5,7 +5,6 @@ import {
   Cpu,
   Eye,
   Gauge,
-  Plug,
   Save,
   ShieldCheck,
   TriangleAlert,
@@ -576,12 +575,6 @@ function ModelMenu({
               <span className="truncate text-base font-medium">
                 {groups.length > 1 ? m.name : m.label}
               </span>
-              {m.adapter && (
-                <Badge tone="warn">
-                  <Plug size={10} />
-                  {t('어댑터')}
-                </Badge>
-              )}
             </span>
             {/* Wraps between items on a phone; only a long price wraps inside itself. */}
             <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-faint">

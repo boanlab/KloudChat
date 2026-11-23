@@ -31,7 +31,7 @@ test('영상을 만들면 견적대로 걷히고 앱 안에서 재생된다', as
 
   test.skip(!(await surfaceOn(page, 'av')), 'av 표면이 꺼져 있습니다')
   await page.getByRole('button', { name: /^종류/ }).click()
-  await page.getByRole('menuitemcheckbox', { name: '영상' }).click()
+  await page.getByRole('menuitemcheckbox', { name: '동영상' }).click()
 
   await page.getByRole('button', { name: /^해상도/ }).click()
   await page.getByRole('menuitem', { name: '720p' }).click()
