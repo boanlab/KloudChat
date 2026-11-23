@@ -311,8 +311,9 @@ def edit_prompt(instruction: str, *, design: str = "") -> str:
     """The instruction as sent with the source picture; the stored prompt stays as typed."""
     parts = [
         f"Edit the attached image: {instruction.strip().rstrip('.').strip()}",
-        "Change only what this asks; keep everything else in the attached image — "
-        "composition, subjects, colours, lighting and any text — as it is",
+        "Make the change clearly visible. Keep the subjects, layout and text that the "
+        "instruction does not mention; whatever it does mention — an object, or the overall "
+        "style, colour, brightness or season — is to be changed fully",
     ]
     if design.strip():
         parts.append(design.strip())
@@ -488,6 +489,62 @@ def _extract(message: dict[str, Any]) -> tuple[bytes, str]:
 
 #: image_config.aspect_ratio values; other models ignore it
 _RATIOS = {"1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "4:5", "5:4", "21:9"}
+
+
+_EDIT_PLANNER_PROMPT = (
+    "Rewrite this picture-editing request as one clear English instruction for an "
+    "image-editing model. Say what to change and, when the request is about the whole "
+    "picture (style, medium, brightness, colour grade, season, time of day, weather), say "
+    'so with "the whole image". Keep every quoted string exactly as written, in its own '
+    "language. Make the change explicit: for a style or medium name its visible traits "
+    "(a watercolor: soft washes, visible paper texture), for brightness or colour say how "
+    "strongly (much, clearly) and in which direction. Add nothing else the request does not "
+    "ask for. Output only the instruction, one or two sentences.\n\nRequest: {request}"
+)
+
+_HANGUL = re.compile(r"[가-힣]")
+
+
+async def plan_edit(request: str, *, model: str, api_key: str) -> str:
+    """The edit instruction in English for an in-house editing model, which follows Korean
+    whole-picture edits (a style, brightness) far less than the same words in English. A failed
+    planner, or an answer that lost a quoted string, gives the request as typed."""
+    if not _HANGUL.search(request):
+        return request
+    base, _ = await settings_store.litellm_config()
+    try:
+        async with httpx.AsyncClient(
+            base_url=base.rstrip("/"),
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=httpx.Timeout(60.0, connect=10.0),
+        ) as client:
+            response = await client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": model,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": _EDIT_PLANNER_PROMPT.format(request=request.strip()[:1000]),
+                        }
+                    ],
+                    "max_tokens": 200,
+                    "temperature": 0.2,
+                    **thinking.switch(model),
+                },
+            )
+            response.raise_for_status()
+            text = str(
+                (response.json().get("choices") or [{}])[0].get("message", {}).get("content") or ""
+            )
+    except (httpx.HTTPError, ValueError, KeyError) as exc:
+        log.warning("image edit planner failed, sending the instruction as typed: %s", exc)
+        return request
+    text = _unfenced(text)
+    quoted = re.findall(r"""["'“‘「]([^"'”’」\n]+)["'”’」]""", request)
+    if len(text) < 8 or _HANGUL.search(text.replace("\n", " ")) and not quoted:
+        return request
+    return text if all(q in text for q in quoted) else request
 
 
 async def plan_text_overlay(
