@@ -1026,7 +1026,7 @@ def draw_pptx(
         a_box, b_box = boxes[edge.a], boxes[edge.b]
         a, b = placed[edge.a], placed[edge.b]
         rows = a.row >= 0 and b.row >= 0
-        if rows and flow_layout.kind(a, b) == "mark" and not (paper and edge.dashed):
+        if rows and flow_layout.kind(a, b) == "mark" and not paper:
             # long back/skip edge: stub at source plus target note
             back_marks.append((edge, a))
             continue
@@ -1053,16 +1053,20 @@ def draw_pptx(
                     x < bx1 and x + tw > bx0 and y < by1 and y + th > by0
                     for bx0, by0, bx1, by1 in [*boxes.values(), *placed_labels]
                 )
+            spots = [(min(max(sx, left), left + width - tw), sy) for sx, sy in spots]  # inside
             x, y = next((spot for spot in spots if clear(*spot)), spots[0])
             placed_labels.append((x, y, x + tw, y + th))
             tb = slide.shapes.add_textbox(pt(x), pt(y), pt(tw), pt(th))
+            if paper:  # the line behind a label does not strike it through
+                tb.fill.solid()
+                tb.fill.fore_color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
             set_text(tb, edge.label, 8, label_grey)
     for edge, a in back_marks:
         text = flow_layout.marker_text(edge.label, graph.nodes[edge.b].label)
         # never narrower than its words at 8 pt (one line, nothing cut)
         tw = max(min(max(a.w + 40, 60.0), 9.0 * len(text) + 14), flow_layout.marker_width(text))
         below = a.lane == a.lanes - 1
-        cx = left + a.x
+        cx = min(max(left + a.x, left + tw / 2), left + width - tw / 2)
         y0 = top + a.y + (a.h / 2 if below else -a.h / 2)
         y1 = y0 + (8 if below else -8)
         stub = slide.shapes.build_freeform(pt(cx), pt(y0), scale=1.0)
