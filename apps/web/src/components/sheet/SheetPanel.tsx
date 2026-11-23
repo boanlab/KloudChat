@@ -43,6 +43,8 @@ export function SheetPanel({
   const grid = useRef<SheetEditorApi | null>(null)
   const office = useRef<OfficeEditor | null>(null)
   const [ready, setReady] = useState(false)
+  /** The grid has drawn a version (set after each load); tests wait for it before they type. */
+  const [drawn, setDrawn] = useState(false)
   const state = useOfficeDocument('xlsx', doc, office, ready)
   const { dirtyRef, noteEdit, setError } = state
   const readOnly = readOnlyAt(phone, state.dirty)
@@ -62,6 +64,7 @@ export function SheetPanel({
       dark: latest.current.dark,
       // a load is not an edit (`noteEdit` knows)
       onEdit: () => noteEdit(),
+      onDrawn: () => setDrawn(true),
     })
     grid.current = editor
     // Ctrl+S in the grid is the header's 저장, not the browser's 「save page」
@@ -139,6 +142,7 @@ export function SheetPanel({
         role="region"
         aria-label={t('시트 편집기')}
         data-sheet-editor=""
+        data-sheet-ready={String(drawn)}
         className="absolute inset-0 bg-white"
       />
     </OfficePanel>

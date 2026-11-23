@@ -71,6 +71,7 @@ async function fixture(page: Page, options: { conflict?: boolean } = {}) {
     if (path === `/sessions/${sessionId}/messages`) return json([])
     if (path === '/artifacts' && method === 'GET') return json([artifact()])
     if (path === `/artifacts/${artifactId}`) return json(artifact())
+    if (path === '/artifacts/counts') return json({ counts: { xlsx: 1 }, total: 1 })
     if (path === `/artifacts/${artifactId}/versions`) return json([])
     if (path === `/artifacts/${artifactId}/xlsx/model`) return json({ ...model, version })
     if (path === `/artifacts/${artifactId}/xlsx/cells` && method === 'PATCH') {
@@ -98,24 +99,35 @@ const panel = (page: Page) => page.locator('[data-xlsx-panel]')
 const header = (page: Page) => panel(page).locator('header')
 const canvas = (page: Page) => page.locator('[data-sheet-editor] canvas').first()
 
-/** Types into a cell of the grid at a screen point, as a person does. */
-async function typeAt(page: Page, x: number, y: number, text: string) {
-  await page.mouse.dblclick(x, y)
-  await page.keyboard.insertText(text)
-  await page.keyboard.press('Enter')
+/** The grid has drawn the version and its formulas have settled. */
+async function gridReady(page: Page) {
+  await expect(canvas(page)).toBeVisible({ timeout: 30_000 })
+  await expect(page.locator('[data-sheet-editor][data-sheet-ready="true"]')).toBeVisible({ timeout: 30_000 })
+}
+
+/** Types into a cell of the grid as a person does, until the panel counts it as an edit (a slow
+ *  machine may not have the first double-click in edit mode yet). */
+async function edit(page: Page, text: string) {
+  // cell A5: past the toolbar, the formula bar and the row numbers of the grid's own box
+  const box = (await page.locator('[data-sheet-editor]').boundingBox())!
+  await expect(async () => {
+    await page.mouse.dblclick(box.x + 90, box.y + 232)
+    await page.waitForTimeout(300)
+    await page.keyboard.insertText(text)
+    await page.keyboard.press('Enter')
+    await expect(header(page).getByText('저장 안 됨')).toBeVisible({ timeout: 2_000 })
+  }).toPass({ timeout: 30_000 })
 }
 
 test('a sheet opens in the grid, a hand edit saves as cell changes on the version read', async ({ page }) => {
   const state = await fixture(page)
-  await expect(canvas(page)).toBeVisible({ timeout: 30_000 })
+  await gridReady(page)
   await expect(header(page).getByText('v1', { exact: true })).toBeVisible()
   await expect(header(page).getByRole('button', { name: '저장' })).toBeDisabled()
   // the grid's toolbar, in Korean
   await expect(panel(page).getByText('시작', { exact: true }).first()).toBeVisible()
 
-  const box = (await canvas(page).boundingBox())!
-  await typeAt(page, box.x + 60, box.y + 24 * 5, '대구')
-  await expect(header(page).getByText('저장 안 됨')).toBeVisible()
+  await edit(page, '대구')
   await header(page).getByRole('button', { name: '저장' }).click()
   await expect(header(page).getByText('v2', { exact: true })).toBeVisible()
   await expect(header(page).getByText('저장 안 됨')).toBeHidden()
@@ -128,9 +140,8 @@ test('a sheet opens in the grid, a hand edit saves as cell changes on the versio
 
 test('a save that lost to a newer version says so, as the other editors do', async ({ page }) => {
   await fixture(page, { conflict: true })
-  await expect(canvas(page)).toBeVisible({ timeout: 30_000 })
-  const box = (await canvas(page).boundingBox())!
-  await typeAt(page, box.x + 60, box.y + 24 * 5, '늦은 편집')
+  await gridReady(page)
+  await edit(page, '늦은 편집')
   await header(page).getByRole('button', { name: '저장' }).click()
   const notice = panel(page).getByRole('status')
   await expect(notice).toContainText('그사이 다른 판이 저장되어 저장하지 않았습니다.')
@@ -141,7 +152,7 @@ test.describe('on a phone', () => {
   test.use({ viewport: { width: 390, height: 844 } })
   test('the sheet is read only: no save, no toolbar, and the note says so', async ({ page }) => {
     await fixture(page)
-    await expect(canvas(page)).toBeVisible({ timeout: 30_000 })
+    await gridReady(page)
     await expect(page.getByTestId('office-read-only')).toBeVisible()
     await expect(header(page).getByRole('button', { name: '저장' })).toHaveCount(0)
     await expect(panel(page).getByText('시작', { exact: true })).toHaveCount(0)
