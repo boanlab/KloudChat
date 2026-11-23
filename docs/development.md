@@ -318,10 +318,11 @@ from upstream or an invented call.
 Keep the total small. Every active tool ships its full schema on every turn,
 and model selection accuracy degrades well before twenty of them.
 
-**A connector.** Catalogue entries are database rows an administrator keeps
-under **System › MCP servers** (`app/services/tools/catalog.py`); a stdio
-script goes under `mcp/` and runs via `uv run --script`. Only add servers you
-have actually started and whose tool count you have checked.
+**A connector.** An MCP server is a row in `connectors` that a person adds under
+**Customize › MCP servers** and may share with the organisation, as a skill is
+(`app/services/tools/catalog.py`, `app/routers/connectors.py`); a stdio script
+goes under `mcp/` and runs via `uv run --script`, shared by an administrator.
+Only add servers you have actually started and whose tool count you have checked.
 
 **A model the proxy does not know about.** `app/services/adapters.py`. Video
 models live there because OpenRouter serves them from a separate endpoint that

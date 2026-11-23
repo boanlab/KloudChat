@@ -4,7 +4,7 @@ title: System settings
 
 # System settings
 
-The **System** screen in the Manage menu is made up of nine tabs. Saved changes apply at once, without a restart.
+The **System** screen in the Manage menu is made up of seven tabs. Saved changes apply at once, without a restart.
 
 ## Proxy
 
@@ -58,7 +58,14 @@ The SMTP host, port, security, account, and sender address, the service address 
 
 ## MCP servers
 
-The MCP servers people can install from **Customize** › **MCP servers**. **Add entry** takes a name, slug, transport (run a command over stdio, HTTP or SSE), the command or address, environment variables and surfaces. Write tool addresses as placeholders such as `${TOOLS_STT_URL}`. Pick a **variable that gets the gateway key** and `TOOLS_GATEWAY_KEY` is added only while that variable is the chosen tool's address (this is how YouTube transcription calls speech-to-text). Stored values are never shown again; type one only to replace it. Servers that run as a command are added here. List the commands members may register themselves under **Commands members may register themselves** (사용자가 직접 등록할 수 있는 실행 명령), one per line: a member's command runs only when it matches a line argument for argument, and it cannot take environment variables. A command not on the list is not run, even one registered earlier; it reports an error instead. Turn off **Show in the list** (목록에 보이기) and the entry leaves the members' list but can still be installed, and what is installed keeps working (the admin list marks it Hidden). Turn off **Enabled** and nobody can install it anew. Turn on **Built in** (기본 제공) and the entry is installed at once for every active member, and for everyone who signs up or is approved later (the admin list marks it Built in). Members can switch a built-in MCP server off but cannot remove it. An entry that needs each person's credentials cannot be built in. Time, YouTube transcription and Deep research are built in.
+The list of MCP servers is set not in a System tab but under **Customize** › **MCP servers** › **My MCP servers**. After an administrator adds a server, choosing **Share with our organization** under **Share** in its detail screen lists it in the store with an **Official** badge. Only an administrator can add or share a server that runs a command (stdio). A server of an administrator has more fields:
+
+- **Shared variables**: everyone who uses the server gets the same values. Write tool addresses as placeholders such as `${TOOLS_STT_URL}`. Stored values are never shown again; type one only to replace it.
+- **Variable that gets the gateway key** and **Tool at that address**: `TOOLS_GATEWAY_KEY` is added only while the chosen variable is that tool's address (this is how YouTube transcription calls speech-to-text).
+- **Provide to everyone by default**: installed at once for every active member, and for everyone who signs up or is approved later. Members can switch it off but cannot remove it. A server that needs each person's credentials cannot be provided by default.
+- **Show in the store**: when off, the server leaves the store list, but it keeps working for people who already installed it.
+
+Time, YouTube transcription and Deep research are provided by default. Stopping the sharing stops the server for everyone who uses it, so it asks first when someone does.
 
 ## Management items outside the System tab
 

@@ -554,32 +554,42 @@ many short readings.
 
 ### MCP servers
 
-The MCP connectors users can install from **Customize › MCP servers**: name,
-address or stdio command, whether the entry is listed, and whether it is
-**Built in** (`by_default`). An installed connector keeps its entry's slug.
-Users can also register their own MCP server by address. A server that runs as
-a command (stdio) runs on the API host, so a non-administrator can register only
-a command line listed under **Commands members may register themselves** on the
-same screen (one per line, matched argument for argument, no environment
-variables); anything else, including a row saved before the list existed, is
-refused rather than run. A non-administrator's own http/sse server must be on
+MCP servers are shared the way skills are: **by reference**. A person adds a
+server under **Customize › MCP servers** and, from its detail screen, chooses
+**Share with our organization** (`visibility = org`); it then appears in the
+store (**Explore**, `GET /connectors/store`). Someone who installs it
+(`POST /connectors/install/{id}`) gets a row that only points at the shared one
+(`origin_id`, empty `endpoint`): the address, the sharer's shared environment
+values and the gateway key are read from the shared server at run time and are
+never copied. The receiver enters only the credentials the sharer listed under
+**Credentials receivers enter themselves** (`required_env`, up to 8); any other
+variable is refused (`422 env_not_allowed`), a missing one too
+(`422 missing_env`). When sharing ends, or the sharer's server is removed, the
+reference reads `originGone` and cannot run. Stopping to share, or deleting, a
+server others installed is refused until the sharer confirms the sharing is
+withdrawn first (`409 connector_in_use` on delete).
+
+A server is **Official** while its sharer is an administrator. Only an
+administrator can add or share a stdio server (it runs on the API host) and set
+`tools_key_var`/`tools_key_feature`, **Provide to everyone by default**
+(`by_default`) and **Show in the store** (`listed`); others get
+`403 shared_admin_only`. A non-administrator's own http/sse server must be on
 the public internet: loopback, private, link-local and metadata addresses and
-the deployment's service names are refused when saved and when called, so an
-internal MCP server is offered to members as a catalogue entry (or registered by
-an administrator for themselves).
+the deployment's service names are refused when saved and when called. Internal
+servers are therefore added and shared by an administrator.
 
-A **Built in** entry is installed for every active user: everyone at once when an
-administrator saves it with the switch on, a new user when the account becomes
-active (sign-up, e-mail verification, approval), and anyone still missing it
-when the API starts (a background task, one replica at a time under an advisory
-lock). Users can switch the connector or its tools off but cannot remove it
-(`409 connector_default`). Tools are copied from a connected install synced
-since the entry last changed, otherwise listed by the server once per process
-(60 s limit); a server that does not answer leaves the copy in error with
-**Reconnect**. An entry that asks each user for credentials (`required_env`)
-cannot be built in.
+A **Built in** server is installed (as a reference) for every active user:
+everyone at once when an administrator saves it with the switch on, a new user
+when the account becomes active (sign-up, e-mail verification, approval), and
+anyone still missing it when the API starts (a background task, one replica at
+a time under an advisory lock). Users can switch the connector or its tools off
+but cannot remove it (`409 connector_default`). Tools are copied from a
+connected install synced since the server last changed, otherwise listed by the
+server once per process (60 s limit); a server that does not answer leaves the
+copy in error with **Reconnect**. A server that asks each user for credentials
+(`required_env`) cannot be built in (`422 catalog_default_env`).
 
-Shipped entries, all built in and attributed to the oldest administrator:
+Shipped servers, all built in and owned by the oldest administrator:
 
 | Slug | Runs | Needs |
 |---|---|---|

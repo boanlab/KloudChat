@@ -198,7 +198,9 @@ async def signup(payload: SignupRequest, request: Request, response: Response, d
         # shared catalogue: admin only
         if user.role is UserRole.admin:
             await starter.seed_catalog(db, user.id)
-            await connector_defaults.claim(db, user.id)
+        if is_first:
+            # the shipped 기본 제공 servers are the first administrator's shared ones
+            await connector_defaults.seed_shipped(db, user)
         await connector_defaults.provide(db, user)
         db.add(user)
 

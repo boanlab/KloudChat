@@ -88,7 +88,7 @@ async function adminFixture(page: Page, info: TestInfo) {
     const shell = shellRead(method, path)
     if (shell) return route.fulfill(shell)
     if (method === 'GET' && ['/sessions', '/projects', '/agents', '/skills', '/connectors', '/artifacts', '/designs',
-      '/design-templates', '/memory', '/connectors/catalog', '/tools'].includes(path)) {
+      '/design-templates', '/memory', '/connectors/store', '/tools'].includes(path)) {
       return json([])
     }
     if (method === 'GET' && path === '/artifacts/counts') return json({ counts: {}, total: 0 })

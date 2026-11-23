@@ -285,7 +285,7 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
     const shell = shellRead(method, path)
     if (shell) return route.fulfill(shell)
     if (method === 'GET' && [`/sessions/${session.id}/jobs`, '/projects', '/skills', '/memory',
-      '/agents', '/tools', '/connectors', '/connectors/catalog', '/jobs', '/designs',
+      '/agents', '/tools', '/connectors', '/connectors/store', '/jobs', '/designs',
       '/design-templates', '/shares'].includes(path)) return json([])
     unexpected.push(`${method} ${path}`)
     return route.fulfill({ status: 404, json: { detail: 'not_found' } })

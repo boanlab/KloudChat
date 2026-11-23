@@ -76,10 +76,11 @@ def _make_runner(connector: Connector, tool_name: str, env: dict[str, str], *,
         try:
             await catalog.check_runnable(connector, owner_is_admin=owner_is_admin)
             endpoint = await catalog.effective_endpoint(connector)
+            transport = await catalog.effective_transport(connector)
             slow = _timeout_for(tool_name)
-            guarded = catalog.public_only(connector, owner_is_admin=owner_is_admin)
+            guarded = await catalog.guarded(connector, owner_is_admin=owner_is_admin)
             text = await mcp.call_tool(
-                connector.transport.value, endpoint, tool_name, arguments, env,
+                transport, endpoint, tool_name, arguments, env,
                 **({"timeout": slow} if slow else {}),
                 **({"public_only": True} if guarded else {}),
             )
@@ -125,11 +126,16 @@ async def connector_tools(db: AsyncSession, user: User) -> list[Tool]:
         connector = by_id.get(row.connector_id)
         if connector is None:
             continue
-        env = mcp.substitute(
-            await catalog.connector_env(connector),
-            user_id=user.id,
-            user_email=user.email,
-        )
+        try:
+            env = mcp.substitute(
+                await catalog.connector_env(
+                    connector, owner_is_admin=user.role is UserRole.admin),
+                user_id=user.id,
+                user_email=user.email,
+            )
+        except catalog.NotRunnable:
+            # a server no longer shared: its tools are not offered
+            continue
         out.append(
             Tool(
                 name=qualified(connector.slug, row.name),

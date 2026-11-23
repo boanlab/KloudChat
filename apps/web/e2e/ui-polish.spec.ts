@@ -169,7 +169,7 @@ async function adminFixture(page: Page, info: TestInfo): Promise<Fixture> {
     if (shell) return route.fulfill(shell)
     if (method === 'GET' && path === '/artifacts/counts') return json({ counts: {}, total: 0 })
     if (method === 'GET' && ['/sessions', '/projects', '/agents', '/skills', '/connectors', '/artifacts', '/designs',
-      '/design-templates', '/memory', '/connectors/catalog', '/tools', '/admin/skills', '/admin/user-pipelines',
+      '/design-templates', '/memory', '/connectors/store', '/tools', '/admin/skills', '/admin/user-pipelines',
       '/jobs', '/user-pipelines', '/shares'].includes(path)) return json([])
     fx.unexpected.push(`${method} ${path}`)
     return json({ detail: 'Unmocked fixture request' }, 501)

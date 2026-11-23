@@ -161,7 +161,7 @@ export async function mockApp(
   for (const endpoint of [
     /\/api\/projects(?:\?.*)?$/, /\/api\/artifacts(?:\?.*)?$/, /\/api\/skills(?:\?.*)?$/,
     /\/api\/memory(?:\?.*)?$/, /\/api\/agents(?:\?.*)?$/, /\/api\/tools(?:\?.*)?$/,
-    /\/api\/templates(?:\?.*)?$/, /\/api\/connectors(?:\?.*)?$/, /\/api\/connectors\/catalog(?:\?.*)?$/,
+    /\/api\/templates(?:\?.*)?$/, /\/api\/connectors(?:\?.*)?$/, /\/api\/connectors\/store(?:\?.*)?$/,
     /\/api\/files(?:\?.*)?$/,
   ]) {
     await page.route(endpoint, (r) => r.fulfill({ json: [] }))

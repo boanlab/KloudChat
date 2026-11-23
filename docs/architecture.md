@@ -192,7 +192,7 @@ Migrations live under `alembic/versions/`. The principal tables:
 - `projects` · `files` · `file_pages` (OCR text per page) · `media_parts` (a video's
   transcribed pieces and read frames) · `file_uploads` (uploads arriving in pieces) ·
   `index_deletions` · `artifacts` · `artifact_versions` · `skills` · `memories` · `agents` ·
-  `connectors` · `connector_tools` · `connector_credentials` · `connector_catalog`
+  `connectors` (a person's own server, shared in the store, or a reference to one through `origin_id`) · `connector_tools` · `connector_credentials`
 - `design_systems` — themes: the look a project's or agent's output wears.
   `projects.design_system_id` is nullable and `ON DELETE SET NULL`: removing a theme
   costs the projects their look, not the projects
@@ -456,9 +456,9 @@ metadata addresses; no dotless service names). The Crawl4AI shim applies the
 same rule again, including to the address it lands on after redirects, since
 the tool gateway reaches it without authentication.
 
-**Tool count is what sizes the connector catalogue.** Every active tool ships
+**Tool count is what sizes the MCP servers offered by default.** Every active tool ships
 its full schema on every turn, and model tool-choice degrades well before
-twenty of them. A server enters the catalogue once it has been started against
+twenty of them. A server is shared or provided by default once it has been started against
 a real credential and had its tool count checked.
 
 Storing the turn's `create_artifact` files and automatic memory run **after** the turn, in their own
@@ -2062,9 +2062,9 @@ they run). No agent is offered: every shipped agent file is withdrawn or retired
 "Skills instead of shipped agents"), and the work they described ships as skills.
 
 **Listed, hidden, retired.** `listed: false` (a SKILL.md, a `template.toml`, a
-`starter._DESIGNS` entry) or a connector catalogue entry's `listed` keeps a shipped part out
+`starter._DESIGNS` entry) or a shared MCP server's `listed` keeps a shipped part out
 of the lists people pick from — the skill hub and store, the template and theme pickers, the
-members' connector catalogue — while it still runs by name, in bundles, in the editors that
+MCP server store — while it still runs by name, in bundles, in the editors that
 name it, and in the conversations and documents that already use it. Unlike `draft`, it does
 not gate `run_skill_script`. The wire carries `listed`; administrators see hidden rows behind
 **Show hidden**. Unlisted: the skills `copy-check`, `generic-language-killer`,
@@ -3174,27 +3174,26 @@ neither the stream nor the stored message shows it twice.
 
 ### Other boundaries
 
-- A `stdio` connector is a command the API server runs. An administrator may
-  register any; a member only a command line on the administrator's allowlist
-  (**System › MCP servers › Commands members may register themselves**,
-  setting `connectors.stdio_allow`), matched argument for argument, and with no
-  environment variables of its own. The rule is checked again before every
-  spawn (`catalog.check_runnable`), so a row saved before it is refused with an
-  error instead of run; catalogue connectors run the catalogue's command. The
-  child inherits a minimal environment (`PATH`, `HOME`, locale, `TZ`), never
-  the API's own secrets (`mcp._INHERITED_ENV`), and a `${VAR}` in a connector's
-  env reads only those names from the API's environment.
-- A member's own `http`/`sse` connector reaches the public internet only, by
-  the same rule as page fetches (`netguard`): an endpoint on loopback,
-  link-local (metadata `169.254.169.254` included), private (RFC 1918, ULA) or
-  CGNAT addresses, a dotless or reserved-suffix service name, or a
-  `${TOOLS_*_URL}` placeholder is refused when saved (`422`) and again before
-  every call (`catalog.check_runnable`). The call itself dials through
-  `netguard.PublicTransport`, which resolves the host, checks every address and
-  connects to the checked one (Host header and TLS name unchanged), so a name
-  that turns internal after saving, or a redirect to an internal host, is not
-  dialed; environment proxies are not used for these calls. Catalogue
-  connectors and an administrator's own may name internal hosts.
+- A `stdio` connector is a command the API server runs, so only an
+  administrator adds or shares one (`403 stdio_requires_admin`). A reference to
+  an administrator's shared stdio server runs the shared command, with the
+  receiver's own credentials only for the keys the sharer listed (`required_env`).
+  The check runs again before every spawn (`catalog.check_runnable`); a reference
+  whose sharing ended (`origin_gone`) is refused instead of run. The child
+  inherits a minimal environment (`PATH`, `HOME`, locale, `TZ`), never the API's
+  own secrets (`mcp._INHERITED_ENV`), and a `${VAR}` in a connector's env reads
+  only those names from the API's environment.
+- A member's own `http`/`sse` connector, and a reference to a member's shared one,
+  reaches the public internet only, by the same rule as page fetches (`netguard`):
+  an endpoint on loopback, link-local (metadata `169.254.169.254` included),
+  private (RFC 1918, ULA) or CGNAT addresses, a dotless or reserved-suffix
+  service name, or a `${TOOLS_*_URL}` placeholder is refused when saved (`422`)
+  and again before every call (`catalog.check_runnable`). The call itself dials
+  through `netguard.PublicTransport`, which resolves the host, checks every
+  address and connects to the checked one (Host header and TLS name unchanged),
+  so a name that turns internal after saving, or a redirect to an internal host,
+  is not dialed; environment proxies are not used for these calls. An
+  administrator's own connectors, and references to them, may name internal hosts.
 - A cached conversation memory — the summary and its pinned items — is part of the
   turn's privacy scan (with the history) and is masked under the policy in force when
   it is reused, not only the one in force when it was written; the summariser's prompt

@@ -293,7 +293,7 @@ export async function composerFixture(
     const shell = shellRead(method, path)
     if (shell) return route.fulfill(shell)
     if (method === 'GET' && (path.endsWith('/jobs') || [
-      '/projects', '/artifacts', '/memory', '/tools', '/connectors/catalog', '/designs', '/shares',
+      '/projects', '/artifacts', '/memory', '/tools', '/connectors/store', '/designs', '/shares',
       '/skills/store', '/user-pipelines', '/jobs',
     ].includes(path))) return json([])
     unexpected.push(`${method} ${path}`)

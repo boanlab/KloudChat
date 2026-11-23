@@ -1,16 +1,16 @@
-"""Catalogue stdio connectors: a person sets only the asked credentials, never the command."""
+"""Shared stdio servers: a person sets only the asked credentials, never the command."""
 
 from __future__ import annotations
 
 import pytest
 from fastapi import HTTPException
-from test_default_connectors import _people, _request, _server, _time, db  # noqa: F401
+from test_default_connectors import _people, _server, _share, db  # noqa: F401
 
 from app.models.workspace import Connector, ConnectorStatus, ConnectorTool, Transport
 from app.routers import connectors
 from app.schemas.workspace import ConnectorIn, ConnectorPatch, InstallRequest
-from app.services import mcp
-from app.services.tools import registry
+from app.services import mcp, settings_store
+from app.services.tools import catalog, registry
 
 
 async def _refused(call) -> tuple[int, str]:
@@ -19,17 +19,20 @@ async def _refused(call) -> tuple[int, str]:
     return refused.value.status_code, str(refused.value.detail)
 
 
-async def test_a_catalogue_connector_takes_only_the_credentials_it_asks_for(
+async def test_a_shared_server_takes_only_the_credentials_it_asks_for(
         db, monkeypatch):  # noqa: F811
     _server(monkeypatch)
     admin, member, _ = await _people(db)
-    entry = _time(slug="weather", required_env=[{"key": "API_TOKEN", "label": "토큰"}])
-    await connectors.admin_add_entry(entry, admin, db, _request())
+    shared = await _share(db, admin, slug="weather", name="날씨",
+                          required_env=[{"key": "API_TOKEN", "label": "토큰"}])
 
     assert await _refused(connectors.install(
-        "weather", member, db, InstallRequest(env={"API_TOKEN": "t", "UV_INDEX_URL": "x"}),
+        shared.id, member, db, InstallRequest(env={"API_TOKEN": "t", "UV_INDEX_URL": "x"}),
     )) == (422, "env_not_allowed:UV_INDEX_URL")
-    mine = await connectors.install("weather", member, db, InstallRequest(env={"API_TOKEN": "t"}))
+    assert await _refused(connectors.install(shared.id, member, db)) == (
+        422, "missing_env:API_TOKEN")
+    mine = await connectors.install(
+        shared.id, member, db, InstallRequest(env={"API_TOKEN": "t"}))
 
     assert await _refused(connectors.patch(
         mine.id, ConnectorPatch(env={"LD_PRELOAD": "/tmp/x.so"}), member, db,
@@ -39,9 +42,14 @@ async def test_a_catalogue_connector_takes_only_the_credentials_it_asks_for(
     )) == (422, "catalogue_endpoint")
     # the credential itself still changes
     await connectors.patch(mine.id, ConnectorPatch(env={"API_TOKEN": "u"}), member, db)
-    # an administrator's own copy keeps the whole row
-    theirs = await connectors.install("weather", admin, db, InstallRequest(env={"API_TOKEN": "t"}))
-    await connectors.patch(theirs.id, ConnectorPatch(env={"UV_INDEX_URL": "x"}), admin, db)
+    stored = await db.get(Connector, mine.id)
+    assert settings_store.decrypt_env(stored.env) == {"API_TOKEN": "u"}
+    # a key stored here that the server does not ask for is ignored when it runs
+    stored.env = settings_store.encrypt_env({"API_TOKEN": "u", "UV_INDEX_URL": "x"})
+    assert await catalog.connector_env(stored) == {"API_TOKEN": "u"}
+    # an administrator's own server keeps the whole row
+    plain = await _share(db, admin, slug="plain", name="일반")
+    await connectors.patch(plain.id, ConnectorPatch(env={"UV_INDEX_URL": "x"}), admin, db)
 
 
 async def test_a_stdio_connector_of_ones_own_is_changed_by_an_administrator_only(db):  # noqa: F811

@@ -5,7 +5,7 @@ from __future__ import annotations
 import httpx
 import pytest
 from fastapi import HTTPException
-from test_default_connectors import TOOLS, _people, _request, _time, db  # noqa: F401
+from test_default_connectors import TOOLS, _people, _share, db  # noqa: F401
 
 from app.models.workspace import Connector, ConnectorStatus, Transport
 from app.routers import connectors
@@ -104,15 +104,14 @@ async def test_an_administrator_registers_an_internal_endpoint(db, monkeypatch):
     assert moved.endpoint == "http://litellm:8000/mcp"
 
 
-async def test_a_catalogue_connector_keeps_its_internal_host_for_a_member(
+async def test_an_administrators_shared_server_keeps_its_internal_host_for_a_member(
         db, monkeypatch):  # noqa: F811
     asked = _server(monkeypatch)
     admin, member, _ = await _people(db)
-    await connectors.admin_add_entry(_time(
-        slug="research", transport="http", endpoint="${TOOLS_RESEARCH_URL}/mcp"),
-        admin, db, _request())
-    mine = await connectors.install("research", member, db)
-    assert mine.status == "connected"
+    shared = await _share(db, admin, slug="research", name="리서치", transport=Transport.http,
+                          endpoint="${TOOLS_RESEARCH_URL}/mcp")
+    mine = await connectors.install(shared.id, member, db)
+    assert mine.status == "connected" and mine.endpoint == ""
     assert asked[-1] == ("http://gateway.test:8080/tools/research/mcp", False)
 
 

@@ -62,7 +62,7 @@ async function fixture(page: Page, info: TestInfo, answer: 'ok' | 'unavailable')
     const shell = shellRead(method, path)
     if (shell) return route.fulfill(shell)
     if (method === 'GET' && ['/sessions', '/agents', '/skills', '/connectors', '/artifacts',
-      '/designs', '/design-templates', '/memory', '/connectors/catalog', '/tools', '/jobs']
+      '/designs', '/design-templates', '/memory', '/connectors/store', '/tools', '/jobs']
       .includes(path)) {
       return json([])
     }

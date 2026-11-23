@@ -46,7 +46,8 @@ import type {
   AuthSession,
   ArtifactRow,
   GovernancePolicy,
-  CatalogEntry,
+  StoreEntry,
+  ConnectorPatch,
   ConnectorRow,
   DesignRow,
   DesignTemplateRow,
@@ -662,12 +663,14 @@ interface State {
 
   // ── MCP connectors ────────────────────────────────────────────────────
   connectors: Connector[]
-  connectorCatalog: CatalogEntry[]
+  connectorStore: StoreEntry[]
   toggleConnector: (id: string) => Promise<void>
   /** Credential values are write-only server-side. Throws when not saved; then nothing is synced. */
   updateConnectorEnv: (id: string, env: Record<string, string>) => Promise<void>
+  /** Name, sharing, shared credentials and the like; the saved row replaces the local one. */
+  patchConnector: (id: string, patch: ConnectorPatch) => Promise<void>
   toggleConnectorTool: (id: string, tool: string) => Promise<void>
-  installConnector: (slug: string, env?: Record<string, string>) => Promise<void>
+  installConnector: (id: string, env?: Record<string, string>) => Promise<void>
   uninstallConnector: (id: string) => Promise<void>
   syncConnector: (id: string) => Promise<void>
   addCustomConnector: (
@@ -1125,7 +1128,7 @@ function clearAccount(set: Set, reason?: 'idle') {
     memories: [],
     agents: [],
     connectors: [],
-    connectorCatalog: [],
+    connectorStore: [],
   })
 }
 
@@ -1408,7 +1411,7 @@ export const useStore = create<State>((set, get) => ({
   availableTools: [],
   memories: [],
   agents: [],
-  connectorCatalog: [],
+  connectorStore: [],
 
   loadWorkspace: () => {
     if (workspaceLoad) {
@@ -1438,7 +1441,7 @@ export const useStore = create<State>((set, get) => ({
         each(designTemplatesApi.list(), (rows) => ({ designTemplates: rows })),
         each(memoryApi.list(), (rows) => ({ memories: rows.map(toMemory) })),
         each(connectorsApi.list(), (rows) => ({ connectors: rows.map(toConnector) })),
-        each(connectorsApi.catalog(), (rows) => ({ connectorCatalog: rows })),
+        each(connectorsApi.store(), (rows) => ({ connectorStore: rows })),
         each(toolsApi.list(), (rows) => ({ availableTools: rows })),
       ])
       if (!fresh()) return
@@ -2958,26 +2961,37 @@ export const useStore = create<State>((set, get) => ({
     const row = await connectorsApi.toggleTool(id, tool, !current?.enabled).catch(() => null)
     if (row) set((s) => ({ connectors: s.connectors.map((c) => (c.id === id ? toConnector(row) : c)) }))
   },
-  installConnector: async (slug, env) => {
+  installConnector: async (id, env) => {
     touchWorkspace()
-    const row = await connectorsApi.install(slug, env)
+    const row = await connectorsApi.install(id, env)
     set((s) => ({
       connectors: [toConnector(row), ...s.connectors.filter((c) => c.id !== row.id)],
-      connectorCatalog: s.connectorCatalog.map((e) =>
-        e.slug === slug ? { ...e, installed: true } : e,
+      connectorStore: s.connectorStore.map((e) =>
+        e.id === id ? { ...e, installed: true } : e,
       ),
     }))
   },
+  patchConnector: async (id, patch) => {
+    touchWorkspace()
+    const row = await connectorsApi.update(id, patch)
+    set((s) => ({ connectors: s.connectors.map((c) => (c.id === id ? toConnector(row) : c)) }))
+  },
   uninstallConnector: async (id) => {
     touchWorkspace()
-    const slug = get().connectors.find((c) => c.id === id)?.slug
+    const origin = get().connectors.find((c) => c.id === id)?.originId
     set((s) => ({
       connectors: s.connectors.filter((c) => c.id !== id),
-      connectorCatalog: s.connectorCatalog.map((e) =>
-        e.slug === slug ? { ...e, installed: false } : e,
+      connectorStore: s.connectorStore.map((e) =>
+        e.id === origin ? { ...e, installed: false } : e,
       ),
     }))
-    await connectorsApi.uninstall(id).catch(() => get().loadWorkspace())
+    try {
+      await connectorsApi.uninstall(id)
+    } catch (err) {
+      // The row comes back; the screen says why (a shared server others use stays).
+      await get().loadWorkspace()
+      throw err
+    }
   },
   syncConnector: async (id) => {
     touchWorkspace()
@@ -3864,6 +3878,16 @@ function toConnector(c: ConnectorRow): Connector {
     envKeys: c.envKeys ?? [],
     official: c.official,
     byDefault: !!c.byDefault,
+    visibility: c.visibility ?? 'private',
+    originId: c.originId ?? null,
+    originOwnerName: c.originOwnerName ?? '',
+    originGone: !!c.originGone,
+    requiredEnv: c.requiredEnv ?? [],
+    listed: c.listed ?? true,
+    toolsKeyVar: c.toolsKeyVar ?? '',
+    toolsKeyFeature: c.toolsKeyFeature ?? '',
+    sharedEnv: c.sharedEnv ?? {},
+    installs: c.installs ?? 0,
     icon: '🔌',
     color: '#6b7280',
     lastSyncAt: c.lastSyncAt,

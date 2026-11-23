@@ -46,7 +46,7 @@
 "path": "admin/index",
 "title": "관리자 가이드",
 "heading": "",
-"text": "관리자 계정으로 로그인하면 계정 메뉴에 **관리** 항목이 생깁니다. 최초로 가입한 계정이 관리자 권한을 갖습니다.\n\n| 화면 | 하는 일 |\n|---|---|\n| 사용자 · 크레딧 | 가입 승인·반려, 정지, 정보 수정, 월 크레딧, 허용 모델, 키 관리, 진행 과정·스킬 공유 검토 |\n| 사용량 | 기간별·모델별·사용자별 사용량, CSV, 저장 공간 |\n| 공개 챗봇 | 「링크를 아는 사람」·「누구나」 범위와 채널(다른 사이트·API·MCP) 승인, 닫기·중지, 남용 확인 열람 |\n| 보안 · 감사 | **정책** 탭(개인정보 보호, 내부 자료 처리, 안전 모델, 차단 주제, 유휴 로그아웃, 보존 기간)과 **감사 로그** 탭 |\n| 문의·신고 | 사용자가 보낸 오류 신고·기능 요청·문의 확인, 담당자·상태 지정, 답변 |\n| 시스템 | **프록시 · 모델 · 라우팅 · 기능 · 브랜딩 · 메일 · 회원 가입 · MCP 서버** 탭 |\n| 성능 모니터링 | 판정·핵심 수치·GPU 노드·모델 서버를 한 화면에 모은 대시보드, 항목을 누르면 호스트·모델·노드·서버별 추이와 세부 수치 |"
+"text": "관리자 계정으로 로그인하면 계정 메뉴에 **관리** 항목이 생깁니다. 최초로 가입한 계정이 관리자 권한을 갖습니다.\n\n| 화면 | 하는 일 |\n|---|---|\n| 사용자 · 크레딧 | 가입 승인·반려, 정지, 정보 수정, 월 크레딧, 허용 모델, 키 관리, 진행 과정·스킬 공유 검토 |\n| 사용량 | 기간별·모델별·사용자별 사용량, CSV, 저장 공간 |\n| 공개 챗봇 | 「링크를 아는 사람」·「누구나」 범위와 채널(다른 사이트·API·MCP) 승인, 닫기·중지, 남용 확인 열람 |\n| 보안 · 감사 | **정책** 탭(개인정보 보호, 내부 자료 처리, 안전 모델, 차단 주제, 유휴 로그아웃, 보존 기간)과 **감사 로그** 탭 |\n| 문의·신고 | 사용자가 보낸 오류 신고·기능 요청·문의 확인, 담당자·상태 지정, 답변 |\n| 시스템 | **프록시 · 모델 · 라우팅 · 기능 · 브랜딩 · 메일 · 회원 가입** 탭 |\n| 성능 모니터링 | 판정·핵심 수치·GPU 노드·모델 서버를 한 화면에 모은 대시보드, 항목을 누르면 호스트·모델·노드·서버별 추이와 세부 수치 |"
 },
 {
 "lang": "ko",
@@ -88,7 +88,7 @@
 "path": "admin/system",
 "title": "시스템 설정",
 "heading": "",
-"text": "관리 메뉴의 **시스템** 화면은 아홉 개 탭으로 구성됩니다. 저장하면 재시작 없이 바로 적용됩니다."
+"text": "관리 메뉴의 **시스템** 화면은 일곱 개 탭으로 구성됩니다. 저장하면 재시작 없이 바로 적용됩니다."
 },
 {
 "lang": "ko",
@@ -143,8 +143,8 @@
 "lang": "ko",
 "path": "admin/system",
 "title": "시스템 설정",
-"heading": "MCP 서버",
-"text": "사용자가 **사용자 지정** › **MCP 서버**에서 설치할 수 있는 MCP 서버 목록입니다. **항목 추가**로 이름, 슬러그, 연결 방식(명령 실행 stdio·HTTP·SSE. stdio는 프로그램을 직접 띄워 연결하는 방식), 명령이나 주소, 환경 변수, 쓸 화면을 적습니다. 기능 연동 주소는 `${TOOLS_STT_URL}` 같은 자리표시로 적습니다. **게이트웨이 키를 넣을 변수**를 고르면 그 변수가 고른 도구의 주소일 때만 `TOOLS_GATEWAY_KEY`가 들어갑니다(YouTube 전사가 이렇게 음성 전사를 부릅니다). 저장한 값은 다시 보이지 않고, 바꿀 때만 새로 적습니다. 명령으로 실행하는 서버는 여기서 추가합니다. 사용자가 직접 등록해도 되는 명령은 **사용자가 직접 등록할 수 있는 실행 명령**에 한 줄에 하나씩 적습니다. 사용자가 적은 명령이 인자까지 똑같은 줄만 실행되고, 환경 변수는 넣을 수 없습니다. 목록에 없는 명령은 전에 등록해 둔 것이라도 실행하지 않고 오류로 알립니다. **목록에 보이기**를 끄면 사용자 목록에서 빠지지만 설치는 그대로 되고, 이미 설치한 것도 계속 동작합니다(관리자 목록에는 「숨김」으로 표시). **사용**을 끄면 새로 설치할 수 없습니다. **기본 제공**을 켜면 활성 사용자 모두에게 바로 설치되고, 이후 가입하거나 승인되는 사용자에게도 설치됩니다(관리자 목록에는 「기본 제공」으로 표시). 사용자는 기본 제공 MCP 서버를 끌 수는 있지만 지울 수는 없습니다. 사람마다 자격증명을 받아야 하는 항목은 기본 제공할 수 없습니다. 시간, YouTube 전사, 심층 리서치가 기본 제공 항목입니다."
+"heading": "MCP 서버 관리",
+"text": "MCP 서버 목록은 시스템 탭이 아니라 **사용자 지정** › **MCP 서버** › **내 MCP 서버**에서 정합니다. 관리자가 서버를 추가한 뒤 상세 화면의 **공유**에서 **우리 조직과 공유**를 고르면 스토어에 「공식」 배지로 올라갑니다. 명령으로 실행하는 서버(stdio)는 관리자만 추가·공유할 수 있습니다. 관리자 서버에는 다음 칸이 더 있습니다.\n\n- **공용 환경 변수**: 이 서버를 쓰는 모두에게 같은 값이 들어갑니다. 기능 연동 주소는 `${TOOLS_STT_URL}` 같은 자리표시로 적습니다. 저장한 값은 다시 보이지 않고, 바꿀 때만 새로 적습니다.\n- **게이트웨이 키를 넣을 변수**와 **그 주소의 도구**: 고른 변수가 그 도구의 주소일 때만 `TOOLS_GATEWAY_KEY`가 들어갑니다(YouTube 전사가 이렇게 음성 전사를 부릅니다).\n- **모두에게 기본 제공**: 활성 사용자 모두에게 바로 설치되고, 이후 가입하거나 승인되는 사용자에게도 설치됩니다. 사용자는 끌 수는 있지만 지울 수는 없습니다. 사람마다 자격을 받아야 하는 서버는 기본 제공할 수 없습니다.\n- **스토어에 보이기**: 끄면 스토어 목록에서 빠지지만, 이미 설치한 사람에게는 계속 동작합니다.\n\n시간, YouTube 전사, 심층 리서치가 기본 제공 서버입니다. 공유를 끊으면 그 서버를 쓰던 사람의 MCP 서버가 멈추므로, 쓰는 사람이 있으면 먼저 확인을 묻습니다."
 },
 {
 "lang": "ko",
@@ -571,14 +571,28 @@
 "path": "chat/connectors",
 "title": "MCP 서버",
 "heading": "기본 제공 MCP 서버",
-"text": "관리자가 **기본 제공**으로 정한 MCP 서버는 모든 사용자에게 미리 설치되어 **내 MCP 서버**에 「기본 제공」 배지와 함께 나옵니다. 쓰지 않으려면 스위치로 끄거나 도구별로 끕니다. 기본 제공 MCP 서버는 지울 수 없고, 끈 MCP 서버는 다시 켜면 그대로 돌아옵니다.\n\n| MCP 서버 | 기능 |\n|---|---|\n| 시간 | 현재 시각과 날짜를 조회합니다. 챗, 보고서, 슬라이드에서 사용할 수 있습니다. |\n| YouTube 전사 | 영상 주소를 주면 자막을 가져오고, 자막이 없으면 음성을 전사합니다. 챗, 보고서에서 사용할 수 있습니다. |\n| 심층 리서치 | 웹을 여러 번 검색하고 읽어 조사 결과를 정리합니다. 수 분이 걸릴 수 있습니다. 챗, 보고서에서 사용할 수 있습니다. |\n\n탐색 목록에는 관리자가 MCP 서버 탭에서 보이게 한 항목만 나옵니다. 목록에서 숨긴 MCP 서버도 이미 설치한 사람에게는 그대로 동작합니다."
+"text": "관리자가 **기본 제공**으로 정한 MCP 서버는 모든 사용자에게 미리 설치되어 **내 MCP 서버**에 「기본 제공」 배지와 함께 나옵니다. 쓰지 않으려면 스위치로 끄거나 도구별로 끕니다. 기본 제공 MCP 서버는 지울 수 없고, 끈 MCP 서버는 다시 켜면 그대로 돌아옵니다.\n\n| MCP 서버 | 기능 |\n|---|---|\n| 시간 | 현재 시각과 날짜를 조회합니다. 챗, 보고서, 슬라이드에서 사용할 수 있습니다. |\n| YouTube 전사 | 영상 주소를 주면 자막을 가져오고, 자막이 없으면 음성을 전사합니다. 챗, 보고서에서 사용할 수 있습니다. |\n| 심층 리서치 | 웹을 여러 번 검색하고 읽어 조사 결과를 정리합니다. 수 분이 걸릴 수 있습니다. 챗, 보고서에서 사용할 수 있습니다. |"
+},
+{
+"lang": "ko",
+"path": "chat/connectors",
+"title": "MCP 서버",
+"heading": "스토어에서 가져오기",
+"text": "**탐색**에는 다른 사람이 공유한 MCP 서버가 나옵니다. 관리자가 공유한 서버에는 「공식」 배지가, 그 밖의 서버에는 공유한 사람의 이름이 붙습니다. **추가**를 누르면 내 MCP 서버에 들어옵니다. 서버가 자격(키나 토큰)을 요구하면 설치하기 전에 입력 창이 열리고, 각자 자기 값을 넣습니다. 값은 서버에만 보관하며 다시 보여 주지 않습니다.\n\n가져온 서버는 사본이 아니라 **공유한 서버를 가리키는 연결**입니다. 주소와 도구는 공유한 서버를 그대로 따르므로, 상세 화면에는 주소 대신 「○○님이 공유한 서버」가 나옵니다. 도구를 켜고 끄는 것과 내 자격 수정은 내 몫입니다. 공유한 사람이 공유를 끊으면 「공유가 끝나 쓸 수 없습니다」로 바뀌며, 이때는 **제거**만 할 수 있습니다. 관리자가 스토어 목록에서 숨긴 서버도 이미 가져온 사람에게는 그대로 동작합니다."
 },
 {
 "lang": "ko",
 "path": "chat/connectors",
 "title": "MCP 서버",
 "heading": "서버 직접 추가",
-"text": "사용 중인 MCP 서버가 있으면 **서버 직접 추가**로 연결합니다. 이름, 전송 방식(stdio · http · sse), 실행 명령 또는 엔드포인트 주소, 환경 변수, 인증 방식을 입력합니다. 환경 변수와 자격증명은 저장 후 다시 표시되지 않습니다. 명령 실행(stdio)은 API 서버에서 돌기 때문에 관리자가 허용한 명령만 그대로 등록할 수 있고, 이때 환경 변수는 넣을 수 없습니다. 관리자가 아닌 사람이 직접 추가하는 http · sse 서버는 인터넷에 공개된 주소여야 합니다. `localhost`·`127.0.0.1`, 사설 대역(`10.x`, `172.16~31.x`, `192.168.x`), 클라우드 메타데이터 주소, 배포 내부 서비스 이름처럼 내부 네트워크를 가리키는 주소는 저장할 때와 호출할 때 모두 거절됩니다. 사내 MCP 서버는 관리자에게 MCP 서버 탭 등록을 요청하세요."
+"text": "사용 중인 MCP 서버가 있으면 **서버 직접 추가**로 연결합니다. 이름, 전송 방식(http · sse), 엔드포인트 주소, 환경 변수, 인증 방식을 입력합니다. 환경 변수와 자격증명은 저장 후 다시 표시되지 않습니다. 명령으로 실행하는 서버(stdio)는 API 서버에서 돌기 때문에 관리자만 등록할 수 있습니다. 관리자가 아닌 사람이 추가하는 서버는 인터넷에 공개된 주소여야 합니다. `localhost`·`127.0.0.1`, 사설 대역(`10.x`, `172.16~31.x`, `192.168.x`), 클라우드 메타데이터 주소, 배포 내부 서비스 이름처럼 내부 네트워크를 가리키는 주소는 저장할 때와 호출할 때 모두 거절됩니다."
+},
+{
+"lang": "ko",
+"path": "chat/connectors",
+"title": "MCP 서버",
+"heading": "내 MCP 서버 공유하기",
+"text": "내가 추가한 서버는 상세 화면의 **공유**에서 **공유 안 함** 또는 **우리 조직과 공유**를 고릅니다. 공유하면 스토어(**탐색**)에 올라가 다른 사람이 가져다 씁니다. http · sse 서버만 공유할 수 있습니다.\n\n- 공유해도 내 환경 변수 값은 다른 사람이 쓰지 않습니다. 받는 사람이 각자 자격을 넣도록 **받는 사람이 직접 넣을 자격**에 키 이름, 화면에 보일 이름, 설명, 비밀 값 여부를 적어 둡니다(최대 8개).\n- 공유한 서버를 쓰는 사람이 있으면 상세 화면에 사용하는 사람 수가 나옵니다. 공유를 끊으려 하면 「○명이 쓰고 있어, 끊으면 그분들의 이 서버가 멈춥니다」라고 먼저 묻습니다.\n- 공유한 서버는 공유를 끊은 뒤에만 삭제할 수 있습니다.\n\n관리자가 추가한 서버에는 공용 환경 변수 값, 도구 주소 키, **모두에게 기본 제공**, **스토어에 보이기**를 정하는 칸이 더 있습니다."
 },
 {
 "lang": "ko",
@@ -1796,7 +1810,7 @@
 "path": "admin/index",
 "title": "Administrator guide",
 "heading": "",
-"text": "When you sign in with an administrator account, a **Manage** item appears in the account menu. The first account to sign up holds administrator rights.\n\n| Screen | What it does |\n|---|---|\n| Users · Credits | Approve and reject sign-ups, suspend, edit details, monthly credits, allowed models, key management, review of shared processes and skills |\n| Usage | Usage by period, by model, and by user, CSV, storage space |\n| Published chatbots | Approve the \"Anyone with the link\" and \"Anyone\" scopes and channels (other sites, API, MCP), close or pause, abuse-check viewing |\n| Security · Audit | The **Policy** tab (personal data protection, internal material, safe model, blocked topics, idle sign-out, retention period) and the **Audit log** tab |\n| Feedback & issues | Read bug reports, feature requests and questions from users, set the assignee and status, reply |\n| System | The **Proxy · Models · Routing · Features · Branding · Mail · Sign-up · MCP servers** tabs |\n| Performance | One-screen dashboard of verdicts, key figures, GPU nodes and model servers; each item opens trends and details for the host, models, a node or a server |"
+"text": "When you sign in with an administrator account, a **Manage** item appears in the account menu. The first account to sign up holds administrator rights.\n\n| Screen | What it does |\n|---|---|\n| Users · Credits | Approve and reject sign-ups, suspend, edit details, monthly credits, allowed models, key management, review of shared processes and skills |\n| Usage | Usage by period, by model, and by user, CSV, storage space |\n| Published chatbots | Approve the \"Anyone with the link\" and \"Anyone\" scopes and channels (other sites, API, MCP), close or pause, abuse-check viewing |\n| Security · Audit | The **Policy** tab (personal data protection, internal material, safe model, blocked topics, idle sign-out, retention period) and the **Audit log** tab |\n| Feedback & issues | Read bug reports, feature requests and questions from users, set the assignee and status, reply |\n| System | The **Proxy · Models · Routing · Features · Branding · Mail · Sign-up** tabs |\n| Performance | One-screen dashboard of verdicts, key figures, GPU nodes and model servers; each item opens trends and details for the host, models, a node or a server |"
 },
 {
 "lang": "en",
@@ -1838,7 +1852,7 @@
 "path": "admin/system",
 "title": "System settings",
 "heading": "",
-"text": "The **System** screen in the Manage menu is made up of nine tabs. Saved changes apply at once, without a restart."
+"text": "The **System** screen in the Manage menu is made up of seven tabs. Saved changes apply at once, without a restart."
 },
 {
 "lang": "en",
@@ -1894,7 +1908,7 @@
 "path": "admin/system",
 "title": "System settings",
 "heading": "MCP servers",
-"text": "The MCP servers people can install from **Customize** › **MCP servers**. **Add entry** takes a name, slug, transport (run a command over stdio, HTTP or SSE), the command or address, environment variables and surfaces. Write tool addresses as placeholders such as `${TOOLS_STT_URL}`. Pick a **variable that gets the gateway key** and `TOOLS_GATEWAY_KEY` is added only while that variable is the chosen tool's address (this is how YouTube transcription calls speech-to-text). Stored values are never shown again; type one only to replace it. Servers that run as a command are added here. List the commands members may register themselves under **Commands members may register themselves** (사용자가 직접 등록할 수 있는 실행 명령), one per line: a member's command runs only when it matches a line argument for argument, and it cannot take environment variables. A command not on the list is not run, even one registered earlier; it reports an error instead. Turn off **Show in the list** (목록에 보이기) and the entry leaves the members' list but can still be installed, and what is installed keeps working (the admin list marks it Hidden). Turn off **Enabled** and nobody can install it anew. Turn on **Built in** (기본 제공) and the entry is installed at once for every active member, and for everyone who signs up or is approved later (the admin list marks it Built in). Members can switch a built-in MCP server off but cannot remove it. An entry that needs each person's credentials cannot be built in. Time, YouTube transcription and Deep research are built in."
+"text": "The list of MCP servers is set not in a System tab but under **Customize** › **MCP servers** › **My MCP servers**. After an administrator adds a server, choosing **Share with our organization** under **Share** in its detail screen lists it in the store with an **Official** badge. Only an administrator can add or share a server that runs a command (stdio). A server of an administrator has more fields:\n\n- **Shared variables**: everyone who uses the server gets the same values. Write tool addresses as placeholders such as `${TOOLS_STT_URL}`. Stored values are never shown again; type one only to replace it.\n- **Variable that gets the gateway key** and **Tool at that address**: `TOOLS_GATEWAY_KEY` is added only while the chosen variable is that tool's address (this is how YouTube transcription calls speech-to-text).\n- **Provide to everyone by default**: installed at once for every active member, and for everyone who signs up or is approved later. Members can switch it off but cannot remove it. A server that needs each person's credentials cannot be provided by default.\n- **Show in the store**: when off, the server leaves the store list, but it keeps working for people who already installed it.\n\nTime, YouTube transcription and Deep research are provided by default. Stopping the sharing stops the server for everyone who uses it, so it asks first when someone does."
 },
 {
 "lang": "en",
@@ -2321,14 +2335,28 @@
 "path": "chat/connectors",
 "title": "MCP servers",
 "heading": "Built-in MCP servers",
-"text": "MCP servers the administrator marks **Built in** are installed for everyone and appear under **My MCP servers** with a Built in badge. If you do not use one, switch it off, or switch off single tools. A built-in MCP server cannot be removed; one you switched off comes back as it was when you switch it on again.\n\n| MCP server | What it does |\n|---|---|\n| Time | Looks up the current time and date. Available in Chat, Reports, and Slides. |\n| YouTube transcription | Fetches a video's captions from its address, or transcribes the audio when there are none. Available in Chat and Reports. |\n| Deep research | Searches and reads the web over several rounds and sums up what it found. It can take minutes. Available in Chat and Reports. |\n\nThe catalogue shows only the entries the administrator made visible in the MCP servers tab. An MCP server hidden from the list keeps working for anyone who already installed it."
+"text": "MCP servers the administrator marks **Built in** are installed for everyone and appear under **My MCP servers** with a Built in badge. If you do not use one, switch it off, or switch off single tools. A built-in MCP server cannot be removed; one you switched off comes back as it was when you switch it on again.\n\n| MCP server | What it does |\n|---|---|\n| Time | Looks up the current time and date. Available in Chat, Reports, and Slides. |\n| YouTube transcription | Fetches a video's captions from its address, or transcribes the audio when there are none. Available in Chat and Reports. |\n| Deep research | Searches and reads the web over several rounds and sums up what it found. It can take minutes. Available in Chat and Reports. |"
+},
+{
+"lang": "en",
+"path": "chat/connectors",
+"title": "MCP servers",
+"heading": "Getting one from the store",
+"text": "**Explore** lists the MCP servers other people shared. A server an administrator shared carries an **Official** badge; any other shows the name of whoever shared it. Press **Add** to bring it into My MCP servers. If the server asks for credentials (a key or token), a form opens before it is installed and each person enters their own values. The values are kept on the server only and are not shown again.\n\nA server you get this way is not a copy: it is **a link to the shared server**. The address and tools follow the shared server, so the detail screen shows \"Server shared by (name)\" instead of an address. Turning tools on or off and fixing your own credentials stay yours. When the sharer stops sharing, it reads \"Sharing ended, so it cannot be used\" and you can only **Remove** it. A server an administrator hid from the store keeps working for people who already added it."
 },
 {
 "lang": "en",
 "path": "chat/connectors",
 "title": "MCP servers",
 "heading": "Adding a server directly",
-"text": "If you already use an MCP server, connect it with **Add server directly**. Enter the name, the transport (stdio, http, or sse), the run command or endpoint address, the environment variables, and the authentication method. Environment variables and credentials are not shown again after saving. A stdio server runs on the API server, so you can register only a command an administrator allows, exactly as allowed, and without environment variables. An http or sse server you add yourself as a non-administrator must be on the public internet: addresses that point inside the network, such as `localhost` or `127.0.0.1`, private ranges (`10.x`, `172.16-31.x`, `192.168.x`), the cloud metadata address and the deployment's own service names, are refused both when you save and when the server is called. Ask an administrator to add an in-house MCP server to the MCP server catalogue."
+"text": "If you already use an MCP server, connect it with **Add server directly**. Enter the name, the transport (http or sse), the endpoint address, the environment variables, and the authentication method. Environment variables and credentials are not shown again after saving. A server that runs a command (stdio) runs on the API server, so only an administrator can register one. A server you add as a non-administrator must be on the public internet: addresses that point inside the network, such as `localhost` or `127.0.0.1`, private ranges (`10.x`, `172.16-31.x`, `192.168.x`), the cloud metadata address and the deployment's own service names, are refused both when you save and when the server is called."
+},
+{
+"lang": "en",
+"path": "chat/connectors",
+"title": "MCP servers",
+"heading": "Sharing your MCP server",
+"text": "For a server you added, choose **Not shared** or **Share with our organization** under **Share** in its detail screen. A shared server is listed in the store (**Explore**) and others use it. Only http and sse servers can be shared.\n\n- Sharing does not hand over your environment variable values; nobody else uses them. Under **Credentials receivers enter themselves**, list the key name, the name shown on screen, a hint and whether it is secret (up to 8), so each receiver enters their own.\n- When people use a shared server, the detail screen shows how many. Stopping the sharing first asks, \"N people use it. If you stop sharing, their copy of this server stops working.\"\n- A shared server can be deleted only after you stop sharing it.\n\nA server an administrator added has more fields: shared environment variable values, the tool-address key, **Provide to everyone by default** and **Show in the store**."
 },
 {
 "lang": "en",

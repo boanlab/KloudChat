@@ -182,7 +182,7 @@ export async function resultsFixture(page: Page, testInfo: TestInfo, options: { 
     const shell = shellRead(method, path)
     if (shell) return route.fulfill(shell)
     if (method === 'GET' && (/^\/sessions\/[0-9a-f]{32}\/(jobs|runs)$/.test(path) || ['/projects', '/skills',
-      '/memory', '/agents', '/tools', '/connectors', '/connectors/catalog', '/jobs', '/designs', '/shares',
+      '/memory', '/agents', '/tools', '/connectors', '/connectors/store', '/jobs', '/designs', '/shares',
       '/pipelines', '/user-pipelines', '/files'].includes(path))) return route.fulfill({ json: [] })
     recorded.unexpected.push(`${method} ${path}`)
     return route.fulfill({ status: 404, json: { detail: 'not_found' } })

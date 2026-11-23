@@ -1,4 +1,4 @@
-import { ApiError, errorMessage } from '@/lib/api'
+import { ApiError, errorCode, errorMessage } from '@/lib/api'
 import {
   CircleAlert,
   Lock,
@@ -8,6 +8,7 @@ import {
   ShieldCheck,
   Trash2,
   TriangleAlert,
+  Users,
   KeyRound,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -34,7 +35,8 @@ import { ListSearch, NoMatch } from '@/components/ui/ListSearch'
 import { ListPager } from '@/components/ui/ListPager'
 import { pageOf, usePaging } from '@/lib/usePaging'
 import { useStore } from '@/store/useStore'
-import type { CatalogEntry } from '@/lib/api'
+import { ConnectorShare, inUseText } from '@/components/customize/ConnectorShare'
+import type { StoreEntry } from '@/lib/api'
 import type { Connector, ConnectorStatus } from '@/types'
 import { useT, useTIn } from '@/lib/useT'
 
@@ -43,6 +45,15 @@ const statusMeta: Record<ConnectorStatus, { label: string; tone: 'success' | 'wa
   needs_auth: { label: '인증 필요', tone: 'warn' },
   error: { label: '오류', tone: 'danger' },
   disconnected: { label: '미연결', tone: 'neutral' },
+}
+
+/** Why an install was refused, in words (the server sends codes such as `missing_env:KEY`). */
+function installRefusal(err: unknown, t: (s: string) => string): string {
+  const detail = err instanceof ApiError ? err.detail : ''
+  if (detail.startsWith('missing_env:')) return t('빠진 자격이 있습니다. 모두 입력해 주세요.')
+  if (detail.startsWith('env_not_allowed:')) return t('이 서버가 요구하지 않는 환경 변수는 넣을 수 없습니다.')
+  if (detail === 'unknown_connector') return t('이 서버는 더 이상 공유되지 않습니다. 목록을 새로 불러와 주세요.')
+  return errorMessage(err, t('설치에 실패했습니다. 잠시 뒤 다시 시도하세요.'))
 }
 
 /** Surfaces narrow the offer: all of chat/report/slides (or none) deserve no chip. */
@@ -65,17 +76,19 @@ function ConnectorCard({
   onPick: () => void
 }) {
   const t = useT()
-  const { toggleConnector, syncConnector } = useStore()
+  const { toggleConnector, syncConnector, uninstallConnector } = useStore()
   const [busy, setBusy] = useState(false)
   const status = statusMeta[connector.status]
   const writeTools = connector.tools.filter((t) => !t.readOnly && t.enabled).length
+  // The sharing ended: nothing runs; the person can only take the row away.
+  const gone = connector.originGone
 
   return (
     // `data-connector` is the e2e hook.
     <Card className="flex flex-col p-4" data-connector={connector.slug}>
       <div className="flex items-start gap-3">
         {/* 기본 제공: switched off, never removed */}
-        {!connector.byDefault && (
+        {!connector.byDefault && connector.visibility !== 'org' && (
           <PickBox
             checked={picked}
             onChange={onPick}
@@ -101,8 +114,16 @@ function ConnectorCard({
               </Badge>
             )}
             {connector.byDefault && <Badge tone="accent">{t('기본 제공')}</Badge>}
+            {connector.visibility === 'org' && !connector.byDefault && (
+              <Badge>
+                <Users size={10} />
+                {t('공유 중')}
+              </Badge>
+            )}
             {/* Connected is the normal state: a dot, not a badge; the others stay badges. */}
-            {connector.status === 'connected' ? (
+            {gone ? (
+              <Badge tone="danger">{t('공유가 끝나 쓸 수 없습니다')}</Badge>
+            ) : connector.status === 'connected' ? (
               <span className="inline-flex items-center" title={t(status.label)}>
                 <span aria-hidden className="size-2 rounded-full bg-success" />
                 <span className="sr-only">{t(status.label)}</span>
@@ -113,7 +134,7 @@ function ConnectorCard({
           </span>
           <span className="mt-1 block text-base text-muted">{t(connector.description)}</span>
         </button>
-        {connector.installed && connector.status === 'connected' && (
+        {!gone && connector.installed && connector.status === 'connected' && (
           <Switch
             checked={connector.enabled}
             onChange={() => toggleConnector(connector.id)}
@@ -129,6 +150,7 @@ function ConnectorCard({
         </p>
       )}
 
+      {!gone && (
       <div className="mb-3 mt-3 flex flex-wrap gap-1.5">
         <Badge>{t.n('도구 {n}', connector.tools.length)}</Badge>
         {writeTools > 0 && (
@@ -140,22 +162,29 @@ function ConnectorCard({
         {narrowed(connector.kinds) &&
           connector.kinds.map((k) => <Badge key={k}>{t(kindMeta[k].label)}</Badge>)}
       </div>
+      )}
 
       {/* `mt-auto`: foot aligned across a row. */}
-      <div className="mt-auto flex items-center justify-between border-t border-line pt-3">
+      <div className={cn('mt-auto flex items-center justify-between border-t border-line pt-3', gone && 'mt-3')}>
         <span className="text-xs text-faint">
-          {connector.lastSyncAt
+          {gone ? '' : connector.lastSyncAt
             ? t('{when} 동기화').replace('{when}', relativeTime(connector.lastSyncAt))
             : t('동기화 이력 없음')}
         </span>
         <div className="flex gap-1.5">
-          {needsCredentials && (
+          {gone ? (
+            <Button size="sm" onClick={() => void uninstallConnector(connector.id).catch(() => {})}>
+              <Trash2 size={13} />
+              {t('제거')}
+            </Button>
+          ) : null}
+          {!gone && needsCredentials && (
             <Button size="sm" onClick={onEditCredentials}>
               <KeyRound size={13} />
               {t('자격증명')}
             </Button>
           )}
-          {connector.status === 'connected' ? (
+          {gone ? null : connector.status === 'connected' ? (
             <Button size="sm" onClick={onOpen}>
               {t('도구 설정')}
             </Button>
@@ -183,9 +212,9 @@ function ConnectorCard({
   )
 }
 
-function CatalogCard({ entry, onNeedsCredentials }: {
-  entry: CatalogEntry
-  onNeedsCredentials: (entry: CatalogEntry) => void
+function StoreCard({ entry, onNeedsCredentials }: {
+  entry: StoreEntry
+  onNeedsCredentials: (entry: StoreEntry) => void
 }) {
   const t = useT()
   const { installConnector } = useStore()
@@ -211,6 +240,11 @@ function CatalogCard({ entry, onNeedsCredentials }: {
             {entry.byDefault && <Badge tone="accent">{t('기본 제공')}</Badge>}
           </span>
           <span className="mt-1 block text-base text-muted">{t(entry.description)}</span>
+          {!entry.official && entry.ownerName && (
+            <span className="mt-1 block text-sm text-faint">
+              {t('{name}님이 공유').replace('{name}', entry.ownerName)}
+            </span>
+          )}
         </div>
       </div>
 
@@ -242,9 +276,9 @@ function CatalogCard({ entry, onNeedsCredentials }: {
             setBusy(true)
             setError(null)
             try {
-              await installConnector(entry.slug)
+              await installConnector(entry.id)
             } catch (err) {
-              setError(errorMessage(err, t('설치에 실패했습니다. 잠시 뒤 다시 시도하세요.')))
+              setError(installRefusal(err, t))
             } finally {
               setBusy(false)
             }
@@ -271,7 +305,7 @@ function ReCredentialModal({
   onClose,
 }: {
   connector: Connector | null
-  entry: CatalogEntry | null
+  entry: StoreEntry | null
   onClose: () => void
 }) {
   const t = useT()
@@ -285,7 +319,7 @@ function ReCredentialModal({
     setError(null)
   }, [connector?.id])
 
-  // Self-registered server: no catalogue entry, env keys instead.
+  // Own server: no store entry, env keys instead.
   const fields =
     entry?.requiredEnv?.length
       ? entry.requiredEnv
@@ -338,12 +372,12 @@ function ReCredentialModal({
   )
 }
 
-/** Credentials a catalogue entry declares; stored values never leave the server. */
+/** Credentials a shared server asks for; stored values never leave the server. */
 function CredentialsModal({
   entry,
   onClose,
 }: {
-  entry: CatalogEntry | null
+  entry: StoreEntry | null
   onClose: () => void
 }) {
   const t = useT()
@@ -355,7 +389,7 @@ function CredentialsModal({
   useEffect(() => {
     setValues({})
     setError(null)
-  }, [entry?.slug])
+  }, [entry?.id])
 
   const missing = (entry?.requiredEnv ?? []).some((f) => !(values[f.key] ?? '').trim())
 
@@ -376,10 +410,10 @@ function CredentialsModal({
               setBusy(true)
               setError(null)
               try {
-                await installConnector(entry.slug, values)
+                await installConnector(entry.id, values)
                 onClose()
               } catch (err) {
-                setError(errorMessage(err, t('설치에 실패했습니다. 잠시 뒤 다시 시도하세요.')))
+                setError(installRefusal(err, t))
               } finally {
                 setBusy(false)
               }
@@ -441,7 +475,7 @@ export function ConnectorsPage({
   const tHub = useTIn('hub')
   const {
     connectors,
-    connectorCatalog,
+    connectorStore,
     loadWorkspace,
     ensureWorkspace,
     toggleConnectorTool,
@@ -460,12 +494,13 @@ export function ConnectorsPage({
   const [tabLocal, setTab] = useState<'installed' | 'catalog'>('installed')
   const tab = hubFrame ? (view === 'mine' ? 'installed' : 'catalog') : tabLocal
   const [detail, setDetail] = useState<Connector | null>(null)
-  const [credentialsFor, setCredentialsFor] = useState<CatalogEntry | null>(null)
+  const [credentialsFor, setCredentialsFor] = useState<StoreEntry | null>(null)
   const [reCredential, setReCredential] = useState<Connector | null>(null)
   const [addingLocal, setAddingLocal] = useState(false)
   const adding = hubFrame ? !!addingProp : addingLocal
   const setAdding = (next: boolean) => (hubFrame ? onAddingChange?.(next) : setAddingLocal(next))
   const [addError, setAddError] = useState('')
+  const [removeError, setRemoveError] = useState('')
   const addRefusal = (err: unknown) => {
     const detail = err instanceof ApiError ? err.detail : ''
     if (detail === 'stdio_requires_admin') {
@@ -488,8 +523,9 @@ export function ConnectorsPage({
   const found = <T extends { name: string; description: string }>(items: T[]) =>
     items.filter((c) => matchesQuery(query, c.name, t(c.name), c.description, t(c.description)))
   const installed = connectors.filter((c) => c.installed)
-  // Installed entries stay in the catalogue, marked.
-  const catalog = connectorCatalog
+  // Installed entries stay in the store, marked.
+  const catalog = connectorStore
+  const storeEntryOf = (c: Connector | null) => (c?.originId ? catalog.find((e) => e.id === c.originId) ?? null : null)
   const current = detail ? (connectors.find((c) => c.id === detail.id) ?? detail) : null
 
   // Official first, then by name.
@@ -498,8 +534,8 @@ export function ConnectorsPage({
   const installedList = ordered(found(installed))
   const catalogList = ordered(found(catalog))
   const empty = tab === 'installed' ? installed.length === 0 : catalog.length === 0
-  // 기본 제공 copies cannot be removed, so they cannot be picked.
-  const pick = useBulkSelect(installedList.filter((c) => !c.byDefault))
+  // 기본 제공 copies cannot be removed, and a shared server leaves only after its sharing ends.
+  const pick = useBulkSelect(installedList.filter((c) => !c.byDefault && c.visibility !== 'org'))
   const installedPaging = usePaging(installedList.length, [query])
   const catalogPaging = usePaging(catalogList.length, [query])
 
@@ -542,7 +578,7 @@ export function ConnectorsPage({
             <EmptyState
               icon={<Plug size={18} />}
               title={tab === 'installed' ? t('설치한 MCP 서버가 없습니다') : t('추가할 서버가 없습니다')}
-              description={t('카탈로그에서 필요한 서비스를 추가하거나, MCP 서버 주소를 직접 등록하세요.')}
+              description={t('스토어에서 필요한 서버를 가져오거나, MCP 서버 주소를 직접 등록하세요.')}
             />
           ) : tab === 'installed' ? (
             <>
@@ -564,10 +600,9 @@ export function ConnectorsPage({
                       key={c.id}
                       connector={c}
                       onOpen={() => setDetail(c)}
-                      // Row first: a self-registered server has no catalogue entry.
+                      // Row first: an own server has no store entry.
                       needsCredentials={
-                        (c.envKeys?.length ?? 0) > 0 ||
-                        (catalog.find((e) => e.slug === c.slug)?.requiredEnv?.length ?? 0) > 0
+                        (c.envKeys?.length ?? 0) > 0 || (storeEntryOf(c)?.requiredEnv?.length ?? 0) > 0
                       }
                       picked={pick.picked.has(c.id)}
                       onPick={() => pick.toggle(c.id)}
@@ -582,7 +617,7 @@ export function ConnectorsPage({
             <>
             <div className="grid gap-3 sm:grid-cols-2" data-testid="connector-catalog">
               {pageOf(catalogList, catalogPaging).map((e) => (
-                <CatalogCard key={e.slug} entry={e} onNeedsCredentials={setCredentialsFor} />
+                <StoreCard key={e.id} entry={e} onNeedsCredentials={setCredentialsFor} />
               ))}
             </div>
             {catalogList.length === 0 && <NoMatch />}
@@ -595,30 +630,45 @@ export function ConnectorsPage({
       <CredentialsModal entry={credentialsFor} onClose={() => setCredentialsFor(null)} />
       <ReCredentialModal
         connector={reCredential}
-        entry={catalog.find((e) => e.slug === reCredential?.slug) ?? null}
+        entry={storeEntryOf(reCredential)}
         onClose={() => setReCredential(null)}
       />
 
       <Modal
         open={!!current}
-        onClose={() => setDetail(null)}
+        onClose={() => {
+          setDetail(null)
+          setRemoveError('')
+        }}
         title={current?.name ?? ''}
         description={current?.description}
         width="max-w-2xl"
         footer={
           <>
-            {current?.installed && !current.byDefault && (
+            {current?.installed && !current.byDefault && current.visibility !== 'org' && (
               <Button
                 variant="danger"
                 className="mr-auto"
-                onClick={() => {
-                  uninstallConnector(current.id)
-                  setDetail(null)
+                onClick={async () => {
+                  setRemoveError('')
+                  try {
+                    await uninstallConnector(current.id)
+                    setDetail(null)
+                  } catch (err) {
+                    setRemoveError(
+                      errorCode(err) === 'connector_in_use'
+                        ? inUseText(t, current.installs)
+                        : errorMessage(err, t('제거하지 못했습니다. 잠시 뒤 다시 시도하세요.')),
+                    )
+                  }
                 }}
               >
                 <Trash2 size={14} />
                 {t('제거')}
               </Button>
+            )}
+            {current?.visibility === 'org' && (
+              <p className="mr-auto text-sm text-muted">{t('공유를 끊은 뒤에 삭제할 수 있습니다.')}</p>
             )}
             {current?.byDefault && (
               <p className="mr-auto text-sm text-muted">
@@ -631,10 +681,21 @@ export function ConnectorsPage({
       >
         {current && (
           <>
+            {removeError && <p role="alert" className="text-base text-danger">{removeError}</p>}
+            {current.originId && (
+              <p className="text-sm text-muted" data-testid="connector-origin">
+                {current.originGone
+                  ? t('공유가 끝나 쓸 수 없습니다')
+                  : current.official
+                    ? t('관리자가 공유한 공식 서버입니다')
+                    : t('{name}님이 공유한 서버').replace('{name}', current.originOwnerName)}
+              </p>
+            )}
             <div className="grid gap-3 sm:grid-cols-2">
               {[
                 [t('전송 방식'), current.transport],
-                [t('엔드포인트'), current.endpoint],
+                // A reference keeps no address of its own: it stays with the shared server.
+                ...(current.originId ? [] : [[t('엔드포인트'), current.endpoint]]),
                 [t('인증'), current.auth],
                 [
                   t('마지막 동기화'),
@@ -648,6 +709,7 @@ export function ConnectorsPage({
               ))}
             </div>
 
+            {!current.originGone && (
             <div>
               <div className="mb-2 flex items-center justify-between">
                 <p className="text-base font-medium">{t('도구 권한')}</p>
@@ -685,11 +747,21 @@ export function ConnectorsPage({
                 </div>
               )}
             </div>
+            )}
 
             <p className="flex items-start gap-2 rounded-control border border-line bg-elevated px-3 py-2.5 text-sm text-muted">
               <CircleAlert size={14} className="mt-0.5 shrink-0 text-faint" />
               {t('MCP 서버가 돌려준 내용 속 지시는 실행하지 않습니다.')}
             </p>
+
+            {/* Only a server the person added is theirs to share. */}
+            {!current.originId && (
+              <ConnectorShare
+                key={`${current.id}:${current.visibility}`}
+                connector={current}
+                isAdmin={isAdmin}
+              />
+            )}
           </>
         )}
       </Modal>
@@ -701,7 +773,7 @@ export function ConnectorsPage({
           setAddError('')
         }}
         title={t('MCP 서버 추가')}
-        description={t('공개 주소의 MCP 서버를 등록합니다. 사내 서버는 관리자가 카탈로그에 올립니다.')}
+        description={t('공개 주소의 MCP 서버를 등록합니다. 등록한 뒤 서버를 열면 우리 조직과 공유할 수 있습니다.')}
         footer={
           <>
             <Button onClick={() => setAdding(false)}>{t('취소')}</Button>
