@@ -101,6 +101,14 @@ async def draw(
     return Chart(png=png, code=code, input_tokens=tokens["in"], output_tokens=tokens["out"])
 
 
+async def render(code: str) -> bytes:
+    """PNG of ready-made `code` run in the sandbox (no model call, no retry), or `ChartError`."""
+    png, error = await _run(code)
+    if png is None:
+        raise ChartError("차트 코드가 실행되지 않았습니다. " + (error or "")[:300])
+    return png
+
+
 async def _write(prompt: str, model: str, api_key: str, tokens: dict[str, int]) -> str:
     base, _ = await settings_store.litellm_config()
     try:
@@ -171,4 +179,4 @@ async def _run(code: str) -> tuple[bytes | None, str]:
         return None, f"실행 서비스 오류: {exc}"
 
 
-__all__ = ["Chart", "ChartError", "draw"]
+__all__ = ["Chart", "ChartError", "draw", "render"]

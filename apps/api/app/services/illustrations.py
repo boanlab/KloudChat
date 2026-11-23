@@ -56,10 +56,20 @@ _DECLINED = re.compile(
 #: 「삽화를 곁들여」, 「사진도 넣어」, "with illustrations": the person asked for pictures
 _ASKED = re.compile(
     r"삽화|일러스트|illustrat"
-    r"|(?:그림|이미지|사진)[^\n.]{0,12}?(?:넣|포함|곁들|추가|붙|담아|들어가|있는|와\s?함께|과\s?함께)"
+    r"|(?:이미지|사진|표지\s?그림)[^\n.]{0,12}?(?:넣|포함|곁들|추가|붙|담아|들어가|있는|와\s?함께|과\s?함께)"
+    r"|표지\s?(?:그림|이미지|사진)"
     r"|(?:add|include|with)\s+(?:some\s+|a\s+few\s+)?(?:pictures|images|photos)",
     re.I,
 )
+
+
+#: 「그림을 넣어」: a picture on its own, but a figure when the request names what it shows
+#: (「방법과 결과에는 그림을 넣어 줘, 결과는 연도별 추이」): the document draws those itself
+_FIGURE_ASKED = re.compile(
+    r"그림[^\n.]{0,12}?(?:넣|포함|곁들|추가|붙|담아|들어가|있는|와\s?함께|과\s?함께)")
+_SHOWS_DATA = re.compile(
+    r"방법|결과|추이|비교|흐름|구조|절차|과정|분석|데이터|수치|통계|지표|현황|성과|그래프|차트|도표"
+    r"|도식|표로")
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,7 +92,10 @@ def declined(request: str) -> bool:
 
 def wanted(request: str) -> bool:
     """Whether the request asks for pictures; decorative ones are never added unasked."""
-    return bool(_ASKED.search(request or "")) and not declined(request)
+    text = request or ""
+    asked = bool(_ASKED.search(text)) or (
+        bool(_FIGURE_ASKED.search(text)) and not _SHOWS_DATA.search(text))
+    return asked and not declined(text)
 
 
 def _parse(text: str, allowed: set[int], limit: int) -> list[Planned]:
