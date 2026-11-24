@@ -645,6 +645,19 @@ export const transcriptionsApi = {
   },
 }
 
+/** A voice conversation reads an answer sentence by sentence; the clip is not kept. */
+export const speakApi = {
+  speak: async (text: string, voice: string, opts: { warm?: boolean } = {}) => {
+    const res = await authedFetch(`${BASE_URL}/audio/speak`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, voice, warm: opts.warm === true }),
+    })
+    if (!res.ok) throw new ApiError(res.status, await readDetail(res))
+    return await res.blob()
+  },
+}
+
 export const authConfig = {
   /** Public: the browser cannot read admin settings. */
   get: () =>
