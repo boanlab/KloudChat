@@ -157,7 +157,7 @@ it when nobody is mid-turn):
 | `KCHAT_DEFAULT_CHAT_MODEL` | `DEFAULT_CHAT_MODEL` | `local/qwen3.8-flash` | First-install seed of **System › Model › Default chat model** (as are the four rows below). Absent from the catalogue (or outside an account's allowlist) → the first allowed chat model in catalogue order; price never picks a default. |
 | `KCHAT_DEFAULT_REPORT_MODEL` / `KCHAT_DEFAULT_SLIDES_MODEL` | `DEFAULT_REPORT_MODEL` / `DEFAULT_SLIDES_MODEL` | `local/qwen3.8-27b` | Per-surface defaults for Report and Slides; documents keep the larger model while chat uses the faster one. Empty falls back to the chat default. |
 | `KCHAT_DEFAULT_IMAGE_MODEL` | `DEFAULT_IMAGE_MODEL` | `bytedance-seed/seedream-5-0-flash` | Default picture model, for the image surface and for pictures in reports and decks. The picture models are whatever the gateway's catalogue lists; one that does not honour an aspect ratio is offered square only (`imagegen.aspects_for`). Absent from the catalogue → pictures are unavailable until an administrator picks one (`409 default_image_model_unset`); outside an account's allowlist → the first picture model it may use. A strict-local conversation never uses it: see [Governance](#governance-security--audit-admingovernance). |
-| `KCHAT_DEFAULT_AUDIO_MODEL` / `KCHAT_DEFAULT_VIDEO_MODEL` | `DEFAULT_AUDIO_MODEL` / `DEFAULT_VIDEO_MODEL` | `openai/gpt-audio-mini` / `google/veo-3.1-lite` | The Audio / Video surface keeps one default per modality. Absent from the catalogue → that mode is unavailable until an administrator picks one (`409 default_audio_model_unset` for audio). |
+| `KCHAT_DEFAULT_AUDIO_MODEL` / `KCHAT_DEFAULT_VIDEO_MODEL` | `DEFAULT_AUDIO_MODEL` / `DEFAULT_VIDEO_MODEL` | `strict-local/qwen3-tts` / `google/veo-3.1-lite` | The Audio / Video surface keeps one default per modality. Absent from the catalogue → that mode is unavailable until an administrator picks one (`409 default_audio_model_unset` for audio). |
 
 ### Super Agent and Auto
 
@@ -501,10 +501,10 @@ before answering. Chat and image must be chosen (`422 model_chat_required`,
 one (`422 model_audio_required`, `422 model_video_required`); report and slides
 left empty follow the chat default. Price never picks a default.
 
-Chat, report and slides also offer **Super Agent** and **Super Agent (strict-local)**,
-listed first; Super Agent is the default for all three
-(`system_settings` `routing.chat`, `routing.report`, `routing.slides`: `super`,
-`super_strict`, `manual`, or empty for report and slides to follow chat; unset means
+Chat, report, slides and sheet also offer **Super Agent** and **Super Agent (strict-local)**,
+listed first; Super Agent is the default for all four
+(`system_settings` `routing.chat`, `routing.report`, `routing.slides`, `routing.sheet`: `super`,
+`super_strict`, `manual`, or empty for report, slides and sheet to follow chat; unset means
 `super`). A new conversation starts in that mode unless the person picked a model or a Super Agent
 entry for that surface (home screen or Settings › Preferences) or its agent has its own model; a project conversation where
 internal material stays strict-local starts on `super_strict`. With a Super Agent entry

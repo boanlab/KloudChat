@@ -503,6 +503,7 @@ const EN: Record<string, string> = {
   '챗 기본 모델': 'Default chat model',
   '보고서 기본 모델': 'Default report model',
   '슬라이드 기본 모델': 'Default slides model',
+  '시트 기본 모델': 'Default sheet model',
   '이미지 기본 모델': 'Default image model',
   '오디오 기본 모델': 'Default audio model',
   '동영상 기본 모델': 'Default video model',

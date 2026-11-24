@@ -78,6 +78,7 @@ OCR_MAX_PAGES = "ocr.max_pages"
 MODEL_CHAT = "models.chat"
 MODEL_REPORT = "models.report"
 MODEL_SLIDES = "models.slides"
+MODEL_SHEET = "models.sheet"
 MODEL_IMAGE = "models.image"
 MODEL_AUDIO = "models.audio"
 MODEL_VIDEO = "models.video"
@@ -90,10 +91,12 @@ MODEL_VIDEO = "models.video"
 ROUTING_CHAT = "routing.chat"
 ROUTING_REPORT = "routing.report"
 ROUTING_SLIDES = "routing.slides"
+ROUTING_SHEET = "routing.sheet"
 ROUTING_KEYS: dict[str, str] = {
     "chat": ROUTING_CHAT,
     "report": ROUTING_REPORT,
     "slides": ROUTING_SLIDES,
+    "sheet": ROUTING_SHEET,
 }
 #: The two Super Agent start modes an admin may pick as a surface default.
 SUPER_START_MODES = ("super", "super_strict")
@@ -108,6 +111,7 @@ MODEL_ROLE_ENV: dict[str, str] = {
     MODEL_CHAT: "default_chat_model",
     MODEL_REPORT: "default_report_model",
     MODEL_SLIDES: "default_slides_model",
+    MODEL_SHEET: "default_sheet_model",
     MODEL_IMAGE: "default_image_model",
     MODEL_AUDIO: "default_audio_model",
     MODEL_VIDEO: "default_video_model",
@@ -398,6 +402,7 @@ class ModelRoles:
     chat: str
     report: str
     slides: str
+    sheet: str
     image: str
     audio: str
     video: str
@@ -408,9 +413,11 @@ class ModelRoles:
     chat_start: str = "super"
     report_start: str = "super"
     slides_start: str = "super"
+    sheet_start: str = "super"
     #: report and slides follow chat for both model and mode (stored "")
     report_follows_chat: bool = False
     slides_follows_chat: bool = False
+    sheet_follows_chat: bool = False
 
     def start(self, kind: str) -> str:
         """How a new conversation of `kind` starts: `super`, `super_strict` or `manual`."""
@@ -418,12 +425,13 @@ class ModelRoles:
             "chat": self.chat_start,
             "report": self.report_start,
             "slides": self.slides_start,
+            "sheet": self.sheet_start,
         }.get(kind, "manual")
 
     def surface_default(self, kind: str) -> str:
         """The admin's default for `kind` as one value: a Super Agent mode, a model id, or ""
         (report and slides following chat)."""
-        if kind in ("report", "slides") and getattr(self, f"{kind}_follows_chat"):
+        if kind in ("report", "slides", "sheet") and getattr(self, f"{kind}_follows_chat"):
             return ""
         start = self.start(kind)
         return start if start in SUPER_START_MODES else getattr(self, kind)
@@ -450,15 +458,19 @@ def model_roles_from(values: dict[str, str]) -> ModelRoles:
 
     chat_start = start(ROUTING_CHAT) or "super"
     report_raw, slides_raw = start(ROUTING_REPORT), start(ROUTING_SLIDES)
+    sheet_raw = start(ROUTING_SHEET)
     return ModelRoles(
         chat_start=chat_start,
         report_start=report_raw or chat_start,
         slides_start=slides_raw or chat_start,
+        sheet_start=sheet_raw or chat_start,
         report_follows_chat=report_raw == "",
         slides_follows_chat=slides_raw == "",
+        sheet_follows_chat=sheet_raw == "",
         chat=pick(MODEL_CHAT),
         report=pick(MODEL_REPORT),
         slides=pick(MODEL_SLIDES),
+        sheet=pick(MODEL_SHEET),
         image=pick(MODEL_IMAGE),
         audio=pick(MODEL_AUDIO),
         video=pick(MODEL_VIDEO),

@@ -8,9 +8,9 @@ import { useUnsavedMark } from '@/lib/unsaved'
 
 type Roles = NonNullable<SystemSettings['modelRoles']>
 type Choice = Roles['choices']['chat'][number]
-type ModelKey = 'chat' | 'report' | 'slides' | 'image' | 'audio' | 'video'
+type ModelKey = 'chat' | 'report' | 'slides' | 'sheet' | 'image' | 'audio' | 'video'
 
-/** Per surface: label, source list, and what empty means (none: required; `none`: required only while one is served); `superAgent` puts the two Super Agent entries first (chat, report, slides only). */
+/** Per surface: label, source list, and what empty means (none: required; `none`: required only while one is served); `superAgent` puts the two Super Agent entries first (chat, report, slides, sheet only). */
 const SURFACES: {
   key: ModelKey
   label: string
@@ -22,6 +22,7 @@ const SURFACES: {
   { key: 'chat', label: '챗 기본 모델', from: 'chat', superAgent: true },
   { key: 'report', label: '보고서 기본 모델', from: 'report', empty: '챗 기본 모델을 따름', superAgent: true },
   { key: 'slides', label: '슬라이드 기본 모델', from: 'slides', empty: '챗 기본 모델을 따름', superAgent: true },
+  { key: 'sheet', label: '시트 기본 모델', from: 'sheet', empty: '챗 기본 모델을 따름', superAgent: true },
   { key: 'image', label: '이미지 기본 모델', from: 'image' },
   { key: 'audio', label: '오디오 기본 모델', from: 'audio', none: '제공되는 오디오 모델 없음' },
   { key: 'video', label: '동영상 기본 모델', from: 'video', none: '제공되는 동영상 모델 없음' },
@@ -31,6 +32,7 @@ const FIELD: Record<ModelKey, string> = {
   chat: 'modelChat',
   report: 'modelReport',
   slides: 'modelSlides',
+  sheet: 'modelSheet',
   image: 'modelImage',
   audio: 'modelAudio',
   video: 'modelVideo',
@@ -136,6 +138,7 @@ export function ModelRolesSection({
       chat: roles.chat,
       report: roles.report,
       slides: roles.slides,
+      sheet: roles.sheet,
       image: roles.image,
       audio: roles.audio,
       video: roles.video,

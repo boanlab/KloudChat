@@ -389,7 +389,7 @@ interface State {
   autoRouting: ModelCatalogue['autoRouting']
   /** Super Agent entries; `pending` until the catalogue answers. */
   superAgent: NonNullable<ModelCatalogue['superAgent']>
-  /** How a new chat, report or slides conversation starts (설정 › 시스템 › 모델). */
+  /** How a new chat, report, slides or sheet conversation starts (설정 › 시스템 › 모델). */
   defaultRouting: NonNullable<ModelCatalogue['defaultRoutingByKind']>
   loadModels: () => Promise<void>
 
@@ -952,7 +952,7 @@ function handToTheComposer(set: Set, text: string) {
 }
 
 /** Surfaces that fall back to the chat default (`reconcileDefaults`). */
-const CHAT_SURFACES: SessionKind[] = ['chat', 'report', 'slides']
+const CHAT_SURFACES: SessionKind[] = ['chat', 'report', 'slides', 'sheet']
 
 /**
  * Remembered pick if still served, else the surface default, else (chat, report, slides) the chat

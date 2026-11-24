@@ -479,7 +479,7 @@ export interface ModelCatalogue {
   /** Strict-local picture model when the person picked none; empty when none is served. */
   strictImageDefault?: string
   /** How a new chat, report or slides conversation starts (설정 › 시스템 › 모델); absent: `super`. */
-  defaultRoutingByKind?: Partial<Record<'chat' | 'report' | 'slides', 'super' | 'super_strict' | 'manual'>>
+  defaultRoutingByKind?: Partial<Record<'chat' | 'report' | 'slides' | 'sheet', 'super' | 'super_strict' | 'manual'>>
   autoRouting: {
     enabled: boolean
     available: boolean
@@ -595,11 +595,12 @@ export interface SystemSettings {
     visionChoices: { id: string; label: string }[]
   }
   /** As in force; an empty string is a choice (follow the default or session model). Absent from older servers. */
-  /** Chat, report and slides: `super`, `super_strict`, a model id, or "" (follow chat). */
+  /** Chat, report, slides and sheet: `super`, `super_strict`, a model id, or "" (follow chat). */
   modelRoles?: {
     chat: string
     report: string
     slides: string
+    sheet: string
     image: string
     audio: string
     video: string
@@ -607,7 +608,7 @@ export interface SystemSettings {
     externalThinking: boolean
     defaultMonthlyCredits: number
     choices: Record<
-      'chat' | 'report' | 'slides' | 'image' | 'audio' | 'video',
+      'chat' | 'report' | 'slides' | 'sheet' | 'image' | 'audio' | 'video',
       { id: string; label: string; strictLocal: boolean }[]
     >
   }
@@ -770,6 +771,7 @@ export const adminApi = {
     modelChat?: string
     modelReport?: string
     modelSlides?: string
+    modelSheet?: string
     modelImage?: string
     modelAudio?: string
     modelVideo?: string

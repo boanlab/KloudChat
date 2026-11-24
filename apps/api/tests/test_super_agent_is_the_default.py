@@ -24,7 +24,7 @@ from app.schemas.chat import SessionCreate
 from app.services import governance, settings_store, start_mode
 from app.services import models as model_service
 
-ROUTED = (SessionKind.chat, SessionKind.report, SessionKind.slides)
+ROUTED = (SessionKind.chat, SessionKind.report, SessionKind.slides, SessionKind.sheet)
 
 
 @pytest.fixture
@@ -84,7 +84,7 @@ async def test_the_governance_screen_does_not_return_a_switch(world) -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("kind", ROUTED)
-async def test_chat_report_and_slides_start_on_super_agent(world, kind) -> None:
+async def test_chat_report_slides_and_sheet_start_on_super_agent(world, kind) -> None:
     assert await start_mode.starting_mode(kind, _user()) == (RoutingMode.super, "")
 
 
@@ -178,7 +178,7 @@ async def test_allowed_models_that_leave_super_agent_nothing_start_on_a_model(wo
 
 async def _create(monkeypatch, payload: SessionCreate, user: User, agent=None) -> ChatSession:
     async def enabled_kinds():
-        return ["chat", "report", "slides", "image"]
+        return ["chat", "report", "slides", "sheet", "image"]
 
     async def nothing(*_args, **_kwargs):
         return None
@@ -299,12 +299,14 @@ async def test_saving_a_start_keeps_the_model_and_a_model_fixes_the_start(monkey
     monkeypatch.setattr(admin, "_check_model_roles", accept)
     db = _Db()
     await admin.put_settings(SystemSettingsIn(
-        model_chat="super_strict", model_report="openai/gpt-x", model_slides=""),
+        model_chat="super_strict", model_report="openai/gpt-x", model_slides="",
+        model_sheet="super_strict"),
         _Request(), _admin(), db)
     assert written == {
         "routing.chat": "super_strict",
         "models.report": "openai/gpt-x", "routing.report": "manual",
         "models.slides": "", "routing.slides": "",
+        "routing.sheet": "super_strict",
     }
     (event,) = _audits(db)
     assert event.event_metadata["changes"]["model_chat"] == ["super", "super_strict"]
@@ -332,7 +334,7 @@ async def test_the_catalogue_says_how_each_surface_starts(monkeypatch) -> None:
     finally:
         model_service.invalidate_cache()
     assert catalogue["defaultRoutingByKind"] == {
-        "chat": "super", "report": "manual", "slides": "super"}
+        "chat": "super", "report": "manual", "slides": "super", "sheet": "super"}
 
 
 # ── migration 0089 ──────────────────────────────────────────────────────
@@ -412,3 +414,21 @@ def test_a_report_set_to_follow_chat_keeps_following() -> None:
     # a shipped value an administrator saved back is the shipped default: moves
     assert migration.kept_starts(
         {"models.chat": "local/qwen3.8-flash"}, {"model_chat"}) == {}
+
+
+def test_a_sheet_follows_chat_when_its_start_is_empty_and_starts_on_super_by_default() -> None:
+    fresh = settings_store.model_roles_from({})
+    assert fresh.start("sheet") == "super" and fresh.surface_default("sheet") == "super"
+    followed = settings_store.model_roles_from(
+        {"models.chat": "local/a", "routing.chat": "manual", "routing.sheet": ""})
+    assert followed.sheet_follows_chat and followed.surface_default("sheet") == ""
+    assert followed.start("sheet") == "manual"
+    fixed = settings_store.model_roles_from(
+        {"models.sheet": "local/b", "routing.sheet": "manual"})
+    assert fixed.surface_default("sheet") == "local/b"
+
+
+def test_a_fresh_install_seeds_the_self_hosted_speech_model_as_the_audio_default() -> None:
+    assert settings_store.model_roles_from({}).audio == "strict-local/qwen3-tts"
+    assert settings_store.model_roles_from({"models.audio": "openai/gpt-audio-mini"}).audio == (
+        "openai/gpt-audio-mini")
