@@ -115,7 +115,8 @@ class AudioRequest(Wire):
     prompt: str = Field(min_length=1, max_length=2000)
     model: str | None = None
     audio_kind: Literal["narration", "music"] = "narration"
-    voice: str = "alloy"
+    #: empty = the model's default voice (alloy; sohee for Qwen3-TTS)
+    voice: str = ""
     #: folded into prompt (no model takes it as a param)
     seconds: int = Field(default=0, ge=0, le=300)
 

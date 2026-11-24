@@ -157,6 +157,10 @@ export interface ModelInfo {
   editsImages?: boolean
   /** Image only: draws a new picture from a prompt; false for an edit-only model, which is on no surface. */
   drawsImages?: boolean
+  /** Narration only: the voices this model has; the picker lists no others. */
+  voices?: string[]
+  /** Served at /audio/speech (a self-hosted speech model) rather than as chat audio. */
+  speechEndpoint?: boolean
   /** Flat credits per call, for models billed per clip rather than per token. */
   creditPerCall?: number
   /** Which of the five surfaces may select this model. */

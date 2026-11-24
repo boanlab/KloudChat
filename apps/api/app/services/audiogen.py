@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import base64
 import binascii
+import io
 import json
 import logging
+import re
 import struct
 import uuid
+import wave
 from dataclasses import dataclass
 
 import httpx
@@ -25,6 +28,45 @@ _PCM_CHANNELS = 1
 _PCM_BITS = 16
 
 VOICES = ("alloy", "echo", "fable", "onyx", "nova", "shimmer")
+
+#: self-hosted Qwen3-TTS CustomVoice presets (`/v1/audio/voices`); the server's own default is
+#: vivian, ours is sohee, its Korean voice
+QWEN_VOICES = (
+    "sohee", "vivian", "serena", "uncle_fu", "dylan", "eric", "ryan", "aiden", "ono_anna",
+)
+
+#: voice used when the person has not picked one the model has
+_DEFAULT_VOICE = {"qwen3-tts": "sohee"}
+
+_HANGUL = re.compile(r"[\uac00-\ud7a3\u3131-\u318e]")
+_LETTER = re.compile(r"[^\W\d_]")
+
+
+def _family(model_id: str) -> str:
+    """`strict-local/qwen3-tts` → `qwen3-tts`."""
+    return model_id.rsplit("/", 1)[-1].lower()
+
+
+def voices_for(model_id: str, *, speech_endpoint: bool = False) -> tuple[str, ...]:
+    """Voices of one narration model; empty when the model is not a narration one."""
+    if _family(model_id).startswith("qwen3-tts"):
+        return QWEN_VOICES
+    if speech_endpoint:
+        return ()  # a speech server whose voices we do not know: none offered
+    return VOICES if "gpt-audio" in model_id else ()
+
+
+def default_voice(model_id: str) -> str:
+    voices = voices_for(model_id, speech_endpoint=True)
+    return _DEFAULT_VOICE.get(_family(model_id)) or (voices[0] if voices else "alloy")
+
+
+def language_of(text: str) -> str:
+    """`Korean` when Hangul is a real share of the letters, else the server's `Auto`."""
+    letters = len(_LETTER.findall(text))
+    if letters and len(_HANGUL.findall(text)) / letters >= 0.3:
+        return "Korean"
+    return "Auto"
 
 
 class AudioError(RuntimeError):
@@ -76,8 +118,13 @@ async def generate(
     speech: bool,
     voice: str = "alloy",
     seconds: int = 0,
+    speech_endpoint: bool = False,
 ) -> GeneratedAudio:
-    """One clip, or AudioError."""
+    """One clip, or AudioError. `speech_endpoint`: a model served at /audio/speech."""
+    if speech_endpoint:
+        return await _speech(
+            base_url=base_url, api_key=api_key, model=model, prompt=prompt, voice=voice
+        )
     payload: dict = {
         "model": model,
         "modalities": ["text", "audio"],
@@ -157,10 +204,50 @@ async def generate(
     )
 
 
+async def _speech(
+    *, base_url: str, api_key: str, model: str, prompt: str, voice: str
+) -> GeneratedAudio:
+    """OpenAI-style /audio/speech (self-hosted TTS): the text is read as written, WAV back."""
+    payload = {
+        "model": model,
+        "input": prompt.strip(),
+        "voice": voice,
+        "language": language_of(prompt),
+        "response_format": "wav",
+        "stream": False,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            response = await client.post(
+                f"{base_url.rstrip('/')}/audio/speech",
+                json=payload,
+                headers={"Authorization": f"Bearer {api_key}"},
+            )
+    except httpx.HTTPError as exc:
+        log.warning("speech request failed: %s", exc)
+        raise AudioError("오디오 생성 서버에 연결하지 못했습니다.") from exc
+    if response.status_code >= 400:
+        log.warning("speech generation %s: %s", response.status_code, response.text[:200])
+        raise AudioError("오디오를 만들지 못했습니다. 잠시 후 다시 시도하세요.")
+    body = response.content
+    if body[:4] != b"RIFF":
+        raise AudioError("오디오를 만들지 못했습니다. 잠시 뒤 다시 시도하세요.")
+    return GeneratedAudio(
+        data=body, mime="audio/wav", extension="wav", input_tokens=0, output_tokens=0,
+        transcript="",
+    )
+
+
 def duration_seconds(audio: GeneratedAudio) -> int:
-    """Exact for our WAV; 0 otherwise."""
+    """Exact for WAV (header read, else our fixed PCM layout); 0 otherwise."""
     if audio.mime != "audio/wav":
         return 0
+    try:
+        with wave.open(io.BytesIO(audio.data)) as clip:
+            if clip.getframerate() > 0 and clip.getnframes() > 0:
+                return round(clip.getnframes() / clip.getframerate())
+    except (wave.Error, EOFError):
+        pass
     samples = max(0, len(audio.data) - 44)
     return round(samples / (_PCM_RATE * _PCM_CHANNELS * _PCM_BITS // 8))
 
@@ -172,11 +259,15 @@ def store(user_id: str, audio: GeneratedAudio) -> tuple[str, str]:
 
 
 __all__ = [
+    "QWEN_VOICES",
     "VOICES",
     "AudioError",
     "GeneratedAudio",
     "compose_prompt",
+    "default_voice",
     "duration_seconds",
     "generate",
+    "language_of",
     "store",
+    "voices_for",
 ]

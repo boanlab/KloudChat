@@ -114,7 +114,7 @@ async def test_audio_without_a_default_says_so_instead_of_choosing(monkeypatch) 
     monkeypatch.setattr(sessions, "_owned", owned)
     with pytest.raises(HTTPException) as refused:
         await sessions.generate_audio(
-            "s1", AudioRequest(prompt="안내 방송", audio_kind="narration"), _user(), None
+            "s1", AudioRequest(prompt="안내 방송", audio_kind="narration"), _user(), None, None
         )
     assert refused.value.status_code == 409
     assert refused.value.detail == "default_audio_model_unset"

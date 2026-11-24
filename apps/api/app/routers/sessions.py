@@ -4955,31 +4955,64 @@ def _store_figure(
 
 
 @router.post("/{session_id}/audio", response_model=ArtifactOut)
-async def generate_audio(session_id: str, payload: AudioRequest, user: CurrentUser, db: DbSession):
+async def generate_audio(
+    session_id: str, payload: AudioRequest, user: CurrentUser, db: DbSession, request: Request
+):
     """Makes one sound clip (speech or music) as an artifact."""
     session = await _owned(db, user, session_id)
     speech = payload.audio_kind == "narration"
     catalogue = await model_service.list_models()
-
-    def _audio_models():
-        return [m for m in catalogue["models"] if "av" in m["kinds"]]
-
     # asked, else the admin's audio default; none chosen: no silent pick
     default = (catalogue.get("defaultAvModelByMode") or {}).get("audio") or ""
     if not payload.model and not default:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="default_audio_model_unset"
         )
-    model = model_service.find(catalogue["models"], payload.model or default)
+    boundary = await _media_gate(
+        db, user, request, session, catalogue["models"], payload.prompt, asked=payload.model
+    )
+
+    def _fits(m: dict) -> bool:
+        # narration: chat-audio models and models served at /audio/speech; music: Lyria
+        if speech:
+            return "gpt-audio" in m["id"] or bool(m.get("speechEndpoint"))
+        return "lyria" in m["id"]
+
+    usable = _allowed_models(user, catalogue["models"], kind="av")
+    if boundary.strict:
+        # nothing leaves: only self-hosted, strict-local models
+        usable = [m for m in usable if _strict_model(m)]
+    model = model_service.find(usable, payload.model or default)
+    swapped = False
     # model must match kind; mismatch = proxy 400
-    wanted_id = "gpt-audio" if speech else "lyria"
-    if model is None or "av" not in model["kinds"] or wanted_id not in model["id"]:
-        candidates = [m for m in _audio_models() if wanted_id in m["id"]]
+    if model is None or "av" not in model["kinds"] or not _fits(model):
+        candidates = sorted(
+            (m for m in usable if m["modality"] == "audio" and _fits(m)),
+            key=model_service.fallback_order,
+        )
         if not candidates:
+            await _audit_media_boundary(user, request, session, boundary, refused=True)
+            if boundary.strict:
+                raise _refuse_outside_boundary(boundary, "av")
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="no_audio_models"
             )
         model = candidates[0]
+        swapped = True
+    await _audit_media_boundary(user, request, session, boundary)
+
+    # voices belong to the model: one it lacks is refused, never swapped for another
+    voice = payload.voice
+    if speech:
+        voices = model.get("voices") or []
+        if not voice or (swapped and voice not in voices):
+            voice = audiogen.default_voice(model["id"])
+        elif voices and voice not in voices:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="voice_not_in_model"
+            )
+    # an outside model gets the masked prompt; a strict-local one the person's own words
+    prompt = payload.prompt if _strict_model(model) else boundary.carry(payload.prompt)
     if not has_headroom(user, model):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="insufficient_credits"
@@ -4996,9 +5029,10 @@ async def generate_audio(session_id: str, payload: AudioRequest, user: CurrentUs
             base_url=base_url,
             api_key=api_key,
             model=model["id"],
-            prompt=payload.prompt,
+            prompt=prompt,
             speech=speech,
-            voice=payload.voice,
+            voice=voice,
+            speech_endpoint=bool(model.get("speechEndpoint")),
             seconds=payload.seconds,
         )
     except audiogen.AudioError as exc:
@@ -5032,7 +5066,7 @@ async def generate_audio(session_id: str, payload: AudioRequest, user: CurrentUs
             "jobId": None,
             "prompt": payload.prompt,
             "audioKind": payload.audio_kind,
-            "voice": payload.voice if speech else "",
+            "voice": voice if speech else "",
             "requestedSec": payload.seconds,
             "durationSec": audiogen.duration_seconds(audio),
             "model": model["id"],
