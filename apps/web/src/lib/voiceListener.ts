@@ -27,11 +27,16 @@ export async function startVoiceListener(handlers: {
   onUtterance: (wav: Blob) => void
   /** Louder bar while this app is playing sound, so it does not hear itself. */
   bar?: () => number
+  /** The microphone was unplugged, switched or taken by another app. */
+  onEnded?: () => void
 }): Promise<VoiceListener> {
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
   })
   const context = new AudioContext({ sampleRate: SAMPLE_RATE })
+  // A browser that holds sound until a gesture starts the context suspended.
+  if (context.state === 'suspended') void context.resume().catch(() => undefined)
+  stream.getAudioTracks()[0]?.addEventListener('ended', () => handlers.onEnded?.())
   const source = context.createMediaStreamSource(stream)
   const processor = context.createScriptProcessor(FRAME, 1, 1)
   const vad = new Vad()

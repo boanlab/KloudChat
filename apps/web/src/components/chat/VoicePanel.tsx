@@ -1,6 +1,6 @@
 import { AudioLines, Hand, Loader2, Mic, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { errorMessage, speakApi, transcriptionsApi } from '@/lib/api'
+import { ApiError, errorMessage, speakApi, transcriptionsApi } from '@/lib/api'
 import { startVoiceListener, type VoiceListener } from '@/lib/voiceListener'
 import { getPlayer, panelArrived, panelLeft, resetTurn, session, setVoiceMode, subscribeChange } from '@/lib/voiceSession'
 import { VOICE_TONE } from '@/lib/voices'
@@ -49,6 +49,8 @@ export function VoicePanel({
   const [phase, setPhase] = useState<Phase>(session.turn ? 'thinking' : 'starting')
   const [heard, setHeard] = useState('')
   const [holding, setHolding] = useState(false)
+  /** Whisper gave back nothing: once is a mumble, three in a row is a microphone too far away. */
+  const [empties, setEmpties] = useState(0)
   const [voice, setVoice] = useState(() => {
     const picked = storedVoice()
     return voices.includes(picked) ? picked : defaultVoice
@@ -113,7 +115,9 @@ export function VoicePanel({
         setPhase('hearing')
       },
       onUtterance: (wav) => void utterance(wav),
-      bar: () => (sound.busy() ? 2.5 : 1),
+      // Only sound in the room raises the bar; a reply still being voiced is silent.
+      bar: () => (sound.sounding() ? 2.5 : 1),
+      onEnded: () => alive.current && setPhase('blocked'),
     })
       .then((l) => {
         if (!alive.current) {
@@ -140,20 +144,29 @@ export function VoicePanel({
     setPhase('transcribing')
     let text = ''
     try {
-      const last = replies().at(-1)?.content.replace(/\s+/g, ' ').slice(0, 300)
-      text = (await transcriptionsApi.transcribe(wav, 'speech.wav', { prompt: last })).text.trim()
+      // No `prompt`: Whisper conditions on it, and a long earlier answer used as the hint made it
+      // return nothing for a short question.
+      text = (await transcriptionsApi.transcribe(wav, 'speech.wav')).text.trim()
     } catch (err) {
-      if (alive.current) {
+      if (!alive.current) return
+      if (err instanceof ApiError && err.status === 422 && /들린 말이 없습니다|녹음된 소리가 없습니다/.test(err.detail)) {
+        // The sound arrived and made no words: a status, not an error.
+        setHeard('')
+        setEmpties((n) => n + 1)
+      } else {
         setHeard(errorMessage(err, t('받아쓰지 못했습니다. 다시 말씀해 주세요.')))
-        setPhase('listening')
       }
+      setPhase('listening')
       return
     }
     if (!alive.current) return
     if (!/[\p{L}\p{N}]/u.test(text)) {
+      setHeard('')
+      setEmpties((n) => n + 1)
       setPhase('listening')
       return
     }
+    setEmpties(0)
     setHeard(text)
     // A turn still running is let go before the next is sent.
     const id = sessionRef.current
@@ -228,6 +241,14 @@ export function VoicePanel({
     blocked: t('마이크를 쓸 수 없습니다. 브라우저의 마이크 권한을 확인해 주세요.'),
   }
   const silent = getPlayer().failed() === true
+  const line = silent
+    ? t('음성을 만들지 못해 글로만 보여 드립니다.')
+    : heard ||
+      (empties >= 3
+        ? t('잘 들리지 않습니다. 마이크 가까이에서 말씀하세요.')
+        : empties > 0
+          ? t('말씀은 들렸지만 글로 옮기지 못했습니다. 다시 말씀해 주세요.')
+          : t('말씀하시면 여기에 받아쓴 글이 보입니다.'))
 
   return (
     <div
@@ -253,9 +274,7 @@ export function VoicePanel({
           {status[phase]}
         </p>
         <p className="truncate text-xs text-muted" data-testid="voice-heard">
-          {silent
-            ? t('음성을 만들지 못해 글로만 보여 드립니다.')
-            : heard || t('말한 내용은 대화에 글로 남습니다.')}
+          {line}
         </p>
       </div>
       <span className="flex h-6 w-3 shrink-0 items-end" aria-hidden>

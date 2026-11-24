@@ -1,5 +1,8 @@
 /** Plays an answer's sentences one after another while the next ones are still being voiced. */
 
+/** Sound left in the room after a clip ends. */
+const TAIL_MS = 400
+
 export interface VoicePlayer {
   /** Voices a sentence (at once, one request at a time) and queues it for playing. */
   add: (text: string) => void
@@ -7,6 +10,8 @@ export interface VoicePlayer {
   stop: () => void
   /** Sound is playing or queued. */
   busy: () => boolean
+  /** A clip is audible now, or just stopped (its tail is still in the room): the microphone hears it. */
+  sounding: () => boolean
   /** The speech server failed for this answer; the rest is not voiced. */
   failed: () => boolean
 }
@@ -22,6 +27,7 @@ export function createVoicePlayer(
   let playing = false
   let endCurrent: (() => void) | null = null
   let broke = false
+  let endedAt = 0
   const urls = new Set<string>()
 
   const release = (url: string | null) => {
@@ -44,6 +50,7 @@ export function createVoicePlayer(
         const audio = new Audio(url)
         current = audio
         const end = () => {
+          endedAt = Date.now()
           if (current === audio) current = null
           if (endCurrent === end) endCurrent = null
           release(url)
@@ -99,6 +106,9 @@ export function createVoicePlayer(
       onChange()
     },
     busy: () => playing || queue.length > 0,
+    // Waiting for the speech server makes the player busy but silent: the microphone then needs no
+    // higher bar.
+    sounding: () => (current !== null && !current.paused && !current.ended) || Date.now() - endedAt < TAIL_MS,
     failed: () => broke,
   }
 }

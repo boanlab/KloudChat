@@ -14,6 +14,10 @@ _TIMEOUT = 180.0
 
 MAX_BYTES = 25 * 1024 * 1024
 
+#: Whisper reads the prompt as the text just before the clip; a long one (a whole earlier answer)
+#: can leave a short clip with no transcript at all, so only its tail is sent
+PROMPT_MAX = 120
+
 
 class TranscribeError(RuntimeError):
     """Transcription failure; user-facing message."""
@@ -80,6 +84,12 @@ async def _transcribe_locally(
     elif isinstance(body.get("duration"), (int, float)):
         _last_seconds = int(round(float(body["duration"])))
     text = str(body.get("text") or "").strip()
+    if not text and prompt.strip():
+        # A vocabulary hint can leave Whisper with nothing to say for a short clip; once more
+        # without it.
+        log.info("whisper returned no text with a prompt; retrying without it")
+        body = await _whisper(stt_url, data, filename, language)
+        text = str(body.get("text") or "").strip()
     if not text:
         raise TranscribeError("들린 말이 없습니다.")
     return text
@@ -128,7 +138,7 @@ async def _whisper(
     if language:
         form["language"] = language
     if prompt.strip():
-        form["prompt"] = prompt.strip()[:500]
+        form["prompt"] = prompt.strip()[-PROMPT_MAX:]
     try:
         # a ten-minute piece of a long recording takes longer than a dictation
         async with tools_gateway.client(timeout=600.0 if segments else _TIMEOUT) as client:

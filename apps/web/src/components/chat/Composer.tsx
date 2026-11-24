@@ -816,7 +816,7 @@ export function Composer({
         .reverse()
         .find((m) => m.role === 'assistant' && m.content?.trim())
       const { text } = await transcriptionsApi.transcribe(blob, 'speech.wav', {
-        prompt: lastAnswer?.content.replace(/\s+/g, ' ').slice(0, 300),
+        prompt: lastAnswer?.content.replace(/\s+/g, ' ').slice(-120),
       })
       if (text) {
         setValue((v) => (v.trim() ? `${v.replace(/\s+$/, '')} ${text}` : text))
