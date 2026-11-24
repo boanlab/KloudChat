@@ -1321,8 +1321,8 @@ async def _rescue_model(
 ) -> dict | None:
     """Rescue writer for an empty or announced-only answer: the other self-hosted model, else None.
 
-    Read from the model roles (chat, report, slides, code fallback), else the outline model;
-    an external writer gets the chat model."""
+    Read from the model roles (chat, report, slides), the Super Agent's helper pick, else the
+    outline model; an external writer gets the chat model."""
     roles = await settings_store.model_roles()
     if not str(writer.get("id") or "").startswith(("local/", "strict-local/")):
         if strict_local or not roles.chat or roles.chat == writer.get("id"):
@@ -1333,7 +1333,10 @@ async def _rescue_model(
     def bare(model_id: str) -> str:
         return model_id.split("/", 1)[-1]
 
-    for wanted in (roles.chat, roles.report, roles.slides, roles.code_fallback,
+    helper = super_agent.helper_models(
+        super_agent.normalise_rules((await governance.current()).super_agent_rules),
+        super_agent.HELPER_CODE_ROW, strict=strict_local)
+    for wanted in (roles.chat, roles.report, roles.slides, *helper,
                    (outline or {}).get("id")):
         if not wanted or not str(wanted).startswith(("local/", "strict-local/")) or (
                 bare(str(wanted)) == bare(str(writer["id"]))):
@@ -1346,19 +1349,19 @@ async def _rescue_model(
 
 
 async def _enrichment_model(writer: dict, *, strict_local: bool, disable_fallbacks: bool) -> dict:
-    """Catalogue row for titles and memory extraction; writer when `title_model` unset.
-    Strict-local: the chosen model's `strict-local/` twin, else the writer."""
+    """Catalogue row for titles and memory extraction: the Super Agent's helper pick (internal
+    only; its `strict-local/` twin on a strict-local turn), else the writer."""
     if disable_fallbacks:
         return writer
-    resolved = await model_service.resolve_enrichment_model()
-    if strict_local and resolved.startswith("local/"):
-        resolved = "strict-local/" + resolved.split("/", 1)[1]
-    elif strict_local and not resolved.startswith("strict-local/"):
-        return writer
-    if not resolved or resolved == writer["id"]:
-        return writer
+    rules = super_agent.normalise_rules((await governance.current()).super_agent_rules)
     catalogue = await model_service.list_models()
-    return model_service.find(catalogue["models"], resolved) or writer
+    for wanted in super_agent.helper_models(rules, strict=strict_local):
+        if wanted == writer["id"]:
+            return writer
+        found = model_service.find(catalogue["models"], wanted)
+        if found is not None and "chat" in (found.get("kinds") or []):
+            return found
+    return writer
 
 
 def _find_auto_quality_model(models: list[dict], model_id: str | None) -> dict | None:

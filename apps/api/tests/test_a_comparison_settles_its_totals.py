@@ -290,14 +290,15 @@ async def test_readings_that_name_an_option_with_more_words_still_agree():
     assert len(pre.costs["scenarios"]) == 1
 
 
-def test_the_tiebreak_stays_on_the_turn_s_route(monkeypatch):
-    from app.services import report
+def test_the_tiebreak_stays_internal_and_on_the_turn_s_route(monkeypatch):
+    from app.services import report, super_agent
 
-    monkeypatch.setattr(report.settings, "code_fallback_model", "local/qwen3.5-122b")
-    assert report._tiebreak_model("strict-local/qwen3.8-27b") == "strict-local/qwen3.5-122b"
-    assert report._tiebreak_model("local/qwen3.8-27b") == "local/qwen3.5-122b"
-    monkeypatch.setattr(report.settings, "code_fallback_model", "openai/gpt-x")
-    assert report._tiebreak_model("strict-local/qwen3.8-27b") == "strict-local/qwen3.8-27b"
+    monkeypatch.setattr(super_agent, "cached_rules", lambda: super_agent.normalise_rules({
+        "document_hard": {"model": "z-ai/glm-5.3", "strictModel": "strict-local/qwen3.8-27b"}}))
+    assert report._tiebreak_model("strict-local/qwen3.8-flash") == "strict-local/qwen3.8-27b"
+    assert report._tiebreak_model("local/qwen3.8-27b") == "local/qwen3.8-27b"
+    # never an outside model, even when the writer is one
+    assert report._tiebreak_model("openai/gpt-x") == "local/qwen3.8-27b"
 
 
 async def test_a_split_drops_the_sandbox_s_totals_too(monkeypatch):

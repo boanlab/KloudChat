@@ -41,6 +41,7 @@ from app.services import (
     revised_tables,
     richtext,
     settings_store,
+    super_agent,
     table_mend,
     thinking,
     units,
@@ -1374,13 +1375,12 @@ _MOST_TOKENS = 16000
 
 
 def _tiebreak_model(model: str) -> str:
-    """Larger self-hosted model for tie-breaking; strict-local twin on strict-local turns."""
-    big = settings_store.cached_model_roles().code_fallback
-    if model.startswith("strict-local/"):
-        if big.startswith("local/"):
-            return "strict-local/" + big.split("/", 1)[1]
-        return big if big.startswith("strict-local/") else model
-    return big or model
+    """Self-hosted model for tie-breaking: the Super Agent's `document_hard` row, internal
+    only; its strict-local twin on strict-local turns."""
+    strict = model.startswith("strict-local/")
+    picks = super_agent.helper_models(
+        super_agent.cached_rules(), super_agent.HELPER_TIEBREAK_ROW, strict=strict)
+    return picks[0] if picks else model
 
 
 async def _complete(

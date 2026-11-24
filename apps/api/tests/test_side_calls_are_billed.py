@@ -414,9 +414,6 @@ async def test_a_generated_title_gets_its_own_ledger_line(monkeypatch) -> None:
         yield {"type": "delta", "text": "답변"}
         yield {"type": "usage", "inputTokens": 1_000, "outputTokens": 100}
 
-    async def enrichment_model():
-        return cheap["id"]
-
     async def catalogue():
         return {"models": [cheap]}
 
@@ -433,9 +430,7 @@ async def test_a_generated_title_gets_its_own_ledger_line(monkeypatch) -> None:
 
     monkeypatch.setattr(sessions_router, "SessionLocal", lambda: db)
     monkeypatch.setattr(sessions_router.agent_service, "run_turn", run_turn)
-    monkeypatch.setattr(
-        sessions_router.model_service, "resolve_enrichment_model", enrichment_model
-    )
+    _helper_is(monkeypatch, [cheap["id"]])
     monkeypatch.setattr(sessions_router.model_service, "list_models", catalogue)
     monkeypatch.setattr(sessions_router.chat_service, "generate_title", title)
     monkeypatch.setattr(sessions_router, "_store_artifacts", store_artifacts)
@@ -481,9 +476,6 @@ async def test_a_memory_extraction_is_billed_at_the_model_that_read_the_turn(
     cheap = {"id": "local/small", "kinds": ["chat"], "creditCost": 2, "inputCreditCost": 1}
     seen: dict = {}
 
-    async def enrichment_model():
-        return cheap["id"]
-
     async def catalogue():
         return {"models": [cheap]}
 
@@ -496,9 +488,7 @@ async def test_a_memory_extraction_is_billed_at_the_model_that_read_the_turn(
 
     monkeypatch.setattr(sessions_router, "SessionLocal", lambda: db)
     monkeypatch.setattr(sessions_router.artifact_extract, "store_requested", nothing)
-    monkeypatch.setattr(
-        sessions_router.model_service, "resolve_enrichment_model", enrichment_model
-    )
+    _helper_is(monkeypatch, [cheap["id"]])
     monkeypatch.setattr(sessions_router.model_service, "list_models", catalogue)
     monkeypatch.setattr(sessions_router.auto_memory_service, "extract", extract)
 
@@ -546,3 +536,12 @@ async def test_an_extraction_that_never_reached_the_model_costs_nothing(
     )
 
     assert (written, usage) == (0, {"inputTokens": 0, "outputTokens": 0})
+
+
+def _helper_is(monkeypatch, models):
+    """The Super Agent's helper pick, fixed for the test."""
+    async def policy(*_args, **_kwargs):
+        return type("Policy", (), {"super_agent_rules": None})()
+
+    monkeypatch.setattr(sessions_router.governance, "current", policy)
+    monkeypatch.setattr(sessions_router.super_agent, "helper_models", lambda *a, **k: models)

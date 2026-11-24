@@ -17,12 +17,10 @@ const external = { id: 'openai/gpt-x', label: 'OpenAI · GPT', strictLocal: fals
 function roles(extra: Record<string, unknown>) {
   return {
     chat: 'local/qwen3.8-27b', report: '', slides: 'local/qwen3.8-27b', image: 'google/img', audio: '', video: '',
-    title: 'local/qwen3.8-flash', code: 'local/qwen3.8-27b', codeFallback: 'local/qwen3.8-flash',
     selfHostedThinking: false, externalThinking: false, defaultMonthlyCredits: 500000,
     choices: {
       chat: [local27, flash, external], report: [local27, flash, external], slides: [local27, flash, external],
       image: [{ id: 'google/img', label: 'Google · Image', strictLocal: false }], audio: [], video: [],
-      helper: [local27, flash],
     },
     ...extra,
   }
@@ -69,13 +67,12 @@ async function adminFixture(page: Page, info: TestInfo) {
     if (method === 'PUT' && path === '/admin/settings') {
       const body = request.postDataJSON() as Record<string, string>
       puts.push(body)
-      if (body.modelTitle === 'openai/gpt-x') return json({ detail: 'model_title_invalid' }, 422)
+      if (body.modelImage === 'openai/gpt-x') return json({ detail: 'model_image_invalid' }, 422)
       const next = roles({})
       current = settings({
         ...(body.modelChat !== undefined ? {
           chat: body.modelChat, report: body.modelReport, slides: body.modelSlides, image: body.modelImage,
-          audio: body.modelAudio, video: body.modelVideo, title: body.modelTitle, code: body.modelCode,
-          codeFallback: body.modelCodeFallback, selfHostedThinking: body.thinkingSelfHosted === '1',
+          audio: body.modelAudio, video: body.modelVideo, selfHostedThinking: body.thinkingSelfHosted === '1',
           externalThinking: body.thinkingExternal === '1',
         } : {}),
         defaultMonthlyCredits: Number(body.defaultMonthlyCredits ?? next.defaultMonthlyCredits),
@@ -123,21 +120,18 @@ test('the administrator decides which model does which job', { tag: '@phone' }, 
     .toHaveText('Super Agent')
   // The picture default is always a named model: no empty choice.
   await expect(card.getByRole('combobox', { name: /^이미지 기본 모델/ }).locator('option')).toHaveText(['Google · Image'])
-  // Side work that reads the conversation offers self-hosted models only.
-  const title = card.getByRole('combobox', { name: /^제목·기억·요약 모델/ })
-  await expect(title.locator('option')).toHaveText(['대화의 모델을 그대로 사용', 'Qwen · 27B', 'Qwen · Flash'])
-  await expect(title).toHaveValue('local/qwen3.8-flash')
+  // Helper work has no model of its own: it runs on the Super Agent's models.
+  await expect(card.getByRole('combobox', { name: /^(제목·기억·요약|코드 작성)/ })).toHaveCount(0)
 
   await report.selectOption('local/qwen3.8-flash')
   await chat.selectOption('super_strict')
-  await card.getByRole('combobox', { name: /^코드 작성 대체 모델/ }).selectOption('')
   await card.getByRole('switch', { name: '자체 호스팅 모델이 답하기 전에 생각' }).click()
   await card.getByRole('button', { name: '저장' }).click()
   await expect(card.getByText('저장했습니다')).toBeVisible()
   expect(puts.at(-1)).toEqual({
     modelChat: 'super_strict', modelReport: 'local/qwen3.8-flash', modelSlides: 'local/qwen3.8-27b',
-    modelImage: 'google/img', modelAudio: '', modelVideo: '', modelTitle: 'local/qwen3.8-flash',
-    modelCode: 'local/qwen3.8-27b', modelCodeFallback: '', thinkingSelfHosted: '1', thinkingExternal: '0',
+    modelImage: 'google/img', modelAudio: '', modelVideo: '',
+    thinkingSelfHosted: '1', thinkingExternal: '0',
   })
   await expect(card.getByRole('switch', { name: '자체 호스팅 모델이 답하기 전에 생각' }))
     .toHaveAttribute('aria-checked', 'true')
@@ -170,16 +164,16 @@ test('a refused model is named in words', async ({ page }, info) => {
   const card = page.locator('[data-section="model-roles"]')
   await expect(card).toBeVisible({ timeout: 15_000 })
   // The server is the authority: a model the list never offered is refused in words.
-  const title = card.getByRole('combobox', { name: /^제목·기억·요약 모델/ })
-  await title.evaluate((select: HTMLSelectElement) => {
+  const image = card.getByRole('combobox', { name: /^이미지 기본 모델/ })
+  await image.evaluate((select: HTMLSelectElement) => {
     const option = document.createElement('option')
     option.value = 'openai/gpt-x'
     option.textContent = 'forged'
     select.append(option)
   })
-  await title.selectOption('openai/gpt-x')
+  await image.selectOption('openai/gpt-x')
   await card.getByRole('button', { name: '저장' }).click()
-  await expect(card.getByRole('alert')).toHaveText('보조 작업에는 이 인스턴스가 직접 운영하는 모델만 고를 수 있습니다.')
+  await expect(card.getByRole('alert')).toHaveText('이 작업에 쓸 수 없는 모델입니다. 목록에서 다시 고르세요.')
   expect(unexpected).toEqual([])
 })
 

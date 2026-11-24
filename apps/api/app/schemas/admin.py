@@ -51,10 +51,7 @@ class SystemSettingsIn(Wire):
     model_audio: str | None = None
     model_video: str | None = None
     #: self-hosted chat model, or "" for session's own
-    model_title: str | None = None
     #: `run_code` writer then fallback; self-hosted; "" none
-    model_code: str | None = None
-    model_code_fallback: str | None = None
     #: "1" think, "0" don't
     thinking_self_hosted: str | None = None
     thinking_external: str | None = None

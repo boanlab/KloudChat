@@ -33,6 +33,8 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 #: Stored key → `Settings` field it is seeded from. Frozen here: the app's own map may move.
+# The helper-work roles (`models.title`, `models.code`, `models.code_fallback`) were seeded here
+# once; they are gone (helper work runs on the Super Agent table), so a fresh install skips them.
 MODEL_KEYS: dict[str, str] = {
     "models.chat": "default_chat_model",
     "models.report": "default_report_model",
@@ -40,9 +42,6 @@ MODEL_KEYS: dict[str, str] = {
     "models.image": "default_image_model",
     "models.audio": "default_audio_model",
     "models.video": "default_video_model",
-    "models.title": "title_model",
-    "models.code": "code_model",
-    "models.code_fallback": "code_fallback_model",
 }
 FLAG_KEYS: dict[str, str] = {
     "thinking.self_hosted": "self_hosted_chat_thinking",
@@ -53,13 +52,6 @@ SEEDED = (*MODEL_KEYS, *FLAG_KEYS, CREDITS_KEY)
 
 FLASH = "local/qwen3.8-flash"
 STRICT_FLASH = "strict-local/qwen3.8-flash"
-#: Earlier code defaults of `TITLE_MODEL`.
-TITLE_DEFAULTS = {
-    "local/qwen3.8-27b",
-    "local/qwen3.6-35b",
-    "local/glm-4.7-flash",
-    "local/qwen3.8-flash-next",
-}
 RENAMED = {
     "local/qwen3.8-flash-next": FLASH,
     "strict-local/qwen3.8-flash-next": STRICT_FLASH,
@@ -74,8 +66,6 @@ def _env() -> dict[str, str]:
     for key, field in MODEL_KEYS.items():
         value = str(getattr(settings, field) or "").strip()
         out[key] = RENAMED.get(value, value)
-    if out["models.title"] in TITLE_DEFAULTS:
-        out["models.title"] = FLASH
     for key, field in FLAG_KEYS.items():
         out[key] = "1" if getattr(settings, field) else "0"
     out[CREDITS_KEY] = str(int(settings.default_monthly_credits))

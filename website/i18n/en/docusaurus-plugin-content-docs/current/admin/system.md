@@ -15,7 +15,7 @@ The model gateway (LiteLLM) address and master key (stored encrypted, never show
 Decides which model does which job when the user has not chosen one. The values in the server's `.env` file are used once, at installation; after that, what is saved here takes precedence.
 
 - **Default model for each screen**: chat, report, slides, image, audio and video. Chat, report and slides can also be set to **Super Agent** or **Super Agent (strict-local)**, listed first; a fresh install starts with Super Agent. With Super Agent chosen, each question gets a model from the table on the **Routing** tab, and the model chosen before stays as the fallback when the table has nothing usable. Chat and image must be chosen, and so must audio and video when the instance serves any. Left empty, report and slides follow the chat default. Price never picks a default: without a usable image, audio or video default, that screen makes nothing until the user picks a model, and says so. A model the user chose always comes first, and an agent with no model of its own follows the screen's default.
-- **Side-work models**: the model for titles, memories and summaries, the code-writing model and its fallback. These read the conversation, so only models this instance runs itself (self-hosted) can be chosen. In a strict-local conversation the strict-local version of the chosen model does the work.
+- **Side work**: titles, memories, summaries and code writing (`run_code`) have no model setting of their own. They run on the models named in the Super Agent table on the **Routing** tab (the "simple question" and "code" rows). They read the conversation, so only models this instance runs itself (self-hosted) are used, even if a row names an external one. In a strict-local conversation the strict-local version does the work.
 - **Thinking**: whether self-hosted and external models reason before answering. On makes judgements more exact but adds tens of seconds to minutes to each call. Both are off by default.
 
 ### Self-hosted models of the default install
@@ -24,8 +24,8 @@ The defaults use two models the organization runs itself. Each is registered in 
 
 | Model | Jobs |
 |---|---|
-| `qwen3.8-27b` | Writing reports and slides (the "Reports and slides" row of the Super Agent table), code model |
-| `qwen3.8-flash` | Everyday chat questions (Super Agent table), titles, memory and summaries, vision model for text reading, code fallback model |
+| `qwen3.8-27b` | Writing reports and slides (the "Reports and slides" row of the Super Agent table) |
+| `qwen3.8-flash` | Everyday chat questions (Super Agent table), titles, memory and summaries, code writing, vision model for text reading |
 
 All of them can be changed on this tab and on the **Routing** and **Features** tabs.
 

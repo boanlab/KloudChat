@@ -135,7 +135,6 @@ def install_renderer(patch: Patch) -> None:
 #: Model defaults in force when the records were made. A call's key holds its model, so
 #: a later default would find no recorded reply.
 RECORDED_DEFAULTS = {
-    "code_fallback_model": "local/qwen3.5-122b",
     "adaptive_economy_models_default": "local/qwen3.5-122b",
 }
 
@@ -154,6 +153,14 @@ def pin_recorded_defaults(patch: Patch) -> None:
         return settings_store.model_roles_from({})
 
     patch(settings_store, "model_roles", model_roles)
+
+    # The tie-break model of the records: the 122B (a separate setting then, the Super Agent's
+    # `document_hard` row now), on the strict-local twin for a strict-local turn.
+    def recorded_tiebreak(model: str) -> str:
+        big = "local/qwen3.5-122b"
+        return "strict-local/qwen3.5-122b" if model.startswith("strict-local/") else big
+
+    patch(report, "_tiebreak_model", recorded_tiebreak)
     patch(settings_store, "cached_model_roles", lambda: settings_store.model_roles_from({}))
     # Genre is read from the whole instruction, memo lines included, as when recorded.
     patch(report, "lead_instruction", context.instruction_part)

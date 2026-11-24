@@ -8,7 +8,7 @@ import { useUnsavedMark } from '@/lib/unsaved'
 
 type Roles = NonNullable<SystemSettings['modelRoles']>
 type Choice = Roles['choices']['chat'][number]
-type ModelKey = 'chat' | 'report' | 'slides' | 'image' | 'audio' | 'video' | 'title' | 'code' | 'codeFallback'
+type ModelKey = 'chat' | 'report' | 'slides' | 'image' | 'audio' | 'video'
 
 /** Per surface: label, source list, and what empty means (none: required; `none`: required only while one is served); `superAgent` puts the two Super Agent entries first (chat, report, slides only). */
 const SURFACES: {
@@ -27,27 +27,6 @@ const SURFACES: {
   { key: 'video', label: '동영상 기본 모델', from: 'video', none: '제공되는 동영상 모델 없음' },
 ]
 
-const HELPERS: { key: ModelKey; label: string; hint: string; empty: string }[] = [
-  {
-    key: 'title',
-    label: '제목·기억·요약 모델',
-    hint: '대화 제목을 짓고, 기억할 내용을 뽑고, 긴 대화를 요약합니다.',
-    empty: '대화의 모델을 그대로 사용',
-  },
-  {
-    key: 'code',
-    label: '코드 작성 모델',
-    hint: '파일을 읽고 계산하는 코드(run_code)를 씁니다.',
-    empty: '고르지 않음',
-  },
-  {
-    key: 'codeFallback',
-    label: '코드 작성 대체 모델',
-    hint: '앞의 모델이 실패하면 한 번 더 씁니다.',
-    empty: '대체 모델 없음',
-  },
-]
-
 const FIELD: Record<ModelKey, string> = {
   chat: 'modelChat',
   report: 'modelReport',
@@ -55,19 +34,14 @@ const FIELD: Record<ModelKey, string> = {
   image: 'modelImage',
   audio: 'modelAudio',
   video: 'modelVideo',
-  title: 'modelTitle',
-  code: 'modelCode',
-  codeFallback: 'modelCodeFallback',
 }
 
-/** Server refusals (`model_title_invalid`, …). */
+/** Server refusals (`model_image_required`, …). */
 function refusal(detail: string, t: (s: string) => string): string {
   if (detail === 'model_chat_required') return t('챗 기본 모델은 비워 둘 수 없습니다.')
   if (detail === 'model_image_required') return t('이미지 기본 모델은 비워 둘 수 없습니다.')
   if (detail === 'model_audio_required') return t('오디오 기본 모델은 비워 둘 수 없습니다.')
   if (detail === 'model_video_required') return t('동영상 기본 모델은 비워 둘 수 없습니다.')
-  if (/^model_(title|code|code_fallback)_invalid$/.test(detail))
-    return t('보조 작업에는 이 인스턴스가 직접 운영하는 모델만 고를 수 있습니다.')
   if (/^model_\w+_invalid$/.test(detail)) return t('이 작업에 쓸 수 없는 모델입니다. 목록에서 다시 고르세요.')
   return t('저장하지 못했습니다. 잠시 뒤 다시 시도하세요.')
 }
@@ -165,9 +139,6 @@ export function ModelRolesSection({
       image: roles.image,
       audio: roles.audio,
       video: roles.video,
-      title: roles.title,
-      code: roles.code,
-      codeFallback: roles.codeFallback,
     })
     setSelfHostedThinking(roles.selfHostedThinking)
     setExternalThinking(roles.externalThinking)
@@ -215,7 +186,7 @@ export function ModelRolesSection({
         <div className="min-w-0 flex-1">
           <p className="text-base font-medium">{t('작업별 모델')}</p>
           <p className="text-sm text-muted">
-            {t('화면별 기본 모델과 보조 작업 모델을 정합니다(챗·보고서·슬라이드는 Super Agent가 기본이고, 사용자가 고른 모델이 우선합니다).')}
+            {t('화면별 기본 모델을 정합니다(챗·보고서·슬라이드는 Super Agent가 기본이고, 사용자가 고른 모델이 우선합니다).')}
           </p>
         </div>
       </div>
@@ -238,28 +209,6 @@ export function ModelRolesSection({
             onChange={pick(row.key)}
           />
         ))}
-      </div>
-
-      <div className="space-y-3 border-t border-line pt-4">
-        <div>
-          <p className="text-base font-medium">{t('보조 작업 모델')}</p>
-          <p className="text-sm text-muted">
-            {t('대화 내용을 읽으므로 이 인스턴스가 운영하는 모델만 고를 수 있습니다.')}
-          </p>
-        </div>
-        <div className="grid gap-4 lg:grid-cols-3">
-          {HELPERS.map((row) => (
-            <ModelSelect
-              key={row.key}
-              label={t(row.label)}
-              hint={t(row.hint)}
-              value={models[row.key]}
-              choices={roles.choices.helper}
-              empty={t(row.empty)}
-              onChange={pick(row.key)}
-            />
-          ))}
-        </div>
       </div>
 
       <div className="space-y-3 border-t border-line pt-4">

@@ -305,6 +305,49 @@ def stored_rules(raw: Any) -> dict[str, dict[str, str]]:
     }
 
 
+# --- helper work ---------------------------------------------------------------------------
+
+#: Rows whose internal pick does the helper work around a turn: titles, memory, the `run_code`
+#: writer, tie-breaks, rescue writers. There is no separate helper model setting.
+HELPER_ROW = "simple"
+HELPER_CODE_ROW = "code"
+HELPER_TIEBREAK_ROW = "document_hard"
+
+
+def _internal_twin(model_id: str, strict: bool) -> str:
+    """`model_id` as a self-hosted id for the turn's boundary; "" when it runs outside."""
+    model_id = (model_id or "").strip()
+    name = model_id.split("/", 1)[1] if model_id.startswith(("local/", "strict-local/")) else ""
+    if not name:
+        return ""
+    return ("strict-local/" if strict else "local/") + name
+
+
+def helper_models(
+    rules: dict[str, dict[str, str]], row: str = HELPER_ROW, *, strict: bool
+) -> list[str]:
+    """Self-hosted models for helper work, best first: the row's own pick (its strict column
+    when the `super` column names an outside model), then the built-in fallbacks. Never an
+    outside model, so helper calls cannot carry conversation text out; a strict-local turn
+    gets `strict-local/` ids only."""
+    rule = rules.get(row) or rules[HELPER_ROW]
+    out: list[str] = []
+    for wanted in (rule.get("model", ""), rule.get("strictModel", ""),
+                   *(_STRICT_FALLBACKS if strict else _FALLBACKS)):
+        model = _internal_twin(wanted, strict)
+        if model and model not in out:
+            out.append(model)
+    return out
+
+
+def cached_rules() -> dict[str, dict[str, str]]:
+    """The admin table as last read (≤ TTL old), else the built-in one; for sync callers."""
+    from app.services import governance
+
+    policy = governance._cache.get("value")
+    return normalise_rules(getattr(policy, "super_agent_rules", None))
+
+
 # --- classification -----------------------------------------------------------------------
 
 _ACK = re.compile(

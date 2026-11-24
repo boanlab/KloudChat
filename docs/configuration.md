@@ -51,7 +51,7 @@ authorizes raw, masked or strict-local egress.
 | Deployment | `SANDBOX_IN_BOUNDARY`, `SELF_HOSTED_THINKING_MODELS`, `OCR_VISION_MODEL`, `KNOWLEDGE_DIGEST_MODEL`, `SKILL_DRAFTS`, `TIMEZONE` | Facts about the infrastructure: whether the sandbox is inside the boundary, which served models think unless told not to, which served vision model reads pages best when the administrator picked **Auto**, which strict-local model writes the per-file digests of project material (only a strict-local one is ever used; empty: code digests only), whether this is an evaluation instance, the install's time zone. |
 | Deployment | `CREDITS_PER_USD`, `LITELLM_BUDGET_HEADROOM` | Accounting constants (shown read-only under **System › Proxy**). |
 | Deployment | `PERF_*` | Performance monitoring: mounts, targets and thresholds of this host. |
-| Product, seeded once | `DEFAULT_CHAT_MODEL`, `DEFAULT_REPORT_MODEL`, `DEFAULT_SLIDES_MODEL`, `DEFAULT_IMAGE_MODEL`, `DEFAULT_AUDIO_MODEL`, `DEFAULT_VIDEO_MODEL`, `TITLE_MODEL`, `CODE_MODEL`, `CODE_FALLBACK_MODEL`, `SELF_HOSTED_CHAT_THINKING`, `EXTERNAL_CHAT_THINKING` | **System › Model** (`models.*`, `thinking.*` in `system_settings`). The environment seeds a fresh install once. |
+| Product, seeded once | `DEFAULT_CHAT_MODEL`, `DEFAULT_REPORT_MODEL`, `DEFAULT_SLIDES_MODEL`, `DEFAULT_IMAGE_MODEL`, `DEFAULT_AUDIO_MODEL`, `DEFAULT_VIDEO_MODEL`, `SELF_HOSTED_CHAT_THINKING`, `EXTERNAL_CHAT_THINKING` | **System › Model** (`models.*`, `thinking.*` in `system_settings`). The environment seeds a fresh install once. |
 | Product, seeded once | `DEFAULT_MONTHLY_CREDITS` | **System › Signup** (`credits.default_monthly`). Seeded once the same way. |
 | Product, environment as fallback | `ADAPTIVE_ROUTING_DEFAULT`, `ADAPTIVE_CLASSIFIER_MODEL_DEFAULT`, `ADAPTIVE_ECONOMY_MODELS_DEFAULT`, `ADAPTIVE_QUALITY_DEFAULT`, `ADAPTIVE_QUALITY_MODELS_DEFAULT`, `INTERNAL_DATA_STRICT_LOCAL_DEFAULT` | **System › Routing** and **Security · audit** (`governance` row). The environment only fills the row when it is first created. |
 | Product, environment as fallback | `BRAND_NAME`, `SIGNUP_MODE`, `SMTP_HOST` … `SMTP_FROM` | **System › Branding / Signup / Mail**. A stored value wins; with none stored the environment applies. |
@@ -286,11 +286,9 @@ Not exposed in `.env.example`; set them directly on the `api` service in
 Some of them compose already passes through from `.env`: `ENV` as
 `KCHAT_ENV`, `TIMEZONE` as `KCHAT_TIMEZONE`, `GEOIP_DATABASE` as
 `KCHAT_GEOIP_DATABASE`, `SELF_HOSTED_THINKING_MODELS` as
-`KCHAT_SELF_HOSTED_THINKING_MODELS`, and the first-install seeds (`TITLE_MODEL`
-and the two thinking switches, in `x-first-install-seeds`, which both `migrate`
-and `api` receive). The others take effect only when added to the `api`
-service's `environment:` — or, for `CODE_MODEL` and `CODE_FALLBACK_MODEL`, to
-`x-first-install-seeds` before the first install.
+`KCHAT_SELF_HOSTED_THINKING_MODELS`, and the two thinking switches (first-install seeds, in
+`x-first-install-seeds`, which both `migrate` and `api` receive). The others take
+effect only when added to the `api` service's `environment:`.
 
 | Variable | Default | Notes |
 | --- | --- | --- |
@@ -321,8 +319,6 @@ service's `environment:` — or, for `CODE_MODEL` and `CODE_FALLBACK_MODEL`, to
 | `CREDITS_PER_USD` | `100000` | The single exchange rate. Adjust this when provider prices move, rather than re-cutting everyone's allowance. |
 | `LITELLM_BUDGET_HEADROOM` | `0.2` | How far above the KloudChat allowance the proxy-side budget sits. A backstop that sits exactly on the limit fires first, blocking someone with a number no screen shows them. |
 | `ARGON2_TIME_COST` / `ARGON2_MEMORY_COST` / `ARGON2_PARALLELISM` | `3` / `65536` / `4` | `memory_cost` is in KiB. |
-| `TITLE_MODEL` | `local/qwen3.8-flash` | First-install seed of **System › Model › Titles, memories and summaries model**. Names conversations, extracts memories and writes the running summary of a long conversation. A strict-local turn uses its own model instead. Empty falls back to the session's own model — correct, but wasteful on an expensive one. Set through `KCHAT_TITLE_MODEL`. |
-| `CODE_MODEL` / `CODE_FALLBACK_MODEL` | `local/qwen3.8-27b` / `local/qwen3.8-flash` | First-install seeds of **System › Model › Code-writing model** and its fallback. Write the Python behind `run_code`: the first gets a try and a repair, the second one more try. The fallback also settles two cost readings of a comparison that disagree. A strict-local turn uses the `strict-local/` twin of a `local/` id and drops any other. |
 | `ADAPTIVE_CLASSIFIER_MODEL_DEFAULT` | `strict-local/qwen3.8-flash` | The Auto classifier of a fresh governance row; once an administrator saves **System › Routing**, the saved value wins. |
 | `WEB_SEARCH_RESULTS` / `WEB_SEARCH_SCRAPE` | `5` / `3` | Each scrape is a page fetch; this trades answer quality against turn latency. |
 | `APP_BASE_URL` | — | Origin used to build password reset links. Never taken from the request `Host`, which is attacker-controlled. |
@@ -541,8 +537,8 @@ better on Korean institutional requests:
 | Calculation programs for a document (`calc`) | the writer | follows the writer |
 | Missing-information questions judged against the material | the outline model's `strict-local/` twin, else the first strict-local model | follows the outline model |
 | Super Agent classifier | `strict-local/qwen3.8-flash` | **System › Routing › 분류 모델** |
-| Titles, memories, running summary | `local/qwen3.8-flash` | **System › Model › Titles, memories and summaries model** |
-| `run_code` file programs | `local/qwen3.8-27b`, then Flash | **System › Model › Code-writing model**, its fallback |
+| Titles, memories, running summary | the Super Agent `simple` row's self-hosted model (`local/qwen3.8-flash`) | **System › Routing**, `simple` row; an outside model there is skipped (side work stays self-hosted) |
+| `run_code` file programs | the Super Agent `code` row's self-hosted model, then the next self-hosted fallback (Flash, then 27B) | **System › Routing**, `code` row |
 | Re-reading scanned pages | `strict-local/qwen3.8-flash` | **System › Features › Text from scans (OCR)** |
 
 Why this split: writing goes to the 27B, which invents fewer details and keeps Korean free of

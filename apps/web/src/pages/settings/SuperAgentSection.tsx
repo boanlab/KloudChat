@@ -106,6 +106,9 @@ export function SuperAgentSection() {
           <p className="text-sm text-muted">
             {t('질문의 작업 종류를 가려 아래 표의 모델과 추론 강도로 답합니다. 개인정보·내부 자료는 strict-local 열을 씁니다.')}
           </p>
+          <p className="text-sm text-muted">
+            {t('제목·기억·요약과 코드 작성 같은 보조 작업은 표의 「간단한 질문」·「코드」 행에 적힌 이 서버 모델이 맡습니다.')}
+          </p>
         </div>
       </div>
 
