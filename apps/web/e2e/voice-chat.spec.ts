@@ -63,7 +63,8 @@ async function fakeMicrophone(page: Page) {
     tone.start()
     navigator.mediaDevices.getUserMedia = async () => {
       await context.resume()
-      return destination.stream
+      // A real microphone gives a new stream each time; stopping one leaves the next alive.
+      return destination.stream.clone()
     }
     ;(window as unknown as { __talk: (ms: number) => void }).__talk = (ms) => {
       gain.gain.value = 0.6
@@ -74,8 +75,10 @@ async function fakeMicrophone(page: Page) {
   })
 }
 
-async function stub(page: Page, { withVoice }: { withVoice: boolean }) {
+async function stub(page: Page, { withVoice, silent = false }: { withVoice: boolean; silent?: boolean }) {
   const transcriptions: number[] = []
+  /** Whether each request carried a `prompt`: an earlier answer as the hint emptied Whisper's reply. */
+  const prompted: boolean[] = []
   const speaks: { text: string; voice: string; warm: boolean }[] = []
   await page.route('**/api/auth/config', (route) =>
     route.fulfill({ json: {
@@ -95,18 +98,21 @@ async function stub(page: Page, { withVoice }: { withVoice: boolean }) {
   })
   await page.route('**/api/transcriptions', (route) => {
     transcriptions.push(Date.now())
+    prompted.push((route.request().postData() ?? '').includes('name="prompt"'))
+    // Whisper heard sound and made no words of it: the API answers 422 with this sentence.
+    if (silent) return route.fulfill({ status: 422, json: { detail: '들린 말이 없습니다.' } })
     return route.fulfill({ json: { text: spoken, seconds: 2 } })
   })
   await page.route('**/api/audio/speak', (route) => {
     speaks.push(route.request().postDataJSON() as { text: string; voice: string; warm: boolean })
     return route.fulfill({ status: 200, contentType: 'audio/wav', body: wav() })
   })
-  return { transcriptions, speaks }
+  return { transcriptions, prompted, speaks }
 }
 
 test('말하면 질문이 되고, 답은 문장마다 읽어 준다', async ({ page }, testInfo) => {
   await fakeMicrophone(page)
-  const { speaks } = await stub(page, { withVoice: true })
+  const { speaks, transcriptions, prompted } = await stub(page, { withVoice: true })
   const { sends, unexpected } = await composerFixture(page, testInfo, {
     turn: () => ({ events: [
       { type: 'delta', text: answer },
@@ -137,9 +143,45 @@ test('말하면 질문이 되고, 답은 문장마다 읽어 준다', async ({ p
   // The model was warmed once on entry, with a clip nobody hears.
   expect(speaks.filter((s) => s.warm)).toHaveLength(1)
 
+  // The next question is sent to Whisper like the first, without the earlier answer as a hint.
+  await page.evaluate(() => (window as unknown as { __talk: (ms: number) => void }).__talk(1500))
+  await expect.poll(() => sends.length, { timeout: 15_000 }).toBe(2)
+  await expect(panel).toHaveAttribute('data-phase', 'listening', { timeout: 15_000 })
+  expect(transcriptions).toHaveLength(2)
+  expect(prompted).toEqual([false, false])
+
   await page.getByTestId('voice-end').click()
   await expect(panel).toHaveCount(0)
   expect(unexpected).toEqual([])
+})
+
+test('말은 들렸는데 글이 비면 오류가 아니라 안내를 보이고, 연달아 비면 마이크를 가까이 하라고 한다', async ({ page }, testInfo) => {
+  await fakeMicrophone(page)
+  const { transcriptions } = await stub(page, { withVoice: true, silent: true })
+  const { sends, unexpected } = await composerFixture(page, testInfo)
+  await page.goto('/new/chat')
+  await page.getByTestId('voice-chat-button').click()
+  const panel = page.getByTestId('voice-panel')
+  const heard = page.getByTestId('voice-heard')
+  await expect(page.getByTestId('voice-status')).toHaveText('듣고 있습니다. 말씀하세요')
+  await expect(heard).toHaveText('말씀하시면 여기에 받아쓴 글이 보입니다.')
+
+  const talk = () => page.evaluate(() => (window as unknown as { __talk: (ms: number) => void }).__talk(1500))
+  await talk()
+  await expect.poll(() => transcriptions.length, { timeout: 15_000 }).toBe(1)
+  await expect(heard).toHaveText('말씀은 들렸지만 글로 옮기지 못했습니다. 다시 말씀해 주세요.')
+  await expect(panel).toHaveAttribute('data-phase', 'listening')
+
+  await expect(panel).toHaveAttribute('data-phase', 'listening')
+  await talk()
+  await expect.poll(() => transcriptions.length, { timeout: 15_000 }).toBe(2)
+  await expect(panel).toHaveAttribute('data-phase', 'listening')
+  await talk()
+  await expect.poll(() => transcriptions.length, { timeout: 15_000 }).toBe(3)
+  await expect(heard).toHaveText('잘 들리지 않습니다. 마이크 가까이에서 말씀하세요.')
+  // Nothing was sent as a question.
+  expect(sends).toHaveLength(0)
+  expect(unexpected.filter((u) => !/transcriptions/.test(String(u)))).toEqual([])
 })
 
 test('목소리 모델이 없으면 음성 대화 버튼이 보이지 않는다', async ({ page }, testInfo) => {
