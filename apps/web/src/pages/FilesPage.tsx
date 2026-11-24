@@ -12,7 +12,7 @@ import { TopBar } from '@/components/layout/TopBar'
 import { Button, Card, ConfirmDialog, EmptyState, PageHeader, ReloadNotice } from '@/components/ui'
 import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
 import { ListPager } from '@/components/ui/ListPager'
-import { downloadFile, errorMessage, filesApi, type FileRow } from '@/lib/api'
+import { ApiError, downloadFile, errorMessage, filesApi, type FileRow } from '@/lib/api'
 import { uploadFailure } from '@/lib/failures'
 import { ATTACH_ACCEPT, attachRefusal } from '@/lib/attachable'
 import { mediaPreflight } from '@/lib/media'
@@ -134,7 +134,12 @@ export function FilesPage() {
     const gone: string[] = []
     try {
       for (const id of ids) {
-        await filesApi.remove(id)
+        try {
+          await filesApi.remove(id)
+        } catch (err) {
+          // Already gone (deleted from another tab or with its conversation): the row only goes stale.
+          if (!(err instanceof ApiError && err.status === 404)) throw err
+        }
         gone.push(id)
       }
     } catch (err) {
