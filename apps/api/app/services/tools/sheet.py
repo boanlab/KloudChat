@@ -68,7 +68,8 @@ async def _prepare(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
                 "__notes__": [
                     f"사람의 엑셀 양식 「{form.choice.name}」으로 새 시트를 열었습니다. "
                     "쓰려던 표는 넣지 않았습니다: xlsx_read로 양식의 칸을 읽고 "
-                    "xlsx_edit set_cells로 채우세요(양식의 예시 값은 지웠고, 모르는 값은 [빈칸]으로 둡니다)."]}
+                    "xlsx_edit set_cells로 채우세요(양식의 예시 값은 지웠고, "
+                    "모르는 값은 [빈칸]으로 둡니다)."]}
     sheets = args.get("sheets")
     wanted = {
         str((s.get("from_file") or {}).get("file") or "").strip()
