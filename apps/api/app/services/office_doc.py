@@ -249,7 +249,7 @@ async def save(
 
 
 #: the kinds that keep a file per version (`storage_key`)
-FILE_KINDS = (ArtifactKind.hwp, ArtifactKind.docx, ArtifactKind.pptx)
+FILE_KINDS = (ArtifactKind.hwp, ArtifactKind.docx, ArtifactKind.pptx, ArtifactKind.xlsx)
 
 
 async def kept_files(db: AsyncSession, rows: list[Artifact]) -> set[str]:

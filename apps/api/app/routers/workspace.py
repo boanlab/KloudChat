@@ -1049,7 +1049,8 @@ async def artifact_counts(user: CurrentUser, db: DbSession, q: str | None = None
 #: what the file box's 「작업 문서」 tab lists: documents edited as a whole, in an editor or
 #: by chat — HWP, Word and PowerPoint files, web reports and web slides
 WORKING_KINDS = (
-    ArtifactKind.hwp, ArtifactKind.docx, ArtifactKind.pptx, ArtifactKind.report, ArtifactKind.deck,
+    ArtifactKind.hwp, ArtifactKind.docx, ArtifactKind.pptx, ArtifactKind.xlsx, ArtifactKind.report,
+    ArtifactKind.deck,
 )
 
 
@@ -1260,8 +1261,10 @@ async def page_working_documents(
 
 @router.post("/artifacts", response_model=ArtifactOut, status_code=status.HTTP_201_CREATED)
 async def create_artifact(payload: ArtifactIn, user: CurrentUser, db: DbSession):
-    if payload.kind in (ArtifactKind.hwp, ArtifactKind.docx, ArtifactKind.pptx):
-        # its file comes with it: `POST /artifacts/hwp`, `/artifacts/docx`, `/artifacts/pptx`
+    if payload.kind in (
+        ArtifactKind.hwp, ArtifactKind.docx, ArtifactKind.pptx, ArtifactKind.xlsx
+    ):
+        # its file comes with it: `POST /artifacts/hwp`, `/docx`, `/pptx`, `/xlsx`
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"{payload.kind.value}_needs_its_file",

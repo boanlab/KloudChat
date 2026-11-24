@@ -28,6 +28,8 @@ class SessionKind(StrEnum):
     image = "image"
     # audio+video surface; mirrored in web types
     av = "av"
+    #: spreadsheet surface; optional, off until an administrator enables it
+    sheet = "sheet"
 
 
 class RoutingMode(StrEnum):

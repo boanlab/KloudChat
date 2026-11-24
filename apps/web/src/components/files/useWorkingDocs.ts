@@ -6,6 +6,7 @@ export const WORKING_KINDS: { kind: WorkingKind; label: string }[] = [
   { kind: 'hwp', label: '한글' },
   { kind: 'docx', label: 'Word' },
   { kind: 'pptx', label: 'PowerPoint' },
+  { kind: 'xlsx', label: 'Excel' },
   { kind: 'report', label: '웹 보고서' },
   { kind: 'deck', label: '웹 슬라이드' },
 ]

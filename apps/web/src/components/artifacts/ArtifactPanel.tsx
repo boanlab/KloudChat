@@ -47,7 +47,11 @@ const PptxPanel = lazy(() =>
   import('@/components/pptx/PptxPanel').then((module) => ({ default: module.PptxPanel })),
 )
 
-const OFFICE_LABEL = { hwp: '한글 문서', docx: 'Word 문서', pptx: 'PowerPoint 문서' } as const
+const SheetPanel = lazy(() =>
+  import('@/components/sheet/SheetPanel').then((module) => ({ default: module.SheetPanel })),
+)
+
+const OFFICE_LABEL = { hwp: '한글 문서', docx: 'Word 문서', pptx: 'PowerPoint 문서', xlsx: 'Excel 문서' } as const
 
 function PanelLoading() {
   const t = useT()
@@ -180,6 +184,7 @@ export function ArtifactPreview({
     case 'hwp':
     case 'docx':
     case 'pptx':
+    case 'xlsx':
       // The file's text on a white page; the editor itself opens in the panel.
       return (
         <div className="size-full overflow-hidden bg-white px-5 py-4 text-[#1a1a1a]">
@@ -836,7 +841,8 @@ export function ArtifactPanel() {
     artifact.kind === 'chart' ||
     artifact.kind === 'hwp' ||
     artifact.kind === 'docx' ||
-    artifact.kind === 'pptx'
+    artifact.kind === 'pptx' ||
+    artifact.kind === 'xlsx'
   // Reports, decks, charts own their chrome; the rest share a header.
   const selfChrome = selfWide
 
@@ -995,6 +1001,15 @@ export function ArtifactPanel() {
           ) : artifact.kind === 'pptx' ? (
             <Suspense fallback={<PanelLoading />}>
               <PptxPanel
+                key={artifact.id}
+                doc={artifact}
+                onClose={() => openArtifact(null)}
+                onModeChange={changeMode}
+              />
+            </Suspense>
+          ) : artifact.kind === 'xlsx' ? (
+            <Suspense fallback={<PanelLoading />}>
+              <SheetPanel
                 key={artifact.id}
                 doc={artifact}
                 onClose={() => openArtifact(null)}

@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 
 from app.core.config import settings
 from app.core.deps import CurrentUser, DbSession
-from app.models.chat import ChatSession
+from app.models.chat import ChatSession, SessionKind
 from app.models.workspace import Artifact, Project, StoredFile
 from app.routers.workspace import _own
 from app.schemas.auth import Wire
@@ -123,6 +123,13 @@ def router_for(spec: Routes) -> APIRouter:
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"not_a_{spec.slug}_file",
             ) from None
+        if payload.session_id and spec.slug == "xlsx":
+            # a sheet conversation is about its sheet: it reopens on it
+            owner = await db.get(ChatSession, payload.session_id)
+            if owner is not None and owner.kind is SessionKind.sheet and not owner.artifact_id:
+                owner.artifact_id = artifact.id
+                db.add(owner)
+                await db.commit()
         return ArtifactOut.of(artifact)
 
     @router.get(f"/artifacts/{{artifact_id}}/{spec.slug}")

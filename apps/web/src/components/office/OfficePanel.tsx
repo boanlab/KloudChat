@@ -1,4 +1,4 @@
-import { FileType, Loader2 } from 'lucide-react'
+import { FileType, Loader2, Table2 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { usePanelWidth, type PanelMode } from '@/components/artifacts/PanelControls'
 import {
@@ -27,7 +27,7 @@ export function OfficePanel({
   onModeChange,
   children,
 }: {
-  kind: OfficeKind
+  kind: OfficeKind | 'xlsx'
   doc: Doc
   state: OfficeDocument
   ready: boolean
@@ -54,7 +54,9 @@ export function OfficePanel({
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden" {...panel}>
       <DocumentHeader
-        icon={<FileType size={15} className="shrink-0 text-accent" />}
+        icon={kind === 'xlsx'
+          ? <Table2 size={15} className="shrink-0 text-accent" />
+          : <FileType size={15} className="shrink-0 text-accent" />}
         title={doc.title}
         version={shown}
         dirty={dirty}

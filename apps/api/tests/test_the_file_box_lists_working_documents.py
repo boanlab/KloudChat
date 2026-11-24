@@ -117,7 +117,8 @@ async def test_every_working_document_once_newest_edit_first(stack):
     client, _ = stack
     first = (await client.get("/artifacts/working", params={"limit": 40})).json()
     assert first["total"] == 130
-    assert first["counts"] == {"hwp": 26, "docx": 26, "pptx": 26, "report": 26, "deck": 26}
+    assert first["counts"] == {
+        "hwp": 26, "docx": 26, "pptx": 26, "xlsx": 0, "report": 26, "deck": 26}
     items = await _walk(client)
     assert len(items) == 130 and len({row["id"] for row in items}) == 130
     assert [row["title"] for row in items[:2]] == ["문서 129", "문서 128"]

@@ -1,4 +1,4 @@
-import { Clapperboard, FileText, Image, MessageSquare, Presentation } from 'lucide-react'
+import { Clapperboard, FileText, Image, MessageSquare, Presentation, Table2 } from 'lucide-react'
 import type { Agent, SessionKind, Skill } from '@/types'
 
 /** Single source of truth for the five surfaces: nav, empty states, badges and routing read from here. */
@@ -48,9 +48,16 @@ export const kindMeta: Record<
     tagline: '길이와 형식을 정해 만들고 대화 안에서 바로 확인합니다',
     panelLabel: '미디어 열기',
   },
+  sheet: {
+    label: '시트',
+    icon: Table2,
+    color: '#1d7a46',
+    tagline: '표와 계산을 엑셀 파일로 만들고 고칩니다',
+    panelLabel: '시트 열기',
+  },
 }
 
-export const kindOrder: SessionKind[] = ['chat', 'report', 'slides', 'image', 'av']
+export const kindOrder: SessionKind[] = ['chat', 'report', 'slides', 'image', 'av', 'sheet']
 
 /** Surfaces an agent offers, in `kindOrder`; all of them when it names none. */
 export function agentKinds(agent: Pick<Agent, 'kinds'>): SessionKind[] {

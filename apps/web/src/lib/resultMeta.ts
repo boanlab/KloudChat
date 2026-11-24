@@ -1,5 +1,5 @@
 import {
-  AudioLines, BarChart3, Code2, FileText, FileType, Image as ImageIcon, Presentation, Video,
+  AudioLines, BarChart3, Code2, FileText, FileType, Image as ImageIcon, Presentation, Table2, Video,
 } from 'lucide-react'
 import type { ArtifactKind } from '@/types'
 import type { Translator } from '@/lib/useT'
@@ -16,6 +16,7 @@ export const artifactIcon: Record<ArtifactKind, typeof FileText> = {
   hwp: FileType,
   docx: FileType,
   pptx: Presentation,
+  xlsx: Table2,
 }
 
 export const artifactLabel: Record<ArtifactKind, string> = {
@@ -30,6 +31,7 @@ export const artifactLabel: Record<ArtifactKind, string> = {
   hwp: '한글 문서',
   docx: 'Word 문서',
   pptx: 'PowerPoint 문서',
+  xlsx: 'Excel 문서',
 }
 
 /** The measure that tells one result from another: sections, slides, rows, seconds. */
@@ -65,6 +67,7 @@ export function sizeLine(
     case 'hwp':
     case 'docx':
     case 'pptx':
+    case 'xlsx':
       return typeof data?.size === 'number' ? `${Math.max(1, Math.round(data.size / 1024))} KB` : ''
     default:
       return ''

@@ -69,7 +69,7 @@ describe('strictStartReason', () => {
 
 describe('withAccountPicks', () => {
   it('shows the account pick that is served for the surface, not the browser default', () => {
-    const current = { chat: 'local/flash', report: 'local/27b', slides: 'local/27b', image: '', av: '' }
+    const current = { chat: 'local/flash', report: 'local/27b', slides: 'local/27b', image: '', av: '', sheet: '' }
     const models = [{ id: 'local/flash', kinds: ['chat'] }, { id: 'local/27b', kinds: ['chat', 'report'] }] as const
     const next = withAccountPicks(current, models.map((m) => ({ ...m, kinds: [...m.kinds] })) as never, { chat: 'local/27b', slides: 'gone/model' })
     expect(next.chat).toBe('local/27b')

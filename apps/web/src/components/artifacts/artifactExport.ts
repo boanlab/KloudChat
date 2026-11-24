@@ -1,5 +1,5 @@
 import { sectionText } from '@/components/report/SectionBody'
-import { artifactsApi, downloadArtifact, fileUrl, OFFICE_MIME } from '@/lib/api'
+import { artifactsApi, downloadArtifact, fileUrl, OFFICE_MIME, XLSX_MIME } from '@/lib/api'
 import type { Artifact, ChartArtifact, DeckArtifact, ReportArtifact, ReportSection, Slide } from '@/types'
 
 /** Export formats; mirrors server `export_formats`. */
@@ -64,6 +64,8 @@ export function exportChoices(artifact: Artifact, templateKind?: string): Export
       return [{ format: 'file', label: 'Word 문서', hint: 'DOCX' }]
     case 'pptx':
       return [{ format: 'file', label: 'PowerPoint 문서', hint: 'PPTX' }]
+    case 'xlsx':
+      return [{ format: 'file', label: 'Excel 문서', hint: 'XLSX' }]
   }
 }
 
@@ -194,9 +196,9 @@ export async function takeArtifact(artifact: Artifact, format: ExportFormat): Pr
     return
   }
   if (format === 'file' &&
-    (artifact.kind === 'hwp' || artifact.kind === 'docx' || artifact.kind === 'pptx')) {
+    (artifact.kind === 'hwp' || artifact.kind === 'docx' || artifact.kind === 'pptx' || artifact.kind === 'xlsx')) {
     const { bytes } = await artifactsApi.documentFile(artifact.kind, artifact.id)
-    const type = OFFICE_MIME[artifact.kind]
+    const type = artifact.kind === 'xlsx' ? XLSX_MIME : OFFICE_MIME[artifact.kind]
     saveBlob(new Blob([bytes], { type }), `${stem(title)}.${artifact.format}`)
     return
   }
