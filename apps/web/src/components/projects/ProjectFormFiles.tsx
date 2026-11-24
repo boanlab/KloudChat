@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { FileStack, FolderOpen, Loader2, Upload, X } from 'lucide-react'
 import { Button, Card } from '@/components/ui'
 import { FileBoxPicker } from '@/components/files/FileBoxPicker'
-import { SAVED_KINDS } from '@/components/chat/FormChips'
+import { FOLLOWED_KINDS } from '@/components/chat/FormChips'
 import { errorCode, filesApi, formsApi, type FileRow, type FormKind } from '@/lib/api'
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
@@ -109,7 +109,7 @@ export function FormFilesField({
     }
   }
 
-  const slots = SLOTS.filter((slot) => SAVED_KINDS.includes(slot.kind))
+  const slots = SLOTS.filter((slot) => FOLLOWED_KINDS.includes(slot.kind))
   return (
     <div className="space-y-3">
       {slots.map((slot) => {

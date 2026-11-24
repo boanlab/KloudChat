@@ -24,7 +24,7 @@ import {
 } from 'lucide-react'
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { FileRow, FormKind, FormRole, OfficeKind, PrivacyDecision, WebSearchSetting } from '@/lib/api'
-import { ApiError, fileUrl, transcriptionsApi } from '@/lib/api'
+import { ApiError, fileUrl, filesApi, transcriptionsApi } from '@/lib/api'
 import { VOICE_TONE, voiceFor, voicesOf } from '@/lib/voices'
 import { startWavRecording, type WavRecorder } from '@/lib/wavRecorder'
 import { FormRoleToggle, SavedFormChip, followable, formRoleOf } from '@/components/chat/FormChips'
@@ -1055,7 +1055,7 @@ export function Composer({
   const sessionAgent = agents.find((agent) => agent.id === session?.agentId)
   // An attached form makes the document that kind of file, written on it: a deck a
   // PowerPoint file, a report a Word or 한글 file.
-  const formKinds: FormKind[] = kind === 'slides' ? ['pptx'] : kind === 'report' ? ['docx', 'hwpx'] : []
+  const formKinds: FormKind[] = kind === 'slides' ? ['pptx'] : kind === 'sheet' ? ['xlsx'] : kind === 'report' ? ['docx', 'hwpx'] : []
   const attachedForm = attachments.find((file) =>
     followable(file) && formKinds.includes(file.form?.kind as FormKind) &&
     formRoleOf(file, formRoles[file.id]) === 'form')
@@ -1066,9 +1066,24 @@ export function Composer({
   const reportFile = kind === 'report' ? formOutput ?? output ?? detectedOutput : null
   const savedKind: FormKind | null = kind === 'slides' ? 'pptx' : kind === 'sheet' ? 'xlsx'
     : reportFile === 'docx' ? 'docx' : reportFile === 'hwp' ? 'hwpx' : null
-  const savedForm = savedKind && !attachedForm && !session?.formFiles?.[savedKind]
-    ? project?.formRows?.find((row) => row.id === project?.formFiles?.[savedKind])
-    : undefined
+  // The agent's saved form comes before the project's (`form_files.for_session`); its row is read by id.
+  const agentFormId = savedKind ? sessionAgent?.formFiles?.[savedKind] ?? '' : ''
+  const [agentFormRow, setAgentFormRow] = useState<FileRow | null>(null)
+  useEffect(() => {
+    setAgentFormRow(null)
+    if (!agentFormId) return
+    let live = true
+    void filesApi.get(agentFormId).then((row) => { if (live) setAgentFormRow(row) }).catch(() => {})
+    return () => { live = false }
+  }, [agentFormId])
+  const savedOpen = !!savedKind && !attachedForm && !session?.formFiles?.[savedKind]
+  const savedFromAgent = savedOpen && !!agentFormId && agentFormRow?.id === agentFormId
+  const savedForm = savedFromAgent
+    ? agentFormRow ?? undefined
+    : savedOpen && !agentFormId
+      ? project?.formRows?.find((row) => row.id === project?.formFiles?.[savedKind!])
+      : undefined
+  const savedSource: 'agent' | 'project' = savedFromAgent ? 'agent' : 'project'
   const savedFormOff = savedKind
     ? savedFormsOff ? savedFormsOff.includes(savedKind) : session?.formFiles?.[savedKind] === ''
     : false
@@ -1779,7 +1794,7 @@ export function Composer({
     // A form attached in chat makes the document it is a form for: a PowerPoint form a deck,
     // a Word or 한글 form a report.
     const chatForm = readableAttachments.find((file) =>
-      followable(file) && formRoleOf(file, liveFormRoles.current[file.id]) === 'form')
+      followable(file) && file.form?.kind !== 'xlsx' && formRoleOf(file, liveFormRoles.current[file.id]) === 'form')
     const formSurface = chatForm ? (chatForm.form?.kind === 'pptx' ? 'slides' : 'report') : null
     const detected = movable ? formSurface ?? handoffSurface(text) : null
     const agentHandoff =
@@ -2736,7 +2751,7 @@ export function Composer({
               <SavedFormChip
                 name={savedForm.name}
                 kind={savedKind ?? 'pptx'}
-                source="project"
+                source={savedSource}
                 off={savedFormOff}
                 onOff={(off) => setSavedFormsOff(off && savedKind ? [savedKind] : [])}
               />
@@ -2750,7 +2765,7 @@ export function Composer({
               <SavedFormChip
                 name={savedForm.name}
                 kind="xlsx"
-                source="project"
+                source={savedSource}
                 off={savedFormOff}
                 onOff={(off) => setSavedFormsOff(off ? ['xlsx'] : [])}
               />

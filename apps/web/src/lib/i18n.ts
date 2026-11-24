@@ -201,6 +201,8 @@ const EN: Record<string, string> = {
   '고른 대목에서': 'From a selection',
   'Word': 'Word',
   'Excel': 'Excel',
+  '시트·서식·수식·병합: 양식 그대로': 'Sheets, formatting, formulas, merges: as in the form',
+  '예시 값 {n}칸 지움': '{n} example cells cleared',
   '시트 {n}개': '{n} sheets',
   '섞기': 'Shuffle',
   '알아요': 'I know it',

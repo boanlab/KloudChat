@@ -56,8 +56,14 @@ def describe(data: bytes, fmt: str) -> dict[str, Any]:
         book.close()
     except Exception:  # noqa: BLE001 - a file the reader cannot walk still opens in the grid
         pass
-    return {"format": fmt, "size": len(data), "sheets": names, "cells": cells,
-            "text": "\n".join(parts)[:MAX_TEXT]}
+    out = {"format": fmt, "size": len(data), "sheets": names, "cells": cells,
+           "text": "\n".join(parts)[:MAX_TEXT]}
+    from app.services import sheet_form
+
+    if (form := sheet_form.mark_of(data)) is not None:
+        # the Excel form this sheet started from, for the 「양식을 따름」 line
+        out["form"] = {k: v for k, v in form.items() if k != "cleared"}
+    return out
 
 
 KIND = office_doc.Kind(ArtifactKind.xlsx, "xlsx", "새 시트", file_format, describe)

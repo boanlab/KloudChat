@@ -3,8 +3,8 @@
 Order (`design.md` §2.0): a form attached to this turn, the agent's 기본 양식 파일 for the output
 kind, the project's. An attachment's role is the person's chip choice, else the request's words and
 the file's profile (`form_profile`). A `.hwp` is never a form: the person is told to save it as
-HWPX, and the file is read as material. An Excel file is a form only in a saved slot: attached
-to a chat it is the data the sheet works from.
+HWPX, and the file is read as material. An attached Excel file is judged like the others: a template
+(`.xltx`, empty input cells, guidance) is a form, a table of numbers is the data a sheet works from.
 """
 
 from __future__ import annotations
@@ -22,8 +22,6 @@ from app.services import form_profile
 KINDS = ("pptx", "docx", "hwpx", "xlsx")
 #: kinds whose writer follows a form so far; another kind's file stays material
 FOLLOWED = ("pptx", "docx", "hwpx", "xlsx")
-#: kinds only a saved slot makes a form: an attached file of it is the data a sheet works from
-SLOT_ONLY = ("xlsx",)
 
 Role = Literal["form", "material"]
 
@@ -95,7 +93,7 @@ def role_of(row: StoredFile, request: str, chosen: Role | None) -> tuple[Role | 
     if found.get("error"):
         note = f"{row.name}: {found['error']}" if chosen == "form" else ""
         return "material", note
-    if kind not in FOLLOWED or kind in SLOT_ONLY:
+    if kind not in FOLLOWED:
         return "material", ""
     if chosen is not None:
         return chosen, ""

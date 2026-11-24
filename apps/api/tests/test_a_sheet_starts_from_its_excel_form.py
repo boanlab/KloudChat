@@ -30,7 +30,9 @@ def _form(*, name: str = "견적서.xlsx") -> bytes:
     sheet["D4"] = "=B4*C4"
     sheet["C4"].number_format = "#,##0"
     thin = Side(style="thin")
-    sheet["A5"].border = Border(top=thin, bottom=thin, left=thin, right=thin)
+    for row in range(5, 8):
+        for col in range(1, 5):
+            sheet.cell(row, col).border = Border(top=thin, bottom=thin, left=thin, right=thin)
     sheet.column_dimensions["A"].width = 30
     book.create_sheet("메모")["A1"] = "비고"
     book.defined_names["세율"] = openpyxl.workbook.defined_name.DefinedName(
@@ -46,23 +48,48 @@ def _resolved(data: bytes) -> form_files.Resolved:
                                data)
 
 
-def test_an_excel_file_has_a_profile_with_its_sheets_and_is_never_a_form_by_look():
+def test_an_excel_file_has_a_profile_with_its_sheets():
     found = form_profile.profile("견적서.xlsx", _form())
     assert found["kind"] == "xlsx" and found["sheets"] == ["견적", "메모"] and not found["macro"]
     assert form_profile.summary(found)["sheets"] == 2
     assert form_profile.kind_of("서식.xltx") == "xlsx"
 
 
+def _data_book() -> bytes:
+    book = openpyxl.Workbook()
+    sheet = book.active
+    sheet.append(["월", "매출", "비용"])
+    for month in range(1, 31):
+        sheet.append([f"{month}월", 1000 + month * 13, 400 + month * 7])
+    out = io.BytesIO()
+    book.save(out)
+    return out.getvalue()
+
+
+def test_a_workbook_is_told_from_data_like_a_word_or_powerpoint_file():
+    # a template with guidance, filler and empty input cells is a form; a table of numbers is not
+    assert form_profile.profile("견적서 양식.xlsx", _form())["verdict"] == "form"
+    data = form_profile.profile("월별 매출.xlsx", _data_book())
+    assert data["verdict"] == "material" and "many_numbers" in data["signals"]
+    template = form_profile.profile("표.xltx", _data_book())
+    assert template["verdict"] == "form" and "template_file" in template["signals"]
+
+
+def test_a_form_workbook_attached_is_followed_and_a_data_one_is_material():
+    form = StoredFile(user_id="u", name="견적서 양식.xlsx")
+    form.form_profile = form_profile.profile(form.name, _form())
+    data = StoredFile(user_id="u", name="월별 매출.xlsx")
+    data.form_profile = form_profile.profile(data.name, _data_book())
+    turn = form_files.choose([form, data], None, "이 자료로 견적서를 만들어 줘")
+    assert turn.form_for("xlsx").file_id == form.id and turn.material == [data.id]
+    # the chip decides over the look
+    turn = form_files.choose([form], {form.id: "material"}, "요약해 줘")
+    assert not turn.forms and turn.material == [form.id]
+
+
 def test_a_workbook_that_is_not_one_is_unreadable():
     assert form_profile.profile("표.xlsx", b"x")["error"]
     assert form_profile.profile("표.xlsx", b"PK\x03\x04x")["error"]
-
-
-def test_an_attached_workbook_stays_the_data_a_sheet_works_from():
-    row = StoredFile(user_id="u", name="견적서.xlsx")
-    row.form_profile = form_profile.profile(row.name, _form())
-    turn = form_files.choose([row], {row.id: "form"}, "이 양식에 채워 줘")
-    assert not turn.forms and turn.material == [row.id]
 
 
 def test_a_macro_or_old_workbook_is_refused_in_plain_words():
@@ -104,7 +131,7 @@ def test_a_new_workbook_starts_from_the_form_without_its_examples():
     assert sheet["B4"].value is None and sheet["C4"].value is None
     mark = sheet_form.mark_of(data)
     assert mark["name"] == "견적서.xlsx" and mark["source"] == "project"
-    assert mark["cleared"] == ["견적!A2", "견적!A4:C4"]
+    assert mark["cleared"] == ["견적!A2", "견적!A4:C4"] and mark["followed"] == {"cleared": 4}
 
 
 def test_the_first_read_tells_the_form_its_inputs_and_what_was_cleared():
@@ -144,3 +171,40 @@ async def test_xlsx_write_in_a_conversation_with_a_form_opens_the_form(monkeypat
     assert args["__form__"] is form and args["__notes__"]
     title, data = sheet_form.start(args["__form__"])
     assert title == "견적서" and sheet_form.mark_of(data)
+
+
+def test_the_forms_own_structure_stays_and_only_examples_are_cleared():
+    book = openpyxl.Workbook()
+    sheet = book.active
+    sheet.title = "계획"
+    sheet.append(["연도", 2026])
+    sheet.append(["세율", 0.1])
+    sheet.append(["순번", "항목", "금액"])
+    for number in (1, 2, 3):
+        sheet.append([number, "예시 항목", 5000 * number])
+    sheet["D4"] = "=C4*B2"
+    sheet.append(["합계", None, "=SUM(C4:C6)"])
+    out = io.BytesIO()
+    book.save(out)
+    _, data = sheet_form.start(_resolved(out.getvalue()))
+    got = openpyxl.load_workbook(io.BytesIO(data))["계획"]
+    assert got["B1"].value == 2026 or got["B1"].value is None
+    assert got["B2"].value == 0.1  # a rate the formula points at, with its label beside it
+    assert [got.cell(r, 1).value for r in (4, 5, 6)] == [1, 2, 3]  # the running numbers
+    assert [got.cell(r, 3).value for r in (4, 5, 6)] == [None, None, None]  # the examples
+    assert got["D4"].value == "=C4*B2" and got["C7"].value == "=SUM(C4:C6)"
+
+
+def test_the_first_read_says_what_stays():
+    _, data = sheet_form.start(_resolved(_form()))
+    assert "순번·연도 머리글" in sheet_edit.outline(data)
+
+
+def test_a_sheet_made_from_a_form_carries_it_for_the_followed_line():
+    from app.services import sheet_doc
+
+    _, data = sheet_form.start(_resolved(_form()))
+    described = sheet_doc.describe(data, "xlsx")
+    assert described["form"]["name"] == "견적서.xlsx" and described["form"]["followed"] == {
+        "cleared": 4}
+    assert "cleared" not in described["form"]

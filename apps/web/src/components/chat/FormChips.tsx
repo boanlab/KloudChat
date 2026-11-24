@@ -6,10 +6,7 @@ import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 
 /** Output kinds whose writer follows a form so far (`form_files.FOLLOWED`). */
-export const FOLLOWED_KINDS: readonly FormKind[] = ['pptx', 'docx', 'hwpx']
-
-/** Kinds a project or agent can keep as its saved form: an Excel file is a form only there; attached to a chat it is the data. */
-export const SAVED_KINDS: readonly FormKind[] = [...FOLLOWED_KINDS, 'xlsx']
+export const FOLLOWED_KINDS: readonly FormKind[] = ['pptx', 'docx', 'hwpx', 'xlsx']
 
 /** Whether a file can be followed as a form at all. */
 export function followable(file: FileRow): boolean {
@@ -189,6 +186,14 @@ export function FollowedFormLine({ form }: { form: FollowedForm }) {
           </li>
           {(followed.cellsEmpty ?? []).length > 0 && (
             <li className="text-warn">{t('아직 빈 칸: {list}').replace('{list}', (followed.cellsEmpty ?? []).join(', '))}</li>
+          )}
+        </ul>
+      )}
+      {open && form.kind === 'xlsx' && (
+        <ul className="mt-1.5 list-disc space-y-0.5 pl-5">
+          <li>{t('시트·서식·수식·병합: 양식 그대로')}</li>
+          {(followed.cleared ?? 0) > 0 && (
+            <li>{t('예시 값 {n}칸 지움').replace('{n}', String(followed.cleared))}</li>
           )}
         </ul>
       )}
