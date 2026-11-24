@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { artifactsApi, errorMessage } from '@/lib/api'
+import { rememberBlank } from '@/lib/blankDocs'
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 
@@ -24,6 +25,7 @@ export function useBlankSheet(projectId?: string | null) {
       const id = await ensureSession(await newSession('sheet', projectId ? { projectId } : undefined))
       setStage(t('빈 시트를 만드는 중…'))
       const row = await artifactsApi.createSheet({ sessionId: id, title: t('새 시트') })
+      rememberBlank(id, row.id)
       navigate(`/s/${id}?artifact=${row.id}`)
     } catch (err) {
       setNotice(errorMessage(err, t('시트를 열지 못했습니다. 잠시 뒤 다시 시도하세요.')))

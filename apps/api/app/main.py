@@ -51,6 +51,7 @@ from app.routers import (
 )
 from app.services import (
     api_key_usage,
+    blank_docs,
     bootstrap,
     connector_defaults,
     digest_jobs,
@@ -156,6 +157,8 @@ async def lifespan(app: FastAPI):
     # index deletes that failed, until they land
     unindexer = asyncio.create_task(index_cleanup.watch())
     key_usage = asyncio.create_task(api_key_usage.watch())
+    # untouched blank documents the browser never got to drop
+    blank_docs_task = asyncio.create_task(blank_docs.watch())
     # cross-replica stop delivery; no extra connection for a single replica
     stop_listener = (
         asyncio.create_task(stop_signal.listen(sessions.fire_stop_locally))
@@ -183,6 +186,7 @@ async def lifespan(app: FastAPI):
     watcher.cancel()
     unindexer.cancel()
     key_usage.cancel()
+    blank_docs_task.cancel()
     if stop_listener is not None:
         stop_listener.cancel()
     if perf_task is not None:

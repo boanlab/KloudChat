@@ -224,6 +224,39 @@ test('home opens a blank PowerPoint deck from the slides surface\'s PowerPoint p
   expect(state.unexpected).toEqual([])
 })
 
+async function startBlankFromHome(page: Page, options: Partial<OfficeOptions> = {}) {
+  const state = await fixture(page, { fromHome: true, file: blank, ...options })
+  await page.getByRole('group', { name: '만들 것' }).getByRole('button', { name: '슬라이드' }).click()
+  await page.getByRole('button', { name: /^형식/ }).click()
+  await page.getByRole('menuitemcheckbox', { name: 'PowerPoint', exact: true }).click()
+  await page.getByRole('button', { name: '빈 문서로 시작' }).click()
+  await expect(page).toHaveURL(/\/s\/[0-9a-z_-]+/)
+  await expect(pptxPanel(page)).toBeVisible()
+  return state
+}
+
+test('leaving an untouched blank deck drops it: 작업 문서 does not list it', async ({ page }) => {
+  test.skip((page.viewportSize()?.width ?? 0) <= 640, 'desktop width')
+  const state = await startBlankFromHome(page)
+  expect(state.discards).toEqual([])
+  await page.getByRole('link', { name: '파일함' }).click()
+  await expect(page.getByRole('heading', { name: '파일함' })).toBeVisible()
+  await expect.poll(() => state.discards).toEqual(['88888888888888888888888888888888'])
+  await page.getByRole('tab', { name: /작업 문서/ }).click()
+  await expect(page.getByText('작업 문서가 없습니다')).toBeVisible()
+  expect(state.unexpected).toEqual([])
+})
+
+test('a blank deck the server keeps (it was touched) stays listed', async ({ page }) => {
+  test.skip((page.viewportSize()?.width ?? 0) <= 640, 'desktop width')
+  const state = await startBlankFromHome(page, { discardAnswer: false })
+  await page.getByRole('link', { name: '파일함' }).click()
+  await expect.poll(() => state.discards.length).toBe(1)
+  await page.getByRole('tab', { name: /작업 문서/ }).click()
+  await expect(page.getByText('새 PowerPoint 문서')).toBeVisible()
+  expect(state.unexpected).toEqual([])
+})
+
 test('an attached .pptx opens in the PowerPoint editor beside the chat', async ({ page }) => {
   test.skip((page.viewportSize()?.width ?? 0) <= 640, 'desktop width')
   const state = await fixture(page, { attachment: { id: 'file-1', name: '2-business-deck.pptx' } })

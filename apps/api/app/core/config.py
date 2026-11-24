@@ -159,6 +159,8 @@ class Settings(BaseSettings):
     video_vision_parallel: int = 4
     # Disk fill ratio triggering removal of deleted accounts' files, oldest first; 0 disables.
     storage_reclaim_at: float = 0.8
+    #: hours after which an untouched blank office document is dropped (0 never)
+    blank_doc_sweep_hours: float = 6
     file_context_chars: int = 24_000
     #: 지식 서가: models per output kind over `services/shelf_models.DEFAULTS` (JSON, e.g.
     #: {"quiz": {"strictModel": "strict-local/qwen3.8-27b", "effort": "none"}}); empty: defaults
