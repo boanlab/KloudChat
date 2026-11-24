@@ -39,6 +39,8 @@ import { useStore } from '@/store/useStore'
 import type { CostRouting, LengthCheck, Message, ModelInfo, PrivacyRouting } from '@/types'
 import { Markdown } from './Markdown'
 import { RetryActions } from './RetryActions'
+import { ReadAloudButton } from './ReadAloudButton'
+import { answerUnits } from '@/lib/readUnits'
 import { OutputFiles, StepTimeline } from './StepTimeline'
 import { ProposalCard } from './ProposalCard'
 import { SearchConsentCard } from './SearchConsentCard'
@@ -891,6 +893,7 @@ function MessageItemInner({
           <div className="mt-2 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-faint">
             <span className="flex items-center gap-1">
             {copyButton(t('복사'))}
+            <ReadAloudButton id={`answer:${message.id}`} units={() => answerUnits(message.content)} compact />
             <PinNoteButton sessionId={sessionId} messageId={message.id} content={message.content} />
             <Button
               variant="ghost"

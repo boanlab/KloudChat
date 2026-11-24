@@ -61,6 +61,9 @@ import { LintFindings, byWhere, fixNote } from '@/components/artifacts/LintFindi
 import { VersionHistory } from '@/components/artifacts/VersionHistory'
 import { citationNumbers, numericEvidenceGaps, type ExportFormat } from '@/components/artifacts/artifactExport'
 import { DownloadMenu, ReuseItems } from '@/components/artifacts/ResultActions'
+import { ReadAloudButton } from '@/components/chat/ReadAloudButton'
+import { reportUnits } from '@/lib/readUnits'
+import { clearFollow, followSection } from '@/lib/readFollow'
 import { RunStagesButton } from '@/components/artifacts/RunStages'
 import { DocMarksLayer } from './DocMarks'
 import { fillBlank, useDocMarks } from '@/lib/docMarks'
@@ -1493,6 +1496,13 @@ export function ReportPanel({
           history={{ hasUnsavedChanges: hasUnsavedEdit, currentData: report, onRestored: restoredVersion }}
           extra={
             <>
+              <ReadAloudButton
+                id={`artifact:${report.id}`}
+                units={() => reportUnits(pageTitle ?? editing.title, pageEdits ?? editing.sections)}
+                onAt={followSection}
+                onEnd={clearFollow}
+                compact={head.narrow}
+              />
               {!head.narrow && (
                 <div role="group" aria-label={t('보기 방식')} className="flex shrink-0 items-center rounded-control border border-line p-0.5">
                   <button

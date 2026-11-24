@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, errorMessage, speakApi, transcriptionsApi } from '@/lib/api'
 import { startVoiceListener, type VoiceListener } from '@/lib/voiceListener'
 import { getPlayer, panelArrived, panelLeft, resetTurn, session, setVoiceMode, subscribeChange } from '@/lib/voiceSession'
-import { VOICE_TONE } from '@/lib/voices'
+import { VOICE_KEY, VOICE_TONE } from '@/lib/voices'
 import { isStray, wavSeconds } from '@/lib/whisperStray'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -11,7 +11,6 @@ import { useT } from '@/lib/useT'
 
 type Phase = 'starting' | 'listening' | 'hearing' | 'transcribing' | 'thinking' | 'speaking' | 'blocked'
 
-const VOICE_KEY = 'kloudchat.voiceChat.voice'
 /** Seconds the answer may take to begin before the turn is given up quietly. */
 const BEGIN_MS = 15_000
 
