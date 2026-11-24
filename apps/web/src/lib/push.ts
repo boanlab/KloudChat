@@ -9,9 +9,9 @@ export const PUSH_DEFAULTS: Record<PushEvent, boolean> = {
   job_done: true,
   job_failed: true,
   shared: true,
-  review: false,
-  decided: false,
-  issue: false,
+  review: true,
+  decided: true,
+  issue: true,
   credits: true,
 }
 
