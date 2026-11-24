@@ -4,6 +4,7 @@ import { ApiError, errorMessage, speakApi, transcriptionsApi } from '@/lib/api'
 import { startVoiceListener, type VoiceListener } from '@/lib/voiceListener'
 import { getPlayer, panelArrived, panelLeft, resetTurn, session, setVoiceMode, subscribeChange } from '@/lib/voiceSession'
 import { VOICE_TONE } from '@/lib/voices'
+import { isStray, wavSeconds } from '@/lib/whisperStray'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
@@ -51,6 +52,8 @@ export function VoicePanel({
   const [holding, setHolding] = useState(false)
   /** Whisper gave back nothing: once is a mumble, three in a row is a microphone too far away. */
   const [empties, setEmpties] = useState(0)
+  /** Sound that never paused was cut this many times in a row: the room is too loud for the sentence ends. */
+  const [crowded, setCrowded] = useState(0)
   const [voice, setVoice] = useState(() => {
     const picked = storedVoice()
     return voices.includes(picked) ? picked : defaultVoice
@@ -118,6 +121,12 @@ export function VoicePanel({
       // Only sound in the room raises the bar; a reply still being voiced is silent.
       bar: () => (sound.sounding() ? 2.5 : 1),
       onEnded: () => alive.current && setPhase('blocked'),
+      onSteady: () => {
+        if (!alive.current) return
+        setCrowded((n) => n + 1)
+        // The line below the status is for this now, not for the last thing heard.
+        setHeard('')
+      },
     })
       .then((l) => {
         if (!alive.current) {
@@ -160,13 +169,15 @@ export function VoicePanel({
       return
     }
     if (!alive.current) return
-    if (!/[\p{L}\p{N}]/u.test(text)) {
+    // A stock phrase from a short clip is what Whisper makes of noise; nobody said it.
+    if (!/[\p{L}\p{N}]/u.test(text) || isStray(text, wavSeconds(wav.size))) {
       setHeard('')
       setEmpties((n) => n + 1)
       setPhase('listening')
       return
     }
     setEmpties(0)
+    setCrowded(0)
     setHeard(text)
     // A turn still running is let go before the next is sent.
     const id = sessionRef.current
@@ -244,7 +255,9 @@ export function VoicePanel({
   const line = silent
     ? t('음성을 만들지 못해 글로만 보여 드립니다.')
     : heard ||
-      (empties >= 3
+      (crowded >= 2
+        ? t('주변이 시끄러워 말의 끝을 잡기 어렵습니다. 「누르고 말하기」를 쓰세요.')
+        : empties >= 3
         ? t('잘 들리지 않습니다. 마이크 가까이에서 말씀하세요.')
         : empties > 0
           ? t('말씀은 들렸지만 글로 옮기지 못했습니다. 다시 말씀해 주세요.')
@@ -330,7 +343,9 @@ export function VoicePanel({
         }}
         className={cn(
           'flex h-9 touch-none select-none items-center gap-1.5 rounded-control border px-2.5 text-sm transition-colors disabled:opacity-50',
-          holding ? 'border-accent bg-accent-soft text-accent' : 'border-line text-muted hover:bg-elevated hover:text-fg',
+          holding || crowded >= 2
+            ? 'border-accent bg-accent-soft text-accent'
+            : 'border-line text-muted hover:bg-elevated hover:text-fg',
         )}
       >
         {holding ? <Mic size={14} /> : <Hand size={14} />}

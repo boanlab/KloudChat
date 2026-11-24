@@ -162,6 +162,7 @@ export const EN_UI: Record<string, string> = {
   '말씀하시면 여기에 받아쓴 글이 보입니다.': 'What you say appears here as text, and stays in the conversation.',
   '말씀은 들렸지만 글로 옮기지 못했습니다. 다시 말씀해 주세요.': 'I heard you but could not turn it into text. Please say it again.',
   '잘 들리지 않습니다. 마이크 가까이에서 말씀하세요.': 'Cannot hear you well. Speak closer to the microphone.',
+  '주변이 시끄러워 말의 끝을 잡기 어렵습니다. 「누르고 말하기」를 쓰세요.': 'It is too noisy to tell where a sentence ends. Use “Hold to talk”.',
   '누르고 있는 동안 말하기': 'Speak while holding',
   '소리로 알아듣기 어려우면 누른 채로 말하세요': 'If it does not pick you up, hold this and speak',
   '누르고 말하기': 'Hold to talk',
