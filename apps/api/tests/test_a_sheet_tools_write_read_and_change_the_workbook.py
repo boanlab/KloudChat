@@ -228,3 +228,15 @@ def test_a_text_that_only_starts_with_an_equal_sign_is_not_written_as_a_formula(
             sheet_edit.apply(blank, [{"op": "set_cells", "at": "A1", "values": [[bad]]}])
     good = ["=IF(A2>1,\"예\",\"아니오\")", "=-A2", "=A2%"]
     sheet_edit.apply(blank, [{"op": "set_cells", "at": "A1", "values": [good]}])
+
+
+def test_a_formula_over_a_bracket_blank_can_be_guarded():
+    data = sheet_edit.apply(sheet_doc.blank(), [
+        {"op": "set_cells", "at": "A1", "values": [[10, "[4월 매출]"]]},
+        {"op": "set_cells", "at": "A2",
+         "values": [['=IF(ISNUMBER(B1),B1-A1,"")', "=ISBLANK(C1)", "=ISERROR(B1/A1)",
+                     "=ISTEXT(B1)"]]},
+    ]).data
+    got = sheet_calc.values(data)
+    assert got[("시트1", 2, 1)] == "" and got[("시트1", 2, 2)] is True
+    assert got[("시트1", 2, 3)] is True and got[("시트1", 2, 4)] is True

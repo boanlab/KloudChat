@@ -21,8 +21,9 @@ _CELL = (
     "A cell is a number, a text, true/false, null (empty), or a text starting with `=` for a "
     "formula (`=SUM(B2:B9)`, `=B2/C2`, `='1월'!D5*2`): use a formula wherever a value follows "
     "from other cells (a total, a difference, a rate, price × quantity), so the sheet stays "
-    "live when the person edits it. A number is a JSON number (1200, 0.125), never a text like "
-    "「1,200원」; a text of the form 「1,200」, 「12.5%」 or 「2026-10-13」 is stored as that "
+    "live when the person edits it; guard a formula over a cell that may still hold a bracket "
+    "blank or be empty (`=IF(ISNUMBER(B5),B5-B4,\"\")`). A number is a JSON number (1200, "
+    "0.125), never a text like 「1,200원」; a text of the form 「1,200」, 「12.5%」 or 「2026-10-13」 is stored as that "
     "number with its format."
 )
 _NEVER = (

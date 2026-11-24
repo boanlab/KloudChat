@@ -332,6 +332,13 @@ def _plain(args: list[Any], name: str) -> Any:
         return "".join(_text(v) for v in _flat(args))
     if name == "LEN":
         return float(len(_text(args[0])))
+    if name in ("ISNUMBER", "ISTEXT", "ISBLANK") and len(args) == 1:
+        value = args[0][0][0] if isinstance(args[0], list) and args[0] and args[0][0] else args[0]
+        if name == "ISBLANK":
+            return value is None
+        if name == "ISTEXT":
+            return isinstance(value, str) and not isinstance(value, Err)
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
     if name == "SUMIF":
         return _sumif(args, False)
     if name == "COUNTIF":
@@ -536,6 +543,13 @@ class _Parser:
             if _bool(self.scalar(nodes[0])):
                 return self.value(nodes[1])
             return self.value(nodes[2]) if len(nodes) == 3 else False
+        if name == "ISERROR":
+            if len(nodes) != 1:
+                raise Unsupported("args")
+            try:
+                return isinstance(self.scalar(nodes[0]), Err)
+            except _Raise:
+                return True
         if name == "IFERROR":
             if len(nodes) != 2:
                 raise Unsupported("args")
