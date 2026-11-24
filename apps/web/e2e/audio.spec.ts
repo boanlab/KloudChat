@@ -32,9 +32,13 @@ test('내레이션을 만들면 오디오 아티팩트로 남는다', async ({ p
   await expect(page.getByRole('menuitem', { name: '내레이션' })).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(page.getByText(/Enter로 생성/)).toBeVisible()
-  // Each voice carries a short tone description.
+  // Each voice carries a short tone description; the list is the selected model's own
+  // (the six OpenAI-style voices, or Qwen3-TTS's nine with sohee first).
   await page.getByRole('button', { name: /^목소리/ }).click()
-  await expect(page.getByRole('menuitem', { name: /alloy.*중립적/ })).toBeVisible()
+  await expect(
+    page.getByRole('menuitem', { name: /(alloy.*중립적|sohee.*따뜻하고 감정이)/ }),
+  ).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: /(alloy|sohee)/ })).toHaveCount(1)
   await page.keyboard.press('Escape')
 
   await page.getByLabel('프롬프트 입력').fill('다음 문장을 읽어줘: 자동 검증용 음성입니다.')

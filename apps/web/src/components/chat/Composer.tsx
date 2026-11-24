@@ -25,7 +25,7 @@ import {
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { FileRow, FormKind, FormRole, OfficeKind, PrivacyDecision, WebSearchSetting } from '@/lib/api'
 import { ApiError, fileUrl, transcriptionsApi } from '@/lib/api'
-import { VOICES, VOICE_TONE } from '@/lib/voices'
+import { VOICE_TONE, voiceFor, voicesOf } from '@/lib/voices'
 import { startWavRecording, type WavRecorder } from '@/lib/wavRecorder'
 import { FormRoleToggle, SavedFormChip, followable, formRoleOf } from '@/components/chat/FormChips'
 import { FileBoxPicker } from '@/components/files/FileBoxPicker'
@@ -367,8 +367,8 @@ function AvOptions() {
           {avOptions.audioKind === 'narration' && (
             <OptionGroup
               label={t('목소리')}
-              value={avOptions.voice}
-              options={VOICES}
+              value={voiceFor(avModel, avOptions.voice)}
+              options={voicesOf(avModel)}
               onChange={(v) => setAvOptions({ voice: v })}
               describe={(v) => (VOICE_TONE[v] ? t(VOICE_TONE[v]) : undefined)}
             />
@@ -2784,6 +2784,9 @@ export function Composer({
                   ? t('도식은 글 모델이 씁니다 · 이미지 요금이 아닙니다')
                   : kind === 'image' && FIGURE_STYLES[imageOptions.style]
                     ? t.n('선택한 이미지 모델이 그립니다 · 예상 {n} 크레딧', estimate)
+                    : kind === 'av' && avOptions.mode === 'audio' && model && estimate === 0
+                        && !tokenPricedAudio
+                      ? t('무료')
                     : tokenPricedAudio
                       ? t('쓴 만큼 크레딧이 나갑니다')
                     : t.n('예상 {n} 크레딧', estimate)}

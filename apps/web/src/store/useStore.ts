@@ -110,6 +110,7 @@ import { searchCardOf } from '@/lib/privacy'
 import { FIGURE_STYLES, modelDrawsFigure } from '@/lib/figureRoute'
 import { imageModelId, type ImageEditSource } from '@/lib/imageEdit'
 import { leaveOnSignOut } from '@/lib/push'
+import { voiceFor } from '@/lib/voices'
 
 /** Store-side translation (no hooks here); only strings that reach the screen. */
 const tr = translator(currentLang)
@@ -2375,7 +2376,10 @@ export const useStore = create<State>((set, get) => ({
         prompt,
         model: pickedModel(get(), id, 'av'),
         audioKind: avOptions.audioKind === 'music' ? 'music' : 'narration',
-        voice: avOptions.voice,
+        voice: voiceFor(
+          get().models.find((m) => m.id === pickedModel(get(), id, 'av')),
+          avOptions.voice,
+        ),
         seconds: avOptions.durationSec,
       })
       set((s) => ({ artifacts: [toArtifact(row), ...s.artifacts] }))

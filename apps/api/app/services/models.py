@@ -9,7 +9,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 from app.core.config import settings
-from app.services import imagegen, litellm, reasoning, settings_store
+from app.services import audiogen, imagegen, litellm, reasoning, settings_store
 from app.services.adapters import (
     ADAPTER_MODELS,
     FREE_PROVIDERS,
@@ -372,6 +372,18 @@ def _shape(entry: dict[str, Any]) -> dict[str, Any] | None:
         "runInfo": _run_info(info),
         "modality": modality,
         "kinds": kinds,
+        # narration voices of an audio model (empty for music and non-audio models)
+        "voices": (
+            list(
+                audiogen.voices_for(
+                    model_id, speech_endpoint=(info.get("mode") or "").lower() == "audio_speech"
+                )
+            )
+            if modality == "audio"
+            else []
+        ),
+        # served at /audio/speech rather than chat/completions
+        "speechEndpoint": (info.get("mode") or "").lower() == "audio_speech",
         # per-call/per-image prices for near-zero-output models
         "creditPerCall": _credits(float(info.get("output_cost_per_request") or 0)),
         "creditPerImage": (
