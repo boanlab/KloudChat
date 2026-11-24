@@ -53,3 +53,12 @@ describe('what 읽어 주기 reads', () => {
     expect(documentUnits('빈 문서', '  \n ')).toEqual([])
   })
 })
+
+describe('a comment split to rebuild itself', () => {
+  it('leaves nothing of it to read', () => {
+    const units = reportUnits('T', [
+      { id: 's', heading: 'H', status: 'done', content: 'a<!<!-- x -->-- b -->c' } as never,
+    ])
+    expect(units.at(-1)?.text).toBe('ac')
+  })
+})

@@ -6,7 +6,15 @@ import type { ReadUnit } from './readAloud'
 const DRAWN = /^```(?:mermaid|chart|kpi|steps|cards|callout)\b[^\n]*\n[\s\S]*?^```[ \t]*$/gm
 const COMMENT = /<!--[\s\S]*?-->/g
 
-const readable = (markdown: string) => markdown.replace(DRAWN, '').replace(COMMENT, '').trim()
+/** Comments are cut until none is left, so a split like `<!<!-- -->--` cannot rebuild one. */
+function readable(markdown: string): string {
+  let text = markdown.replace(DRAWN, '')
+  for (let before = ''; before !== text; ) {
+    before = text
+    text = text.replace(COMMENT, '')
+  }
+  return text.replace(/<!--|-->/g, '').trim()
+}
 
 export const answerUnits = (content: string): ReadUnit[] => [{ text: content }]
 
