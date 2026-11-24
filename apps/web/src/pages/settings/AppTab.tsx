@@ -16,7 +16,9 @@ export function AppTab() {
         ? t('Safari 공유 메뉴의 「홈 화면에 추가」로 설치합니다.')
         : app.macSafari
           ? t('Safari 파일 메뉴의 「Dock에 추가」로 설치합니다.')
-          : t('이 브라우저에서는 앱으로 설치할 수 없습니다.')
+          : app.chromium
+            ? t('이미 설치했다면 주소창의 「앱에서 열기」로 열 수 있습니다. 설치하지 않았다면 브라우저 메뉴의 「앱 설치」를 쓰세요.')
+            : t('이 브라우저에서는 앱으로 설치할 수 없습니다.')
   return (
     <section className="space-y-3" aria-labelledby="app-install">
       <h2 id="app-install" className="text-base font-semibold">

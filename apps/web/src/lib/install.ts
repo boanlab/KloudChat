@@ -31,6 +31,9 @@ const isMacSafari = () =>
   /Safari\//.test(navigator.userAgent) &&
   !/Chrome|Chromium|CriOS|Edg|OPR|Firefox/.test(navigator.userAgent)
 
+/** Chromium offers no prompt once the app is installed (the address bar shows 「앱에서 열기」 instead). */
+const isChromium = () => /Chrome|Chromium|Edg\//.test(navigator.userAgent) && !/Firefox|OPR/.test(navigator.userAgent)
+
 /** Install state shared by the top bar button and 설정 › 앱. */
 export function useInstall() {
   const standaloneQuery = useMediaQuery('(display-mode: standalone)')
@@ -65,6 +68,8 @@ export function useInstall() {
     canPrompt: deferred !== null,
     ios,
     macSafari,
+    /** Chromium with no prompt to offer: installed already, or its own menu has the install item. */
+    chromium: !ios && !macSafari && isChromium(),
     /** Something to press: a prompt, or Safari's steps. */
     installable: !standalone && (deferred !== null || ios || macSafari),
     install,

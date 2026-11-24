@@ -150,6 +150,8 @@ export const EN_UI: Record<string, string> = {
   'Safari 파일 메뉴의 「Dock에 추가」로 설치합니다.': 'Install with “Add to Dock” in Safari\'s File menu.',
   '이 브라우저에서는 앱으로 설치할 수 없습니다.': 'This browser cannot install the app.',
   '앱으로 설치': 'Install as an app',
+  '이미 설치했다면 주소창의 「앱에서 열기」로 열 수 있습니다. 설치하지 않았다면 브라우저 메뉴의 「앱 설치」를 쓰세요.':
+    'If you already installed it, open it with “Open in app” in the address bar. Otherwise use “Install app” in the browser menu.',
   '설치 방법 보기': 'How to install',
   '보고서가 완성됐습니다': 'Your report is ready',
   '보고서를 만들지 못했습니다': 'The report could not be made',
