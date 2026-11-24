@@ -578,10 +578,55 @@ def _hwpx(data: bytes, name: str) -> dict[str, Any]:
     }
 
 
+#: a workbook read for how it looks (empty input cells, examples) is cut at this size, these cells
+_XLSX_LOOK_BYTES = 3 * 1024 * 1024
+_XLSX_LOOK_ROWS = 300
+_XLSX_LOOK_COLS = 40
+_XLSX_LOOK_SHEETS = 6
+#: this many typed numbers make a workbook the data a sheet works from
+_XLSX_DATA_NUMBERS = 25
+
+
+def _xlsx_look(data: bytes) -> dict[str, int]:
+    """Counts that tell a form workbook from a data one: typed numbers, labels, formulas, empty
+    cells drawn as an input (a fill or a border), guidance and filler text."""
+    import io
+
+    import openpyxl
+
+    out = {"numbers": 0, "texts": 0, "formulas": 0, "inputs": 0, "guidance": 0, "blanks": 0}
+    if len(data) > _XLSX_LOOK_BYTES:
+        return out
+    try:
+        book = openpyxl.load_workbook(io.BytesIO(data))
+    except Exception:  # noqa: BLE001 — a workbook the reader cannot walk is judged by its name
+        return out
+    for sheet in book.worksheets[:_XLSX_LOOK_SHEETS]:
+        for row in sheet.iter_rows(max_row=_XLSX_LOOK_ROWS, max_col=_XLSX_LOOK_COLS):
+            for cell in row:
+                value = cell.value
+                if value is None:
+                    border = cell.border
+                    if cell.has_style and (
+                            (cell.fill and cell.fill.fill_type == "solid")
+                            or (border and (border.left.style or border.bottom.style))):
+                        out["inputs"] += 1
+                elif isinstance(value, str) and value.startswith("="):
+                    out["formulas"] += 1
+                elif isinstance(value, str):
+                    out["texts"] += 1
+                    out["guidance"] += bool(_GUIDANCE.search(value))
+                    out["blanks"] += bool(_FILL.search(value)) + len(BLANK.findall(value))
+                elif not isinstance(value, bool):
+                    out["numbers"] += 1
+    book.close()
+    return out
+
+
 def _xlsx(data: bytes, name: str) -> dict[str, Any]:
-    """An Excel workbook: its sheets and how much it holds, read without a full load. A
-    workbook is never taken for a form by its look (`score` 0): it is a form only when a
-    project or agent keeps it in its Excel slot, or the file is a `.xltx`."""
+    """An Excel workbook: its sheets, and how much it looks like a form (a template file, a name
+    that says form, guidance, filler and empty input cells) against a data table (many typed
+    numbers)."""
     try:
         archive = open_capped_zip(data)
     except (zipfile.BadZipFile, RuntimeError):
@@ -595,7 +640,21 @@ def _xlsx(data: bytes, name: str) -> dict[str, Any]:
     sheets = [str(s.get("name")) for s in book.iter(f"{{{_S}}}sheet")] if book is not None else []
     if not macro and not sheets:
         raise FormError("엑셀 파일을 읽지 못했습니다: 시트가 없습니다.")
-    return {"sheets": sheets[:40], "macro": macro, "score": 0.0, "signals": []}
+    look = _xlsx_look(data)
+    signals: list[tuple[str, float]] = []
+    if _FORM_NAME.search(Path(name).stem):
+        signals.append(("name", 0.35))
+    if look["inputs"] >= 3 and look["inputs"] >= look["numbers"]:
+        signals.append(("input_cells", 0.3))
+    if look["guidance"]:
+        signals.append(("guidance", 0.25))
+    if look["blanks"] >= 2:
+        signals.append(("blanks", 0.15))
+    if look["numbers"] >= _XLSX_DATA_NUMBERS and not look["guidance"]:
+        signals.append(("many_numbers", -0.4))
+    score, names_ = _scored(signals)
+    return {"sheets": sheets[:40], "macro": macro, "score": score, "signals": names_,
+            "look": look}
 
 
 def _hwp(name: str, text: str) -> dict[str, Any]:

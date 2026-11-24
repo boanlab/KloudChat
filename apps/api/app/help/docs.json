@@ -1740,7 +1740,7 @@
 "path": "write/sheet",
 "title": "시트",
 "heading": "Excel 양식에서 시작",
-"text": "프로젝트나 에이전트의 **기본 양식 파일**에 Excel 양식(`.xlsx`, `.xltx`)을 두면, 그 프로젝트의 새 시트는 양식을 복사해 시작합니다. 시트·서식·표시 형식·열 너비·수식·이름 정의·병합이 그대로 있고, 챗은 같은 도구로 칸만 채웁니다. 양식에 적혀 있던 예시 값(숫자·날짜·「※ 작성요령」·「홍길동」)은 사실로 쓰지 않으려고 지우며, 자료에 없는 값은 칸에 `[매출액]`처럼 빈칸으로 남깁니다. 시트 화면의 새 대화에는 **프로젝트 양식** 칩이 보이고 ✕로 그 대화에서만 뺄 수 있습니다. 대화에 올린 `.xlsx`는 양식이 아니라 자료입니다."
+"text": "프로젝트나 에이전트의 **기본 양식 파일**에 Excel 양식(`.xlsx`, `.xltx`)을 두면, 그 프로젝트의 새 시트는 양식을 복사해 시작합니다. 시트·서식·표시 형식·열 너비·수식·이름 정의·병합이 그대로 있고, 챗은 같은 도구로 칸만 채웁니다. 양식에 적혀 있던 예시 값(숫자·날짜·「※ 작성요령」·「홍길동」)은 사실로 쓰지 않으려고 지우며, 자료에 없는 값은 칸에 `[매출액]`처럼 빈칸으로 남깁니다. 순번, 연도 머리글, 수식이 가리키는 세율 같은 값은 양식의 구조라 그대로 둡니다. 시트 화면의 새 대화에는 **프로젝트 양식**(에이전트의 것이면 **에이전트 양식**) 칩이 보이고 ✕로 그 대화에서만 뺄 수 있습니다. 에이전트의 양식이 프로젝트의 것보다 먼저입니다. 대화에 올린 `.xlsx`도 Word·PowerPoint 파일처럼 **양식**과 **자료** 칩으로 나뉩니다. 빈 입력 칸·작성요령·`.xltx`가 있으면 양식, 숫자가 많은 표면 자료로 읽으며 칩으로 바꿀 수 있습니다. 양식으로 만든 시트 카드에는 **양식을 따름** 줄이 붙습니다. **빈 시트로 시작**은 보고서·슬라이드의 빈 문서 버튼처럼 양식 없이 빈 통합 문서를 엽니다."
 },
 {
 "lang": "ko",
@@ -3553,7 +3553,7 @@
 "path": "write/sheet",
 "title": "Sheets",
 "heading": "Starting from an Excel form",
-"text": "When a project or agent keeps an Excel form (`.xlsx`, `.xltx`) under **Default form files**, a new sheet in it starts as a copy of that form. Sheets, formatting, number formats, column widths, formulas, defined names and merged cells stay as they are, and the chat fills only the cells, through the same tools. The form's example values (numbers, dates, \"※ guidance\" lines, \"홍길동\"-style filler) are not treated as facts and are cleared; anything the material does not give stays a bracket blank such as `[매출액]`. A new conversation on the Sheet screen shows a **Project form** chip; ✕ removes it for that conversation only. An `.xlsx` attached to a conversation is material, not a form."
+"text": "When a project or agent keeps an Excel form (`.xlsx`, `.xltx`) under **Default form files**, a new sheet in it starts as a copy of that form. Sheets, formatting, number formats, column widths, formulas, defined names and merged cells stay as they are, and the chat fills only the cells, through the same tools. The form's example values (numbers, dates, \"※ guidance\" lines, \"홍길동\"-style filler) are not treated as facts and are cleared; anything the material does not give stays a bracket blank such as `[매출액]`. Running numbers, year headings and a rate that a formula points at are the form's structure and stay. A new conversation on the Sheet screen shows a **Project form** chip (**Agent form** when it is the agent's); ✕ removes it for that conversation only. The agent's form comes before the project's. An `.xlsx` attached to a conversation gets the same **Form** and **Material** chip as a Word or PowerPoint file: empty input cells, guidance text or a `.xltx` read as a form, a table of many numbers as material, and you can switch the chip. A sheet made from a form carries a **Form followed** line on its card. **Start with a blank sheet** opens a blank workbook without the form, like the blank-document buttons for reports and slides."
 },
 {
 "lang": "en",

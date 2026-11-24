@@ -1473,6 +1473,8 @@ export interface FollowedForm {
     cells?: number
     cellsFilled?: number
     cellsEmpty?: string[]
+    /** Excel: how many example cells of the form were cleared. */
+    cleared?: number
   }
 }
 

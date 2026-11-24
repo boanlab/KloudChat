@@ -1207,6 +1207,8 @@ export interface XlsxArtifact extends ArtifactBase {
   sheets?: string[]
   /** Cell text, for search and cards. */
   text?: string
+  /** The Excel form (양식) this sheet started from (`form_marks`). */
+  form?: FollowedForm
 }
 
 export type Artifact =
