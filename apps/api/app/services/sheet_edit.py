@@ -610,7 +610,10 @@ def outline(data: bytes, sheet: Any = None, range: Any = None) -> str:  # noqa: 
     if sheet:
         sheets = [s for s in sheets if s["name"] == _sheet_name(sheet, names)]
     budget = RANGE_CHARS if range else OUTLINE_CHARS
-    lines = [f"시트 {len(names)}개: " + ", ".join(f"「{n}」" for n in names)]
+    from app.services import sheet_form
+
+    lines = sheet_form.note(data, model)
+    lines.append(f"시트 {len(names)}개: " + ", ".join(f"「{n}」" for n in names))
     for item in sheets:
         box = range_of(range, item["rows"], item["cols"]) if range else None
         cells = [c for c in item["cells"] if "v" in c or "f" in c]

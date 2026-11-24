@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { FileStack, FolderOpen, Loader2, Upload, X } from 'lucide-react'
 import { Button, Card } from '@/components/ui'
 import { FileBoxPicker } from '@/components/files/FileBoxPicker'
-import { FOLLOWED_KINDS } from '@/components/chat/FormChips'
+import { SAVED_KINDS } from '@/components/chat/FormChips'
 import { errorCode, filesApi, formsApi, type FileRow, type FormKind } from '@/lib/api'
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
@@ -13,13 +13,18 @@ const SLOTS: { kind: FormKind; label: string; accept: string }[] = [
   { kind: 'pptx', label: 'PowerPoint', accept: '.pptx,.potx' },
   { kind: 'docx', label: 'Word', accept: '.docx,.dotx' },
   { kind: 'hwpx', label: '한글', accept: '.hwpx' },
+  { kind: 'xlsx', label: 'Excel', accept: '.xlsx,.xltx' },
 ]
 
 /** Why a file cannot be a saved form, as the server says (`routers/forms.py`). */
 const REFUSALS: Record<string, string> = {
   form_hwp_needs_hwpx:
     '예전 한글 형식(.hwp)은 양식으로 쓸 수 없습니다. 한글에서 다른 이름으로 저장 › 「한글 표준 문서 (*.hwpx)」로 저장해 올려 주세요.',
-  form_kind_unknown: 'PowerPoint·Word·한글(HWPX) 파일만 양식으로 쓸 수 있습니다.',
+  form_xlsm_refused:
+    '매크로가 든 통합 문서(.xlsm)는 양식으로 쓸 수 없습니다. 엑셀에서 「Excel 통합 문서(*.xlsx)」로 저장해 올려 주세요.',
+  form_xls_needs_xlsx:
+    '예전 엑셀 형식(.xls)은 양식으로 쓸 수 없습니다. 엑셀에서 「Excel 통합 문서(*.xlsx)」로 저장해 올려 주세요.',
+  form_kind_unknown: 'PowerPoint·Word·한글(HWPX)·Excel(xlsx) 파일만 양식으로 쓸 수 있습니다.',
   form_unreadable: '이 파일을 양식으로 읽지 못했습니다. 다른 파일로 다시 시도하세요.',
   form_kind_mismatch: '이 칸에 맞는 종류의 파일이 아닙니다.',
 }
@@ -50,6 +55,7 @@ function summary(row: FileRow, t: Translator): string {
       form.tables ? t.n('표 {n}개', form.tables) : '',
     ].filter(Boolean).join(' · ')
   }
+  if (form.kind === 'xlsx') return t.n('시트 {n}개', form.sheets ?? 0)
   return ''
 }
 
@@ -103,7 +109,7 @@ export function FormFilesField({
     }
   }
 
-  const slots = SLOTS.filter((slot) => FOLLOWED_KINDS.includes(slot.kind))
+  const slots = SLOTS.filter((slot) => SAVED_KINDS.includes(slot.kind))
   return (
     <div className="space-y-3">
       {slots.map((slot) => {

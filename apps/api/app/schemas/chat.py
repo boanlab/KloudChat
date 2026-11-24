@@ -324,7 +324,7 @@ class SessionPatch(Wire):
     project_id: str | None = None
     render_template_id: str | None = Field(default=None, max_length=60)
     #: `[]` clears
-    skill_ids: list[str] | None = Field(default=None, max_length=3)
+    skill_ids: list[str] | None = Field(default=None, max_length=4)
     #: the composer's reasoning chip; `auto` clears
     reasoning_mode: Literal["auto", "fast", "deep"] | None = None
 
@@ -366,14 +366,14 @@ class SendMessage(Wire):
                                                                             max_length=20)
     #: the output kinds whose saved (agent or project) 양식 the person took off in this
     #: conversation; None leaves the conversation's choice as it is
-    saved_forms_off: list[Literal["pptx", "docx", "hwpx"]] | None = Field(default=None,
-                                                                         max_length=3)
+    saved_forms_off: list[Literal["pptx", "docx", "hwpx", "xlsx"]] | None = Field(
+        default=None, max_length=4)
     model: str | None = None
     #: True every turn, False never (unless research asked), "auto" when warranted; None: the
     #: agent's `web_search_default`, else False
     web_search: bool | Literal["auto"] | None = None
     #: per-turn selection; installation alone injects nothing
-    activated_skill_ids: list[str] = Field(default_factory=list, max_length=3)
+    activated_skill_ids: list[str] = Field(default_factory=list, max_length=4)
     #: `/design-templates` id, stored on session; `""` clears
     render_template_id: str | None = Field(default=None, max_length=60)
     #: write the pending outline; ignored if none pending

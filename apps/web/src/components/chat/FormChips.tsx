@@ -8,6 +8,9 @@ import { cn } from '@/lib/utils'
 /** Output kinds whose writer follows a form so far (`form_files.FOLLOWED`). */
 export const FOLLOWED_KINDS: readonly FormKind[] = ['pptx', 'docx', 'hwpx']
 
+/** Kinds a project or agent can keep as its saved form: an Excel file is a form only there; attached to a chat it is the data. */
+export const SAVED_KINDS: readonly FormKind[] = [...FOLLOWED_KINDS, 'xlsx']
+
 /** Whether a file can be followed as a form at all. */
 export function followable(file: FileRow): boolean {
   const kind = file.form?.kind
@@ -104,7 +107,9 @@ export function SavedFormChip({
         ? t('이 대화의 Word 파일은 이 양식에 맞춰 씁니다')
         : kind === 'hwpx'
           ? t('이 대화의 한글 파일은 이 양식을 채워 씁니다')
-          : t('이 대화의 PowerPoint 파일은 이 양식에 맞춰 씁니다')}
+          : kind === 'xlsx'
+            ? t('이 대화의 새 시트는 이 양식의 서식과 수식에서 시작합니다')
+            : t('이 대화의 PowerPoint 파일은 이 양식에 맞춰 씁니다')}
     >
       <FileStack size={13} />
       <span className="text-xs">{from}</span>

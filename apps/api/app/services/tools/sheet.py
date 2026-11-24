@@ -4,16 +4,19 @@ formula, and the editor beside the chat shows what the tools saved."""
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from sqlmodel import col, select
 
 from app.core.db import SessionLocal
 from app.models.workspace import StoredFile
-from app.services import files, sheet_build, sheet_doc
+from app.services import files, sheet_build, sheet_doc, sheet_form
 from app.services import sheet_edit as edits
 from app.services.tools.base import ToolContext
 from app.services.tools.office import Toolset, tools_for
+
+log = logging.getLogger(__name__)
 
 __all__ = ["NAMES", "TOOLS", "xlsx_edit", "xlsx_read", "xlsx_restore", "xlsx_write"]
 
@@ -38,9 +41,34 @@ _NEVER = (
 MAX_SOURCE = 15 * 1024 * 1024
 
 
+async def _form_of(ctx: ToolContext) -> Any:
+    """The conversation's Excel form (`form_files.for_session`), or None."""
+    if not ctx.session_id:
+        return None
+    from app.models.chat import ChatSession
+    from app.services import form_files
+
+    try:
+        async with SessionLocal() as db:
+            session = await db.get(ChatSession, ctx.session_id)
+            return (await form_files.for_session(db, session, "xlsx")
+                    if session is not None else None)
+    except Exception:  # noqa: BLE001 — no form found is a plain new workbook, never a failed write
+        log.warning("excel form lookup failed for %s", ctx.session_id, exc_info=True)
+        return None
+
+
 async def _prepare(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
-    """A sheet given as `from_file` (an attached CSV or Excel file, by name or id) gets its rows
-    from that file as written, so a big table is never retyped by the model."""
+    """A conversation with an Excel form (양식) starts the new workbook from that form, not from
+    the rows given: the form's copy opens and is filled through `xlsx_edit`. Else a sheet given
+    as `from_file` (an attached CSV or Excel file, by name or id) gets its rows from that file
+    as written, so a big table is never retyped by the model."""
+    if form := await _form_of(ctx):
+        return {"title": args.get("title") or "", "sheets": [], "__form__": form,
+                "__notes__": [
+                    f"사람의 엑셀 양식 「{form.choice.name}」으로 새 시트를 열었습니다. "
+                    "쓰려던 표는 넣지 않았습니다: xlsx_read로 양식의 칸을 읽고 "
+                    "xlsx_edit set_cells로 채우세요(양식의 예시 값은 지웠고, 모르는 값은 [빈칸]으로 둡니다)."]}
     sheets = args.get("sheets")
     wanted = {
         str((s.get("from_file") or {}).get("file") or "").strip()
@@ -225,7 +253,8 @@ TOOLS = tools_for(Toolset(
         },
         "required": ["title", "sheets"],
     },
-    build=lambda args, _look: sheet_build.build(args),
+    build=lambda args, _look: (sheet_form.start(args["__form__"]) if args.get("__form__")
+                               else sheet_build.build(args)),
     prepare=_prepare,
     report=edits.report,
 ))
