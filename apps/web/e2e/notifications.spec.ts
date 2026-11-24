@@ -245,10 +245,10 @@ test.describe('설정 › 알림', () => {
     // an admin-only event is not offered to a member
     await expect(page.getByText('공개 승인 요청')).toHaveCount(0)
     await expect(page.getByRole('switch', { name: '작업 완료' })).toBeChecked()
-    await expect(page.getByRole('switch', { name: '문의 답변' })).not.toBeChecked()
+    await expect(page.getByRole('switch', { name: '문의 답변' })).toBeChecked()
     await page.getByRole('switch', { name: '문의 답변' }).click()
     await expect.poll(() => calls.prefs.length).toBe(1)
-    expect(calls.prefs[0]).toEqual({ preferences: { pushEvents: { issue: true } } })
+    expect(calls.prefs[0]).toEqual({ preferences: { pushEvents: { issue: false } } })
 
     await page.getByRole('button', { name: '이 기기에서 알림 켜기' }).click()
     await expect(page.getByTestId('notify-device-state')).toHaveText('이 기기에서 알림을 받습니다.')

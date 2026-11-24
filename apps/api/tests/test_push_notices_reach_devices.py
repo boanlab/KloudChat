@@ -132,7 +132,7 @@ async def test_a_device_subscribes_is_listed_and_leaves(stack):
     client, local = stack
     config = (await client.get("/push/config")).json()
     assert len(wc.b64u_decode(config["publicKey"])) == 65
-    assert config["events"]["job_done"] is True and config["events"]["issue"] is False
+    assert config["events"]["job_done"] is True and config["events"]["issue"] is True
     device = Device()
     made = await client.post("/push/subscriptions", json={
         "endpoint": device.endpoint, "keys": {"p256dh": device.public, "auth": device.auth}})
@@ -314,17 +314,16 @@ async def test_event_switches_and_defaults(stack, monkeypatch):
         db.add(Device().row())
         await db.commit()
     seen = mock_push(monkeypatch, 201)
-    # off by default
-    assert await push.deliver("me", push.Notice(event="issue", title="t")) == 0
-    # on by default
+    # every event is on by default
+    assert await push.deliver("me", push.Notice(event="issue", title="t")) == 1
     assert await push.deliver("me", push.Notice(event="shared", title="t")) == 1
     async with local() as db:
         user = await db.get(User, "me")
-        user.preferences = {"push_events": {"shared": False, "issue": True}}
+        user.preferences = {"push_events": {"shared": False, "issue": False}}
         db.add(user)
         await db.commit()
     assert await push.deliver("me", push.Notice(event="shared", title="t")) == 0
-    assert await push.deliver("me", push.Notice(event="issue", title="t")) == 1
+    assert await push.deliver("me", push.Notice(event="issue", title="t")) == 0
     assert len(seen) == 2
 
 

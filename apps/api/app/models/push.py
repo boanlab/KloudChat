@@ -15,9 +15,9 @@ PUSH_EVENTS: dict[str, bool] = {
     "job_done": True,
     "job_failed": True,
     "shared": True,
-    "review": False,
-    "decided": False,
-    "issue": False,
+    "review": True,
+    "decided": True,
+    "issue": True,
     "credits": True,
 }
 
