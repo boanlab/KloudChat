@@ -209,6 +209,22 @@ test('home opens a blank Word document from the report surface\'s Word pick', as
   expect(state.unexpected).toEqual([])
 })
 
+test('leaving an untouched blank Word document drops it from 작업 문서', async ({ page }) => {
+  test.skip((page.viewportSize()?.width ?? 0) <= 640, 'desktop width')
+  const state = await fixture(page, { fromHome: true })
+  await page.getByRole('group', { name: '만들 것' }).getByRole('button', { name: '보고서' }).click()
+  await page.getByRole('button', { name: /^형식/ }).click()
+  await page.getByRole('menuitemcheckbox', { name: 'Word', exact: true }).click()
+  await page.getByRole('button', { name: '빈 문서로 시작' }).click()
+  await expect(docxPanel(page)).toBeVisible()
+  await page.getByRole('link', { name: '파일함' }).click()
+  await expect(page.getByRole('heading', { name: '파일함' })).toBeVisible()
+  await expect.poll(() => state.discards).toEqual(['88888888888888888888888888888888'])
+  await page.getByRole('tab', { name: /작업 문서/ }).click()
+  await expect(page.getByText('작업 문서가 없습니다')).toBeVisible()
+  expect(state.unexpected).toEqual([])
+})
+
 test('an attached .docx opens in the Word editor beside the chat', async ({ page }) => {
   test.skip((page.viewportSize()?.width ?? 0) <= 640, 'desktop width')
   const state = await fixture(page, { attachment: { id: 'file-1', name: '2-gongmun.docx' } })

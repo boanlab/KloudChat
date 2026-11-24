@@ -117,6 +117,7 @@ def router_for(spec: Routes) -> APIRouter:
                 db, kind, user_id=user.id, title=title, data=data,
                 session_id=payload.session_id, project_id=project_id,
                 source_file_id=payload.file_id,
+                blank=not payload.file_id,
             )
         except ValueError:
             raise HTTPException(

@@ -179,6 +179,7 @@ async def create(
     session_id: str | None = None,
     project_id: str | None = None,
     source_file_id: str | None = None,
+    blank: bool = False,
 ) -> Artifact:
     fmt = kind.file_format(data)
     if not fmt:
@@ -191,6 +192,9 @@ async def create(
         title=(title.strip() or kind.untitled)[:MAX_TITLE],
         data=with_source(kind.describe(data, fmt), source_file_id),
     )
+    if blank:
+        # the title it was made with: 「손대지 않음」 for `blank_docs`
+        artifact.data = {**(artifact.data or {}), "blank": artifact.title}
     artifact.storage_key = _store(artifact, 1, data, fmt)
     db.add(artifact)
     await db.commit()

@@ -96,6 +96,7 @@ from app.schemas.workspace import (
 from app.services import (
     artifact_versions,
     audit,
+    blank_docs,
     critique,
     deck_export,
     design_templates,
@@ -2276,6 +2277,17 @@ async def delete_artifact(artifact_id: str, user: CurrentUser, db: DbSession,
                           counts={"artifacts": 1}, extra={"kind": str(artifact.kind)}))
     await db.commit()
     office_doc.drop_files(blobs)
+
+
+@router.post("/artifacts/{artifact_id}/discard-if-blank")
+async def discard_if_blank(artifact_id: str, user: CurrentUser, db: DbSession):
+    """The screen of a blank document was left: it goes, with its empty conversation, only if
+    nothing was done to it (`blank_docs.is_pristine`). Another's or a missing one answers the
+    same as one that stays, so this tells nothing and repeats harmlessly."""
+    artifact = await db.get(Artifact, artifact_id)
+    if artifact is None or artifact.user_id != user.id:
+        return {"discarded": False}
+    return {"discarded": await blank_docs.discard(db, artifact)}
 
 
 @router.post("/artifacts/delete")

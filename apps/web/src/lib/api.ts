@@ -56,6 +56,7 @@ import type {
 import type { GraphStep, GraphVerdict, PipelineEdge } from '@/types/pipelineGraph'
 
 import { objectParticle, topicParticle } from './formCheck'
+import { blankSettled } from './blankPending'
 import { currentLang, currentLocale, translate } from './i18n'
 import { setServiceTimeZone } from './serviceTime'
 import { mediaDuration } from './mediaDuration'
@@ -1960,6 +1961,9 @@ export const artifactsApi = {
     /** A slides template for a blank PowerPoint deck; the project's default when left out. */
     templateId?: string
   }) => call<ArtifactRow>(`/artifacts/${kind}`, body(payload)),
+  /** The screen of a blank document was left: the server drops it with its empty conversation, but only if nothing was done to it. */
+  discardIfBlank: (id: string) =>
+    call<{ discarded: boolean }>(`/artifacts/${id}/discard-if-blank`, { method: 'POST', keepalive: true }),
   /** A document with no conversation joins `sessionId` (a new chat) to be edited beside it. */
   attachDocument: (kind: OfficeKind | 'xlsx', id: string, sessionId: string) =>
     call<ArtifactRow>(`/artifacts/${id}/${kind}/session`, body({ sessionId })),
@@ -2128,8 +2132,10 @@ export const galleryApi = {
 export const workingDocsApi = {
   /** A page of 「작업 문서」; `counts` per kind over the search, the kind filter aside. A cursor
    *  belongs to its `sort`. */
-  page: (params: { kind?: WorkingKind | null; q?: string; sort?: WorkingSort; dir?: SortDir; cursor?: string | null; limit?: number; offset?: number }) =>
-    call<CursorPage<WorkingDocRow> & { counts: Partial<Record<WorkingKind, number>> }>(
+  page: async (params: { kind?: WorkingKind | null; q?: string; sort?: WorkingSort; dir?: SortDir; cursor?: string | null; limit?: number; offset?: number }) => {
+    // a blank document dropped a moment ago is not listed
+    await blankSettled()
+    return call<CursorPage<WorkingDocRow> & { counts: Partial<Record<WorkingKind, number>> }>(
       `/artifacts/working${queryOf({
         kind: params.kind ?? undefined,
         q: params.q?.trim(),
@@ -2139,7 +2145,8 @@ export const workingDocsApi = {
         limit: params.limit,
         offset: params.offset || undefined,
       })}`,
-    ),
+    )
+  },
   /** Its current version as a file: an office document as it is kept, a web report as
    *  Markdown, web slides as PowerPoint. */
   download: (row: Pick<WorkingDocRow, 'id' | 'kind' | 'title'>) =>

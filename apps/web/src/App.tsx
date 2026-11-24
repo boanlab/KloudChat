@@ -5,6 +5,7 @@ import {
 } from 'react-router-dom'
 import { RoleRoute } from '@/components/auth/RoleRoute'
 import { AppShell } from '@/components/layout/AppShell'
+import { BlankDocumentGuard } from '@/components/layout/BlankDocumentGuard'
 import { UnsavedLinkGuard } from '@/components/layout/UnsavedLinkGuard'
 import { NewVersionBar } from '@/components/layout/NewVersionBar'
 import { setBotEmbedded } from '@/lib/api'
@@ -293,6 +294,7 @@ function Root() {
       </Suspense>
       <NewVersionBar />
       <UnsavedLinkGuard />
+      <BlankDocumentGuard />
     </>
   )
 }

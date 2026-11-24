@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { warmStudio } from '@/components/hwp/warmStudio'
 import { artifactsApi, errorMessage, type OfficeKind } from '@/lib/api'
+import { rememberBlank } from '@/lib/blankDocs'
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 
@@ -42,6 +43,7 @@ export function useBlankDocument(projectId?: string | null) {
         // The deck's look: the picked slides template (the server falls back to the project's).
         ...(kind === 'pptx' && templateId ? { templateId } : {}),
       })
+      rememberBlank(id, row.id)
       navigate(`/s/${id}?artifact=${row.id}`)
     } catch (err) {
       setNotice(errorMessage(err, t(BLANK_START[kind].failed)))

@@ -43,6 +43,8 @@ export type OfficeOptions = {
   reopen?: boolean
   /** The conversation (`POST /sessions`) and the document (`POST /artifacts/{kind}`) wait for this. */
   holdCreate?: Promise<void>
+  /** What `discard-if-blank` answers: the server dropped the untouched blank document (default), or kept it. */
+  discardAnswer?: boolean
 }
 
 export async function officeFixture(page: Page, options: OfficeOptions) {
@@ -56,6 +58,9 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
   const csp: string[] = []
   const sent: Record<string, unknown>[] = []
   const created: Record<string, unknown>[] = []
+  /** Documents asked about with `discard-if-blank` (leaving an untouched blank). */
+  const discards: string[] = []
+  let dropped = false
   /** Every request that would change a file-box file (none should). */
   const fileWrites: string[] = []
   /** Share links made (`POST /shares`). */
@@ -141,6 +146,11 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
       // the chat's name, set before its first send
       Object.assign(session, request.postDataJSON())
       return json(session)
+    }
+    if (path === `/artifacts/${artifactId}/discard-if-blank` && method === 'POST') {
+      discards.push(artifactId)
+      dropped = options.discardAnswer ?? true
+      return json({ discarded: dropped })
     }
     if (path === `/artifacts/${kind}` && method === 'POST') {
       const body = request.postDataJSON()
@@ -277,6 +287,7 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
     // the 아티팩트 page lists no document; 파일함 › 작업 문서 lists this one
     if (path === '/artifacts/gallery') return json({ items: [], total: 0, next: null, counts: { html: 0, code: 0, chart: 0, diagram: 0 } })
     if (path === '/artifacts/working') {
+      if (dropped) return json({ items: [], total: 0, next: null, counts: {} })
       return json({ items: [{ id: artifactId, kind, title: artifact.title, version: artifact.version,
         sessionId: artifact.sessionId, sessionTitle: null, projectId: null, createdAt: at, updatedAt: at }],
       total: 1, next: null, counts: { [kind]: 1 } })
@@ -296,7 +307,7 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
         : options.attachment || options.reopen ? `/s/${sessionId}` : `/s/${sessionId}?artifact=${artifactId}`
   await page.goto(opened)
   return {
-    unexpected, problems, saves, heads, files, sent, created, csp, fileWrites, shares, attached,
+    unexpected, problems, saves, heads, files, sent, created, discards, csp, fileWrites, shares, attached,
     loads, summaries, received,
   }
 }
