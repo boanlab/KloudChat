@@ -94,6 +94,8 @@ class Settings(BaseSettings):
     # Tool-using turns on large local models run for minutes.
     chat_timeout_sec: float = 900.0
     title_timeout_sec: float = 20.0
+    #: how long a voice conversation waits for a block put into spoken words, then reads it as is
+    speak_rewrite_timeout_sec: float = 3.0
     #: 「에이전트로 저장」 distillation ceiling, separate from title's.
     agent_draft_timeout_sec: float = 45.0
     guide_base_url: str = "https://boanlab.github.io/KloudChat"

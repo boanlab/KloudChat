@@ -1,11 +1,12 @@
 /** What a voice conversation reads aloud: an answer in markdown, cut into sentences of speakable text. */
+import { forSpeech } from './speechKo'
 
 const CITATION = /\[\^?\d+(?:\s*[,\-–]\s*\d+)*\]/g
 const LINK = /!?\[([^\]]*)\]\([^)]*\)/g
 const BARE_URL = /https?:\/\/\S+/g
 
-/** One markdown chunk as spoken text: no code, tables, links, citation numbers or markup. */
-export function speakableText(markdown: string): string {
+/** One markdown chunk as plain text: no code, tables, links, citation numbers or markup; wording untouched. */
+export function plainText(markdown: string): string {
   const lines = markdown.split('\n').flatMap((raw) => {
     const line = raw.trim()
     // Tables and rules are looked at, not listened to.
@@ -17,7 +18,7 @@ export function speakableText(markdown: string): string {
         .replace(/^(?:[-*+•]|\d+[.)])\s+/, ''),
     ]
   })
-  return lines
+  const plain = lines
     .join(' ')
     .replace(LINK, '$1')
     .replace(BARE_URL, '')
@@ -27,6 +28,12 @@ export function speakableText(markdown: string): string {
     .replace(/(^|\s)[*_]+|[*_]+(\s|$)/g, '$1$2')
     .replace(/\s+/g, ' ')
     .trim()
+  return plain
+}
+
+/** One markdown chunk as spoken text: plain, with symbols, numbers and English made sayable. */
+export function speakableText(markdown: string): string {
+  return forSpeech(plainText(markdown))
 }
 
 const BOUNDARY = /[.!?…。！？]+["'”’)\]]*\s|\n/g
