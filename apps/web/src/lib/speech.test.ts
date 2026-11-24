@@ -5,7 +5,7 @@ import { Vad } from './vad'
 describe('speakableText', () => {
   it('drops markup, links, citations and tables', () => {
     expect(speakableText('## 제목')).toBe('제목')
-    expect(speakableText('**신청 기간**은 10월 14일부터입니다.[1][2]')).toBe('신청 기간은 10월 14일부터입니다.')
+    expect(speakableText('**신청 기간**은 10월 14일부터입니다.[1][2]')).toBe('신청 기간은 시월 십사일부터입니다.')
     expect(speakableText('[공고문](https://example.com/a) 참고')).toBe('공고문 참고')
     expect(speakableText('| 항목 | 내용 |\n| --- | --- |\n| 규모 | 2억 원 |')).toBe('')
     expect(speakableText('1. 첫째\n- 둘째')).toBe('첫째 둘째')
@@ -27,7 +27,7 @@ describe('SentenceFeed', () => {
 
   it('speaks complete sentences as the answer grows and the rest at the end', () => {
     const out = run(['이번 분기 공고는 세 가지로 정리됩니다. 첫째, 신청 기', '간은 10월입니다. 둘째는 대상이고', ' 셋째는 평가입니다.'])
-    expect(out.join(' ')).toBe('이번 분기 공고는 세 가지로 정리됩니다. 첫째, 신청 기간은 10월입니다. 둘째는 대상이고 셋째는 평가입니다.')
+    expect(out.join(' ')).toBe('이번 분기 공고는 세 가지로 정리됩니다. 첫째, 신청 기간은 시월입니다. 둘째는 대상이고 셋째는 평가입니다.')
     expect(out.length).toBeGreaterThanOrEqual(2)
   })
 
@@ -43,7 +43,7 @@ describe('SentenceFeed', () => {
     const joined = out.join(' ')
     expect(joined).not.toContain('print')
     expect(joined).not.toContain('2억')
-    expect(joined).toContain('신청 기간은 10월 14일부터 11월 8일까지입니다.')
+    expect(joined).toContain('신청 기간은 시월 십사일부터 십일월 팔일까지입니다.')
     expect(joined).not.toMatch(/^1\./)
   })
 

@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { composerFixture } from './composer-fixture'
 
-/** Voice conversation: speech becomes a turn, the answer is read back sentence by sentence. */
+/** Voice conversation: speech becomes a turn, the answer is read back block by block. */
 
 const answer = [
   '네, 정리해 드릴게요. 신청은 10월부터입니다.[1]',
@@ -79,7 +79,7 @@ async function stub(page: Page, { withVoice, silent = false }: { withVoice: bool
   const transcriptions: number[] = []
   /** Whether each request carried a `prompt`: an earlier answer as the hint emptied Whisper's reply. */
   const prompted: boolean[] = []
-  const speaks: { text: string; voice: string; warm: boolean }[] = []
+  const speaks: { text: string; voice: string; warm: boolean; spoken?: boolean; source?: string }[] = []
   await page.route('**/api/auth/config', (route) =>
     route.fulfill({ json: {
       brand: { name: 'KloudChat', logo: '' }, enabledKinds: ['chat', 'report', 'slides', 'image', 'av'],
@@ -104,7 +104,7 @@ async function stub(page: Page, { withVoice, silent = false }: { withVoice: bool
     return route.fulfill({ json: { text: spoken, seconds: 2 } })
   })
   await page.route('**/api/audio/speak', (route) => {
-    speaks.push(route.request().postDataJSON() as { text: string; voice: string; warm: boolean })
+    speaks.push(route.request().postDataJSON() as (typeof speaks)[number])
     return route.fulfill({ status: 200, contentType: 'audio/wav', body: wav() })
   })
   return { transcriptions, prompted, speaks }
@@ -131,14 +131,24 @@ test('말하면 질문이 되고, 답은 문장마다 읽어 준다', async ({ p
   await expect.poll(() => sends.length, { timeout: 15_000 }).toBe(1)
   expect(sends[0].body.content).toBe(spoken)
 
-  // Read aloud: sentences, without the table, the code or the citation number.
-  await expect.poll(() => speaks.filter((s) => !s.warm).length, { timeout: 15_000 }).toBeGreaterThan(0)
+  // Read aloud by blocks: a paragraph, the whole table, the code (only said where it is), the last paragraph.
+  await expect.poll(() => speaks.filter((s) => !s.warm).length, { timeout: 15_000 }).toBeGreaterThan(3)
   await expect(panel).toHaveAttribute('data-phase', 'listening', { timeout: 15_000 })
   const read = speaks.filter((s) => !s.warm)
-  const text = read.map((s) => s.text).join(' ')
-  expect(text).toContain('정리해 드릴게요')
-  expect(text).toContain('이상입니다')
-  expect(text).not.toMatch(/\||\[1\]|print|2억/)
+  expect(read.slice(0, 4).map((s) => s.text)).toEqual([
+    '네, 정리해 드릴게요. 신청은 시월부터입니다.',
+    '표는 화면에 적어 두었습니다.',
+    '코드는 화면에 적어 두었습니다.',
+    '이상입니다. 더 궁금한 점이 있으면 말씀하세요.',
+  ])
+  // The server is asked to put each written block into spoken words, with the cleaned text as the fallback.
+  expect(read[0]).toMatchObject({ spoken: true, source: '네, 정리해 드릴게요. 신청은 10월부터입니다.' })
+  expect(read[1].spoken).toBe(true)
+  expect(read[1].source).toBe('항목 | 내용\n규모 | 2억 원')
+  // Code is never sent for reading, and neither are the citation number nor the markup.
+  expect(read[2].spoken).toBeUndefined()
+  expect(read[2].source).toBeUndefined()
+  expect(JSON.stringify(read)).not.toMatch(/print|\[1\]/)
   expect(read.every((s) => s.voice === 'sohee')).toBe(true)
   // The model was warmed once on entry, with a clip nobody hears.
   expect(speaks.filter((s) => s.warm)).toHaveLength(1)

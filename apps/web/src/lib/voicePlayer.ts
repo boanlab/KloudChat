@@ -1,11 +1,12 @@
-/** Plays an answer's sentences one after another while the next ones are still being voiced. */
+/** Plays an answer's blocks one after another while the next ones are still being voiced. */
+import type { SpokenBlock } from './speechBlocks'
 
 /** Sound left in the room after a clip ends. */
 const TAIL_MS = 400
 
 export interface VoicePlayer {
-  /** Voices a sentence (at once, one request at a time) and queues it for playing. */
-  add: (text: string) => void
+  /** Voices a block (at once, one request at a time) and queues it for playing. */
+  add: (block: SpokenBlock) => void
   /** Stops what is playing and drops what is queued. */
   stop: () => void
   /** Sound is playing or queued. */
@@ -17,7 +18,7 @@ export interface VoicePlayer {
 }
 
 export function createVoicePlayer(
-  synthesize: (text: string) => Promise<Blob>,
+  synthesize: (block: SpokenBlock) => Promise<Blob>,
   onChange: () => void,
 ): VoicePlayer {
   let epoch = 0
@@ -67,13 +68,13 @@ export function createVoicePlayer(
   }
 
   return {
-    add: (text) => {
+    add: (block) => {
       if (broke) return
       const mine = epoch
       const clip = chain.then(async () => {
         if (mine !== epoch) return null
         try {
-          const url = URL.createObjectURL(await synthesize(text))
+          const url = URL.createObjectURL(await synthesize(block))
           if (mine !== epoch) {
             URL.revokeObjectURL(url)
             return null

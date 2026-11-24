@@ -204,11 +204,11 @@ export function VoicePanel({
     const reply = replies().findLast((m) => !current.seen.has(m.id))
     if (reply || running) current.begun = true
     if (reply?.content) {
-      for (const sentence of session.feed.push(reply.content, false)) getPlayer().add(sentence)
+      for (const block of session.feed.push(reply.content, false)) getPlayer().add(block)
     }
     if (current.begun && !running) {
       if (reply?.content) {
-        for (const sentence of session.feed.push(reply.content, true)) getPlayer().add(sentence)
+        for (const block of session.feed.push(reply.content, true)) getPlayer().add(block)
       }
       current.done = true
       if (!getPlayer().busy()) {

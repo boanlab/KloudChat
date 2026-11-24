@@ -2,7 +2,7 @@
  * chat to its conversation, and the answer must still be read. Held here, not in a component. */
 import { useSyncExternalStore } from 'react'
 import { speakApi } from './api'
-import { SentenceFeed } from './speech'
+import { BlockFeed, type SpokenBlock } from './speechBlocks'
 import { createVoicePlayer, type VoicePlayer } from './voicePlayer'
 
 export interface VoiceTurn {
@@ -14,9 +14,9 @@ export interface VoiceTurn {
   done: boolean
 }
 
-export const session: { voice: string; feed: SentenceFeed; turn: VoiceTurn | null } = {
+export const session: { voice: string; feed: BlockFeed; turn: VoiceTurn | null } = {
   voice: 'sohee',
-  feed: new SentenceFeed(),
+  feed: new BlockFeed(),
   turn: null,
 }
 
@@ -33,7 +33,8 @@ export const subscribeChange = (fn: () => void) => {
 
 export function getPlayer(): VoicePlayer {
   player ??= createVoicePlayer(
-    (text) => speakApi.speak(text, session.voice),
+    (block: SpokenBlock) =>
+      speakApi.speak(block.text, session.voice, { spoken: block.source !== '', source: block.source }),
     () => changeSubs.forEach((fn) => fn()),
   )
   return player
@@ -41,7 +42,7 @@ export function getPlayer(): VoicePlayer {
 
 export function resetTurn() {
   session.turn = null
-  session.feed = new SentenceFeed()
+  session.feed = new BlockFeed()
 }
 
 export function setVoiceMode(next: boolean | ((was: boolean) => boolean)) {

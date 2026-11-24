@@ -130,6 +130,12 @@ class SpeakRequest(Wire):
     voice: str = ""
     #: a throwaway clip that loads the speech model; free
     warm: bool = False
+    #: put `source` into spoken words with a self-hosted model first; `text` is read when that
+    #: fails, is slow or comes back empty
+    spoken: bool = False
+    #: a block of the answer as it is written (a paragraph, a whole list or table), cleaned of
+    #: code, link addresses and citation numbers
+    source: str | None = Field(default=None, max_length=4000)
 
 
 class VideoJobRequest(Wire):

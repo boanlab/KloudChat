@@ -646,13 +646,23 @@ export const transcriptionsApi = {
   },
 }
 
-/** A voice conversation reads an answer sentence by sentence; the clip is not kept. */
+/** A voice conversation reads an answer block by block; the clip is not kept. */
 export const speakApi = {
-  speak: async (text: string, voice: string, opts: { warm?: boolean } = {}) => {
+  /** `spoken` + `source`: the server puts the block into spoken words first and reads `text` if that fails. */
+  speak: async (
+    text: string,
+    voice: string,
+    opts: { warm?: boolean; spoken?: boolean; source?: string } = {},
+  ) => {
     const res = await authedFetch(`${BASE_URL}/audio/speak`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, voice, warm: opts.warm === true }),
+      body: JSON.stringify({
+        text,
+        voice,
+        warm: opts.warm === true,
+        ...(opts.spoken && opts.source ? { spoken: true, source: opts.source } : {}),
+      }),
     })
     if (!res.ok) throw new ApiError(res.status, await readDetail(res))
     return await res.blob()
