@@ -1167,6 +1167,16 @@ export const sharesApi = {
     if (!res.ok) throw new ApiError(res.status, await readDetail(res))
     return res.blob()
   },
+  /** A shared sheet's cells, to draw as a read-only table (the file itself is `document`). */
+  sheet: (token: string) => call<SharedSheet>(`/shared/${token}/sheet`),
+}
+
+/** `GET /shared/{token}/sheet`: the sheets as shown (values, formats, merges, widths). */
+export interface SharedSheet {
+  title: string
+  version: number
+  sheets: SheetModelSheet[]
+  truncated: boolean
 }
 
 export interface StorageReport {

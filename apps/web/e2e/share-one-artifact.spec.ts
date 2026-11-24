@@ -119,9 +119,12 @@ test('the panel shares the artifact alone, not its conversation', async ({ page 
 })
 
 /** The shared page for one payload; media answers on the share's own route. */
-async function shared(page: Page, info: TestInfo, payload: unknown, signedIn = false) {
+async function shared(
+  page: Page, info: TestInfo, payload: unknown, signedIn = false, extras: Record<string, unknown> = {},
+) {
   const origin = new URL(String(info.project.use.baseURL)).origin
   const media: string[] = []
+  const downloads: string[] = []
   await page.context().routeWebSocket('**/*', (socket) => socket.close())
   await page.context().route('**/*', async (route) => {
     const url = new URL(route.request().url())
@@ -136,6 +139,14 @@ async function shared(page: Page, info: TestInfo, payload: unknown, signedIn = f
     }
     if (path === '/auth/config') return json(config)
     if (path === '/shared/tok-1') return json(payload)
+    if (path in extras) return json(extras[path])
+    if (path === '/shared/tok-1/document') {
+      downloads.push(path)
+      return route.fulfill({
+        body: Buffer.from('PK\u0003\u0004'),
+        headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+      })
+    }
     if (path.startsWith('/shared/tok-1/files/')) {
       media.push(`${path}${url.search}`)
       return route.fulfill({ body: PNG, headers: { 'Content-Type': 'image/png' } })
@@ -143,7 +154,7 @@ async function shared(page: Page, info: TestInfo, payload: unknown, signedIn = f
     return json(route.request().method() === 'GET' ? [] : {})
   })
   await page.goto('/share/tok-1')
-  return { media }
+  return { media, downloads }
 }
 
 const one = (artifactKind: string, data: Record<string, unknown>) => ({
@@ -190,6 +201,40 @@ test('a shared chart is drawn, not printed as data', async ({ page }, info) => {
     series: [{ name: '매출', color: '#2563eb', points: [{ x: '1분기', y: 3 }, { x: '2분기', y: 5 }] }] }))
   await expect(page.locator('[data-shared-kind="chart"] svg').first()).toBeVisible()
   await expect(page.getByText('분기별 매출')).toBeVisible()
+})
+
+test('a shared sheet is a read-only table with a tab per sheet and the file to download', async ({ page }, info) => {
+  const state = await shared(page, info, one('xlsx', { format: 'xlsx', sheets: ['매출', '요약'], text: '' }), false, {
+    '/shared/tok-1/sheet': {
+      title: '공유 자료', version: 2, truncated: false,
+      sheets: [
+        {
+          name: '매출', rows: 3, cols: 2, merges: ['A1:B1'], colWidths: { '0': 120 }, rowHeights: {},
+          cells: [
+            { r: 0, c: 0, v: '월별 매출', s: { font: { b: true }, align: { h: 'center' } } },
+            { r: 1, c: 0, v: '1월' }, { r: 1, c: 1, v: 1234567, s: { numFmt: '#,##0' } },
+            { r: 2, c: 0, v: '증감률' }, { r: 2, c: 1, v: 0.125, s: { numFmt: '0.0%' } },
+          ],
+        },
+        { name: '요약', rows: 1, cols: 1, merges: [], colWidths: {}, rowHeights: {}, cells: [{ r: 0, c: 0, v: '둘째 시트' }] },
+      ],
+    },
+  })
+  const table = page.locator('[data-shared-kind="xlsx"] table')
+  await expect(table).toBeVisible()
+  // values are written as the sheet formats them; a merged title spans its columns
+  await expect(table.locator('[data-cell="1,1"]')).toHaveText('1,234,567')
+  await expect(table.locator('[data-cell="2,1"]')).toHaveText('12.5%')
+  await expect(table.locator('[data-cell="0,0"]')).toHaveAttribute('colspan', '2')
+  await expect(page.getByText('이 종류의 아티팩트는 아직')).toHaveCount(0)
+  // no editor is loaded for a reader: cells are not editable
+  await expect(page.locator('[data-shared-kind="xlsx"] [contenteditable="true"], [data-shared-kind="xlsx"] input')).toHaveCount(0)
+  await page.getByRole('tab', { name: '요약' }).click()
+  await expect(page.locator('[data-shared-kind="xlsx"] [data-cell="0,0"]')).toHaveText('둘째 시트')
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: '내려받기' }).click()
+  expect((await download).suggestedFilename()).toMatch(/\.xlsx$/)
+  expect(state.downloads).toEqual(['/shared/tok-1/document'])
 })
 
 test('shared HTML runs in the app preview\'s sandbox, never as source', async ({ page }, info) => {

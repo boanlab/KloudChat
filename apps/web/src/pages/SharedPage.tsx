@@ -9,9 +9,10 @@ import { cleanTitleBlock, closingIndex, counterStyle, fmtClass, formatCss, secti
 import { fontFamilyFor } from '@/components/report/docType'
 import { Badge, Button } from '@/components/ui'
 import { useStore } from '@/store/useStore'
-import { ApiError, errorMessage, sharesApi, type MessageRow, type OfficeKind, type SharedContext, type SharedPayload } from '@/lib/api'
+import { ApiError, errorMessage, sharesApi, type MessageRow, type OfficeKind, type SharedContext, type SharedPayload, type SharedSheet } from '@/lib/api'
 import { saveBlob } from '@/components/artifacts/artifactExport'
 import { OfficeView } from '@/components/files/OfficeView'
+import { SheetTable } from '@/components/sheet/SheetTable'
 import { fileStem } from '@/components/office/useOfficeDocument'
 import { SharedResultCard } from '@/components/chat/ResultCard'
 import { currentLang, translate } from '@/lib/i18n'
@@ -282,6 +283,51 @@ function SharedOffice({
   )
 }
 
+/** A shared sheet drawn read only as a plain table (no editor code on a public page), with the file to download. */
+function SharedSheetView({ token, title }: { token: string; title: string }) {
+  const t = useT()
+  const [sheet, setSheet] = useState<SharedSheet | null>(null)
+  const [failed, setFailed] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    let live = true
+    sharesApi
+      .sheet(token)
+      .then((got) => live && setSheet(got))
+      .catch((err: unknown) => live && setFailed(errorMessage(err, t('시트를 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.'))))
+    return () => {
+      live = false
+    }
+  }, [token, t])
+  const download = async () => {
+    setBusy(true)
+    try {
+      saveBlob(await sharesApi.document(token), `${fileStem(title)}.xlsx`)
+    } catch (err) {
+      setFailed(errorMessage(err, t('내려받지 못했습니다. 잠시 뒤 다시 시도하세요.')))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="space-y-3" data-shared-kind="xlsx">
+      <div className="flex justify-end">
+        <Button size="sm" disabled={busy} onClick={() => void download()}>
+          <Download size={14} />
+          {t('내려받기')}
+        </Button>
+      </div>
+      {sheet ? (
+        <SheetTable sheets={sheet.sheets} truncated={sheet.truncated} />
+      ) : failed ? (
+        <p className="rounded-card border border-line p-4 text-sm text-muted" data-testid="shared-sheet-note">{failed}</p>
+      ) : (
+        <p className="py-12 text-center text-base text-faint">{t('시트를 여는 중…')}</p>
+      )}
+    </div>
+  )
+}
+
 export function SharedArtifact({
   payload,
   title,
@@ -304,6 +350,10 @@ export function SharedArtifact({
   const artifactTitle = payload.title || title
   // Named by the share only: an issue snapshot (no kind given) keeps its plain view.
   const kind = payload.artifactKind
+  if (kind === 'xlsx' && token) return <SharedSheetView token={token} title={artifactTitle} />
+  if (kind === 'xlsx') {
+    return <Markdown>{`\`\`\`\n${(payload.data as { text?: string } | undefined)?.text ?? ''}\n\`\`\``}</Markdown>
+  }
   if (kind && OFFICE_KINDS.includes(kind)) {
     const office = (payload.data ?? {}) as { text?: string; format?: string }
     if (token) {
