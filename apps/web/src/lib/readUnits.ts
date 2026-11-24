@@ -4,17 +4,18 @@ import type { ReadUnit } from './readAloud'
 
 /** Figures and boxes the page draws from fenced source: their source is not words to read. */
 const DRAWN = /^```(?:mermaid|chart|kpi|steps|cards|callout)\b[^\n]*\n[\s\S]*?^```[ \t]*$/gm
-const COMMENT = /<!--[\s\S]*?-->/g
 
-/** Comments are cut until none is left, so a split like `<!<!-- -->--` cannot rebuild one. */
-function readable(markdown: string): string {
-  let text = markdown.replace(DRAWN, '')
-  for (let before = ''; before !== text; ) {
-    before = text
-    text = text.replace(COMMENT, '')
+/** Comments (`<!-- … -->`) are cut by position until none is left, so a split one cannot rebuild itself. */
+function withoutComments(text: string): string {
+  let out = text
+  for (let start = out.indexOf('<!--'); start >= 0; start = out.indexOf('<!--')) {
+    const end = out.indexOf('-->', start + 4)
+    out = end < 0 ? out.slice(0, start) : out.slice(0, start) + out.slice(end + 3)
   }
-  return text.replace(/<!--|-->/g, '').trim()
+  return out
 }
+
+const readable = (markdown: string) => withoutComments(markdown.replace(DRAWN, '')).trim()
 
 export const answerUnits = (content: string): ReadUnit[] => [{ text: content }]
 
