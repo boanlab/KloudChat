@@ -138,7 +138,8 @@ MAX_TEXT = 32_000
 
 def _well_formed(text: str) -> bool:
     """The formula's tokens close their brackets and neither start nor end on an operator, so a
-    text that only begins with `=` (「=== 구분 ===」) is not written as a formula Excel cannot open."""
+    text that only begins with `=` (「=== 구분 ===」) is not written as a formula Excel cannot
+    open."""
     try:
         items = [t for t in Tokenizer(text).items if t.type != Token.WSPACE]
     except Exception:  # noqa: BLE001 - the tokenizer's own error says nothing the model can use

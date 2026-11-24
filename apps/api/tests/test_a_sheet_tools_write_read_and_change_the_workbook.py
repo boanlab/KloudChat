@@ -226,5 +226,5 @@ def test_a_text_that_only_starts_with_an_equal_sign_is_not_written_as_a_formula(
     for bad in ("=== 구분 ===", "=SUM(B2:B3", "=B2+", "=*3"):
         with pytest.raises(sheet_edit.SheetError):
             sheet_edit.apply(blank, [{"op": "set_cells", "at": "A1", "values": [[bad]]}])
-    sheet_edit.apply(blank, [{"op": "set_cells", "at": "A1", "values": [["=IF(A2>1,\"예\",\"아니오\")",
-                                                                         "=-A2", "=A2%"]]}])
+    good = ["=IF(A2>1,\"예\",\"아니오\")", "=-A2", "=A2%"]
+    sheet_edit.apply(blank, [{"op": "set_cells", "at": "A1", "values": [good]}])
