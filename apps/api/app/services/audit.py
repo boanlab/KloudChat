@@ -119,6 +119,54 @@ ACTIONS: frozenset[str] = frozenset(
     }
 )
 
+#: Admin and system records: account administration, settings and policy, reviews, storage, and
+#: security events. Every other code is a person's own activity (`category_of`).
+SYSTEM_PREFIXES: tuple[str, ...] = (
+    "user.",
+    "credits.",
+    "settings.",
+    "governance.",
+    "branding.",
+    "pipeline.approve",
+    "pipeline.reject",
+    "connector.",
+    "issue.",
+    "skill.approve",
+    "skill.reject",
+    "storage.",
+    "audit.",
+    "token.",
+    "model.fallback",
+    "publication.reviewed",
+    "publication.admin_",
+)
+#: `login` rows whose detail marks a refused or suspicious sign-in
+SYSTEM_LOGIN_DETAILS: tuple[str, ...] = ("failed", "locked", "refresh_reuse")
+#: automatic per-turn records; real, but not what an administrator reads the trail for
+ROUTINE_PREFIXES: tuple[str, ...] = (
+    "routing.",
+    "privacy.none",
+    "privacy.strict_local",
+    "privacy.route_strict_local",
+    "privacy.internal_strict_local",
+    "privacy.mask_tool_output",
+    "privacy.strict_tool_output",
+    "pii.masked",
+    "model.fallback",
+)
+
+
+def category_of(action: str, detail: str = "") -> str:
+    """`system` for admin and security records, else `user`; one definition for list and filter."""
+    if action == "login" and detail in SYSTEM_LOGIN_DETAILS:
+        return "system"
+    return "system" if action.startswith(SYSTEM_PREFIXES) else "user"
+
+
+def is_routine(action: str) -> bool:
+    return action.startswith(ROUTINE_PREFIXES)
+
+
 #: a bulk delete this large (or of everything) is flagged `warn`
 BULK_WARN = 50
 #: ids kept per deletion event; the counts carry the rest

@@ -91,19 +91,17 @@ function AccountItems() {
           <MenuItem icon={<Flag size={14} />} onClick={() => navigate('/admin/issues')}>
             {t('문의·신고 관리')}
           </MenuItem>
-          <MenuSeparator />
           <MenuItem icon={<ChartColumn size={14} />} onClick={() => navigate('/admin/usage')}>
-            {t('사용량')}
+            {t('사용량 조회')}
           </MenuItem>
           <MenuItem icon={<Activity size={14} />} onClick={() => navigate('/admin/performance')}>
             {t('성능 모니터링')}
           </MenuItem>
-          <MenuSeparator />
           <MenuItem icon={<ShieldCheck size={14} />} onClick={() => navigate('/admin/governance')}>
-            {t('보안 · 감사')}
+            {t('감사 로그')}
           </MenuItem>
           <MenuItem icon={<Server size={14} />} onClick={() => navigate('/admin/system')}>
-            {t('시스템')}
+            {t('시스템 설정')}
           </MenuItem>
         </>
       )}

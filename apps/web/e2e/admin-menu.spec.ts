@@ -5,9 +5,9 @@ type ListedUser = { id: string; email: string }
 
 const ADMIN_SCREENS = [
   { path: '/admin/users', heading: '사용자 관리', api: '/api/admin/users' },
-  { path: '/admin/usage', heading: '사용량', api: '/api/admin/usage?days=7' },
-  { path: '/admin/system', heading: '시스템', api: '/api/admin/settings' },
-  { path: '/admin/governance', heading: '보안 · 감사', api: '/api/admin/governance' },
+  { path: '/admin/usage', heading: '사용량 조회', api: '/api/admin/usage?days=7' },
+  { path: '/admin/system', heading: '시스템 설정', api: '/api/admin/settings' },
+  { path: '/admin/governance', heading: '감사 로그', api: '/api/admin/governance' },
 ] as const
 
 async function createOrdinaryAccount(page: Page) {
@@ -64,7 +64,7 @@ test('일반 사용자는 관리 메뉴와 모든 관리자 deep link에서 거�
   await expect(page.getByText('AI 에이전트 연동')).toBeVisible()
   await expect(page.getByText('관리', { exact: true })).toHaveCount(0)
   await expect(page.getByText('사용자 관리')).toHaveCount(0)
-  await expect(page.getByText('보안 · 감사')).toHaveCount(0)
+  await expect(page.getByText('감사 로그')).toHaveCount(0)
 
   // The server refuses regardless of the route guard.
   const headers = { Authorization: `Bearer ${accessToken}` }

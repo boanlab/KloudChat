@@ -139,20 +139,19 @@ test.describe('페르소나 커버리지', () => {
 
               /* governance */
               case 'off-pii':
-                await page.goto('/admin/governance')
+                await page.goto('/admin/system/policy')
                 // By role and name: a text match also hits the policy's explanation.
                 await probe(page.getByRole('switch', { name: '개인정보 마스킹' })).toBeVisible()
                 break
               case 'off-audit':
                 // Signing in for this test guarantees at least one row.
                 await page.goto('/admin/governance')
-                await page.getByRole('tab', { name: /감사 로그/ }).click()
                 await probe(page.getByRole('columnheader', { name: '행위' })).toBeVisible()
                 await probe(page.getByText('로그인').first()).toBeVisible()
                 break
               case 'off-usage':
                 await page.goto('/admin/usage')
-                await probe(page.getByRole('heading', { name: '사용량' })).toBeVisible()
+                await probe(page.getByRole('heading', { name: '사용량 조회' })).toBeVisible()
                 await probe(page.getByText('모델별')).toBeVisible()
                 break
 

@@ -20,13 +20,13 @@ import {
   targetParts,
   valueWords,
 } from '@/lib/auditLabels'
-import { Badge, Button, Card, Input, Modal, ResourceStatus, Select } from '@/components/ui'
+import { Badge, Button, Card, Input, Modal, ResourceStatus, Select, Tabs } from '@/components/ui'
 import { CopyButton } from '@/components/ui/CopyButton'
 import { SortHeader } from '@/components/ui/DataTable'
 import { useTableSort } from '@/components/ui/useTableSort'
 import type { SortDir, SortState } from '@/lib/tableSort'
 import { Pager } from '@/components/ui/Pager'
-import { browserName, formatDateTime, serviceDate, serviceMidnight, shiftDate } from '@/lib/utils'
+import { browserName, cn, formatDateTime, serviceDate, serviceMidnight, shiftDate } from '@/lib/utils'
 import { useT, useTIn } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 import { useResource } from '@/lib/useResource'
@@ -46,6 +46,7 @@ const NEWEST: SortState = { key: 'at', dir: 'desc' }
 /** Mirrors `audit.MASK`. */
 const SECRET = '••••'
 
+type Side = 'all' | 'system' | 'user'
 type Period = 'all' | 'today' | '7d' | '30d' | 'custom'
 
 /** Service-zone day bounds as ISO, by calendar date; `until` is the next day's start. */
@@ -85,6 +86,7 @@ export function AuditLog({ onTotal, account: initialAccount = '' }: {
   const [catalogue, setCatalogue] = useState<{ id: string; label: string }[]>([])
   const [query, setQuery] = useState('')
   const [account, setAccount] = useState(initialAccount)
+  const [side, setSide] = useState<Side>('all')
   const [group, setGroup] = useState('')
   const [period, setPeriod] = useState<Period>('all')
   const [from, setFrom] = useState('')
@@ -119,10 +121,11 @@ export function AuditLog({ onTotal, account: initialAccount = '' }: {
       qActions: codes.length ? codes.join(',') : undefined,
       account: settledAccount.trim() || undefined,
       action: ACTION_GROUPS.find((g) => g.id === group)?.codes,
+      category: side === 'all' ? undefined : side,
       ...periodRange(period, from, to),
       ...(sort ? { sort: sort.key as NonNullable<AuditQuery['sort']>, order: sort.dir } : {}),
     }
-  }, [page, size, settledQuery, settledAccount, group, period, from, to, t, sort])
+  }, [page, size, settledQuery, settledAccount, side, group, period, from, to, t, sort])
 
   const exportCsv = async () => {
     setExporting(true)
@@ -146,7 +149,7 @@ export function AuditLog({ onTotal, account: initialAccount = '' }: {
   useEffect(() => {
     if (!audit.data) return
     setSelected(null)
-    if (!request.q && !request.account && !request.action && !request.since && !request.until) {
+    if (!request.q && !request.account && !request.action && !request.category && !request.since && !request.until) {
       onTotal?.(audit.data.total)
     }
     // Once per answer, not per filter edit.
@@ -180,11 +183,26 @@ export function AuditLog({ onTotal, account: initialAccount = '' }: {
     },
   })
 
-  const filtered = Boolean(query || account || group || period !== 'all')
+  const filtered = Boolean(query || account || group || side !== 'all' || period !== 'all')
   const total = data?.total ?? 0
+
+  const groups = ACTION_GROUPS.filter((g) => side === 'all' || g.side === side)
+  const sideLabel = (g: Side) => ({ all: t('전체'), system: t('관리 · 시스템'), user: t('사용자') })[g]
 
   return (
     <div className="pt-4">
+      <div className="mb-3" data-testid="audit-side">
+        <Tabs<Side>
+          value={side}
+          onChange={(v) => {
+            setSide(v)
+            // A group of the other side would match nothing.
+            if (ACTION_GROUPS.find((g) => g.id === group)?.side !== v) setGroup('')
+            setPage(1)
+          }}
+          tabs={(['all', 'system', 'user'] as const).map((id) => ({ id, label: sideLabel(id) }))}
+        />
+      </div>
       <div className="mb-3 grid grid-cols-2 gap-2 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
         <div className="relative col-span-2 lg:col-span-1">
           <Search size={14} className="absolute top-1/2 left-2.5 -translate-y-1/2 text-faint" />
@@ -198,11 +216,23 @@ export function AuditLog({ onTotal, account: initialAccount = '' }: {
         </div>
         <Select value={group} onChange={(e) => reset(setGroup)(e.target.value)} aria-label={t('행위 종류')}>
           <option value="">{t('모든 행위')}</option>
-          {ACTION_GROUPS.map((g) => (
-            <option key={g.id} value={g.id}>
-              {t(g.label)}
-            </option>
-          ))}
+          {side === 'all'
+            ? (['system', 'user'] as const).map((from) => (
+                <optgroup key={from} label={sideLabel(from)}>
+                  {groups
+                    .filter((g) => g.side === from)
+                    .map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {t(g.label)}
+                      </option>
+                    ))}
+                </optgroup>
+              ))
+            : groups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {t(g.label)}
+                </option>
+              ))}
         </Select>
         <Input
           className="order-last col-span-2 lg:order-none lg:col-span-1"
@@ -225,23 +255,25 @@ export function AuditLog({ onTotal, account: initialAccount = '' }: {
       </div>
       {period === 'custom' && (
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <Input
-            type="date"
-            value={from}
-            max={to || undefined}
-            onChange={(e) => reset(setFrom)(e.target.value)}
-            aria-label={t('시작일')}
-            className="w-auto"
-          />
+          <div className="w-44 min-w-0 shrink">
+            <Input
+              type="date"
+              value={from}
+              max={to || undefined}
+              onChange={(e) => reset(setFrom)(e.target.value)}
+              aria-label={t('시작일')}
+            />
+          </div>
           <span className="text-faint">–</span>
-          <Input
-            type="date"
-            value={to}
-            min={from || undefined}
-            onChange={(e) => reset(setTo)(e.target.value)}
-            aria-label={t('종료일')}
-            className="w-auto"
-          />
+          <div className="w-44 min-w-0 shrink">
+            <Input
+              type="date"
+              value={to}
+              min={from || undefined}
+              onChange={(e) => reset(setTo)(e.target.value)}
+              aria-label={t('종료일')}
+            />
+          </div>
         </div>
       )}
 
@@ -320,7 +352,10 @@ export function AuditLog({ onTotal, account: initialAccount = '' }: {
                 <tr
                   key={e.id}
                   {...rowProps(e)}
-                  className="cursor-pointer whitespace-nowrap hover:bg-elevated focus-visible:bg-elevated focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+                  className={cn(
+                    'cursor-pointer whitespace-nowrap hover:bg-elevated focus-visible:bg-elevated focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent',
+                    e.routine && 'text-faint opacity-70 hover:opacity-100',
+                  )}
                 >
                   <td className="px-4 py-2 tabular-nums text-muted">{formatDateTime(e.at)}</td>
                   <td className="truncate px-4 py-2" title={t(e.actor)}>
@@ -346,7 +381,10 @@ export function AuditLog({ onTotal, account: initialAccount = '' }: {
               <li
                 key={e.id}
                 {...rowProps(e)}
-                className="cursor-pointer space-y-1 px-4 py-2.5 hover:bg-elevated focus-visible:bg-elevated focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+                className={cn(
+                  'cursor-pointer space-y-1 px-4 py-2.5 hover:bg-elevated focus-visible:bg-elevated focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent',
+                  e.routine && 'opacity-70 hover:opacity-100',
+                )}
               >
                 <div className="text-sm tabular-nums text-muted">{formatDateTime(e.at)}</div>
                 <ActionCell row={e} modelName={modelName} />
@@ -486,7 +524,7 @@ function Details({ row, modelName }: { row: AuditRow; modelName: (id: string) =>
         {item('행위', <Badge tone={SEVERITY[row.severity] ?? 'neutral'}>{t(actionLabel(row))}</Badge>)}
         {item('대상', <Target row={row} modelName={modelName} />)}
         {item('내용', words || '—')}
-        {row.action.startsWith('routing.') && row.target && item('대화 ID', <span className="font-mono text-xs break-all text-muted">{row.target}</span>)}
+        {/^(routing|privacy|pii|filter|model)\./.test(row.action) && row.target && item('대화 ID', <span className="font-mono text-xs break-all text-muted">{row.target}</span>)}
         {item(
           '접속 위치',
           <span className="inline-flex items-center gap-1">

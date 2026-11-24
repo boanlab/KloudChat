@@ -196,10 +196,10 @@ export function AdminUsagePage() {
 
   return (
     <>
-      <TopBar left={t('사용량')} />
+      <TopBar left={t('사용량 조회')} />
       <PageBody>
         <PageHeader
-          title={t('사용량')}
+          title={t('사용량 조회')}
           action={
             <div className="flex flex-wrap items-center gap-2">
               <div className="flex rounded-control border border-line p-0.5">
@@ -242,24 +242,26 @@ export function AdminUsagePage() {
 
         {custom && (
           <div className="mb-4 flex flex-wrap items-center gap-2" data-testid="usage-range">
-            <Input
-              type="date"
-              value={from}
-              max={to || today}
-              onChange={(e) => setFrom(e.target.value)}
-              aria-label={t('시작일')}
-              className="w-auto"
-            />
+            <div className="w-44 min-w-0 shrink">
+              <Input
+                type="date"
+                value={from}
+                max={to || today}
+                onChange={(e) => setFrom(e.target.value)}
+                aria-label={t('시작일')}
+              />
+            </div>
             <span className="text-faint">–</span>
-            <Input
-              type="date"
-              value={to}
-              min={from || undefined}
-              max={today}
-              onChange={(e) => setTo(e.target.value)}
-              aria-label={t('종료일')}
-              className="w-auto"
-            />
+            <div className="w-44 min-w-0 shrink">
+              <Input
+                type="date"
+                value={to}
+                min={from || undefined}
+                max={today}
+                onChange={(e) => setTo(e.target.value)}
+                aria-label={t('종료일')}
+              />
+            </div>
             {!range && <span className="text-sm text-danger">{t('시작일이 종료일보다 늦습니다')}</span>}
           </div>
         )}

@@ -160,7 +160,7 @@ export function UserDetail({
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-base font-semibold">{t('최근 기록')}</h3>
                 <Link
-                  to={`/admin/governance?tab=log&account=${encodeURIComponent(user.email)}`}
+                  to={`/admin/governance?account=${encodeURIComponent(user.email)}`}
                   className="flex items-center gap-1 text-sm text-accent hover:underline"
                 >
                   {t('감사 로그에서 모두 보기')}

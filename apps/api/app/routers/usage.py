@@ -10,7 +10,19 @@ from typing import Literal
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
-from sqlalchemy import DateTime, String, case, cast, false, func, literal, or_, union_all
+from sqlalchemy import (
+    DateTime,
+    String,
+    and_,
+    case,
+    cast,
+    false,
+    func,
+    literal,
+    not_,
+    or_,
+    union_all,
+)
 from sqlmodel import col, select
 
 from app.core.config import settings
@@ -573,9 +585,19 @@ async def _audit_conditions(
     q_actions: str | None,
     since: datetime | None,
     until: datetime | None,
+    category: str | None = None,
 ) -> list:
     """The filters the audit screen sends, as SQL conditions (list and export share them)."""
     conds = []
+    if category in ("system", "user"):
+        is_system = or_(
+            *(col(AuditEvent.action).startswith(p) for p in audit_service.SYSTEM_PREFIXES),
+            and_(
+                AuditEvent.action == "login",
+                func.coalesce(AuditEvent.detail, "").in_(audit_service.SYSTEM_LOGIN_DETAILS),
+            ),
+        )
+        conds.append(is_system if category == "system" else not_(is_system))
     if severity:
         conds.append(AuditEvent.severity == severity)
     if action:
@@ -653,6 +675,7 @@ async def audit_log(
     q_actions: str | None = Query(None, alias="qActions", max_length=2000),
     since: datetime | None = None,
     until: datetime | None = None,
+    category: Literal["system", "user"] | None = None,
     sort: AuditSort = "at",
     order: Literal["asc", "desc"] = "desc",
 ):
@@ -668,6 +691,7 @@ async def audit_log(
         q_actions=q_actions,
         since=since,
         until=until,
+        category=category,
     )
     total = (await db.exec(select(func.count()).select_from(AuditEvent).where(*conds))).one()
     rows = (
@@ -703,6 +727,8 @@ async def audit_log(
                 "region": geoip.lookup(r.ip),
                 "userAgent": r.user_agent,
                 "severity": r.severity,
+                "category": audit_service.category_of(r.action, r.detail or ""),
+                "routine": audit_service.is_routine(r.action),
             }
             for r in rows
         ],
@@ -724,6 +750,7 @@ async def export_audit_log(
     q_actions: str | None = Query(None, alias="qActions", max_length=2000),
     since: datetime | None = None,
     until: datetime | None = None,
+    category: Literal["system", "user"] | None = None,
     sort: AuditSort = "at",
     order: Literal["asc", "desc"] = "desc",
 ):
@@ -739,6 +766,7 @@ async def export_audit_log(
         q_actions=q_actions,
         since=since,
         until=until,
+        category=category,
     )
     rows = (
         await db.exec(
@@ -761,6 +789,7 @@ async def export_audit_log(
             "severity": severity,
             "action": action,
             "account": account,
+            "category": category,
             "q": q,
             "since": since.isoformat() if since else None,
             "until": until.isoformat() if until else None,

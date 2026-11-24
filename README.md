@@ -215,11 +215,11 @@ The account menu's **Manage** (관리) section:
 | Entry | Route | Contents |
 | --- | --- | --- |
 | Users · credits | `/admin/users` | Signup approval, monthly credit allowance, suspension, API keys of an account |
-| Usage | `/admin/usage` | Organisation-wide usage by person, model and surface |
+| Usage lookup | `/admin/usage` | Organisation-wide usage by person, model and surface |
 | Published chatbots | `/admin/publications` | Review queue for bots opened to people without an account, and their channels |
-| Security · audit | `/admin/governance` | Privacy guard and PII masking, internal material on strict-local, intent filter, retention, idle sign-out, audit log |
+| Audit log | `/admin/governance` | Who did what and when, split into admin · system records and user activity |
 | Feedback & issues | `/admin/issues` | Reports and questions sent from the app |
-| System | `/admin/system` | The tabs below |
+| System settings | `/admin/system` | The tabs below |
 | Performance | `/admin/performance` | API, host, GPU node and per-model latency figures |
 
 **System** tabs:
@@ -227,9 +227,10 @@ The account menu's **Manage** (관리) section:
 | Tab | Contents |
 | --- | --- |
 | Proxy | LiteLLM address and master key, connection test, model list refresh, models hidden for an unknown price |
-| Model | The default model of each surface, the models for side work (titles and memories, `run_code` programs), whether models think before answering |
-| Routing | Super Agent — its classifier and the class-to-model table — and the outline model that plans documents |
 | Features | Enabled surfaces; feature integrations (server address, per-feature endpoints); OCR mode, vision model and page limit |
+| Model | The default model of each surface, the models for side work (titles and memories, `run_code` programs), whether models think before answering |
+| Policy | Privacy guard and PII masking, internal material on strict-local, intent filter, retention, idle sign-out |
+| Routing | Super Agent — its classifier and the class-to-model table — and the outline model that plans documents |
 | Branding | Name and logo for the sidebar and the sign-in screen |
 | Mail | SMTP for password reset and email verification |
 | Signup | Signup mode, allowed mail domains, email verification, a new account's monthly credits |

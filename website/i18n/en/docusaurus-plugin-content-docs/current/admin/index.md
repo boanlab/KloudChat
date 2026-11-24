@@ -9,11 +9,11 @@ When you sign in with an administrator account, a **Manage** item appears in the
 | Screen | What it does |
 |---|---|
 | Manage users | Approve and reject sign-ups, suspend, edit details, monthly credits, allowed models, key management, review of shared processes and skills |
-| Usage | Usage by period, by model, and by user, CSV, storage space |
+| Usage lookup | Usage by period, by model, and by user, CSV, storage space |
 | Manage shared chatbots | Approve the "Anyone with the link" and "Anyone" scopes and channels (other sites, API, MCP), close or pause, abuse-check viewing |
-| Security · Audit | The **Policy** tab (personal data protection, internal material, safe model, blocked topics, idle sign-out, retention period) and the **Audit log** tab |
+| Audit log | Who did what and when, split into **All · Admin · system · User** views; filter by action, account and period; export CSV |
 | Manage feedback | Read bug reports, feature requests and questions from users, set the assignee and status, reply |
-| System | The **Proxy · Models · Routing · Features · Branding · Mail · Sign-up** tabs |
+| System settings | The **Proxy · Features · Models · Policy · Routing · Branding · Mail · Sign-up** tabs. The Policy tab holds personal data protection, internal material, safe model, blocked topics, idle sign-out and retention period |
 | Performance | One-screen dashboard of verdicts, key figures, GPU nodes and model servers; each item opens trends and details for the host, models, a node or a server |
 
 ## Order of initial setup
@@ -23,7 +23,7 @@ When you sign in with an administrator account, a **Manage** item appears in the
 3. **System → Sign-up**: Set the sign-up method and the allowed email domains, and enable email verification if you have a mail server.
 4. **System → Mail**: Set up SMTP if you need password reset and verification mail.
 5. **System → Branding**: Set the service name, logo, and contact address.
-6. **Security · Audit → Policy**: Designate the strict-local safe model and decide how personal data is protected.
+6. **System settings → Policy**: Designate the strict-local safe model and decide how personal data is protected.
 7. **System → Routing**: Review the table of models Super Agent uses for each kind of question.
 8. **Manage users**: Process the accounts waiting for approval.
 

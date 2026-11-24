@@ -45,7 +45,8 @@ const ROUTES: [path: string, label: string][] = [
   ['/admin/system/features', '관리자 · 기능'],
   ['/admin/system/branding', '관리자 · 브랜딩'],
   ['/admin/system/mail', '관리자 · 메일'],
-  ['/admin/governance', '관리자 · 정책'],
+  ['/admin/system/policy', '관리자 · 정책'],
+  ['/admin/governance', '관리자 · 감사 로그'],
 ]
 
 const VIEWPORTS = {

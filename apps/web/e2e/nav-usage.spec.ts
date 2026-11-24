@@ -29,7 +29,7 @@ test('관리 항목은 사이드바에서 빠지고 계정 메뉴에 남는다',
   await page.goto('/')
   await openSidebar(page)
   await page.getByRole('button', { name: /e2e-personas@example\.com/ }).click()
-  await page.getByRole('menuitem', { name: '시스템' }).click()
+  await page.getByRole('menuitem', { name: '시스템 설정' }).click()
   await expect(page).toHaveURL(/\/admin\/system$/)
   // 시스템 is routed tabs; every part is reachable from the account menu.
   await page.getByRole('tab', { name: '메일' }).click()
