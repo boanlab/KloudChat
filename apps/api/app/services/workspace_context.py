@@ -94,6 +94,21 @@ PPTX_NOTE = _DOCUMENT_NOTE.format(a="a", kind="PowerPoint", p="pptx").replace(
 ).replace("Requests to write or change a\ndocument", "Requests to write or change a\ndeck")
 
 
+XLSX_NOTE = """# Sheet beside this chat
+The person has a sheet (Excel workbook) editor open on the right of this chat. Requests to make
+or change a table, a calculation or a workbook are done in that sheet with the sheet tools, not
+written out in the answer.
+- A new sheet, or the editor is empty: xlsx_write (rows, formulas, widths, number formats).
+- Changing the open sheet: xlsx_read first, then xlsx_edit with the addresses it gave
+  (set_cells, format, width, insert/delete rows and columns, add_sheet).
+- A value that follows from other cells is a formula, never a number you worked out. Every
+  number you say comes from the tool's report of the values the formulas give or from xlsx_read.
+- Never invent a number, date or name the person did not give: put a bracket blank such as
+  「[매출액]」 in the cell and say what is missing.
+- Then answer in two to four short Korean lines: what the sheet now holds (sheets, rows, which
+  columns are formulas) and what is still blank. Do not paste the table into the answer."""
+
+
 @dataclass(frozen=True, slots=True)
 class TurnPicture:
     """Attached picture for an `image_url` part."""
@@ -1219,7 +1234,7 @@ async def assemble(
             blocks.append(ContextBlock("agent.language", text, True))
     for tool, key, note in (
         ("hwp_read", "hwp", HWP_NOTE), ("docx_read", "docx", DOCX_NOTE),
-        ("pptx_read", "pptx", PPTX_NOTE),
+        ("pptx_read", "pptx", PPTX_NOTE), ("xlsx_read", "xlsx", XLSX_NOTE),
     ):
         if tool in (available_tool_names or set()):
             blocks.append(ContextBlock(f"{key}.document", note, True))

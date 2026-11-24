@@ -68,6 +68,11 @@ class Toolset:
                                            "insert_table", "move_paragraphs",
                                            "insert_picture"})
     write_text: str = ""
+    #: extra arguments of `*_read` (a sheet's `sheet` and `range`): JSON Schema properties,
+    #: handed to the kind's `outline` as keyword arguments
+    read_params: dict[str, Any] | None = None
+    #: what a saved file adds to the result of `*_write` and `*_edit` (a sheet's formula values)
+    report: Callable[[bytes], str] | None = None
     #: said after the default edit description (a kind's extra ops)
     edit_extra: str = ""
     write_params: dict[str, Any] | None = None
@@ -204,6 +209,17 @@ def _paragraph_write(kit: Toolset, args: dict[str, Any],
     return title, data
 
 
+def _reported(kit: Toolset, data: bytes) -> str:
+    if kit.report is None:
+        return ""
+    try:
+        text = kit.report(data)
+    except Exception:  # noqa: BLE001 — the report is a courtesy; the file is saved
+        log.warning("%s report failed", kit.prefix, exc_info=True)
+        return ""
+    return f"\n{text}" if text else ""
+
+
 def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool, Tool]:
     p, editable = kit.prefix, kit.doc.KIND.editable
     op_help = kit.op_help or _OP_HELP
@@ -257,7 +273,8 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool, Tool]:
                 return unconverted(artifact.id)
             try:
                 data = kit.doc.read(artifact)
-                outline = kit.edit.outline(data)
+                extra = {k: args[k] for k in (kit.read_params or {}) if args.get(k)}
+                outline = kit.edit.outline(data, **extra)
             except (OSError, kit.error) as exc:
                 log.warning("%s_read %s: %s", p, artifact.id, exc)
                 return ToolResult(content=f"문서를 읽지 못했습니다: {exc}", failed=True)
@@ -338,6 +355,8 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool, Tool]:
         else:
             left = kit.edit.blanks(result.data)
             content += "\n남은 빈칸: " + (", ".join(left) if left else "없음")
+            if kit.report is not None:
+                content += _reported(kit, result.data)
         return ToolResult(
             content=content,
             detail=f"{len(result.changes)}건",
@@ -435,7 +454,7 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool, Tool]:
         return ToolResult(
             content=(
                 f"{said}{held}" + "".join(f"\n{note}" for note in notes) + "\n남은 빈칸: "
-                + (", ".join(left) if left else "없음")
+                + (", ".join(left) if left else "없음") + _reported(kit, data)
                 + f"\n고칠 때는 {p}_read로 번호를 읽은 뒤 {p}_edit을 쓰세요."
             ),
             detail=title,
@@ -495,7 +514,7 @@ def tools_for(kit: Toolset) -> tuple[Tool, Tool, Tool, Tool]:
             "properties": {"document": {
                 "type": "string",
                 "description": "문서 제목: 여러 문서 중 사람이 고른 것을 읽을 때만",
-            }},
+            }, **(kit.read_params or {})},
             "additionalProperties": False,
         },
         run=read,

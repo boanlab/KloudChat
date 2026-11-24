@@ -116,7 +116,7 @@
 "path": "admin/system",
 "title": "시스템 설정",
 "heading": "기능",
-"text": "- **사용할 기능**: 보고서 · 슬라이드 · 이미지 · 오디오/동영상 켜기/끄기. 챗은 항상 켜져 있습니다. 비활성화하면 메뉴에서 사라지고 서버도 새 대화를 거부합니다. 이미지·영상은 게이트웨이에 그 모델이 있어야 실제로 동작합니다. 모델이 없는 상태로 활성화하면 사용자 화면에 생성 불가 안내가 표시됩니다.\n- **기능 연동**: 기능 서버 주소 하나, 또는 기능별 주소(웹 검색 · 문서 가져오기 · 코드 실행 · 심층 조사 · 음성 전사 · 자료 검색 · 글자 읽기(OCR)). 개별·전체 **연결 테스트**. 음성 전사 주소를 설정하면 말로 쓰기와 음성·영상 파일 읽기가 활성화되고, 자료 검색(색인) 주소가 있으면 에이전트 자료와 대화 첨부를 벡터로 검색합니다(없으면 낱말 검색만).\n- **글자 읽기(OCR)**: 스캔한 PDF 쪽과 문서 사진의 글자를 읽습니다. 켜기·끄기, 읽는 방식(OCR 엔진 + 비전 모델 · OCR 엔진만 · 비전 모델만), 비전 모델, 문서 하나에서 읽는 최대 쪽 수(기본 300)를 정합니다. 비전 모델은 그림을 읽는 strict-local 모델만 고를 수 있고, 그 밖의 모델은 저장되지 않습니다. 둘 다 쓰면 엔진이 먼저 읽고 점수가 낮은 쪽과 표가 있는 쪽만 비전 모델이 다시 읽으며, 두 결과가 다르면 「확인 필요」로 표시합니다. OCR 엔진 주소가 없으면 PDF 쪽은 읽지 못하고 사진만 비전 모델로 읽습니다. 읽은 쪽 수는 사용량에 「n쪽 글자 읽음」으로 남습니다(크레딧 0).\n\n웹 검색의 안전 검색 수준과 차단 도메인은 검색 서버에서 설정합니다. 자세한 내용은 백엔드(KloudChat-LLM) 문서를 참고하세요. 기본값은 안전 검색이 비활성 상태입니다."
+"text": "- **사용할 기능**: 보고서 · 슬라이드 · 이미지 · 오디오/동영상 · 시트 켜기/끄기. 챗은 항상 켜져 있습니다. 비활성화하면 메뉴에서 사라지고 서버도 새 대화를 거부합니다. 이미지·영상은 게이트웨이에 그 모델이 있어야 실제로 동작합니다. 모델이 없는 상태로 활성화하면 사용자 화면에 생성 불가 안내가 표시됩니다.\n- **기능 연동**: 기능 서버 주소 하나, 또는 기능별 주소(웹 검색 · 문서 가져오기 · 코드 실행 · 심층 조사 · 음성 전사 · 자료 검색 · 글자 읽기(OCR)). 개별·전체 **연결 테스트**. 음성 전사 주소를 설정하면 말로 쓰기와 음성·영상 파일 읽기가 활성화되고, 자료 검색(색인) 주소가 있으면 에이전트 자료와 대화 첨부를 벡터로 검색합니다(없으면 낱말 검색만).\n- **글자 읽기(OCR)**: 스캔한 PDF 쪽과 문서 사진의 글자를 읽습니다. 켜기·끄기, 읽는 방식(OCR 엔진 + 비전 모델 · OCR 엔진만 · 비전 모델만), 비전 모델, 문서 하나에서 읽는 최대 쪽 수(기본 300)를 정합니다. 비전 모델은 그림을 읽는 strict-local 모델만 고를 수 있고, 그 밖의 모델은 저장되지 않습니다. 둘 다 쓰면 엔진이 먼저 읽고 점수가 낮은 쪽과 표가 있는 쪽만 비전 모델이 다시 읽으며, 두 결과가 다르면 「확인 필요」로 표시합니다. OCR 엔진 주소가 없으면 PDF 쪽은 읽지 못하고 사진만 비전 모델로 읽습니다. 읽은 쪽 수는 사용량에 「n쪽 글자 읽음」으로 남습니다(크레딧 0).\n\n웹 검색의 안전 검색 수준과 차단 도메인은 검색 서버에서 설정합니다. 자세한 내용은 백엔드(KloudChat-LLM) 문서를 참고하세요. 기본값은 안전 검색이 비활성 상태입니다."
 },
 {
 "lang": "ko",
@@ -431,7 +431,7 @@
 "path": "chat/agents",
 "title": "에이전트와 스킬",
 "heading": "기본 스킬",
-"text": "기본 스킬은 관리자 계정이 만들어 모두에게 공개한 스킬입니다. **사용자 지정** › **스킬**의 **탐색**에 **제작: 공식**으로 보이고, **추가**하면 내 목록에 사본이 생깁니다. 사본은 **원본: 공식**, 고친 사본은 **내가 수정함 · 원본: 공식**으로 보입니다. 사본은 고치지 않는 동안 관리자 쪽 새 버전을 따라가고, 고치면 내 것으로 남습니다. 에이전트와 문서 형식이 쓰는 검사(근거 대조, 빠진 정보 묻기 등)는 추가하지 않아도 그대로 돕니다.\n\n목록에 보이는 기본 스킬은 공식 스킬의 업무 스킬 열두 가지와 그 밖의 일곱 가지입니다.\n\n- 업무 스킬 열두 가지: 회의록 작성, 개조식 보고, 비교·결정 보고, 공문·기안 초안, 슬라이드 구성, 자료 추출·집계, YouTube 영상 전사·요약, 심층 조사, 번역, 보도자료, 엑셀 파일 만들기, 차트 만들기\n- 그 밖의 일곱 가지: **근거 대조**, **빠진 정보 묻기**, **계산·단위 검증**, **날짜 계산**, **엑셀 정리**, **PDF 표 → 엑셀**, **개인정보 가리기**\n\n- **엑셀 정리**는 제목·빈 행·합계·주석 행을 걷어 내고 바꾼 내용을 변경내역 시트로 남깁니다. 모든 값이 같은 행은 지우지 않고 「중복 의심」으로 표시만 합니다. 지우려면 지워 달라고 요청하세요.\n- **PDF 표 → 엑셀**은 글자를 고를 수 있는 PDF(텍스트 PDF)만 읽습니다. 스캔한 PDF(이미지)는 읽지 못합니다.\n- 그 밖의 스킬(카피·교정, 상투어 걷어내기 등)은 목록·스토어·고르기 창에 보이지 않습니다. 묶음(예: 마무리하기의 상투적인 표현 걷어내기)과 그 스킬을 쓰던 대화에서는 그대로 돌고, 편집기에서 이름으로 고를 수 있습니다. 관리자는 **숨김 포함**을 켜면 볼 수 있습니다."
+"text": "기본 스킬은 관리자 계정이 만들어 모두에게 공개한 스킬입니다. **사용자 지정** › **스킬**의 **탐색**에 **제작: 공식**으로 보이고, **추가**하면 내 목록에 사본이 생깁니다. 사본은 **원본: 공식**, 고친 사본은 **내가 수정함 · 원본: 공식**으로 보입니다. 사본은 고치지 않는 동안 관리자 쪽 새 버전을 따라가고, 고치면 내 것으로 남습니다. 에이전트와 문서 형식이 쓰는 검사(근거 대조, 빠진 정보 묻기 등)는 추가하지 않아도 그대로 돕니다.\n\n목록에 보이는 기본 스킬은 공식 스킬의 업무 스킬 열한 가지와 그 밖의 일곱 가지입니다.\n\n- 업무 스킬 열한 가지: 회의록 작성, 개조식 보고, 비교·결정 보고, 공문·기안 초안, 슬라이드 구성, 자료 추출·집계, YouTube 영상 전사·요약, 심층 조사, 번역, 보도자료, 차트 만들기\n- 그 밖의 일곱 가지: **근거 대조**, **빠진 정보 묻기**, **계산·단위 검증**, **날짜 계산**, **엑셀 정리**, **PDF 표 → 엑셀**, **개인정보 가리기**\n\n- **엑셀 정리**는 제목·빈 행·합계·주석 행을 걷어 내고 바꾼 내용을 변경내역 시트로 남깁니다. 모든 값이 같은 행은 지우지 않고 「중복 의심」으로 표시만 합니다. 지우려면 지워 달라고 요청하세요.\n- **PDF 표 → 엑셀**은 글자를 고를 수 있는 PDF(텍스트 PDF)만 읽습니다. 스캔한 PDF(이미지)는 읽지 못합니다.\n- 그 밖의 스킬(카피·교정, 상투어 걷어내기 등)은 목록·스토어·고르기 창에 보이지 않습니다. 묶음(예: 마무리하기의 상투적인 표현 걷어내기)과 그 스킬을 쓰던 대화에서는 그대로 돌고, 편집기에서 이름으로 고를 수 있습니다. 관리자는 **숨김 포함**을 켜면 볼 수 있습니다."
 },
 {
 "lang": "ko",
@@ -704,14 +704,14 @@
 "path": "chat/skill-recipes",
 "title": "스킬로 일하고 에이전트 짜기",
 "heading": "공식 스킬",
-"text": "관리자가 모두에게 공개한 스킬입니다. 입력창의 **+** → **스킬** 아래 **공식 스킬**에 보이고, 고르면 내 스킬에 추가되면서 바로 켜집니다.\n\n| 스킬 | 쓰는 화면 | 하는 일 |\n|---|---|---|\n| 회의록 작성 | 보고서 | 녹음 전사본·메모·후속 메일로 결정·실행 항목(할 일·담당·기한·출처·비고)·미결을 남깁니다. **회의록** 형식으로 씁니다. 메모에 없는 시간·기한·합의·담당·권고·다음 회의 안건은 쓰지 않고, 빼거나 「(확인 필요)」·「미정」·「[장소]」처럼 표시해 둡니다. 메모가 준 일시·장소·참석자는 그대로 쓰고, 본문을 영어로 쓰면 머리도 영어(Meeting·Date·Location·Attendees·Prepared by)로 둡니다. 같은 행은 하나만 남기고, 메모의 요일이 달력과 다른 날짜는 처음 나온 곳에 「(화, 확인 필요: 달력상 수요일)」처럼 표시합니다. |\n| 개조식 보고 | 보고서 | 메모·메일을 윗사람이 한 장에서 판단할 □ ○ - ㆍ 개조식으로 바꿉니다. **개조식 보고서** 형식, 기본 1쪽. |\n| 비교·결정 보고 | 보고서 | 대안 2~5개를 요청한 기준 그대로 견주고 하나를 권고합니다. **비교·분석 보고서** 형식. |\n| 공문·기안 초안 | 보고서 | 계획서·결과 보고·기안·안내문 초안. 검색하지 않고, 그림은 요청할 때만 넣습니다. |\n| 슬라이드 구성 | 슬라이드 | 한 장에 주장 하나, 결론을 맨 앞에 두는 발표 슬라이드. |\n| 자료 추출·집계 | 대화 | 엑셀·CSV를 코드로 읽어 열을 뽑고 항목별로 집계한 표·차트를 만들고, 지우거나 바꾼 행을 남깁니다. |\n| YouTube 영상 전사·요약 | 대화 | **YouTube 전사** MCP 서버로 자막(없으면 음성 전사)을 받아 그 내용만으로 요약합니다. |\n| 심층 조사 | 대화 | **심층 리서치** MCP 서버로 웹·논문을 여러 번 찾아 출처가 달린 결과를 정리합니다. 몇 분 걸립니다. 요청에 「심층 리서치로」라고 적으면 자세한 조사(5~15분)로 돌고, 진행 단계에 빠른 조사·자세한 조사 중 어느 것이 돌았는지 표시됩니다. |\n| 번역 | 대화·보고서 | 한국어↔영어(요청하면 다른 언어도)로 빠짐없이 옮깁니다. 이름·숫자·단위·표·목록·코드는 그대로, 같은 용어는 끝까지 같은 말로, 두 뜻으로 읽히는 곳만 「번역 메모」로 적습니다. 「직역」·「의역」, 「격식체」·「평어체」를 요청에 적으면 그대로 씁니다. |\n| 보도자료 | 대화·보고서 | 제목·부제, 육하원칙 리드, 중요한 것부터 내려가는 본문, 기관 소개와 문의까지 갖춘 보도자료. 인용은 자료에 있는 사람의 발언만 쓰고(이름만 있으면 「가안」으로 표시한 인용문), 자료에 없는 수치는 넣지 않습니다. 배포일·보도 시점·문의처만 대괄호로 남겨 직접 채웁니다. 「A4 1장」·「800자 이내」처럼 분량을 적으면 맞춥니다. |\n| 엑셀 파일 만들기 | 대화 | 붙여 넣은 표, 첨부한 CSV·엑셀, 계산한 표를 내려받을 수 있는 엑셀(.xlsx) 파일로 만듭니다. 합계 행과 합계·비율 같은 열은 수식으로 들어가고, 요청하면 엑셀 차트도 붙습니다. |\n| 차트 만들기 | 대화 | 표의 숫자로 막대·선·누적 막대 차트를 만들어 대화 옆에 띄웁니다. 값은 자료에 있거나 코드로 계산한 것만 씁니다. |"
+"text": "관리자가 모두에게 공개한 스킬입니다. 입력창의 **+** → **스킬** 아래 **공식 스킬**에 보이고, 고르면 내 스킬에 추가되면서 바로 켜집니다.\n\n| 스킬 | 쓰는 화면 | 하는 일 |\n|---|---|---|\n| 회의록 작성 | 보고서 | 녹음 전사본·메모·후속 메일로 결정·실행 항목(할 일·담당·기한·출처·비고)·미결을 남깁니다. **회의록** 형식으로 씁니다. 메모에 없는 시간·기한·합의·담당·권고·다음 회의 안건은 쓰지 않고, 빼거나 「(확인 필요)」·「미정」·「[장소]」처럼 표시해 둡니다. 메모가 준 일시·장소·참석자는 그대로 쓰고, 본문을 영어로 쓰면 머리도 영어(Meeting·Date·Location·Attendees·Prepared by)로 둡니다. 같은 행은 하나만 남기고, 메모의 요일이 달력과 다른 날짜는 처음 나온 곳에 「(화, 확인 필요: 달력상 수요일)」처럼 표시합니다. |\n| 개조식 보고 | 보고서 | 메모·메일을 윗사람이 한 장에서 판단할 □ ○ - ㆍ 개조식으로 바꿉니다. **개조식 보고서** 형식, 기본 1쪽. |\n| 비교·결정 보고 | 보고서 | 대안 2~5개를 요청한 기준 그대로 견주고 하나를 권고합니다. **비교·분석 보고서** 형식. |\n| 공문·기안 초안 | 보고서 | 계획서·결과 보고·기안·안내문 초안. 검색하지 않고, 그림은 요청할 때만 넣습니다. |\n| 슬라이드 구성 | 슬라이드 | 한 장에 주장 하나, 결론을 맨 앞에 두는 발표 슬라이드. |\n| 자료 추출·집계 | 대화 | 엑셀·CSV를 코드로 읽어 열을 뽑고 항목별로 집계한 표·차트를 만들고, 지우거나 바꾼 행을 남깁니다. |\n| YouTube 영상 전사·요약 | 대화 | **YouTube 전사** MCP 서버로 자막(없으면 음성 전사)을 받아 그 내용만으로 요약합니다. |\n| 심층 조사 | 대화 | **심층 리서치** MCP 서버로 웹·논문을 여러 번 찾아 출처가 달린 결과를 정리합니다. 몇 분 걸립니다. 요청에 「심층 리서치로」라고 적으면 자세한 조사(5~15분)로 돌고, 진행 단계에 빠른 조사·자세한 조사 중 어느 것이 돌았는지 표시됩니다. |\n| 번역 | 대화·보고서 | 한국어↔영어(요청하면 다른 언어도)로 빠짐없이 옮깁니다. 이름·숫자·단위·표·목록·코드는 그대로, 같은 용어는 끝까지 같은 말로, 두 뜻으로 읽히는 곳만 「번역 메모」로 적습니다. 「직역」·「의역」, 「격식체」·「평어체」를 요청에 적으면 그대로 씁니다. |\n| 보도자료 | 대화·보고서 | 제목·부제, 육하원칙 리드, 중요한 것부터 내려가는 본문, 기관 소개와 문의까지 갖춘 보도자료. 인용은 자료에 있는 사람의 발언만 쓰고(이름만 있으면 「가안」으로 표시한 인용문), 자료에 없는 수치는 넣지 않습니다. 배포일·보도 시점·문의처만 대괄호로 남겨 직접 채웁니다. 「A4 1장」·「800자 이내」처럼 분량을 적으면 맞춥니다. |\n| 차트 만들기 | 대화 | 표의 숫자로 막대·선·누적 막대 차트를 만들어 대화 옆에 띄웁니다. 값은 자료에 있거나 코드로 계산한 것만 씁니다. |"
 },
 {
 "lang": "ko",
 "path": "chat/skill-recipes",
 "title": "스킬로 일하고 에이전트 짜기",
 "heading": "그 밖의 스킬과 스킬이 가져오는 것",
-"text": "이 밖에 엑셀 정리, PDF 표 → 엑셀, 근거 대조, 빠진 정보 묻기, 계산·단위 검증, 개인정보 가리기, 날짜 계산이 있습니다. 날짜 계산은 **시간** MCP 서버가 있으면 오늘 날짜를 거기서 읽습니다.\n\n스킬은 자기 문서 형식·검사·빠진 정보 질문을 함께 가져옵니다. 예를 들어 보고서 화면에서 **회의록 작성**을 켜면 **회의록** 형식으로 쓰고, 쓰기 전에 회의 날짜·참석자를 묻고, 다 쓴 뒤 근거와 형식을 확인합니다. 켠 스킬은 그 대화가 끝날 때까지 켜져 있고, 개요를 승인할 때도 그대로 씁니다."
+"text": "엑셀 파일은 스킬이 아니라 시트가 만듭니다. 이 밖에 엑셀 정리, PDF 표 → 엑셀, 근거 대조, 빠진 정보 묻기, 계산·단위 검증, 개인정보 가리기, 날짜 계산이 있습니다. 날짜 계산은 **시간** MCP 서버가 있으면 오늘 날짜를 거기서 읽습니다.\n\n스킬은 자기 문서 형식·검사·빠진 정보 질문을 함께 가져옵니다. 예를 들어 보고서 화면에서 **회의록 작성**을 켜면 **회의록** 형식으로 쓰고, 쓰기 전에 회의 날짜·참석자를 묻고, 다 쓴 뒤 근거와 형식을 확인합니다. 켠 스킬은 그 대화가 끝날 때까지 켜져 있고, 개요를 승인할 때도 그대로 씁니다."
 },
 {
 "lang": "ko",
@@ -724,8 +724,8 @@
 "lang": "ko",
 "path": "chat/skill-recipes",
 "title": "스킬로 일하고 에이전트 짜기",
-"heading": "번역·보도자료·엑셀 파일·차트",
-"text": "- **번역**: 대화에서 켜고 글을 붙인 뒤 「영어로, 의역, 격식체로」처럼 보냅니다. 용어를 정해 두려면 「용어: 학생지원팀 = Student Support Office」처럼 함께 적습니다. 긴 문서를 문서째 옮기려면 보고서 화면에서 켭니다. 원문의 절 제목과 순서를 그대로 따르고 요약·권고 절은 붙이지 않습니다.\n- **보도자료**: 행사 결과·협약·수상 자료를 붙이고 「보도자료로, A4 1장」이라고 보냅니다. 자료에 인용할 발언이 없으면 인용 문단을 만들지 않고 답 끝에 그렇다고 알려 줍니다. 대표처럼 이름만 주고 발언이 없으면 자료의 목적·계획만 담은 그 사람의 인용문 가안을 쓰고 「(가안, 본인 확인 필요)」를 붙입니다. 보고서 화면에서 요청에 「보도자료」라고 적으면 문서 머리에 배포일·보도 시점·문의처 칸이 생깁니다.\n- **엑셀 파일 만들기**: 표를 붙이거나 CSV·엑셀을 첨부하고 「엑셀 파일로, 합계 행과 증감률 열은 수식으로」라고 보냅니다. 만든 파일은 답 아래에 내려받기 단추로 붙습니다. 지저분한 표는 먼저 **엑셀 정리**를, 집계가 필요하면 **자료 추출·집계**를 함께 켜면 계산한 표를 파일로 받습니다. 코드 실행(샌드박스)이 켜져 있어야 합니다.\n- **차트 만들기**: 표를 붙이고 「지점별 월 매출을 막대 차트로」라고 보내면 차트가 대화 옆에 열립니다. 엑셀 안에도 차트를 넣으려면 **엑셀 파일 만들기**를 함께 켜고 「엑셀 차트도」라고 적습니다."
+"heading": "번역·보도자료·차트",
+"text": "- **번역**: 대화에서 켜고 글을 붙인 뒤 「영어로, 의역, 격식체로」처럼 보냅니다. 용어를 정해 두려면 「용어: 학생지원팀 = Student Support Office」처럼 함께 적습니다. 긴 문서를 문서째 옮기려면 보고서 화면에서 켭니다. 원문의 절 제목과 순서를 그대로 따르고 요약·권고 절은 붙이지 않습니다.\n- **보도자료**: 행사 결과·협약·수상 자료를 붙이고 「보도자료로, A4 1장」이라고 보냅니다. 자료에 인용할 발언이 없으면 인용 문단을 만들지 않고 답 끝에 그렇다고 알려 줍니다. 대표처럼 이름만 주고 발언이 없으면 자료의 목적·계획만 담은 그 사람의 인용문 가안을 쓰고 「(가안, 본인 확인 필요)」를 붙입니다. 보고서 화면에서 요청에 「보도자료」라고 적으면 문서 머리에 배포일·보도 시점·문의처 칸이 생깁니다.\n- **차트 만들기**: 표를 붙이고 「지점별 월 매출을 막대 차트로」라고 보내면 차트가 대화 옆에 열립니다. 엑셀 안에도 차트를 넣으려면 시트에서 「엑셀 차트도」라고 적습니다."
 },
 {
 "lang": "ko",
@@ -865,7 +865,7 @@
 "path": "glossary",
 "title": "용어",
 "heading": "",
-"text": "| 용어 | 뜻 |\n|---|---|\n| 화면(챗·보고서·슬라이드·이미지·오디오/동영상) | 홈에서 선택하는 화면. 관리자가 켜고 끔 |\n| 대화 | 한 작업의 기록. 사이드바의 한 줄 |\n| 아티팩트 | 대화에서 만들어진 문서·슬라이드·차트 등. 오른쪽 패널과 갤러리 |\n| 양식 · 양식 파일 | 보고서·슬라이드를 그 위에 쓰는 PowerPoint(.pptx·.potx)·Word(.docx·.dotx) 파일. 대화에 첨부하거나 프로젝트·에이전트의 「기본 양식 파일」에 둠. 양식의 글은 자료로 읽지 않음 |\n| 디자인 지침 | 프로젝트·에이전트에 말로 적는 문서 모양(색·글꼴·표 그리는 방식·분량). 읽은 값은 「읽은 값」 칩으로 보임 |\n| 모양 | 문서 하나의 스타일·강조색·서체. 보고서·슬라이드 패널의 「모양」에서 바꿈 |\n| 프로젝트 | 자료·지침·대화를 묶는 작업 공간 |\n| 에이전트 | 지시·진행 과정·도구·자료가 정해진 도우미. 입력창의 **+** → **에이전트**로 시작 |\n| 진행 과정 | 에이전트가 일하는 순서. 바로 답하기 · 기본 과정에서 시작 · 직접 구성(고급) |\n| 기본 과정 | 기본 에이전트(개조식 보고, 회의록 등)의 일하는 순서. 이미 그 과정에서 시작한 에이전트만 씀 |\n| 묶음 | 에이전트가 쓰기 전후에 하는 일을 묶은 것. 에이전트 설정의 「추가로 할 일」에서 체크 |\n| 스킬 | 대화에 켜 두는 작업 방식. 입력창에서 최대 3개, 에이전트의 「항상 적용」으로 6개까지, 고르지 않은 스킬은 모델이 필요할 때 꺼내 씀. 문서 형식·검사·빠진 정보 질문을 함께 가져옴 |\n| 공식 스킬 | 관리자가 모두에게 공개한 스킬. 회의록·개조식 보고 같은 일을 하며, 입력창에서 고르면 내 스킬에 추가됨 |\n| 숨김 | 목록·스토어·고르기 창에 보이지 않지만 지우지 않은 기본 스킬·MCP 서버. 묶음과 그 항목을 쓰던 대화에서는 그대로 동작하고, 관리자는 「숨김 포함」으로 봄 |\n| MCP 서버 | 모델이 쓰는 외부 도구(MCP). 계정 전체에서 켜고 끔 |\n| 메모리 | 대화를 넘어 기억하는 사실. 설정 › 메모리 |\n| strict-local | 외부로 나가지 않는다고 확인된 모델 표시 |\n| Super Agent | 질문마다 작업 종류에 맞는 모델과 추론 강도를 고르는 대화 모드(strict-local 전용 항목 포함) |\n| 크레딧 | 사용량 단위. 무료 모델은 쓰지 않음 |\n| 작업 단계 | 답변 위의 \"작업 완료 · N단계\". 참고한 항목을 표시 |\n| 턴 | 질문 하나와 그 답변. 화면에는 \"이전 턴 첨부\"처럼 표시 |\n| 이미지 · 그림 · 도식 | 첨부하거나 생성하는 이미지 파일 · 문서에 넣는 그림(UI 라벨) · 텍스트 모델이 그리는 흐름도와 구조도 |\n| 개요 카드 | 보고서·슬라이드를 쓰기 전 구성을 확인하는 카드 |\n| 마스킹 | 개인정보를 자리표시자로 바꿔 보내는 것 |\n| 챗봇 | 다른 사람이 물어볼 수 있게 공유한 에이전트. 범위는 우리 조직·링크를 아는 사람·누구나 |\n| 문의·신고 | 관리자에게 보내는 오류 신고·기능 요청·문의 |"
+"text": "| 용어 | 뜻 |\n|---|---|\n| 화면(챗·보고서·슬라이드·이미지·오디오/동영상·시트) | 홈에서 선택하는 화면. 관리자가 켜고 끔 |\n| 대화 | 한 작업의 기록. 사이드바의 한 줄 |\n| 아티팩트 | 대화에서 만들어진 문서·슬라이드·차트 등. 오른쪽 패널과 갤러리 |\n| 양식 · 양식 파일 | 보고서·슬라이드를 그 위에 쓰는 PowerPoint(.pptx·.potx)·Word(.docx·.dotx) 파일. 대화에 첨부하거나 프로젝트·에이전트의 「기본 양식 파일」에 둠. 양식의 글은 자료로 읽지 않음 |\n| 디자인 지침 | 프로젝트·에이전트에 말로 적는 문서 모양(색·글꼴·표 그리는 방식·분량). 읽은 값은 「읽은 값」 칩으로 보임 |\n| 모양 | 문서 하나의 스타일·강조색·서체. 보고서·슬라이드 패널의 「모양」에서 바꿈 |\n| 프로젝트 | 자료·지침·대화를 묶는 작업 공간 |\n| 에이전트 | 지시·진행 과정·도구·자료가 정해진 도우미. 입력창의 **+** → **에이전트**로 시작 |\n| 진행 과정 | 에이전트가 일하는 순서. 바로 답하기 · 기본 과정에서 시작 · 직접 구성(고급) |\n| 기본 과정 | 기본 에이전트(개조식 보고, 회의록 등)의 일하는 순서. 이미 그 과정에서 시작한 에이전트만 씀 |\n| 묶음 | 에이전트가 쓰기 전후에 하는 일을 묶은 것. 에이전트 설정의 「추가로 할 일」에서 체크 |\n| 스킬 | 대화에 켜 두는 작업 방식. 입력창에서 최대 3개, 에이전트의 「항상 적용」으로 6개까지, 고르지 않은 스킬은 모델이 필요할 때 꺼내 씀. 문서 형식·검사·빠진 정보 질문을 함께 가져옴 |\n| 공식 스킬 | 관리자가 모두에게 공개한 스킬. 회의록·개조식 보고 같은 일을 하며, 입력창에서 고르면 내 스킬에 추가됨 |\n| 숨김 | 목록·스토어·고르기 창에 보이지 않지만 지우지 않은 기본 스킬·MCP 서버. 묶음과 그 항목을 쓰던 대화에서는 그대로 동작하고, 관리자는 「숨김 포함」으로 봄 |\n| MCP 서버 | 모델이 쓰는 외부 도구(MCP). 계정 전체에서 켜고 끔 |\n| 메모리 | 대화를 넘어 기억하는 사실. 설정 › 메모리 |\n| strict-local | 외부로 나가지 않는다고 확인된 모델 표시 |\n| Super Agent | 질문마다 작업 종류에 맞는 모델과 추론 강도를 고르는 대화 모드(strict-local 전용 항목 포함) |\n| 크레딧 | 사용량 단위. 무료 모델은 쓰지 않음 |\n| 작업 단계 | 답변 위의 \"작업 완료 · N단계\". 참고한 항목을 표시 |\n| 턴 | 질문 하나와 그 답변. 화면에는 \"이전 턴 첨부\"처럼 표시 |\n| 이미지 · 그림 · 도식 | 첨부하거나 생성하는 이미지 파일 · 문서에 넣는 그림(UI 라벨) · 텍스트 모델이 그리는 흐름도와 구조도 |\n| 개요 카드 | 보고서·슬라이드를 쓰기 전 구성을 확인하는 카드 |\n| 마스킹 | 개인정보를 자리표시자로 바꿔 보내는 것 |\n| 챗봇 | 다른 사람이 물어볼 수 있게 공유한 에이전트. 범위는 우리 조직·링크를 아는 사람·누구나 |\n| 문의·신고 | 관리자에게 보내는 오류 신고·기능 요청·문의 |"
 },
 {
 "lang": "ko",
@@ -879,14 +879,14 @@
 "path": "index",
 "title": "KloudChat 사용자 가이드",
 "heading": "목적별 안내 문서",
-"text": "| 목적 | 사용하는 기능 | 참고 문서 |\n|---|---|---|\n| 질문과 답변, 코드 검토, 문장 교정 | 홈 → **챗** | 대화 기본 |\n| 문서를 첨부해 내용에 근거한 답변 받기 | 입력창 **+** → **파일·사진 첨부** | 파일 첨부 |\n| 최신 정보를 근거로 답변 받기 | 입력창 **+** → 웹 검색 | 웹 검색과 도구 |\n| 보고서 작성 | 홈 → **보고서** | 보고서 작성 |\n| 슬라이드 작성 | 홈 → **슬라이드** | 슬라이드 작성 |\n| 작성된 문서를 직접 편집하고 검토받기 | 아티팩트 패널의 리본 | 아티팩트 편집기 |\n| 이미지·음성·영상 생성 | 홈 → **이미지**, **오디오/동영상** | 이미지와 오디오/동영상 |\n| 아티팩트를 링크로 전달 | 대화 상단 **공유** | 공유 |\n| 자료와 지침을 묶어 반복 활용 | 사이드바 → **프로젝트** | 프로젝트 |\n| 역할이 정해진 도우미에게 위임 | 입력창 **+** → 에이전트 | 에이전트와 스킬 |\n| 에이전트를 다른 사람이 묻는 챗봇으로 열기 | 에이전트 화면 → **공유하기** | 챗봇 공유 |\n| 회사 양식에 맞춰 문서 받기 | 대화에 PowerPoint·Word 양식 첨부, 프로젝트의 **기본 양식 파일** | 형식·디자인 |\n| 반복해서 알려야 할 정보를 기억시키기 | 계정 메뉴 → **설정** → **메모리** | 메모리 |\n| 외부 도구·코드에서 모델 호출 | 계정 메뉴 → **API 연동** | API와 코딩 도구 연동 |\n| 사용량 확인과 대화 정리 | 계정 메뉴 → **사용량**, **대화 기록** | 사용량과 대화 기록 |\n| 오류 신고와 기능 요청 | 계정 메뉴 → **문의·신고** | 문의·신고 |"
+"text": "| 목적 | 사용하는 기능 | 참고 문서 |\n|---|---|---|\n| 질문과 답변, 코드 검토, 문장 교정 | 홈 → **챗** | 대화 기본 |\n| 문서를 첨부해 내용에 근거한 답변 받기 | 입력창 **+** → **파일·사진 첨부** | 파일 첨부 |\n| 최신 정보를 근거로 답변 받기 | 입력창 **+** → 웹 검색 | 웹 검색과 도구 |\n| 보고서 작성 | 홈 → **보고서** | 보고서 작성 |\n| 슬라이드 작성 | 홈 → **슬라이드** | 슬라이드 작성 |\n| 표와 계산을 엑셀 파일로 만들기 | 홈 → **시트** | 시트 |\n| 작성된 문서를 직접 편집하고 검토받기 | 아티팩트 패널의 리본 | 아티팩트 편집기 |\n| 이미지·음성·영상 생성 | 홈 → **이미지**, **오디오/동영상** | 이미지와 오디오/동영상 |\n| 아티팩트를 링크로 전달 | 대화 상단 **공유** | 공유 |\n| 자료와 지침을 묶어 반복 활용 | 사이드바 → **프로젝트** | 프로젝트 |\n| 역할이 정해진 도우미에게 위임 | 입력창 **+** → 에이전트 | 에이전트와 스킬 |\n| 에이전트를 다른 사람이 묻는 챗봇으로 열기 | 에이전트 화면 → **공유하기** | 챗봇 공유 |\n| 회사 양식에 맞춰 문서 받기 | 대화에 PowerPoint·Word 양식 첨부, 프로젝트의 **기본 양식 파일** | 형식·디자인 |\n| 반복해서 알려야 할 정보를 기억시키기 | 계정 메뉴 → **설정** → **메모리** | 메모리 |\n| 외부 도구·코드에서 모델 호출 | 계정 메뉴 → **API 연동** | API와 코딩 도구 연동 |\n| 사용량 확인과 대화 정리 | 계정 메뉴 → **사용량**, **대화 기록** | 사용량과 대화 기록 |\n| 오류 신고와 기능 요청 | 계정 메뉴 → **문의·신고** | 문의·신고 |"
 },
 {
 "lang": "ko",
 "path": "index",
 "title": "KloudChat 사용자 가이드",
 "heading": "읽는 순서",
-"text": "처음 사용한다면 가입과 로그인, 홈 화면 구성, 대화 기본 순서로 읽으세요. 문제가 생기면 제한 사항과 문제 해결에서 화면에 나타난 문구로 원인을 찾을 수 있습니다. 처음 보는 용어는 용어에 정리해 두었습니다.\n\n본 가이드는 제품의 전체 기능을 다룹니다. 다음 항목은 기관의 설정에 따라 달라지므로, 실제 화면과 다르면 관리자에게 확인하세요.\n\n- **사용할 수 있는 화면**: 챗은 항상 제공되며 보고서, 슬라이드, 이미지, 오디오/동영상은 관리자가 활성화한 경우에만 표시됩니다.\n- **모델 목록과 과금**: 운영하는 모델의 종류, 이름, 데이터 경계, 크레딧 단가는 기관마다 다릅니다.\n- **가입 방식과 이메일 도메인**: 승인 절차와 허용 도메인은 관리자가 지정합니다.\n- **연동 기능**: 웹 검색, 코드 실행, 말로 쓰기, 자료 검색, 글자 읽기(OCR)는 관리자가 서버를 연결한 경우에만 동작합니다.\n- **서비스 이름과 로고**: 관리자가 변경할 수 있으므로 화면에 표시되는 명칭이 이 가이드와 다를 수 있습니다."
+"text": "처음 사용한다면 가입과 로그인, 홈 화면 구성, 대화 기본 순서로 읽으세요. 문제가 생기면 제한 사항과 문제 해결에서 화면에 나타난 문구로 원인을 찾을 수 있습니다. 처음 보는 용어는 용어에 정리해 두었습니다.\n\n본 가이드는 제품의 전체 기능을 다룹니다. 다음 항목은 기관의 설정에 따라 달라지므로, 실제 화면과 다르면 관리자에게 확인하세요.\n\n- **사용할 수 있는 화면**: 챗은 항상 제공되며 보고서, 슬라이드, 시트, 이미지, 오디오/동영상은 관리자가 활성화한 경우에만 표시됩니다.\n- **모델 목록과 과금**: 운영하는 모델의 종류, 이름, 데이터 경계, 크레딧 단가는 기관마다 다릅니다.\n- **가입 방식과 이메일 도메인**: 승인 절차와 허용 도메인은 관리자가 지정합니다.\n- **연동 기능**: 웹 검색, 코드 실행, 말로 쓰기, 자료 검색, 글자 읽기(OCR)는 관리자가 서버를 연결한 경우에만 동작합니다.\n- **서비스 이름과 로고**: 관리자가 변경할 수 있으므로 화면에 표시되는 명칭이 이 가이드와 다를 수 있습니다."
 },
 {
 "lang": "ko",
@@ -1271,7 +1271,7 @@
 "path": "start/home",
 "title": "홈 화면 구성",
 "heading": "화면 선택과 입력창",
-"text": "입력창 위의 **챗 · 보고서 · 슬라이드 · 이미지 · 오디오/동영상** 칩에서 사용할 화면을 선택하고 요청 내용을 입력합니다. 이미지와 오디오/동영상은 관리자가 활성화한 경우에만 나옵니다. 칩 아래에는 고른 화면에 맞는 예시 요청이 있습니다. 챗은 질의응답이며, 보고서와 슬라이드는 구성을 먼저 확인한 뒤 문서를 작성합니다.\n\n보고서와 슬라이드를 고르면(빈 대화를 다시 열었을 때도 같습니다) 입력창에 **형식** 칩이 나타납니다. **형식**은 보고서에서는 웹 보고서·한글·Word 중에서, 슬라이드에서는 웹 슬라이드·PowerPoint 중에서 고릅니다. 한글·Word·PowerPoint를 고르면 **빈 문서로 시작** 단추가 나타납니다. PowerPoint·Word 양식 파일을 첨부하면 그 양식 위에 씁니다. 프로젝트나 에이전트에 기본 양식 파일이 있으면 **형식** 칩 옆에 **프로젝트 양식** 칩이 나타나고, ✕를 누르면 이 대화에서만 뺍니다. 구조는 요청에서 자동으로 정해집니다(형식·디자인). 주소 `/new/report?format=hwp`, `/new/slides?format=pptx`는 형식을 미리 골라 엽니다. 보고서 작성 · 슬라이드 작성\n\n\"보고서를 작성해 주세요\", \"발표자료를 만들어 주세요\"처럼 문서 작성을 요청하면 **해당 작업의 새 대화로 자동 전환됩니다.**\n에이전트 대화는 챗에 그대로 남습니다. \"요약해 주세요\", \"검토해 주세요\"처럼 기존 내용을 다루는 요청도 그대로 남습니다.\n\n| 기능 | 설명 | 적용 범위 |\n|---|---|---|\n| **+** | 첨부, 스킬, 웹 검색, MCP 서버, 에이전트를 한곳에 모은 메뉴입니다. 휴대폰에서는 아래쪽 시트로 열립니다. | — |\n| 파일·사진 첨부 | 파일을 올립니다. 끌어다 놓기와 붙여넣기도 지원합니다. 긴 글을 붙여 넣으면 **붙여 넣은 텍스트** 칩이 됩니다. | 해당 대화 전체 |\n| 스킬 | 요청에 적용할 스킬을 최대 3개까지 선택합니다. | 해당 요청 |\n| 웹 검색: 자동 · 항상 · 끔 | 웹 검색 모드를 고릅니다. **항상**이나 **끔**이면 입력창에 칩으로 표시됩니다. | 해당 요청. 새 대화는 자동으로 초기화 |\n| MCP 서버 | 설치한 MCP 서버를 켜고 끕니다. | 계정 전체 |\n| 에이전트 | 에이전트를 선택해 해당 에이전트와 새 대화를 시작합니다. | — |\n| 🎤 말로 쓰기 | 음성을 문자로 변환합니다. 관리자가 음성 전사를 연결한 경우에만 표시됩니다. | 해당 입력 |\n| 모델 이름 ▾ | 사용할 모델을 선택합니다. | 홈에서 선택하면 계정 기본값, 대화 중 선택하면 해당 대화 |\n| ↑ · ■ | 전송하거나 생성을 중지합니다. | — |\n\n입력창 위에는 현재 적용된 항목(프로젝트, 형식, 양식, 스킬, 첨부 파일, Auto 상태)이 칩으로 표시되며 × 로 해제합니다."
+"text": "입력창 위의 **챗 · 보고서 · 슬라이드 · 이미지 · 오디오/동영상 · 시트** 칩에서 사용할 화면을 선택하고 요청 내용을 입력합니다. 이미지와 오디오/동영상은 관리자가 활성화한 경우에만 나옵니다. **시트**는 표와 계산을 엑셀 파일로 만듭니다(시트). 칩 아래에는 고른 화면에 맞는 예시 요청이 있습니다. 챗은 질의응답이며, 보고서와 슬라이드는 구성을 먼저 확인한 뒤 문서를 작성합니다.\n\n보고서와 슬라이드를 고르면(빈 대화를 다시 열었을 때도 같습니다) 입력창에 **형식** 칩이 나타납니다. **형식**은 보고서에서는 웹 보고서·한글·Word 중에서, 슬라이드에서는 웹 슬라이드·PowerPoint 중에서 고릅니다. 한글·Word·PowerPoint를 고르면 **빈 문서로 시작** 단추가 나타납니다. PowerPoint·Word 양식 파일을 첨부하면 그 양식 위에 씁니다. 프로젝트나 에이전트에 기본 양식 파일이 있으면 **형식** 칩 옆에 **프로젝트 양식** 칩이 나타나고, ✕를 누르면 이 대화에서만 뺍니다. 구조는 요청에서 자동으로 정해집니다(형식·디자인). 주소 `/new/report?format=hwp`, `/new/slides?format=pptx`는 형식을 미리 골라 엽니다. 보고서 작성 · 슬라이드 작성\n\n\"보고서를 작성해 주세요\", \"발표자료를 만들어 주세요\"처럼 문서 작성을 요청하면 **해당 작업의 새 대화로 자동 전환됩니다.**\n에이전트 대화는 챗에 그대로 남습니다. \"요약해 주세요\", \"검토해 주세요\"처럼 기존 내용을 다루는 요청도 그대로 남습니다.\n\n| 기능 | 설명 | 적용 범위 |\n|---|---|---|\n| **+** | 첨부, 스킬, 웹 검색, MCP 서버, 에이전트를 한곳에 모은 메뉴입니다. 휴대폰에서는 아래쪽 시트로 열립니다. | — |\n| 파일·사진 첨부 | 파일을 올립니다. 끌어다 놓기와 붙여넣기도 지원합니다. 긴 글을 붙여 넣으면 **붙여 넣은 텍스트** 칩이 됩니다. | 해당 대화 전체 |\n| 스킬 | 요청에 적용할 스킬을 최대 3개까지 선택합니다. | 해당 요청 |\n| 웹 검색: 자동 · 항상 · 끔 | 웹 검색 모드를 고릅니다. **항상**이나 **끔**이면 입력창에 칩으로 표시됩니다. | 해당 요청. 새 대화는 자동으로 초기화 |\n| MCP 서버 | 설치한 MCP 서버를 켜고 끕니다. | 계정 전체 |\n| 에이전트 | 에이전트를 선택해 해당 에이전트와 새 대화를 시작합니다. | — |\n| 🎤 말로 쓰기 | 음성을 문자로 변환합니다. 관리자가 음성 전사를 연결한 경우에만 표시됩니다. | 해당 입력 |\n| 모델 이름 ▾ | 사용할 모델을 선택합니다. | 홈에서 선택하면 계정 기본값, 대화 중 선택하면 해당 대화 |\n| ↑ · ■ | 전송하거나 생성을 중지합니다. | — |\n\n입력창 위에는 현재 적용된 항목(프로젝트, 형식, 양식, 스킬, 첨부 파일, Auto 상태)이 칩으로 표시되며 × 로 해제합니다."
 },
 {
 "lang": "ko",
@@ -1383,7 +1383,7 @@
 "path": "write/artifacts",
 "title": "아티팩트",
 "heading": "",
-"text": "대화에서 생성된 것을 아티팩트라고 합니다. 사이드바의 **아티팩트** 화면에는 바로 보거나 실행하는 것, 즉 HTML 페이지, 코드 파일, 차트, 도식이 모입니다. 보고서와 슬라이드(웹·한글·Word·PowerPoint)는 파일함의 **작업 문서**에, 생성한 이미지·오디오·동영상은 **만든 파일**에 모입니다. 답변 안의 짧은 코드 블록은 대화 내용의 일부라서 아티팩트로 따로 저장하지 않습니다. 복사와 실행은 대화 안에서 합니다."
+"text": "대화에서 생성된 것을 아티팩트라고 합니다. 사이드바의 **아티팩트** 화면에는 바로 보거나 실행하는 것, 즉 HTML 페이지, 코드 파일, 차트, 도식이 모입니다. 보고서, 슬라이드, 시트(웹·한글·Word·PowerPoint·Excel)는 파일함의 **작업 문서**에, 생성한 이미지·오디오·동영상은 **만든 파일**에 모입니다. 답변 안의 짧은 코드 블록은 대화 내용의 일부라서 아티팩트로 따로 저장하지 않습니다. 복사와 실행은 대화 안에서 합니다."
 },
 {
 "lang": "ko",
@@ -1397,14 +1397,14 @@
 "path": "write/artifacts",
 "title": "아티팩트",
 "heading": "형식별 편집기",
-"text": "웹 보고서와 웹 슬라이드는 아티팩트 편집기(리본)에서 엽니다. 한글, Word, PowerPoint 아티팩트는 각자의 편집기(HWP 편집기, 리본이 있는 Word 편집기, PowerPoint 편집기)에서 열립니다. 자세한 내용은 한글(HWP) 문서, Word 문서, PowerPoint 문서를 참고하세요."
+"text": "웹 보고서와 웹 슬라이드는 아티팩트 편집기(리본)에서 엽니다. 한글, Word, PowerPoint, Excel 아티팩트는 각자의 편집기(HWP 편집기, 리본이 있는 Word 편집기, PowerPoint 편집기, 시트 편집기)에서 열립니다. 자세한 내용은 한글(HWP) 문서, Word 문서, PowerPoint 문서, 시트를 참고하세요."
 },
 {
 "lang": "ko",
 "path": "write/artifacts",
 "title": "아티팩트",
 "heading": "내보내기 형식",
-"text": "| 종류 | 형식 |\n|---|---|\n| 웹 보고서 | PDF, Word 문서(DOCX), 한글 문서(HWPX), 마크다운 원문, 인쇄 |\n| 웹 슬라이드 | PowerPoint(PPTX), PDF(발표용), 텍스트(노트 포함) |\n| 웹 페이지(HTML) | Word 문서, PDF, 한글 문서, 원본 HTML, 텍스트. 슬라이드 모양의 페이지는 PowerPoint, PDF, 원본 HTML, 텍스트 |\n| 코드 파일 | 원본 파일 |\n| 차트 | 이미지(PNG), 벡터(SVG), 데이터(CSV) |\n| 한글·Word·PowerPoint 문서 | 편집기의 **내려받기**(HWPX·HWP, DOCX, PPTX) |\n\nPDF는 고른 모양을 그대로 반영하고, DOCX와 PPTX는 편집 가능한 구조를 우선하므로 화면의 시각적 요소가 일부 달라질 수 있습니다. 회사 양식 위에 쓴 Word·PowerPoint 파일은 양식의 모양을 그대로 따릅니다."
+"text": "| 종류 | 형식 |\n|---|---|\n| 웹 보고서 | PDF, Word 문서(DOCX), 한글 문서(HWPX), 마크다운 원문, 인쇄 |\n| 웹 슬라이드 | PowerPoint(PPTX), PDF(발표용), 텍스트(노트 포함) |\n| 웹 페이지(HTML) | Word 문서, PDF, 한글 문서, 원본 HTML, 텍스트. 슬라이드 모양의 페이지는 PowerPoint, PDF, 원본 HTML, 텍스트 |\n| 코드 파일 | 원본 파일 |\n| 차트 | 이미지(PNG), 벡터(SVG), 데이터(CSV) |\n| 한글·Word·PowerPoint·Excel 문서 | 편집기의 **내려받기**(HWPX·HWP, DOCX, PPTX, XLSX) |\n\nPDF는 고른 모양을 그대로 반영하고, DOCX와 PPTX는 편집 가능한 구조를 우선하므로 화면의 시각적 요소가 일부 달라질 수 있습니다. 회사 양식 위에 쓴 Word·PowerPoint 파일은 양식의 모양을 그대로 따릅니다."
 },
 {
 "lang": "ko",
@@ -1684,7 +1684,7 @@
 "path": "write/share",
 "title": "공유",
 "heading": "공유되는 범위",
-"text": "- 해당 대화와 그 대화에서 생성된 아티팩트가 공개됩니다. 아티팩트가 먼저 표시되고 대화가 이어집니다. 보고서·슬라이드·차트·그림·음성·영상·HTML이 앱에서와 같은 모양으로 보이며, HTML은 앱의 미리보기처럼 격리된 창 안에서 열립니다. 그림과 영상 파일도 링크의 공개 범위대로 열립니다.\n- **프로젝트 파일과 메모리는 공유되지 않습니다.** 대화에 첨부한 파일은 답변에 인용된 범위까지 노출됩니다.\n- **공유 이후에 이어지는 대화도 링크에 계속 반영됩니다.** 특정 시점까지만 공개하려면 링크를 철회하고 새로 생성하세요."
+"text": "- 해당 대화와 그 대화에서 생성된 아티팩트가 공개됩니다. 아티팩트가 먼저 표시되고 대화가 이어집니다. 보고서·슬라이드·차트·그림·음성·영상·HTML이 앱에서와 같은 모양으로 보이고, 시트는 읽기 전용 표와 내려받기로 보이며, HTML은 앱의 미리보기처럼 격리된 창 안에서 열립니다. 그림과 영상 파일도 링크의 공개 범위대로 열립니다.\n- **프로젝트 파일과 메모리는 공유되지 않습니다.** 대화에 첨부한 파일은 답변에 인용된 범위까지 노출됩니다.\n- **공유 이후에 이어지는 대화도 링크에 계속 반영됩니다.** 특정 시점까지만 공개하려면 링크를 철회하고 새로 생성하세요."
 },
 {
 "lang": "ko",
@@ -1699,6 +1699,48 @@
 "title": "공유",
 "heading": "열람 기록과 철회",
 "text": "같은 창에서 열람자(이름과 이메일 또는 \"계정 없는 방문자\"), 브라우저, 지역, 열람 횟수를 확인할 수 있습니다. 한 시간 이내의 반복 열람은 한 번으로 집계합니다. **링크 철회**를 실행하면 해당 주소는 즉시 열리지 않습니다. 대화를 삭제한 경우에도 링크가 차단됩니다."
+},
+{
+"lang": "ko",
+"path": "write/sheet",
+"title": "시트",
+"heading": "",
+"text": "표와 계산을 엑셀 파일(`.xlsx`)로 만들고 고칩니다. 대화 옆에 시트 편집기가 열리고, 요청대로 표를 쓰면 바로 편집기에 나타납니다. 같은 파일을 편집기에서 직접 고칠 수도 있습니다.\n\n시트 화면은 관리자가 켜 둔 경우에 홈의 화면 칩에 **시트**로 나옵니다."
+},
+{
+"lang": "ko",
+"path": "write/sheet",
+"title": "시트",
+"heading": "시작하기",
+"text": "- 홈에서 **시트**를 고르고 만들 표를 적어 보냅니다. 예를 들어 \"월별 매출 표를 만들어 줘. 합계 행과 전월 대비 증감률 열을 수식으로 넣어 줘\"라고 적습니다.\n- 입력 없이 시작하려면 **빈 시트로 시작**을 누릅니다. 빈 통합 문서가 열린 대화가 시작됩니다.\n- 대화나 파일함의 `.xlsx` 파일은 **시트로 열기**로 편집기에 엽니다.\n- 챗에서 \"엑셀 파일로\", \"xlsx로\", \"스프레드시트로\"처럼 요청해도 이 대화의 시트에 씁니다. 화면이 바뀌지는 않고, 만든 시트가 옆 패널에 열립니다.\n- `.xls`(엑셀 97~2003 형식)와 매크로가 든 파일의 매크로는 다루지 않습니다. 엑셀에서 `.xlsx`로 저장한 뒤 올리세요."
+},
+{
+"lang": "ko",
+"path": "write/sheet",
+"title": "시트",
+"heading": "챗으로 만들고 고치기",
+"text": "- 챗은 시트 이름, 머리글, 행, 수식, 숫자 서식(`#,##0`, `0.0%`, 날짜), 열 너비, 병합을 갖춘 통합 문서를 한 번에 씁니다. 첫 줄은 굵게 칠하고 고정한 머리글입니다.\n- **수식은 수식으로 들어갑니다.** 합계, 차이, 비율, 단가×수량처럼 다른 칸에서 나오는 값은 숫자를 적어 넣지 않고 수식(`=SUM(B2:B9)`)으로 씁니다. 그래서 칸을 고치면 결과가 따라 바뀝니다.\n- 답에서 말하는 합계와 비율은 서버가 수식을 다시 계산해 파일에 저장한 값입니다. 서버가 계산하는 것은 사칙연산, 비교, 칸·범위 참조(다른 시트 포함)와 SUM, AVERAGE, MIN, MAX, COUNT, COUNTA, IF, IFERROR, ROUND, ROUNDUP, ROUNDDOWN, ABS, INT, MOD, SQRT, POWER, AND, OR, NOT, SUMIF, COUNTIF, SUMPRODUCT, CONCAT, LEN, ISNUMBER, ISTEXT, ISBLANK, ISERROR입니다. 다른 함수를 쓴 수식은 그대로 두고, 엑셀이나 편집기에서 열 때 계산됩니다.\n- **자료에 없는 숫자는 지어내지 않습니다.** 알려 주지 않은 값은 칸에 `[매출액]`처럼 대괄호 빈칸으로 남기고, 무엇이 비었는지 답에서 알려 줍니다.\n- \"5행 위에 새 행을 끼워 줘\", \"C열을 지워 줘\", \"시트를 하나 더 만들어 줘\", \"B열을 쉼표 천 단위로\" 같은 요청으로 칸·범위 쓰기, 서식, 열 너비, 병합, 행과 열 끼우기·지우기, 시트 추가·이름 바꾸기·삭제를 합니다. 행과 열을 끼우거나 지우면 아래·오른쪽 칸과 수식 속 참조가 함께 움직입니다.\n- 첨부한 CSV나 엑셀 파일은 \"이 파일을 시트로 정리해 줘\"처럼 요청하면 칸 그대로 옮깁니다. 숫자를 반올림하거나 단위를 바꾸지 않고 빈 칸은 비워 둡니다. 큰 표를 모델이 다시 치지 않고 서버가 파일에서 옮깁니다. 제목·합계·주석이 섞인 지저분한 표는 먼저 **엑셀 정리** 스킬을 씁니다(스킬 활용).\n- 요청하면 엑셀 차트(막대·꺾은선·누적 막대)를 표 옆에 넣습니다. 편집기는 차트를 그리지 못하지만 파일에는 그대로 있고, 엑셀에서 보입니다.\n- 다른 파일이나 주소를 부르거나 무언가를 실행하는 수식(`WEBSERVICE`, `HYPERLINK`, 다른 통합 문서 참조 등)은 쓰지 않고 거절합니다.\n- 챗이 고치는 동안 편집기는 잠기고, 고친 판이 저장되면 편집기가 그 판을 불러옵니다. 한 번에 고치는 여러 작업은 모두 적용되거나 모두 적용되지 않습니다.\n- 사람이 입력한 칸은 요청 없이 지우거나 덮어쓰지 않습니다."
+},
+{
+"lang": "ko",
+"path": "write/sheet",
+"title": "시트",
+"heading": "직접 고치기와 저장",
+"text": "- 칸을 눌러 값과 수식을 고치고, 서식, 행과 열 끼우기·지우기, 시트 추가·이름 바꾸기, 열 너비, 병합을 위쪽 도구 막대로 합니다.\n- 고치면 머리에 **저장 안 됨**이 표시됩니다. **저장**을 누르거나 Ctrl+S를 누르면 새 판으로 저장됩니다. 저장은 고친 칸만 파일에 쓰므로 편집기가 그리지 못하는 차트, 그림, 피벗 테이블, 조건부 서식은 그대로 남습니다.\n- 저장하지 않은 편집이 있는 채로 챗을 보내면 먼저 **저장하고 보내기**, **버리고 보내기**, **취소** 중에서 고릅니다. 챗은 항상 저장된 파일에서 시작합니다.\n- 그사이 다른 판이 저장되었으면 저장하지 않고 알려 줍니다. **내 편집 내려받기**로 지금 편집을 파일로 받거나 **최신 판 불러오기**를 선택합니다.\n- 판은 ⋯ 메뉴의 **버전 기록**에서 보고 되돌립니다. 챗에서 \"방금 고친 거 취소해 줘\"라고 해도 됩니다."
+},
+{
+"lang": "ko",
+"path": "write/sheet",
+"title": "시트",
+"heading": "공유",
+"text": "머리의 공유 아이콘으로 이 시트만 링크로 공유합니다. 대화를 공유할 때도 그 대화의 시트가 함께 열립니다. 받는 사람은 읽기 전용 표와 시트 탭을 보고, **내려받기**로 `.xlsx` 파일을 받습니다. 표에는 값이 보이고(수식은 계산된 값으로 보임), 받은 파일에는 수식이 그대로 있습니다. 표는 앞 500행과 60열까지 보여 주며 더 큰 시트는 내려받아 확인합니다. 공개 범위는 다른 아티팩트와 같습니다(공유)."
+},
+{
+"lang": "ko",
+"path": "write/sheet",
+"title": "시트",
+"heading": "내려받기와 제한",
+"text": "- **내려받기**의 **Excel 문서**로 지금 편집기의 내용을 `.xlsx`로 받습니다.\n- 한 번에 쓰는 칸은 새 통합 문서가 5만 칸, 고치기가 2만 칸까지입니다. 더 큰 표는 나눠서 더합니다.\n- 이미 있는 차트 고치기, 피벗 테이블, 조건부 서식, 매크로는 만들거나 고치지 못합니다. 그런 요청에는 못 한다고 답합니다.\n- 휴대폰 너비에서는 시트를 읽기만 하고 내려받을 수 있으며, 고치기와 저장은 넓은 화면에서 합니다."
 },
 {
 "lang": "ko",
@@ -1880,7 +1922,7 @@
 "path": "admin/system",
 "title": "System settings",
 "heading": "Features",
-"text": "- **Features to use**: Turn reports, slide decks, images, and audio/video on and off. Chat is always on. Disabling one removes it from the menu, and the server refuses new conversations for it as well. Images and video work in practice only if the gateway has those models. If you enable them without a model, the user screen shows a notice that generation is not possible.\n- **Feature integration**: One feature server address, or an address per feature (web search · document import · code execution · deep research · speech transcription · material search · text from scans (OCR)). **Connection test** individually and for all of them. Setting a speech transcription address enables dictation and reading audio and video files. With a material search (indexing) address, agent material and conversation attachments are searched by vector (word search only without it).\n- **Text from scans (OCR)**: Reads the text of scanned PDF pages and document photos. Set whether it is on, how pages are read (OCR engine + vision model · OCR engine only · vision model only), the vision model, and the most pages read in one document (300 by default). Only a strict-local model that reads pictures can be chosen as the vision model; any other is refused. With both, the engine reads first and only pages with a low score or a table are read again by the vision model; where the two differ, the page is marked “to check”. Without an OCR engine address, PDF pages are not read and only photos are read by the vision model. Pages read appear in usage as “n pages read” (0 credits).\n\nThe safe search level and blocked domains for web search are set on the search server. For details, see the backend (KloudChat-LLM) documentation. By default, safe search is off."
+"text": "- **Features to use**: Turn reports, slide decks, images, audio/video, and sheets on and off. Chat is always on. Disabling one removes it from the menu, and the server refuses new conversations for it as well. Images and video work in practice only if the gateway has those models. If you enable them without a model, the user screen shows a notice that generation is not possible.\n- **Feature integration**: One feature server address, or an address per feature (web search · document import · code execution · deep research · speech transcription · material search · text from scans (OCR)). **Connection test** individually and for all of them. Setting a speech transcription address enables dictation and reading audio and video files. With a material search (indexing) address, agent material and conversation attachments are searched by vector (word search only without it).\n- **Text from scans (OCR)**: Reads the text of scanned PDF pages and document photos. Set whether it is on, how pages are read (OCR engine + vision model · OCR engine only · vision model only), the vision model, and the most pages read in one document (300 by default). Only a strict-local model that reads pictures can be chosen as the vision model; any other is refused. With both, the engine reads first and only pages with a low score or a table are read again by the vision model; where the two differ, the page is marked “to check”. Without an OCR engine address, PDF pages are not read and only photos are read by the vision model. Pages read appear in usage as “n pages read” (0 credits).\n\nThe safe search level and blocked domains for web search are set on the search server. For details, see the backend (KloudChat-LLM) documentation. By default, safe search is off."
 },
 {
 "lang": "en",
@@ -2195,7 +2237,7 @@
 "path": "chat/agents",
 "title": "Agents and skills",
 "heading": "Built-in skills",
-"text": "Built-in skills are skills the administrator account made and shared with everyone. They appear under **Explore** in **Customize** › **Skills** as **By: Official**; **Add** puts a copy in your list (**Original: Official**). A copy follows the administrator's newer versions while you leave it unedited, and stays yours once you edit it. The checks agents and document formats use (grounding check, asking for missing information and so on) run without adding anything.\n\nThe lists show the twelve work skills (including Translation, Press release, Make an Excel file and Make a chart) under Official skills and **Grounding check** (근거 대조), **Ask for missing information** (빠진 정보 묻기), **Calculation and unit check** (계산·단위 검증), **Date calculation** (날짜 계산), **Excel cleanup** (엑셀 정리), **PDF table → Excel** (PDF 표 → 엑셀) and **Mask personal information** (개인정보 가리기).\n\n- **Excel cleanup** strips title, blank, total and note rows and records what it changed on a change-log sheet. Rows whose values are all the same are not removed, only marked 「중복 의심」 (suspected duplicate); ask for them to be removed if you want that.\n- **PDF table → Excel** reads only PDFs whose text can be selected (text PDFs). Scanned PDFs (images) cannot be read.\n- The other skills (copy, proofreading, stock-phrase stripping and so on) are not shown in the lists, the store and the pickers. They still run in bundles (such as Finish's stock-phrase stripping) and in conversations that used them, and the editors still let you pick them by name. Administrators see them with **Show hidden** (숨김 포함)."
+"text": "Built-in skills are skills the administrator account made and shared with everyone. They appear under **Explore** in **Customize** › **Skills** as **By: Official**; **Add** puts a copy in your list (**Original: Official**). A copy follows the administrator's newer versions while you leave it unedited, and stays yours once you edit it. The checks agents and document formats use (grounding check, asking for missing information and so on) run without adding anything.\n\nThe lists show the eleven work skills (including Translation, Press release and Make a chart) under Official skills and **Grounding check** (근거 대조), **Ask for missing information** (빠진 정보 묻기), **Calculation and unit check** (계산·단위 검증), **Date calculation** (날짜 계산), **Excel cleanup** (엑셀 정리), **PDF table → Excel** (PDF 표 → 엑셀) and **Mask personal information** (개인정보 가리기).\n\n- **Excel cleanup** strips title, blank, total and note rows and records what it changed on a change-log sheet. Rows whose values are all the same are not removed, only marked 「중복 의심」 (suspected duplicate); ask for them to be removed if you want that.\n- **PDF table → Excel** reads only PDFs whose text can be selected (text PDFs). Scanned PDFs (images) cannot be read.\n- The other skills (copy, proofreading, stock-phrase stripping and so on) are not shown in the lists, the store and the pickers. They still run in bundles (such as Finish's stock-phrase stripping) and in conversations that used them, and the editors still let you pick them by name. Administrators see them with **Show hidden** (숨김 포함)."
 },
 {
 "lang": "en",
@@ -2475,7 +2517,7 @@
 "path": "chat/skill-recipes",
 "title": "Working with skills and building agents",
 "heading": "Other skills, and what a skill brings",
-"text": "There are also Date calculation (with the **시간** (time) MCP server it reads today's date from there), Excel cleanup, PDF table → Excel, Grounding check, Ask for missing information, Calculation and unit check and Mask personal information.\n\nA skill brings its document format, checks and missing-information questions. Turn on **Meeting minutes** on the report screen, for instance, and it writes in the **회의록** format, asks for the meeting date and attendees before writing, and checks sources and format afterwards. A skill you turn on stays on for the rest of the conversation, approving the outline included."
+"text": "An Excel file is made by Sheet, not by a skill. There are also Date calculation (with the **시간** (time) MCP server it reads today's date from there), Excel cleanup, PDF table → Excel, Grounding check, Ask for missing information, Calculation and unit check and Mask personal information.\n\nA skill brings its document format, checks and missing-information questions. Turn on **Meeting minutes** on the report screen, for instance, and it writes in the **회의록** format, asks for the meeting date and attendees before writing, and checks sources and format afterwards. A skill you turn on stays on for the rest of the conversation, approving the outline included."
 },
 {
 "lang": "en",
@@ -2488,8 +2530,8 @@
 "lang": "en",
 "path": "chat/skill-recipes",
 "title": "Working with skills and building agents",
-"heading": "Translation, press releases, Excel files and charts",
-"text": "- **번역** (Translation): turn it on in a conversation, paste the text and send something like 「영어로, 의역, 격식체로」 (into English, free, formal). To fix terms, add them: 「용어: 학생지원팀 = Student Support Office」. To translate a whole document as a document, turn it on on the report screen; it follows the source's headings and order and adds no summary or recommendation.\n- **보도자료** (Press release): paste the event, agreement or award material and send 「보도자료로, A4 1장」. If the material has no quote, it writes no quote paragraph and says so at the end. When only a spokesperson's name is given (a CEO, say), it drafts one quote for that person from the material's purpose and plan and marks it 「(가안, 본인 확인 필요)」. On the report screen, say 「보도자료」 in the request and the page head gets the release date, embargo and contact fields.\n- **엑셀 파일 만들기** (Make an Excel file): paste a table or attach a CSV or Excel file and send 「엑셀 파일로, 합계 행과 증감률 열은 수식으로」 (as an Excel file, total row and change-rate column as formulas). The file appears under the answer as a download button. For a messy sheet, turn on **엑셀 정리** (Excel cleanup) too; for aggregates, **자료 추출·집계** (Extract and tally), and you get the computed table as a file. Code execution (the sandbox) must be on.\n- **차트 만들기** (Make a chart): paste a table and send 「지점별 월 매출을 막대 차트로」 (monthly sales by branch as a bar chart); the chart opens beside the conversation. To put the chart inside the Excel file too, turn on **엑셀 파일 만들기** as well and add 「엑셀 차트도」."
+"heading": "Translation, press releases and charts",
+"text": "- **번역** (Translation): turn it on in a conversation, paste the text and send something like 「영어로, 의역, 격식체로」 (into English, free, formal). To fix terms, add them: 「용어: 학생지원팀 = Student Support Office」. To translate a whole document as a document, turn it on on the report screen; it follows the source's headings and order and adds no summary or recommendation.\n- **보도자료** (Press release): paste the event, agreement or award material and send 「보도자료로, A4 1장」. If the material has no quote, it writes no quote paragraph and says so at the end. When only a spokesperson's name is given (a CEO, say), it drafts one quote for that person from the material's purpose and plan and marks it 「(가안, 본인 확인 필요)」. On the report screen, say 「보도자료」 in the request and the page head gets the release date, embargo and contact fields.\n- **차트 만들기** (Make a chart): paste a table and send 「지점별 월 매출을 막대 차트로」 (monthly sales by branch as a bar chart); the chart opens beside the conversation. To put the chart inside an Excel file too, ask for 「엑셀 차트도」 (an Excel chart as well) on the Sheet screen."
 },
 {
 "lang": "en",
@@ -2629,7 +2671,7 @@
 "path": "glossary",
 "title": "Glossary",
 "heading": "",
-"text": "| Term | Meaning |\n|---|---|\n| Screen (Chat · Report · Slides · Image · Audio/Video) | The screen you choose on the home page. Administrators turn each one on and off |\n| Conversation (대화) | The record of one piece of work. One row in the sidebar |\n| Artifact (아티팩트) | A document, deck, chart or other file produced in a conversation. The right-hand panel and the gallery |\n| Form · form file (양식 · 양식 파일) | A PowerPoint (.pptx · .potx) or Word (.docx · .dotx) file that reports and slides are written on. Attached in the conversation or kept as a project's or agent's Default form files. Its own text is not read as material |\n| Design brief (디자인 지침) | A document look written in words on a project or agent (colors, fonts, how tables are drawn, density). What is read from it shows as Read as chips |\n| Look (모양) | The style, accent color and typeface of one document. Changed under Look in the report or slides panel |\n| Project (프로젝트) | A workspace that groups material, instructions, and conversations |\n| Agent (에이전트) | A helper with set instructions, process, tools, and material. Start one from **+** → **Agents** in the composer |\n| How it works (진행 과정) | The order an agent works in: Answer directly · Start from a base process · Set it up yourself (advanced) |\n| Base process (기본 과정) | The working order of a built-in agent (Bullet-style briefing, Minutes, …). Used only by agents that already started from it |\n| Bundle (묶음) | A group of things an agent does before and after writing. Ticked under Extra work in the agent settings |\n| Skill (스킬) | A way of working you keep on in a conversation. Up to 3 in the composer, up to 6 set to Always on an agent; skills not picked are pulled in by the model when needed. Brings its document format, checks and missing-information questions |\n| O"
+"text": "| Term | Meaning |\n|---|---|\n| Screen (Chat · Report · Slides · Image · Audio/Video · Sheet) | The screen you choose on the home page. Administrators turn each one on and off |\n| Conversation (대화) | The record of one piece of work. One row in the sidebar |\n| Artifact (아티팩트) | A document, deck, chart or other file produced in a conversation. The right-hand panel and the gallery |\n| Form · form file (양식 · 양식 파일) | A PowerPoint (.pptx · .potx) or Word (.docx · .dotx) file that reports and slides are written on. Attached in the conversation or kept as a project's or agent's Default form files. Its own text is not read as material |\n| Design brief (디자인 지침) | A document look written in words on a project or agent (colors, fonts, how tables are drawn, density). What is read from it shows as Read as chips |\n| Look (모양) | The style, accent color and typeface of one document. Changed under Look in the report or slides panel |\n| Project (프로젝트) | A workspace that groups material, instructions, and conversations |\n| Agent (에이전트) | A helper with set instructions, process, tools, and material. Start one from **+** → **Agents** in the composer |\n| How it works (진행 과정) | The order an agent works in: Answer directly · Start from a base process · Set it up yourself (advanced) |\n| Base process (기본 과정) | The working order of a built-in agent (Bullet-style briefing, Minutes, …). Used only by agents that already started from it |\n| Bundle (묶음) | A group of things an agent does before and after writing. Ticked under Extra work in the agent settings |\n| Skill (스킬) | A way of working you keep on in a conversation. Up to 3 in the composer, up to 6 set to Always on an agent; skills not picked are pulled in by the model when needed. Brings its document format, checks and missing-information questio"
 },
 {
 "lang": "en",
@@ -2643,7 +2685,7 @@
 "path": "index",
 "title": "KloudChat User Guide",
 "heading": "Guide pages by purpose",
-"text": "| Purpose | Feature used | Reference |\n|---|---|---|\n| Questions and answers, code review, proofreading | Home → **Chat** | Conversation basics |\n| Getting answers grounded in a document you attach | **+** → **Attach files or photos** in the composer | Attaching files |\n| Getting answers based on up-to-date information | **+** → Web search in the composer | Web search and tools |\n| Writing a report | Home → **Report** | Writing reports |\n| Writing a slide deck | Home → **Slides** | Writing slides |\n| Editing a finished document yourself and having it reviewed | The ribbon in the artifact panel | Artifact editor |\n| Generating images, audio and video | Home → **Image**, **Audio/Video** | Images and audio/video |\n| Passing an artifact on as a link | **Share** at the top of the conversation | Sharing |\n| Grouping files and instructions for repeated use | Sidebar → **Projects** | Projects |\n| Delegating to an assistant with a defined role | **+** → Agents in the composer | Agents and skills |\n| Opening an agent to others as a chatbot | Agent page → **Share** | Sharing a chatbot |\n| Getting a document on your company form | Attach a PowerPoint or Word form in the conversation; the project's **Default form files** | Format and design |\n| Storing information you have to repeat often | Account menu → **Settings** → **Memory** | Memory |\n| Calling models from external tools and code | Account menu → **API access** | API and coding tool integration |\n| Checking usage and tidying up conversations | Account menu → **Usage**, **Conversation history** | Usage and conversation history |\n| Reporting a bug or requesting a feature | Account menu → **Feedback & issues** | Feedback and issues |"
+"text": "| Purpose | Feature used | Reference |\n|---|---|---|\n| Questions and answers, code review, proofreading | Home → **Chat** | Conversation basics |\n| Getting answers grounded in a document you attach | **+** → **Attach files or photos** in the composer | Attaching files |\n| Getting answers based on up-to-date information | **+** → Web search in the composer | Web search and tools |\n| Writing a report | Home → **Report** | Writing reports |\n| Writing a slide deck | Home → **Slides** | Writing slides |\n| Making tables and calculations as an Excel file | Home → **Sheet** | Sheets |\n| Editing a finished document yourself and having it reviewed | The ribbon in the artifact panel | Artifact editor |\n| Generating images, audio and video | Home → **Image**, **Audio/Video** | Images and audio/video |\n| Passing an artifact on as a link | **Share** at the top of the conversation | Sharing |\n| Grouping files and instructions for repeated use | Sidebar → **Projects** | Projects |\n| Delegating to an assistant with a defined role | **+** → Agents in the composer | Agents and skills |\n| Opening an agent to others as a chatbot | Agent page → **Share** | Sharing a chatbot |\n| Getting a document on your company form | Attach a PowerPoint or Word form in the conversation; the project's **Default form files** | Format and design |\n| Storing information you have to repeat often | Account menu → **Settings** → **Memory** | Memory |\n| Calling models from external tools and code | Account menu → **API access** | API and coding tool integration |\n| Checking usage and tidying up conversations | Account menu → **Usage**, **Conversation history** | Usage and conversation history |\n| Reporting a bug or requesting a feature | Account menu → **Feedback & issues** | Feedback and issues |"
 },
 {
 "lang": "en",
@@ -3035,7 +3077,7 @@
 "path": "start/home",
 "title": "Home screen layout",
 "heading": "Choosing a screen and using the composer",
-"text": "Choose the screen you want from the **Chat · Report · Slides · Image · Audio/Video** chips above the prompt box and type your request. Image and Audio/Video appear only if the administrator has enabled them. Examples suited to the chosen screen sit under the chips. Chat is for questions and answers. Report and Slides confirm the structure first and then write the document.\n\nWhen you choose Report or Slides (also when you reopen an empty conversation), the **Format** chip appears in the prompt box. **Format** offers Web report, HWP and Word for a report, and Web slides and PowerPoint for slides. When you pick HWP, Word or PowerPoint, a **Start blank** button appears. Attach a PowerPoint or Word form file and the document is written on that form; when the project or agent has default form files, a **Project form** chip appears beside the **Format** chip, and ✕ removes it for this conversation only. The structure is chosen automatically from the request (Format and design). The addresses `/new/report?format=hwp` and `/new/slides?format=pptx` open with the format preselected. Writing reports · Writing slides\n\nIf you ask for a document in Chat, for example \"Write a report\" or \"Make a slide deck\", **the request moves automatically to a new conversation for that task.** Agent conversations and requests about existing content such as \"Summarize this\" or \"Review this\" stay in Chat.\n\n| Feature | Description | Applies to |\n|---|---|---|\n| **+** | One menu holding Attach files or photos, Skills, Web search, MCP servers and Agents. On a phone it opens as a bottom sheet. | — |\n| Attach files or photos | Uploads a file. You can drag and drop files or paste them. Pasting long text turns it into a **Pasted text** chip. | The whole conversation |\n| 🎤 Dictate | Turns speech into text. Sho"
+"text": "Choose the screen you want from the **Chat · Report · Slides · Image · Audio/Video · Sheet** chips above the prompt box and type your request. Image and Audio/Video appear only if the administrator has enabled them. **Sheet** makes tables and calculations as an Excel file (Sheets). Examples suited to the chosen screen sit under the chips. Chat is for questions and answers. Report and Slides confirm the structure first and then write the document.\n\nWhen you choose Report or Slides (also when you reopen an empty conversation), the **Format** chip appears in the prompt box. **Format** offers Web report, HWP and Word for a report, and Web slides and PowerPoint for slides. When you pick HWP, Word or PowerPoint, a **Start blank** button appears. Attach a PowerPoint or Word form file and the document is written on that form; when the project or agent has default form files, a **Project form** chip appears beside the **Format** chip, and ✕ removes it for this conversation only. The structure is chosen automatically from the request (Format and design). The addresses `/new/report?format=hwp` and `/new/slides?format=pptx` open with the format preselected. Writing reports · Writing slides\n\nIf you ask for a document in Chat, for example \"Write a report\" or \"Make a slide deck\", **the request moves automatically to a new conversation for that task.** Agent conversations and requests about existing content such as \"Summarize this\" or \"Review this\" stay in Chat.\n\n| Feature | Description | Applies to |\n|---|---|---|\n| **+** | One menu holding Attach files or photos, Skills, Web search, MCP servers and Agents. On a phone it opens as a bottom sheet. | — |\n| Attach files or photos | Uploads a file. You can drag and drop files or paste them. Pasting long text turns it into a **Pasted text**"
 },
 {
 "lang": "en",
@@ -3147,7 +3189,7 @@
 "path": "write/artifacts",
 "title": "Artifacts",
 "heading": "",
-"text": "What a conversation generates is called an artifact. The **Artifacts** screen in the sidebar holds what you view or run directly: HTML pages, code files, charts and diagrams. Reports and slide decks (web, HWP, Word, PowerPoint) are under **Working documents** in Files, and generated images, audio and video under **Generated**. A short code block inside an answer is part of the conversation and is not saved as an artifact of its own; copy and run it in the chat."
+"text": "What a conversation generates is called an artifact. The **Artifacts** screen in the sidebar holds what you view or run directly: HTML pages, code files, charts and diagrams. Reports, slide decks and sheets (web, HWP, Word, PowerPoint, Excel) are under **Working documents** in Files, and generated images, audio and video under **Generated**. A short code block inside an answer is part of the conversation and is not saved as an artifact of its own; copy and run it in the chat."
 },
 {
 "lang": "en",
@@ -3161,7 +3203,7 @@
 "path": "write/artifacts",
 "title": "Artifacts",
 "heading": "Editors by format",
-"text": "Web reports and web slides open in the artifact editor (the ribbon). HWP, Word and PowerPoint artifacts open in their own editors: the HWP editor, the Word editor with its ribbon, and the PowerPoint editor. See HWP documents, Word documents and PowerPoint documents."
+"text": "Web reports and web slides open in the artifact editor (the ribbon). HWP, Word, PowerPoint and Excel artifacts open in their own editors: the HWP editor, the Word editor with its ribbon, the PowerPoint editor and the sheet editor. See HWP documents, Word documents, PowerPoint documents and Sheets."
 },
 {
 "lang": "en",
@@ -3448,7 +3490,7 @@
 "path": "write/share",
 "title": "Sharing",
 "heading": "What is shared",
-"text": "- The conversation and the artifacts generated in it are made public. The artifact is shown first, and the conversation follows. Reports, slides, charts, pictures, audio, video and HTML look as they do in the app; HTML opens in an isolated frame, like the app's preview. Picture and video files open to the same people the link does.\n- **Project files and memory are not shared.** Files attached to the conversation are exposed only to the extent that the answer quotes them.\n- **Conversation that continues after sharing keeps appearing in the link as well.** To make only part of it public up to a certain point, revoke the link and create a new one."
+"text": "- The conversation and the artifacts generated in it are made public. The artifact is shown first, and the conversation follows. Reports, slides, charts, pictures, audio, video and HTML look as they do in the app, and a sheet shows as a read-only table with a download; HTML opens in an isolated frame, like the app's preview. Picture and video files open to the same people the link does.\n- **Project files and memory are not shared.** Files attached to the conversation are exposed only to the extent that the answer quotes them.\n- **Conversation that continues after sharing keeps appearing in the link as well.** To make only part of it public up to a certain point, revoke the link and create a new one."
 },
 {
 "lang": "en",
@@ -3463,6 +3505,48 @@
 "title": "Sharing",
 "heading": "View history and revocation",
 "text": "In the same window you can check the viewer (name and email, or \"visitor without an account\"), the browser, the region, and the number of views. Repeat views within one hour are counted as one. When you run **Revoke the link**, the link stops working immediately. The link is also blocked if you delete the conversation."
+},
+{
+"lang": "en",
+"path": "write/sheet",
+"title": "Sheets",
+"heading": "",
+"text": "Make and edit tables and calculations as an Excel file (`.xlsx`). A sheet editor opens beside the conversation, and what is written for your request appears in it at once. You can also edit the same file directly in the editor.\n\nThe sheet screen appears as **Sheet** among the screen chips on Home when an administrator has turned it on."
+},
+{
+"lang": "en",
+"path": "write/sheet",
+"title": "Sheets",
+"heading": "Getting started",
+"text": "- On Home choose **Sheet** and describe the table you want, for example \"Make a monthly sales table with a total row and a month-over-month change column as formulas\".\n- To start with nothing typed, press **Start with a blank sheet**. A conversation starts with a blank workbook open.\n- An `.xlsx` file in a conversation or in the file box opens in the editor with **Open as a sheet**.\n- Asking in chat for something \"as an Excel file\", \"as xlsx\" or \"as a spreadsheet\" also writes it in this conversation's sheet. The screen does not change; the sheet opens in the side panel.\n- `.xls` files (Excel 97–2003 format) cannot be opened, and macros in a macro-enabled file are not handled. Save the file as `.xlsx` in Excel and upload that."
+},
+{
+"lang": "en",
+"path": "write/sheet",
+"title": "Sheets",
+"heading": "Writing and editing by chat",
+"text": "- A whole workbook is written in one go: sheet names, headers, rows, formulas, number formats (`#,##0`, `0.0%`, dates), column widths and merges. The first row is a header, bold and frozen.\n- **A formula goes in as a formula.** A value that follows from other cells, such as a total, a difference, a rate or price × quantity, is written as a formula (`=SUM(B2:B9)`), not a number typed in, so the result follows when you edit a cell.\n- The totals and rates quoted in the answer are the values the server calculated from the formulas and saved in the file. The server calculates arithmetic, comparisons, cell and range references (across sheets too) and SUM, AVERAGE, MIN, MAX, COUNT, COUNTA, IF, IFERROR, ROUND, ROUNDUP, ROUNDDOWN, ABS, INT, MOD, SQRT, POWER, AND, OR, NOT, SUMIF, COUNTIF, SUMPRODUCT, CONCAT, LEN, ISNUMBER, ISTEXT, ISBLANK and ISERROR. A formula that uses any other function is left as it is and is calculated when you open it in Excel or the editor.\n- **Numbers the material does not give are not invented.** A value you did not provide stays a bracket blank such as `[매출액]` in the cell, and the answer says what is missing.\n- Requests such as \"insert a row above row 5\", \"delete column C\", \"add another sheet\" or \"format column B with thousands separators\" cover writing cells and ranges, formats, column widths, merges, inserting and deleting rows and columns, and adding, renaming and deleting sheets. When rows or columns are inserted or deleted, the cells below and to the right and the references inside formulas move with them.\n- Ask \"put this attached CSV or Excel file in a sheet\" and the cells are copied as they are: no rounding, no change of units, empty cells stay empty. The server copies a big table from the file; the model does not retype it. A messy table with ti"
+},
+{
+"lang": "en",
+"path": "write/sheet",
+"title": "Sheets",
+"heading": "Editing by hand and saving",
+"text": "- Click a cell to edit its value or formula; the toolbar at the top does formatting, inserting and deleting rows and columns, adding and renaming sheets, column widths and merges.\n- After an edit the header shows **Unsaved**. **Save**, or Ctrl+S, saves a new version. A save writes only the cells you changed, so charts, pictures, pivot tables and conditional formats that the editor cannot draw stay as they were.\n- If you send a chat with unsaved edits, you first choose **Save and send**, **Discard and send** or **Cancel**. The chat always starts from the saved file.\n- If another version was saved in the meantime, it is not saved over and you are told. Choose **Download my edits** to get your current edits as a file, or **Load the latest version**.\n- See and restore versions under **Version history** in the ⋯ menu, or ask in chat, \"undo what you just changed\"."
+},
+{
+"lang": "en",
+"path": "write/sheet",
+"title": "Sheets",
+"heading": "Sharing",
+"text": "Share only this sheet by link with the share icon in the header. Sharing a conversation also opens its sheet. The reader sees a read-only table with a tab per sheet and downloads the `.xlsx` with **Download**. The table shows values (a formula shows its calculated value) and the downloaded file keeps the formulas. The table shows up to 500 rows and 60 columns; download a bigger sheet to see all of it. The audience options are the same as for other artifacts (Sharing)."
+},
+{
+"lang": "en",
+"path": "write/sheet",
+"title": "Sheets",
+"heading": "Download and limits",
+"text": "- **Download → Excel file** gives the editor's current content as `.xlsx`.\n- A new workbook takes up to 50,000 cells and one edit up to 20,000. Add a bigger table in parts.\n- Changing an existing chart, pivot tables, conditional formats and macros cannot be made or edited; asked for one, the chat says so.\n- At phone width a sheet can be read and downloaded; editing and saving are on a wider screen."
 },
 {
 "lang": "en",

@@ -54,7 +54,7 @@ _MODE_MAP: dict[str, str] = {
 
 #: modality → selectable surfaces
 _KINDS_FOR: dict[str, list[str]] = {
-    "chat": ["chat", "report", "slides"],
+    "chat": ["chat", "report", "slides", "sheet"],
     "image": ["image"],
     "audio": ["av"],
     "video": ["av"],
@@ -467,7 +467,7 @@ def fallback_order(model: dict[str, Any]) -> int:
 
 
 #: Surfaces that fall back to the chat default and, past it, to any allowed model.
-CHAT_SURFACES = frozenset({"chat", "report", "slides"})
+CHAT_SURFACES = frozenset({"chat", "report", "slides", "sheet"})
 
 
 def configured_defaults(catalogue: dict[str, Any], kind: str) -> tuple[str, ...]:
@@ -603,7 +603,9 @@ async def list_models(force: bool = False) -> dict[str, Any]:
         "defaultChatModel": default_chat,
         "defaultModelByKind": by_kind,
         # how a new chat, report or slides conversation starts (`settings_store.ROUTING_CHAT`)
-        "defaultRoutingByKind": {kind: roles.start(kind) for kind in sorted(CHAT_SURFACES)},
+        "defaultRoutingByKind": {
+            kind: roles.start(kind) for kind in sorted(CHAT_SURFACES - {"sheet"})
+        },
         "defaultAvModelByMode": by_mode,
         "strictImageDefault": strict_image["id"] if strict_image else "",
     }

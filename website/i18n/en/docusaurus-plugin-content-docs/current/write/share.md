@@ -23,7 +23,7 @@ After creation, the status is shown as **Account required** or **Opens without a
 
 ## What is shared
 
-- The conversation and the artifacts generated in it are made public. The artifact is shown first, and the conversation follows. Reports, slides, charts, pictures, audio, video and HTML look as they do in the app; HTML opens in an isolated frame, like the app's preview. Picture and video files open to the same people the link does.
+- The conversation and the artifacts generated in it are made public. The artifact is shown first, and the conversation follows. Reports, slides, charts, pictures, audio, video and HTML look as they do in the app, and a sheet shows as a read-only table with a download; HTML opens in an isolated frame, like the app's preview. Picture and video files open to the same people the link does.
 - **Project files and memory are not shared.** Files attached to the conversation are exposed only to the extent that the answer quotes them.
 - **Conversation that continues after sharing keeps appearing in the link as well.** To make only part of it public up to a certain point, revoke the link and create a new one.
 

@@ -478,7 +478,7 @@ def _each_formula(root: etree._Element, fn) -> bool:
 
 # -- rows and columns --------------------------------------------------------------------------
 
-def _map_span(lo: int, hi: int, at: int, count: int, delete: bool) -> tuple[int, int] | None:
+def map_span(lo: int, hi: int, at: int, count: int, delete: bool) -> tuple[int, int] | None:
     """The span `lo..hi` (0-based, inclusive) after `count` lines are inserted at `at`, or
     deleted from it; None when a deletion takes all of it."""
     if not delete:
@@ -501,12 +501,12 @@ def _map_ref(ref: str, axis: str, at: int, count: int, delete: bool) -> str | No
     c1, r1 = box[0]
     c2, r2 = box[-1]
     if axis == "row":
-        span = _map_span(r1, r2, at, count, delete)
+        span = map_span(r1, r2, at, count, delete)
         if span is None:
             return None
         r1, r2 = span
     else:
-        span = _map_span(c1, c2, at, count, delete)
+        span = map_span(c1, c2, at, count, delete)
         if span is None:
             return None
         c1, c2 = span
@@ -550,7 +550,7 @@ def _lines(root: etree._Element, axis: str, at: int, count: int, delete: bool) -
     for row in list(data):
         number = int(row.get("r")) - 1
         if axis == "row":
-            span = _map_span(number, number, at, count, delete)
+            span = map_span(number, number, at, count, delete)
             if span is None:
                 data.remove(row)
                 continue
@@ -560,7 +560,7 @@ def _lines(root: etree._Element, axis: str, at: int, count: int, delete: bool) -
         else:
             for cell in list(row):
                 column = column_of(cell.get("r"))
-                span = _map_span(column, column, at, count, delete)
+                span = map_span(column, column, at, count, delete)
                 if span is None:
                     row.remove(cell)
                 else:
@@ -584,7 +584,7 @@ def _lines(root: etree._Element, axis: str, at: int, count: int, delete: bool) -
     cols = root.find(_q("cols"))
     if axis == "col" and cols is not None:
         for col in list(cols):
-            span = _map_span(int(col.get("min")) - 1, int(col.get("max")) - 1, at, count, delete)
+            span = map_span(int(col.get("min")) - 1, int(col.get("max")) - 1, at, count, delete)
             if span is None:
                 cols.remove(col)
             else:
@@ -607,6 +607,32 @@ def _lines(root: etree._Element, axis: str, at: int, count: int, delete: bool) -
                 node.set("count", str(len(node)))
             else:
                 root.remove(node)
+
+
+def map_formulas(data: bytes, fn) -> bytes:
+    """`data` with `fn(formula, sheet)` run over every formula of every sheet (`sheet`: the one the
+    formula is in) and over the defined names (`sheet` ""). The package is otherwise as it was."""
+    src = zipfile.ZipFile(io.BytesIO(data))
+    order = src.infolist()
+    files = {i.filename: src.read(i.filename) for i in order}
+    changed = False
+    for name, path in _sheet_parts(files).items():
+        root = etree.fromstring(files[path])
+        _unshare(root)
+        if _each_formula(root, lambda text, n=name: fn(text, n)):
+            files[path] = _dump(root)
+            changed = True
+    book = etree.fromstring(files["xl/workbook.xml"])
+    if _each_formula(book, lambda text: fn(text, "")):
+        files["xl/workbook.xml"] = _dump(book)
+        changed = True
+    if not changed:
+        return data
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zout:
+        for info in order:
+            zout.writestr(info.filename, files[info.filename])
+    return out.getvalue()
 
 
 STRUCTURE = {"insertRows": ("row", False), "deleteRows": ("row", True),

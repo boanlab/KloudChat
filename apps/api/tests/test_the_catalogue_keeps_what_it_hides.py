@@ -52,7 +52,7 @@ WORK_SKILLS = {"minutes-writing", "option-comparison", "gaejo-briefing", "data-t
                "document-drafting", "deck-writing", "youtube-summary",
                "deep-research"}
 #: what agents built only from shipped skills lacked: translation, press releases, files, charts
-MADE_SKILLS = {"translation", "press-release", "xlsx-build", "chart-make"}
+MADE_SKILLS = {"translation", "press-release", "chart-make"}
 #: writing and research skills shown in the catalogue
 WRITING_SKILLS = {"internal-comms", "copy-editing"}
 SHOWN_SKILLS = {"grounding-check", "gap-check", "calc-check", "date-calc",

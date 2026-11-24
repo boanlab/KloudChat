@@ -31,6 +31,7 @@ from app.services.tools.docx import TOOLS as DOCX_TOOLS
 from app.services.tools.figures import PDF_FIGURES
 from app.services.tools.hwp import TOOLS as HWP_TOOLS
 from app.services.tools.pptx import TOOLS as PPTX_TOOLS
+from app.services.tools.sheet import TOOLS as XLSX_TOOLS
 from app.services.tools.web_doc import DECK_TOOLS as WEB_DECK_TOOLS
 from app.services.tools.web_doc import REPORT_TOOLS as WEB_REPORT_TOOLS
 
@@ -168,12 +169,13 @@ async def build_tools(
     hwp: bool = False,
     docx: bool = False,
     pptx: bool = False,
+    xlsx: bool = False,
     report: bool = False,
     deck: bool = False,
 ) -> list[Tool]:
     """Turn tool list; `allowed`: None = all, [] = none, list = hard filter; `hwp`, `docx`,
-    `pptx`: the conversation has an HWP, Word or PowerPoint document, or the request asks for
-    one."""
+    `pptx`, `xlsx`: the conversation has an HWP, Word, PowerPoint or sheet document, or the
+    request asks for one."""
     if strict_local:
         # In-process built-ins only; `share_note` excluded (notes reach later external-model turns).
         tools = [CALCULATE, CREATE_ARTIFACT, CREATE_CHART]
@@ -203,7 +205,7 @@ async def build_tools(
     if skills and (allowed is None or "use_skill" in allowed):
         tools.append(skill_tool(skills))
     for wanted, kit in ((hwp, HWP_TOOLS), (docx, DOCX_TOOLS), (pptx, PPTX_TOOLS),
-                        (report, WEB_REPORT_TOOLS), (deck, WEB_DECK_TOOLS)):
+                        (xlsx, XLSX_TOOLS), (report, WEB_REPORT_TOOLS), (deck, WEB_DECK_TOOLS)):
         if wanted:
             # in-process, no network: strict-local turns get them too
             tools += [t for t in kit if allowed is None or t.name in allowed]

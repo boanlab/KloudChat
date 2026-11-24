@@ -105,6 +105,8 @@ class ToolContext:
     docx: dict[str, Any] = field(default_factory=dict)
     #: PowerPoint tools: the same, for the conversation's `.pptx`.
     pptx: dict[str, Any] = field(default_factory=dict)
+    #: Sheet tools: the same, for the conversation's `.xlsx`.
+    xlsx: dict[str, Any] = field(default_factory=dict)
     #: The document open in the panel when the turn was sent, `{"id", "version"}` (checked
     #: to be the person's and this conversation's): what the office tools work on.
     open_artifact: dict[str, Any] = field(default_factory=dict)

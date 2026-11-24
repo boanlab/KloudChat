@@ -6,7 +6,7 @@ title: Glossary
 
 | Term | Meaning |
 |---|---|
-| Screen (Chat · Report · Slides · Image · Audio/Video) | The screen you choose on the home page. Administrators turn each one on and off |
+| Screen (Chat · Report · Slides · Image · Audio/Video · Sheet) | The screen you choose on the home page. Administrators turn each one on and off |
 | Conversation (대화) | The record of one piece of work. One row in the sidebar |
 | Artifact (아티팩트) | A document, deck, chart or other file produced in a conversation. The right-hand panel and the gallery |
 | Form · form file (양식 · 양식 파일) | A PowerPoint (.pptx · .potx) or Word (.docx · .dotx) file that reports and slides are written on. Attached in the conversation or kept as a project's or agent's Default form files. Its own text is not read as material |

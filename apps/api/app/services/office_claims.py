@@ -1,7 +1,7 @@
 """A chat turn's claims about an office document, held to what it saved: a reply saying it wrote,
 filled or changed the document while no version was saved gets a sentence saying the document is
 as it was; a reply saying it could not while versions were saved gets those versions and their
-changes. Based on the tools' record (`ToolContext` `hwp`/`docx`/`pptx` `saved`), every model
+changes. Based on the tools' record (`ToolContext` `hwp`/`docx`/`pptx`/`xlsx` `saved`), every model
 alike."""
 
 from __future__ import annotations
@@ -19,12 +19,13 @@ _CLAIMS = re.compile(
 )
 #: what a claim is about: the document or a part of it
 _ABOUT = re.compile(
-    r"문서|문단|장|절|표|칸|빈칸|슬라이드|공문|보고서|파일|제목|머리글|바닥글|그림|쪽|항목|"
+    r"문서|문단|장|절|표|칸|빈칸|슬라이드|공문|보고서|파일|제목|머리글|바닥글|그림|쪽|항목|시트|셀|수식|"
     r"\b(?:document|slide|table|paragraph|section|cell|file)s?\b", re.I)
 #: a sentence saying it could not
 _FAILED = re.compile(r"못했|실패|할 수 없|불가능|\b(?:could not|couldn't|failed|unable)\b", re.I)
 #: what each kind is called in the note
 _NAMES = {"hwp": "한글 문서", "docx": "Word 문서", "pptx": "PowerPoint 문서",
+          "xlsx": "시트",
           "report": "웹 보고서", "deck": "웹 슬라이드"}
 
 
