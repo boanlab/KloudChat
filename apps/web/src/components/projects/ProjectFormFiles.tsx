@@ -10,10 +10,10 @@ import type { Project } from '@/types'
 import type { Translator } from '@/lib/useT'
 
 const SLOTS: { kind: FormKind; label: string; accept: string }[] = [
-  { kind: 'pptx', label: 'PowerPoint', accept: '.pptx,.potx' },
-  { kind: 'docx', label: 'Word', accept: '.docx,.dotx' },
   { kind: 'hwpx', label: '한글', accept: '.hwpx' },
+  { kind: 'docx', label: 'Word', accept: '.docx,.dotx' },
   { kind: 'xlsx', label: 'Excel', accept: '.xlsx,.xltx' },
+  { kind: 'pptx', label: 'PowerPoint', accept: '.pptx,.potx' },
 ]
 
 /** Why a file cannot be a saved form, as the server says (`routers/forms.py`). */
