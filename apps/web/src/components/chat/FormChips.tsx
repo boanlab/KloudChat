@@ -6,7 +6,7 @@ import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 
 /** Output kinds whose writer follows a form so far (`form_files.FOLLOWED`). */
-export const FOLLOWED_KINDS: readonly FormKind[] = ['pptx', 'docx', 'hwpx']
+export const FOLLOWED_KINDS: readonly FormKind[] = ['pptx', 'docx', 'hwpx', 'xlsx']
 
 /** Whether a file can be followed as a form at all. */
 export function followable(file: FileRow): boolean {
@@ -104,7 +104,9 @@ export function SavedFormChip({
         ? t('이 대화의 Word 파일은 이 양식에 맞춰 씁니다')
         : kind === 'hwpx'
           ? t('이 대화의 한글 파일은 이 양식을 채워 씁니다')
-          : t('이 대화의 PowerPoint 파일은 이 양식에 맞춰 씁니다')}
+          : kind === 'xlsx'
+            ? t('이 대화의 새 시트는 이 양식의 서식과 수식에서 시작합니다')
+            : t('이 대화의 PowerPoint 파일은 이 양식에 맞춰 씁니다')}
     >
       <FileStack size={13} />
       <span className="text-xs">{from}</span>
@@ -184,6 +186,14 @@ export function FollowedFormLine({ form }: { form: FollowedForm }) {
           </li>
           {(followed.cellsEmpty ?? []).length > 0 && (
             <li className="text-warn">{t('아직 빈 칸: {list}').replace('{list}', (followed.cellsEmpty ?? []).join(', '))}</li>
+          )}
+        </ul>
+      )}
+      {open && form.kind === 'xlsx' && (
+        <ul className="mt-1.5 list-disc space-y-0.5 pl-5">
+          <li>{t('시트·서식·수식·병합: 양식 그대로')}</li>
+          {(followed.cleared ?? 0) > 0 && (
+            <li>{t('예시 값 {n}칸 지움').replace('{n}', String(followed.cleared))}</li>
           )}
         </ul>
       )}

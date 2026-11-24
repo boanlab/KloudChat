@@ -41,6 +41,10 @@ The sheet screen appears as **Sheet** among the screen chips on Home when an adm
 
 Share only this sheet by link with the share icon in the header. Sharing a conversation also opens its sheet. The reader sees a read-only table with a tab per sheet and downloads the `.xlsx` with **Download**. The table shows values (a formula shows its calculated value) and the downloaded file keeps the formulas. The table shows up to 500 rows and 60 columns; download a bigger sheet to see all of it. The audience options are the same as for other artifacts ([Sharing](share)).
 
+## Starting from an Excel form
+
+When a project or agent keeps an Excel form (`.xlsx`, `.xltx`) under **Default form files**, a new sheet in it starts as a copy of that form. Sheets, formatting, number formats, column widths, formulas, defined names and merged cells stay as they are, and the chat fills only the cells, through the same tools. The form's example values (numbers, dates, "※ guidance" lines, "홍길동"-style filler) are not treated as facts and are cleared; anything the material does not give stays a bracket blank such as `[매출액]`. Running numbers, year headings and a rate that a formula points at are the form's structure and stay. A new conversation on the Sheet screen shows a **Project form** chip (**Agent form** when it is the agent's); ✕ removes it for that conversation only. The agent's form comes before the project's. An `.xlsx` attached to a conversation gets the same **Form** and **Material** chip as a Word or PowerPoint file: empty input cells, guidance text or a `.xltx` read as a form, a table of many numbers as material, and you can switch the chip. A sheet made from a form carries a **Form followed** line on its card. **Start with a blank sheet** opens a blank workbook without the form, like the blank-document buttons for reports and slides.
+
 ## Download and limits
 
 - **Download → Excel file** gives the editor's current content as `.xlsx`.

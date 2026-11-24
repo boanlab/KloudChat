@@ -366,8 +366,8 @@ class SendMessage(Wire):
                                                                             max_length=20)
     #: the output kinds whose saved (agent or project) 양식 the person took off in this
     #: conversation; None leaves the conversation's choice as it is
-    saved_forms_off: list[Literal["pptx", "docx", "hwpx"]] | None = Field(default=None,
-                                                                         max_length=3)
+    saved_forms_off: list[Literal["pptx", "docx", "hwpx", "xlsx"]] | None = Field(
+        default=None, max_length=4)
     model: str | None = None
     #: True every turn, False never (unless research asked), "auto" when warranted; None: the
     #: agent's `web_search_default`, else False

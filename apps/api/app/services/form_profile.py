@@ -32,6 +32,7 @@ KIND_OF = {
     ".pptx": "pptx", ".potx": "pptx",
     ".docx": "docx", ".dotx": "docx",
     ".hwpx": "hwpx", ".hwp": "hwp",
+    ".xlsx": "xlsx", ".xltx": "xlsx",
 }
 
 #: Office template content types and the document types they open as
@@ -40,6 +41,8 @@ _TEMPLATE_TYPES = {
         "application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml":
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.template.main+xml":
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml",
 }
 
 HWP_FORM_ADVICE = (
@@ -69,6 +72,7 @@ _W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 _R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 _REL = "http://schemas.openxmlformats.org/package/2006/relationships"
 _HP = "http://www.hancom.co.kr/hwpml/2011/paragraph"
+_S = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 
 _PARSER = etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=False)
 #: an OLE compound file (HWP 5, old Office)
@@ -80,7 +84,7 @@ class FormError(ValueError):
 
 
 def kind_of(name: str) -> str:
-    """`pptx`, `docx`, `hwpx`, `hwp` or ``."""
+    """`pptx`, `docx`, `hwpx`, `hwp`, `xlsx` or ``."""
     return KIND_OF.get(Path(name).suffix.lower(), "")
 
 
@@ -574,6 +578,85 @@ def _hwpx(data: bytes, name: str) -> dict[str, Any]:
     }
 
 
+#: a workbook read for how it looks (empty input cells, examples) is cut at this size, these cells
+_XLSX_LOOK_BYTES = 3 * 1024 * 1024
+_XLSX_LOOK_ROWS = 300
+_XLSX_LOOK_COLS = 40
+_XLSX_LOOK_SHEETS = 6
+#: this many typed numbers make a workbook the data a sheet works from
+_XLSX_DATA_NUMBERS = 25
+
+
+def _xlsx_look(data: bytes) -> dict[str, int]:
+    """Counts that tell a form workbook from a data one: typed numbers, labels, formulas, empty
+    cells drawn as an input (a fill or a border), guidance and filler text."""
+    import io
+
+    import openpyxl
+
+    out = {"numbers": 0, "texts": 0, "formulas": 0, "inputs": 0, "guidance": 0, "blanks": 0}
+    if len(data) > _XLSX_LOOK_BYTES:
+        return out
+    try:
+        book = openpyxl.load_workbook(io.BytesIO(data))
+    except Exception:  # noqa: BLE001 — a workbook the reader cannot walk is judged by its name
+        return out
+    for sheet in book.worksheets[:_XLSX_LOOK_SHEETS]:
+        for row in sheet.iter_rows(max_row=_XLSX_LOOK_ROWS, max_col=_XLSX_LOOK_COLS):
+            for cell in row:
+                value = cell.value
+                if value is None:
+                    border = cell.border
+                    if cell.has_style and (
+                            (cell.fill and cell.fill.fill_type == "solid")
+                            or (border and (border.left.style or border.bottom.style))):
+                        out["inputs"] += 1
+                elif isinstance(value, str) and value.startswith("="):
+                    out["formulas"] += 1
+                elif isinstance(value, str):
+                    out["texts"] += 1
+                    out["guidance"] += bool(_GUIDANCE.search(value))
+                    out["blanks"] += bool(_FILL.search(value)) + len(BLANK.findall(value))
+                elif not isinstance(value, bool):
+                    out["numbers"] += 1
+    book.close()
+    return out
+
+
+def _xlsx(data: bytes, name: str) -> dict[str, Any]:
+    """An Excel workbook: its sheets, and how much it looks like a form (a template file, a name
+    that says form, guidance, filler and empty input cells) against a data table (many typed
+    numbers)."""
+    try:
+        archive = open_capped_zip(data)
+    except (zipfile.BadZipFile, RuntimeError):
+        raise FormError("엑셀 파일을 읽지 못했습니다: 통합 문서 파일이 아닙니다.") from None
+    with archive:
+        names = set(archive.namelist())
+        if not {"xl/workbook.xml", "xl/styles.xml"} <= names:
+            raise FormError("엑셀 파일을 읽지 못했습니다: 통합 문서 파일이 아닙니다.")
+        macro = "xl/vbaProject.bin" in names
+        book = _xml(archive, "xl/workbook.xml")
+    sheets = [str(s.get("name")) for s in book.iter(f"{{{_S}}}sheet")] if book is not None else []
+    if not macro and not sheets:
+        raise FormError("엑셀 파일을 읽지 못했습니다: 시트가 없습니다.")
+    look = _xlsx_look(data)
+    signals: list[tuple[str, float]] = []
+    if _FORM_NAME.search(Path(name).stem):
+        signals.append(("name", 0.35))
+    if look["inputs"] >= 3 and look["inputs"] >= look["numbers"]:
+        signals.append(("input_cells", 0.3))
+    if look["guidance"]:
+        signals.append(("guidance", 0.25))
+    if look["blanks"] >= 2:
+        signals.append(("blanks", 0.15))
+    if look["numbers"] >= _XLSX_DATA_NUMBERS and not look["guidance"]:
+        signals.append(("many_numbers", -0.4))
+    score, names_ = _scored(signals)
+    return {"sheets": sheets[:40], "macro": macro, "score": score, "signals": names_,
+            "look": look}
+
+
 def _hwp(name: str, text: str) -> dict[str, Any]:
     """Binary HWP: never a form; how much it looks like one decides whether to say so."""
     lines = [line.strip() for line in (text or "").splitlines()]
@@ -609,12 +692,14 @@ def profile(name: str, data: bytes, text: str = "") -> dict[str, Any] | None:
             out = _docx(data, name)
         elif kind == "hwpx":
             out = _hwpx(data, name)
+        elif kind == "xlsx":
+            out = _xlsx(data, name)
         else:
             out = _hwp(name, text)
     except FormError as exc:
         return {"kind": kind, "version": VERSION, "score": 0.0, "verdict": "material",
                 "signals": [], "error": str(exc)}
-    if suffix in (".potx", ".dotx"):
+    if suffix in (".potx", ".dotx", ".xltx"):
         out["score"] = 1.0
         out["signals"] = ["template_file", *out["signals"]]
     out["kind"] = kind
@@ -644,6 +729,8 @@ def summary(found: dict[str, Any] | None) -> dict[str, Any] | None:
                    fields=sum((found.get("fields") or {}).values()))
     elif kind == "hwpx":
         out.update(fields=len(found.get("fields") or []), tables=len(found.get("tables") or []))
+    elif kind == "xlsx":
+        out.update(sheets=len(found.get("sheets") or []), macro=bool(found.get("macro")))
     elif kind == "hwp" and found.get("form_like"):
         out["advice"] = HWP_FORM_ADVICE
     return out

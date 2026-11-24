@@ -3,7 +3,8 @@
 Order (`design.md` §2.0): a form attached to this turn, the agent's 기본 양식 파일 for the output
 kind, the project's. An attachment's role is the person's chip choice, else the request's words and
 the file's profile (`form_profile`). A `.hwp` is never a form: the person is told to save it as
-HWPX, and the file is read as material.
+HWPX, and the file is read as material. An attached Excel file is judged like the others: a template
+(`.xltx`, empty input cells, guidance) is a form, a table of numbers is the data a sheet works from.
 """
 
 from __future__ import annotations
@@ -18,9 +19,9 @@ from app.models.workspace import StoredFile
 from app.services import form_profile
 
 #: output kinds a form file shapes
-KINDS = ("pptx", "docx", "hwpx")
+KINDS = ("pptx", "docx", "hwpx", "xlsx")
 #: kinds whose writer follows a form so far; another kind's file stays material
-FOLLOWED = ("pptx", "docx", "hwpx")
+FOLLOWED = ("pptx", "docx", "hwpx", "xlsx")
 
 Role = Literal["form", "material"]
 
@@ -160,9 +161,20 @@ class SlotError(ValueError):
         self.code = code
 
 
+#: file names a saved Excel form is not: macro workbooks and the old binary format
+_NOT_XLSX = {".xlsm": "form_xlsm_refused", ".xlsb": "form_xlsm_refused",
+             ".xls": "form_xls_needs_xlsx"}
+
+
 def refusal(row: StoredFile) -> str | None:
     """Why `row` cannot be saved as a form, as an API detail, or None."""
+    from pathlib import Path
+
+    if code := _NOT_XLSX.get(Path(row.name).suffix.lower()):
+        return code
     found = _profile_of(row)
+    if found is not None and found.get("kind") == "xlsx" and found.get("macro"):
+        return "form_xlsm_refused"
     if found is None or found.get("kind") not in (*KINDS, "hwp"):
         return "form_kind_unknown"
     if found.get("kind") == "hwp":

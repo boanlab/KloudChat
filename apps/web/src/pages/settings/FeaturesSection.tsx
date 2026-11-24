@@ -8,7 +8,7 @@ import type { SessionKind } from '@/types'
 import { useMarkUnsaved } from '@/lib/unsaved'
 
 /** Surfaces that can be switched off; chat cannot. */
-const OPTIONAL: SessionKind[] = ['report', 'slides', 'image', 'av', 'sheet']
+const OPTIONAL: SessionKind[] = ['report', 'sheet', 'slides', 'image', 'av']
 
 const NOTE: Partial<Record<SessionKind, string>> = {
   image: '생성할 때마다 크레딧이 나갑니다.',

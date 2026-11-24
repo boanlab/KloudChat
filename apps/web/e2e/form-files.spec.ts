@@ -224,6 +224,7 @@ test('a project keeps one saved form per kind', { tag: '@phone' }, async ({ page
   await expect(card.getByTestId('form-slot-pptx')).toContainText('레이아웃 9개')
   await expect(card.getByTestId('form-slot-docx')).toContainText('없음')
   await expect(card.getByTestId('form-slot-hwpx')).toContainText('없음')
+  await expect(card.getByTestId('form-slot-xlsx')).toContainText('없음')
   await shot(page, 'project-forms', info)
   await card.getByRole('button', { name: '발표_기본.pptx 양식 빼기' }).click()
   await expect(card.getByTestId('form-slot-pptx')).toContainText('없음')
