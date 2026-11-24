@@ -12,7 +12,7 @@ const ROUTES = [
   '/settings/preferences', '/settings/keys', '/admin/users', '/admin/usage',
   '/admin/system', '/admin/system/routing', '/admin/system/features',
   '/admin/system/branding', '/admin/system/mail',
-  '/admin/governance',
+  '/admin/system/policy', '/admin/governance',
 ]
 
 async function scan(page: Page, where: string) {

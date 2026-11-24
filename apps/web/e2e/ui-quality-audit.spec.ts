@@ -37,6 +37,7 @@ const ADMIN_ROUTES = [
   '/admin/system/features',
   '/admin/system/branding',
   '/admin/system/mail',
+  '/admin/system/policy',
   '/admin/governance',
 ]
 

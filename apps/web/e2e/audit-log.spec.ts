@@ -156,10 +156,8 @@ async function mockApp(page: Page) {
 test('감사 로그는 무엇이 바뀌었는지 한국어로 보여 주고 쪽으로 나눈다', { tag: '@phone' }, async ({ page }) => {
   const requests = await mockApp(page)
   await page.goto('/admin/governance')
-  await page.getByRole('tab', { name: /감사 로그/ }).click()
 
   await expect(page.getByTestId('audit-range')).toHaveText('1–50 / 전체 137건')
-  await expect(page.getByRole('tab', { name: /감사 로그/ })).toContainText('137')
   const visibleRows = page.locator('[data-testid="audit-row"]:visible')
   await expect(visibleRows).toHaveCount(50)
   // Codes and raw field names never reach the screen.
@@ -231,6 +229,16 @@ test('감사 로그는 무엇이 바뀌었는지 한국어로 보여 주고 쪽�
   await page.getByLabel('행위 종류').selectOption({ label: '시스템 설정 · 정책' })
   await expect(page.getByTestId('audit-range')).toHaveText('1–3 / 전체 3건')
   expect(requests.at(-1)?.get('action')).toContain('governance.*')
+  // 관리·시스템 / 사용자 split: the server filters, and a group of the other side is dropped.
+  await page.getByRole('tab', { name: '관리 · 시스템' }).click()
+  await expect.poll(() => requests.at(-1)?.get('category')).toBe('system')
+  await page.getByRole('tab', { name: '사용자' }).click()
+  await expect.poll(() => requests.at(-1)?.get('category')).toBe('user')
+  expect(requests.at(-1)?.get('action')).toBeNull()
+  await expect(page.getByLabel('행위 종류').locator('option', { hasText: '시스템 설정 · 정책' })).toHaveCount(0)
+  await page.getByRole('tab', { name: '전체' }).click()
+  await expect.poll(() => requests.at(-1)?.get('category')).toBeNull()
+  await page.getByLabel('행위 종류').selectOption({ label: '시스템 설정 · 정책' })
   await page.getByLabel('계정', { exact: true }).fill('hong')
   await expect.poll(() => requests.at(-1)?.get('account')).toBe('hong')
   await page.getByLabel('기간').selectOption('7d')
@@ -244,7 +252,6 @@ test('감사 로그는 무엇이 바뀌었는지 한국어로 보여 주고 쪽�
 test('감사 로그 첫 화면', { tag: '@phone' }, async ({ page }) => {
   await mockApp(page)
   await page.goto('/admin/governance')
-  await page.getByRole('tab', { name: /감사 로그/ }).click()
   await expect(page.getByTestId('audit-range')).toHaveText('1–50 / 전체 137건')
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
   expect(overflow).toBeLessThanOrEqual(0)

@@ -12,6 +12,7 @@ import { FeaturesSection } from './settings/FeaturesSection'
 import { MailSection } from './settings/MailSection'
 import { ModelRolesSection } from './settings/ModelRolesSection'
 import { ProxySection } from './settings/ProxySection'
+import { SecuritySection } from './settings/SecuritySection'
 import { SignupSection } from './settings/SignupSection'
 import { ToolsSection } from './settings/ToolsSection'
 import { OcrSection } from './settings/OcrSection'
@@ -19,9 +20,10 @@ import { SettingsFetchNotice, type SettingsFetch } from './settings/SettingsFetc
 
 const tabs = [
   { to: '/admin/system', label: '프록시', end: true },
-  { to: '/admin/system/models', label: '모델', end: false },
-  { to: '/admin/system/routing', label: '라우팅', end: false },
   { to: '/admin/system/features', label: '기능', end: false },
+  { to: '/admin/system/models', label: '모델', end: false },
+  { to: '/admin/system/policy', label: '정책', end: false },
+  { to: '/admin/system/routing', label: '라우팅', end: false },
   { to: '/admin/system/branding', label: '브랜딩', end: false },
   { to: '/admin/system/mail', label: '메일', end: false },
   { to: '/admin/system/signup', label: '회원 가입', end: false },
@@ -72,10 +74,10 @@ export function AdminSystemPage() {
 
   return (
     <>
-      <TopBar left={<span className="text-base font-medium">{t('시스템')}</span>} />
+      <TopBar left={<span className="text-base font-medium">{t('시스템 설정')}</span>} />
       <PageBody>
         <PageHeader
-          title={t('시스템')}
+          title={t('시스템 설정')}
           description={t('인스턴스 전체 설정입니다. 저장하면 바로 적용됩니다.')}
         />
 
@@ -173,6 +175,17 @@ export function AdminSystemPage() {
                 description={t('누가, 어떤 주소로 가입할 수 있는지, 주소를 메일로 확인할지 정합니다.')}
               >
                 <SignupSection settings={settings} onSaved={reload} />
+              </Group>
+            }
+          />
+          <Route
+            path="policy"
+            element={
+              <Group
+                title={t('정책')}
+                description={t('대화가 지킬 개인정보 정책과 보관 기간을 정합니다.')}
+              >
+                <SecuritySection />
               </Group>
             }
           />

@@ -615,7 +615,7 @@ screen has to render it before anyone is authenticated — and SVG can carry
 script. The stored filename contains a content hash, so replacing the logo
 changes its URL and no cache serves the old one.
 
-### Governance (Security · audit, `/admin/governance`)
+### Governance (System settings › Policy, `/admin/system/policy`)
 
 Prohibited-intent categories, message-body retention, an idle sign-out timer
 (enforced by the browser; `0` disables it) and three privacy policies are

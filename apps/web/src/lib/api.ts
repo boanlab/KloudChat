@@ -971,6 +971,10 @@ export interface AuditRow {
   region: string
   userAgent: string
   severity: string
+  /** `system` for admin and security records, else `user`. */
+  category: 'system' | 'user'
+  /** An automatic per-turn record (routing, privacy pass-through). */
+  routine: boolean
   /** `changes`: `{field: [old, new]}`; secrets masked. */
   metadata?: (Record<string, unknown> & { changes?: Record<string, [unknown, unknown]> }) | null
 }
@@ -1002,6 +1006,7 @@ export interface AuditQuery {
   q?: string
   /** Codes whose screen label matched `q`, searched with it. */
   qActions?: string
+  category?: 'system' | 'user'
   /** ISO instants; `until` is exclusive. */
   since?: string
   until?: string

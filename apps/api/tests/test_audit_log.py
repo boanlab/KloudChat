@@ -289,6 +289,31 @@ async def test_filters_narrow_on_the_server(trail):
     assert wildcard["total"] == 0
 
 
+@pytest.mark.asyncio
+async def test_the_trail_splits_into_system_and_user_records(trail):
+    system = await _list(trail, category="system")
+    user = await _list(trail, category="user")
+    everything = await _list(trail)
+    assert system["total"] + user["total"] == everything["total"]
+    # Policy changes and a refused sign-in are system records; the rest is people's own activity.
+    assert system["total"] >= 6
+    assert {r["category"] for r in system["items"]} == {"system"}
+    assert {r["category"] for r in user["items"]} == {"user"}
+    assert any(r["action"] == "login" and r["detail"] == "failed" for r in system["items"])
+
+
+def test_every_action_belongs_to_exactly_one_side():
+    for code in audit_service.ACTIONS:
+        assert audit_service.category_of(code) in ("system", "user"), code
+    assert audit_service.category_of("governance.update") == "system"
+    assert audit_service.category_of("login") == "user"
+    assert audit_service.category_of("login", "failed") == "system"
+    assert audit_service.category_of("conversation.delete") == "user"
+    assert audit_service.category_of("routing.super") == "user"
+    assert audit_service.is_routine("routing.super")
+    assert not audit_service.is_routine("privacy.send_raw_external")
+
+
 # ── labels ─────────────────────────────────────────────────────────────
 
 _WRITES = (

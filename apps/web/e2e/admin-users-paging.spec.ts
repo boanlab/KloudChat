@@ -424,7 +424,7 @@ test('a name opens the account in detail: credits, holdings, recent trail and it
   await expect(trail.getByRole('listitem')).toHaveCount(2)
   await expect(trail).toContainText('크레딧 변경')
   await expect(detail.getByRole('link', { name: '감사 로그에서 모두 보기' }))
-    .toHaveAttribute('href', `/admin/governance?tab=log&account=${encodeURIComponent(target.email)}`)
+    .toHaveAttribute('href', `/admin/governance?account=${encodeURIComponent(target.email)}`)
   await expect(detail.getByRole('button', { name: '크레딧' })).toBeVisible()
   await shot(page, 'user-detail')
   // the address reopens it

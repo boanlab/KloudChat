@@ -118,13 +118,14 @@ const AUDIT_ROUTES: [string, string][] = [
   ['/admin/system/features', '관리자·기능'],
   ['/admin/system/branding', '관리자·브랜딩'],
   ['/admin/system/mail', '관리자·메일'],
-  ['/admin/governance', '관리자·거버넌스'],
+  ['/admin/system/policy', '관리자·정책'],
+  ['/admin/governance', '관리자·감사 로그'],
 ]
 
 const HEADINGS: Record<string, string> = {
   '/projects': '프로젝트', '/artifacts': '아티팩트', '/customize': '사용자 지정',
   '/history': '대화 기록', '/usage': '사용량', '/agent-setup': 'AI 에이전트 연동',
-  '/admin/users': '사용자 관리', '/admin/usage': '사용량', '/admin/governance': '보안 · 감사',
+  '/admin/users': '사용자 관리', '/admin/usage': '사용량 조회', '/admin/governance': '감사 로그',
 }
 const KINDS: Record<string, string> = {
   chat: '챗', report: '보고서', slides: '슬라이드', image: '이미지', av: '오디오/동영상',
@@ -165,7 +166,7 @@ async function routeReady(page: Page, path: string) {
   const main = page.getByRole('main')
   const kind = path.startsWith('/new/') ? path.slice('/new/'.length) : null
   const parent = path === '/settings' || path.startsWith('/settings/') ? '설정'
-    : path === '/admin/system' || path.startsWith('/admin/system/') ? '시스템' : null
+    : path === '/admin/system' || path.startsWith('/admin/system/') ? '시스템 설정' : null
   if (path === '/' || (kind && KINDS[kind])) {
     const greeting = main.getByRole('heading', { level: 1, name: /^Hello, / })
     const off = main.getByRole('heading', {

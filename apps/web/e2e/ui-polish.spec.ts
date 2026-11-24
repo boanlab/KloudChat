@@ -231,7 +231,6 @@ test('the usage per-user table sorts by storage and filters by name', async ({ p
 test('the audit log sorts on the server and exports the same filters and order as CSV', async ({ page }, info) => {
   const fx = await adminFixture(page, info)
   await page.goto('/admin/governance')
-  await page.getByRole('tab', { name: /감사 로그/ }).click()
   const table = page.locator('table').filter({ has: page.getByRole('columnheader', { name: '행위' }) })
   await expect(table.locator('tbody tr')).toHaveCount(3, { timeout: 15_000 })
   await expect(header(table, '시각')).toHaveAttribute('aria-sort', 'descending')
@@ -265,7 +264,7 @@ test('the user list exports CSV under its tab, search and order', async ({ page 
 
 test('strict-local safe models are an ordered priority list the admin moves', async ({ page }, info) => {
   const fx = await adminFixture(page, info)
-  await page.goto('/admin/governance')
+  await page.goto('/admin/system/policy')
   const order = page.getByTestId('safe-model-order')
   await expect(order.getByRole('listitem')).toHaveText([/로컬 C/, /로컬 A/], { timeout: 15_000 })
   await expect(page.getByText('이 목록의 첫 모델을 씁니다', { exact: false })).toBeVisible()
@@ -548,7 +547,7 @@ test('admin usage takes a custom date range and asks the server for exactly thos
 
 test('the safe model list reorders by dragging its handle on a touch screen @phone', async ({ page }, info) => {
   const fx = await adminFixture(page, info)
-  await page.goto('/admin/governance')
+  await page.goto('/admin/system/policy')
   const order = page.getByTestId('safe-model-order')
   await expect(order.getByRole('listitem')).toHaveText([/로컬 C/, /로컬 A/], { timeout: 15_000 })
   const handle = order.getByRole('listitem').nth(1).locator('[data-drag-handle]')

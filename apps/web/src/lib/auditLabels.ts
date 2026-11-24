@@ -147,18 +147,20 @@ export function actionLabel(row: Pick<AuditRow, 'action' | 'detail'>): string {
 }
 
 /** Filter groups for 「행위 종류」: label and the codes sent as `action`. */
-export const ACTION_GROUPS: { id: string; label: string; codes: string }[] = [
-  { id: 'auth', label: '로그인 · 계정 보안', codes: 'login,signup,signup.*,password.*,session.*,token.*' },
-  { id: 'users', label: '사용자 관리', codes: 'user.*,credits.*' },
-  { id: 'settings', label: '시스템 설정 · 정책', codes: 'settings.*,governance.*,branding.*' },
-  { id: 'keys', label: 'API 키', codes: 'key.*' },
-  { id: 'pipelines', label: '진행 과정 검토', codes: 'pipeline.*' },
-  { id: 'skills', label: '스킬 검토', codes: 'skill.approve,skill.reject' },
-  { id: 'issues', label: '문제 신고', codes: 'issue.*' },
-  { id: 'privacy', label: '개인정보 · 라우팅', codes: 'privacy.*,pii.*,filter.*,routing.*' },
-  { id: 'storage', label: '저장 공간', codes: 'storage.*' },
-  { id: 'publications', label: '챗봇 공개 · 채널', codes: 'publication.*' },
-  { id: 'deletions', label: '사용자 콘텐츠 삭제', codes: DELETION_CODES.join(',') },
+export const ACTION_GROUPS: { id: string; label: string; codes: string; side: 'system' | 'user' }[] = [
+  { id: 'accounts', label: '사용자 관리', codes: 'user.*,credits.*', side: 'system' },
+  { id: 'settings', label: '시스템 설정 · 정책', codes: 'settings.*,governance.*,branding.*,connector.*', side: 'system' },
+  { id: 'reviews', label: '검토 · 승인', codes: 'pipeline.approve,pipeline.reject,skill.approve,skill.reject,publication.reviewed,publication.admin_*', side: 'system' },
+  { id: 'issues', label: '문제 신고', codes: 'issue.*', side: 'system' },
+  { id: 'storage', label: '저장 공간', codes: 'storage.*', side: 'system' },
+  { id: 'exports', label: '내보내기', codes: 'audit.*', side: 'system' },
+  { id: 'security', label: '보안 이벤트', codes: 'token.*,model.fallback', side: 'system' },
+  { id: 'auth', label: '로그인 · 계정 보안', codes: 'login,signup,signup.*,logout,password.*,session.*', side: 'user' },
+  { id: 'keys', label: 'API 키', codes: 'key.*', side: 'user' },
+  { id: 'privacy', label: '개인정보 · 라우팅', codes: 'privacy.*,pii.*,filter.*,routing.*', side: 'user' },
+  { id: 'publications', label: '챗봇 공개 · 채널', codes: 'publication.*', side: 'user' },
+  { id: 'skills', label: '스킬 올리기', codes: 'skill.import', side: 'user' },
+  { id: 'deletions', label: '사용자 콘텐츠 삭제', codes: DELETION_CODES.join(','), side: 'user' },
 ]
 
 /** Recorded field names (governance, system settings, accounts) to their screen labels. */
@@ -287,6 +289,8 @@ export function targetParts(row: AuditRow, modelName?: (id: string) => string): 
     const picked = row.metadata?.selectedModel
     return typeof picked === 'string' && picked ? [modelName ? modelName(picked) : picked] : []
   }
+  // These rows' target is the conversation id: a hash says nothing on a list.
+  if (/^[0-9a-f]{16,}$/i.test(row.target) && /^(privacy|pii|filter|model)\./.test(row.action)) return []
   // A sign-in or sign-up row would only repeat the account.
   if (row.target === row.actor) return []
   if (row.action === 'settings.update') {

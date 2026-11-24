@@ -29,7 +29,8 @@ const ROUTES: [string, string][] = [
   ['/settings/preferences', '설정 · 환경'],
   ['/settings/keys', '설정 · 키'],
   ['/admin/users', '관리자 · 사용자'],
-  ['/admin/governance', '관리자 · 정책'],
+  ['/admin/system/policy', '관리자 · 정책'],
+  ['/admin/governance', '관리자 · 감사 로그'],
 ]
 
 /** Synonyms that must not both appear: 편집 beside 수정 reads as two actions. */
