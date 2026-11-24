@@ -57,7 +57,7 @@ export const kindMeta: Record<
   },
 }
 
-export const kindOrder: SessionKind[] = ['chat', 'report', 'slides', 'image', 'av', 'sheet']
+export const kindOrder: SessionKind[] = ['chat', 'report', 'sheet', 'slides', 'image', 'av']
 
 /** Surfaces an agent offers, in `kindOrder`; all of them when it names none. */
 export function agentKinds(agent: Pick<Agent, 'kinds'>): SessionKind[] {
