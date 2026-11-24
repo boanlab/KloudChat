@@ -71,7 +71,7 @@ async function adminFixture(page: Page, info: TestInfo) {
       const next = roles({})
       current = settings({
         ...(body.modelChat !== undefined ? {
-          chat: body.modelChat, report: body.modelReport, slides: body.modelSlides, image: body.modelImage,
+          chat: body.modelChat, report: body.modelReport, slides: body.modelSlides, sheet: body.modelSheet, image: body.modelImage,
           audio: body.modelAudio, video: body.modelVideo, selfHostedThinking: body.thinkingSelfHosted === '1',
           externalThinking: body.thinkingExternal === '1',
         } : {}),
@@ -133,7 +133,7 @@ test('the administrator decides which model does which job', { tag: '@phone' }, 
   await card.getByRole('button', { name: '저장' }).click()
   await expect(card.getByText('저장했습니다')).toBeVisible()
   expect(puts.at(-1)).toEqual({
-    modelChat: 'super_strict', modelReport: 'local/qwen3.8-flash', modelSlides: 'local/qwen3.8-27b',
+    modelChat: 'super_strict', modelReport: 'local/qwen3.8-flash', modelSlides: 'local/qwen3.8-27b', modelSheet: '',
     modelImage: 'google/img', modelAudio: '', modelVideo: '',
     thinkingSelfHosted: '1', thinkingExternal: '0',
   })
