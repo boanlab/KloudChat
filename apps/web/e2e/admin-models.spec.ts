@@ -16,11 +16,11 @@ const external = { id: 'openai/gpt-x', label: 'OpenAI · GPT', strictLocal: fals
 
 function roles(extra: Record<string, unknown>) {
   return {
-    chat: 'local/qwen3.8-27b', report: '', slides: 'local/qwen3.8-27b', image: 'google/img', audio: '', video: '',
+    chat: 'local/qwen3.8-27b', report: '', slides: 'local/qwen3.8-27b', sheet: '', image: 'google/img', audio: '', video: '',
     selfHostedThinking: false, externalThinking: false, defaultMonthlyCredits: 500000,
     choices: {
       chat: [local27, flash, external], report: [local27, flash, external], slides: [local27, flash, external],
-      image: [{ id: 'google/img', label: 'Google · Image', strictLocal: false }], audio: [], video: [],
+      sheet: [local27, flash, external], image: [{ id: 'google/img', label: 'Google · Image', strictLocal: false }], audio: [], video: [],
     },
     ...extra,
   }
@@ -108,7 +108,7 @@ test('the administrator decides which model does which job', { tag: '@phone' }, 
   // The report default follows the chat default until one is chosen.
   const report = card.getByRole('combobox', { name: /^보고서 기본 모델/ })
   await expect(report).toHaveValue('')
-  // Chat, report and slides list the two Super Agent entries first; report and slides may follow chat.
+  // Chat, report, slides and sheet list the two Super Agent entries first; report and slides may follow chat.
   await expect(report.locator('option')).toHaveText([
     'Super Agent', 'Super Agent (strict-local)', '챗 기본 모델을 따름', 'Qwen · 27B', 'Qwen · Flash', 'OpenAI · GPT',
   ])
@@ -118,6 +118,10 @@ test('the administrator decides which model does which job', { tag: '@phone' }, 
   ])
   await expect(card.getByRole('combobox', { name: /^슬라이드 기본 모델/ }).locator('option').first())
     .toHaveText('Super Agent')
+  // The sheet default follows chat until one is chosen, and offers Super Agent like the others.
+  const sheet = card.getByRole('combobox', { name: /^시트 기본 모델/ })
+  await expect(sheet).toHaveValue('')
+  await expect(sheet.locator('option').first()).toHaveText('Super Agent')
   // The picture default is always a named model: no empty choice.
   await expect(card.getByRole('combobox', { name: /^이미지 기본 모델/ }).locator('option')).toHaveText(['Google · Image'])
   // Helper work has no model of its own: it runs on the Super Agent's models.

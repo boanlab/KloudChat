@@ -2867,13 +2867,13 @@ self-hosted strict-local models. The older Auto routing (`adaptive_routing`) sti
 sessions set to it through the API.
 
 **Always there, and the default.** There is no switch: the picker lists both entries first on
-chat, report and slides, each with its credit range, or as unavailable while a conversation is
+chat, report, slides and sheet, each with its credit range, or as unavailable while a conversation is
 on an entry whose table has no model the account may use. A new conversation the caller sends
 without a `routing_mode` starts as `services/start_mode.py` decides: a model fixed by the caller
 or the conversation's agent keeps it `manual`; the person's own pick for the surface
 (`preferences.modelByKind`, a model id or the entry `super` / `super_strict`) comes next;
 otherwise the surface's start from 설정 › 시스템 › 모델 (`system_settings` `routing.chat`,
-`routing.report`, `routing.slides`; unset is `super`), with `super` moved to `super_strict` in a
+`routing.report`, `routing.slides`, `routing.sheet`; unset is `super`), with `super` moved to `super_strict` in a
 project where internal material stays strict-local, and to `manual` when neither entry has a
 usable model (a `super_strict` start never widens to `super`). The web client applies the same
 rule before the first send (`lib/superAgent.ts` `startingMode`, from the catalogue's

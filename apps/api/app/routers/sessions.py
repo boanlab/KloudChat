@@ -1302,7 +1302,9 @@ _SUPER_MODES = frozenset({RoutingMode.super, RoutingMode.super_strict})
 #: every routed (not model-pinned) mode
 _ROUTED_MODES = _AUTO_MODES | _SUPER_MODES
 #: Surfaces whose writer an Auto lane may choose (`_document_route`).
-_AUTO_KINDS = frozenset({SessionKind.chat, SessionKind.report, SessionKind.slides})
+_AUTO_KINDS = frozenset(
+    {SessionKind.chat, SessionKind.report, SessionKind.slides, SessionKind.sheet}
+)
 #: kinds whose picked skills stay on for later turns (a plan's approval included)
 _STANDING_KINDS = frozenset({SessionKind.chat, SessionKind.report, SessionKind.slides})
 
@@ -6043,7 +6045,10 @@ async def _send_message(
     super_turn = bool(
         kind is SessionKind.chat
         and session.routing_mode in _SUPER_MODES
-        and (payload.model is None or session.kind in (SessionKind.report, SessionKind.slides))
+        and (
+            payload.model is None
+            or session.kind in (SessionKind.report, SessionKind.slides, SessionKind.sheet)
+        )
         and published is None
     )
 

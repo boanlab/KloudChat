@@ -32,7 +32,7 @@ export function startingMode({
   /** The project the conversation starts in: internal material keeps a `super` start strict-local. */
   projectId?: string | null
 }): RoutingMode {
-  if (kind !== 'chat' && kind !== 'report' && kind !== 'slides') return 'manual'
+  if (kind !== 'chat' && kind !== 'report' && kind !== 'slides' && kind !== 'sheet') return 'manual'
   if (agentModel) return 'manual'
   if (homePick && !isSuperEntry(homePick)) return 'manual'
   const start = homePick && isSuperEntry(homePick) ? homePick : defaultRouting?.[kind] ?? 'super'
@@ -55,7 +55,7 @@ export type StrictStartReason = 'project' | 'personal' | 'admin' | 'unavailable'
 export function strictStartReason(inputs: StartInputs): StrictStartReason | null {
   if (startingMode(inputs) !== 'super_strict') return null
   const { kind, homePick, defaultRouting, projectId, superAgent } = inputs
-  const routed = kind as 'chat' | 'report' | 'slides'
+  const routed = kind as 'chat' | 'report' | 'slides' | 'sheet'
   const start = homePick && isSuperEntry(homePick) ? homePick : defaultRouting?.[routed] ?? 'super'
   if (start === 'super_strict') return homePick === 'super_strict' ? 'personal' : 'admin'
   if (projectId && superAgent.projectStrict) return 'project'

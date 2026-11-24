@@ -163,6 +163,7 @@ _SETTING_SECTION: dict[str, str] = {
     "model_chat": "models",
     "model_report": "models",
     "model_slides": "models",
+    "model_sheet": "models",
     "model_image": "models",
     "model_audio": "models",
     "model_video": "models",
@@ -229,6 +230,7 @@ _MODEL_ROLE_FIELDS: tuple[tuple[str, str, str, bool], ...] = (
     ("model_chat", settings_store.MODEL_CHAT, "chat", False),
     ("model_report", settings_store.MODEL_REPORT, "report", True),
     ("model_slides", settings_store.MODEL_SLIDES, "slides", True),
+    ("model_sheet", settings_store.MODEL_SHEET, "sheet", True),
     ("model_image", settings_store.MODEL_IMAGE, "image", False),
     ("model_audio", settings_store.MODEL_AUDIO, "audio", False),
     ("model_video", settings_store.MODEL_VIDEO, "video", False),
@@ -239,6 +241,7 @@ _ROUTED_ROLE_FIELDS: dict[str, str] = {
     "model_chat": "chat",
     "model_report": "report",
     "model_slides": "slides",
+    "model_sheet": "sheet",
 }
 
 #: required only while the catalogue offers one: an instance without them has nothing to pick
@@ -270,6 +273,7 @@ def _model_choices(catalogue: dict) -> dict[str, list[dict]]:
         "chat": of_kind("chat"),
         "report": of_kind("report"),
         "slides": of_kind("slides"),
+        "sheet": of_kind("sheet"),
         "image": of_kind("image"),
         "audio": of_kind("av", "audio"),
         "video": of_kind("av", "video"),
@@ -280,10 +284,11 @@ async def _model_role_settings() -> dict:
     """모델 section: in-force choice and options per job."""
     roles = await settings_store.model_roles()
     return {
-        # chat, report and slides: `super`, `super_strict`, a model id, or "" (follow chat)
+        # chat, report, slides and sheet: `super`, `super_strict`, a model id, or "" (follow chat)
         "chat": roles.surface_default("chat"),
         "report": roles.surface_default("report"),
         "slides": roles.surface_default("slides"),
+        "sheet": roles.surface_default("sheet"),
         "image": roles.image,
         "audio": roles.audio,
         "video": roles.video,
@@ -309,6 +314,7 @@ async def _check_model_roles(payload: SystemSettingsIn) -> None:
             settings_store.MODEL_CHAT: in_force.surface_default("chat"),
             settings_store.MODEL_REPORT: in_force.surface_default("report"),
             settings_store.MODEL_SLIDES: in_force.surface_default("slides"),
+            settings_store.MODEL_SHEET: in_force.surface_default("sheet"),
             settings_store.MODEL_IMAGE: in_force.image,
             settings_store.MODEL_AUDIO: in_force.audio,
             settings_store.MODEL_VIDEO: in_force.video,
@@ -483,7 +489,7 @@ async def put_settings(
             before[field] = before_stored.get(key, "")
             after[field] = value.strip()
 
-    # chat, report, slides: a Super Agent start keeps the stored model as the fallback;
+    # chat, report, slides, sheet: a Super Agent start keeps the stored model as the fallback;
     # a model (or "" to follow chat) fixes the start to that model
     in_force_before = settings_store.model_roles_from(before_stored)
     for field, kind in _ROUTED_ROLE_FIELDS.items():

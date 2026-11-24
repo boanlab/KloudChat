@@ -193,7 +193,7 @@ export function ModelPicker({
   const active = current ?? usable[0]
   // A picture or av surface without the admin's default: none chosen, said so (never the first or cheapest).
   const noDefault = !current && (kind === 'image' || kind === 'av')
-  const routedSurface = kind === 'chat' || kind === 'report' || kind === 'slides'
+  const routedSurface = kind === 'chat' || kind === 'report' || kind === 'slides' || kind === 'sheet'
   // Outside a conversation (the home screen, the personal default), the mode a new one would start in.
   const startingMode = !session && !sessionId && routedSurface
     ? startingRoutingMode({ superAgent, user, defaultRouting, agents }, kind, null, projectId)
@@ -208,10 +208,10 @@ export function ModelPicker({
   const legacyAutoActive = autoLane === 'auto' || autoLane === 'auto_quality'
   const autoActive = legacyAutoActive || superLane !== undefined
   const unresolvedAgentModel = !autoActive &&
-    (kind === 'chat' || kind === 'report' || kind === 'slides') &&
+    (kind === 'chat' || kind === 'report' || kind === 'slides' || kind === 'sheet') &&
     Boolean(session?.agentId && !session.model && !agents.some((agent) => agent.id === session.agentId))
   // Auto needs a session or a caller that creates one; the server settles a document's lane after the strict-local rule.
-  const canRouteAuto = (kind === 'chat' || kind === 'report' || kind === 'slides') &&
+  const canRouteAuto = (kind === 'chat' || kind === 'report' || kind === 'slides' || kind === 'sheet') &&
     (Boolean(sessionId) || Boolean(onEnableAuto) || field)
   // What this conversation would start on, and what the saved personal default is: a pick in a
   // conversation is that conversation's only, so 「기본값으로 저장」 is how it becomes the default.

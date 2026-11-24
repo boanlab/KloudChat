@@ -1,6 +1,6 @@
-"""How a new chat, report or slides conversation starts when the caller does not say.
+"""How a new chat, report, slides or sheet conversation starts when the caller does not say.
 
-Super Agent is the default on the three routed surfaces. The admin's per-surface default
+Super Agent is the default on the four routed surfaces. The admin's per-surface default
 (`settings_store.ROUTING_CHAT`) may instead be `super_strict` or a fixed model (`manual`); a model
 fixed by the caller or the conversation's agent wins, and the person's own pick beats the admin
 default. A project conversation keeping internal material strict-local starts on `super_strict`.
@@ -15,7 +15,9 @@ from app.models.user import User
 from app.services import governance, settings_store, super_agent
 from app.services import models as model_service
 
-ROUTED_KINDS = frozenset({SessionKind.chat, SessionKind.report, SessionKind.slides})
+ROUTED_KINDS = frozenset(
+    {SessionKind.chat, SessionKind.report, SessionKind.slides, SessionKind.sheet}
+)
 
 
 def personal_pick(user: User, kind: SessionKind) -> str:

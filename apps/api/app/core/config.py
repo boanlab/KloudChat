@@ -228,12 +228,13 @@ class Settings(BaseSettings):
     #: Per-surface defaults; empty: default_chat_model. Documents keep the larger model.
     default_report_model: str = "local/qwen3.8-27b"
     default_slides_model: str = "local/qwen3.8-27b"
+    default_sheet_model: str = ""
 
     #: Must honour aspect ratio. Unserved → pictures unavailable until the admin picks one.
     default_image_model: str = "bytedance-seed/seedream-5-0-flash"
 
     #: Per-modality av defaults. Unserved → that mode unavailable until the admin picks one.
-    default_audio_model: str = "openai/gpt-audio-mini"
+    default_audio_model: str = "strict-local/qwen3-tts"
     default_video_model: str = "google/veo-3.1-lite"
 
     #: Zone for the model's date only; DB timestamps UTC.

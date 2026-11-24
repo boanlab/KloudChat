@@ -583,6 +583,7 @@ async def list_models(force: bool = False) -> dict[str, Any]:
         for kind, chosen in (
             ("report", roles.report),
             ("slides", roles.slides),
+            ("sheet", roles.sheet),
         )
     }
     # no chat fallback for images
@@ -614,9 +615,9 @@ async def list_models(force: bool = False) -> dict[str, Any]:
         "litellmAvailable": available,
         "defaultChatModel": default_chat,
         "defaultModelByKind": by_kind,
-        # how a new chat, report or slides conversation starts (`settings_store.ROUTING_CHAT`)
+        # how a new chat, report, slides or sheet conversation starts (`ROUTING_CHAT`)
         "defaultRoutingByKind": {
-            kind: roles.start(kind) for kind in sorted(CHAT_SURFACES - {"sheet"})
+            kind: roles.start(kind) for kind in sorted(CHAT_SURFACES)
         },
         "defaultAvModelByMode": by_mode,
         "strictImageDefault": strict_image["id"] if strict_image else "",
