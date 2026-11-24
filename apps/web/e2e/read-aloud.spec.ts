@@ -80,12 +80,12 @@ test('답변의 「읽어 주기」를 누르면 블록 단위로 읽고, 다시
   const { unexpected } = await composerFixture(page, testInfo, { reply })
   await page.goto(`/s/${chatId}`)
 
-  const read = page.getByRole('button', { name: '읽어 주기' })
+  const read = page.getByRole('button', { name: '읽어 주기', exact: true })
   await expect(read).toHaveCount(1)
   await read.click()
 
   // The button turns into 멈춤 and the first block is asked for, with the words to put into speech.
-  const stop = page.getByRole('button', { name: '멈춤' })
+  const stop = page.getByRole('button', { name: '멈춤', exact: true })
   await expect(stop).toBeVisible()
   await expect(stop).toHaveAttribute('aria-pressed', 'true')
   await expect.poll(() => speaks.length).toBeGreaterThan(1)
@@ -99,7 +99,7 @@ test('답변의 「읽어 주기」를 누르면 블록 단위로 읽고, 다시
 
   const asked = speaks.length
   await stop.click()
-  await expect(page.getByRole('button', { name: '읽어 주기' })).toHaveCount(1)
+  await expect(page.getByRole('button', { name: '읽어 주기', exact: true })).toHaveCount(1)
   await expect(page.getByTestId('read-aloud-status')).toHaveCount(0)
   await page.waitForTimeout(300)
   // Nothing more is voiced once it is stopped.
@@ -112,7 +112,7 @@ test('자체 음성 모델이 없으면 「읽어 주기」가 보이지 않는�
   const { unexpected } = await composerFixture(page, testInfo, { reply })
   await page.goto(`/s/${chatId}`)
   await expect(page.getByText('네, 세 가지로 정리해 드릴게요.').first()).toBeVisible()
-  await expect(page.getByRole('button', { name: '읽어 주기' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '읽어 주기', exact: true })).toHaveCount(0)
   expect(unexpected).toEqual([])
 })
 
@@ -192,8 +192,8 @@ test('보고서의 「읽어 주기」는 제목과 각 절을 차례로 읽고,
   const panel = page.locator('[data-panel="artifact"]')
   await expect(panel.getByText('이번 점검은 클라우드 보안을 다룹니다.')).toBeVisible({ timeout: 20_000 })
 
-  await panel.getByRole('button', { name: '읽어 주기' }).click()
-  await expect(panel.getByRole('button', { name: '멈춤' })).toBeVisible()
+  await panel.getByRole('button', { name: '읽어 주기', exact: true }).click()
+  await expect(panel.getByRole('button', { name: '멈춤', exact: true })).toBeVisible()
   // The title first, then the sections in order, each under its heading.
   await expect.poll(() => speaks.length).toBeGreaterThan(2)
   expect(speaks.slice(0, 3).map((s) => s.source ?? s.text)).toEqual([
@@ -203,7 +203,7 @@ test('보고서의 「읽어 주기」는 제목과 각 절을 차례로 읽고,
   ])
   await expect(panel.getByTestId('read-aloud-status')).toContainText('1/3')
 
-  await panel.getByRole('button', { name: '멈춤' }).click()
-  await expect(panel.getByRole('button', { name: '읽어 주기' })).toBeVisible()
+  await panel.getByRole('button', { name: '멈춤', exact: true }).click()
+  await expect(panel.getByRole('button', { name: '읽어 주기', exact: true })).toBeVisible()
   expect(unexpected).toEqual([])
 })
