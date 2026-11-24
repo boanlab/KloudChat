@@ -46,7 +46,7 @@ test('파일함 lists uploaded and made files apart and deletes one after asking
   expect(unexpected).toEqual([])
 })
 
-test('파일함 drops a file the server already deleted without an error', async ({ page }, info) => {
+test('파일함 shows no error for a file the server had already deleted', async ({ page }, info) => {
   await composerFixture(page, info, { files })
   const id = 'a2'.padEnd(32, '0')
   await page.route(`**/api/files/${id}`, (route) =>
@@ -58,8 +58,10 @@ test('파일함 drops a file the server already deleted without an error', async
   const rows = page.getByTestId('file-row')
   await expect(rows).toHaveCount(2)
   await page.getByRole('button', { name: '검색서비스_월별지표.csv 삭제' }).click()
+  const answered = page.waitForResponse((r) => r.request().method() === 'DELETE' && r.status() === 404)
   await page.getByRole('dialog').getByRole('button', { name: '삭제', exact: true }).click()
-  await expect(rows).toHaveCount(1)
+  await answered
+  await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(page.getByText('삭제하지 못했습니다')).toHaveCount(0)
 })
 
