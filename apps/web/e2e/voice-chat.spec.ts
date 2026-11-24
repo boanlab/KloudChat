@@ -63,7 +63,8 @@ async function fakeMicrophone(page: Page) {
     tone.start()
     navigator.mediaDevices.getUserMedia = async () => {
       await context.resume()
-      return destination.stream
+      // A real microphone gives a new stream each time; stopping one leaves the next alive.
+      return destination.stream.clone()
     }
     ;(window as unknown as { __talk: (ms: number) => void }).__talk = (ms) => {
       gain.gain.value = 0.6
