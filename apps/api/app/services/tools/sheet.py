@@ -23,8 +23,8 @@ _CELL = (
     "from other cells (a total, a difference, a rate, price × quantity), so the sheet stays "
     "live when the person edits it; guard a formula over a cell that may still hold a bracket "
     "blank or be empty (`=IF(ISNUMBER(B5),B5-B4,\"\")`). A number is a JSON number (1200, "
-    "0.125), never a text like 「1,200원」; a text of the form 「1,200」, 「12.5%」 or 「2026-10-13」 is stored as that "
-    "number with its format."
+    "0.125), never a text like 「1,200원」; a text of the form 「1,200」, 「12.5%」 or "
+    "「2026-10-13」 is stored as that number with its format."
 )
 _NEVER = (
     "Never invent a number, date, name or fact: a value the person or their material did not "
