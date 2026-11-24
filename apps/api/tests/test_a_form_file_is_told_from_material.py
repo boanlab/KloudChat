@@ -175,7 +175,7 @@ def test_a_broken_office_file_is_material_with_its_reason():
 
 
 def test_other_files_have_no_profile():
-    assert form_profile.profile("표.xlsx", b"x") is None
+    assert form_profile.profile("메모.txt", b"x") is None
     assert form_profile.summary(None) is None
 
 
@@ -208,7 +208,7 @@ def test_the_chip_role_wins_over_the_profile():
 
 
 def test_every_output_kind_with_a_writer_is_followed():
-    assert form_files.FOLLOWED == ("pptx", "docx", "hwpx")
+    assert form_files.FOLLOWED == ("pptx", "docx", "hwpx", "xlsx")
 
 
 def test_the_requests_words_settle_an_unsure_file():
@@ -404,11 +404,11 @@ async def test_a_saved_form_is_kept_out_of_the_file_lists(db):
     assert saved.id not in {row.id for row in page.items}
 
 
-async def test_a_hwp_or_a_spreadsheet_cannot_be_saved_as_a_form(db):
+async def test_a_hwp_or_a_broken_workbook_cannot_be_saved_as_a_form(db):
     me = await _person(db)
     with pytest.raises(HTTPException) as refused:
         await forms_router.upload_form(me, db, file=_upload("표.xlsx", b"PK\x03\x04x"))
-    assert refused.value.detail == "form_kind_unknown"
+    assert refused.value.detail == "form_unreadable"
     with pytest.raises(HTTPException) as refused:
         await forms_router.upload_form(
             me, db, file=_upload("신청서.hwp", b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\0" * 600))

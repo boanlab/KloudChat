@@ -32,6 +32,7 @@ KIND_OF = {
     ".pptx": "pptx", ".potx": "pptx",
     ".docx": "docx", ".dotx": "docx",
     ".hwpx": "hwpx", ".hwp": "hwp",
+    ".xlsx": "xlsx", ".xltx": "xlsx",
 }
 
 #: Office template content types and the document types they open as
@@ -40,6 +41,8 @@ _TEMPLATE_TYPES = {
         "application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml":
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.template.main+xml":
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml",
 }
 
 HWP_FORM_ADVICE = (
@@ -69,6 +72,7 @@ _W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 _R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 _REL = "http://schemas.openxmlformats.org/package/2006/relationships"
 _HP = "http://www.hancom.co.kr/hwpml/2011/paragraph"
+_S = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 
 _PARSER = etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=False)
 #: an OLE compound file (HWP 5, old Office)
@@ -80,7 +84,7 @@ class FormError(ValueError):
 
 
 def kind_of(name: str) -> str:
-    """`pptx`, `docx`, `hwpx`, `hwp` or ``."""
+    """`pptx`, `docx`, `hwpx`, `hwp`, `xlsx` or ``."""
     return KIND_OF.get(Path(name).suffix.lower(), "")
 
 
@@ -574,6 +578,26 @@ def _hwpx(data: bytes, name: str) -> dict[str, Any]:
     }
 
 
+def _xlsx(data: bytes, name: str) -> dict[str, Any]:
+    """An Excel workbook: its sheets and how much it holds, read without a full load. A
+    workbook is never taken for a form by its look (`score` 0): it is a form only when a
+    project or agent keeps it in its Excel slot, or the file is a `.xltx`."""
+    try:
+        archive = open_capped_zip(data)
+    except (zipfile.BadZipFile, RuntimeError):
+        raise FormError("엑셀 파일을 읽지 못했습니다: 통합 문서 파일이 아닙니다.") from None
+    with archive:
+        names = set(archive.namelist())
+        if not {"xl/workbook.xml", "xl/styles.xml"} <= names:
+            raise FormError("엑셀 파일을 읽지 못했습니다: 통합 문서 파일이 아닙니다.")
+        macro = "xl/vbaProject.bin" in names
+        book = _xml(archive, "xl/workbook.xml")
+    sheets = [str(s.get("name")) for s in book.iter(f"{{{_S}}}sheet")] if book is not None else []
+    if not macro and not sheets:
+        raise FormError("엑셀 파일을 읽지 못했습니다: 시트가 없습니다.")
+    return {"sheets": sheets[:40], "macro": macro, "score": 0.0, "signals": []}
+
+
 def _hwp(name: str, text: str) -> dict[str, Any]:
     """Binary HWP: never a form; how much it looks like one decides whether to say so."""
     lines = [line.strip() for line in (text or "").splitlines()]
@@ -609,12 +633,14 @@ def profile(name: str, data: bytes, text: str = "") -> dict[str, Any] | None:
             out = _docx(data, name)
         elif kind == "hwpx":
             out = _hwpx(data, name)
+        elif kind == "xlsx":
+            out = _xlsx(data, name)
         else:
             out = _hwp(name, text)
     except FormError as exc:
         return {"kind": kind, "version": VERSION, "score": 0.0, "verdict": "material",
                 "signals": [], "error": str(exc)}
-    if suffix in (".potx", ".dotx"):
+    if suffix in (".potx", ".dotx", ".xltx"):
         out["score"] = 1.0
         out["signals"] = ["template_file", *out["signals"]]
     out["kind"] = kind
@@ -644,6 +670,8 @@ def summary(found: dict[str, Any] | None) -> dict[str, Any] | None:
                    fields=sum((found.get("fields") or {}).values()))
     elif kind == "hwpx":
         out.update(fields=len(found.get("fields") or []), tables=len(found.get("tables") or []))
+    elif kind == "xlsx":
+        out.update(sheets=len(found.get("sheets") or []), macro=bool(found.get("macro")))
     elif kind == "hwp" and found.get("form_like"):
         out["advice"] = HWP_FORM_ADVICE
     return out

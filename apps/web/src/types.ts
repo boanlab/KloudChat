@@ -11,7 +11,7 @@ export interface MessageAttachment {
   size: number | string
   type: string
   role?: 'form' | 'material'
-  formKind?: 'pptx' | 'docx' | 'hwpx'
+  formKind?: 'pptx' | 'docx' | 'hwpx' | 'xlsx'
   source?: 'agent' | 'project'
   formNote?: string
 }
@@ -311,7 +311,7 @@ export interface Session {
   /** Sticky rendering template; null is the surface's built-in track. */
   renderTemplateId: string | null
   /** 양식 attached in this conversation by output kind; `''`: the saved one taken off. */
-  formFiles?: Partial<Record<'pptx' | 'docx' | 'hwpx', string>> | null
+  formFiles?: Partial<Record<'pptx' | 'docx' | 'hwpx' | 'xlsx', string>> | null
   /** Opened but not sent: the browser holds it until the first send creates it under this id. */
   unsent?: boolean
 }
@@ -1238,7 +1238,7 @@ export interface Project {
   /** Surface → rendering template id; a surface with no entry uses the built-in track. */
   renderTemplates: Record<string, string>
   /** 기본 양식 파일: output kind → saved form copy id. */
-  formFiles?: Partial<Record<'pptx' | 'docx' | 'hwpx', string>>
+  formFiles?: Partial<Record<'pptx' | 'docx' | 'hwpx' | 'xlsx', string>>
   /** The saved form copies, for names and summaries. */
   formRows?: FileRow[]
   /** 디자인 지침. */
@@ -1478,7 +1478,7 @@ export interface Agent {
   /** 디자인 지침 over the project's. */
   designBrief?: string
   /** 기본 양식 파일 over the project's: output kind → saved form copy id. */
-  formFiles?: Partial<Record<'pptx' | 'docx' | 'hwpx', string | null>>
+  formFiles?: Partial<Record<'pptx' | 'docx' | 'hwpx' | 'xlsx', string | null>>
   /** That design's name, for a viewer who cannot see the row. */
   designName?: string
   temperature: number

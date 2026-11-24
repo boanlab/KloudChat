@@ -361,7 +361,7 @@
 "path": "chat/agents",
 "title": "에이전트와 스킬",
 "heading": "형식·디자인과 자료",
-"text": "에이전트 만들기 폼의 **더 설정하기** 아래에 있습니다.\n\n- **형식·디자인**: **기본 양식 파일**(PowerPoint·Word 양식)과 **디자인 지침**(색·글꼴·표 그리는 방식·분량을 말로)을 둡니다. 양식 파일이 있으면 그 양식에, 없으면 디자인 지침에 맞춰 씁니다. 에이전트의 것이 프로젝트의 것보다 먼저이고, 대화에 첨부한 양식이 가장 먼저입니다. 보고서를 쓰는 에이전트가 바로 답하기나 직접 구성일 때는 **문서 형식** 칸도 보입니다. **요청에 따라**로 두면 요청에서 문서 형식을 고르고, 하나를 고르면 머리 항목·절 규칙·물어볼 빈칸을 그 형식으로 고정합니다.\n- **대화 시작**: **사용법**(대화 첫 화면에 보이는 안내)과 **시작 문장**(한 줄에 하나, 여섯 개까지).\n- **자료**: 이 에이전트가 검색해서 근거로 쓸 파일과 웹 주소(**파일 붙이기**, **URL 추가**). 대화마다 통째로 들어가지 않고 필요할 때 찾아 씁니다. URL은 추가한 시점의 내용을 저장하고, 페이지가 바뀌어도 따라가지 않습니다. 자료를 주기적으로 다시 읽거나 요약하지 않으며, 에이전트가 정해진 시각에 저절로 실행되지도 않습니다. 대화를 열어 요청할 때 일합니다.\n- **스킬과 도구**, **고급**(사용할 화면, 처음 여는 화면, 모델, 출력 언어, 웹 검색 기본값, 다양성, 색, 메모리 사용). 처음 여는 화면을 정하지 않은 채 사용할 화면에 화면을 더하면 그 화면이 처음 여는 화면이 됩니다. 처음 여는 화면을 따로 정하지 않았는데 **항상 적용**으로 둔 스킬이 보고서·슬라이드에서만 작동하면(회의록 작성, 개조식 보고 등), 그 화면이 처음 여는 화면이 됩니다. 스킬 칸 아래에는 어느 화면에서 작동하는지 적힙니다. **공유**(**나만 쓰기** 또는 **모두에게 공개**; 공개할 때 **가져가서 편집할 수 있게** 또는 **가져갈 수 있지만 내용은 비공개**)."
+"text": "에이전트 만들기 폼의 **더 설정하기** 아래에 있습니다.\n\n- **형식·디자인**: **기본 양식 파일**(PowerPoint·Word·한글·Excel 양식)과 **디자인 지침**(색·글꼴·표 그리는 방식·분량을 말로)을 둡니다. 양식 파일이 있으면 그 양식에, 없으면 디자인 지침에 맞춰 씁니다. 에이전트의 것이 프로젝트의 것보다 먼저이고, 대화에 첨부한 양식이 가장 먼저입니다. 보고서를 쓰는 에이전트가 바로 답하기나 직접 구성일 때는 **문서 형식** 칸도 보입니다. **요청에 따라**로 두면 요청에서 문서 형식을 고르고, 하나를 고르면 머리 항목·절 규칙·물어볼 빈칸을 그 형식으로 고정합니다.\n- **대화 시작**: **사용법**(대화 첫 화면에 보이는 안내)과 **시작 문장**(한 줄에 하나, 여섯 개까지).\n- **자료**: 이 에이전트가 검색해서 근거로 쓸 파일과 웹 주소(**파일 붙이기**, **URL 추가**). 대화마다 통째로 들어가지 않고 필요할 때 찾아 씁니다. URL은 추가한 시점의 내용을 저장하고, 페이지가 바뀌어도 따라가지 않습니다. 자료를 주기적으로 다시 읽거나 요약하지 않으며, 에이전트가 정해진 시각에 저절로 실행되지도 않습니다. 대화를 열어 요청할 때 일합니다.\n- **스킬과 도구**, **고급**(사용할 화면, 처음 여는 화면, 모델, 출력 언어, 웹 검색 기본값, 다양성, 색, 메모리 사용). 처음 여는 화면을 정하지 않은 채 사용할 화면에 화면을 더하면 그 화면이 처음 여는 화면이 됩니다. 처음 여는 화면을 따로 정하지 않았는데 **항상 적용**으로 둔 스킬이 보고서·슬라이드에서만 작동하면(회의록 작성, 개조식 보고 등), 그 화면이 처음 여는 화면이 됩니다. 스킬 칸 아래에는 어느 화면에서 작동하는지 적힙니다. **공유**(**나만 쓰기** 또는 **모두에게 공개**; 공개할 때 **가져가서 편집할 수 있게** 또는 **가져갈 수 있지만 내용은 비공개**)."
 },
 {
 "lang": "ko",
@@ -1082,7 +1082,7 @@
 "path": "personal/projects",
 "title": "프로젝트",
 "heading": "기본 양식 파일",
-"text": "프로젝트 정보 옆의 **기본 양식 파일**에 PowerPoint·Word·한글(HWPX) 양식을 올리거나 파일함에서 고르세요. 그러면 이 프로젝트에서 만드는 PowerPoint 파일과 Word·한글로 쓰는 보고서가 그 양식을 따릅니다. 양식은 프로젝트 지식과 따로 보관되어 자료로 읽히지 않습니다. 예전 한글 형식(`.hwp`)은 양식으로 쓸 수 없으니 한글에서 **다른 이름으로 저장 › 한글 표준 문서 (*.hwpx)**로 저장해 올립니다.\n\n이 프로젝트에서 새 보고서·슬라이드 대화를 열면 형식 칩 옆에 **프로젝트 양식** 칩이 보이고, ✕로 그 대화에서만 뺄 수 있습니다. 대화에 양식을 첨부하면 첨부한 것이 우선합니다."
+"text": "프로젝트 정보 옆의 **기본 양식 파일**에 PowerPoint·Word·한글(HWPX)·Excel 양식을 올리거나 파일함에서 고르세요. 그러면 이 프로젝트에서 만드는 PowerPoint 파일과 Word·한글로 쓰는 보고서가 그 양식을 따르고, 새 시트는 Excel 양식을 복사해 거기서 시작합니다. Excel 양식은 `.xlsx`와 `.xltx`를 받습니다. 매크로가 든 파일(`.xlsm`)과 예전 `.xls`는 양식으로 쓸 수 없으니 엑셀에서 **Excel 통합 문서(*.xlsx)**로 저장해 올립니다. 양식은 프로젝트 지식과 따로 보관되어 자료로 읽히지 않습니다. 예전 한글 형식(`.hwp`)은 양식으로 쓸 수 없으니 한글에서 **다른 이름으로 저장 › 한글 표준 문서 (*.hwpx)**로 저장해 올립니다.\n\n이 프로젝트에서 새 보고서·슬라이드·시트 대화를 열면 형식 칩 옆에 **프로젝트 양식** 칩이 보이고, ✕로 그 대화에서만 뺄 수 있습니다. 대화에 양식을 첨부하면 첨부한 것이 우선합니다."
 },
 {
 "lang": "ko",
@@ -1739,6 +1739,13 @@
 "lang": "ko",
 "path": "write/sheet",
 "title": "시트",
+"heading": "Excel 양식에서 시작",
+"text": "프로젝트나 에이전트의 **기본 양식 파일**에 Excel 양식(`.xlsx`, `.xltx`)을 두면, 그 프로젝트의 새 시트는 양식을 복사해 시작합니다. 시트·서식·표시 형식·열 너비·수식·이름 정의·병합이 그대로 있고, 챗은 같은 도구로 칸만 채웁니다. 양식에 적혀 있던 예시 값(숫자·날짜·「※ 작성요령」·「홍길동」)은 사실로 쓰지 않으려고 지우며, 자료에 없는 값은 칸에 `[매출액]`처럼 빈칸으로 남깁니다. 시트 화면의 새 대화에는 **프로젝트 양식** 칩이 보이고 ✕로 그 대화에서만 뺄 수 있습니다. 대화에 올린 `.xlsx`는 양식이 아니라 자료입니다."
+},
+{
+"lang": "ko",
+"path": "write/sheet",
+"title": "시트",
 "heading": "내려받기와 제한",
 "text": "- **내려받기**의 **Excel 문서**로 지금 편집기의 내용을 `.xlsx`로 받습니다.\n- 한 번에 쓰는 칸은 새 통합 문서가 5만 칸, 고치기가 2만 칸까지입니다. 더 큰 표는 나눠서 더합니다.\n- 이미 있는 차트 고치기, 피벗 테이블, 조건부 서식, 매크로는 만들거나 고치지 못합니다. 그런 요청에는 못 한다고 답합니다.\n- 휴대폰 너비에서는 시트를 읽기만 하고 내려받을 수 있으며, 고치기와 저장은 넓은 화면에서 합니다."
 },
@@ -2167,7 +2174,7 @@
 "path": "chat/agents",
 "title": "Agents and skills",
 "heading": "Format & design and sources",
-"text": "These sit under **More settings** in the create-agent form.\n\n- **Format & design**: **Default form files** (PowerPoint and Word forms) and the **Design brief** (colours, fonts, how tables are drawn and density, in words). Output is written on the form file when there is one, else to the design brief. The agent's come before the project's, and a form attached in the conversation comes first. A report-writing agent on Answer directly or Set it up yourself also shows the **Document format** field. Left on **From the request**, the format is picked from the request; pick one and the report's head fields, section rules and the blanks to ask about are fixed to it.\n- **Conversation start**: **How to use** (shown on the conversation's first screen) and **Conversation starters** (one per line, up to six).\n- **Sources**: files and web addresses the agent searches and cites (**Attach file**, **Add URL**). They are not sent whole with every conversation; the agent looks things up when needed. A URL stores the page as it was when added and does not follow later changes. Sources are not re-read or re-summarised on a schedule, and an agent never runs by itself at set times; it works when you open a conversation and ask.\n- **Skills and tools** and **Advanced** (screens, first screen, model, output language, web search default, variety, colour, use memory). Adding a screen while no first screen is chosen makes it the first screen. Setting a skill that works only on reports or slides to **Always** (회의록 작성, 개조식 보고, …) sets the first screen to that screen when none is chosen, and a line under the skills says where each one works. **Share**: **Only me** or **Everyone**, and when shared, **Let others take and edit it** or **Let others take it but keep the content private**."
+"text": "These sit under **More settings** in the create-agent form.\n\n- **Format & design**: **Default form files** (PowerPoint, Word, Hangul and Excel forms) and the **Design brief** (colours, fonts, how tables are drawn and density, in words). Output is written on the form file when there is one, else to the design brief. The agent's come before the project's, and a form attached in the conversation comes first. A report-writing agent on Answer directly or Set it up yourself also shows the **Document format** field. Left on **From the request**, the format is picked from the request; pick one and the report's head fields, section rules and the blanks to ask about are fixed to it.\n- **Conversation start**: **How to use** (shown on the conversation's first screen) and **Conversation starters** (one per line, up to six).\n- **Sources**: files and web addresses the agent searches and cites (**Attach file**, **Add URL**). They are not sent whole with every conversation; the agent looks things up when needed. A URL stores the page as it was when added and does not follow later changes. Sources are not re-read or re-summarised on a schedule, and an agent never runs by itself at set times; it works when you open a conversation and ask.\n- **Skills and tools** and **Advanced** (screens, first screen, model, output language, web search default, variety, colour, use memory). Adding a screen while no first screen is chosen makes it the first screen. Setting a skill that works only on reports or slides to **Always** (회의록 작성, 개조식 보고, …) sets the first screen to that screen when none is chosen, and a line under the skills says where each one works. **Share**: **Only me** or **Everyone**, and when shared, **Let others take and edit it** or **Let others take it but keep the content private**."
 },
 {
 "lang": "en",
@@ -2888,7 +2895,7 @@
 "path": "personal/projects",
 "title": "Projects",
 "heading": "Default form files",
-"text": "Upload a PowerPoint, Word or Hangul (HWPX) form, or pick one from the file box, under **Default form files** beside the project details, and every PowerPoint file and every report written as a Word or Hangul file in the project follows it. Forms are kept apart from the project's knowledge and are not read as material. An old Hangul file (`.hwp`) cannot be a form: in Hangul, use **Save As › Hangul standard document (*.hwpx)** and upload that.\n\nA new report or slides conversation opened in this project shows a **Project form** chip beside the format chip; ✕ removes it for that conversation only. A form attached to the conversation takes precedence."
+"text": "Upload a PowerPoint, Word, Hangul (HWPX) or Excel form, or pick one from the file box, under **Default form files** beside the project details, and every PowerPoint file and every report written as a Word or Hangul file in the project follows it, and a new sheet starts from a copy of the Excel form. An Excel form takes `.xlsx` and `.xltx`; a macro-enabled workbook (`.xlsm`) and an old `.xls` cannot be forms, so save them in Excel as **Excel Workbook (*.xlsx)** and upload that. Forms are kept apart from the project's knowledge and are not read as material. An old Hangul file (`.hwp`) cannot be a form: in Hangul, use **Save As › Hangul standard document (*.hwpx)** and upload that.\n\nA new report, slides or sheet conversation opened in this project shows a **Project form** chip beside the format chip; ✕ removes it for that conversation only. A form attached to the conversation takes precedence."
 },
 {
 "lang": "en",
@@ -3540,6 +3547,13 @@
 "title": "Sheets",
 "heading": "Sharing",
 "text": "Share only this sheet by link with the share icon in the header. Sharing a conversation also opens its sheet. The reader sees a read-only table with a tab per sheet and downloads the `.xlsx` with **Download**. The table shows values (a formula shows its calculated value) and the downloaded file keeps the formulas. The table shows up to 500 rows and 60 columns; download a bigger sheet to see all of it. The audience options are the same as for other artifacts (Sharing)."
+},
+{
+"lang": "en",
+"path": "write/sheet",
+"title": "Sheets",
+"heading": "Starting from an Excel form",
+"text": "When a project or agent keeps an Excel form (`.xlsx`, `.xltx`) under **Default form files**, a new sheet in it starts as a copy of that form. Sheets, formatting, number formats, column widths, formulas, defined names and merged cells stay as they are, and the chat fills only the cells, through the same tools. The form's example values (numbers, dates, \"※ guidance\" lines, \"홍길동\"-style filler) are not treated as facts and are cleared; anything the material does not give stays a bracket blank such as `[매출액]`. A new conversation on the Sheet screen shows a **Project form** chip; ✕ removes it for that conversation only. An `.xlsx` attached to a conversation is material, not a form."
 },
 {
 "lang": "en",

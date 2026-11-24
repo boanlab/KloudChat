@@ -409,6 +409,8 @@ def _form_kinds_of(kind: SessionKind, output: str | None, request: str) -> tuple
     """The form kinds a turn's document can follow: a deck's PowerPoint, a Word report's."""
     if kind is SessionKind.slides:
         return ("pptx",)
+    if kind is SessionKind.sheet:
+        return ("xlsx",)
     if kind is SessionKind.report and _report_output(output or "", request) == "docx":
         return ("docx",)
     return ()
@@ -451,6 +453,33 @@ async def _hwpx_form_surface(db: AsyncSession, user: User, session: ChatSession)
     title = re.sub(r"\.hwpx?$", "", form.choice.name, flags=re.I)[:120] or "한글 문서"
     made = await hwp_doc.create(db, user_id=user.id, title=title, data=hwpx_form.start(form),
                                 session_id=session.id, project_id=session.project_id)
+    session.artifact_id = made.id
+    db.add(session)
+    await db.commit()
+    await db.refresh(session)
+
+
+async def _xlsx_form_surface(db: AsyncSession, user: User, session: ChatSession,
+                             request: str) -> None:
+    """A sheet conversation with an Excel form (its agent's or project's, unless taken off) and
+    a table asked for, and no workbook yet: the form becomes the conversation's workbook, its
+    sample values taken out (`sheet_form`), and the turn fills it through the sheet tools."""
+    if session.kind is not SessionKind.sheet or session.artifact_id:
+        return
+    if not _WRITES_DOCUMENT.search(_ask_of(request)):
+        return
+    form = await form_files.for_session(db, session, "xlsx")
+    if form is None:
+        return
+    from app.services import sheet_doc, sheet_form
+
+    try:
+        title, data = sheet_form.start(form)
+        made = await sheet_doc.create(db, user_id=user.id, title=title, data=data,
+                                      session_id=session.id, project_id=session.project_id)
+    except Exception:  # noqa: BLE001 — a form that cannot be copied leaves a plain new sheet
+        log.warning("excel form %s could not start a sheet", form.choice.file_id, exc_info=True)
+        return
     session.artifact_id = made.id
     db.add(session)
     await db.commit()
@@ -5820,6 +5849,8 @@ async def _send_message(
     if (published is None and not session.pending
             and _report_output(payload.output_format or "", payload.content) == "hwp"):
         await _hwpx_form_surface(db, user, session)
+    if published is None and not session.pending:
+        await _xlsx_form_surface(db, user, session, payload.content)
     #: the surface this turn runs as: a report written as an HWP or Word file is worked on from
     #: here like a chat's office document, its tools and pre-read included
     kind = SessionKind.chat if await _office_report(db, session) else session.kind
@@ -7014,9 +7045,13 @@ async def _send_message(
             privacy_resolution.routing if privacy_resolution else document_routing
         )
     else:
-        if turn_forms is not None and kind in (SessionKind.slides, SessionKind.report):
+        if turn_forms is not None and (
+                kind in (SessionKind.slides, SessionKind.report)
+                or session.kind is SessionKind.sheet):
             # the saved form the document follows, named on the question
-            for form_kind in _form_kinds_of(kind, payload.output_format, content):
+            for form_kind in _form_kinds_of(
+                    session.kind if session.kind is SessionKind.sheet else kind,
+                    payload.output_format, content):
                 saved = await form_files.for_session(db, session, form_kind, agent=agent_row)
                 if saved is not None and saved.choice.source != "attached":
                     turn_forms.forms.setdefault(form_kind, saved.choice)

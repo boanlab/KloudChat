@@ -1060,11 +1060,11 @@ export function Composer({
     followable(file) && formKinds.includes(file.form?.kind as FormKind) &&
     formRoleOf(file, formRoles[file.id]) === 'form')
   const formOutput = attachedForm
-    ? ({ pptx: 'pptx', docx: 'docx', hwpx: 'hwp' } as const)[attachedForm.form!.kind as FormKind]
+    ? ({ pptx: 'pptx', docx: 'docx', hwpx: 'hwp', xlsx: null } as const)[attachedForm.form!.kind as FormKind]
     : null
   // The saved form the document follows: a deck's always, a report's when it is a Word or 한글 file.
   const reportFile = kind === 'report' ? formOutput ?? output ?? detectedOutput : null
-  const savedKind: FormKind | null = kind === 'slides' ? 'pptx'
+  const savedKind: FormKind | null = kind === 'slides' ? 'pptx' : kind === 'sheet' ? 'xlsx'
     : reportFile === 'docx' ? 'docx' : reportFile === 'hwp' ? 'hwpx' : null
   const savedForm = savedKind && !attachedForm && !session?.formFiles?.[savedKind]
     ? project?.formRows?.find((row) => row.id === project?.formFiles?.[savedKind])
@@ -2746,6 +2746,15 @@ export function Composer({
 
         {kind === 'sheet' && fresh && (
           <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-2.5 py-2">
+            {savedForm && (
+              <SavedFormChip
+                name={savedForm.name}
+                kind="xlsx"
+                source="project"
+                off={savedFormOff}
+                onOff={(off) => setSavedFormsOff(off ? ['xlsx'] : [])}
+              />
+            )}
             <button
               type="button"
               onClick={() => void blankSheet.start()}

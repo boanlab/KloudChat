@@ -1421,7 +1421,7 @@ export const sessionsApi = {
 /* ── workspace: owned by the caller; anything else 404 ── */
 
 /** An output kind a 양식 (form file) shapes. */
-export type FormKind = 'pptx' | 'docx' | 'hwpx'
+export type FormKind = 'pptx' | 'docx' | 'hwpx' | 'xlsx'
 /** How a turn reads an attachment: followed as its 양식, or read as 자료. */
 export type FormRole = 'form' | 'material'
 
@@ -1444,6 +1444,8 @@ export interface FormSummary {
   /** Word and 한글: the slots to fill. */
   fields?: number
   tables?: number
+  /** Excel: the sheet count. */
+  sheets?: number
   /** `.hwp`: how to save it as HWPX to use it as a form. */
   advice?: string
 }
