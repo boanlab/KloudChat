@@ -156,6 +156,7 @@ from app.services import (
     search_consent,
     server_notes,
     settings_store,
+    sheet_doc,
     shelf_sources,
     skill_specs,
     skill_turn,
@@ -311,7 +312,7 @@ _STRICT_LOCAL_TOOL_NAMES = frozenset(
         # self-hosted sandbox, networking off; offered only when `sandbox_in_boundary`
         "run_skill_script",
         "run_code",
-        # the conversation's own HWP, Word or PowerPoint file, edited in process
+        # the conversation's own HWP, Word, PowerPoint or sheet file, edited in process
         "hwp_read",
         "hwp_edit",
         "hwp_write",
@@ -324,6 +325,10 @@ _STRICT_LOCAL_TOOL_NAMES = frozenset(
         "pptx_edit",
         "pptx_write",
         "pptx_restore",
+        "xlsx_read",
+        "xlsx_edit",
+        "xlsx_write",
+        "xlsx_restore",
         # a project paper's own figures, cut in process
         "pdf_figures",
     }
@@ -566,7 +571,7 @@ def _written(document: Artifact) -> bool:
     a count) is written into, not read first."""
     data = document.data or {}
     listed = [data.get("sections"), data.get("slides")]
-    return bool(str(data.get("text") or "").strip()
+    return bool(str(data.get("text") or "").strip() or data.get("cells")
                 or any(isinstance(rows, list) and rows for rows in listed))
 
 
@@ -595,6 +600,10 @@ _ASKS_PPTX = re.compile(
     r"파워\s?포인트|(?<![A-Za-z])ppt\s{0,2}(?:파일|files?)",
     re.I,
 )
+#: 「엑셀 파일로」, 「xlsx」, 「스프레드시트」: a request for an Excel file; any chat may make one
+_ASKS_XLSX = re.compile(
+    r"(?<![A-Za-z])xlsx(?![A-Za-z])|엑셀\s{0,2}(?:파일|문서|시트|표|로|으로)|스프레드\s?시트|"
+    r"(?<![A-Za-z])excel\s{0,2}(?:files?|sheets?|workbooks?)(?![A-Za-z])", re.I)
 #: a request to write, fill or change a document (not a question about it)
 _WRITES_DOCUMENT = re.compile(
     r"작성|써\s{0,2}(?:줘|주세요|줄래)|쓰고|만들어|채워|넣어|고쳐|바꿔|수정|정리해|추가해|옮겨|"
@@ -641,6 +650,7 @@ _WEB_RULE = (
 #: office documents a chat works on beside it: tool prefix, service, what asks for one
 _OFFICE = (
     ("hwp", hwp_doc, _ASKS_HWP), ("docx", docx_doc, _ASKS_DOCX), ("pptx", pptx_doc, _ASKS_PPTX),
+    ("xlsx", sheet_doc, _ASKS_XLSX),
 )
 
 
@@ -5813,6 +5823,10 @@ async def _send_message(
     #: the surface this turn runs as: a report written as an HWP or Word file is worked on from
     #: here like a chat's office document, its tools and pre-read included
     kind = SessionKind.chat if await _office_report(db, session) else session.kind
+    #: the sheet surface is a chat with the sheet tools, under its own system prompt (`context`)
+    prompt_kind = kind
+    if session.kind is SessionKind.sheet:
+        kind, prompt_kind = SessionKind.chat, SessionKind.sheet
     if hwp_refusal:
         # nothing is written: the answer is the way to HWPX, said by the chat turn that
         # makes no model call (`_canned`), whatever the screen the person asked on
@@ -6254,6 +6268,9 @@ async def _send_message(
             name: published is None and (bool(asks.search(content)) or name in office_documents)
             for name, _, asks in _OFFICE
         }
+        if session.kind is SessionKind.sheet and published is None:
+            # the sheet surface always has the sheet tools: a new workbook is `xlsx_write`
+            office_open["xlsx"] = True
         if web_edit is not None:
             # the conversation's web report or deck, edited in place
             office_open["deck" if web_edit.kind is ArtifactKind.deck else "report"] = True
@@ -6788,7 +6805,7 @@ async def _send_message(
     def envelope(wire: list[dict], *, economy: bool = False) -> list[dict]:
         """Request for `wire`; reads `trusted_context` at call time; `economy` = tool-free shape."""
         built = build_messages(
-            kind,
+            prompt_kind,
             wire,
             with_tools=False if economy else bool(tools),
             web_search=False if economy else effective_web_search,
@@ -7508,6 +7525,12 @@ async def _send_message(
         # a blank document open beside the chat and content asked for: written into it first,
         # not researched into the chat (a search runs only when the person asked for one)
         forced_tool = first_write
+    if (not preflight_tool and forced_tool in (None, "web_search") and office_target is None
+            and session.kind is SessionKind.sheet and not session.artifact_id
+            and "xlsx_write" in tool_names and not requests_web_search(content)
+            and _WRITES_DOCUMENT.search(_ask_of(content))):
+        # a sheet conversation with no workbook yet and a table asked for: written into a new one
+        forced_tool = "xlsx_write"
     if forced_tool == "web_search" and "web_search" in tool_names and not given_links:
         # reuse only privacy-processed history; never re-send the earlier raw question
         lookup_content = (
@@ -8694,7 +8717,7 @@ async def _answer_turn(
         if summary := _run_summary(finish, pipe.name, "finish"):
             routing = {**routing, "run": summary}
     offered = {name.split("_")[0] for name in (t.name for t in tools)
-               if name.split("_")[0] in ("hwp", "docx", "pptx", "report", "deck")
+               if name.split("_")[0] in ("hwp", "docx", "pptx", "xlsx", "report", "deck")
                and name.endswith(("_edit", "_write"))}
     if content.strip() and not failed and (said := office_claims.note(content, ctx, offered)):
         # what the reply says it did to the document, held to the versions actually saved
@@ -8814,7 +8837,8 @@ async def _answer_turn(
     if stored_content and not failed and not skip_completion_work and published is None \
             and not paused_turn:
         if (not ctx.pending_artifacts and not form_card and not canned_answer
-                and not any(saved.get("changed") for saved in (ctx.hwp, ctx.docx, ctx.pptx))
+                and not any(saved.get("changed")
+                            for saved in (ctx.hwp, ctx.docx, ctx.pptx, ctx.xlsx))
                 and (owed := code_file_save.file_owed(ctx.asked, content, ctx.code_runs))):
             # a program or page the person asked for that the model wrote but never saved:
             # kept as the artifact it should have been
@@ -8841,7 +8865,7 @@ async def _answer_turn(
     # the HWP, Word or PowerPoint documents the tools saved this turn: the editor opens on
     # them, the answer carries their card and the chat reopens on the last
     office_made: list[str] = []
-    for saved in (ctx.hwp, ctx.docx, ctx.pptx):
+    for saved in (ctx.hwp, ctx.docx, ctx.pptx, ctx.xlsx):
         if saved.get("changed") and saved.get("id") and saved["id"] != new_artifact:
             office_made.append(saved["id"])
             yield chat_service.sse(
@@ -9105,7 +9129,7 @@ async def _answer_turn(
     if published is None:
         await _push_answer(session_id, force_tool=force_tool, office_made=office_made,
                            office_target=any(saved.get("id") for saved in (
-                               ctx.hwp, ctx.docx, ctx.pptx)),
+                               ctx.hwp, ctx.docx, ctx.pptx, ctx.xlsx)),
                            failed=failed, elapsed=time.monotonic() - turn_started)
     # stored id with `done`; browser's streaming id provisional
     yield chat_service.sse({"type": "done", **({"messageId": answer_id} if answer_id else {})})

@@ -200,6 +200,15 @@ _SURFACE_DEFAULTS: dict[SessionKind, str] = {
         "You make presentation slides. At most 5 bullets per slide, and a bullet never runs "
         "past two lines. Write speaker notes as well."
     ),
+    SessionKind.sheet: (
+        "You build and change spreadsheets (Excel workbooks) with the sheet tools. The sheet "
+        "is the product, not the chat: tables, calculations and layouts go into the workbook, "
+        "and the answer says in a few lines what it now holds. A value that follows from other "
+        "cells is a formula so the sheet stays live; a number the person or their material did "
+        "not give is never typed in (a bracket blank like 「[매출액]」 and a question instead), "
+        "and every figure you quote comes from the sheet's own values as the tools report "
+        "them."
+    ),
 }
 
 
@@ -339,7 +348,15 @@ _LIGHT_SURFACE: dict[SessionKind, str] = {
         "You make presentation slides in KloudChat. Each slide is rendered from the JSON each "
         "request asks for; speaker notes are what the presenter says."
     ),
+    SessionKind.sheet: (
+        "You build and change spreadsheets (Excel workbooks) in KloudChat with the sheet "
+        "tools: tables and calculations go into the workbook as cells and formulas, never "
+        "numbers you worked out yourself, and the answer says briefly what the sheet holds."
+    ),
 }
+
+#: surfaces that answer in conversation (the sheet one works through tools, but talks like chat)
+_CONVERSATIONAL = (SessionKind.chat, SessionKind.sheet)
 
 #: model quirk the renderer cannot fix afterwards
 _LIGHT_KOREAN = "In Korean, use no Hanja or simplified Chinese except glosses in parentheses."
@@ -419,9 +436,9 @@ def system_prompt(
         _KOREAN_ONLY,
     ]
     # Chat only: `_WRITING` sample leaks into documents.
-    if kind is SessionKind.chat:
+    if kind in _CONVERSATIONAL:
         parts.append(_WRITING)
-    if kind is not SessionKind.chat:
+    if kind not in _CONVERSATIONAL:
         parts.append(_DOCUMENT_LANGUAGE)
     parts.append(_today())
     parts.extend(p for p in (extra or []) if p and p.strip())
@@ -432,7 +449,7 @@ def system_prompt(
             parts.append(_WEB_SEARCH_BLOCKED)
         else:
             parts.append(_WEB_SEARCH_AUTO if web_search_auto else _WEB_SEARCH_NUDGE)
-    if kind is SessionKind.chat:
+    if kind in _CONVERSATIONAL:
         parts.append(_CHAT_TASK_CONTRACT)
     # Style/nudges must not harden uncertain facts.
     parts.append(FRESHNESS_INSTRUCTION)
@@ -458,7 +475,7 @@ def _light_prompt(
             extra,
         )
     parts = [_LIGHT_SURFACE.get(kind, _LIGHT_SURFACE[SessionKind.chat]), _LIGHT_KOREAN]
-    if kind is not SessionKind.chat:
+    if kind not in _CONVERSATIONAL:
         parts.append(_DOCUMENT_LANGUAGE)
     parts.append(_today())
     parts.extend(p for p in (extra or []) if p and p.strip())
@@ -487,11 +504,11 @@ def _fixed_parts(kind: SessionKind, *, with_tools: bool) -> list[str]:
         _SURFACE_DEFAULTS.get(kind, _SURFACE_DEFAULTS[SessionKind.chat]),
         _CORE_ACCURACY,
         _KOREAN_ONLY,
-        _WRITING if kind is SessionKind.chat else _DOCUMENT_LANGUAGE,
+        _WRITING if kind in _CONVERSATIONAL else _DOCUMENT_LANGUAGE,
     ]
     if with_tools:
         parts.append(_TOOL_RULES)
-    if kind is SessionKind.chat:
+    if kind in _CONVERSATIONAL:
         parts.append(_CHAT_TASK_CONTRACT)
     parts.append(FRESHNESS_INSTRUCTION)
     return parts
@@ -499,7 +516,7 @@ def _fixed_parts(kind: SessionKind, *, with_tools: bool) -> list[str]:
 
 def _light_fixed_parts(kind: SessionKind, *, with_tools: bool) -> list[str]:
     parts = [_LIGHT_SURFACE.get(kind, _LIGHT_SURFACE[SessionKind.chat]), _LIGHT_KOREAN]
-    if kind is not SessionKind.chat:
+    if kind not in _CONVERSATIONAL:
         parts.append(_DOCUMENT_LANGUAGE)
     if with_tools:
         parts.append(_LIGHT_TOOLS)

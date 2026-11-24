@@ -1611,8 +1611,8 @@ export function Composer({
       return
     }
     if (costAsk !== null) setCostAsk(null)
-    if (!editing && (kind === 'chat' || kind === 'report' || kind === 'slides') && !editsChecked && hasOfficeEditor(sessionId)) {
-      // the agent edits the saved file (an office document's, or the web slides'): unsaved hand
+    if (!editing && (kind === 'chat' || kind === 'report' || kind === 'slides' || kind === 'sheet') && !editsChecked && hasOfficeEditor(sessionId)) {
+      // the agent edits the saved file (an office document's, a sheet's, or the web slides'): unsaved hand
       // edits (asked of the editor now, not as last polled) are saved or dropped first
       if (checkingEdits.current) return
       checkingEdits.current = true
