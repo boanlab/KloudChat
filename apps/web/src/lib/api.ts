@@ -603,15 +603,11 @@ export interface SystemSettings {
     image: string
     audio: string
     video: string
-    title: string
-    code: string
-    codeFallback: string
     selfHostedThinking: boolean
     externalThinking: boolean
     defaultMonthlyCredits: number
-    /** `helper`: chat models this instance runs (self-hosted, or `local/` with a strict-local twin). */
     choices: Record<
-      'chat' | 'report' | 'slides' | 'image' | 'audio' | 'video' | 'helper',
+      'chat' | 'report' | 'slides' | 'image' | 'audio' | 'video',
       { id: string; label: string; strictLocal: boolean }[]
     >
   }

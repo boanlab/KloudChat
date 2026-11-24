@@ -62,15 +62,14 @@ def stored(monkeypatch):
 
 
 def test_a_stored_choice_wins_and_an_absent_one_is_the_environment(monkeypatch):
-    monkeypatch.setattr(settings, "title_model", "local/env-title")
     monkeypatch.setattr(settings, "default_report_model", "local/env-report")
     roles = settings_store.model_roles_from({})
-    assert (roles.title, roles.report) == ("local/env-title", "local/env-report")
-    # A stored "" is a choice: the session's own model, the chat default.
-    roles = settings_store.model_roles_from({"models.title": "", "models.report": ""})
-    assert (roles.title, roles.report) == ("", "")
-    roles = settings_store.model_roles_from({"models.title": " local/qwen3.8-flash "})
-    assert roles.title == "local/qwen3.8-flash"
+    assert roles.report == "local/env-report"
+    # A stored "" is a choice: the chat default.
+    roles = settings_store.model_roles_from({"models.report": ""})
+    assert roles.report == ""
+    roles = settings_store.model_roles_from({"models.report": " local/qwen3.8-flash "})
+    assert roles.report == "local/qwen3.8-flash"
 
 
 async def test_the_new_account_allowance_is_stored(stored, monkeypatch):
@@ -117,17 +116,24 @@ async def test_the_catalogue_defaults_follow_the_stored_roles(monkeypatch):
     assert catalogue["defaultAvModelByMode"] == {"audio": "openai/voice", "video": "google/film"}
 
 
-def test_the_code_models_are_the_stored_ones(monkeypatch):
-    monkeypatch.setitem(settings_store._cache, "values", {
-        "models.code": "local/qwen3.8-27b", "models.code_fallback": "local/qwen3.8-flash",
-    })
-    assert sandbox_tools.code_models(False) == ["local/qwen3.8-27b", "local/qwen3.8-flash"]
+def test_the_code_models_are_the_super_agent_code_row(monkeypatch):
+    from app.services import governance, super_agent
+
+    monkeypatch.setitem(governance._cache, "value", None)
+    # No admin table: the built-in `code` row, then the other self-hosted fallback.
+    assert sandbox_tools.code_models(False) == ["local/qwen3.8-flash", "local/qwen3.8-27b"]
     assert sandbox_tools.code_models(True) == [
-        "strict-local/qwen3.8-27b", "strict-local/qwen3.8-flash",
+        "strict-local/qwen3.8-flash", "strict-local/qwen3.8-27b",
     ]
-    monkeypatch.setitem(settings_store._cache, "values", {"models.code_fallback": ""})
-    monkeypatch.setattr(settings, "code_model", "local/qwen3.8-27b")
-    assert sandbox_tools.code_models(False) == ["local/qwen3.8-27b"]
+    # An admin's row names the writer; an outside model is never a helper.
+    rules = {"code": {"model": "openai/gpt-x", "strictModel": "strict-local/qwen3.8-27b"}}
+    policy = type("Policy", (), {"super_agent_rules": rules})()
+    monkeypatch.setitem(governance._cache, "value", policy)
+    assert sandbox_tools.code_models(False) == ["local/qwen3.8-27b", "local/qwen3.8-flash"]
+    assert all(
+        m.startswith(("local/", "strict-local/"))
+        for m in super_agent.helper_models(super_agent.cached_rules(), "code", strict=False)
+    )
 
 
 @pytest.mark.parametrize(
@@ -142,10 +148,6 @@ def test_the_code_models_are_the_stored_ones(monkeypatch):
         # No cheapest-model fallback: a served mode needs the admin's pick.
         ("model_audio", "", "model_audio_required"),
         ("model_video", "", "model_video_required"),
-        # Side work that reads the conversation stays on self-hosted models.
-        ("model_title", "openai/gpt-x", "model_title_invalid"),
-        ("model_code", "openai/gpt-x", "model_code_invalid"),
-        ("model_code_fallback", "local/borrowed", "model_code_fallback_invalid"),
         ("thinking_self_hosted", "yes", "thinking_self_hosted_invalid"),
         ("default_monthly_credits", "-5", "default_monthly_credits_invalid"),
         ("default_monthly_credits", "9999999999", "default_monthly_credits_invalid"),
@@ -167,19 +169,17 @@ async def test_fitting_choices_and_the_model_in_force_are_accepted(stored):
     await _check_model_roles(SystemSettingsIn(
         model_chat="local/qwen3.8-27b", model_report="", model_slides="openai/gpt-x",
         model_image="google/img", model_audio="openai/voice", model_video="google/film",
-        model_title="local/qwen3.8-flash", model_code="local/qwen3.8-27b",
-        model_code_fallback="strict-local/qwen3.8-flash", thinking_self_hosted="0",
+        thinking_self_hosted="0",
         thinking_external="1", default_monthly_credits="1000000",
     ))
     # A model the gateway stopped serving can be saved again as it is.
-    stored["models.title"] = "local/retired"
-    await _check_model_roles(SystemSettingsIn(model_title="local/retired"))
+    stored["models.image"] = "google/retired"
+    await _check_model_roles(SystemSettingsIn(model_image="google/retired"))
     shown = await _model_role_settings()
-    assert shown["title"] == "local/retired"
-    assert [m["id"] for m in shown["choices"]["helper"]] == [
-        "local/qwen3.8-27b", "local/qwen3.8-flash", "strict-local/qwen3.8-flash",
-        "strict-local/qwen3.8-27b",
-    ]
+    assert shown["image"] == "google/retired"
+    # Helper work has no role of its own.
+    assert not {"title", "code", "codeFallback"} & set(shown)
+    assert "helper" not in shown["choices"]
     assert [m["id"] for m in shown["choices"]["video"]] == ["google/film"]
 
 
@@ -229,7 +229,6 @@ def test_the_migration_seeds_the_environment_once_and_moves_old_defaults(monkeyp
         "default_chat_model": "local/qwen3.8-27b",
         "default_report_model": "local/qwen3.8-27b",
         "default_slides_model": "local/qwen3.8-27b",
-        "title_model": "local/qwen3.8-27b",  # the earlier code default
         "default_monthly_credits": 700_000,
         "self_hosted_chat_thinking": False,
     }.items():
@@ -244,8 +243,8 @@ def test_the_migration_seeds_the_environment_once_and_moves_old_defaults(monkeyp
         )
         # Saved by an administrator before: left alone.
         conn.execute(sa.text(
-            "INSERT INTO system_settings VALUES ('models.code', 'local/mine', 0, NULL, 'admin'),"
-            " ('ocr.vision_model', 'strict-local/qwen3.8-flash-next', 0, NULL, 'admin')"
+            "INSERT INTO system_settings VALUES "
+            "('ocr.vision_model', 'strict-local/qwen3.8-flash-next', 0, NULL, 'admin')"
         ))
         with Operations.context(MigrationContext.configure(conn)):
             migration.upgrade()
@@ -253,9 +252,8 @@ def test_the_migration_seeds_the_environment_once_and_moves_old_defaults(monkeyp
         assert rows["models.chat"] == rows["models.report"] == rows["models.slides"] == (
             "local/qwen3.8-27b"
         )
-        assert rows["models.title"] == "local/qwen3.8-flash"
-        assert rows["models.code"] == "local/mine"
-        assert rows["models.code_fallback"] == settings.code_fallback_model
+        # Helper work is the Super Agent's: no role rows are seeded for it.
+        assert not {"models.title", "models.code", "models.code_fallback"} & set(rows)
         assert rows["thinking.self_hosted"] == "0"
         assert rows["credits.default_monthly"] == "700000"
         assert rows["ocr.vision_model"] == "strict-local/qwen3.8-flash"
@@ -272,13 +270,12 @@ def test_the_migration_seeds_the_environment_once_and_moves_old_defaults(monkeyp
         assert _rows(conn)["models.chat"] == "x"
         with Operations.context(MigrationContext.configure(conn)):
             migration.downgrade()
-        # The seeded rows go, the administrator's own choice of code model with them.
+        # The seeded rows go; the setting no one seeds stays.
         assert set(_rows(conn)) == {"ocr.vision_model"}
 
 
 def test_a_classifier_the_administrator_chose_is_kept(monkeypatch):
     migration = _migration()
-    monkeypatch.setattr(settings, "title_model", "local/custom-titler")
     engine = sa.create_engine("sqlite://")
     with engine.begin() as conn:
         _database(
@@ -293,8 +290,6 @@ def test_a_classifier_the_administrator_chose_is_kept(monkeypatch):
         policy = conn.execute(sa.text("SELECT * FROM governance")).mappings().one()
         assert policy["adaptive_classifier_model_id"] == "strict-local/qwen3.8-27b"
         assert policy["outline_model_id"] == "local/qwen3.5-122b"
-        # A title model someone named on purpose is seeded as it is.
-        assert _rows(conn)["models.title"] == "local/custom-titler"
 
 
 def test_new_account_credits_default_is_one_number_everywhere():

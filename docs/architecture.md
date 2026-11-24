@@ -349,8 +349,8 @@ row's scripts by its `catalog_key`. Two sandbox tools work on the conversation's
 read-only beside the files and runs one script with JSON arguments (through bash, so
 LibreOffice can recalculate formulas), and `run_code` hands a Korean task plus a
 code-computed schema of each file (`services/file_schema.py`) to the code model
-(`CODE_MODEL`, default `local/qwen3.8-27b`), runs the result, sends the error back once,
-then gives `CODE_FALLBACK_MODEL` one try. What a run writes under `outputs/` is stored
+(the Super Agent `code` row's self-hosted pick, `super_agent.helper_models`), runs the result,
+sends the error back once, then gives the next self-hosted model one try. What a run writes under `outputs/` is stored
 as the user's files in the chat and listed on the step as `outputs` (download chips).
 One sandbox session serves a turn, kept on `ToolContext.sandbox`. The sandbox sits in
 the self-hosted stack with networking off, so with `SANDBOX_IN_BOUNDARY` (on) both tools

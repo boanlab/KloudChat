@@ -166,9 +166,6 @@ _SETTING_SECTION: dict[str, str] = {
     "model_image": "models",
     "model_audio": "models",
     "model_video": "models",
-    "model_title": "models",
-    "model_code": "models",
-    "model_code_fallback": "models",
     "thinking_self_hosted": "models",
     "thinking_external": "models",
     "default_monthly_credits": "signup",
@@ -235,9 +232,6 @@ _MODEL_ROLE_FIELDS: tuple[tuple[str, str, str, bool], ...] = (
     ("model_image", settings_store.MODEL_IMAGE, "image", False),
     ("model_audio", settings_store.MODEL_AUDIO, "audio", False),
     ("model_video", settings_store.MODEL_VIDEO, "video", False),
-    ("model_title", settings_store.MODEL_TITLE, "helper", True),
-    ("model_code", settings_store.MODEL_CODE, "helper", True),
-    ("model_code_fallback", settings_store.MODEL_CODE_FALLBACK, "helper", True),
 )
 
 #: fields whose value may also be a Super Agent start (`settings_store.ROUTING_CHAT`)
@@ -255,19 +249,8 @@ _MAX_DEFAULT_CREDITS = 1_000_000_000
 
 
 def _model_choices(catalogue: dict) -> dict[str, list[dict]]:
-    """Allowed models per role; conversation-reading side work stays on instance-run models."""
+    """Allowed models per role."""
     models = catalogue.get("models") or []
-    self_hosted = {
-        m["id"] for m in models
-        if m.get("dataBoundary") == "self_hosted" and "chat" in (m.get("kinds") or [])
-    }
-
-    def runs_here(model: dict) -> bool:
-        if model["id"] in self_hosted:
-            return True
-        name = model["id"].removeprefix("local/")
-        return model["id"].startswith("local/") and f"strict-local/{name}" in self_hosted
-
     def row(model: dict) -> dict:
         return {
             "id": model["id"],
@@ -290,7 +273,6 @@ def _model_choices(catalogue: dict) -> dict[str, list[dict]]:
         "image": of_kind("image"),
         "audio": of_kind("av", "audio"),
         "video": of_kind("av", "video"),
-        "helper": [row(m) for m in models if "chat" in (m.get("kinds") or []) and runs_here(m)],
     }
 
 
@@ -305,9 +287,6 @@ async def _model_role_settings() -> dict:
         "image": roles.image,
         "audio": roles.audio,
         "video": roles.video,
-        "title": roles.title,
-        "code": roles.code,
-        "codeFallback": roles.code_fallback,
         "selfHostedThinking": roles.self_hosted_thinking,
         "externalThinking": roles.external_thinking,
         "defaultMonthlyCredits": await settings_store.default_monthly_credits(),
@@ -333,9 +312,6 @@ async def _check_model_roles(payload: SystemSettingsIn) -> None:
             settings_store.MODEL_IMAGE: in_force.image,
             settings_store.MODEL_AUDIO: in_force.audio,
             settings_store.MODEL_VIDEO: in_force.video,
-            settings_store.MODEL_TITLE: in_force.title,
-            settings_store.MODEL_CODE: in_force.code,
-            settings_store.MODEL_CODE_FALLBACK: in_force.code_fallback,
         }
         for field, key, role, optional, value in wanted:
             if not value:

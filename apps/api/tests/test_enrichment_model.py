@@ -1,4 +1,4 @@
-"""Resolution of the enrichment model named by `title_model`."""
+"""Titles and memory run on the Super Agent's internal helper pick, never an outside model."""
 
 from __future__ import annotations
 
@@ -6,6 +6,8 @@ import time
 
 import pytest
 
+from app.routers import sessions
+from app.services import governance, super_agent
 from app.services import models as model_service
 
 
@@ -14,9 +16,7 @@ def _seed(catalogue_ids: list[str]) -> dict:
     model_service._CACHE.update(
         at=time.monotonic(),
         value={
-            "models": [
-                {"id": model_id, "kinds": ["chat"]} for model_id in catalogue_ids
-            ],
+            "models": [{"id": model_id, "kinds": ["chat"]} for model_id in catalogue_ids],
             "litellmAvailable": True,
             "defaultChatModel": "",
         },
@@ -24,80 +24,57 @@ def _seed(catalogue_ids: list[str]) -> dict:
     return previous
 
 
-@pytest.mark.asyncio
-async def test_a_served_model_is_used_as_configured(monkeypatch):
-    previous = _seed(["local/glm-4.7-flash", "local/qwen3.8-27b"])
-    monkeypatch.setattr(model_service.settings, "title_model", "local/glm-4.7-flash")
-    try:
-        assert await model_service.resolve_enrichment_model() == "local/glm-4.7-flash"
-    finally:
-        model_service._CACHE.update(previous)
+async def _choose(monkeypatch, catalogue_ids, *, strict, writer_id, rules=None):
+    async def policy(*_args, **_kwargs):
+        return type("Policy", (), {"super_agent_rules": rules})()
 
-
-@pytest.mark.asyncio
-async def test_a_name_the_gateway_does_not_serve_falls_back(monkeypatch):
-    # "" hands the caller the session's own model.
-    previous = _seed(["z-ai/glm-4.7-flash", "qwen/qwen3.6-35b-a3b"])
-    monkeypatch.setattr(model_service.settings, "title_model", "local/glm-4.7-flash")
-    model_service._MISSING_ENRICHMENT.discard("local/glm-4.7-flash")
-    try:
-        assert await model_service.resolve_enrichment_model() == ""
-    finally:
-        model_service._CACHE.update(previous)
-        model_service._MISSING_ENRICHMENT.discard("local/glm-4.7-flash")
-
-
-@pytest.mark.asyncio
-async def test_an_image_only_model_is_not_eligible(monkeypatch):
-    previous = _seed([])
-    model_service._CACHE["value"]["models"] = [
-        {"id": "openai/gpt-5-image", "kinds": ["image"]}
-    ]
-    monkeypatch.setattr(model_service.settings, "title_model", "openai/gpt-5-image")
-    model_service._MISSING_ENRICHMENT.discard("openai/gpt-5-image")
-    try:
-        assert await model_service.resolve_enrichment_model() == ""
-    finally:
-        model_service._CACHE.update(previous)
-        model_service._MISSING_ENRICHMENT.discard("openai/gpt-5-image")
-
-
-@pytest.mark.asyncio
-async def test_an_empty_setting_needs_no_catalogue(monkeypatch):
-    def unreachable():  # pragma: no cover - the point is that it is not called
-        raise AssertionError("list_models must not be consulted for an empty setting")
-
-    monkeypatch.setattr(model_service.settings, "title_model", "")
-    monkeypatch.setattr(model_service, "list_models", unreachable)
-    assert await model_service.resolve_enrichment_model() == ""
-
-
-async def _strict_twin(monkeypatch, catalogue_ids, configured):
-    from app.routers import sessions
-
+    monkeypatch.setattr(governance, "current", policy)
     previous = _seed(catalogue_ids)
-    monkeypatch.setattr(model_service.settings, "title_model", configured)
-    model_service._MISSING_ENRICHMENT.discard(configured)
-    writer = {"id": "strict-local/qwen3.8-27b", "kinds": ["chat"]}
     try:
-        return await sessions._enrichment_model(writer, strict_local=True,
-                                                disable_fallbacks=False)
+        return await sessions._enrichment_model(
+            {"id": writer_id, "kinds": ["chat"]}, strict_local=strict, disable_fallbacks=False)
     finally:
         model_service._CACHE.update(previous)
 
 
+def test_helpers_are_internal_whatever_the_table_says():
+    rules = super_agent.normalise_rules({"simple": {
+        "model": "deepseek/deepseek-v4.1-flash", "strictModel": "strict-local/qwen3.8-27b"}})
+    assert super_agent.helper_models(rules, strict=False)[0] == "local/qwen3.8-27b"
+    assert super_agent.helper_models(rules, strict=True)[0] == "strict-local/qwen3.8-27b"
+    for strict in (False, True):
+        assert all(
+            m.startswith("strict-local/" if strict else "local/")
+            for m in super_agent.helper_models(rules, strict=strict))
+
+
 @pytest.mark.asyncio
-async def test_a_strict_local_conversation_uses_the_chosen_models_strict_local_twin(monkeypatch):
-    # As 시스템 › 모델 says: the chosen model's strict-local version does the side work.
-    chosen = await _strict_twin(
+async def test_titles_use_the_simple_rows_internal_model(monkeypatch):
+    chosen = await _choose(
+        monkeypatch, ["local/qwen3.8-flash", "local/qwen3.8-27b"],
+        strict=False, writer_id="deepseek/deepseek-v4.1-flash")
+    assert chosen["id"] == "local/qwen3.8-flash"
+
+
+@pytest.mark.asyncio
+async def test_a_strict_local_conversation_uses_the_strict_local_twin(monkeypatch):
+    chosen = await _choose(
         monkeypatch,
         ["local/qwen3.8-flash", "strict-local/qwen3.8-flash", "strict-local/qwen3.8-27b"],
-        "local/qwen3.8-flash")
+        strict=True, writer_id="strict-local/qwen3.8-27b")
     assert chosen["id"] == "strict-local/qwen3.8-flash"
 
 
 @pytest.mark.asyncio
-async def test_without_a_strict_local_twin_the_conversations_model_does_it(monkeypatch):
-    chosen = await _strict_twin(
-        monkeypatch, ["local/qwen3.8-flash", "strict-local/qwen3.8-27b"], "local/qwen3.8-flash")
+async def test_a_pick_the_gateway_does_not_serve_moves_to_the_next(monkeypatch):
+    chosen = await _choose(
+        monkeypatch, ["strict-local/qwen3.8-27b"], strict=True,
+        writer_id="strict-local/other")
     assert chosen["id"] == "strict-local/qwen3.8-27b"
+
+
+@pytest.mark.asyncio
+async def test_nothing_served_leaves_the_writer(monkeypatch):
+    chosen = await _choose(
+        monkeypatch, [], strict=True, writer_id="strict-local/other")
+    assert chosen["id"] == "strict-local/other"

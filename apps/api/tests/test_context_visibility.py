@@ -460,12 +460,9 @@ def _patch_enrichment(monkeypatch, db: _EnrichDb, *, written: int) -> None:
         # `(written, usage)`; billing is covered in test_side_calls_are_billed.py.
         return written, {"inputTokens": 0, "outputTokens": 0}
 
-    async def enrichment_model():
-        return "model-a"
-
     monkeypatch.setattr(sessions_router.artifact_extract, "store_requested", store_requested)
     monkeypatch.setattr(sessions_router.auto_memory_service, "extract", remember)
-    monkeypatch.setattr(sessions_router.model_service, "resolve_enrichment_model", enrichment_model)
+    _helper_is(monkeypatch, ["model-a"])
 
 
 def _user() -> User:
@@ -491,3 +488,12 @@ def _memory(name: str, body: str) -> Memory:
 
 def _file(name: str, text: str, *, error: str | None = None) -> StoredFile:
     return StoredFile(id=f"file-{name}", user_id="user-1", name=name, text=text, error=error)
+
+
+def _helper_is(monkeypatch, models):
+    """The Super Agent's helper pick, fixed for the test."""
+    async def policy(*_args, **_kwargs):
+        return type("Policy", (), {"super_agent_rules": None})()
+
+    monkeypatch.setattr(sessions_router.governance, "current", policy)
+    monkeypatch.setattr(sessions_router.super_agent, "helper_models", lambda *a, **k: models)

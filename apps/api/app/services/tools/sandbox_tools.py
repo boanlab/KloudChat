@@ -16,6 +16,7 @@ from app.services import (
     sandbox,
     settings_store,
     skill_packages,
+    super_agent,
     thinking,
 )
 from app.services.tools.base import Tool, ToolContext, ToolResult
@@ -61,21 +62,10 @@ class CodeModelError(RuntimeError):
 
 
 def code_models(strict_local: bool) -> list[str]:
-    """Writer then fallback; strict-local turns get `strict-local/` ids only."""
-    roles = settings_store.cached_model_roles()
-    out: list[str] = []
-    for model in (roles.code, roles.code_fallback):
-        model = (model or "").strip()
-        if not model:
-            continue
-        if strict_local:
-            if model.startswith("local/"):
-                model = "strict-local/" + model.split("/", 1)[1]
-            elif not model.startswith("strict-local/"):
-                continue
-        if model not in out:
-            out.append(model)
-    return out
+    """Writer then fallback: the Super Agent's `code` row, internal only; strict-local turns get
+    `strict-local/` ids only."""
+    rules = super_agent.cached_rules()
+    return super_agent.helper_models(rules, super_agent.HELPER_CODE_ROW, strict=strict_local)[:2]
 
 
 _FENCE_OPEN = r"```(?:python|py)?[ \t]{0,8}\n"
@@ -415,7 +405,7 @@ async def run_code(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
     task = str(args.get("task") or "").strip()
     if not task:
         return ToolResult(content="오류: task 가 비었습니다. 무엇을 할지 한국어로 적으세요.", failed=True)
-    await settings_store.model_roles()  # refreshes `code_models` inputs
+    await governance.current()  # refreshes `code_models` inputs
     models = code_models(ctx.strict_local)
     if not models:
         return ToolResult(content="오류: 코드를 쓸 모델이 설정되지 않았습니다.", failed=True)

@@ -611,28 +611,6 @@ async def list_models(force: bool = False) -> dict[str, Any]:
     return result
 
 
-#: enrichment models already warned about
-_MISSING_ENRICHMENT: set[str] = set()
-
-
-async def resolve_enrichment_model() -> str:
-    """`title_model` if served for chat, else ""."""
-    configured = (await settings_store.model_roles()).title
-    if not configured:
-        return ""
-    catalogue = await list_models()
-    if any(model["id"] == configured and "chat" in model["kinds"] for model in catalogue["models"]):
-        return configured
-    if configured not in _MISSING_ENRICHMENT:
-        _MISSING_ENRICHMENT.add(configured)
-        log.warning(
-            "title_model %s is not in the catalogue; "
-            "titles and memory extraction use the session model",
-            configured,
-        )
-    return ""
-
-
 async def list_models_for_egress() -> dict[str, Any]:
     """Uncached catalogue for privacy/routing; empty on gateway failure (fail closed)."""
     catalogue = await list_models(force=True)

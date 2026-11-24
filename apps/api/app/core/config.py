@@ -191,9 +191,6 @@ class Settings(BaseSettings):
     code_interpreter_api_key: str = ""
     # First-install seeds, copied to `system_settings`; stored value wins.
 
-    #: `run_code` writer; strict-local uses strict twin. 27B 8/9 right on messy files, Flash 4/8
-    code_model: str = "local/qwen3.8-27b"
-    code_fallback_model: str = "local/qwen3.8-flash"
     #: Sandbox is networkless in the self-hosted stack, so offered to strict-local turns.
     sandbox_in_boundary: bool = True
     #: Seed `status: draft` skills, admin-private and runnable; off: neither.
@@ -201,8 +198,6 @@ class Settings(BaseSettings):
     # Hits scraped in full (one page fetch each).
     web_search_results: int = 5
     web_search_scrape: int = 3
-    # Titles, memories, running summary. Empty: session model; strict-local uses its own.
-    title_model: str = "local/qwen3.8-flash"
     #: Fallback chat model; `local/`, since strict alias gets no network tool.
     default_chat_model: str = "local/qwen3.8-flash"
     #: Off: Qwen3 templates get `enable_thinking: false`.

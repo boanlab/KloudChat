@@ -494,8 +494,8 @@ async def test_a_failing_script_is_a_failed_step(monkeypatch, chat):
 
 
 async def test_run_code_repairs_once_then_falls_back(monkeypatch, chat):
-    monkeypatch.setattr(sandbox_tools.settings, "code_model", "local/qwen3.8-27b")
-    monkeypatch.setattr(sandbox_tools.settings, "code_fallback_model", "local/qwen3.5-122b")
+    monkeypatch.setattr(
+        sandbox_tools, "code_models", lambda _strict: ["local/qwen3.8-27b", "local/qwen3.5-122b"])
     written: list[tuple[str, list[dict]]] = []
 
     async def write_code(model, messages, api_key):
@@ -533,7 +533,7 @@ async def test_run_code_repairs_once_then_falls_back(monkeypatch, chat):
 
 
 async def test_run_code_reports_a_memory_kill_as_a_limit(monkeypatch, chat):
-    monkeypatch.setattr(sandbox_tools.settings, "code_fallback_model", "")
+    monkeypatch.setattr(sandbox_tools, "code_models", lambda _strict: ["local/qwen3.8-27b"])
     prompts: list[list[dict]] = []
 
     async def write_code(model, messages, api_key):
@@ -553,10 +553,14 @@ async def test_run_code_reports_a_memory_kill_as_a_limit(monkeypatch, chat):
 
 
 def test_a_strict_local_turn_writes_code_on_strict_local_models(monkeypatch):
-    monkeypatch.setattr(sandbox_tools.settings, "code_model", "local/qwen3.8-27b")
-    monkeypatch.setattr(sandbox_tools.settings, "code_fallback_model", "openai/gpt-x")
-    assert sandbox_tools.code_models(False) == ["local/qwen3.8-27b", "openai/gpt-x"]
-    assert sandbox_tools.code_models(True) == ["strict-local/qwen3.8-27b"]
+    from app.services import super_agent
+
+    rules = super_agent.normalise_rules({"code": {
+        "model": "openai/gpt-x", "strictModel": "strict-local/qwen3.8-27b"}})
+    monkeypatch.setattr(super_agent, "cached_rules", lambda: rules)
+    assert sandbox_tools.code_models(False) == ["local/qwen3.8-27b", "local/qwen3.8-flash"]
+    assert sandbox_tools.code_models(True) == [
+        "strict-local/qwen3.8-27b", "strict-local/qwen3.8-flash"]
 
 
 async def test_execute_code_mounts_the_files_it_names(monkeypatch, chat):
@@ -667,8 +671,7 @@ def test_the_tools_are_described_for_the_model():
 
 
 async def test_run_code_keeps_the_code_that_ran_and_its_output_on_the_step(monkeypatch, chat):
-    monkeypatch.setattr(sandbox_tools.settings, "code_model", "local/qwen3.8-27b")
-    monkeypatch.setattr(sandbox_tools.settings, "code_fallback_model", "")
+    monkeypatch.setattr(sandbox_tools, "code_models", lambda _strict: ["local/qwen3.8-27b"])
     monkeypatch.setattr(sandbox_tools.settings, "code_interpreter_api_key", "sbx-secret-123456")
     codes = [
         "import pandas as pd\ndf = pd.read_excel('지점실적.xlsx')\nprint(df['매출'])",

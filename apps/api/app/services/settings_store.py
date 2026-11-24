@@ -81,11 +81,10 @@ MODEL_SLIDES = "models.slides"
 MODEL_IMAGE = "models.image"
 MODEL_AUDIO = "models.audio"
 MODEL_VIDEO = "models.video"
-#: titles, memories, running summary
-MODEL_TITLE = "models.title"
-#: `run_code` Python writer; fallback gets one more try
-MODEL_CODE = "models.code"
-MODEL_CODE_FALLBACK = "models.code_fallback"
+# helper work (titles, memory, `run_code` writer, tie-breaks) has no setting of its own: it runs
+# on the Super Agent's internal models (`super_agent.helper_models`). Rows left in
+# `system_settings` by earlier versions (`models.title`, `models.code`, `models.code_fallback`)
+# are ignored.
 #: How a new chat, report or slides conversation starts: `super`, `super_strict` or `manual`
 #: (the surface's model). Report and slides may store "" to follow chat. Unset: `super`.
 ROUTING_CHAT = "routing.chat"
@@ -112,9 +111,6 @@ MODEL_ROLE_ENV: dict[str, str] = {
     MODEL_IMAGE: "default_image_model",
     MODEL_AUDIO: "default_audio_model",
     MODEL_VIDEO: "default_video_model",
-    MODEL_TITLE: "title_model",
-    MODEL_CODE: "code_model",
-    MODEL_CODE_FALLBACK: "code_fallback_model",
 }
 
 SMTP_HOST = "smtp.host"
@@ -405,9 +401,6 @@ class ModelRoles:
     image: str
     audio: str
     video: str
-    title: str
-    code: str
-    code_fallback: str
     self_hosted_thinking: bool
     external_thinking: bool
     #: start mode per routed surface (`ROUTING_CHAT`), report and slides already resolved
@@ -469,9 +462,6 @@ def model_roles_from(values: dict[str, str]) -> ModelRoles:
         image=pick(MODEL_IMAGE),
         audio=pick(MODEL_AUDIO),
         video=pick(MODEL_VIDEO),
-        title=pick(MODEL_TITLE),
-        code=pick(MODEL_CODE),
-        code_fallback=pick(MODEL_CODE_FALLBACK),
         self_hosted_thinking=flag(THINKING_SELF_HOSTED, env_settings.self_hosted_chat_thinking),
         external_thinking=flag(THINKING_EXTERNAL, env_settings.external_chat_thinking),
     )
