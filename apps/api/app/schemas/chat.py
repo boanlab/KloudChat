@@ -121,6 +121,17 @@ class AudioRequest(Wire):
     seconds: int = Field(default=0, ge=0, le=300)
 
 
+class SpeakRequest(Wire):
+    """One sentence of an answer read aloud in a voice conversation; the clip is not kept."""
+
+    text: str = Field(min_length=1, max_length=600)
+    model: str | None = None
+    #: empty or one the model lacks = the model's default voice
+    voice: str = ""
+    #: a throwaway clip that loads the speech model; free
+    warm: bool = False
+
+
 class VideoJobRequest(Wire):
     """Video generation; priced per model×resolution×audio×seconds, unlisted refused."""
 

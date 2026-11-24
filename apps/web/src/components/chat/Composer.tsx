@@ -1,5 +1,6 @@
 import {
   ArrowUp,
+  AudioLines,
   AtSign,
   Boxes,
   Check,
@@ -54,6 +55,8 @@ import type {
 import { servedAspect, servedAspects } from '@/lib/aspects'
 import { ContextGauge } from './ContextGauge'
 import { ModelPicker } from './ModelPicker'
+import { VoicePanel } from './VoicePanel'
+import { setVoiceMode, useVoiceMode } from '@/lib/voiceSession'
 import { ReasoningChip } from './ReasoningChip'
 import { SharedBotItems } from './SharedBotItems'
 import { useFileDrop, usePasteFiles } from '@/lib/useFileDrop'
@@ -1603,6 +1606,7 @@ export function Composer({
 
   /** The office editor beside the chat is being asked about unsaved edits: one send at a time. */
   const checkingEdits = useRef(false)
+  const submitRef = useRef<(spoken?: string) => void>(() => undefined)
   const submit = (spoken?: string, editsChecked = false) => {
     const text = (spoken ?? [value.trim(), ...livePasted.current].filter(Boolean).join('\n\n')).trim()
     if (text.length > MESSAGE_LIMIT) {
@@ -1975,14 +1979,22 @@ export function Composer({
       setAdding(null)
     }
   }
+  // Voice conversation: speak, hear the answer read by the self-hosted voice. Needs dictation and such a model.
+  const voiceMode = useVoiceMode()
+  const defaultAudio = useStore((s) => s.avModelByMode.audio)
+  const voiceModel =
+    models.find((m) => m.id === defaultAudio && m.speechEndpoint && m.strictLocal && m.dataBoundary === 'self_hosted') ??
+    models.find((m) => m.speechEndpoint && m.strictLocal && m.dataBoundary === 'self_hosted' && m.kinds.includes('av'))
+  const canVoice = canRecord && !!voiceModel && kind === 'chat'
   // Everything but dictation, model and send sits behind 「+」; active options show as chips.
   // Offered before any skill is added, so a new account can find them from here.
   const showSkills = !isMedia
   // On a phone the microphone moves into 「+」 unless it is recording.
   const micInMenu = phone && canRecord && !recording && !transcribing
+  const voiceInMenu = phone && canVoice && !voiceMode
   const hasTools =
     !isMedia || showSkills || canWebSearch || usableConnectors.length > 0 ||
-    menuAgents.length > 0 || micInMenu
+    menuAgents.length > 0 || micInMenu || voiceInMenu
   const closePlus = () => {
     setPlusOpen(false)
     setPlusView('main')
@@ -2110,6 +2122,18 @@ export function Composer({
                 onClick={() => openPlusView('agents')}
               >
                 {t('에이전트')}
+              </ToolItem>
+            )}
+            {voiceInMenu && (
+              <ToolItem
+                icon={<AudioLines size={15} />}
+                label={t('음성 대화')}
+                onClick={() => {
+                  closePlus()
+                  setVoiceMode(true)
+                }}
+              >
+                {t('음성 대화')}
               </ToolItem>
             )}
             {micInMenu && (
@@ -2355,6 +2379,21 @@ export function Composer({
       )}
     </button>
   )
+  const voiceButton = canVoice && !phone && (
+    <button
+      onClick={() => setVoiceMode((on) => !on)}
+      className={cn(
+        'grid size-9 shrink-0 place-items-center rounded-control transition-colors hover:bg-elevated hover:text-fg',
+        voiceMode ? 'text-accent' : 'text-muted',
+      )}
+      aria-label={voiceMode ? t('음성 대화 끝내기') : t('음성 대화')}
+      aria-pressed={voiceMode}
+      data-testid="voice-chat-button"
+      title={t('말로 묻고 답을 소리로 듣습니다')}
+    >
+      <AudioLines size={16} />
+    </button>
+  )
   // Why a strict-local start is strict (project policy, saved default, admin start); not shown for a pick made here.
   const unsentStart = !session ||
     (session.messages.length === 0 && !session.messageCount && session.routingMode === 'super_strict')
@@ -2446,6 +2485,7 @@ export function Composer({
       phone={phone}
     />
   )
+  submitRef.current = (text) => submit(text)
   const sendButton = (
     <button
       onClick={streaming && sessionId ? () => stopStreaming(sessionId) : () => submit()}
@@ -2737,6 +2777,15 @@ export function Composer({
           </div>
         )}
 
+        {voiceMode && canVoice && voiceModel && (
+          <VoicePanel
+            sessionId={sessionId}
+            voices={voiceModel.voices ?? []}
+            defaultVoice={voiceFor(voiceModel, 'sohee')}
+            send={(text) => submitRef.current(text)}
+          />
+        )}
+
         {outputSurface && (
           <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-2.5 py-2">
             <OutputOptions
@@ -2907,6 +2956,7 @@ export function Composer({
           <div className="flex items-center gap-1 px-2 pb-2">
             {plusMenu}
             {micButton}
+            {voiceButton}
             <div className="ml-auto flex min-w-0 items-center gap-1">
               {contextGauge}
               {reasoningChip}

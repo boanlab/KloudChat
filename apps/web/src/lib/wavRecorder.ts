@@ -35,7 +35,7 @@ export async function startWavRecording(): Promise<WavRecorder> {
   }
 }
 
-function encodeWav(chunks: Float32Array[], sampleRate: number): Blob {
+export function encodeWav(chunks: Float32Array[], sampleRate: number): Blob {
   const length = chunks.reduce((n, c) => n + c.length, 0)
   const buffer = new ArrayBuffer(44 + length * 2)
   const view = new DataView(buffer)

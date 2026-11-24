@@ -42,6 +42,7 @@ from app.routers import (
     sheet,
     shelf,
     skill_files,
+    speak,
     transcriptions,
     usage,
     user_pipelines,
@@ -237,6 +238,7 @@ app.include_router(usage.router, prefix=settings.api_prefix)
 app.include_router(usage.me_router, prefix=settings.api_prefix)
 app.include_router(keys.router, prefix=settings.api_prefix)
 app.include_router(transcriptions.router, prefix=settings.api_prefix)
+app.include_router(speak.router, prefix=settings.api_prefix)
 app.include_router(shares.router, prefix=settings.api_prefix)
 app.include_router(publications.router, prefix=settings.api_prefix)
 app.include_router(push.router, prefix=settings.api_prefix)
