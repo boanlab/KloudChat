@@ -22,12 +22,11 @@ Skills the administrator shares with everyone. They show under **Official skills
 | Deep research (심층 조사) | Chat | Searches the web and papers many times through the **심층 리서치** MCP server and sums up the sourced findings. Takes a few minutes. Saying 「심층 리서치로」 in the request runs the detailed mode (5–15 minutes), and the step shows which mode ran (quick or detailed). |
 | Translation (번역) | Chat, Report | Translates between Korean and English (other languages on request) without leaving anything out. Names, numbers, units, tables, lists and code stay as they are; one term stays one term throughout; only genuinely ambiguous spots get a 「번역 메모」 (translator's note). Ask for 「직역」 (literal) or 「의역」 (free), 「격식체」 (formal) or 「평어체」 (plain) and it follows. |
 | Press release (보도자료) | Chat, Report | A press release with headline, subheadline, a who-what-when-where-why lead, the body most important first, the organisation's boilerplate and contact. Quotes only words the material gives to a named person (a name alone gets a quote draft marked 「가안」), and no figures the material does not give. Only the release date, embargo and contact are left as brackets for you to fill. Give a length (「A4 1장」, 「800자 이내」) and it keeps to it. |
-| Make an Excel file (엑셀 파일 만들기) | Chat | Turns a pasted table, an attached CSV or Excel file, or a computed table into a downloadable Excel (.xlsx) file. Total rows and columns such as totals or rates go in as formulas; on request it adds an Excel chart too. |
 | Make a chart (차트 만들기) | Chat | Draws a bar, line or stacked bar chart from a table's numbers beside the conversation. Only values in the material or computed by code. |
 
 ## Other skills, and what a skill brings
 
-There are also Date calculation (with the **시간** (time) MCP server it reads today's date from there), Excel cleanup, PDF table → Excel, Grounding check, Ask for missing information, Calculation and unit check and Mask personal information.
+An Excel file is made by [Sheet](../write/sheet), not by a skill. There are also Date calculation (with the **시간** (time) MCP server it reads today's date from there), Excel cleanup, PDF table → Excel, Grounding check, Ask for missing information, Calculation and unit check and Mask personal information.
 
 A skill brings its document format, checks and missing-information questions. Turn on **Meeting minutes** on the report screen, for instance, and it writes in the **회의록** format, asks for the meeting date and attendees before writing, and checks sources and format afterwards. A skill you turn on stays on for the rest of the conversation, approving the outline included.
 
@@ -41,12 +40,11 @@ Skills turned on in chat also go along when you ask for a document there and it 
 
 Use **개조식 보고** (「과장님께 올릴 1쪽 보고로」) and **비교·결정 보고** (「세 제품을 연간 비용과 필수 조건으로 비교해서 하나 골라 줘」) the same way.
 
-## Translation, press releases, Excel files and charts
+## Translation, press releases and charts
 
 - **번역** (Translation): turn it on in a conversation, paste the text and send something like 「영어로, 의역, 격식체로」 (into English, free, formal). To fix terms, add them: 「용어: 학생지원팀 = Student Support Office」. To translate a whole document as a document, turn it on on the report screen; it follows the source's headings and order and adds no summary or recommendation.
 - **보도자료** (Press release): paste the event, agreement or award material and send 「보도자료로, A4 1장」. If the material has no quote, it writes no quote paragraph and says so at the end. When only a spokesperson's name is given (a CEO, say), it drafts one quote for that person from the material's purpose and plan and marks it 「(가안, 본인 확인 필요)」. On the report screen, say 「보도자료」 in the request and the page head gets the release date, embargo and contact fields.
-- **엑셀 파일 만들기** (Make an Excel file): paste a table or attach a CSV or Excel file and send 「엑셀 파일로, 합계 행과 증감률 열은 수식으로」 (as an Excel file, total row and change-rate column as formulas). The file appears under the answer as a download button. For a messy sheet, turn on **엑셀 정리** (Excel cleanup) too; for aggregates, **자료 추출·집계** (Extract and tally), and you get the computed table as a file. Code execution (the sandbox) must be on.
-- **차트 만들기** (Make a chart): paste a table and send 「지점별 월 매출을 막대 차트로」 (monthly sales by branch as a bar chart); the chart opens beside the conversation. To put the chart inside the Excel file too, turn on **엑셀 파일 만들기** as well and add 「엑셀 차트도」.
+- **차트 만들기** (Make a chart): paste a table and send 「지점별 월 매출을 막대 차트로」 (monthly sales by branch as a bar chart); the chart opens beside the conversation. To put the chart inside an Excel file too, ask for 「엑셀 차트도」 (an Excel chart as well) on the [Sheet](../write/sheet) screen.
 
 ## Before the meeting: the agenda
 

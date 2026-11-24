@@ -19,6 +19,7 @@ KloudChat is an AI assistant your organization runs on its own servers. It answe
 | Getting answers based on up-to-date information | **+** → Web search in the composer | [Web search and tools](chat/web-search.md) |
 | Writing a report | Home → **Report** | [Writing reports](write/report.md) |
 | Writing a slide deck | Home → **Slides** | [Writing slides](write/slides.md) |
+| Making tables and calculations as an Excel file | Home → **Sheet** | [Sheets](write/sheet.md) |
 | Editing a finished document yourself and having it reviewed | The ribbon in the artifact panel | [Artifact editor](write/editor.md) |
 | Generating images, audio and video | Home → **Image**, **Audio/Video** | [Images and audio/video](write/media.md) |
 | Passing an artifact on as a link | **Share** at the top of the conversation | [Sharing](write/share.md) |

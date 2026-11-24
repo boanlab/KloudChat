@@ -1980,6 +1980,49 @@ the HWP and PowerPoint ones) reopens the copy made from it in the same chat
 (`GET /files/{id}/documents`) and offers 「새 사본으로 열기」 for another. The
 version summary of a hand save is in the UI language.
 
+### Sheets
+
+A sheet is an `xlsx` artifact (`services/sheet_doc.py`): one `.xlsx` blob per version, saved through
+`office_doc` like the other office files. Cells change through one writer, `services/sheet_patch.py`,
+which edits the sheet XML in place and copies every other part of the package byte for byte, so a
+hand edit or an agent edit cannot lose a chart, picture, pivot, conditional format or comment the
+grid does not draw. The editor (Univer, `components/sheet`) sends the cells that changed
+(`PATCH /artifacts/{id}/xlsx/cells`, 409 on a stale `expectedVersion`).
+
+**The agent.** A sheet conversation runs as a chat turn (`kind = chat`, `prompt_kind = sheet`):
+`context.py` gives the sheet surface its own system prompt and the turn gets the sheet tools,
+`tools/sheet.py` on the same `tools_for` kit as HWP, Word and PowerPoint (`xlsx_read`, `xlsx_edit`,
+`xlsx_write`, `xlsx_restore`). Any chat gets them when it names an Excel file (`_ASKS_XLSX`) or has a
+sheet. The server reads the workbook first when it has content (`_document_preset`), so an answer
+comes from what the file holds now, the person's hand saves included. The one-writer rules are the
+others': an edit needs the `xlsx_read` of the current version, a save in between is a conflict, and a
+`write` makes a new sheet unless `replace` is asked for. Unsaved hand edits are saved or dropped by
+the composer before a turn (`officeGuard`), the same prompt as the other editors.
+
+- `services/sheet_edit.py` turns ops written the way people say it (A1 addresses, 1-based rows:
+  `set_cells`, `format`, `width`, `merge`, `insert_rows`/`delete_rows`/`insert_cols`/`delete_cols`,
+  `add_sheet`, `rename_sheet`, `delete_sheet`) into `sheet_patch` ops. They apply in order and all
+  together. Inserting or deleting lines also moves the references of every formula in the workbook
+  (a deleted cell becomes `#REF!`); a formula that calls out of the file (`WEBSERVICE`,
+  `HYPERLINK`, an external workbook, DDE) is refused, since a sheet's text can come from a page the
+  person never read. A text written as people write a number (「1,200」, 「12.5%」, 「2026-10-13」) is that
+  number with its format; a plain digit string stays text.
+- `services/sheet_build.py` builds a new workbook from `xlsx_write`'s sheets: rows (a formula is a
+  text starting with `=`), widths, number formats, a header, merges and an optional native chart; a
+  sheet given as `from_file` copies an attached CSV or Excel file as written (`tools/sheet._prepare`).
+- `services/sheet_calc.py` calculates the formulas in process (arithmetic, comparisons, references
+  across sheets and the common functions) and writes the results as each formula cell's cached value,
+  after every agent write or edit. A formula using anything else keeps the value it had. The tool's
+  result reports the values the formulas give, and a reply may quote only those.
+- Placeholders: nothing the person did not give is typed in; a bracket blank text stands for it
+  (`blanks()` lists them), and a derived figure is a formula.
+
+**Sharing.** A shared sheet is drawn as a plain HTML table, not by the editor: `GET /shared/{token}/sheet`
+returns the sheets as shown (values, number formats, merges, widths, no formula text, at most 30,000
+cells) and `/shared/{token}/document` the workbook. The read-only grid is a page of its own with no
+editor code (Univer is several megabytes of script a public page would load for nothing, and it needs
+the app's session), and it shows the first 500 rows and 60 columns.
+
 ### Sharing
 
 In the `shares` table **the token is the permission**: 43 random characters,
@@ -2217,15 +2260,10 @@ credentials only for env values the person enters — `{{...}}` identity placeho
 shared skill reads **By: Official** in the hub, as their agents do; a copy reads **Original:
 Official**, and **Edited by me · Original: …** once changed.
 
-Four more work skills have no agent file behind them: translation `translation` (chat,
+Three more work skills have no agent file behind them: translation `translation` (chat,
 report), press release `press-release` (chat, report; grounding-check and
-generic-language-killer, no search), Excel file `xlsx-build` and chart `chart-make`. Excel
-file (chat, needs `run_skill_script`) builds a workbook with `scripts/build.py` from `sheets` given in the
-args or from a chat file (a pasted table, an attachment, or a CSV `run_code` saved): computed
-columns as `{column}` formulas per row, a `SUM` total row where a formula column repeats its
-formula (a rate stays total ÷ total), number formats, and an optional native chart. LibreOffice
-in the sandbox caches the formula values, which the summary returns for the answer to quote;
-the file is a step output, shown under the answer as a download. Chart `chart-make` (chat,
+generic-language-killer, no search) and chart `chart-make`. An Excel file is no skill: the sheet
+tools (below) make it. Chart `chart-make` (chat,
 needs `create_chart`) tells the model when and how to draw a chart artifact. Translation and
 press release are instructions only; a press release written as a report gets the `press`
 format's head when the request names it. The meeting agenda

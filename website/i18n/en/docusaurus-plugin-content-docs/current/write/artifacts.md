@@ -4,7 +4,7 @@ title: Artifacts
 
 # Artifacts
 
-What a conversation generates is called an artifact. The **Artifacts** screen in the sidebar holds what you view or run directly: HTML pages, code files, charts and diagrams. Reports and slide decks (web, HWP, Word, PowerPoint) are under **Working documents** in [Files](../chat/files#files), and generated images, audio and video under **Generated**. A short code block inside an answer is part of the conversation and is not saved as an artifact of its own; copy and run it in the chat.
+What a conversation generates is called an artifact. The **Artifacts** screen in the sidebar holds what you view or run directly: HTML pages, code files, charts and diagrams. Reports, slide decks and sheets (web, HWP, Word, PowerPoint, Excel) are under **Working documents** in [Files](../chat/files#files), and generated images, audio and video under **Generated**. A short code block inside an answer is part of the conversation and is not saved as an artifact of its own; copy and run it in the chat.
 
 ![Artifact gallery](/img/guide/artifacts.png)
 
@@ -17,7 +17,7 @@ What a conversation generates is called an artifact. The **Artifacts** screen in
 
 ## Editors by format
 
-Web reports and web slides open in the [artifact editor](editor) (the ribbon). HWP, Word and PowerPoint artifacts open in their own editors: the HWP editor, the Word editor with its ribbon, and the PowerPoint editor. See [HWP documents](hwp), [Word documents](docx) and [PowerPoint documents](pptx).
+Web reports and web slides open in the [artifact editor](editor) (the ribbon). HWP, Word, PowerPoint and Excel artifacts open in their own editors: the HWP editor, the Word editor with its ribbon, the PowerPoint editor and the sheet editor. See [HWP documents](hwp), [Word documents](docx), [PowerPoint documents](pptx) and [Sheets](sheet).
 
 ## Export formats
 
