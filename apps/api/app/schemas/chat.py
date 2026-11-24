@@ -324,7 +324,7 @@ class SessionPatch(Wire):
     project_id: str | None = None
     render_template_id: str | None = Field(default=None, max_length=60)
     #: `[]` clears
-    skill_ids: list[str] | None = Field(default=None, max_length=4)
+    skill_ids: list[str] | None = Field(default=None, max_length=3)
     #: the composer's reasoning chip; `auto` clears
     reasoning_mode: Literal["auto", "fast", "deep"] | None = None
 
@@ -373,7 +373,7 @@ class SendMessage(Wire):
     #: agent's `web_search_default`, else False
     web_search: bool | Literal["auto"] | None = None
     #: per-turn selection; installation alone injects nothing
-    activated_skill_ids: list[str] = Field(default_factory=list, max_length=4)
+    activated_skill_ids: list[str] = Field(default_factory=list, max_length=3)
     #: `/design-templates` id, stored on session; `""` clears
     render_template_id: str | None = Field(default=None, max_length=60)
     #: write the pending outline; ignored if none pending
