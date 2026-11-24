@@ -126,7 +126,7 @@ const groups: Record<string, Group> = {
   },
   // what the composer carries between conversations, its per-turn switches, the privacy card
   'composer-state': {
-    files: ['composer-handoff.spec.ts', 'voice-chat.spec.ts', 'per-turn-controls.spec.ts', 'model-catalogue.spec.ts', 'privacy-guard.spec.ts'],
+    files: ['composer-handoff.spec.ts', 'voice-chat.spec.ts', 'read-aloud.spec.ts', 'per-turn-controls.spec.ts', 'model-catalogue.spec.ts', 'privacy-guard.spec.ts'],
     projects: { desktop },
   },
   // skills chosen for a turn: the limit, the timeline, refusals that hand the draft back

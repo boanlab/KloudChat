@@ -8,7 +8,9 @@ import {
   DocumentNotice,
   DocumentReadOnlyNote,
 } from '@/components/document/DocumentChrome'
+import { ReadAloudButton } from '@/components/chat/ReadAloudButton'
 import type { OfficeKind } from '@/lib/api'
+import { documentUnits } from '@/lib/readUnits'
 import { useT } from '@/lib/useT'
 import { readOnlyAt, type Doc, type OfficeDocument } from './useOfficeDocument'
 
@@ -25,6 +27,7 @@ export function OfficePanel({
   onDownloadEdits,
   onClose,
   onModeChange,
+  readText,
   children,
 }: {
   kind: OfficeKind | 'xlsx'
@@ -41,6 +44,8 @@ export function OfficePanel({
   onDownloadEdits: () => void
   onClose?: () => void
   onModeChange?: (mode: PanelMode) => void
+  /** The saved document's text as the server read it; with it the header offers 「읽어 주기」. */
+  readText?: string
   children: ReactNode
 }) {
   const t = useT()
@@ -69,6 +74,7 @@ export function OfficePanel({
         downloadDisabled={!ready || loaded === null}
         artifact={{ id: doc.id, title: doc.title, version: doc.version }}
         history={{ hasUnsavedChanges: dirty, onRestored: () => state.markDirty(false) }}
+        extra={readText ? <ReadAloudButton id={`artifact:${doc.id}`} units={() => documentUnits(doc.title, readText)} compact={phone} /> : undefined}
         mode={width.mode}
         onCycle={phone ? undefined : width.cycle}
         onClose={onClose}

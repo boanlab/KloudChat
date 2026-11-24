@@ -106,6 +106,7 @@ export function PptxPanel({
     <OfficePanel
       kind="pptx"
       doc={doc}
+      readText={doc.text}
       state={state}
       ready={ready && file !== null && !failed}
       failed={failed}

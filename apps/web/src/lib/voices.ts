@@ -44,3 +44,6 @@ export function voiceFor(model: { voices?: string[] } | null | undefined, picked
   const voices = voicesOf(model)
   return voices.includes(picked) ? picked : voices[0]
 }
+
+/** Where the chosen voice is remembered in this browser: the voice conversation and 「읽어 주기」 share it. */
+export const VOICE_KEY = 'kloudchat.voiceChat.voice'

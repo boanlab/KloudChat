@@ -32,6 +32,8 @@ import {
 import { useMediaQuery } from '@/lib/useMediaQuery'
 import { Button, Input, MenuItem, MenuSeparator, Modal, Textarea } from '@/components/ui'
 import { DownloadMenu, ReuseItems } from '@/components/artifacts/ResultActions'
+import { ReadAloudButton } from '@/components/chat/ReadAloudButton'
+import { deckUnits } from '@/lib/readUnits'
 import { artifactsApi, errorMessage } from '@/lib/api'
 import { mediaFailure } from '@/lib/failures'
 import { FRAMES, drawIntoFitting, frameElement, paperStyles, rasterise, slideTheme } from '@/lib/mermaid'
@@ -2811,12 +2813,22 @@ export function DeckPanel({
             <MenuSeparator />
           </>
         }
-        extra={canEdit ? undefined : (
+        extra={(
+          <>
+            <ReadAloudButton
+              id={`artifact:${deck.id}`}
+              units={() => deckUnits(slides, (n) => t('{n}번 슬라이드').replace('{n}', String(n)))}
+              onAt={(at) => go(Number(at))}
+              compact={phone}
+            />
+            {canEdit ? undefined : (
           // without the toolbar (reading, a phone) the slide show is still a press away
           <Button size="sm" variant="ghost" aria-label={t('발표')} title={t('슬라이드 쇼')} disabled={writing} onClick={present}>
             <Play size={14} />
             {!phone && t('발표')}
           </Button>
+            )}
+          </>
         )}
         mode={width.mode}
         onCycle={phone ? undefined : width.cycle}

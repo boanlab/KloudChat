@@ -154,6 +154,7 @@ export function DocxPanel({
     <OfficePanel
       kind="docx"
       doc={doc}
+      readText={doc.text}
       state={state}
       ready={ready}
       failed=""

@@ -575,3 +575,10 @@ body {
   line-height: 1;
   overflow: hidden;
 }
+
+/* 「읽어 주기」 on a report: the section being read. */
+[data-section-id][data-reading='true'] {
+  background: var(--accent-soft);
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}

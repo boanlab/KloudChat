@@ -300,6 +300,7 @@ export function HwpPanel({
     <OfficePanel
       kind="hwp"
       doc={doc}
+      readText={doc.text}
       state={state}
       ready={ready}
       failed={failed}
