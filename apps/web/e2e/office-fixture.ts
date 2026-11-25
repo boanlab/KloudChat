@@ -60,6 +60,8 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
   const created: Record<string, unknown>[] = []
   /** Documents asked about with `discard-if-blank` (leaving an untouched blank). */
   const discards: string[] = []
+  /** Documents a tab said it has open (`POST /artifacts/{id}/open-ping`). */
+  const pings: string[] = []
   let dropped = false
   /** Every request that would change a file-box file (none should). */
   const fileWrites: string[] = []
@@ -146,6 +148,10 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
       // the chat's name, set before its first send
       Object.assign(session, request.postDataJSON())
       return json(session)
+    }
+    if (path === `/artifacts/${artifactId}/open-ping` && method === 'POST') {
+      pings.push(artifactId)
+      return route.fulfill({ status: 204, body: '' })
     }
     if (path === `/artifacts/${artifactId}/discard-if-blank` && method === 'POST') {
       discards.push(artifactId)
@@ -307,7 +313,7 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
         : options.attachment || options.reopen ? `/s/${sessionId}` : `/s/${sessionId}?artifact=${artifactId}`
   await page.goto(opened)
   return {
-    unexpected, problems, saves, heads, files, sent, created, discards, csp, fileWrites, shares, attached,
+    unexpected, problems, saves, heads, files, sent, created, discards, pings, csp, fileWrites, shares, attached,
     loads, summaries, received,
   }
 }

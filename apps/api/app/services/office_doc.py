@@ -24,6 +24,8 @@ from app.services.office_edit import BLANK
 from app.services.search_text import artifact_text
 
 MAX_TITLE = 200
+#: `Artifact.data` key of a document made blank: the title it was made with (`blank_docs`)
+BLANK_KEY = "blank"
 
 
 class Conflict(Exception):
@@ -194,7 +196,7 @@ async def create(
     )
     if blank:
         # the title it was made with: 「손대지 않음」 for `blank_docs`
-        artifact.data = {**(artifact.data or {}), "blank": artifact.title}
+        artifact.data = {**(artifact.data or {}), BLANK_KEY: artifact.title}
     artifact.storage_key = _store(artifact, 1, data, fmt)
     db.add(artifact)
     await db.commit()

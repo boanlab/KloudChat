@@ -6,7 +6,17 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import Column, DateTime, Index, Text, UniqueConstraint, event, inspect
+from sqlalchemy import (
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    UniqueConstraint,
+    event,
+    inspect,
+)
 from sqlalchemy.dialects.postgresql import ENUM as PgEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
@@ -516,6 +526,21 @@ class ShareScope(StrEnum):
     link = "link"
 
 
+class BlankDocSeen(SQLModel, table=True):
+    """A tab has a blank document open (`services/blank_docs`): one row per document and tab, its
+    last ping. Kept apart from `artifacts` so a ping never reads as an edit."""
+
+    __tablename__ = "blank_doc_seen"
+
+    artifact_id: str = Field(
+        sa_column=Column(
+            String(32), ForeignKey("artifacts.id", ondelete="CASCADE"), primary_key=True
+        )
+    )
+    tab: str = Field(sa_column=Column(String(40), primary_key=True))
+    seen_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
+
+
 class Share(SQLModel, table=True):
     """Capability URL for one artifact/conversation; response exposes only the shared thing."""
 
@@ -734,6 +759,7 @@ class UserPipeline(SQLModel, table=True):
 
 
 __all__ = [
+    "BlankDocSeen",
     "Job",
     "JobStatus",
     "Agent",
