@@ -52,7 +52,8 @@ export function OfficePanel({
   const width = usePanelWidth(onModeChange)
   const { dirty, saving, agentWorking, loaded, loading, notice, error, asking, answer } = state
   const shown = loaded ?? doc.version
-  const readOnly = readOnlyAt(phone, dirty)
+  const cut = kind === 'xlsx' && state.cut
+  const readOnly = readOnlyAt(phone, dirty) || cut
   // the first load failed: nothing is shown, so it is offered again
   const reload = !failed && !notice && !!error && loaded === null
   const panel = { [`data-${kind}-panel`]: doc.id }
@@ -94,7 +95,21 @@ export function OfficePanel({
         }
       />
 
-      {phone && <DocumentReadOnlyNote readOnly={readOnly} testId="office-read-only" />}
+      {cut && (
+        <DocumentReadOnlyNote
+          readOnly
+          testId="sheet-cut-note"
+          text={t('칸이 아주 많아 일부만 보여 드립니다. 보이지 않는 칸이 어긋나지 않도록 읽기만 합니다. 고칠 내용은 대화에서 에이전트에게 부탁하세요.')}
+        />
+      )}
+      {!cut && kind === 'xlsx' && dirty && (
+        <DocumentReadOnlyNote
+          readOnly={false}
+          testId="sheet-unsaved-kinds-note"
+          text={t('행 높이·시트 순서·숨김·틀 고정을 바꾼 것은 이 편집기에서 저장되지 않습니다.')}
+        />
+      )}
+      {phone && !cut && <DocumentReadOnlyNote readOnly={readOnly} testId="office-read-only" />}
 
       <div className="relative min-h-0 flex-1 bg-elevated">
         {children}

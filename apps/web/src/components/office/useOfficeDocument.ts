@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
+import { saveFailure } from '@/lib/saveFailure'
 import { ApiError, artifactsApi, errorMessage, type OfficeKind, type SheetModel, type SheetOp } from '@/lib/api'
 import { guardEdits, type AskReason } from '@/lib/officeGuard'
 import { useMarkUnsaved } from '@/lib/unsaved'
@@ -56,6 +57,8 @@ export function useOfficeDocument(
   /** Edits reported via `noteEdit`; compared before and after a save */
   const edits = useRef(0)
   const [error, setError] = useState('')
+  /** A sheet too large to draw whole: shown read only, since a save would not hold what is not drawn. */
+  const [cut, setCut] = useState(false)
   /** `conflict`: a save lost to a newer version; `behind`: a newer version came in under edits. */
   const [notice, setNotice] = useState<'conflict' | 'behind' | null>(null)
   const [asking, setAsking] = useState<Ask | null>(null)
@@ -97,6 +100,7 @@ export function useOfficeDocument(
       let convert = false
       if (kind === 'xlsx' && instance.sheet) {
         const model = await artifactsApi.sheetModel(doc.id)
+        setCut(Boolean(model.truncated))
         await instance.sheet.show(model)
         version = model.version
       } else {
@@ -180,7 +184,7 @@ export function useOfficeDocument(
       return true
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) setNotice('conflict')
-      else setError(errorMessage(err, t('저장하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
+      else setError(saveFailure(err, t))
       return false
     } finally {
       busy.current = false
@@ -228,7 +232,7 @@ export function useOfficeDocument(
   }
 
   return {
-    loaded, loading, dirty, dirtyRef, markDirty, noteEdit, saving, busy, loadingRef, error,
+    loaded, loading, dirty, dirtyRef, markDirty, noteEdit, saving, busy, loadingRef, error, cut,
     setError, notice, load, save, refresh, asking, answer, agentWorking,
   }
 }

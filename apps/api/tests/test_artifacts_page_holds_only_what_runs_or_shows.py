@@ -89,7 +89,7 @@ def test_each_kind_has_its_place() -> None:
     assert section_of("image", CHART_PNG) == "chart"
     assert section_of("image", PICTURE) == "media"
     assert section_of("video", {}) == "media"
-    for kind in ("report", "deck", "hwp", "docx", "pptx"):
+    for kind in ("report", "deck", "hwp", "docx", "pptx", "xlsx"):
         assert section_of(kind, {}) == "document"
 
 

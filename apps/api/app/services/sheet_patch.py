@@ -8,6 +8,7 @@ cached value, and the workbook is marked to recalculate when Excel opens it.
 
 from __future__ import annotations
 
+import bisect
 import copy
 import io
 import posixpath
@@ -18,6 +19,9 @@ from typing import Any
 from lxml import etree
 from openpyxl.utils import get_column_letter
 
+from app.services import sheet_guard
+from app.services.sheet_guard import PatchError
+
 NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 RNS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 PKG = "http://schemas.openxmlformats.org/package/2006/relationships"
@@ -25,13 +29,9 @@ CT = "http://schemas.openxmlformats.org/package/2006/content-types"
 _q = lambda tag: f"{{{NS}}}{tag}"  # noqa: E731
 
 
-class PatchError(ValueError):
-    pass
-
-
 def _sheet_parts(files: dict[str, bytes]) -> dict[str, str]:
-    book = etree.fromstring(files["xl/workbook.xml"])
-    rels = etree.fromstring(files["xl/_rels/workbook.xml.rels"])
+    book = sheet_guard.parse(files["xl/workbook.xml"])
+    rels = sheet_guard.parse(files["xl/_rels/workbook.xml.rels"])
     target = {r.get("Id"): r.get("Target") for r in rels}
     out = {}
     for sheet in book.find(_q("sheets")):
@@ -45,7 +45,7 @@ class _Styles:
     """`styles.xml`: an xf is cloned from the cell's own and changed, never edited in place."""
 
     def __init__(self, raw: bytes) -> None:
-        self.root = etree.fromstring(raw)
+        self.root = sheet_guard.parse(raw)
         self.fonts = self.root.find(_q("fonts"))
         self.fills = self.root.find(_q("fills"))
         self.borders = self.root.find(_q("borders"))
@@ -203,6 +203,29 @@ def _row(data: etree._Element, number: int) -> etree._Element:
     return new
 
 
+class _Rows:
+    """`<row>` elements of one sheet by number, so many cell edits do not each walk every row."""
+
+    def __init__(self, data: etree._Element) -> None:
+        self.data = data
+        self.index = {int(row.get("r")): row for row in data}
+        self.order = sorted(self.index)
+
+    def row(self, number: int) -> etree._Element:
+        found = self.index.get(number)
+        if found is not None:
+            return found
+        new = etree.Element(_q("row"), r=str(number))
+        at = bisect.bisect_left(self.order, number)
+        if at == len(self.order):
+            self.data.append(new)
+        else:
+            self.index[self.order[at]].addprevious(new)
+        self.order.insert(at, number)
+        self.index[number] = new
+        return new
+
+
 def _cell(row: etree._Element, ref: str, column: int) -> etree._Element:
     for cell in row:
         existing = column_of(cell.get("r"))
@@ -300,7 +323,7 @@ def _reachable(files: dict[str, bytes]) -> set[str]:
         if rels not in files:
             continue
         base = posixpath.dirname(posixpath.dirname(rels))
-        for rel in etree.fromstring(files[rels]):
+        for rel in sheet_guard.parse(files[rels]):
             if rel.get("TargetMode") == "External":
                 continue
             target = rel.get("Target", "")
@@ -320,9 +343,9 @@ class _Package:
         self.order = order
         self.parts = _sheet_parts(files)  # sheet name -> part path, in the file's order
         self.trees: dict[str, etree._Element] = {}
-        self.book = etree.fromstring(files["xl/workbook.xml"])
-        self.rels = etree.fromstring(files["xl/_rels/workbook.xml.rels"])
-        self.types = etree.fromstring(files["[Content_Types].xml"])
+        self.book = sheet_guard.parse(files["xl/workbook.xml"])
+        self.rels = sheet_guard.parse(files["xl/_rels/workbook.xml.rels"])
+        self.types = sheet_guard.parse(files["[Content_Types].xml"])
         self.styles = _Styles(files["xl/styles.xml"])
         self.package_dirty = False
 
@@ -331,7 +354,7 @@ class _Package:
         if path is None:
             raise PatchError(f"no_sheet:{sheet}")
         if path not in self.trees:
-            self.trees[path] = etree.fromstring(self.files[path])
+            self.trees[path] = sheet_guard.parse(self.files[path])
         return self.trees[path]
 
     def all_roots(self) -> list[etree._Element]:
@@ -351,7 +374,7 @@ class _Package:
         while f"xl/worksheets/sheet{k}.xml" in self.files:
             k += 1
         path = f"xl/worksheets/sheet{k}.xml"
-        self.files[path] = _dump(etree.fromstring(
+        self.files[path] = _dump(sheet_guard.parse(
             f'<worksheet xmlns="{NS}"><sheetData/></worksheet>'.encode()))
         self.order.append(zipfile.ZipInfo(path))
         etree.SubElement(self.rels, f"{{{PKG}}}Relationship", Id=f"rId{n}", Type=REL_SHEET,
@@ -383,7 +406,7 @@ class _Package:
         _each_formula(self.book, rewrite)
         charts = [p for p in self.files if p.startswith("xl/charts/chart") and p.endswith(".xml")]
         for path in charts:
-            tree = etree.fromstring(self.files[path])
+            tree = sheet_guard.parse(self.files[path])
             if _each_formula(tree, rewrite):
                 self.files[path] = _dump(tree)
         self.package_dirty = True
@@ -612,17 +635,17 @@ def _lines(root: etree._Element, axis: str, at: int, count: int, delete: bool) -
 def map_formulas(data: bytes, fn) -> bytes:
     """`data` with `fn(formula, sheet)` run over every formula of every sheet (`sheet`: the one the
     formula is in) and over the defined names (`sheet` ""). The package is otherwise as it was."""
-    src = zipfile.ZipFile(io.BytesIO(data))
+    src = sheet_guard.open_zip(data)
     order = src.infolist()
     files = {i.filename: src.read(i.filename) for i in order}
     changed = False
     for name, path in _sheet_parts(files).items():
-        root = etree.fromstring(files[path])
+        root = sheet_guard.parse(files[path])
         _unshare(root)
         if _each_formula(root, lambda text, n=name: fn(text, n)):
             files[path] = _dump(root)
             changed = True
-    book = etree.fromstring(files["xl/workbook.xml"])
+    book = sheet_guard.parse(files["xl/workbook.xml"])
     if _each_formula(book, lambda text: fn(text, "")):
         files["xl/workbook.xml"] = _dump(book)
         changed = True
@@ -639,17 +662,56 @@ STRUCTURE = {"insertRows": ("row", False), "deleteRows": ("row", True),
              "insertCols": ("col", False), "deleteCols": ("col", True)}
 
 
+MAX_ROW, MAX_COL = 1_048_576, 16_384
+_KINDS = frozenset({"cell", "width", "merge", "unmerge", "addSheet", "renameSheet", "deleteSheet",
+                    *STRUCTURE})
+_REF = re.compile(r"^[A-Za-z]{1,3}[0-9]{1,7}(:[A-Za-z]{1,3}[0-9]{1,7})?$")
+
+
+def _int(value: Any, low: int, high: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value != int(value):
+        raise PatchError("bad_op")
+    if not low <= int(value) <= high:
+        raise PatchError("bad_range")
+    return int(value)
+
+
+def _check(op: Any) -> None:
+    """An op the editor could not have sent (not an object, an unknown kind, a cell outside the
+    sheet's 1048576 x 16384 grid, a width that is not a number) is refused, not a server error."""
+    if not isinstance(op, dict):
+        raise PatchError("bad_op")
+    kind = op.get("op", "cell")
+    if kind not in _KINDS:
+        raise PatchError("bad_op")
+    if kind == "cell":
+        _int(op.get("r"), 0, MAX_ROW - 1)
+        _int(op.get("c"), 0, MAX_COL - 1)
+    elif kind == "width":
+        _int(op.get("c"), 0, MAX_COL - 1)
+        _int(op.get("px"), 5, 4000)
+    elif kind in ("merge", "unmerge"):
+        if not isinstance(op.get("ref"), str) or not _REF.match(op["ref"]):
+            raise PatchError("bad_range")
+    elif kind in STRUCTURE:
+        axis = STRUCTURE[kind][0]
+        _int(op.get("at"), 0, (MAX_ROW if axis == "row" else MAX_COL) - 1)
+        _int(op.get("count", 1), 1, MAX_ROW if axis == "row" else MAX_COL)
+
+
 def apply(data: bytes, ops: list[dict[str, Any]]) -> bytes:
     """`data` with the ops applied, in order. A cell op is `{sheet, r, c, v?, f?, s?}` (0-based
     `r`, `c`; `v` None clears; `s` is a style patch); the others are `{sheet, op: "width", c, px}`,
     `{sheet, op: "merge"|"unmerge", ref}`, `{sheet, op: "insertRows"|"deleteRows"|"insertCols"|
     "deleteCols", at, count}`, `{sheet, op: "renameSheet", name}`, `{sheet, op: "deleteSheet"}`
     and `{op: "addSheet", name, index?}`."""
-    src = zipfile.ZipFile(io.BytesIO(data))
+    src = sheet_guard.open_zip(data)
     order = src.infolist()
     files = {i.filename: src.read(i.filename) for i in order}
     pkg = _Package(files, order)
+    rows: dict[int, _Rows] = {}
     for op in ops:
+        _check(op)
         kind = op.get("op", "cell")
         if kind == "addSheet":
             pkg.add_sheet(str(op.get("name", "")), op.get("index"))
@@ -667,6 +729,7 @@ def apply(data: bytes, ops: list[dict[str, Any]]) -> bytes:
             if at < 0 or count < 1:
                 raise PatchError("bad_range")
             _lines(root, axis, at, count, delete)
+            rows.clear()
             continue
         if kind == "width":
             cols = root.find(_q("cols"))
@@ -704,7 +767,11 @@ def apply(data: bytes, ops: list[dict[str, Any]]) -> bytes:
             if merges is not None:
                 merges.set("count", str(len(merges)))
             continue
-        row = _row(root.find(_q("sheetData")), int(op["r"]) + 1)
+        data_node = root.find(_q("sheetData"))
+        index = rows.get(id(data_node))
+        if index is None:
+            index = rows[id(data_node)] = _Rows(data_node)
+        row = index.row(int(op["r"]) + 1)
         cell = _cell(row, _ref(op["r"], op["c"]), int(op["c"]))
         if "v" in op or "f" in op:
             _set_value(cell, op)
@@ -724,7 +791,7 @@ def apply(data: bytes, ops: list[dict[str, Any]]) -> bytes:
 
 def _recalc_on_open(files: dict[str, bytes], order: list[zipfile.ZipInfo]):
     """Drops the calculation chain (it names cells that moved) and asks Excel to recalculate."""
-    book = etree.fromstring(files["xl/workbook.xml"])
+    book = sheet_guard.parse(files["xl/workbook.xml"])
     calc = book.find(_q("calcPr"))
     if calc is None:
         calc = etree.SubElement(book, _q("calcPr"))
@@ -733,13 +800,13 @@ def _recalc_on_open(files: dict[str, bytes], order: list[zipfile.ZipInfo]):
                                               standalone=True)
     if "xl/calcChain.xml" in files:
         del files["xl/calcChain.xml"]
-        rels = etree.fromstring(files["xl/_rels/workbook.xml.rels"])
+        rels = sheet_guard.parse(files["xl/_rels/workbook.xml.rels"])
         for rel in list(rels):
             if rel.get("Target", "").endswith("calcChain.xml"):
                 rels.remove(rel)
         files["xl/_rels/workbook.xml.rels"] = etree.tostring(rels, xml_declaration=True,
                                                              encoding="UTF-8", standalone=True)
-        types = etree.fromstring(files["[Content_Types].xml"])
+        types = sheet_guard.parse(files["[Content_Types].xml"])
         for node in list(types):
             if node.get("PartName") == "/xl/calcChain.xml":
                 types.remove(node)

@@ -16,7 +16,7 @@ from openpyxl.chart import BarChart, LineChart, Reference
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-from app.services import sheet_calc, sheet_edit
+from app.services import sheet_calc, sheet_edit, sheet_guard
 from app.services.sheet_edit import SheetError
 
 MAX_SHEETS = 20
@@ -225,7 +225,10 @@ def rows_from_file(name: str, data: bytes, sheet: str = "") -> list[list[Any]]:
     rows: list[list[Any]]
     if lower.endswith((".xlsx", ".xlsm")) or data[:2] == b"PK":
         try:
+            sheet_guard.check(data)
             book = openpyxl.load_workbook(io.BytesIO(data), read_only=True)
+        except sheet_guard.WorkbookRefused as refused:
+            raise SheetError(f"「{name}」: {refused}") from None
         except Exception:  # noqa: BLE001
             raise SheetError(f"「{name}」을 엑셀 파일로 읽지 못했습니다.") from None
         try:
@@ -233,6 +236,8 @@ def rows_from_file(name: str, data: bytes, sheet: str = "") -> list[list[Any]]:
                 raise SheetError(f"「{name}」에 시트 「{sheet}」이 없습니다. 있는 시트: "
                                  + ", ".join(f"「{n}」" for n in book.sheetnames))
             source = book[sheet] if sheet else book.worksheets[0]
+            # a wrong <dimension> in the file must not cut the table short
+            source.reset_dimensions()
             rows = [[_plain(v) for v in row] for row in source.iter_rows(values_only=True)]
         finally:
             book.close()
@@ -251,6 +256,7 @@ def rows_from_file(name: str, data: bytes, sheet: str = "") -> list[list[Any]]:
                 for row in csv.reader(io.StringIO(text), delimiter=delimiter)]
     else:
         raise SheetError(f"「{name}」은 CSV나 엑셀(.xlsx) 파일이 아닙니다.")
+    rows = [[sheet_edit.as_file_value(v) for v in row] for row in rows]
     while rows and all(v is None for v in rows[-1]):
         rows.pop()
     width = max((len(r) for r in rows), default=0)

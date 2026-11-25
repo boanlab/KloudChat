@@ -5,14 +5,13 @@ was given and copies every other part of the package as it was."""
 from __future__ import annotations
 
 import io
-import zipfile
 from typing import Any
 
 import openpyxl
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.models.workspace import Artifact, ArtifactKind
-from app.services import office_doc
+from app.services import office_doc, sheet_guard
 from app.services.office_doc import Conflict, read, read_version
 
 __all__ = ["Conflict", "read", "read_version"]
@@ -27,10 +26,12 @@ def file_format(data: bytes) -> str:
     if data[:4] != b"PK\x03\x04":
         return ""
     try:
-        with zipfile.ZipFile(io.BytesIO(data)) as package:
+        with sheet_guard.open_zip(data) as package:
             names = set(package.namelist())
-    except zipfile.BadZipFile:
+    except sheet_guard.WorkbookRefused:
         return ""
+    if any(n.lower().endswith("vbaproject.bin") for n in names):
+        return ""  # a macro-enabled package is not taken in as a sheet
     return "xlsx" if {"xl/workbook.xml", "xl/styles.xml"} <= names else ""
 
 
@@ -41,10 +42,12 @@ def describe(data: bytes, fmt: str) -> dict[str, Any]:
     parts: list[str] = []
     cells = 0
     try:
+        sheet_guard.check(data)
         book = openpyxl.load_workbook(io.BytesIO(data), read_only=True)
         names = list(book.sheetnames)
         size = 0
         for sheet in book.worksheets:
+            sheet.reset_dimensions()
             for row in sheet.iter_rows(values_only=True):
                 for value in row:
                     if value is None or (isinstance(value, str) and not value.strip()):

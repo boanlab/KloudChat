@@ -10,12 +10,13 @@ from __future__ import annotations
 import datetime as dt
 import io
 import re
-import zipfile
 from typing import Any
 
 import openpyxl
 from openpyxl.styles.colors import COLOR_INDEX
 from openpyxl.worksheet.worksheet import Worksheet
+
+from app.services import sheet_guard
 
 #: Office 2013+ theme colours, by theme index (lt1 dk1 lt2 dk2 accent1..6 hlink folHlink)
 _THEME = ["FFFFFF", "000000", "E7E6E6", "44546A", "4472C4", "ED7D31", "A5A5A5", "FFC000",
@@ -99,7 +100,7 @@ def _serial(value: Any) -> float | None:
 
 def kept(data: bytes) -> list[str]:
     """What the package holds that the grid does not draw or edit; a save leaves each as it was."""
-    names = zipfile.ZipFile(io.BytesIO(data)).namelist()
+    names = sheet_guard.open_zip(data).namelist()
     out: list[str] = []
     for label, test in (
         ("chart", lambda n: n.startswith("xl/charts/chart")),
@@ -111,7 +112,7 @@ def kept(data: bytes) -> list[str]:
     ):
         if count := sum(1 for n in names if test(n)):
             out.append(f"{label}:{count}")
-    z = zipfile.ZipFile(io.BytesIO(data))
+    z = sheet_guard.open_zip(data)
     for n in names:
         if n.startswith("xl/drawings/drawing") and n.endswith(".xml"):
             if re.search(rb"<(?:\w+:)?sp[ >]", z.read(n)):
@@ -126,6 +127,7 @@ def kept(data: bytes) -> list[str]:
 
 
 def to_model(data: bytes) -> dict[str, Any]:
+    sheet_guard.check(data)
     formulas = openpyxl.load_workbook(io.BytesIO(data))
     values = openpyxl.load_workbook(io.BytesIO(data), data_only=True)
     sheets: list[dict[str, Any]] = []
@@ -175,6 +177,8 @@ def to_model(data: bytes) -> dict[str, Any]:
                 for k, d in ws.row_dimensions.items() if d.height
             },
         }
+        if ws.sheet_state != "visible":
+            sheet["hidden"] = True
         if ws.freeze_panes:
             cell = ws[ws.freeze_panes]
             sheet["freeze"] = {"r": cell.row - 1, "c": cell.column - 1}

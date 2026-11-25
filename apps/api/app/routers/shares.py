@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import secrets
+from collections import OrderedDict
 from datetime import timedelta
 from urllib.parse import quote
 
@@ -78,6 +80,10 @@ def _shared_data(token: str, artifact: Artifact):
     if artifact.kind in _OFFICE:
         # the owner's file-box file it was copied from: an id of theirs, not the reader's
         data = {k: v for k, v in data.items() if k != office_doc.SOURCE_KEY}
+        if artifact.kind is ArtifactKind.xlsx:
+            # `text` is the search text (formulas, hidden sheets) and `form` names the owner's
+            # saved form file: neither is for a reader of the share
+            data = {k: v for k, v in data.items() if k not in ("text", "form")}
     wire = json.dumps(data, ensure_ascii=False)
     return json.loads(_FILE_REF.sub(lambda m: f"/shared/{token}/files/{m.group(1)}", wire))
 
@@ -316,7 +322,9 @@ async def _shared_artifact(token: str, request: Request, db: DbSession) -> Artif
 @router.get("/shared/{token}/document")
 async def read_shared_document(token: str, request: Request, db: DbSession):
     """A shared office document's current file (HWP, Word, PowerPoint), to draw read only or
-    download; same reach as the share, not counted."""
+    download; same reach as the share, not counted. This is the owner's file as it is (formulas,
+    hidden sheets and comments included): a shared document is one a reader may keep. The sheet
+    page (`/sheet`) shows values only."""
     artifact = await _shared_artifact(token, request, db)
     if artifact is None or artifact.kind not in _OFFICE:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
@@ -342,6 +350,29 @@ async def read_shared_document(token: str, request: Request, db: DbSession):
 SHARED_SHEET_CELLS = 30_000
 
 
+#: shaped sheets by (artifact, version): a public link must not re-read the workbook on every hit
+_SHARED_SHEETS: OrderedDict[tuple[str, int], dict] = OrderedDict()
+_SHARED_SHEETS_KEPT = 16
+
+
+def _shaped_sheet(data: bytes) -> dict:
+    model = sheet_model.to_model(data)
+    left = SHARED_SHEET_CELLS
+    sheets = []
+    for item in model["sheets"]:
+        if item.get("hidden"):
+            continue
+        # no formulas leave: a reader sees what the sheet shows (`v`), its formats and layout
+        cells = [
+            {k: v for k, v in cell.items() if k != "f"}
+            | ({"v": "(계산 안 됨)"} if "f" in cell and "v" not in cell else {})
+            for cell in item["cells"][:left]
+        ]
+        left -= len(cells)
+        sheets.append({**item, "cells": cells})
+    return {"sheets": sheets, "truncated": bool(model["truncated"]) or left <= 0}
+
+
 @router.get("/shared/{token}/sheet")
 async def read_shared_sheet(token: str, request: Request, db: DbSession):
     """A shared sheet's cells (values, number formats, merges, widths), to draw read only as a
@@ -349,27 +380,23 @@ async def read_shared_sheet(token: str, request: Request, db: DbSession):
     artifact = await _shared_artifact(token, request, db)
     if artifact is None or artifact.kind is not ArtifactKind.xlsx:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
-    try:
-        model = sheet_model.to_model(office_doc.read(artifact))
-    except (OSError, FileNotFoundError):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="blob_missing") from None
-    except Exception:  # noqa: BLE001 - a package the reader cannot walk is not shown as a sheet
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="not_a_xlsx_file"
-        ) from None
-    left = SHARED_SHEET_CELLS
-    sheets = []
-    for item in model["sheets"]:
-        # no formulas leave: a reader sees what the sheet shows (`v`), its formats and layout
-        cells = [{k: v for k, v in cell.items() if k != "f"} for cell in item["cells"][:left]]
-        left -= len(cells)
-        sheets.append({**item, "cells": cells})
-    return {
-        "title": artifact.title,
-        "sheets": sheets,
-        "truncated": bool(model["truncated"]) or left <= 0,
-        "version": artifact.version,
-    }
+    key = (artifact.id, artifact.version)
+    shaped = _SHARED_SHEETS.get(key)
+    if shaped is None:
+        try:
+            shaped = await asyncio.to_thread(_shaped_sheet, office_doc.read(artifact))
+        except (OSError, FileNotFoundError):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="blob_missing"
+            ) from None
+        except Exception:  # noqa: BLE001 - a package the reader cannot walk is not shown as a sheet
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="not_a_xlsx_file"
+            ) from None
+        _SHARED_SHEETS[key] = shaped
+        while len(_SHARED_SHEETS) > _SHARED_SHEETS_KEPT:
+            _SHARED_SHEETS.popitem(last=False)
+    return {"title": artifact.title, **shaped, "version": artifact.version}
 
 
 @router.get("/shared/{token}/files/{file_id}")

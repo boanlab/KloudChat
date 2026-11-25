@@ -232,14 +232,24 @@ export function DocumentNotice({
 }
 
 /** The phone's note: read only, or read only once the unsaved edits are dealt with. */
-export function DocumentReadOnlyNote({ readOnly, testId }: { readOnly: boolean; testId?: string }) {
+export function DocumentReadOnlyNote({
+  readOnly,
+  testId,
+  text,
+}: {
+  readOnly: boolean
+  testId?: string
+  /** A reason of its own, in place of the width ones. */
+  text?: string
+}) {
   const t = useT()
   return (
     <p className="flex items-center gap-2 border-b border-line bg-elevated px-4 py-1.5 text-xs text-muted" data-testid={testId}>
       <Eye size={13} className="shrink-0" />
-      {readOnly
+      {text ??
+        (readOnly
         ? t('휴대폰에서는 읽기만 합니다. 고칠 내용은 대화에서 에이전트에게 부탁하세요.')
-        : t('이 폭에서는 읽기만 합니다. 저장하지 않은 편집을 먼저 저장하거나 버리세요.')}
+        : t('이 폭에서는 읽기만 합니다. 저장하지 않은 편집을 먼저 저장하거나 버리세요.'))}
     </p>
   )
 }
