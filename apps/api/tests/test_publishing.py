@@ -141,6 +141,12 @@ async def world(monkeypatch, tmp_path):
     monkeypatch.setattr(sessions, "_enrich_memory", memory)
     monkeypatch.setattr(sessions.answer_plan, "wanted", lambda *_a, **_k: False)
     monkeypatch.setattr(agent_service, "run_turn", run_turn)
+    # The per-minute counters are keyed by the clock's minute: a test that crosses a minute
+    # boundary between two requests would count them apart. This world stays in one minute.
+    this_minute = publishing.minute_window()
+    real_minute_window = publishing.minute_window
+    monkeypatch.setattr(publishing, "minute_window",
+                        lambda now=None: this_minute if now is None else real_minute_window(now))
 
     owner = User(id="owner", email="owner@example.test", name="만든 사람", password_hash="x",
                  monthly_credits=1000, preferences={"aboutMe": "나는 회계팀 김철수다",
