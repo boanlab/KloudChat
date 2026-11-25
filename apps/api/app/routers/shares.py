@@ -363,7 +363,11 @@ def _shaped_sheet(data: bytes) -> dict:
         if item.get("hidden"):
             continue
         # no formulas leave: a reader sees what the sheet shows (`v`), its formats and layout
-        cells = [{k: v for k, v in cell.items() if k != "f"} for cell in item["cells"][:left]]
+        cells = [
+            {k: v for k, v in cell.items() if k != "f"}
+            | ({"v": "(계산 안 됨)"} if "f" in cell and "v" not in cell else {})
+            for cell in item["cells"][:left]
+        ]
         left -= len(cells)
         sheets.append({**item, "cells": cells})
     return {"sheets": sheets, "truncated": bool(model["truncated"]) or left <= 0}

@@ -23,7 +23,7 @@ from typing import Any
 import openpyxl
 from lxml import etree
 from openpyxl.formula.tokenizer import Token, Tokenizer
-from openpyxl.utils import column_index_from_string
+from openpyxl.utils import column_index_from_string, get_column_letter
 
 from app.services import sheet_guard, sheet_model, sheet_patch
 
@@ -222,9 +222,28 @@ def _round(value: float, digits: int, mode: str) -> float:
     return math.copysign(done / scale, value) if value else 0.0
 
 
+def _wildcard(text: str) -> re.Pattern[str] | None:
+    """A SUMIF/COUNTIF text with `*` (any run) or `?` (one character), `~` escaping either, as a
+    whole-cell pattern; None when it has no wildcard."""
+    if not re.search(r"(?<!~)[*?]", text):
+        return None
+    out: list[str] = []
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if ch == "~" and i + 1 < len(text) and text[i + 1] in "*?~":
+            out.append(re.escape(text[i + 1]))
+            i += 2
+            continue
+        out.append(".*" if ch == "*" else "." if ch == "?" else re.escape(ch))
+        i += 1
+    return re.compile("".join(out), re.I | re.S)
+
+
 def _criterion(crit: Any) -> Callable[[Any], bool]:
     op: str = "="
     want: Any = crit
+    pattern: re.Pattern[str] | None = None
     if isinstance(crit, str):
         m = re.match(r"^(>=|<=|<>|>|<|=)?(.*)$", crit, re.S)
         op, rest = (m.group(1) or "="), m.group(2)
@@ -232,10 +251,17 @@ def _criterion(crit: Any) -> Callable[[Any], bool]:
             want = float(rest)
         except ValueError:
             want = rest
+            if op in ("=", "<>"):
+                pattern = _wildcard(rest)
     elif isinstance(crit, (int, float)) and not isinstance(crit, bool):
         want = float(crit)
 
     def test(value: Any) -> bool:
+        if pattern is not None:
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                return op == "<>"
+            hit = pattern.fullmatch("" if value is None else str(value)) is not None
+            return hit if op == "=" else not hit
         if isinstance(want, float):
             if isinstance(value, bool) or not isinstance(value, (int, float)):
                 return op == "<>"
@@ -304,7 +330,8 @@ def _plain(args: list[Any], name: str) -> Any:
         return float(sum(1 for v in _flat(args)
                          if isinstance(v, (int, float)) and not isinstance(v, bool)))
     if name == "COUNTA":
-        return float(sum(1 for v in _flat(args) if v is not None and v != ""))
+        # a formula that gives "" is a cell with something in it, as in Excel
+        return float(sum(1 for v in _flat(args) if v is not None))
     if name in ("ROUND", "ROUNDUP", "ROUNDDOWN"):
         if not 1 <= len(args) <= 2:
             raise Unsupported("args")
@@ -574,6 +601,20 @@ def values(data: bytes) -> dict[tuple[str, int, int], Any]:
                 out[(sheet, row, col)] = book.cell(sheet, row, col)
             except Unsupported:
                 continue
+    return out
+
+
+def uncomputed(data: bytes) -> list[str]:
+    """`Sheet!A1` of every formula this cannot calculate (a function it does not have): the value
+    such a cell holds is the file's last cached one, which an edit may have made stale."""
+    book = _Book(data)
+    out: list[str] = []
+    for sheet, forms in book.formulas.items():
+        for row, col in sorted(forms):
+            try:
+                book.cell(sheet, row, col)
+            except Unsupported:
+                out.append(f"{sheet}!{get_column_letter(col)}{row}")
     return out
 
 

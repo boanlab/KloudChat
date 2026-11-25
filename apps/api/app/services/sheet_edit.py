@@ -695,6 +695,16 @@ def outline(data: bytes, sheet: Any = None, range: Any = None) -> str:  # noqa: 
     if model.get("kept"):
         lines.append("이 파일에는 여기서 읽거나 고칠 수 없는 것이 있고 그대로 보존됩니다: "
                      + ", ".join(model["kept"]))
+    try:
+        stale = sheet_calc.uncomputed(data)
+    except Exception:  # noqa: BLE001 - a hint; the outline stands without it
+        stale = []
+    if stale:
+        lines.append(
+            "계산하지 못한 수식 칸(이 도구에 없는 함수): " + ", ".join(stale[:15])
+            + (f" 외 {len(stale) - 15}개" if len(stale) > 15 else "")
+            + ". 위 값은 파일에 저장돼 있던 마지막 값이라 입력이 바뀐 뒤에는 틀릴 수 있으니 "
+            "그대로 인용하지 말고, 필요하면 사용자에게 Excel에서 열어 확인하라고 알리세요.")
     blanks_left = blanks(data)
     if blanks_left:
         lines.append("남은 빈칸: " + ", ".join(blanks_left))
