@@ -5,8 +5,8 @@ blank document another tab pinged recently, nor does the 6-hour sweep. One row p
 tab. A table of its own, so a ping never moves `artifacts.updated_at` or `data` (either would read
 as an edit). Rows go with their document (`ON DELETE CASCADE`).
 
-Revision ID: 0104
-Revises: 0103
+Revision ID: 0105
+Revises: 0104
 Create Date: 2026-11-25
 """
 
@@ -16,8 +16,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "0104"
-down_revision = "0103"
+revision = "0105"
+down_revision = "0104"
 branch_labels = None
 depends_on = None
 
