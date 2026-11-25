@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { ApiError } from '@/lib/api'
-import { saveFailure } from './useOfficeDocument'
+import { ApiError } from './api'
+import { saveFailure } from './saveFailure'
 
 const t = (text: string) => text
 
