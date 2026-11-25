@@ -121,21 +121,38 @@ class AudioRequest(Wire):
     seconds: int = Field(default=0, ge=0, le=300)
 
 
+SPEAK_TEXT_MAX = 600
+SPEAK_SOURCE_MAX = 4000
+
+
 class SpeakRequest(Wire):
     """One sentence of an answer read aloud in a voice conversation; the clip is not kept."""
 
-    text: str = Field(min_length=1, max_length=600)
+    text: str = Field(min_length=1, max_length=SPEAK_TEXT_MAX)
     model: str | None = None
     #: empty or one the model lacks = the model's default voice
     voice: str = ""
-    #: a throwaway clip that loads the speech model; free
+    #: a throwaway clip that loads the speech model; free, and always the server's own short
+    #: phrase, whatever `text` says
     warm: bool = False
     #: put `source` into spoken words with a self-hosted model first; `text` is read when that
     #: fails, is slow or comes back empty
     spoken: bool = False
     #: a block of the answer as it is written (a paragraph, a whole list or table), cleaned of
     #: code, link addresses and citation numbers
-    source: str | None = Field(default=None, max_length=4000)
+    source: str | None = Field(default=None, max_length=SPEAK_SOURCE_MAX)
+
+    @field_validator("text", mode="before")
+    @classmethod
+    def _clip_text(cls, value: object) -> object:
+        """A long block is read as far as it goes, not refused: one paragraph never ends a
+        whole reading."""
+        return value[:SPEAK_TEXT_MAX] if isinstance(value, str) else value
+
+    @field_validator("source", mode="before")
+    @classmethod
+    def _clip_source(cls, value: object) -> object:
+        return value[:SPEAK_SOURCE_MAX] if isinstance(value, str) else value
 
 
 class VideoJobRequest(Wire):

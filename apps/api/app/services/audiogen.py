@@ -221,13 +221,17 @@ async def _speech(
             response = await client.post(
                 f"{base_url.rstrip('/')}/audio/speech",
                 json=payload,
-                headers={"Authorization": f"Bearer {api_key}"},
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    # the sentence is conversation text: nothing of it stays in the gateway's logs
+                    "x-litellm-enable-message-redaction": "true",
+                },
             )
     except httpx.HTTPError as exc:
-        log.warning("speech request failed: %s", exc)
+        log.warning("speech request failed: %s", type(exc).__name__)
         raise AudioError("오디오 생성 서버에 연결하지 못했습니다.") from exc
     if response.status_code >= 400:
-        log.warning("speech generation %s: %s", response.status_code, response.text[:200])
+        log.warning("speech generation answered %s", response.status_code)
         raise AudioError("오디오를 만들지 못했습니다. 잠시 후 다시 시도하세요.")
     body = response.content
     if body[:4] != b"RIFF":

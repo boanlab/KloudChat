@@ -136,6 +136,37 @@ async def test_whisper_hears_which_language_and_is_retried_only_off_the_pair(mon
     assert calls == [None]
 
     calls.clear()
-    assert await t._transcribe_locally("http://w", b"\x00", "ko.wav") == "안녕하세요"
+    assert await t._transcribe_timed("http://w", b"\x00", "ko.wav") == ("안녕하세요", 1)
     assert calls == [None, "ko"]
-    assert t._last_seconds == 1
+
+
+@pytest.mark.asyncio
+async def test_two_recordings_at_once_each_keep_their_own_seconds(monkeypatch):
+    import asyncio
+
+    from app.services import transcribe as t
+
+    async def whisper(_url, data, _name, language, _prompt="", **_kw):
+        await asyncio.sleep(0.01 if data == b"a" else 0)
+        return {"text": data.decode(), "language": "ko", "duration": 3.0 if data == b"a" else 9.0}
+
+    monkeypatch.setattr(t, "_whisper", whisper)
+    first, second = await asyncio.gather(
+        t._transcribe_timed("http://w", b"a", "a.wav"),
+        t._transcribe_timed("http://w", b"b", "b.wav"),
+    )
+    assert first == ("a", 3) and second == ("b", 9)
+
+
+@pytest.mark.asyncio
+async def test_a_silent_recording_and_a_failing_server_are_told_apart(monkeypatch):
+    from app.services import transcribe as t
+
+    async def whisper(*_a, **_k):
+        return {"text": "", "language": "ko"}
+
+    monkeypatch.setattr(t, "_whisper", whisper)
+    with pytest.raises(t.TranscribeError) as silent:
+        await t._transcribe_timed("http://w", b"\x00", "s.wav")
+    assert silent.value.code == "no_speech"
+    assert t.TranscribeError("x").code == "failed"

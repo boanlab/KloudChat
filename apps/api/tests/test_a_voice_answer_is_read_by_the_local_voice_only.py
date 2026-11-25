@@ -27,6 +27,8 @@ PRICED = {**QWEN, "id": "strict-local/priced-tts", "creditPerCall": 3}
 
 def _run(monkeypatch, *, models, default=QWEN["id"], headroom=True):
     speak._recent.clear()
+    speak._warm_recent.clear()
+    speak._inflight.clear()
     user = User(id="u-sp", email="s@example.test", password_hash="h", name="S")
     calls: list[dict] = []
     settled: list[dict] = []
@@ -136,3 +138,65 @@ async def test_a_failed_speech_server_is_a_bad_gateway(monkeypatch):
     with pytest.raises(HTTPException) as err:
         await go()
     assert err.value.status_code == 502
+
+
+@pytest.mark.asyncio
+async def test_a_warm_up_reads_the_servers_own_phrase_whatever_the_text_says(monkeypatch):
+    go, calls, settled = _run(monkeypatch, models=[QWEN])
+    await go(warm=True)
+    assert calls[0]["prompt"] == speak._WARM_PHRASE and settled == []
+
+
+@pytest.mark.asyncio
+async def test_warm_ups_are_few_and_do_not_use_the_sentence_allowance(monkeypatch):
+    go, calls, _ = _run(monkeypatch, models=[QWEN])
+    for _ in range(speak._WARM_PER_MINUTE):
+        await go(warm=True)
+    with pytest.raises(HTTPException) as err:
+        await go(warm=True)
+    assert err.value.status_code == 429
+    await go()  # a sentence is still allowed
+    assert len(calls) == speak._WARM_PER_MINUTE + 1
+
+
+@pytest.mark.asyncio
+async def test_one_account_cannot_hold_more_than_a_few_clips_at_once(monkeypatch):
+    import asyncio
+
+    go, _, _ = _run(monkeypatch, models=[QWEN])
+    release = asyncio.Event()
+
+    async def slow(**kwargs):
+        await release.wait()
+        return audiogen.GeneratedAudio(b"RIFFdata", "audio/wav", "wav", 0, 0, "")
+
+    monkeypatch.setattr(speak.audiogen, "generate", slow)
+    tasks = [asyncio.create_task(go()) for _ in range(speak._MAX_INFLIGHT)]
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+    with pytest.raises(HTTPException) as err:
+        await go()
+    assert err.value.status_code == 429
+    release.set()
+    await asyncio.gather(*tasks)
+    await go()  # the slots came back
+
+
+def test_the_sentence_allowance_is_shared_out_over_the_replicas(monkeypatch):
+    import importlib
+
+    monkeypatch.setattr("app.core.config.settings.api_replicas", 3)
+    try:
+        assert importlib.reload(speak)._PER_MINUTE == 30
+    finally:
+        monkeypatch.undo()
+        importlib.reload(speak)
+
+
+def test_a_flat_price_counts_toward_the_credits_a_clip_needs():
+    from app.services.credits import has_headroom
+
+    poor = User(id="u-p", email="p@example.test", password_hash="h", name="P", credits_used=100,
+                monthly_credits=100)
+    assert not has_headroom(poor, PRICED)
+    assert has_headroom(poor, QWEN)
