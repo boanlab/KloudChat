@@ -60,6 +60,8 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
   const created: Record<string, unknown>[] = []
   /** Documents asked about with `discard-if-blank` (leaving an untouched blank). */
   const discards: string[] = []
+  /** Documents a tab said it has open (`POST /artifacts/{id}/open-ping`). */
+  const pings: string[] = []
   let dropped = false
   /** Every request that would change a file-box file (none should). */
   const fileWrites: string[] = []
@@ -147,6 +149,10 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
       Object.assign(session, request.postDataJSON())
       return json(session)
     }
+    if (path === `/artifacts/${artifactId}/open-ping` && method === 'POST') {
+      pings.push(artifactId)
+      return route.fulfill({ status: 204, body: '' })
+    }
     if (path === `/artifacts/${artifactId}/discard-if-blank` && method === 'POST') {
       discards.push(artifactId)
       dropped = options.discardAnswer ?? true
@@ -160,7 +166,7 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
         ? options.box.name.replace(/\.[^.]+$/, '') : options.title
       artifact = {
         ...artifact, sessionId: session.id, title: body.title ?? named,
-        data: { ...artifact.data, ...(body.fileId ? { sourceFileId: body.fileId } : {}) },
+        data: { ...artifact.data, ...(body.fileId ? { sourceFileId: body.fileId } : { blank: body.title ?? named }) },
       }
       return route.fulfill({ status: 201, json: artifact })
     }
@@ -307,7 +313,7 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
         : options.attachment || options.reopen ? `/s/${sessionId}` : `/s/${sessionId}?artifact=${artifactId}`
   await page.goto(opened)
   return {
-    unexpected, problems, saves, heads, files, sent, created, discards, csp, fileWrites, shares, attached,
+    unexpected, problems, saves, heads, files, sent, created, discards, pings, csp, fileWrites, shares, attached,
     loads, summaries, received,
   }
 }

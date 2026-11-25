@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { artifactsApi } from '@/lib/api'
-import { leaveAllBlanks, leaveBlank, rememberBlank, sessionOfPath } from '@/lib/blankDocs'
+import { leaveBlank, rememberBlank, sessionOfPath, TAB_ID } from '@/lib/blankDocs'
 import { blankSettled } from '@/lib/blankPending'
 import { useStore } from '@/store/useStore'
 
@@ -53,7 +53,7 @@ describe('leaveBlank', () => {
     expect(useStore.getState().artifacts.map((a) => a.id)).toEqual(['a2'])
     expect(useStore.getState().goneSessions.s1).toBe('deleted')
     await blankSettled()
-    expect(ask).toHaveBeenCalledExactlyOnceWith('a1')
+    expect(ask).toHaveBeenCalledExactlyOnceWith('a1', TAB_ID)
     // asked about once: leaving again asks nothing
     leaveBlank('s1')
     expect(ask).toHaveBeenCalledTimes(1)
@@ -84,13 +84,8 @@ describe('leaveBlank', () => {
     expect(useStore.getState().sessions).toHaveLength(2)
   })
 
-  it('as the page goes away it asks without redrawing the lists', async () => {
-    const ask = vi.spyOn(artifactsApi, 'discardIfBlank').mockResolvedValue({ discarded: true })
-    rememberBlank('s1', 'a1')
-    rememberBlank('s2', 'a2')
-    leaveAllBlanks()
-    expect(ask).toHaveBeenCalledTimes(2)
-    expect(useStore.getState().sessions).toHaveLength(2)
-    await blankSettled()
+  it('has no way to ask as the page goes away: a reload or a closed tab leaves it to the server sweep', async () => {
+    const blankDocs = await import('@/lib/blankDocs')
+    expect('leaveAllBlanks' in blankDocs).toBe(false)
   })
 })

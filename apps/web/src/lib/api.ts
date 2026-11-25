@@ -1973,8 +1973,10 @@ export const artifactsApi = {
     templateId?: string
   }) => call<ArtifactRow>(`/artifacts/${kind}`, body(payload)),
   /** The screen of a blank document was left: the server drops it with its empty conversation, but only if nothing was done to it. */
-  discardIfBlank: (id: string) =>
-    call<{ discarded: boolean }>(`/artifacts/${id}/discard-if-blank`, { method: 'POST', keepalive: true }),
+  discardIfBlank: (id: string, tab: string) =>
+    call<{ discarded: boolean }>(`/artifacts/${id}/discard-if-blank`, { ...body({ tab }), keepalive: true }),
+  /** This tab has the blank document open (every minute): another tab leaving does not drop it. */
+  pingBlank: (id: string, tab: string) => call<void>(`/artifacts/${id}/open-ping`, body({ tab })),
   /** A document with no conversation joins `sessionId` (a new chat) to be edited beside it. */
   attachDocument: (kind: OfficeKind | 'xlsx', id: string, sessionId: string) =>
     call<ArtifactRow>(`/artifacts/${id}/${kind}/session`, body({ sessionId })),

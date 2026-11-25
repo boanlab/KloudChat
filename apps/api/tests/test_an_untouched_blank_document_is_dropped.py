@@ -19,13 +19,20 @@ from app.core.db import get_session
 from app.core.deps import current_user
 from app.models.chat import ChatSession, Message, Role
 from app.models.user import User, utcnow
-from app.models.workspace import Artifact, ArtifactVersion, Job, Share, StoredFile
+from app.models.workspace import (
+    Artifact,
+    ArtifactVersion,
+    BlankDocSeen,
+    Job,
+    Share,
+    StoredFile,
+)
 from app.routers import docx as docx_router
 from app.routers import hwp as hwp_router
 from app.routers import pptx as pptx_router
 from app.routers import sheet as sheet_router
 from app.routers import workspace
-from app.services import blank_docs, files
+from app.services import blank_docs, files, office_doc
 
 ME = User(id="blank-me", email="me@example.test", password_hash="unused", name="Me")
 OTHER = User(id="blank-other", email="other@example.test", password_hash="unused", name="Other")
@@ -68,7 +75,7 @@ async def stack(tmp_path, monkeypatch):
     async with engine.begin() as conn:
         for statement in _DDL:
             await conn.exec_driver_sql(statement)
-        for model in (StoredFile, Job, Share):
+        for model in (StoredFile, Job, Share, BlankDocSeen):
             await conn.run_sync(lambda sync, m=model: m.__table__.create(sync))
 
     def local():
@@ -241,3 +248,135 @@ async def test_the_sweep_drops_only_old_untouched_blanks_outside_projects(stack)
     assert (await _exists(local, said_aid, said)) == (True, True)
     async with local() as db:
         assert (await db.exec(select(ArtifactVersion))).all() == []
+
+
+async def _old(local, *aids: str, hours: float = 7) -> None:
+    async with local() as db:
+        for aid in aids:
+            row = await db.get(Artifact, aid)
+            row.created_at = row.updated_at = utcnow() - timedelta(hours=hours)
+            db.add(row)
+        await db.commit()
+
+
+async def test_the_sweep_gets_past_a_long_run_of_other_candidates(stack):
+    """More than a page of old marked-but-renamed documents does not hide a later blank."""
+    client, local, _ = stack
+    sid, aid = await _blank(client, local, "pptx")
+    await _old(local, aid, hours=7)
+    async with local() as db:
+        for i in range(blank_docs._BATCH + 5):
+            chat = ChatSession(user_id=ME.id, title="")
+            db.add(chat)
+            await db.flush()
+            db.add(Artifact(
+                user_id=ME.id, session_id=chat.id, kind="pptx", title=f"다른 이름 {i}",
+                data={blank_docs.BLANK_KEY: "새 문서"}, version=1,
+                created_at=utcnow() - timedelta(hours=10 + i / 1000),
+                updated_at=utcnow() - timedelta(hours=10 + i / 1000),
+            ))
+        await db.commit()
+    async with local() as db:
+        assert await blank_docs.sweep(db, older_than_hours=6) == 1
+    assert await _exists(local, aid, sid) == (False, False)
+
+
+async def test_one_document_that_moves_underneath_does_not_stop_the_sweep(stack, monkeypatch):
+    client, local, _ = stack
+    first, first_aid = await _blank(client, local, "pptx")
+    second, second_aid = await _blank(client, local, "docx")
+    await _old(local, first_aid, second_aid)
+    real = office_doc.kept_files
+    calls = {"n": 0}
+
+    async def flaky(db, rows):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("another replica got there first")
+        return await real(db, rows)
+
+    monkeypatch.setattr(office_doc, "kept_files", flaky)
+    async with local() as db:
+        assert await blank_docs.sweep(db, older_than_hours=6) == 1
+    gone = [
+        (await _exists(local, first_aid, first))[0],
+        (await _exists(local, second_aid, second))[0],
+    ]
+    assert sorted(gone) == [False, True]
+
+
+async def test_a_save_that_lands_first_keeps_the_document(stack):
+    """The caller holds a stale copy (version 1); the row says 2: it is judged afresh."""
+    client, local, _ = stack
+    sid, aid = await _blank(client, local, "pptx")
+    async with local() as db:
+        stale = await db.get(Artifact, aid)
+    async with local() as other:
+        row = await other.get(Artifact, aid)
+        row.version = 2
+        other.add(row)
+        await other.commit()
+    async with local() as db:
+        assert await blank_docs.discard(db, stale) is False
+    assert (await _exists(local, aid, sid))[0] is True
+
+
+async def _ping(client, aid: str, tab: str):
+    return await client.post(f"/artifacts/{aid}/open-ping", json={"tab": tab})
+
+
+async def test_another_tab_with_the_document_open_keeps_it(stack):
+    client, local, _ = stack
+    sid, aid = await _blank(client, local, "docx")
+    assert (await _ping(client, aid, "tab-b")).status_code == 204
+    # tab A leaves: B still has it open
+    answer = await client.post(f"/artifacts/{aid}/discard-if-blank", json={"tab": "tab-a"})
+    assert answer.json() == {"discarded": False}
+    assert (await _exists(local, aid, sid)) == (True, True)
+    # B's own leaving does not count its own ping
+    answer = await client.post(f"/artifacts/{aid}/discard-if-blank", json={"tab": "tab-b"})
+    assert answer.json() == {"discarded": True}
+    assert (await _exists(local, aid, sid)) == (False, False)
+    async with local() as db:
+        assert (await db.exec(select(BlankDocSeen))).all() == []
+
+
+async def test_a_ping_that_went_quiet_no_longer_keeps_it(stack):
+    client, local, _ = stack
+    sid, aid = await _blank(client, local, "docx")
+    await _ping(client, aid, "tab-b")
+    async with local() as db:
+        row = await db.get(BlankDocSeen, (aid, "tab-b"))
+        row.seen_at = utcnow() - timedelta(seconds=blank_docs.PING_FRESH_SEC + 30)
+        db.add(row)
+        await db.commit()
+    assert await _discard(client, aid) is True
+
+
+async def test_the_sweep_leaves_a_document_a_tab_has_open(stack):
+    client, local, _ = stack
+    sid, aid = await _blank(client, local, "hwp")
+    await _old(local, aid)
+    await _ping(client, aid, "tab-b")
+    async with local() as db:
+        assert await blank_docs.sweep(db, older_than_hours=6) == 0
+    assert (await _exists(local, aid, sid)) == (True, True)
+
+
+async def test_a_ping_is_not_an_edit_and_is_ignored_for_what_is_not_a_blank(stack):
+    client, local, who = stack
+    sid, aid = await _blank(client, local, "pptx")
+    async with local() as db:
+        before = await db.get(Artifact, aid)
+        stamp = (before.updated_at, before.version, dict(before.data or {}))
+    await _ping(client, aid, "tab-b")
+    async with local() as db:
+        after = await db.get(Artifact, aid)
+        assert (after.updated_at, after.version, dict(after.data or {})) == stamp
+    # another person's, a missing one, and one that was edited: no row
+    who["user"] = OTHER
+    assert (await _ping(client, aid, "tab-c")).status_code == 204
+    assert (await _ping(client, "no-such-id", "tab-c")).status_code == 204
+    async with local() as db:
+        rows = (await db.exec(select(BlankDocSeen))).all()
+    assert [r.tab for r in rows] == ["tab-b"]

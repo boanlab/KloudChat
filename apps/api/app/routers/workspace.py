@@ -24,6 +24,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import FileResponse, HTMLResponse
+from pydantic import Field
 from sqlalchemy import and_, func, literal, or_, tuple_
 from sqlmodel import col, delete, select, update
 
@@ -2279,15 +2280,32 @@ async def delete_artifact(artifact_id: str, user: CurrentUser, db: DbSession,
     office_doc.drop_files(blobs)
 
 
+class BlankTab(Wire):
+    """The tab asking (`lib/blankDocs.ts`): its own pings never keep a document it is leaving."""
+
+    tab: str = Field(default="", max_length=40)
+
+
 @router.post("/artifacts/{artifact_id}/discard-if-blank")
-async def discard_if_blank(artifact_id: str, user: CurrentUser, db: DbSession):
+async def discard_if_blank(artifact_id: str, user: CurrentUser, db: DbSession,
+                           payload: BlankTab | None = None):
     """The screen of a blank document was left: it goes, with its empty conversation, only if
-    nothing was done to it (`blank_docs.is_pristine`). Another's or a missing one answers the
-    same as one that stays, so this tells nothing and repeats harmlessly."""
+    nothing was done to it (`blank_docs.is_pristine`) and no other tab has it open. Another's or a
+    missing one answers the same as one that stays, so this tells nothing and repeats harmlessly."""
     artifact = await db.get(Artifact, artifact_id)
     if artifact is None or artifact.user_id != user.id:
         return {"discarded": False}
-    return {"discarded": await blank_docs.discard(db, artifact)}
+    tab = (payload.tab if payload else "") or None
+    return {"discarded": await blank_docs.discard(db, artifact, tab=tab, via="route")}
+
+
+@router.post("/artifacts/{artifact_id}/open-ping", status_code=status.HTTP_204_NO_CONTENT)
+async def ping_blank(artifact_id: str, payload: BlankTab, user: CurrentUser, db: DbSession):
+    """A tab has this blank document open (every minute); it keeps another tab's leaving from
+    dropping it. Anything that is not a blank document of the caller's is ignored."""
+    artifact = await db.get(Artifact, artifact_id)
+    if artifact is not None and artifact.user_id == user.id and payload.tab:
+        await blank_docs.ping(db, artifact, payload.tab)
 
 
 @router.post("/artifacts/delete")
