@@ -51,7 +51,7 @@ authorizes raw, masked or strict-local egress.
 | Deployment | `SANDBOX_IN_BOUNDARY`, `SELF_HOSTED_THINKING_MODELS`, `OCR_VISION_MODEL`, `KNOWLEDGE_DIGEST_MODEL`, `SKILL_DRAFTS`, `TIMEZONE` | Facts about the infrastructure: whether the sandbox is inside the boundary, which served models think unless told not to, which served vision model reads pages best when the administrator picked **Auto**, which strict-local model writes the per-file digests of project material (only a strict-local one is ever used; empty: code digests only), whether this is an evaluation instance, the install's time zone. |
 | Deployment | `CREDITS_PER_USD`, `LITELLM_BUDGET_HEADROOM` | Accounting constants (shown read-only under **System › Proxy**). |
 | Deployment | `PERF_*` | Performance monitoring: mounts, targets and thresholds of this host. |
-| Product, seeded once | `DEFAULT_CHAT_MODEL`, `DEFAULT_REPORT_MODEL`, `DEFAULT_SLIDES_MODEL`, `DEFAULT_IMAGE_MODEL`, `DEFAULT_AUDIO_MODEL`, `DEFAULT_VIDEO_MODEL`, `SELF_HOSTED_CHAT_THINKING`, `EXTERNAL_CHAT_THINKING` | **System › Model** (`models.*`, `thinking.*` in `system_settings`). The environment seeds a fresh install once. |
+| Product, seeded once | `DEFAULT_CHAT_MODEL`, `DEFAULT_REPORT_MODEL`, `DEFAULT_SLIDES_MODEL`, `DEFAULT_SHEET_MODEL`, `DEFAULT_IMAGE_MODEL`, `DEFAULT_AUDIO_MODEL`, `DEFAULT_VIDEO_MODEL`, `SELF_HOSTED_CHAT_THINKING`, `EXTERNAL_CHAT_THINKING` | **System › Model** (`models.*`, `thinking.*` in `system_settings`). The environment seeds a fresh install once. |
 | Product, seeded once | `DEFAULT_MONTHLY_CREDITS` | **System › Signup** (`credits.default_monthly`). Seeded once the same way. |
 | Product, environment as fallback | `ADAPTIVE_ROUTING_DEFAULT`, `ADAPTIVE_CLASSIFIER_MODEL_DEFAULT`, `ADAPTIVE_ECONOMY_MODELS_DEFAULT`, `ADAPTIVE_QUALITY_DEFAULT`, `ADAPTIVE_QUALITY_MODELS_DEFAULT`, `INTERNAL_DATA_STRICT_LOCAL_DEFAULT` | **System › Routing** and **Security · audit** (`governance` row). The environment only fills the row when it is first created. |
 | Product, environment as fallback | `BRAND_NAME`, `SIGNUP_MODE`, `SMTP_HOST` … `SMTP_FROM` | **System › Branding / Signup / Mail**. A stored value wins; with none stored the environment applies. |
@@ -156,13 +156,14 @@ it when nobody is mid-turn):
 | `KCHAT_DEFAULT_MONTHLY_CREDITS` | `DEFAULT_MONTHLY_CREDITS` | `500000` | First-install seed of **System › Signup › Monthly credits for new accounts**, which then decides. Assigned at approval unless the administrator overrides it. 1 credit = $0.00001, so 500,000 ≈ $5/month. |
 | `KCHAT_DEFAULT_CHAT_MODEL` | `DEFAULT_CHAT_MODEL` | `local/qwen3.8-flash` | First-install seed of **System › Model › Default chat model** (as are the four rows below). Absent from the catalogue (or outside an account's allowlist) → the first allowed chat model in catalogue order; price never picks a default. |
 | `KCHAT_DEFAULT_REPORT_MODEL` / `KCHAT_DEFAULT_SLIDES_MODEL` | `DEFAULT_REPORT_MODEL` / `DEFAULT_SLIDES_MODEL` | `local/qwen3.8-27b` | Per-surface defaults for Report and Slides; documents keep the larger model while chat uses the faster one. Empty falls back to the chat default. |
+| `KCHAT_DEFAULT_SHEET_MODEL` | `DEFAULT_SHEET_MODEL` | empty | Default model of the Sheet surface; empty follows the chat default. A new sheet conversation starts on Super Agent unless a model is picked (**System › Routing** sets the start mode). |
 | `KCHAT_DEFAULT_IMAGE_MODEL` | `DEFAULT_IMAGE_MODEL` | `bytedance-seed/seedream-5-0-flash` | Default picture model, for the image surface and for pictures in reports and decks. The picture models are whatever the gateway's catalogue lists; one that does not honour an aspect ratio is offered square only (`imagegen.aspects_for`). Absent from the catalogue → pictures are unavailable until an administrator picks one (`409 default_image_model_unset`); outside an account's allowlist → the first picture model it may use. A strict-local conversation never uses it: see [Governance](#governance-security--audit-admingovernance). |
 | `KCHAT_DEFAULT_AUDIO_MODEL` / `KCHAT_DEFAULT_VIDEO_MODEL` | `DEFAULT_AUDIO_MODEL` / `DEFAULT_VIDEO_MODEL` | `strict-local/qwen3-tts` / `google/veo-3.1-lite` | The Audio / Video surface keeps one default per modality. Absent from the catalogue → that mode is unavailable until an administrator picks one (`409 default_audio_model_unset` for audio). |
 
 ### Super Agent and Auto
 
 Super Agent has no switch: the model picker always lists **Super Agent** and **Super Agent
-(strict-local)** first on chat, report and slides, and a new conversation there starts on
+(strict-local)** first on chat, report, sheet and slides, and a new conversation there starts on
 the surface's default from **System › Model** (see [Model](#model)). An entry whose class
 table has no model an account may use is shown as unavailable only while a conversation is
 on it; a new conversation then starts on the surface's model. **System › Routing** holds its
@@ -499,7 +500,7 @@ titles, memories and the running summary, the model that writes `run_code`
 programs and its fallback, and whether self-hosted and external models think
 before answering. Chat and image must be chosen (`422 model_chat_required`,
 `422 model_image_required`), and audio and video too while the catalogue serves
-one (`422 model_audio_required`, `422 model_video_required`); report and slides
+one (`422 model_audio_required`, `422 model_video_required`); report, sheet and slides
 left empty follow the chat default. Price never picks a default.
 
 Chat, report, slides and sheet also offer **Super Agent** and **Super Agent (strict-local)**,
@@ -512,9 +513,9 @@ internal material stays strict-local starts on `super_strict`. With a Super Agen
 chosen, the model last chosen for the surface stays stored as the fallback a turn uses when
 the class table has nothing usable. An agent saved
 with no model follows its surface's default. The
-side-work models read the conversation, so only self-hosted chat models can be
-chosen (`422 model_title_invalid` and the like otherwise); a strict-local turn
-uses the `strict-local/` twin. A saved model the gateway no longer serves stays
+Helper work (titles, memories, running summaries, `run_code` programs, tie-breaks) has no
+model setting of its own: it runs on the Super Agent table's self-hosted rows, and a strict-local
+turn uses the `strict-local/` twin. A saved model the gateway no longer serves stays
 selectable as it is, marked unavailable, and is not swapped silently.
 
 ### Routing

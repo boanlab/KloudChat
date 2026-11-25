@@ -58,7 +58,7 @@ CONTACT_EMAIL = "contact.email"
 #: enabled surfaces CSV; chat always on
 ENABLED_KINDS = "kinds.enabled"
 
-#: non-chat surfaces; image/video/sheet default off
+#: non-chat surfaces; image and video default off (credits per generation)
 OPTIONAL_KINDS = ("report", "sheet", "slides", "image", "av")
 DEFAULT_ENABLED_KINDS = ("report", "slides", "sheet")
 

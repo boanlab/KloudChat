@@ -4,7 +4,7 @@
 
 **An open-source generative AI workspace that does not end at the conversation.**
 
-Chat · Reports · Slides · Images · Audio &amp; Video · Agents · Chatbots
+Chat · Reports · Sheets · Slides · Images · Audio &amp; Video · Agents · Chatbots
 
 [![CI](https://github.com/boanlab/KloudChat/actions/workflows/ci.yml/badge.svg)](https://github.com/boanlab/KloudChat/actions/workflows/ci.yml)
 [![Release](https://github.com/boanlab/KloudChat/actions/workflows/release.yml/badge.svg)](https://github.com/boanlab/KloudChat/actions/workflows/release.yml)
@@ -26,7 +26,7 @@ every model and tool through one backend gateway address configured at
 runtime ([KloudChat-LLM][backend]). The browser only ever talks to the
 KloudChat API.
 
-**Five surfaces, one workspace.** Chat, Report, Slides,
+**Six surfaces, one workspace.** Chat, Report, Sheet, Slides,
 Image and Audio / Video share the same projects, knowledge files, memories,
 agents and skills. Everything a turn produces — a document, a deck, a chart, a
 picture, a clip — is an **artifact**, kept in its own gallery and exportable:
@@ -108,7 +108,7 @@ key never leaves the API container. Credits are an administrator-assigned
 monthly allowance that refills — no top-up, no rollover, and failed jobs are
 not charged. KloudChat enforces the limit before every turn; the LiteLLM-side
 budget is a backstop 20% above it, attached to the account rather than to a
-key. **Super Agent** is the default on chat, report and slides: for every turn it
+key. **Super Agent** is the default on chat, report, sheet and slides: for every turn it
 chooses a model, a reasoning effort and a tool budget from a table the
 administrator keeps (**System › Routing**). **Super Agent (strict-local)** does
 the same using strict-local models only; a project that keeps internal
@@ -228,14 +228,14 @@ The account menu's **Manage** (관리) section:
 | --- | --- |
 | Proxy | LiteLLM address and master key, connection test, model list refresh, models hidden for an unknown price |
 | Features | Enabled surfaces; feature integrations (server address, per-feature endpoints); OCR mode, vision model and page limit |
-| Model | The default model of each surface, the models for side work (titles and memories, `run_code` programs), whether models think before answering |
+| Model | The default model of each surface, the models of the Super Agent's own work (titles and memories, `run_code` programs are run by its self-hosted rows), whether models think before answering |
 | Policy | Privacy guard and PII masking, internal material on strict-local, intent filter, retention, idle sign-out |
 | Routing | Super Agent — its classifier and the class-to-model table — and the outline model that plans documents |
 | Branding | Name and logo for the sidebar and the sign-in screen |
 | Mail | SMTP for password reset and email verification |
 | Signup | Signup mode, allowed mail domains, email verification, a new account's monthly credits |
 
-Chat is always on. Reports and slides are on by default. Images and
+Chat is always on. Reports, sheets and slides are on by default. Images and
 audio/video cost credits per generation, so they default to off; a disabled surface disappears from the UI *and* the server
 refuses to create sessions of that kind.
 
@@ -268,7 +268,7 @@ without a translation fall back to Korean. The user guide is published at
 
 | Route | Contents |
 | --- | --- |
-| `/` · `/new/:kind` | Home and a new conversation on a surface (`chat`, `report`, `slides`, `image`, `av`) |
+| `/` · `/new/:kind` | Home and a new conversation on a surface (`chat`, `report`, `sheet`, `slides`, `image`, `av`) |
 | `/s/:id` | A conversation, with its artifacts in the right-hand panel |
 | `/projects` · `/projects/:id` | Project instructions, design brief and form files, the knowledge shelf (sources, Studio, notes), conversations and memories |
 | `/artifacts` | Every artifact, filtered by kind, with a way back to its conversation |
