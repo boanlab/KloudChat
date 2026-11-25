@@ -63,6 +63,22 @@ def _no_ambient_search(monkeypatch):
     monkeypatch.setattr(settings_store, "tools_config", without_search)
 
 
+#: the modules that test notices reaching devices; every other test leaves them unsent
+_PUSH_MODULES = {"test_push_notices_reach_devices", "test_long_jobs_send_a_notice"}
+
+
+@pytest.fixture(autouse=True)
+def _no_ambient_notices(request, monkeypatch):
+    """A notice is a task that opens its own session, and many test worlds share one connection:
+    a session that closes or fails there (these tables are missing) rolls back what a request
+    has written but not yet committed. So only the push tests send notices."""
+    if request.module.__name__ in _PUSH_MODULES:
+        return
+    from app.services import push
+
+    monkeypatch.setattr(push, "notify", lambda *_args, **_kwargs: None)
+
+
 @pytest.fixture(autouse=True)
 def _staged_reports(monkeypatch):
     """The suite tests the staged report path; the one-pass default for a self-hosted writer is
