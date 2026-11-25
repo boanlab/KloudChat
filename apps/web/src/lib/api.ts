@@ -652,10 +652,11 @@ export const speakApi = {
   speak: async (
     text: string,
     voice: string,
-    opts: { warm?: boolean; spoken?: boolean; source?: string } = {},
+    opts: { warm?: boolean; spoken?: boolean; source?: string; signal?: AbortSignal } = {},
   ) => {
     const res = await authedFetch(`${BASE_URL}/audio/speak`, {
       method: 'POST',
+      signal: opts.signal,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         text,

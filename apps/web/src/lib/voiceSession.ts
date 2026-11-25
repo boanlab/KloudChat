@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from 'react'
 import { speakApi } from './api'
 import { BlockFeed, type SpokenBlock } from './speechBlocks'
+import { unlockAudio } from './speakProblems'
 import { createVoicePlayer, type VoicePlayer } from './voicePlayer'
 
 export interface VoiceTurn {
@@ -33,8 +34,8 @@ export const subscribeChange = (fn: () => void) => {
 
 export function getPlayer(): VoicePlayer {
   player ??= createVoicePlayer(
-    (block: SpokenBlock) =>
-      speakApi.speak(block.text, session.voice, { spoken: block.source !== '', source: block.source }),
+    (block: SpokenBlock, signal: AbortSignal) =>
+      speakApi.speak(block.text, session.voice, { spoken: block.source !== '', source: block.source, signal }),
     () => changeSubs.forEach((fn) => fn()),
   )
   return player
@@ -48,6 +49,8 @@ export function resetTurn() {
 export function setVoiceMode(next: boolean | ((was: boolean) => boolean)) {
   const value = typeof next === 'function' ? next(on) : next
   if (value === on) return
+  // Opened by a click: the answers read later, after a wait, may play on a strict browser.
+  if (value) unlockAudio()
   on = value
   if (!value) {
     player?.stop()
@@ -55,6 +58,9 @@ export function setVoiceMode(next: boolean | ((was: boolean) => boolean)) {
   }
   modeSubs.forEach((fn) => fn())
 }
+
+/** Whether voice mode is on right now (read in an event handler; a component uses `useVoiceMode`). */
+export const voiceModeOn = () => on
 
 /** Whether voice mode is on; survives the composer being rebuilt. */
 export function useVoiceMode(): boolean {

@@ -8,6 +8,8 @@ const FRAME = 2048
 const PRE_ROLL_FRAMES = 3
 /** Under this much speech (a cough, a key tap) is dropped. */
 const MIN_UTTERANCE_MS = 400
+/** A held button is let go of by itself after this long: a stuck key or a phone put down does not fill memory. */
+const HOLD_MAX_MS = 60_000
 
 export interface VoiceListener {
   /** Ends the microphone and everything attached to it. */
@@ -31,16 +33,27 @@ export async function startVoiceListener(handlers: {
   onEnded?: () => void
   /** Sound that never paused was cut: the room is too loud for the end of a sentence to be told. */
   onSteady?: () => void
+  /** The held button ran out of time (`HOLD_MAX_MS`): what was held was sent. */
+  onHoldLimit?: () => void
 }): Promise<VoiceListener> {
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
   })
-  const context = new AudioContext({ sampleRate: SAMPLE_RATE })
-  // A browser that holds sound until a gesture starts the context suspended.
-  if (context.state === 'suspended') void context.resume().catch(() => undefined)
+  let context: AudioContext
+  let source: MediaStreamAudioSourceNode
+  let processor: ScriptProcessorNode
+  try {
+    context = new AudioContext({ sampleRate: SAMPLE_RATE })
+    // A browser that holds sound until a gesture starts the context suspended.
+    if (context.state === 'suspended') void context.resume().catch(() => undefined)
+    source = context.createMediaStreamSource(stream)
+    processor = context.createScriptProcessor(FRAME, 1, 1)
+  } catch (error) {
+    // The microphone was opened: it is closed again, or its light stays on.
+    stream.getTracks().forEach((track) => track.stop())
+    throw error
+  }
   stream.getAudioTracks()[0]?.addEventListener('ended', () => handlers.onEnded?.())
-  const source = context.createMediaStreamSource(stream)
-  const processor = context.createScriptProcessor(FRAME, 1, 1)
   const vad = new Vad()
   const rate = context.sampleRate
   const frameMs = (FRAME / rate) * 1000
@@ -68,6 +81,11 @@ export async function startVoiceListener(handlers: {
     if (held) {
       kept.push(frame)
       heldMs += frameMs
+      if (heldMs >= HOLD_MAX_MS) {
+        held = false
+        finish(heldMs)
+        handlers.onHoldLimit?.()
+      }
       return
     }
     const wasSpeaking = vad.speaking

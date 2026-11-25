@@ -1,4 +1,5 @@
 /** Plays an answer's blocks one after another while the next ones are still being voiced. */
+import { aborted, playbackRefused, speakProblem, STRIKES, type SpeakProblem } from './speakProblems'
 import type { SpokenBlock } from './speechBlocks'
 
 /** Sound left in the room after a clip ends. */
@@ -13,12 +14,14 @@ export interface VoicePlayer {
   busy: () => boolean
   /** A clip is audible now, or just stopped (its tail is still in the room): the microphone hears it. */
   sounding: () => boolean
-  /** The speech server failed for this answer; the rest is not voiced. */
+  /** The rest of this answer is not voiced: the speech server failed, refused, or the browser would not play. */
   failed: () => boolean
+  /** Why, when it is: for the line the person reads. */
+  problem: () => SpeakProblem
 }
 
 export function createVoicePlayer(
-  synthesize: (block: SpokenBlock) => Promise<Blob>,
+  synthesize: (block: SpokenBlock, signal: AbortSignal) => Promise<Blob>,
   onChange: () => void,
 ): VoicePlayer {
   let epoch = 0
@@ -28,6 +31,10 @@ export function createVoicePlayer(
   let playing = false
   let endCurrent: (() => void) | null = null
   let broke = false
+  let why: SpeakProblem = ''
+  /** Blocks in a row that did not come. */
+  let strikes = 0
+  let abort = new AbortController()
   let endedAt = 0
   const urls = new Set<string>()
 
@@ -60,7 +67,16 @@ export function createVoicePlayer(
         endCurrent = end
         audio.onended = end
         audio.onerror = end
-        audio.play().catch(end)
+        audio.play().catch((error) => {
+          // The browser would not play without a touch: it will not for the rest either.
+          if (playbackRefused(error) && mine === epoch) {
+            broke = true
+            why = 'playback'
+            queue = []
+            onChange()
+          }
+          end()
+        })
       })
     }
     if (mine === epoch) playing = false
@@ -71,20 +87,29 @@ export function createVoicePlayer(
     add: (block) => {
       if (broke) return
       const mine = epoch
+      const signal = abort.signal
       const clip = chain.then(async () => {
         if (mine !== epoch) return null
         try {
-          const url = URL.createObjectURL(await synthesize(block))
+          const url = URL.createObjectURL(await synthesize(block, signal))
           if (mine !== epoch) {
             URL.revokeObjectURL(url)
             return null
           }
+          strikes = 0
           urls.add(url)
           return url
-        } catch {
-          // One failed sentence ends the voice for this answer; the written answer is untouched.
-          broke = true
-          onChange()
+        } catch (error) {
+          if (mine !== epoch || aborted(error)) return null
+          // A block that fails is skipped; the written answer is untouched. A refusal the rest
+          // would meet too, or three misses in a row, ends the voice for this answer.
+          const { problem, stops } = speakProblem(error)
+          strikes += 1
+          if (stops || strikes >= STRIKES) {
+            broke = true
+            why = problem
+            onChange()
+          }
           return null
         }
       })
@@ -94,9 +119,13 @@ export function createVoicePlayer(
     },
     stop: () => {
       epoch += 1
+      abort.abort()
+      abort = new AbortController()
       queue = []
       chain = Promise.resolve()
       broke = false
+      why = ''
+      strikes = 0
       playing = false
       current?.pause()
       current = null
@@ -111,5 +140,6 @@ export function createVoicePlayer(
     // higher bar.
     sounding: () => (current !== null && !current.paused && !current.ended) || Date.now() - endedAt < TAIL_MS,
     failed: () => broke,
+    problem: () => why,
   }
 }

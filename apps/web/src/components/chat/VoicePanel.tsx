@@ -1,6 +1,7 @@
 import { AudioLines, Hand, Loader2, Mic, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, errorMessage, speakApi, transcriptionsApi } from '@/lib/api'
+import { micFailure } from '@/lib/wavRecorder'
 import { startVoiceListener, type VoiceListener } from '@/lib/voiceListener'
 import { getPlayer, panelArrived, panelLeft, resetTurn, session, setVoiceMode, subscribeChange } from '@/lib/voiceSession'
 import { VOICE_KEY, VOICE_TONE } from '@/lib/voices'
@@ -9,7 +10,7 @@ import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
 
-type Phase = 'starting' | 'listening' | 'hearing' | 'transcribing' | 'thinking' | 'speaking' | 'blocked'
+type Phase = 'starting' | 'listening' | 'hearing' | 'transcribing' | 'thinking' | 'speaking' | 'blocked' | 'hidden'
 
 /** Seconds the answer may take to begin before the turn is given up quietly. */
 const BEGIN_MS = 15_000
@@ -49,6 +50,8 @@ export function VoicePanel({
   const [phase, setPhase] = useState<Phase>(session.turn ? 'thinking' : 'starting')
   const [heard, setHeard] = useState('')
   const [holding, setHolding] = useState(false)
+  /** Why the microphone is not open, when it is not. */
+  const [micIssue, setMicIssue] = useState<'denied' | 'missing' | 'failed'>('denied')
   /** Whisper gave back nothing: once is a mumble, three in a row is a microphone too far away. */
   const [empties, setEmpties] = useState(0)
   /** Sound that never paused was cut this many times in a row: the room is too loud for the sentence ends. */
@@ -89,6 +92,66 @@ export function VoicePanel({
     void speakApi.speak('네.', voiceRef.current, { warm: true }).catch(() => undefined)
   }, [])
 
+  /** Opens the microphone and starts listening; called when the panel opens, again after a retry or a hidden tab. */
+  const open = useCallback(() => {
+    const sound = getPlayer()
+    setPhase('starting')
+    void startVoiceListener({
+      onLevel: (value) => {
+        if (level.current) level.current.style.transform = `scaleY(${Math.max(0.12, value)})`
+      },
+      onSpeechStart: () => {
+        // Speaking over the answer: it stops, and the turn that was being read is let go.
+        sound.stop()
+        resetTurn()
+        const id = sessionRef.current
+        if (id && useStore.getState().running[id]) useStore.getState().stopStreaming(id)
+        setPhase('hearing')
+      },
+      onUtterance: (wav) => {
+        // One at a time, in the order spoken: a second sentence waits for the first to be written out.
+        pending.current.push(wav)
+        void drain()
+      },
+      // Only sound in the room raises the bar; a reply still being voiced is silent.
+      bar: () => (sound.sounding() ? 2.5 : 1),
+      onEnded: () => {
+        if (!alive.current) return
+        setMicIssue('failed')
+        setPhase('blocked')
+      },
+      onSteady: () => {
+        if (!alive.current) return
+        setCrowded((n) => n + 1)
+        // The line below the status is for this now, not for the last thing heard.
+        setHeard('')
+      },
+      onHoldLimit: () => setHolding(false),
+    })
+      .then((l) => {
+        if (!alive.current || document.hidden) {
+          void l.stop()
+          if (alive.current) setPhase('hidden')
+          return
+        }
+        listener.current = l
+        // Rebuilt in the middle of an answer: still on it.
+        setPhase(session.turn ? (getPlayer().busy() ? 'speaking' : 'thinking') : 'listening')
+      })
+      .catch((error: unknown) => {
+        if (!alive.current) return
+        setMicIssue(micFailure(error))
+        setPhase('blocked')
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const close = () => {
+    const l = listener.current
+    listener.current = null
+    void l?.stop()
+  }
+
   useEffect(() => {
     alive.current = true
     panelArrived()
@@ -104,49 +167,45 @@ export function VoicePanel({
       }
     }
     const unfollow = subscribeChange(follow)
-    void startVoiceListener({
-      onLevel: (value) => {
-        if (level.current) level.current.style.transform = `scaleY(${Math.max(0.12, value)})`
-      },
-      onSpeechStart: () => {
-        // Speaking over the answer: it stops, and the turn that was being read is let go.
-        sound.stop()
-        resetTurn()
-        const id = sessionRef.current
-        if (id && useStore.getState().running[id]) useStore.getState().stopStreaming(id)
-        setPhase('hearing')
-      },
-      onUtterance: (wav) => void utterance(wav),
-      // Only sound in the room raises the bar; a reply still being voiced is silent.
-      bar: () => (sound.sounding() ? 2.5 : 1),
-      onEnded: () => alive.current && setPhase('blocked'),
-      onSteady: () => {
-        if (!alive.current) return
-        setCrowded((n) => n + 1)
-        // The line below the status is for this now, not for the last thing heard.
-        setHeard('')
-      },
-    })
-      .then((l) => {
-        if (!alive.current) {
-          void l.stop()
-          return
-        }
-        listener.current = l
-        // Rebuilt in the middle of an answer: still on it.
-        setPhase(session.turn ? (getPlayer().busy() ? 'speaking' : 'thinking') : 'listening')
-      })
-      .catch(() => alive.current && setPhase('blocked'))
+    open()
+    // A hidden tab does not keep the microphone: it is let go, and opened again when the tab is back.
+    const visibility = () => {
+      if (!alive.current) return
+      if (document.hidden) {
+        close()
+        setHolding(false)
+        setPhase('hidden')
+      } else if (!listener.current) {
+        open()
+      }
+    }
+    document.addEventListener('visibilitychange', visibility)
     return () => {
       alive.current = false
+      document.removeEventListener('visibilitychange', visibility)
       unfollow()
       panelLeft()
-      void listener.current?.stop()
-      listener.current = null
+      close()
     }
     // One microphone and one player for the panel's whole life.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const pending = useRef<Blob[]>([])
+  const working = useRef(false)
+  const drain = async () => {
+    if (working.current) return
+    working.current = true
+    try {
+      for (let wav = pending.current.shift(); wav; wav = pending.current.shift()) {
+        if (!alive.current) break
+        await utterance(wav)
+      }
+    } finally {
+      working.current = false
+      pending.current = []
+    }
+  }
 
   const utterance = async (wav: Blob) => {
     setPhase('transcribing')
@@ -157,10 +216,13 @@ export function VoicePanel({
       text = (await transcriptionsApi.transcribe(wav, 'speech.wav')).text.trim()
     } catch (err) {
       if (!alive.current) return
-      if (err instanceof ApiError && err.status === 422 && /들린 말이 없습니다|녹음된 소리가 없습니다/.test(err.detail)) {
-        // The sound arrived and made no words: a status, not an error.
+      if (err instanceof ApiError && err.status === 422) {
+        // The sound arrived and made no words (the server answers 422 for that and nothing else
+        // here): a status, not an error.
         setHeard('')
         setEmpties((n) => n + 1)
+      } else if (err instanceof ApiError && err.status === 413) {
+        setHeard(t('한 번에 너무 길게 말씀하셨습니다. 나눠서 말씀해 주세요.'))
       } else {
         setHeard(errorMessage(err, t('받아쓰지 못했습니다. 다시 말씀해 주세요.')))
       }
@@ -248,11 +310,24 @@ export function VoicePanel({
     transcribing: t('받아쓰는 중…'),
     thinking: t('답을 쓰는 중…'),
     speaking: t('읽어 드리는 중. 말씀하시면 멈춥니다'),
-    blocked: t('마이크를 쓸 수 없습니다. 브라우저의 마이크 권한을 확인해 주세요.'),
+    blocked:
+      micIssue === 'missing'
+        ? t('마이크를 찾지 못했습니다. 마이크 연결을 확인해 주세요.')
+        : micIssue === 'failed'
+          ? t('마이크를 열지 못했습니다. 다른 앱이 쓰고 있지 않은지 확인해 주세요.')
+          : t('마이크를 쓸 수 없습니다. 브라우저의 마이크 권한을 확인해 주세요.'),
+    hidden: t('화면이 가려져 마이크를 멈췄습니다'),
   }
+  const voiceProblem = getPlayer().problem()
   const silent = getPlayer().failed() === true
+  const problemLines: Record<string, string> = {
+    limit: t('읽기 요청이 많아 글로만 보여 드립니다. 잠시 뒤 다시 말씀해 주세요.'),
+    credits: t('크레딧이 부족해 글로만 보여 드립니다.'),
+    unavailable: t('읽어 줄 음성 모델이 준비되어 있지 않아 글로만 보여 드립니다.'),
+    playback: t('소리를 재생하지 못했습니다. 화면을 한 번 누른 뒤 다시 말씀해 주세요.'),
+  }
   const line = silent
-    ? t('음성을 만들지 못해 글로만 보여 드립니다.')
+    ? problemLines[voiceProblem] ?? t('음성을 만들지 못해 글로만 보여 드립니다.')
     : heard ||
       (crowded >= 2
         ? t('주변이 시끄러워 말의 끝을 잡기 어렵습니다. 「누르고 말하기」를 쓰세요.')
@@ -282,7 +357,12 @@ export function VoicePanel({
         )}
       </span>
       <div className="min-w-0 flex-1">
-        <p role="status" aria-live="polite" className="text-sm font-medium" data-testid="voice-status">
+        <p
+          role={phase === 'blocked' ? 'alert' : 'status'}
+          aria-live={phase === 'blocked' ? 'assertive' : 'polite'}
+          className="text-sm font-medium"
+          data-testid="voice-status"
+        >
           {status[phase]}
         </p>
         <p className="truncate text-xs text-muted" data-testid="voice-heard">
@@ -309,7 +389,7 @@ export function VoicePanel({
       )}
       <button
         type="button"
-        disabled={phase === 'blocked' || phase === 'starting'}
+        disabled={phase === 'blocked' || phase === 'starting' || phase === 'hidden'}
         aria-pressed={holding}
         aria-label={t('누르고 있는 동안 말하기')}
         title={t('소리로 알아듣기 어려우면 누른 채로 말하세요')}
@@ -350,6 +430,19 @@ export function VoicePanel({
         {holding ? <Mic size={14} /> : <Hand size={14} />}
         {t('누르고 말하기')}
       </button>
+      {(phase === 'blocked' || phase === 'hidden') && (
+        <button
+          type="button"
+          onClick={() => {
+            close()
+            open()
+          }}
+          data-testid="voice-retry"
+          className="h-9 shrink-0 rounded-control border border-line px-2.5 text-sm text-muted transition-colors hover:bg-elevated hover:text-fg"
+        >
+          {t('다시 시도')}
+        </button>
+      )}
       <button
         type="button"
         onClick={() => setVoiceMode(false)}

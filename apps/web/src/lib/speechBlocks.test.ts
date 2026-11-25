@@ -114,3 +114,47 @@ describe('BlockFeed', () => {
     expect(b).toEqual([])
   })
 })
+
+describe('a block never exceeds what a request carries', () => {
+  const within = (blocks: SpokenBlock[]) => {
+    for (const block of blocks) {
+      expect(block.text.length).toBeLessThanOrEqual(600)
+      expect(block.source.length).toBeLessThanOrEqual(4000)
+    }
+  }
+
+  it('cuts a long paragraph with no sentence end into pieces', () => {
+    const line = '가나다라 '.repeat(400)
+    const blocks = run([line])
+    expect(blocks.length).toBeGreaterThan(3)
+    within(blocks)
+    expect(blocks.every((b) => b.source.length <= 280 + 82)).toBe(true)
+  })
+
+  it('cuts one sentence of a thousand characters at breaks, not through a word', () => {
+    const sentence = Array.from({ length: 150 }, (_, i) => `항목${i}`).join(', ') + '.'
+    const blocks = run([sentence])
+    within(blocks)
+    expect(blocks.map((b) => b.source).join(' ').replace(/\s+/g, '')).toContain('항목149')
+  })
+
+  it('keeps spelled-out numbers from pushing a paragraph over', () => {
+    const numbers = Array.from({ length: 60 }, (_, i) => `${2000 + i}년 ${i + 1}월 ${i + 3}일`).join(' ')
+    const blocks = run([numbers])
+    within(blocks)
+    expect(blocks.length).toBeGreaterThan(1)
+  })
+
+  it('cuts a long heading and a long list too', () => {
+    const items = Array.from({ length: 200 }, (_, i) => `- 항목 번호 ${i} 에 대한 꽤 긴 설명을 덧붙입니다`).join('\n')
+    within(run([`## ${'제목 '.repeat(100)}\n\n${items}`]))
+  })
+
+  it('reads the pieces after the first as text only, so the rewrite is not asked twice for them', () => {
+    const numbers = Array.from({ length: 80 }, (_, i) => `${i + 1}월 ${i + 1}일`).join(' ')
+    const blocks = run([numbers])
+    const rewritten = blocks.filter((b) => b.source !== '')
+    expect(rewritten.length).toBeGreaterThan(0)
+    expect(blocks.length).toBeGreaterThanOrEqual(rewritten.length)
+  })
+})

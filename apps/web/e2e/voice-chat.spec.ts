@@ -202,3 +202,27 @@ test('목소리 모델이 없으면 음성 대화 버튼이 보이지 않는다'
   await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
   await expect(page.getByTestId('voice-chat-button')).toHaveCount(0)
 })
+
+
+test('마침표 없는 긴 문단도 요청 길이 안으로 잘라 끝까지 읽어 준다', async ({ page }, testInfo) => {
+  await fakeMicrophone(page)
+  const { speaks } = await stub(page, { withVoice: true })
+  const long = `${'가나다라 마바사 '.repeat(120)}끝`
+  const { sends } = await composerFixture(page, testInfo, {
+    turn: () => ({ events: [
+      { type: 'delta', text: `${long}\n\n마지막 문단입니다.` },
+      { type: 'usage', inputTokens: 4, outputTokens: 4, credits: 0 }, { type: 'done' },
+    ] }),
+  })
+  await page.goto('/new/chat')
+  await page.getByTestId('voice-chat-button').click()
+  await expect(page.getByTestId('voice-status')).toHaveText('듣고 있습니다. 말씀하세요')
+  await page.evaluate(() => (window as unknown as { __talk: (ms: number) => void }).__talk(1500))
+  await expect.poll(() => sends.length, { timeout: 15_000 }).toBe(1)
+  await expect.poll(() => speaks.some((s) => s.text === '마지막 문단입니다.'), { timeout: 15_000 }).toBe(true)
+  for (const clip of speaks.filter((s) => !s.warm)) {
+    expect(clip.text.length).toBeLessThanOrEqual(600)
+    expect((clip.source ?? '').length).toBeLessThanOrEqual(4000)
+  }
+  expect(speaks.filter((s) => !s.warm).length).toBeGreaterThan(3)
+})
