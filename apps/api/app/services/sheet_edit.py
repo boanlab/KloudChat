@@ -258,7 +258,8 @@ def _dims(data: bytes) -> dict[str, tuple[int, int]]:
             # the sizes are measured from the cells, not trusted from the file's <dimension>
             ws.reset_dimensions()
             count = cols = 0
-            for count, row in enumerate(ws.iter_rows(values_only=True), 1):
+            for row in ws.iter_rows(values_only=True):
+                count += 1
                 cols = max(cols, len(row))
             out[ws.title] = (max(count, 1), max(cols, 1))
         return out
