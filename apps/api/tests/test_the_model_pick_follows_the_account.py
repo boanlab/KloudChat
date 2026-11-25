@@ -45,6 +45,16 @@ def test_a_surface_the_app_does_not_have_is_refused():
         Preferences.model_validate({"avModelByMode": {"chat": "local/a"}})
 
 
+def test_the_sheet_surface_keeps_a_model_and_a_super_agent_pick():
+    prefs = Preferences.model_validate({"modelByKind": {"sheet": "local/a", "chat": "super"}})
+    assert prefs.model_by_kind == {"sheet": "local/a", "chat": "super"}
+    assert Preferences.model_validate({"modelByKind": {"sheet": "super_strict"}}).model_by_kind == {
+        "sheet": "super_strict"
+    }
+    with pytest.raises(ValidationError):
+        Preferences.model_validate({"modelByKind": {"image": "super"}})
+
+
 def test_an_empty_id_forgets_the_pick():
     prefs = Preferences.model_validate({"modelByKind": {"chat": "", "report": " local/b "}})
     assert prefs.model_by_kind == {"report": "local/b"}

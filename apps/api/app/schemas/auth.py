@@ -90,10 +90,10 @@ class Preferences(Wire):
     @field_validator("model_by_kind")
     @classmethod
     def _surfaces_only(cls, value: dict[str, str]) -> dict[str, str]:
-        picks = _model_picks(value, {"chat", "report", "slides", "image", "av"})
+        picks = _model_picks(value, {"chat", "report", "sheet", "slides", "image", "av"})
         # a Super Agent entry (`super`, `super_strict`) is a pick on the routed surfaces only
         for kind, pick in picks.items():
-            if pick in SUPER_ENTRIES and kind not in ("chat", "report", "slides"):
+            if pick in SUPER_ENTRIES and kind not in ("chat", "report", "sheet", "slides"):
                 raise ValueError(f"super_agent_entry_not_for_{kind}")
         return picks
 

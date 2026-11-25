@@ -766,7 +766,12 @@ function accountPicks(
 let accountWrites: Promise<unknown> = Promise.resolve()
 function rememberOnAccount(patch: Partial<Preferences>) {
   // one after another, so two quick picks reach the server in the order they were made
-  accountWrites = accountWrites.then(() => auth.updateMe({ preferences: patch })).catch(() => {})
+  accountWrites = accountWrites
+    .then(() => auth.updateMe({ preferences: patch }))
+    .catch((err: unknown) => {
+      // The pick stays in this tab; say why it did not reach the account instead of dropping it silently.
+      console.warn('model pick not saved on the account', err)
+    })
 }
 
 type AvMode = 'audio' | 'video'
