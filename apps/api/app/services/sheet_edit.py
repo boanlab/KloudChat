@@ -128,7 +128,7 @@ def span(box: tuple[int, int, int, int]) -> str:
 #: uses them (a sheet's text can come from a page or a file the person never read)
 _UNSAFE = re.compile(
     r"\b(?:WEBSERVICE|FILTERXML|IMPORT\w*|CALL|REGISTER(?:\.ID)?|EXEC|SHELL|HYPERLINK|RTD|DDE"
-    r"|ENCODEURL|INFO|CELL)\s*\(|\[[^\]]*\]|\|", re.I)
+    r"|ENCODEURL|INFO|CELL)\s*\(|\[[^\[\]]*\]|\|", re.I)
 _DATE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})$")
 _GROUPED = re.compile(r"^-?\d{1,3}(?:,\d{3})+(?:\.(\d+))?$")
 _PERCENT = re.compile(r"^(-?\d+(?:\.(\d+))?)\s?%$")
