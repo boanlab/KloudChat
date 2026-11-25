@@ -95,6 +95,11 @@ def role_of(row: StoredFile, request: str, chosen: Role | None) -> tuple[Role | 
         return "material", note
     if kind not in FOLLOWED:
         return "material", ""
+    if kind == "xlsx" and found.get("macro"):
+        # a workbook with macros is never copied as a form (the copy would carry the macro)
+        note = (f"{row.name}: 매크로가 든 통합 문서는 양식으로 쓸 수 없어 자료로 읽습니다."
+                if chosen == "form" else "")
+        return "material", note
     if chosen is not None:
         return chosen, ""
     score = float(found.get("score") or 0.0)

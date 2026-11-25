@@ -4,6 +4,7 @@ a version, change cells, download the workbook. The base routes are the office-d
 
 from __future__ import annotations
 
+import asyncio
 import re
 from typing import Any
 from urllib.parse import quote
@@ -17,7 +18,7 @@ from app.routers.office_docs import Routes, _conflict, router_for
 from app.routers.workspace import _own
 from app.schemas.auth import Wire
 from app.schemas.workspace import ArtifactOut
-from app.services import office_doc, sheet_doc, sheet_model, sheet_patch
+from app.services import office_doc, sheet_doc, sheet_edit, sheet_model, sheet_patch
 
 router = router_for(Routes(
     slug="xlsx",
@@ -28,6 +29,7 @@ router = router_for(Routes(
     mime=lambda fmt: sheet_doc.XLSX_MIME,
 ))
 
+#: one request; the editor sends a larger change in several, one version each
 MAX_OPS = 5000
 
 
@@ -55,7 +57,7 @@ async def sheet_model_of(artifact_id: str, user: CurrentUser, db: DbSession):
     except (OSError, FileNotFoundError):
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="blob_missing") from None
     try:
-        model = sheet_model.to_model(data)
+        model = await asyncio.to_thread(sheet_model.to_model, data)
     except Exception:  # noqa: BLE001 - a package the reader cannot walk is not a sheet
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY, detail="not_a_xlsx_file"
@@ -73,7 +75,10 @@ async def change_cells(
     if payload.expected_version != artifact.version:
         raise _conflict()
     try:
-        patched = sheet_patch.apply(office_doc.read(artifact), payload.ops)
+        sheet_edit.ui_formula_ok(payload.ops)
+        patched = await asyncio.to_thread(
+            sheet_patch.apply, office_doc.read(artifact), payload.ops
+        )
     except (OSError, FileNotFoundError):
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="blob_missing") from None
     except sheet_patch.PatchError as error:
@@ -104,11 +109,12 @@ async def edits_file(artifact_id: str, payload: EditsFile, user: CurrentUser, db
     is how a person keeps their edits when their save lost to a newer version."""
     artifact = await _sheet(db, user, artifact_id)
     try:
+        sheet_edit.ui_formula_ok(payload.ops)
         if payload.base_version == artifact.version:
             data = office_doc.read(artifact)
         else:
             data = await office_doc.read_version(db, artifact, payload.base_version)
-        patched = sheet_patch.apply(data, payload.ops)
+        patched = await asyncio.to_thread(sheet_patch.apply, data, payload.ops)
     except (OSError, FileNotFoundError):
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="blob_missing") from None
     except sheet_patch.PatchError as error:

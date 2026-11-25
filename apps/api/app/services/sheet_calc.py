@@ -25,7 +25,7 @@ from lxml import etree
 from openpyxl.formula.tokenizer import Token, Tokenizer
 from openpyxl.utils import column_index_from_string
 
-from app.services import sheet_model, sheet_patch
+from app.services import sheet_guard, sheet_model, sheet_patch
 
 _q = sheet_patch._q  # noqa: SLF001
 
@@ -68,6 +68,7 @@ def _split_sheet(text: str, home: str) -> tuple[str, bool, str]:
 
 class _Book:
     def __init__(self, data: bytes) -> None:
+        sheet_guard.check(data)
         book = openpyxl.load_workbook(io.BytesIO(data))
         cached = openpyxl.load_workbook(io.BytesIO(data), data_only=True)
         self.folded = {ws.title.casefold(): ws.title for ws in book.worksheets}
@@ -609,12 +610,12 @@ def refresh(data: bytes) -> bytes:
         return data
     if not calculated:
         return data
-    src = zipfile.ZipFile(io.BytesIO(data))
+    src = sheet_guard.open_zip(data)
     order = src.infolist()
     files = {i.filename: src.read(i.filename) for i in order}
     changed = False
     for name, path in sheet_patch._sheet_parts(files).items():  # noqa: SLF001
-        root = etree.fromstring(files[path])
+        root = sheet_guard.parse(files[path])
         touched = False
         for cell in root.iter(_q("c")):
             if cell.find(_q("f")) is None:

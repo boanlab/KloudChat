@@ -17,7 +17,7 @@ from typing import Any
 
 from openpyxl.utils import column_index_from_string
 
-from app.services import form_marks, form_profile, sheet_calc, sheet_model, sheet_patch
+from app.services import form_marks, form_profile, sheet_calc, sheet_guard, sheet_model, sheet_patch
 from app.services.sheet_edit import address
 
 #: the cells named in the mark and the note, at most
@@ -96,6 +96,7 @@ def _pointed_names(data: bytes) -> dict[str, set[tuple[int, int]]]:
 
     out: dict[str, set[tuple[int, int]]] = {}
     try:
+        sheet_guard.check(data)
         book = openpyxl.load_workbook(io.BytesIO(data))
         for defined in book.defined_names.values():
             for sheet, ref in defined.destinations:

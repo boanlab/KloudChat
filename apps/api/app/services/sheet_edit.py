@@ -19,7 +19,7 @@ import openpyxl
 from openpyxl.formula.tokenizer import Token, Tokenizer
 from openpyxl.utils import column_index_from_string, get_column_letter
 
-from app.services import sheet_calc, sheet_model, sheet_patch
+from app.services import sheet_calc, sheet_guard, sheet_model, sheet_patch
 
 log = logging.getLogger(__name__)
 
@@ -171,6 +171,36 @@ def _formula_ok(text: str) -> str:
     return body
 
 
+class LiteralText(str):
+    """Text that starts with `=` but is a value read from a file, not a formula: it is written as
+    the text it is, and never fails the write of the whole sheet."""
+
+
+def as_file_value(value: Any) -> Any:
+    """A cell value read from an attached file: a text starting with `=` that is no formula this
+    sheet may hold (`=== 구분 ===`, an unsafe function) stays text."""
+    if isinstance(value, str) and value.startswith("=") and len(value) > 1:
+        try:
+            _formula_ok(value)
+        except SheetError:
+            return LiteralText(value)
+    return value
+
+
+def ui_formula_ok(ops: list[Any]) -> None:
+    """The editor's formulas (`f`, without the `=`) pass the same check on what leaves the
+    workbook (external references, functions that run something) as the agent's do."""
+    for op in ops:
+        formula = op.get("f") if isinstance(op, dict) else None
+        if not formula or not isinstance(formula, str):
+            continue
+        outside = "".join(re.split(r'("(?:[^"]|"")*")', formula.lstrip("="))[0::2])
+        if _UNSAFE.search(outside):
+            raise sheet_guard.PatchError(
+                "외부 파일·주소를 부르거나 무언가를 실행하는 함수, "
+                "다른 통합 문서를 가리키는 수식은 쓸 수 없습니다.")
+
+
 def typed(value: Any) -> tuple[Any, str | None]:
     """A value as the cell holds it, and the number format it implies. A text that is a number
     written as people write it (「1,200」, 「12.5%」, 「2026-10-13」) is the number; a plain
@@ -203,6 +233,8 @@ def typed(value: Any) -> tuple[Any, str | None]:
 
 
 def _cell_ops(sheet: str, r: int, c: int, value: Any) -> dict[str, Any]:
+    if isinstance(value, LiteralText):
+        return {"sheet": sheet, "r": r, "c": c, "v": str(value)}
     if isinstance(value, str) and value.startswith("=") and len(value) > 1:
         return {"sheet": sheet, "r": r, "c": c, "f": _formula_ok(value)}
     number, fmt = typed(value)
@@ -215,10 +247,21 @@ def _cell_ops(sheet: str, r: int, c: int, value: Any) -> dict[str, Any]:
 # -- the workbook ----------------------------------------------------------------------------
 
 def _dims(data: bytes) -> dict[str, tuple[int, int]]:
+    try:
+        sheet_guard.check(data)
+    except sheet_guard.WorkbookRefused as refused:
+        raise SheetError(str(refused)) from None
     book = openpyxl.load_workbook(io.BytesIO(data), read_only=True)
     try:
-        return {ws.title: (max(ws.max_row or 1, 1), max(ws.max_column or 1, 1))
-                for ws in book.worksheets}
+        out: dict[str, tuple[int, int]] = {}
+        for ws in book.worksheets:
+            # the sizes are measured from the cells, not trusted from the file's <dimension>
+            ws.reset_dimensions()
+            count = cols = 0
+            for count, row in enumerate(ws.iter_rows(values_only=True), 1):
+                cols = max(cols, len(row))
+            out[ws.title] = (max(count, 1), max(cols, 1))
+        return out
     finally:
         book.close()
 
