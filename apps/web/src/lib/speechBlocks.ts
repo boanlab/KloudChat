@@ -21,6 +21,8 @@ const SOURCE_MAX = 4000
 const TEXT_MAX = 560
 /** A paragraph longer than this is read in pieces, each cut at a sentence. */
 const PARA_MAX = 280
+/** A heading read before its block is cut to this. */
+const HEADING_MAX = 80
 /** The first sound of an answer starts at the first complete sentence of this length, not the paragraph's end. */
 const EARLY_MIN = 20
 /** Items of a list read in full when the rewrite fails. */
@@ -34,7 +36,31 @@ const HAS_WORD = /[\p{L}\p{N}]/u
 const endsSentence = (text: string) => /[.!?…。！？]["'”’)\]]*$/.test(text)
 const sentence = (text: string) => (endsSentence(text) ? text : `${text}.`)
 
-/** Sentence-sized pieces of one paragraph, none longer than `PARA_MAX` unless a sentence is. */
+/** `text` cut at the last break (a comma, a space) within `max`, else at `max`. */
+function cutAt(text: string, max: number): [string, string] {
+  if (text.length <= max) return [text, '']
+  const window = text.slice(0, max)
+  const at = Math.max(window.lastIndexOf(', '), window.lastIndexOf('， '), window.lastIndexOf(' '))
+  const end = at > max / 2 ? at + 1 : max
+  return [text.slice(0, end).trim(), text.slice(end).trim()]
+}
+
+/** No piece of a long unbroken line is over `max`: the server refuses a longer one. */
+function limited(text: string, max: number): string[] {
+  const out: string[] = []
+  let rest = text.trim()
+  while (rest) {
+    const [head, tail] = cutAt(rest, max)
+    if (head) out.push(head)
+    rest = tail
+  }
+  return out
+}
+
+/** What a request may carry of `text`: cut at a break, never through a word. */
+const fit = (text: string, max: number) => cutAt(text, max)[0]
+
+/** Sentence-sized pieces of one paragraph, none longer than `PARA_MAX`, even a sentence with no end. */
 function pieces(text: string): string[] {
   const out: string[] = []
   let held = ''
@@ -56,7 +82,7 @@ function pieces(text: string): string[] {
   const rest = text.slice(from).trim()
   if (rest) take(rest)
   if (held) out.push(held)
-  return out
+  return out.flatMap((piece) => limited(piece, PARA_MAX))
 }
 
 interface Open {
@@ -96,6 +122,16 @@ export class BlockFeed {
     return out
   }
 
+  /** One paragraph piece, within what a request carries: spelled-out numbers lengthen it. */
+  private para(out: SpokenBlock[], words: string) {
+    for (const part of limited(words, PARA_MAX + HEADING_MAX + 2)) {
+      // Only the first piece goes to the rewrite; the rest, cut for length, is read as it stands.
+      limited(speakableText(part), TEXT_MAX).forEach((spoken, i) => {
+        this.say(out, { kind: 'para', source: i === 0 ? fit(part, SOURCE_MAX) : '', text: spoken })
+      })
+    }
+  }
+
   private say(out: SpokenBlock[], block: SpokenBlock) {
     if (!HAS_WORD.test(block.text)) return
     this.said = true
@@ -113,11 +149,9 @@ export class BlockFeed {
     SENTENCE_END.lastIndex = 0
     for (let m = SENTENCE_END.exec(joined); m; m = SENTENCE_END.exec(joined)) cut = m.index + m[0].length
     if (cut < 0 || joined.slice(this.early, cut).trim().length < EARLY_MIN) return
-    const lead = this.heading ? `${this.heading}. ` : ''
+    const lead = this.heading ? `${fit(this.heading, HEADING_MAX)}. ` : ''
     this.heading = ''
-    for (const part of pieces(joined.slice(this.early, cut).trim())) {
-      this.say(out, { kind: 'para', source: lead + part, text: speakableText(lead + part) })
-    }
+    for (const part of pieces(joined.slice(this.early, cut).trim())) this.para(out, lead + part)
     this.early = cut
   }
 
@@ -187,10 +221,8 @@ export class BlockFeed {
       const body = plainText(open.lines.join(' ')).slice(this.early).trim()
       this.early = 0
       if (!HAS_WORD.test(body)) return
-      const prefix = lead ? `${lead}. ` : ''
-      for (const part of pieces(body)) {
-        this.say(out, { kind: 'para', source: prefix + part, text: speakableText(prefix + part) })
-      }
+      const prefix = lead ? `${fit(lead, HEADING_MAX)}. ` : ''
+      for (const part of pieces(body)) this.para(out, prefix + part)
       return
     }
     this.early = 0

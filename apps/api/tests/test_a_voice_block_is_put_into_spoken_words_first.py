@@ -153,11 +153,11 @@ async def test_a_priced_helper_is_charged_like_helper_work_and_a_free_one_is_not
     assert settled == []
 
 
-def test_a_long_source_cannot_be_sent_as_text():
+def test_a_long_block_is_read_as_far_as_it_goes_not_refused():
+    assert len(SpeakRequest(text="x" * 601).text) == 600
+    assert len(SpeakRequest(text="x", spoken=True, source="y" * 4001).source) == 4000
     with pytest.raises(ValueError):
-        SpeakRequest(text="x" * 601)
-    with pytest.raises(ValueError):
-        SpeakRequest(text="x", spoken=True, source="y" * 4001)
+        SpeakRequest(text="")
 
 
 def test_the_length_limit_follows_the_source():
@@ -231,3 +231,16 @@ async def test_a_slow_server_empty_reply_or_runaway_reply_gives_none(monkeypatch
 
     _post(monkeypatch, refused)
     assert (await spoken_rewrite.rewrite(SOURCE, "strict-local/m", "k"))[0] is None
+
+
+@pytest.mark.asyncio
+async def test_a_helper_that_keeps_failing_is_left_alone_for_a_while(monkeypatch):
+    speak._rewrite_failures, speak._rewrite_paused_until = 0, 0.0
+    nothing = (None, {"inputTokens": 0, "outputTokens": 0})
+    go, _, asked, _ = _run(monkeypatch, helpers=[HELPER["id"]], rewrite=nothing)
+    for _ in range(speak._REWRITE_STRIKES):
+        await go(spoken=True, source=SOURCE)
+    assert len(asked) == speak._REWRITE_STRIKES
+    await go(spoken=True, source=SOURCE)
+    assert len(asked) == speak._REWRITE_STRIKES  # paused: no wait for a model that is down
+    speak._rewrite_failures, speak._rewrite_paused_until = 0, 0.0

@@ -40,9 +40,12 @@ async def transcribe(
             data, file.filename or "speech.webm", pinned, prompt
         )
     except transcribe_service.TranscribeError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
-        ) from exc
+        # 422: nothing to hear; 413: too long; 502: the speech server itself
+        code = {
+            "too_long": status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            "failed": status.HTTP_502_BAD_GATEWAY,
+        }.get(exc.code, status.HTTP_422_UNPROCESSABLE_ENTITY)
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
     if seconds:
         record_units(
             db, user, reason="speech.transcribe", model=STT_MODEL, units=seconds, unit="seconds"

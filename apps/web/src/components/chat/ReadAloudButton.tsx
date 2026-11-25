@@ -55,12 +55,17 @@ export function ReadAloudButton({
     startReading(id, pieces, { voice: voiceFor(model), cut, onAt, onEnd })
   }
 
+  const problems: Record<string, string> = {
+    limit: t('읽기 요청이 많습니다. 잠시 뒤 다시 눌러 주세요.'),
+    credits: t('크레딧이 부족해 읽을 수 없습니다.'),
+    unavailable: t('읽어 줄 음성 모델이 준비되어 있지 않습니다.'),
+    playback: t('소리를 재생하지 못했습니다. 화면을 한 번 누른 뒤 다시 시도하세요.'),
+    failed: t('음성을 만들지 못했습니다.'),
+  }
   const status =
-    mine && reading.problem === 'limit'
-      ? t('읽기 요청이 많습니다. 잠시 뒤 다시 눌러 주세요.')
-      : mine && reading.problem === 'failed'
-        ? t('음성을 만들지 못했습니다.')
-        : active && reading.status === 'paused'
+    mine && reading.problem
+      ? problems[reading.problem]
+      : active && reading.status === 'paused'
           ? t('잠시 멈춤')
           : active && reading.cut
             ? t('앞부분만 읽습니다')
@@ -73,12 +78,11 @@ export function ReadAloudButton({
         variant="ghost"
         size="icon"
         aria-label={active ? t('멈춤') : t('읽어 주기')}
-        aria-pressed={active}
         title={active ? t('읽기를 멈춥니다') : t('소리 내어 읽어 줍니다. 화면의 글은 그대로입니다.')}
         onClick={() => (active ? stopReading() : begin())}
       >
         {active ? (
-          reading.status === 'loading' ? <Loader2 size={14} className="animate-spin" /> : <Square size={13} />
+          reading.status === 'loading' ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Square size={13} />
         ) : (
           <Volume2 size={14} />
         )}
@@ -95,8 +99,8 @@ export function ReadAloudButton({
       )}
       {(progress || status) && (
         <span
-          role="status"
-          aria-live="polite"
+          role={mine && reading.problem ? 'alert' : 'status'}
+          aria-live={mine && reading.problem ? 'assertive' : 'polite'}
           className={cn('px-1 text-xs tabular-nums', mine && reading.problem ? 'text-danger' : 'text-muted')}
           data-testid="read-aloud-status"
         >

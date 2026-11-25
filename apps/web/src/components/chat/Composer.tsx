@@ -27,7 +27,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode 
 import type { FileRow, FormKind, FormRole, OfficeKind, PrivacyDecision, WebSearchSetting } from '@/lib/api'
 import { ApiError, fileUrl, filesApi, transcriptionsApi } from '@/lib/api'
 import { VOICE_TONE, voiceFor, voicesOf } from '@/lib/voices'
-import { startWavRecording, type WavRecorder } from '@/lib/wavRecorder'
+import { DICTATION_MAX_MS, micFailure, startWavRecording, type WavRecorder } from '@/lib/wavRecorder'
 import { FormRoleToggle, SavedFormChip, followable, formRoleOf } from '@/components/chat/FormChips'
 import { FileBoxPicker } from '@/components/files/FileBoxPicker'
 import { warmStudio } from '@/components/hwp/warmStudio'
@@ -56,7 +56,7 @@ import { servedAspect, servedAspects } from '@/lib/aspects'
 import { ContextGauge } from './ContextGauge'
 import { ModelPicker } from './ModelPicker'
 import { VoicePanel } from './VoicePanel'
-import { setVoiceMode, useVoiceMode } from '@/lib/voiceSession'
+import { setVoiceMode, useVoiceMode, voiceModeOn } from '@/lib/voiceSession'
 import { ReasoningChip } from './ReasoningChip'
 import { SharedBotItems } from './SharedBotItems'
 import { useFileDrop, usePasteFiles } from '@/lib/useFileDrop'
@@ -830,15 +830,38 @@ export function Composer({
       setTranscribing(false)
     }
   }
+  const stopRecordingRef = useRef(stopRecording)
+  stopRecordingRef.current = stopRecording
   const startRecording = async () => {
+    // The voice conversation has the microphone; two at once would fight over it.
+    if (voiceModeOn() || recorder.current) return
     setChatError(null)
     try {
-      recorder.current = await startWavRecording()
+      recorder.current = await startWavRecording({
+        maxMs: DICTATION_MAX_MS,
+        // Out of time: what was said so far is written out, as if the button were pressed.
+        onLimit: () => void stopRecordingRef.current(),
+      })
       setRecording(true)
-    } catch {
-      setChatError(t('마이크를 쓸 수 없습니다. 브라우저의 마이크 권한을 확인해 주세요.'))
+    } catch (err) {
+      const why = micFailure(err)
+      setChatError(
+        why === 'missing'
+          ? t('마이크를 찾지 못했습니다. 마이크 연결을 확인해 주세요.')
+          : why === 'failed'
+            ? t('마이크를 열지 못했습니다. 잠시 뒤 다시 시도하세요.')
+            : t('마이크를 쓸 수 없습니다. 브라우저의 마이크 권한을 확인해 주세요.'),
+      )
     }
   }
+  // Leaving the page mid-recording lets the microphone go.
+  useEffect(
+    () => () => {
+      recorder.current?.cancel()
+      recorder.current = null
+    },
+    [],
+  )
   // Push to talk (환경설정): hold space in an empty box, release to fill the box, never send.
   const spaceToTalk = useStore((s) => s.user?.preferences.spaceToTalk === true)
   const pushToTalk = useRef(false)
@@ -1981,6 +2004,13 @@ export function Composer({
   }
   // Voice conversation: speak, hear the answer read by the self-hosted voice. Needs dictation and such a model.
   const voiceMode = useVoiceMode()
+  // A voice conversation begun while dictating ends the dictation: the microphone is the conversation's.
+  useEffect(() => {
+    if (!voiceMode || !recorder.current) return
+    recorder.current.cancel()
+    recorder.current = null
+    setRecording(false)
+  }, [voiceMode])
   const defaultAudio = useStore((s) => s.avModelByMode.audio)
   const voiceModel =
     models.find((m) => m.id === defaultAudio && m.speechEndpoint && m.strictLocal && m.dataBoundary === 'self_hosted') ??

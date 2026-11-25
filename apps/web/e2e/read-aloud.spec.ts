@@ -87,7 +87,6 @@ test('답변의 「읽어 주기」를 누르면 블록 단위로 읽고, 다시
   // The button turns into 멈춤 and the first block is asked for, with the words to put into speech.
   const stop = page.getByRole('button', { name: '멈춤', exact: true })
   await expect(stop).toBeVisible()
-  await expect(stop).toHaveAttribute('aria-pressed', 'true')
   await expect.poll(() => speaks.length).toBeGreaterThan(1)
   expect(speaks[0]).toMatchObject({ voice: 'sohee', spoken: true, source: '네, 세 가지로 정리해 드릴게요.' })
   // A list and a table are each one block, read in spoken words by the server.

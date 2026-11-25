@@ -80,11 +80,11 @@ def charge_for_image(
 
 
 def has_headroom(user: User, model: dict) -> bool:
-    """Pre-flight: one 1k-output turn's worth left."""
-    per_out = model.get("creditCost") or 0
-    if per_out == 0:
+    """Pre-flight: one 1k-output turn's worth left, or a flat per-call price when that is more."""
+    need = max(model.get("creditCost") or 0, model.get("creditPerCall") or 0)
+    if need == 0:
         return True
-    return user.credits_remaining >= per_out
+    return user.credits_remaining >= need
 
 
 #: surface by `reason` prefix; `document.*` omitted (both surfaces), callers pass `surface`

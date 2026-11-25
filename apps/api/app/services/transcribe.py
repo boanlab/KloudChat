@@ -20,7 +20,12 @@ PROMPT_MAX = 120
 
 
 class TranscribeError(RuntimeError):
-    """Transcription failure; user-facing message."""
+    """Transcription failure; user-facing message. `code`: `no_sound` (empty upload),
+    `no_speech` (Whisper heard nothing), `too_long`, `failed` (the speech server)."""
+
+    def __init__(self, message: str, code: str = "failed") -> None:
+        super().__init__(message)
+        self.code = code
 
 
 async def available() -> bool:
@@ -31,12 +36,8 @@ async def transcribe_with_duration(
     data: bytes, filename: str = "speech.webm", language: str | None = None, prompt: str = ""
 ) -> tuple[str, int]:
     """Transcript plus reported audio seconds (0 if unknown)."""
-    text = await transcribe(data, filename, language, prompt)
-    return text, int(_last_seconds)
-
-
-#: seconds from the last local transcription
-_last_seconds = 0
+    stt_url = await _ready(data)
+    return await _transcribe_timed(stt_url, data, filename, language, prompt)
 
 
 async def transcribe(
@@ -46,18 +47,23 @@ async def transcribe(
     prompt: str = "",
 ) -> str:
     """Audio bytes to text; `language` None = auto, `prompt` = vocabulary hint."""
-    if len(data) > MAX_BYTES:
-        raise TranscribeError("녹음이 너무 깁니다. 나눠서 말해 주세요.")
-    if not data:
-        raise TranscribeError("녹음된 소리가 없습니다.")
+    stt_url = await _ready(data)
+    return await _transcribe_locally(stt_url, data, filename, language, prompt)
 
+
+async def _ready(data: bytes) -> str:
+    """The speech server's address, after the recording itself is checked."""
+    if len(data) > MAX_BYTES:
+        raise TranscribeError("녹음이 너무 깁니다. 나눠서 말해 주세요.", "too_long")
+    if not data:
+        raise TranscribeError("녹음된 소리가 없습니다.", "no_sound")
     stt_url = (await settings_store.tools_config()).stt
     if not stt_url:
         raise TranscribeError(
             "내부 음성 인식(Whisper) 서버가 연결되지 않아 받아쓸 수 없습니다. "
             "녹음은 외부로 보내지 않습니다."
         )
-    return await _transcribe_locally(stt_url, data, filename, language, prompt)
+    return stt_url
 
 
 #: expected languages; other detections retried pinned to `_HOME`
@@ -69,20 +75,26 @@ _HOME = "ko"
 async def _transcribe_locally(
     stt_url: str, data: bytes, filename: str, language: str | None = None, prompt: str = ""
 ) -> str:
-    """Whisper via vLLM's OpenAI-shaped endpoint; `None` language = auto-detect."""
+    return (await _transcribe_timed(stt_url, data, filename, language, prompt))[0]
+
+
+async def _transcribe_timed(
+    stt_url: str, data: bytes, filename: str, language: str | None = None, prompt: str = ""
+) -> tuple[str, int]:
+    """Whisper via vLLM's OpenAI-shaped endpoint (`None` language = auto-detect): the text and
+    the audio seconds it reported, kept per call so two requests never share a reading."""
     body = await _whisper(stt_url, data, filename, language, prompt)
     heard = str(body.get("language") or "").lower()[:2]
     if language is None and heard and heard not in SPOKEN:
         log.info("whisper heard %s; retrying pinned to %s", heard, _HOME)
         body = await _whisper(stt_url, data, filename, _HOME, prompt)
 
-    global _last_seconds
-    _last_seconds = 0
+    seconds = 0
     usage = body.get("usage") or {}
     if isinstance(usage, dict) and usage.get("type") == "duration":
-        _last_seconds = int(usage.get("seconds") or 0)
+        seconds = int(usage.get("seconds") or 0)
     elif isinstance(body.get("duration"), (int, float)):
-        _last_seconds = int(round(float(body["duration"])))
+        seconds = int(round(float(body["duration"])))
     text = str(body.get("text") or "").strip()
     if not text and prompt.strip():
         # A vocabulary hint can leave Whisper with nothing to say for a short clip; once more
@@ -91,8 +103,8 @@ async def _transcribe_locally(
         body = await _whisper(stt_url, data, filename, language)
         text = str(body.get("text") or "").strip()
     if not text:
-        raise TranscribeError("들린 말이 없습니다.")
-    return text
+        raise TranscribeError("들린 말이 없습니다.", "no_speech")
+    return text, seconds
 
 
 async def segments_of(
@@ -149,7 +161,7 @@ async def _whisper(
         log.warning("whisper unreachable: %s", exc)
         raise TranscribeError("음성 인식 서버에 연결하지 못했습니다.") from exc
     if response.status_code >= 400:
-        log.warning("whisper %s: %s", response.status_code, response.text[:200])
+        log.warning("whisper answered %s", response.status_code)
         raise TranscribeError("받아쓰지 못했습니다. 잠시 뒤 다시 시도하세요.")
     try:
         body = response.json()

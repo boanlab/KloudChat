@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const speak = vi.hoisted(() => vi.fn())
+// the silent clip that unlocks sound is not one of the reading's clips
+vi.mock('./speakProblems', async (orig) => ({ ...(await orig<typeof import('./speakProblems')>()), unlockAudio: () => undefined }))
 vi.mock('./api', () => ({
   speakApi: { speak },
   ApiError: class ApiError extends Error {
@@ -170,10 +172,61 @@ describe('the reading', () => {
     expect(readState()).toMatchObject({ key: 'k', status: 'idle' })
   })
 
-  it('gives up quietly with a failure note on any other error', async () => {
+  it('gives up quietly with a failure note after three misses in a row', async () => {
     speak.mockRejectedValue(new ApiError(502, 'down'))
-    startReading('k', piecesOf(2), { voice: 'sohee' })
+    startReading('k', piecesOf(4), { voice: 'sohee' })
     await until(() => readState().problem === 'failed')
+    expect(readState()).toMatchObject({ key: 'k', status: 'idle' })
+  })
+
+  it('skips one block that fails and reads the rest', async () => {
+    let n = 0
+    speak.mockImplementation(async () => {
+      n += 1
+      if (n === 2) throw new ApiError(502, 'down')
+      return new Blob(['x'], { type: 'audio/wav' })
+    })
+    startReading('k', piecesOf(3), { voice: 'sohee' })
+    await until(() => FakeAudio.all.length === 1)
+    FakeAudio.all[0].finish()
+    await until(() => FakeAudio.all.length === 2)
+    expect(readState().problem).toBe('')
+    FakeAudio.all[1].finish()
+    await until(() => readState().status === 'idle')
+    expect(FakeAudio.all.length).toBe(2)
+  })
+
+  it('stops for a refusal the rest would meet too (no credits, no model)', async () => {
+    speak.mockRejectedValue(new ApiError(422, 'insufficient_credits'))
+    startReading('k', piecesOf(3), { voice: 'sohee' })
+    await until(() => readState().problem === 'credits')
+    speak.mockReset()
+    speak.mockRejectedValue(new ApiError(503, 'no_speech_model'))
+    startReading('k', piecesOf(3), { voice: 'sohee' })
+    await until(() => readState().problem === 'unavailable')
+  })
+
+  it('does not go on when the browser refuses to play', async () => {
+    class Refusing extends FakeAudio {
+      play() {
+        return Promise.reject(new DOMException('no', 'NotAllowedError'))
+      }
+    }
+    vi.stubGlobal('Audio', Refusing)
+    startReading('k', piecesOf(3), { voice: 'sohee' })
+    await until(() => readState().problem === 'playback')
+  })
+
+  it('asks the speech server to stop what it is still making when the reading is stopped', async () => {
+    let signal: AbortSignal | undefined
+    speak.mockImplementation((_t, _v, opts: { signal?: AbortSignal }) => {
+      signal = opts.signal
+      return new Promise(() => undefined)
+    })
+    startReading('k', piecesOf(2), { voice: 'sohee' })
+    await until(() => signal !== undefined)
+    stopReading()
+    expect(signal?.aborted).toBe(true)
   })
 
   it('does nothing for a text with nothing to read', () => {

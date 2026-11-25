@@ -2,36 +2,72 @@
 
 const SAMPLE_RATE = 16_000
 
+/** Longest dictation: 16 kHz 16-bit mono is 32,000 bytes a second, so this stays far under the upload limit. */
+export const DICTATION_MAX_MS = 120_000
+
 export interface WavRecorder {
   /** Stops the microphone and returns the recording as a WAV blob. */
   stop: () => Promise<Blob>
+  /** Stops the microphone and throws the recording away (the page is being left). */
+  cancel: () => void
 }
 
-export async function startWavRecording(): Promise<WavRecorder> {
+/** Why a microphone could not be opened: refused by the person or the browser, not there, or something else. */
+export function micFailure(error: unknown): 'denied' | 'missing' | 'failed' {
+  const name = error instanceof DOMException ? error.name : ''
+  if (name === 'NotAllowedError' || name === 'SecurityError') return 'denied'
+  if (name === 'NotFoundError' || name === 'OverconstrainedError') return 'missing'
+  return 'failed'
+}
+
+export async function startWavRecording(
+  opts: { maxMs?: number; onLimit?: () => void } = {},
+): Promise<WavRecorder> {
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
   })
-  // A browser that cannot open 16 kHz reports its own rate, used in the header.
-  const context = new AudioContext({ sampleRate: SAMPLE_RATE })
-  const source = context.createMediaStreamSource(stream)
-  // ScriptProcessor needs no separate worklet module file.
-  const processor = context.createScriptProcessor(4096, 1, 1)
+  let context: AudioContext
+  let source: MediaStreamAudioSourceNode
+  let processor: ScriptProcessorNode
+  try {
+    // A browser that cannot open 16 kHz reports its own rate, used in the header.
+    context = new AudioContext({ sampleRate: SAMPLE_RATE })
+    source = context.createMediaStreamSource(stream)
+    // ScriptProcessor needs no separate worklet module file.
+    processor = context.createScriptProcessor(4096, 1, 1)
+  } catch (error) {
+    // Opened but unusable: close the microphone, or its light stays on.
+    stream.getTracks().forEach((track) => track.stop())
+    throw error
+  }
   const chunks: Float32Array[] = []
+  let ended = false
+  let limit: ReturnType<typeof setTimeout> | null = null
   processor.onaudioprocess = (event) => {
     chunks.push(new Float32Array(event.inputBuffer.getChannelData(0)))
   }
   source.connect(processor)
   processor.connect(context.destination)
 
+  const release = async () => {
+    if (ended) return
+    ended = true
+    if (limit) clearTimeout(limit)
+    processor.onaudioprocess = null
+    processor.disconnect()
+    source.disconnect()
+    stream.getTracks().forEach((track) => track.stop())
+    await context.close().catch(() => undefined)
+  }
+  if (opts.maxMs) limit = setTimeout(() => opts.onLimit?.(), opts.maxMs)
+
   return {
     stop: async () => {
-      processor.disconnect()
-      source.disconnect()
-      stream.getTracks().forEach((track) => track.stop())
       const rate = context.sampleRate
-      await context.close()
+      await release()
       return encodeWav(chunks, rate)
     },
+    cancel: () => void release(),
   }
 }
 

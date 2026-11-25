@@ -3,7 +3,8 @@
  * spoken words first (`/audio/speak`, the same path the voice conversation uses). One reading at a time;
  * the next blocks are voiced while one plays, but only a couple ahead, so stopping wastes little. */
 import { useSyncExternalStore } from 'react'
-import { ApiError, speakApi } from './api'
+import { speakApi } from './api'
+import { aborted, playbackRefused, speakProblem, STRIKES, unlockAudio, type SpeakProblem } from './speakProblems'
 import { BlockFeed, type SpokenBlock } from './speechBlocks'
 
 /** A part of a document read as one: a section, a slide, a whole answer. */
@@ -60,8 +61,9 @@ export interface ReadState {
   label: string
   /** Only the first part of a long text is read. */
   cut: boolean
-  /** The reading ended early: the speech server was busy (`limit`) or failed. */
-  problem: '' | 'limit' | 'failed'
+  /** The reading ended early, and why: the speech server was busy (`limit`), out of credits, not set up,
+   * the browser would not play (`playback`), or it failed. */
+  problem: SpeakProblem
 }
 
 const IDLE: ReadState = { key: null, status: 'idle', index: 0, total: 0, label: '', cut: false, problem: '' }
@@ -91,6 +93,7 @@ let run = 0
 let audio: HTMLAudioElement | null = null
 let endClip: (() => void) | null = null
 let clips = new Map<number, Promise<string>>()
+let abort = new AbortController()
 let problemTimer: ReturnType<typeof setTimeout> | null = null
 let whenEnded: (() => void) | null = null
 
@@ -102,6 +105,9 @@ function dropClips() {
 /** Ends the reading at once: the sound, what is voiced ahead, the button's state. */
 export function stopReading() {
   run += 1
+  // Clips still being made are not wanted: the speech server is told to stop, not left to finish them.
+  abort.abort()
+  abort = new AbortController()
   audio?.pause()
   audio = null
   endClip?.()
@@ -115,8 +121,7 @@ export function stopReading() {
   publish(IDLE)
 }
 
-function giveUp(key: string, error: unknown) {
-  const problem = error instanceof ApiError && error.status === 429 ? 'limit' : 'failed'
+function giveUp(key: string, problem: SpeakProblem) {
   stopReading()
   publish({ ...IDLE, key, problem })
   problemTimer = setTimeout(() => {
@@ -137,20 +142,21 @@ export function resumeReading() {
   void audio?.play().catch(() => undefined)
 }
 
+/** Plays one clip; resolves `true` when the browser refused to play it at all. */
 const playClip = (url: string, mine: number) =>
-  new Promise<void>((done) => {
+  new Promise<boolean>((done) => {
     const clip = new Audio(url)
     audio = clip
-    const end = () => {
+    const end = (refused = false) => {
       if (audio === clip) audio = null
       if (endClip === end) endClip = null
-      done()
+      done(refused)
     }
     endClip = end
-    clip.onended = end
-    clip.onerror = end
+    clip.onended = () => end()
+    clip.onerror = () => end()
     if (mine === run) publish({ ...state, status: 'playing' })
-    clip.play().catch(end)
+    clip.play().catch((error) => end(playbackRefused(error)))
   })
 
 /** Starts reading `pieces` for the button `key`; whatever was being read stops. */
@@ -161,6 +167,8 @@ export function startReading(
 ) {
   stopReading()
   if (!pieces.length) return
+  // Inside the click that began this: lets the clips, made after a wait, play on a strict browser.
+  unlockAudio()
   const mine = (run += 1)
   whenEnded = opts.onEnd ?? null
   publish({ key, status: 'loading', index: 0, total: pieces.length, label: pieces[0].label, cut: opts.cut === true, problem: '' })
@@ -170,7 +178,7 @@ export function startReading(
     if (!made) {
       const { block } = pieces[i]
       made = speakApi
-        .speak(block.text, opts.voice, { spoken: block.source !== '', source: block.source })
+        .speak(block.text, opts.voice, { spoken: block.source !== '', source: block.source, signal: abort.signal })
         .then((blob) => URL.createObjectURL(blob))
       made.catch(() => undefined)
       clips.set(i, made)
@@ -179,6 +187,8 @@ export function startReading(
   }
 
   void (async () => {
+    // Blocks that did not come in a row: one is skipped, three end the reading.
+    let strikes = 0
     for (let i = 0; i < pieces.length; i += 1) {
       if (mine !== run) return
       for (let ahead = 0; ahead <= AHEAD && i + ahead < pieces.length; ahead += 1) void clip(i + ahead)
@@ -187,14 +197,26 @@ export function startReading(
       let url: string
       try {
         url = await clip(i)
+        strikes = 0
       } catch (error) {
-        if (mine === run) giveUp(key, error)
-        return
+        if (mine !== run || aborted(error)) return
+        const { problem, stops } = speakProblem(error)
+        strikes += 1
+        if (stops || strikes >= STRIKES) {
+          giveUp(key, problem)
+          return
+        }
+        clips.delete(i)
+        continue
       }
       if (mine !== run) return
-      await playClip(url, mine)
+      const refused = await playClip(url, mine)
       clips.delete(i)
       URL.revokeObjectURL(url)
+      if (refused && mine === run) {
+        giveUp(key, 'playback')
+        return
+      }
     }
     if (mine === run) stopReading()
   })()
