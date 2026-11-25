@@ -35,6 +35,23 @@ export interface Doc {
 type Ask = { resolve: (go: boolean) => void; reason: AskReason }
 
 /** Office document state beside the chat; server-side agent versions are loaded unless that would drop hand edits. */
+/** A save the server refused for a reason the person can act on, in words. */
+export function saveFailure(err: unknown, t: (text: string) => string): string {
+  if (err instanceof ApiError && err.status === 422) {
+    const reasons: Record<string, string> = {
+      bad_range: '시트의 범위를 벗어난 변경이 있어 저장하지 못했습니다. 표 안에서 다시 편집해 주세요.',
+      bad_op: '저장할 수 없는 변경이 들어 있습니다. 새로고침해 다시 편집해 주세요.',
+      not_a_xlsx_file: '이 파일은 엑셀 시트로 읽을 수 없어 저장하지 못했습니다.',
+      last_sheet: '시트는 하나 이상 있어야 합니다.',
+    }
+    const reason = reasons[err.detail] ?? (/^(no_sheet|sheet_exists|bad_sheet_name)/.test(err.detail)
+      ? '시트 이름이 맞지 않아 저장하지 못했습니다. 이름을 확인해 주세요.'
+      : '')
+    if (reason) return t(reason)
+  }
+  return errorMessage(err, t('저장하지 못했습니다. 잠시 뒤 다시 시도하세요.'))
+}
+
 export function useOfficeDocument(
   kind: OfficeKind | 'xlsx',
   doc: Doc,
@@ -56,6 +73,8 @@ export function useOfficeDocument(
   /** Edits reported via `noteEdit`; compared before and after a save */
   const edits = useRef(0)
   const [error, setError] = useState('')
+  /** A sheet too large to draw whole: shown read only, since a save would not hold what is not drawn. */
+  const [cut, setCut] = useState(false)
   /** `conflict`: a save lost to a newer version; `behind`: a newer version came in under edits. */
   const [notice, setNotice] = useState<'conflict' | 'behind' | null>(null)
   const [asking, setAsking] = useState<Ask | null>(null)
@@ -97,6 +116,7 @@ export function useOfficeDocument(
       let convert = false
       if (kind === 'xlsx' && instance.sheet) {
         const model = await artifactsApi.sheetModel(doc.id)
+        setCut(Boolean(model.truncated))
         await instance.sheet.show(model)
         version = model.version
       } else {
@@ -180,7 +200,7 @@ export function useOfficeDocument(
       return true
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) setNotice('conflict')
-      else setError(errorMessage(err, t('저장하지 못했습니다. 잠시 뒤 다시 시도하세요.')))
+      else setError(saveFailure(err, t))
       return false
     } finally {
       busy.current = false
@@ -228,7 +248,7 @@ export function useOfficeDocument(
   }
 
   return {
-    loaded, loading, dirty, dirtyRef, markDirty, noteEdit, saving, busy, loadingRef, error,
+    loaded, loading, dirty, dirtyRef, markDirty, noteEdit, saving, busy, loadingRef, error, cut,
     setError, notice, load, save, refresh, asking, answer, agentWorking,
   }
 }

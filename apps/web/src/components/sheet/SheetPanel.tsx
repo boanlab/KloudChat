@@ -47,7 +47,7 @@ export function SheetPanel({
   const [drawn, setDrawn] = useState(false)
   const state = useOfficeDocument('xlsx', doc, office, ready)
   const { dirtyRef, noteEdit, setError } = state
-  const readOnly = readOnlyAt(phone, state.dirty)
+  const readOnly = readOnlyAt(phone, state.dirty) || state.cut
   const fileName = `${fileStem(doc.title)}.xlsx`
   // the grid's callbacks are set once; this keeps what they read current
   const latest = useRef({ save: state.save, agentWorking: state.agentWorking, readOnly, dark, t })

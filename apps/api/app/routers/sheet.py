@@ -29,8 +29,8 @@ router = router_for(Routes(
     mime=lambda fmt: sheet_doc.XLSX_MIME,
 ))
 
-#: one request; the editor sends a larger change in several, one version each
-MAX_OPS = 5000
+#: one save or one edits file: a column format or a large paste is tens of thousands of cell ops
+MAX_OPS = 50_000
 
 
 class CellChanges(Wire):
