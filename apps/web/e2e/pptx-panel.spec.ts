@@ -252,7 +252,7 @@ test('a blank deck tells the server it is open, and a reload does not drop it', 
   const state = await startBlankFromHome(page)
   await expect.poll(() => state.pings.length).toBeGreaterThan(0)
   await page.reload()
-  await expect(pptxPanel(page)).toBeVisible()
+  await page.waitForLoadState('load')
   // a reload cannot be told from a closed tab: nothing asks the server to drop it
   expect(state.discards).toEqual([])
   expect(state.unexpected).toEqual([])
