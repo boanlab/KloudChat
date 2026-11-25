@@ -837,6 +837,8 @@ interface ArtifactBase {
   partial?: boolean
   /** Where it is listed (`ArtifactRow.section`); absent on a local draft. */
   section?: string
+  /** Set by the server while an office document is an untouched 「빈 문서로 시작」 one (the title it was made with); gone with its first edit. */
+  blank?: string
   /** Local draft a run is still streaming into; the server does not hold it yet. */
   draft?: boolean
   /** Linter findings as of when this was written. */

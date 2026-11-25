@@ -9,8 +9,7 @@ const PING_MS = 60_000
 
 /** Leaving the conversation of an untouched 「빈 문서로 시작」 document drops it (`lib/blankDocs.ts`). A query change on the same
  *  conversation (another panel, another tab of the document) is not leaving. While a conversation's office document is open
- *  here, the server is told every minute, so another tab leaving does not drop what this one has open (the server ignores
- *  anything that is not an untouched blank). */
+ *  here, the server is told every minute, so another tab leaving does not drop what this one has open (only a document the server still marks as an untouched blank). */
 export function BlankDocumentGuard() {
   const { pathname } = useLocation()
   const last = useRef(pathname)
@@ -22,7 +21,12 @@ export function BlankDocumentGuard() {
 
   const sessionId = sessionOfPath(pathname)
   const open = useStore((s) =>
-    sessionId ? s.artifacts.filter((a) => a.sessionId === sessionId && OFFICE.has(a.kind)).map((a) => a.id).join(',') : '',
+    sessionId
+      ? s.artifacts
+          .filter((a) => a.sessionId === sessionId && OFFICE.has(a.kind) && a.version === 1 && a.blank != null)
+          .map((a) => a.id)
+          .join(',')
+      : '',
   )
   useEffect(() => {
     if (!open) return

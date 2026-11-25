@@ -166,7 +166,7 @@ export async function officeFixture(page: Page, options: OfficeOptions) {
         ? options.box.name.replace(/\.[^.]+$/, '') : options.title
       artifact = {
         ...artifact, sessionId: session.id, title: body.title ?? named,
-        data: { ...artifact.data, ...(body.fileId ? { sourceFileId: body.fileId } : {}) },
+        data: { ...artifact.data, ...(body.fileId ? { sourceFileId: body.fileId } : { blank: body.title ?? named }) },
       }
       return route.fulfill({ status: 201, json: artifact })
     }
