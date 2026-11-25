@@ -316,6 +316,7 @@ _ARTIFACT_JOBS = {
     "hwp": "office",
     "docx": "office",
     "pptx": "office",
+    "xlsx": "office",
     "video": "video",
 }
 

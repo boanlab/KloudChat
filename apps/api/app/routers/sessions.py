@@ -3371,7 +3371,7 @@ async def get_session(session_id: str, user: CurrentUser, db: DbSession):
 
 
 async def _newest_office_document(db: AsyncSession, session_id: str) -> str | None:
-    kinds = [ArtifactKind.hwp, ArtifactKind.docx, ArtifactKind.pptx]
+    kinds = [ArtifactKind.hwp, ArtifactKind.docx, ArtifactKind.pptx, ArtifactKind.xlsx]
     row = (await db.exec(
         select(Artifact.id)
         .where(Artifact.session_id == session_id, col(Artifact.kind).in_(kinds))

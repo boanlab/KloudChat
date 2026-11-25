@@ -890,7 +890,7 @@ async def file_text(file_id: str, user: CurrentViewer, db: DbSession):
 
 
 #: office documents an own file was opened as, for 「다시 열기」 in the file box
-_OFFICE_KINDS = (ArtifactKind.hwp, ArtifactKind.docx, ArtifactKind.pptx)
+_OFFICE_KINDS = (ArtifactKind.hwp, ArtifactKind.docx, ArtifactKind.pptx, ArtifactKind.xlsx)
 
 
 @router.get("/files/{file_id}/documents", response_model=list[ArtifactOut])
